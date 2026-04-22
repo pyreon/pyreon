@@ -358,10 +358,13 @@ describe('router navigation', () => {
     expect(router.currentRoute().query.q).toBe('hello')
   })
 
-  test('push with unknown named route falls back to /', async () => {
+  test('push with unknown named route falls back to / and warns', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const router = createRouter({ routes, url: '/about' })
     await router.push({ name: 'nonexistent' })
     expect(router.currentRoute().path).toBe('/')
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown route name "nonexistent"'))
+    warnSpy.mockRestore()
   })
 
   test('back() does not throw in SSR (no window)', () => {
@@ -4267,6 +4270,21 @@ describe('useTypedSearchParams', () => {
     router.destroy()
   })
 
+  it('guards NaN: non-numeric string coerces to 0 instead of NaN', () => {
+    const router = createRouter({ routes: tspRoutes, url: '/search?page=abc' })
+    const ctr = document.createElement('div')
+    let result: { page: number } | undefined
+    const TestComp = () => {
+      const [params] = useTypedSearchParams({ page: 'number' })
+      result = params() as { page: number }
+      return null
+    }
+    mount(h(RouterProvider, { router }, h(TestComp, {})), ctr)
+    expect(result!.page).toBe(0) // not NaN
+    expect(Number.isNaN(result!.page)).toBe(false)
+    router.destroy()
+  })
+
   it('defaults boolean to false when missing from URL', () => {
     const router = createRouter({ routes: tspRoutes, url: '/search' })
     const ctr = document.createElement('div')
@@ -4720,5 +4738,44 @@ describe('View Transitions API', () => {
 
     delete (document as any).startViewTransition
     router.destroy()
+  })
+})
+
+// ─── Type-level tests for Router<TNames> ──────────────────────────────────────
+
+describe('Router<TNames> type safety', () => {
+  test('createRouter<TNames> returns typed router', () => {
+    type Names = 'home' | 'about' | 'user'
+    const router = createRouter<Names>({
+      routes: [
+        { path: '/', name: 'home', component: Home },
+        { path: '/about', name: 'about', component: Home },
+        { path: '/user/:id', name: 'user', component: Home },
+      ],
+    })
+
+    // This compiles — valid name
+    router.push({ name: 'home' })
+    router.push({ name: 'about' })
+    router.push({ name: 'user', params: { id: '1' } })
+
+    // Type assertion: the router accepts the union type
+    const _typeCheck: Names = 'home'
+    void _typeCheck
+
+    router.destroy()
+  })
+
+  test('_middlewareData is typed on ResolvedRoute', () => {
+    const route: ResolvedRoute = {
+      path: '/',
+      params: {},
+      query: {},
+      hash: '',
+      matched: [],
+      meta: {},
+      _middlewareData: { user: { name: 'Alice' } },
+    }
+    expect(route._middlewareData?.user).toEqual({ name: 'Alice' })
   })
 })

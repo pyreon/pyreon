@@ -69,6 +69,8 @@ export interface ResolvedRoute<
   /** All matched records from root to leaf (one per nesting level) */
   matched: RouteRecord[]
   meta: RouteMeta
+  /** Middleware data attached during navigation (populated by middleware chain) */
+  _middlewareData?: Record<string, unknown> | undefined
 }
 
 // ─── Lazy component ───────────────────────────────────────────────────────────

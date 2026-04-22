@@ -443,7 +443,12 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - Route error boundaries — `errorComponent` on route records catches render errors (not just loader errors)
 - View Transitions API — auto-enabled for route navigations, opt out per route via `meta.viewTransition: false`
 - Middleware chain — `RouteMiddleware` with `ctx.data` for passing data between middleware, `useMiddlewareData()` to read in components
-- `Router<TNames>` generic — typed named navigation (`router.push({ name: 'user', params: { id: '42' } })`)
+- `Router<TNames>` generic — typed named navigation, compile-time checked (`createRouter<'home' | 'user'>({ routes })` → `router.push({ name: 'typo' })` is a TS error)
+- `aria-current="page"` on active `RouterLink` (WCAG 2.1 accessibility)
+- Query parsing decodes `+` as space per `application/x-www-form-urlencoded` spec
+- `useTypedSearchParams` guards NaN — non-numeric strings coerce to `0` not `NaN`
+- `_middlewareData` properly typed on `ResolvedRoute` (no `as any` casts)
+- Prefetch cache capped at 50 entries to prevent unbounded memory growth
 
 ### @pyreon/hooks
 

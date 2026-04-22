@@ -147,6 +147,13 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
   const inst = router as RouterInstance | null
   const href = inst?.mode === 'history' ? `${inst._base}${props.to}` : `#${props.to}`
 
+  const isExactMatch = (): boolean => {
+    if (!router) return false
+    const target = props.to
+    if (typeof target !== 'string') return false
+    return router.currentRoute().path === target
+  }
+
   const activeClass = (): string => {
     if (!router) return ''
     const current = router.currentRoute().path
@@ -160,6 +167,8 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
     if (isExact) classes.push(props.exactActiveClass ?? 'router-link-exact-active')
     return classes.join(' ').trim()
   }
+
+  const ariaCurrent = (): string | undefined => isExactMatch() ? 'page' : undefined
 
   // Viewport prefetching — observe link visibility with IntersectionObserver
   const ref = createRef<Element>()
@@ -185,12 +194,14 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
 
   return h(
     'a',
-    { ...rest, ref, href, class: activeClass, onClick: handleClick, onMouseEnter: handleMouseEnter },
+    { ...rest, ref, href, class: activeClass, 'aria-current': ariaCurrent, onClick: handleClick, onMouseEnter: handleMouseEnter },
     children ?? props.to,
   )
 }
 
 /** Prefetch loader data for a route (only once per router + path). */
+const MAX_PREFETCH_CACHE = 50
+
 function prefetchRoute(router: RouterInstance, path: string): void {
   let set = _prefetched.get(router)
   if (!set) {
@@ -198,6 +209,11 @@ function prefetchRoute(router: RouterInstance, path: string): void {
     _prefetched.set(router, set)
   }
   if (set.has(path)) return
+  // Evict oldest entries when cache is full to prevent unbounded growth
+  if (set.size >= MAX_PREFETCH_CACHE) {
+    const first = set.values().next().value as string
+    set.delete(first)
+  }
   set.add(path)
   prefetchLoaderData(router, path).catch(() => {
     // Silently ignore — prefetch is best-effort
