@@ -370,8 +370,10 @@ describe('useImperativeHandle', () => {
 describe('useDebugValue', () => {
   test('is a no-op that does not throw', () => {
     withHookCtx(() => {
-      expect(() => useDebugValue('test')).not.toThrow()
-      expect(() => useDebugValue(42, (v) => `value: ${v}`)).not.toThrow()
+      // Call directly — no-ops should not throw
+      useDebugValue('test')
+      useDebugValue(42, (v) => `value: ${v}`)
+      expect(true).toBe(true)
     })
   })
 })
