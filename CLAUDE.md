@@ -158,7 +158,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `@pyreon/store`       | Global state management — composition stores returning `StoreApi<T>`                                                                                  |
 | `@pyreon/state-tree`  | Structured reactive state tree — models, snapshots, patches, middleware                                                                               |
-| `@pyreon/form`        | Signal-based form management — fields, validation, submission, arrays, context                                                                        |
+| `@pyreon/form`        | Signal-based form management — composable `field()` definitions, `useField('name')` from context, `<Form>/<Submit>` components, arrays, validation    |
 | `@pyreon/validation`  | Schema adapters for forms (Zod, Valibot, ArkType)                                                                                                     |
 | `@pyreon/query`       | Pyreon adapter for TanStack Query                                                                                                                     |
 | `@pyreon/table`       | Pyreon adapter for TanStack Table                                                                                                                     |
@@ -218,8 +218,11 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 
 ### @pyreon/form
 
-- `useForm({ initialValues, onSubmit, validators?, schema?, validateOn?, debounceMs? })` — reactive form state
-- `useField(form, name)` — single-field hook with `hasError`, `showError`, `register()`
+- `useForm({ initialValues, onSubmit, validators?, schema?, validateOn?, debounceMs? })` — reactive form state (legacy API)
+- `field(name, defaultValue, validator?)` — composable field definition carrying name as literal type. `useForm({ fields: [email, password], onSubmit })` infers `FormState<{ email: string; password: string }>` from the array
+- `useField('name')` — context-based overload, reads form from nearest `<Form>` / `<FormProvider>`. Accepts generic: `useField<string>('email')`. Also: `useField(form, name)` (explicit form)
+- `<Form of={form}>` — renders `<form>` + `FormProvider`, binds `onSubmit`. Children use `useField('name')` without prop drilling
+- `<Submit>` — auto-disables during submission
 - `useFieldArray(initial?)` — dynamic array fields with stable keys. Full mutation surface: `append` / `prepend` / `insert` / `remove` / `update` / `move` / `swap` / `replace`. Always render with `<For each={items()} by={i => i.key}>` — `.key` is a monotonic number assigned at insert time, not the array index
 - `useWatch(form, name?)` — typed overloads: single field → `Signal<T>`, multiple fields → tuple of signals, no args → `Computed<TValues>`
 - `useFormState(form, selector?)` — computed form-level summary (`isValid`, `isDirty`, `isSubmitting`, `isValidating`, `submitCount`, `errors`). Selector narrows the tracked subset so a button gated on `canSubmit` doesn't re-render when `submitCount` changes

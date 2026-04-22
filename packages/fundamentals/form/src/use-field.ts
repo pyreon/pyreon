@@ -1,5 +1,6 @@
 import type { Computed, Signal } from '@pyreon/reactivity'
 import { computed } from '@pyreon/reactivity'
+import { useFormContext } from './context'
 import type { FieldRegisterProps, FieldState, FormState, ValidationError } from './types'
 
 export interface UseFieldResult<T> {
@@ -18,7 +19,7 @@ export interface UseFieldResult<T> {
   /** Reset the field to its initial value. */
   reset: () => void
   /** Register props for input binding. */
-  register: (opts?: { type?: 'checkbox' }) => FieldRegisterProps<T>
+  register: (opts?: { type?: 'checkbox' | 'number' }) => FieldRegisterProps<T>
   /** Whether the field has an error (computed). */
   hasError: Computed<boolean>
   /** Whether the field should show its error (touched + has error). */
@@ -26,25 +27,61 @@ export interface UseFieldResult<T> {
 }
 
 /**
- * Extract a single field's state and helpers from a form instance.
- * Useful for building isolated field components.
+ * Extract a single field's state from the nearest `<Form>` / `<FormProvider>` context.
+ * No form prop needed — reads from context automatically.
  *
  * @example
+ * ```tsx
+ * function EmailInput() {
+ *   const f = useField('email')
+ *   return <>
+ *     <input {...f.register()} />
+ *     {f.showError() && <span>{f.error()}</span>}
+ *   </>
+ * }
+ * ```
+ */
+export function useField<T = unknown>(name: string): UseFieldResult<T>
+/**
+ * Extract a single field's state from an explicit form instance.
+ *
+ * @example
+ * ```tsx
  * function EmailField({ form }: { form: FormState<{ email: string }> }) {
  *   const field = useField(form, 'email')
- *   return (
- *     <>
- *       <input {...field.register()} />
- *       {field.showError() && <span>{field.error()}</span>}
- *     </>
- *   )
+ *   return <input {...field.register()} />
  * }
+ * ```
  */
 export function useField<TValues extends Record<string, unknown>, K extends keyof TValues & string>(
   form: FormState<TValues>,
   name: K,
-): UseFieldResult<TValues[K]> {
-  const fieldState: FieldState<TValues[K]> = form.fields[name]
+): UseFieldResult<TValues[K]>
+export function useField(
+  formOrName: FormState<Record<string, unknown>> | string,
+  maybeName?: string,
+): UseFieldResult<unknown> {
+  let form: FormState<Record<string, unknown>>
+  let name: string
+
+  if (typeof formOrName === 'string') {
+    // Context mode — read form from nearest FormProvider
+    form = useFormContext()
+    name = formOrName
+  } else {
+    // Explicit mode — form passed directly
+    form = formOrName
+    name = maybeName!
+  }
+
+  const fieldState: FieldState<unknown> = form.fields[name]!
+
+  if (!fieldState) {
+    throw new Error(
+      `[@pyreon/form] useField("${name}"): field "${name}" not found. ` +
+        `Available fields: ${Object.keys(form.fields).join(', ')}`,
+    )
+  }
 
   const hasError = computed(() => fieldState.error() !== undefined)
   const showError = computed(() => fieldState.touched() && hasError())

@@ -36,6 +36,38 @@ function LoginForm() {
 }
 ```
 
+## Composable Fields (recommended)
+
+Define fields as reusable data, compose into type-safe forms:
+
+```tsx
+import { field, useForm, useField, Form, Submit } from '@pyreon/form'
+
+// Define fields — name, default, validator. Reusable across forms.
+const email = field('email', '', (v) => !v.includes('@') ? 'Invalid' : undefined)
+const password = field('password', '', (v) => v.length < 8 ? 'Too short' : undefined)
+const confirm = field('confirmPassword', '', (v, all) => v !== all.password ? 'Mismatch' : undefined)
+
+// Compose — types fully inferred from field array
+const form = useForm({
+  fields: [email, password, confirm],
+  onSubmit: (values) => { /* { email: string; password: string; confirmPassword: string } */ },
+})
+
+// Components use useField('name') from context — no form prop needed
+function EmailInput() {
+  const f = useField<string>('email')
+  return <><input {...f.register()} />{f.showError() && <span>{f.error()}</span>}</>
+}
+
+// Render
+<Form of={form}>
+  <EmailInput />
+  <PasswordInput />
+  <Submit>Login</Submit>
+</Form>
+```
+
 ## API
 
 ### `useForm(options)`

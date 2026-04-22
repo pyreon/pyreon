@@ -1,13 +1,33 @@
 import { onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
 import { computed, effect, signal } from '@pyreon/reactivity'
+import type { FieldDefinition, InferFieldValues } from './field'
+import { isFieldDefinition } from './field'
 import type {
   FieldRegisterProps,
   FieldState,
   FormState,
   UseFormOptions,
+  ValidateFn,
   ValidationError,
 } from './types'
+
+/**
+ * Options for the field-definition-based useForm overload.
+ * Types are inferred from the field definitions array.
+ */
+export interface UseFormFieldsOptions<TDefs extends readonly FieldDefinition<string, unknown>[]> {
+  /** Array of field definitions created via `field()`. */
+  fields: readonly [...TDefs]
+  /** Called with validated values on successful submit. */
+  onSubmit: (values: InferFieldValues<TDefs>) => void | Promise<void>
+  /** Schema-level validator (runs after field validators). */
+  schema?: UseFormOptions<InferFieldValues<TDefs>>['schema']
+  /** When to validate: 'blur' (default), 'change', or 'submit'. */
+  validateOn?: 'blur' | 'change' | 'submit'
+  /** Debounce delay in ms for validators. */
+  debounceMs?: number
+}
 
 /**
  * Create a signal-based form. Returns reactive field states, form-level
@@ -27,10 +47,56 @@ import type {
  * // h('input', form.register('email'))
  * // h('input', { type: 'checkbox', ...form.register('remember', { type: 'checkbox' }) })
  */
+/**
+ * Create a form from field definitions — types inferred from the fields array.
+ *
+ * @example
+ * ```ts
+ * const email = field('email', '', (v) => !v.includes('@') ? 'Invalid' : undefined)
+ * const password = field('password', '', (v) => v.length < 8 ? 'Too short' : undefined)
+ *
+ * const form = useForm({
+ *   fields: [email, password],
+ *   onSubmit: (values) => { // values: { email: string; password: string } }
+ * })
+ * ```
+ */
+// oxlint-disable-next-line no-explicit-any
+export function useForm<TDefs extends FieldDefinition<string, any>[]>(
+  options: { fields: [...TDefs]; onSubmit: (values: InferFieldValues<TDefs>) => void | Promise<void>; schema?: any; validateOn?: 'blur' | 'change' | 'submit'; debounceMs?: number },
+): FormState<InferFieldValues<TDefs>>
+/**
+ * Create a form with explicit initial values and validators.
+ */
 export function useForm<TValues extends Record<string, unknown>>(
   options: UseFormOptions<TValues>,
+): FormState<TValues>
+// oxlint-disable-next-line no-unnecessary-type-arguments
+export function useForm<TValues extends Record<string, unknown> = Record<string, unknown>>(
+  options: UseFormFieldsOptions<readonly FieldDefinition[]> | UseFormOptions<TValues>,
 ): FormState<TValues> {
-  const { initialValues, onSubmit, validators, schema: schemaInput, validateOn = 'blur', debounceMs } = options
+  // ── Field-definition overload: translate to legacy format ──────────────
+  if ('fields' in options && Array.isArray(options.fields) && options.fields.length > 0 && isFieldDefinition(options.fields[0])) {
+    const defs = options.fields as readonly FieldDefinition[]
+    const initialValues: Record<string, unknown> = {}
+    const validators: Record<string, ValidateFn<unknown, Record<string, unknown>>> = {}
+    for (const def of defs) {
+      initialValues[def.name] = def.defaultValue
+      if (def.validator) validators[def.name] = def.validator
+    }
+    return useForm<TValues>({
+      initialValues,
+      validators,
+      onSubmit: options.onSubmit,
+      schema: options.schema,
+      validateOn: options.validateOn,
+      debounceMs: options.debounceMs,
+    } as unknown as UseFormOptions<TValues>) as FormState<TValues>
+  }
+
+  // ── Legacy path ───────────────────────────────────────────────────────
+  const opts = options as UseFormOptions<Record<string, unknown>>
+  const { initialValues, onSubmit, validators, schema: schemaInput, validateOn = 'blur', debounceMs } = opts
 
   // Extract validator from TypedSchemaAdapter if provided, otherwise use as-is
   const schema = schemaInput && '_infer' in schemaInput ? schemaInput.validator : schemaInput
