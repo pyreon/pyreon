@@ -12,6 +12,10 @@ interface ProjectConfig {
   features: string[]
   packageStrategy: 'meta' | 'individual'
   aiToolchain: boolean
+  /** Framework compat mode — configures vite plugin for React/Vue/Solid/Preact migration */
+  compat: 'none' | 'react' | 'vue' | 'solid' | 'preact'
+  /** Include @pyreon/lint with recommended preset */
+  lint: boolean
 }
 
 // ─── Feature definitions ────────────────────────────────────────────────────
@@ -88,6 +92,22 @@ const FEATURES = {
   code: {
     label: 'Code Editor (@pyreon/code — CodeMirror 6)',
     deps: ['@pyreon/code'],
+  },
+  toast: {
+    label: 'Toast Notifications (@pyreon/toast)',
+    deps: ['@pyreon/toast'],
+  },
+  permissions: {
+    label: 'Permissions (@pyreon/permissions — RBAC, feature flags)',
+    deps: ['@pyreon/permissions'],
+  },
+  'url-state': {
+    label: 'URL State (@pyreon/url-state — URL-synced params)',
+    deps: ['@pyreon/url-state'],
+  },
+  rx: {
+    label: 'Reactive Transforms (@pyreon/rx — filter, map, sortBy, groupBy)',
+    deps: ['@pyreon/rx'],
   },
 } as const
 
@@ -202,6 +222,34 @@ async function main() {
     process.exit(0)
   }
 
+  // Compat mode (migration from another framework)
+  const compat = await p.select({
+    message: 'Migrating from another framework?',
+    options: [
+      { value: 'none', label: 'No — native Pyreon', hint: 'recommended' },
+      { value: 'react', label: 'React', hint: 'use useState, useEffect, etc.' },
+      { value: 'vue', label: 'Vue', hint: 'use ref, computed, watch, etc.' },
+      { value: 'solid', label: 'Solid', hint: 'use createSignal, createEffect, etc.' },
+      { value: 'preact', label: 'Preact', hint: 'use useState, signals, etc.' },
+    ],
+  })
+
+  if (p.isCancel(compat)) {
+    p.cancel('Cancelled.')
+    process.exit(0)
+  }
+
+  // Lint
+  const lint = await p.confirm({
+    message: 'Include @pyreon/lint? (59 Pyreon-specific rules)',
+    initialValue: true,
+  })
+
+  if (p.isCancel(lint)) {
+    p.cancel('Cancelled.')
+    process.exit(0)
+  }
+
   const config: ProjectConfig = {
     name: name as string,
     targetDir,
@@ -209,6 +257,8 @@ async function main() {
     features: features as string[],
     packageStrategy: packageStrategy as ProjectConfig['packageStrategy'],
     aiToolchain: aiToolchain as boolean,
+    compat: compat as ProjectConfig['compat'],
+    lint: lint as boolean,
   }
 
   const s = p.spinner()
@@ -244,6 +294,21 @@ async function scaffold(config: ProjectConfig) {
     join(config.targetDir, '.gitignore'),
     'node_modules\ndist\n.DS_Store\n*.local\n.pyreon\n',
   )
+
+  // Lint config
+  if (config.lint) {
+    await writeFile(
+      join(config.targetDir, '.pyreonlintrc.json'),
+      JSON.stringify(
+        {
+          $schema: 'node_modules/@pyreon/lint/schema/pyreonlintrc.schema.json',
+          preset: 'recommended',
+        },
+        null,
+        2,
+      ) + '\n',
+    )
+  }
 
   // AI toolchain files
   if (config.aiToolchain) {
@@ -380,6 +445,22 @@ function generatePackageJson(config: ProjectConfig): string {
     devDeps['@pyreon/mcp'] = pyreonVersion('@pyreon/mcp')
   }
 
+  // Compat mode deps
+  const compatPkgMap: Record<string, string> = {
+    react: '@pyreon/react-compat',
+    vue: '@pyreon/vue-compat',
+    solid: '@pyreon/solid-compat',
+    preact: '@pyreon/preact-compat',
+  }
+  if (config.compat !== 'none' && compatPkgMap[config.compat]) {
+    deps[compatPkgMap[config.compat]!] = pyreonVersion(compatPkgMap[config.compat]!)
+  }
+
+  // Lint
+  if (config.lint) {
+    devDeps['@pyreon/lint'] = pyreonVersion('@pyreon/lint')
+  }
+
   const scripts: Record<string, string> = {
     dev: 'zero dev',
     build: 'zero build',
@@ -387,6 +468,10 @@ function generatePackageJson(config: ProjectConfig): string {
     doctor: 'zero doctor',
     'doctor:fix': 'zero doctor --fix',
     'doctor:ci': 'zero doctor --ci',
+  }
+
+  if (config.lint) {
+    scripts.lint = 'pyreon-lint .'
   }
 
   const pkg = {
@@ -412,6 +497,8 @@ function generateViteConfig(config: ProjectConfig): string {
     spa: `mode: 'spa'`,
   }
 
+  const pyreonOpts = config.compat !== 'none' ? `{ compat: '${config.compat}' }` : ''
+
   return `import pyreon from '@pyreon/vite-plugin'
 import zero from '@pyreon/zero/server'
 import { fontPlugin } from '@pyreon/zero/font'
@@ -419,7 +506,7 @@ import { seoPlugin } from '@pyreon/zero/seo'
 
 export default {
   plugins: [
-    pyreon(),
+    pyreon(${pyreonOpts}),
     zero({ ${modeMap[config.renderMode]} }),
 
     // Google Fonts — self-hosted at build time, CDN in dev
