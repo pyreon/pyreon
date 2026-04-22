@@ -1774,10 +1774,21 @@ describe('JSX transform — signal auto-call', () => {
     expect(result).not.toContain('x()')
   })
 
-  test('computed() is NOT auto-called (already callable)', () => {
+  test('computed() IS auto-called (same callable pattern as signal)', () => {
     const result = t('function C() { const doubled = computed(() => 2); return <div>{doubled}</div> }')
-    // computed is a stateful call, excluded from signal tracking
-    expect(result).not.toContain('doubled()')
+    expect(result).toContain('doubled()')
+    expect(result).toContain('_bind')
+  })
+
+  test('computed already called is NOT double-called', () => {
+    const result = t('function C() { const doubled = computed(() => 2); return <div>{doubled()}</div> }')
+    expect(result).not.toContain('doubled()()')
+  })
+
+  test('signal + computed in same expression both auto-called', () => {
+    const result = t('function C() { const count = signal(0); const doubled = computed(() => count() * 2); return <div>{count} + {doubled}</div> }')
+    expect(result).toContain('.data = count()')
+    expect(result).toContain('.data = doubled()')
   })
 
   test('signal in arrow function child is NOT auto-called (already reactive)', () => {

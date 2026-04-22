@@ -1321,11 +1321,11 @@ function isStatefulCall(node: N): boolean {
   return false
 }
 
-/** Check if a call expression is specifically `signal(...)`. */
+/** Check if a call expression creates a callable reactive value (`signal(...)` or `computed(...)`). */
 function isSignalCall(node: N): boolean {
   if (node.type !== 'CallExpression') return false
   const callee = node.callee
-  return callee?.type === 'Identifier' && callee.name === 'signal'
+  return callee?.type === 'Identifier' && (callee.name === 'signal' || callee.name === 'computed')
 }
 
 function isChildrenExpression(node: N, expr: string): boolean {

@@ -636,7 +636,7 @@ async function prescanSignalExports(root: string, registry: Map<string, Set<stri
  * Scan a module's source for exported signal declarations and register them.
  *
  * Detects patterns:
- *   1. `export const x = signal(...)` — inline export
+ *   1. `export const x = signal(...)` or `export const x = computed(...)` — inline export
  *   2. `const x = signal(...); export { x }` — separate declaration + named export
  *   3. `export default signal(...)` — default export (tracked as 'default')
  *
@@ -650,16 +650,16 @@ function scanSignalExports(code: string, moduleId: string, registry: Map<string,
   let match: RegExpExecArray | null
   const signals = new Set<string>()
 
-  // Pattern 1: export const x = signal(...)
-  const EXPORT_CONST_RE = /export\s+const\s+(\w+)\s*=\s*signal\s*[<(]/g
+  // Pattern 1: export const x = signal(...) or export const x = computed(...)
+  const EXPORT_CONST_RE = /export\s+const\s+(\w+)\s*=\s*(?:signal|computed)\s*[<(]/g
   while ((match = EXPORT_CONST_RE.exec(code)) !== null) {
     signals.add(match[1]!)
   }
 
   // Pattern 2: const x = signal(...) followed by export { x }
-  // First, find all local `const x = signal(` declarations (not exported inline)
+  // First, find all local `const x = signal(` or `const x = computed(` declarations
   const localSignals = new Set<string>()
-  const LOCAL_SIGNAL_RE = /(?:^|[\s;])const\s+(\w+)\s*=\s*signal\s*[<(]/gm
+  const LOCAL_SIGNAL_RE = /(?:^|[\s;])const\s+(\w+)\s*=\s*(?:signal|computed)\s*[<(]/gm
   while ((match = LOCAL_SIGNAL_RE.exec(code)) !== null) {
     localSignals.add(match[1]!)
   }
@@ -685,8 +685,8 @@ function scanSignalExports(code: string, moduleId: string, registry: Map<string,
     }
   }
 
-  // Pattern 3: export default signal(...) — tracked as 'default'
-  if (/export\s+default\s+signal\s*[<(]/.test(code)) {
+  // Pattern 3: export default signal(...) or export default computed(...) — tracked as 'default'
+  if (/export\s+default\s+(?:signal|computed)\s*[<(]/.test(code)) {
     signals.add('default')
   }
 
