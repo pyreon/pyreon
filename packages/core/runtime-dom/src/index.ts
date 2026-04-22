@@ -39,7 +39,7 @@ export function mount(root: VNodeChild, container: Element): () => void {
       '[pyreon] mount() called with a null/undefined container. Make sure the element exists in the DOM, e.g. document.getElementById("app")',
     )
   }
-  installDevTools()
+  if (__DEV__) installDevTools()
   setupDelegation(container)
   container.innerHTML = ''
   return mountChild(root, container, null)

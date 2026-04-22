@@ -463,6 +463,7 @@ export function mountFor<T>(
 
   let cache = new Map<string | number, ForEntry>()
   let currentKeys: (string | number)[] = []
+  const _reusableKeySet = new Set<string | number>()
   let cleanupCount = 0
   let anchorsRegistered = false
 
@@ -644,7 +645,11 @@ export function mountFor<T>(
     newKeys: (string | number)[],
     liveParent: Node,
   ) => {
-    removeStaleForEntries(new Set<string | number>(newKeys))
+    // Reuse a persistent Set to avoid allocating a new one per update.
+    // Cleared + repopulated instead of constructing new Set(newKeys).
+    _reusableKeySet.clear()
+    for (let i = 0; i < newKeys.length; i++) _reusableKeySet.add(newKeys[i] as string | number)
+    removeStaleForEntries(_reusableKeySet)
     mountNewForEntries(items, n, newKeys, liveParent)
 
     if (!anchorsRegistered) {
