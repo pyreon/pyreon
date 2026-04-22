@@ -451,7 +451,8 @@ export function transformJSX_JS(
     }
     // Check top-level variable declarations in the function body
     const body = node.body
-    const stmts = body?.body ?? body?.statements ?? []
+    const stmts = body?.body ?? body?.statements
+    if (!Array.isArray(stmts)) return shadows
     for (const stmt of stmts) {
       if (stmt.type === 'VariableDeclaration') {
         for (const decl of stmt.declarations ?? []) {
