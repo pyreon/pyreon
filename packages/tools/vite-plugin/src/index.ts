@@ -735,7 +735,8 @@ async function resolveImportedSignals(
   }
 
   // Named imports: import { name1, name2 as alias } from 'source'
-  const IMPORT_RE = /import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g
+  // Excludes `import type { ... }` — type-only imports have no runtime value
+  const IMPORT_RE = /import\s+(?!type\s)\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g
   while ((match = IMPORT_RE.exec(code)) !== null) {
     const specifiers = match[1]!
     const source = match[2]!
@@ -761,8 +762,8 @@ async function resolveImportedSignals(
   }
 
   // Default imports: import count from './store'
-  // Must NOT match `import { ... } from` or `import type X from` or `import * as X from`
-  const DEFAULT_IMPORT_RE = /import\s+(\w+)\s+from\s*['"]([^'"]+)['"]/g
+  // Excludes: `import { ... }`, `import type X`, `import * as X`
+  const DEFAULT_IMPORT_RE = /import\s+(?!type\s)(\w+)\s+from\s*['"]([^'"]+)['"]/g
   while ((match = DEFAULT_IMPORT_RE.exec(code)) !== null) {
     // Skip if this is actually a `import type X from` pattern
     const fullMatch = match[0]
