@@ -69,6 +69,13 @@ export interface ResolvedRoute<
   /** All matched records from root to leaf (one per nesting level) */
   matched: RouteRecord[]
   meta: RouteMeta
+  /**
+   * Validated search params — populated when the matched route has `validateSearch`.
+   * Contains the typed result of `validateSearch(query)`. Use `useValidatedSearch()`
+   * to access this in components with full type inference.
+   * Empty object `{}` when no `validateSearch` is configured.
+   */
+  search?: Record<string, unknown> | undefined
   /** Middleware data attached during navigation (populated by middleware chain) */
   _middlewareData?: Record<string, unknown> | undefined
 }
@@ -217,6 +224,29 @@ export interface RouteRecord<TPath extends string = string> {
   pendingMs?: number
   /** Minimum display time in ms for pendingComponent once shown (default: 200). Prevents flicker. */
   pendingMinMs?: number
+  /**
+   * Validate and transform raw query string parameters into typed values.
+   * Receives the raw `Record<string, string>` from the URL and returns
+   * a typed object. The validated result is available via `useValidatedSearch()`.
+   *
+   * Accepts any function — use Zod `.parse`, Valibot, or a plain function:
+   *
+   * @example
+   * ```ts
+   * // Plain function:
+   * validateSearch: (raw) => ({
+   *   page: Number(raw.page) || 1,
+   *   q: raw.q ?? '',
+   * })
+   *
+   * // With Zod:
+   * validateSearch: z.object({
+   *   page: z.coerce.number().default(1),
+   *   q: z.string().default(''),
+   * }).parse
+   * ```
+   */
+  validateSearch?: (raw: Record<string, string>) => Record<string, unknown>
   /** Per-route middleware — runs before guards, can accumulate context data. */
   middleware?: RouteMiddleware | RouteMiddleware[]
 }
