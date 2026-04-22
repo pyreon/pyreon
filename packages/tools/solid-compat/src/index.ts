@@ -619,29 +619,38 @@ export type ResourceReturn<T> = [
 
 export function createResource<T>(
   fetcher: (info: { value: T | undefined }) => Promise<T> | T,
+  options?: { initialValue?: T },
 ): ResourceReturn<T>
 export function createResource<T, S = true>(
   source: (() => S) | true,
   fetcher: (source: S, info: { value: T | undefined }) => Promise<T> | T,
+  options?: { initialValue?: T },
 ): ResourceReturn<T>
 export function createResource<T, S = true>(
   sourceOrFetcher:
     | (() => S)
     | true
     | ((info: { value: T | undefined }) => Promise<T> | T),
-  maybeFetcher?: (source: S, info: { value: T | undefined }) => Promise<T> | T,
+  maybeFetcherOrOptions?:
+    | ((source: S, info: { value: T | undefined }) => Promise<T> | T)
+    | { initialValue?: T },
+  maybeOptions?: { initialValue?: T },
 ): ResourceReturn<T> {
-  const hasSource = maybeFetcher !== undefined
+  const hasSource = typeof maybeFetcherOrOptions === 'function'
   const source = hasSource ? (sourceOrFetcher as (() => S) | true) : (() => true as S)
   const fetcher = (
-    hasSource ? maybeFetcher : sourceOrFetcher
+    hasSource ? maybeFetcherOrOptions : sourceOrFetcher
   ) as (source: S, info: { value: T | undefined }) => Promise<T> | T
+  const opts = hasSource
+    ? maybeOptions
+    : (typeof maybeFetcherOrOptions === 'object' ? maybeFetcherOrOptions as { initialValue?: T } : undefined)
+  const initialValue = opts?.initialValue
 
-  const [data, setData] = createSignal<T | undefined>(undefined)
+  const [data, setData] = createSignal<T | undefined>(initialValue)
   const [loading, setLoading] = createSignal(false)
   const [error, setError] = createSignal<Error | undefined>(undefined)
 
-  let latestValue: T | undefined
+  let latestValue: T | undefined = initialValue
   let fetchPromise: Promise<T> | null = null
 
   const doFetch = () => {
@@ -690,10 +699,11 @@ export function createResource<T, S = true>(
 
   // Build the resource accessor — throws for Suspense when loading
   const resource = (() => {
-    if (loading() && fetchPromise) throw fetchPromise // Suspense catches this
     const err = error()
     if (err) throw err // ErrorBoundary catches this
-    return data()
+    const current = data()
+    if (loading() && fetchPromise && current === undefined) throw fetchPromise // Suspense catches this
+    return current
   }) as Resource<T>
 
   Object.defineProperty(resource, 'loading', {
@@ -725,6 +735,25 @@ export function createResource<T, S = true>(
   return [resource, { mutate, refetch }]
 }
 
+// ─── Deep clone (structuredClone replacement) ──────────────────────────────
+
+/**
+ * Deep clones plain objects and arrays. Functions, DOM nodes, class instances,
+ * and other non-plain values are kept by reference — `structuredClone` would
+ * throw on them.
+ */
+function deepClone<T>(obj: T): T {
+  if (obj === null || typeof obj !== 'object') return obj
+  if (Array.isArray(obj)) return obj.map((item) => deepClone(item)) as unknown as T
+  // Don't clone DOM nodes, class instances, etc. — copy by reference
+  if (obj.constructor !== Object && obj.constructor !== Array) return obj
+  const result = {} as Record<string, unknown>
+  for (const key of Object.keys(obj as object)) {
+    result[key] = deepClone((obj as Record<string, unknown>)[key])
+  }
+  return result as T
+}
+
 // ─── createStore / produce ──────────────────────────────────────────────────
 
 /**
@@ -736,6 +765,8 @@ export function createResource<T, S = true>(
  *   - `setStore('key', value)` — set a top-level key
  *   - `setStore('nested', 'key', value)` — set a nested path
  *   - `setStore('key', prev => next)` — functional update at a path
+ *   - `setStore('todos', 0, 'done', true)` — numeric index into arrays
+ *   - `setStore('todos', t => t.done, 'text', 'x')` — filter predicate on arrays
  *   - `setStore(fn)` — mutator function (receives a draft clone)
  */
 export type SetStoreFunction<_T> = {
@@ -746,7 +777,7 @@ export function createStore<T extends object>(
   initialValue: T,
 ): [T, SetStoreFunction<T>] {
   const signals = new Map<string, ReturnType<typeof pyreonSignal>>()
-  let raw: T = structuredClone(initialValue)
+  let raw: T = deepClone(initialValue)
 
   function getByPath(obj: unknown, path: string): unknown {
     if (!path) return obj
@@ -837,26 +868,65 @@ export function createStore<T extends object>(
     }
   }
 
+  /**
+   * Applies a value at a path, supporting numeric indices (array access)
+   * and filter predicates (functions that select matching array items).
+   */
+  function applyAtPath(obj: unknown, path: unknown[], value: unknown): void {
+    if (path.length === 0) {
+      // Apply value to obj itself (top-level update)
+      if (typeof value === 'function') {
+        const result = (value as (prev: unknown) => unknown)(obj)
+        Object.assign(obj as object, result)
+      } else {
+        Object.assign(obj as object, value)
+      }
+      return
+    }
+
+    const [head, ...rest] = path
+
+    if (typeof head === 'function') {
+      // Filter predicate: apply to all matching items in an array
+      if (Array.isArray(obj)) {
+        for (let i = 0; i < obj.length; i++) {
+          if ((head as (item: unknown, index: number) => boolean)(obj[i], i)) {
+            if (rest.length === 0) {
+              obj[i] = typeof value === 'function' ? (value as (prev: unknown) => unknown)(obj[i]) : value
+            } else {
+              applyAtPath(obj[i], rest, value)
+            }
+          }
+        }
+      }
+      return
+    }
+
+    const key = head as string | number
+    if (rest.length === 0) {
+      // Last path segment — set the value
+      ;(obj as Record<string | number, unknown>)[key] =
+        typeof value === 'function'
+          ? (value as (prev: unknown) => unknown)((obj as Record<string | number, unknown>)[key])
+          : value
+    } else {
+      // Recurse into nested object
+      applyAtPath((obj as Record<string | number, unknown>)[key], rest, value)
+    }
+  }
+
   const setStore: SetStoreFunction<T> = (...args: unknown[]) => {
     if (args.length === 1 && typeof args[0] === 'function') {
       // Function form: setStore(state => { state.x = 1 })
-      const draft = structuredClone(raw)
+      const draft = deepClone(raw)
       ;(args[0] as (state: T) => void)(draft)
       updateRaw(draft)
     } else if (args.length >= 2) {
-      // Path form: setStore('user', 'name', 'Jane') or setStore('key', fn)
+      // Path form with support for numeric indices and filter predicates
       const value = args[args.length - 1]
-      const pathParts = args.slice(0, -1) as (string | number)[]
-      const draft = structuredClone(raw)
-
-      if (typeof value === 'function') {
-        const pathStr = pathParts.join('.')
-        const currentVal = getByPath(raw, pathStr)
-        setByPath(draft, pathParts, (value as (prev: unknown) => unknown)(currentVal))
-      } else {
-        setByPath(draft, pathParts, value)
-      }
-
+      const pathArgs = args.slice(0, -1)
+      const draft = deepClone(raw)
+      applyAtPath(draft, pathArgs, value)
       updateRaw(draft)
     }
   }
@@ -877,7 +947,7 @@ export function reconcile<T extends object>(value: T): (state: T) => T {
  * stripping the reactive proxy.
  */
 export function unwrap<T>(value: T): T {
-  return structuredClone(value) as T
+  return deepClone(value)
 }
 
 /**
@@ -886,7 +956,7 @@ export function unwrap<T>(value: T): T {
  */
 export function produce<T extends object>(fn: (state: T) => void): (state: T) => T {
   return (state: T) => {
-    const draft = structuredClone(state)
+    const draft = deepClone(state)
     fn(draft)
     return draft
   }
@@ -1023,6 +1093,63 @@ let _uniqueIdCounter = 0
  */
 export function createUniqueId(): string {
   return `solid-${(_uniqueIdCounter++).toString(36)}`
+}
+
+// ─── DEV ────────────────────────────────────────────────────────────────────
+
+/**
+ * Solid-compatible `DEV` — an object in dev mode, `undefined` in production.
+ * Used for conditional dev-only code: `if (DEV) { ... }`
+ */
+export const DEV =
+  (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true ? {} : undefined
+
+// ─── catchError ─────────────────────────────────────────────────────────────
+
+/**
+ * Solid-compatible `catchError` — wraps a function and catches synchronous errors.
+ */
+export function catchError<T>(
+  tryFn: () => T,
+  onError: (err: Error) => void,
+): T | undefined {
+  try {
+    return tryFn()
+  } catch (e) {
+    onError(e instanceof Error ? e : new Error(String(e)))
+    return undefined
+  }
+}
+
+// ─── createDeferred ─────────────────────────────────────────────────────────
+
+/**
+ * Solid-compatible `createDeferred` — creates a memo that updates on next idle frame.
+ * In Pyreon there is no concurrent scheduling, so this behaves the same as `createMemo`.
+ */
+export function createDeferred<T>(fn: () => T): () => T {
+  return createMemo(fn)
+}
+
+// ─── createReaction ─────────────────────────────────────────────────────────
+
+/**
+ * Solid-compatible `createReaction` — manual tracking primitive.
+ * Returns a function that accepts a tracking function. When any tracked
+ * dependency changes, `onInvalidate` fires (but only after the first run).
+ */
+export function createReaction(onInvalidate: () => void): (tracking: () => void) => void {
+  return (trackingFn: () => void) => {
+    let first = true
+    pyreonEffect(() => {
+      trackingFn() // track dependencies
+      if (first) {
+        first = false
+        return
+      }
+      onInvalidate()
+    })
+  }
 }
 
 // ─── Re-exports from @pyreon/core ──────────────────────────────────────────────

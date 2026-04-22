@@ -1005,8 +1005,12 @@ describe('jsx-runtime layout/schedule effects', () => {
 // ─── import mergeProps and splitProps ────────────────────────────────────────
 
 import {
+  catchError,
   createContext,
+  createDeferred,
+  createReaction,
   createUniqueId,
+  DEV,
   Index,
   mergeProps,
   on,
@@ -1287,5 +1291,251 @@ describe('createResource Suspense integration', () => {
     await new Promise((r) => setTimeout(r, 10))
     expect(data.loading).toBe(false)
     expect(data()).toBe(42)
+  })
+})
+
+// ─── createStore with functions in state ────────────────────────────────────
+
+describe('createStore with non-cloneable values', () => {
+  it('handles functions in state (structuredClone would crash)', () => {
+    const handler = () => 'clicked'
+    const [store, setStore] = createStore({ onClick: handler, count: 0 })
+    expect(store.onClick).toBe(handler)
+    expect(store.onClick()).toBe('clicked')
+
+    // Update via mutator — functions are kept by reference
+    setStore((s: { onClick: () => string; count: number }) => {
+      s.count = 1
+    })
+    expect(store.count).toBe(1)
+    expect(store.onClick).toBe(handler) // same reference
+  })
+
+  it('handles class instances in state (kept by reference in raw)', () => {
+    class MyClass {
+      value = 42
+      getValue() {
+        return this.value
+      }
+    }
+    const instance = new MyClass()
+    const [store] = createStore({ obj: instance })
+    // deepClone keeps class instances by reference, so the proxy returns the same object
+    expect(store.obj.value).toBe(42)
+    expect(store.obj.getValue()).toBe(42)
+  })
+
+  it('handles nested plain objects with updates', () => {
+    const [store, setStore] = createStore({ data: { name: 'world', count: 0 } })
+    setStore((s: { data: { name: string; count: number } }) => {
+      s.data.name = 'updated'
+    })
+    expect(store.data.name).toBe('updated')
+    expect(store.data.count).toBe(0)
+  })
+})
+
+// ─── createStore path setter with numeric index and filter predicate ────────
+
+describe('createStore path setter with numeric index', () => {
+  it('sets array item by numeric index', () => {
+    const [store, setStore] = createStore({
+      todos: [
+        { text: 'Buy milk', done: false },
+        { text: 'Walk dog', done: false },
+      ],
+    })
+
+    setStore('todos', 0, 'done', true)
+    expect(store.todos[0]!.done).toBe(true)
+    expect(store.todos[1]!.done).toBe(false)
+  })
+
+  it('sets array item text by numeric index', () => {
+    const [store, setStore] = createStore({
+      items: ['a', 'b', 'c'],
+    })
+
+    setStore('items', 1, 'updated')
+    expect(store.items[1]!).toBe('updated')
+    expect(store.items[0]!).toBe('a')
+    expect(store.items[2]!).toBe('c')
+  })
+})
+
+describe('createStore path setter with filter predicate', () => {
+  it('updates matching items via filter predicate', () => {
+    const [store, setStore] = createStore({
+      todos: [
+        { text: 'Buy milk', done: true },
+        { text: 'Walk dog', done: false },
+        { text: 'Cook dinner', done: true },
+      ],
+    })
+
+    // Update text of all done items
+    setStore(
+      'todos',
+      (t: { done: boolean }) => t.done,
+      'text',
+      'completed',
+    )
+    expect(store.todos[0]!.text).toBe('completed')
+    expect(store.todos[1]!.text).toBe('Walk dog') // unchanged
+    expect(store.todos[2]!.text).toBe('completed')
+  })
+
+  it('filter predicate with functional value update', () => {
+    const [store, setStore] = createStore({
+      items: [
+        { value: 1 },
+        { value: 2 },
+        { value: 3 },
+      ],
+    })
+
+    // Double the value of items > 1
+    setStore(
+      'items',
+      (i: { value: number }) => i.value > 1,
+      'value',
+      (prev: number) => prev * 2,
+    )
+    expect(store.items[0]!.value).toBe(1) // unchanged
+    expect(store.items[1]!.value).toBe(4) // doubled
+    expect(store.items[2]!.value).toBe(6) // doubled
+  })
+
+  it('filter predicate replacing entire matched items', () => {
+    const [store, setStore] = createStore({
+      items: [1, 2, 3, 4, 5],
+    })
+
+    // Replace all even numbers with 0
+    setStore(
+      'items',
+      (_v: number, i: number) => i % 2 === 1,
+      0,
+    )
+    expect(store.items[0]!).toBe(1)
+    expect(store.items[1]!).toBe(0)
+    expect(store.items[2]!).toBe(3)
+    expect(store.items[3]!).toBe(0)
+    expect(store.items[4]!).toBe(5)
+  })
+})
+
+// ─── createResource with initialValue ──────────────────────────────────────
+
+describe('createResource with initialValue', () => {
+  it('returns initialValue immediately without throwing', () => {
+    const [data] = createResource(
+      () => new Promise<number>((r) => setTimeout(() => r(99), 100)),
+      { initialValue: 42 },
+    )
+    // Should not throw even while loading — initialValue is set
+    expect(data()).toBe(42)
+    expect(data.loading).toBe(true)
+  })
+
+  it('initialValue replaced after fetch resolves', async () => {
+    const [data] = createResource(
+      () => Promise.resolve(99),
+      { initialValue: 42 },
+    )
+    expect(data()).toBe(42)
+    await new Promise((r) => setTimeout(r, 10))
+    expect(data()).toBe(99)
+  })
+
+  it('initialValue with source-based resource', async () => {
+    const [source] = createSignal('key')
+    const [data] = createResource(
+      source,
+      async (src) => `result-${src}`,
+      { initialValue: 'initial' },
+    )
+    expect(data()).toBe('initial')
+    await new Promise((r) => setTimeout(r, 10))
+    expect(data()).toBe('result-key')
+  })
+})
+
+// ─── catchError ────────────────────────────────────────────────────────────
+
+describe('catchError', () => {
+  it('returns value on success', () => {
+    const result = catchError(() => 42, () => {})
+    expect(result).toBe(42)
+  })
+
+  it('catches sync Error and calls onError', () => {
+    let caught: Error | undefined
+    const result = catchError(() => {
+      throw new Error('test-error')
+    }, (err) => {
+      caught = err
+    })
+    expect(result).toBeUndefined()
+    expect(caught).toBeInstanceOf(Error)
+    expect(caught!.message).toBe('test-error')
+  })
+
+  it('wraps non-Error throw in Error', () => {
+    let caught: Error | undefined
+    catchError(() => {
+      throw 'string-error'
+    }, (err) => {
+      caught = err
+    })
+    expect(caught).toBeInstanceOf(Error)
+    expect(caught!.message).toBe('string-error')
+  })
+})
+
+// ─── DEV export ─────────────────────────────────────────────────────────────
+
+describe('DEV export', () => {
+  it('DEV is defined (truthy in test environment)', () => {
+    // In vitest, import.meta.env.DEV is true
+    expect(DEV).toBeDefined()
+  })
+})
+
+// ─── createDeferred ─────────────────────────────────────────────────────────
+
+describe('createDeferred', () => {
+  it('works like createMemo', () => {
+    createRoot((dispose) => {
+      const [count, setCount] = createSignal(1)
+      const doubled = createDeferred(() => count() * 2)
+      expect(doubled()).toBe(2)
+      setCount(5)
+      expect(doubled()).toBe(10)
+      dispose()
+    })
+  })
+})
+
+// ─── createReaction ─────────────────────────────────────────────────────────
+
+describe('createReaction', () => {
+  it('tracks dependencies and fires on invalidation', () => {
+    const invalidations: string[] = []
+    createRoot((dispose) => {
+      const [count, setCount] = createSignal(0)
+      const track = createReaction(() => {
+        invalidations.push('invalidated')
+      })
+
+      track(() => count()) // track the signal
+
+      expect(invalidations).toEqual([]) // first run doesn't call onInvalidate
+      setCount(1)
+      expect(invalidations).toEqual(['invalidated'])
+      setCount(2)
+      expect(invalidations).toEqual(['invalidated', 'invalidated'])
+      dispose()
+    })
   })
 })
