@@ -236,4 +236,34 @@ describe('project-scanner — collectSourceFiles', () => {
     expect(ctx.islands).toEqual([])
     expect(ctx.version).toBe('unknown')
   })
+
+  test('skips hidden directories (dot-prefixed)', () => {
+    const dir = createTempProject({
+      'package.json': JSON.stringify({ name: 'test', version: '1.0.0' }),
+      'src/app.tsx': 'export const App = () => <div />',
+      '.hidden/secret.tsx': 'export const Secret = () => <div />',
+    })
+    try {
+      const ctx = generateContext(dir)
+      const files = ctx.components.map((c) => c.file)
+      for (const f of files) {
+        expect(f).not.toContain('.hidden')
+      }
+    } finally {
+      cleanupDir(dir)
+    }
+  })
+
+  test('version falls back to "unknown" when package.json has no version', () => {
+    const dir = createTempProject({
+      'package.json': JSON.stringify({ name: 'test' }),
+    })
+    try {
+      const ctx = generateContext(dir)
+      // No @pyreon deps and no version field → 'unknown' (line 210 branch)
+      expect(ctx.version).toBe('unknown')
+    } finally {
+      cleanupDir(dir)
+    }
+  })
 })

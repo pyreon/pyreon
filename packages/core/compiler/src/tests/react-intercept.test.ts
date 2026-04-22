@@ -700,3 +700,357 @@ describe('diagnoseError', () => {
     expect(diagnoseError('TypeError: Cannot freeze')).toBeNull()
   })
 })
+
+// ─── Additional branch coverage for react-intercept ─────────────────────────
+
+describe('detectReactPatterns — edge cases for branch coverage', () => {
+  test('useState with no arguments', () => {
+    const result = detectReactPatterns(`
+      import { useState } from 'react'
+      function App() {
+        const [value, setValue] = useState()
+        return <div>{value}</div>
+      }
+    `)
+    expect(result.length).toBeGreaterThan(0)
+    const useStateDiag = result.find((d) => d.code === 'use-state')
+    expect(useStateDiag).toBeDefined()
+    // No argument → init defaults to 'undefined'
+    expect(useStateDiag!.suggested).toContain('signal(undefined)')
+  })
+
+  test('useState not destructured (bare call)', () => {
+    const result = detectReactPatterns(`
+      import { useState } from 'react'
+      function App() {
+        const state = useState(0)
+        return <div>{state[0]}</div>
+      }
+    `)
+    expect(result.length).toBeGreaterThan(0)
+    const useStateDiag = result.find((d) => d.code === 'use-state')
+    expect(useStateDiag).toBeDefined()
+    // Non-destructured useState → generic suggestion
+    expect(useStateDiag!.suggested).toContain('signal(initialValue)')
+  })
+
+  test('useEffect with empty deps but no callback', () => {
+    const result = detectReactPatterns(`
+      import { useEffect } from 'react'
+      function App() {
+        useEffect(undefined, [])
+        return <div />
+      }
+    `)
+    // Should not crash, may or may not detect
+    expect(result).toBeDefined()
+  })
+
+  test('non-react import not flagged', () => {
+    const result = detectReactPatterns(`
+      import { signal } from '@pyreon/reactivity'
+      function App() {
+        const x = signal(0)
+        return <div>{x()}</div>
+      }
+    `)
+    expect(result).toHaveLength(0)
+  })
+
+  test('useEffect with arrow expression body (no block)', () => {
+    const result = detectReactPatterns(`
+      import { useEffect } from 'react'
+      function App() {
+        useEffect(() => console.log('hi'), [])
+        return <div />
+      }
+    `)
+    const effectDiag = result.find((d) => d.code === 'use-effect-mount')
+    expect(effectDiag).toBeDefined()
+  })
+
+  test('useEffect with non-function callback', () => {
+    const result = detectReactPatterns(`
+      import { useEffect } from 'react'
+      function App() {
+        useEffect(handler, [])
+        return <div />
+      }
+    `)
+    const effectDiag = result.find((d) => d.code === 'use-effect-mount')
+    expect(effectDiag).toBeDefined()
+  })
+
+  test('useEffect with deps array (non-empty)', () => {
+    const result = detectReactPatterns(`
+      import { useEffect } from 'react'
+      function App() {
+        useEffect(() => { console.log(x) }, [x])
+        return <div />
+      }
+    `)
+    const effectDiag = result.find((d) => d.code === 'use-effect-deps')
+    expect(effectDiag).toBeDefined()
+  })
+
+  test('useEffect with no deps array', () => {
+    const result = detectReactPatterns(`
+      import { useEffect } from 'react'
+      function App() {
+        useEffect(() => { console.log('every render') })
+        return <div />
+      }
+    `)
+    const effectDiag = result.find((d) => d.code === 'use-effect-no-deps')
+    expect(effectDiag).toBeDefined()
+  })
+
+  test('useMemo with no compute function arg', () => {
+    const result = detectReactPatterns(`
+      import { useMemo } from 'react'
+      function App() {
+        const x = useMemo()
+        return <div>{x}</div>
+      }
+    `)
+    const memoDiag = result.find((d) => d.code === 'use-memo')
+    expect(memoDiag).toBeDefined()
+  })
+
+  test('useCallback with no callback function arg', () => {
+    const result = detectReactPatterns(`
+      import { useCallback } from 'react'
+      function App() {
+        const fn = useCallback()
+        return <div onClick={fn}>click</div>
+      }
+    `)
+    const cbDiag = result.find((d) => d.code === 'use-callback')
+    expect(cbDiag).toBeDefined()
+  })
+
+  test('useRef with no argument (null ref)', () => {
+    const result = detectReactPatterns(`
+      import { useRef } from 'react'
+      function App() {
+        const ref = useRef()
+        return <div ref={ref}>text</div>
+      }
+    `)
+    const refDiag = result.find((d) => d.code === 'use-ref-dom' || d.code === 'use-ref-box')
+    expect(refDiag).toBeDefined()
+  })
+
+  test('memo() with no argument', () => {
+    const result = detectReactPatterns(`
+      import { memo } from 'react'
+      const App = memo()
+    `)
+    const memoDiag = result.find((d) => d.code === 'memo-wrapper')
+    expect(memoDiag).toBeDefined()
+  })
+
+  test('array.map in JSX detected', () => {
+    const result = detectReactPatterns(`
+      function App() {
+        return <ul>{items.map(item => <li>{item}</li>)}</ul>
+      }
+    `)
+    const mapDiag = result.find((d) => d.code === 'array-map-jsx')
+    expect(mapDiag).toBeDefined()
+  })
+
+  test('array.map in JSX with no callback argument', () => {
+    const result = detectReactPatterns(`
+      function App() {
+        return <ul>{items.map()}</ul>
+      }
+    `)
+    const mapDiag = result.find((d) => d.code === 'array-map-jsx')
+    expect(mapDiag).toBeDefined()
+  })
+
+  test('react-router-dom import detected', () => {
+    const result = detectReactPatterns(`
+      import { useNavigate, useParams } from 'react-router-dom'
+    `)
+    expect(result.some((d) => d.code === 'react-router-import')).toBe(true)
+  })
+
+  test('react-dom/client import detected', () => {
+    const result = detectReactPatterns(`
+      import { createRoot } from 'react-dom/client'
+    `)
+    expect(result.some((d) => d.code === 'react-dom-import')).toBe(true)
+  })
+})
+
+describe('migrateReactCode — edge cases for branch coverage', () => {
+  test('migrates useState without arguments', () => {
+    const result = migrateReactCode(`
+      import { useState } from 'react'
+      function App() {
+        const [count, setCount] = useState()
+        return <div>{count}</div>
+      }
+    `)
+    expect(result.code).toContain('signal(undefined)')
+  })
+
+  test('migrates code with no existing imports (inserts at top)', () => {
+    const result = migrateReactCode(`const [x, setX] = useState(0)`)
+    expect(result.code).toBeDefined()
+  })
+
+  test('dangerouslySetInnerHTML without expression', () => {
+    const result = migrateReactCode(`
+      import React from 'react'
+      function App() {
+        return <div dangerouslySetInnerHTML />
+      }
+    `)
+    // Should not crash, attr without value
+    expect(result.code).toBeDefined()
+  })
+
+  test('dangerouslySetInnerHTML with non-object expression', () => {
+    const result = migrateReactCode(`
+      import React from 'react'
+      function App() {
+        return <div dangerouslySetInnerHTML={getHtml()} />
+      }
+    `)
+    // Non-object expression → not migrated
+    expect(result.code).toBeDefined()
+  })
+
+  test('className attribute migrated to class', () => {
+    const result = migrateReactCode(`
+      import React from 'react'
+      function App() {
+        return <div className="foo">text</div>
+      }
+    `)
+    expect(result.code).toContain('class=')
+    expect(result.changes.length).toBeGreaterThan(0)
+  })
+
+  test('source file with import from non-react module not rewritten', () => {
+    const result = migrateReactCode(`
+      import { signal } from '@pyreon/reactivity'
+      const x = signal(0)
+    `)
+    expect(result.changes).toHaveLength(0)
+  })
+
+  test('migrates useRef with non-null initial value (mutable box)', () => {
+    const result = migrateReactCode(`
+      import { useRef } from 'react'
+      function App() {
+        const ref = useRef(42)
+        return <div>{ref.current}</div>
+      }
+    `)
+    expect(result.code).toContain('signal(42)')
+  })
+
+  test('migrates useMemo', () => {
+    const result = migrateReactCode(`
+      import { useMemo } from 'react'
+      function App() {
+        const doubled = useMemo(() => count * 2, [count])
+        return <div>{doubled}</div>
+      }
+    `)
+    expect(result.code).toContain('computed(')
+  })
+
+  test('migrates useCallback', () => {
+    const result = migrateReactCode(`
+      import { useCallback } from 'react'
+      function App() {
+        const handleClick = useCallback(() => console.log('click'), [])
+        return <button onClick={handleClick}>click</button>
+      }
+    `)
+    // useCallback → plain function (not needed in Pyreon)
+    expect(result.changes.length).toBeGreaterThan(0)
+  })
+
+  test('migrates React.memo wrapper', () => {
+    const result = migrateReactCode(`
+      import React from 'react'
+      const App = React.memo(function App() {
+        return <div>hello</div>
+      })
+    `)
+    expect(result.changes.length).toBeGreaterThan(0)
+  })
+
+  test('migrates standalone memo() wrapper', () => {
+    const result = migrateReactCode(`
+      import { memo } from 'react'
+      const App = memo(function App() {
+        return <div>hello</div>
+      })
+    `)
+    expect(result.changes.length).toBeGreaterThan(0)
+  })
+
+  test('migrates code with no existing imports (inserts at beginning)', () => {
+    // No import statement in the source — lastImportEnd === 0 → line 926 false branch
+    const result = migrateReactCode(`
+      const [count, setCount] = useState(0)
+      const x = useMemo(() => count * 2)
+    `)
+    // Should insert pyreon imports at the top
+    expect(result.code).toContain('import {')
+    expect(result.code).toContain('@pyreon/')
+  })
+
+  test('migrates dangerouslySetInnerHTML with __html property', () => {
+    const result = migrateReactCode(`
+      import React from 'react'
+      function App() {
+        return <div dangerouslySetInnerHTML={{ __html: '<b>bold</b>' }} />
+      }
+    `)
+    expect(result.code).toContain('innerHTML')
+  })
+
+  test('migrates className on JSX elements', () => {
+    const result = migrateReactCode(`
+      import React from 'react'
+      function App() {
+        return <div className="foo"><span className="bar">text</span></div>
+      }
+    `)
+    expect(result.code).toContain('class=')
+    expect(result.changes.length).toBeGreaterThanOrEqual(2)
+  })
+
+  test('migrates htmlFor on label elements', () => {
+    const result = migrateReactCode(`
+      import React from 'react'
+      function App() {
+        return <label htmlFor="name">Name</label>
+      }
+    `)
+    expect(result.code).toContain('for=')
+  })
+
+  test('migrates useEffect with cleanup function', () => {
+    const result = migrateReactCode(`
+      import { useEffect } from 'react'
+      function App() {
+        useEffect(() => {
+          const handler = () => {}
+          window.addEventListener('resize', handler)
+          return () => window.removeEventListener('resize', handler)
+        }, [])
+        return <div />
+      }
+    `)
+    expect(result.code).toContain('onMount')
+  })
+})
