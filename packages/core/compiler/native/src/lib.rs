@@ -1880,13 +1880,18 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
             for element in &class.body.body {
                 match element {
                     ClassElement::MethodDefinition(method) => {
-                        // Method value is a Function
                         maybe_register_component_props_fn(&method.value, ctx);
+                        let shadows = if !ctx.signal_vars.is_empty() {
+                            let s = find_shadowing_names(&method.value, ctx);
+                            for name in &s { ctx.shadowed_signals.insert(name.clone()); }
+                            s
+                        } else { vec![] };
                         if let Some(body) = &method.value.body {
                             for stmt in &body.statements {
                                 walk_statement(stmt, ctx);
                             }
                         }
+                        for name in &shadows { ctx.shadowed_signals.remove(name); }
                     }
                     ClassElement::PropertyDefinition(prop) => {
                         if let Some(value) = &prop.value {
@@ -1962,11 +1967,17 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
             match &exp.declaration {
                 ExportDefaultDeclarationKind::FunctionDeclaration(func) => {
                     maybe_register_component_props_fn(func, ctx);
+                    let shadows = if !ctx.signal_vars.is_empty() {
+                        let s = find_shadowing_names(func, ctx);
+                        for name in &s { ctx.shadowed_signals.insert(name.clone()); }
+                        s
+                    } else { vec![] };
                     if let Some(body) = &func.body {
                         for stmt in &body.statements {
                             walk_statement(stmt, ctx);
                         }
                     }
+                    for name in &shadows { ctx.shadowed_signals.remove(name); }
                 }
                 _ => {
                     if let Some(expr) = exp.declaration.as_expression() {
@@ -1988,11 +1999,17 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
                     }
                     Declaration::FunctionDeclaration(func) => {
                         maybe_register_component_props_fn(func, ctx);
+                        let shadows = if !ctx.signal_vars.is_empty() {
+                            let s = find_shadowing_names(func, ctx);
+                            for name in &s { ctx.shadowed_signals.insert(name.clone()); }
+                            s
+                        } else { vec![] };
                         if let Some(body) = &func.body {
                             for stmt in &body.statements {
                                 walk_statement(stmt, ctx);
                             }
                         }
+                        for name in &shadows { ctx.shadowed_signals.remove(name); }
                     }
                     _ => {}
                 }
