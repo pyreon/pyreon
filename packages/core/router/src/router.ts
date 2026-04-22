@@ -388,7 +388,7 @@ export function useTransition(): () => boolean {
  */
 export function useMiddlewareData(): () => Record<string, unknown> {
   const router = _getRouter()
-  return () => (router.currentRoute() as any)._middlewareData ?? {}
+  return () => router.currentRoute()._middlewareData ?? {}
 }
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
@@ -752,7 +752,7 @@ export function createRouter<TNames extends string = string>(options: RouterOpti
     }
 
     // Store middleware data on the resolved route for component access
-    ;(to as any)._middlewareData = ctx.data
+    to._middlewareData = ctx.data
     return { action: 'continue' }
   }
 

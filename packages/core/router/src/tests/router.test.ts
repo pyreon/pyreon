@@ -4740,3 +4740,42 @@ describe('View Transitions API', () => {
     router.destroy()
   })
 })
+
+// ─── Type-level tests for Router<TNames> ──────────────────────────────────────
+
+describe('Router<TNames> type safety', () => {
+  test('createRouter<TNames> returns typed router', () => {
+    type Names = 'home' | 'about' | 'user'
+    const router = createRouter<Names>({
+      routes: [
+        { path: '/', name: 'home', component: Home },
+        { path: '/about', name: 'about', component: Home },
+        { path: '/user/:id', name: 'user', component: Home },
+      ],
+    })
+
+    // This compiles — valid name
+    router.push({ name: 'home' })
+    router.push({ name: 'about' })
+    router.push({ name: 'user', params: { id: '1' } })
+
+    // Type assertion: the router accepts the union type
+    const _typeCheck: Names = 'home'
+    void _typeCheck
+
+    router.destroy()
+  })
+
+  test('_middlewareData is typed on ResolvedRoute', () => {
+    const route: ResolvedRoute = {
+      path: '/',
+      params: {},
+      query: {},
+      hash: '',
+      matched: [],
+      meta: {},
+      _middlewareData: { user: { name: 'Alice' } },
+    }
+    expect(route._middlewareData?.user).toEqual({ name: 'Alice' })
+  })
+})

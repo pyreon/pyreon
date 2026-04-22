@@ -13,9 +13,10 @@ bun add @pyreon/router
 ```tsx
 import { createRouter, RouterProvider, RouterView, RouterLink } from '@pyreon/router'
 
-const router = createRouter({
+// Type-safe named navigation — route names are checked at compile time
+const router = createRouter<'home' | 'user'>({
   routes: [
-    { path: '/', component: Home },
+    { path: '/', component: Home, name: 'home' },
     { path: '/user/:id', component: UserPage, name: 'user' },
     {
       path: '/admin',
