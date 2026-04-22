@@ -612,6 +612,7 @@ const ModeCtx = createReactiveContext<'light' | 'dark'>('light')
 - Custom elements: props set as properties (not attributes) on elements with a hyphen in the tag name
 - Transition 5s timeout: if `transitionend`/`animationend` never fires, the transition completes automatically after 5 seconds
 - Duplicate key production guard: duplicate `key` values in lists emit a one-time console warning in production (not just dev)
+- **Subpath exports**: `@pyreon/runtime-dom/transition` (Transition + TransitionGroup) and `@pyreon/runtime-dom/keep-alive` (KeepAlive) for explicit opt-in. Main entry re-exports everything for backward compat.
 
 ### Mount Pipeline Performance
 
