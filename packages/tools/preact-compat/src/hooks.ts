@@ -32,30 +32,45 @@ function depsChanged(a: unknown[] | undefined, b: unknown[] | undefined): boolea
   return false
 }
 
+function shallowEqual<P extends Record<string, unknown>>(a: P, b: P): boolean {
+  const keysA = Object.keys(a)
+  const keysB = Object.keys(b)
+  if (keysA.length !== keysB.length) return false
+  for (const k of keysA) {
+    if (!Object.is(a[k], b[k])) return false
+  }
+  return true
+}
+
 // ─── useState ────────────────────────────────────────────────────────────────
 
 /**
  * Preact-compatible `useState` — returns `[value, setter]`.
  * Triggers a component re-render when the setter is called.
+ *
+ * The setter has stable identity across renders (same reference every time).
  */
 export function useState<T>(initial: T | (() => T)): [T, (v: T | ((prev: T) => T)) => void] {
   const ctx = requireCtx()
   const idx = getHookIndex()
 
   if (ctx.hooks.length <= idx) {
-    ctx.hooks.push(typeof initial === 'function' ? (initial as () => T)() : initial)
+    const val = typeof initial === 'function' ? (initial as () => T)() : initial
+    // Store both value and a STABLE setter in one hook slot so setter identity
+    // never changes across renders (Preact/React guarantee).
+    const entry = { value: val, setter: null as unknown as (v: T | ((prev: T) => T)) => void }
+    entry.setter = (v: T | ((prev: T) => T)) => {
+      const current = entry.value
+      const next = typeof v === 'function' ? (v as (prev: T) => T)(current) : v
+      if (Object.is(current, next)) return
+      entry.value = next
+      ctx.scheduleRerender()
+    }
+    ctx.hooks.push(entry)
   }
 
-  const value = ctx.hooks[idx] as T
-  const setter = (v: T | ((prev: T) => T)) => {
-    const current = ctx.hooks[idx] as T
-    const next = typeof v === 'function' ? (v as (prev: T) => T)(current) : v
-    if (Object.is(current, next)) return
-    ctx.hooks[idx] = next
-    ctx.scheduleRerender()
-  }
-
-  return [value, setter]
+  const entry = ctx.hooks[idx] as { value: T; setter: (v: T | ((prev: T) => T)) => void }
+  return [entry.value, entry.setter]
 }
 
 // ─── useEffect ───────────────────────────────────────────────────────────────
@@ -159,28 +174,42 @@ export function useRef<T>(initial?: T): { current: T | null } {
 
 /**
  * Preact-compatible `useReducer` — returns `[state, dispatch]`.
+ * Supports the 3-argument form: `useReducer(reducer, initialArg, init)`.
+ *
+ * Dispatch has stable identity across renders (same reference every time).
  */
 export function useReducer<S, A>(
   reducer: (state: S, action: A) => S,
-  initial: S | (() => S),
+  initialArg: S | (() => S),
+  init?: (arg: S) => S,
 ): [S, (action: A) => void] {
   const ctx = requireCtx()
   const idx = getHookIndex()
 
   if (ctx.hooks.length <= idx) {
-    ctx.hooks.push(typeof initial === 'function' ? (initial as () => S)() : initial)
+    let initial: S
+    if (init) {
+      initial = init(initialArg as S)
+    } else if (typeof initialArg === 'function') {
+      initial = (initialArg as () => S)()
+    } else {
+      initial = initialArg
+    }
+    // Store both value and a STABLE dispatch in one hook slot so dispatch identity
+    // never changes across renders (Preact/React guarantee).
+    const entry = { value: initial, dispatch: null as unknown as (action: A) => void }
+    entry.dispatch = (action: A) => {
+      const current = entry.value
+      const next = reducer(current, action)
+      if (Object.is(current, next)) return
+      entry.value = next
+      ctx.scheduleRerender()
+    }
+    ctx.hooks.push(entry)
   }
 
-  const state = ctx.hooks[idx] as S
-  const dispatch = (action: A) => {
-    const current = ctx.hooks[idx] as S
-    const next = reducer(current, action)
-    if (Object.is(current, next)) return
-    ctx.hooks[idx] = next
-    ctx.scheduleRerender()
-  }
-
-  return [state, dispatch]
+  const entry = ctx.hooks[idx] as { value: S; dispatch: (action: A) => void }
+  return [entry.value, entry.dispatch]
 }
 
 // ─── useId ───────────────────────────────────────────────────────────────────
@@ -206,34 +235,120 @@ export function useId(): string {
 /**
  * Preact-compatible `memo` — wraps a component to skip re-render when props
  * are shallowly equal.
+ *
+ * Each component INSTANCE gets its own props/result cache via a hook slot,
+ * so two `<MemoComp />` usages don't share memoization state.
  */
 export function memo<P extends Record<string, unknown>>(
   component: (props: P) => VNodeChild,
   areEqual?: (prevProps: P, nextProps: P) => boolean,
 ): (props: P) => VNodeChild {
-  const compare =
-    areEqual ??
-    ((a: P, b: P) => {
-      const keysA = Object.keys(a)
-      const keysB = Object.keys(b)
-      if (keysA.length !== keysB.length) return false
-      for (const k of keysA) {
-        if (!Object.is(a[k], b[k])) return false
+  const compare = areEqual ?? shallowEqual
+
+  // Fallback closure-level cache for calls outside a compat render context
+  // (e.g. direct function calls in tests). Inside a render context, each
+  // component instance gets its own cache via a hook slot.
+  let _fallbackPrevProps: P | null = null
+  let _fallbackPrevResult: VNodeChild = null
+
+  const memoized = (props: P) => {
+    const ctx = getCurrentCtx()
+    if (ctx) {
+      // Per-instance cache via hook slot
+      const idx = getHookIndex()
+      if (ctx.hooks.length <= idx) {
+        ctx.hooks.push({ prevProps: null as P | null, prevResult: null as VNodeChild })
       }
-      return true
-    })
-
-  let prevProps: P | null = null
-  let prevResult: VNodeChild = null
-
-  return (props: P) => {
-    if (prevProps !== null && compare(prevProps, props)) {
-      return prevResult
+      const cache = ctx.hooks[idx] as { prevProps: P | null; prevResult: VNodeChild }
+      if (cache.prevProps !== null && compare(cache.prevProps, props)) {
+        return cache.prevResult
+      }
+      cache.prevProps = props
+      cache.prevResult = component(props)
+      return cache.prevResult
     }
-    prevProps = props
-    prevResult = (component as (p: P) => VNodeChild)(props)
-    return prevResult
+    // No compat context — use closure-level fallback cache
+    if (_fallbackPrevProps !== null && compare(_fallbackPrevProps, props)) {
+      return _fallbackPrevResult
+    }
+    _fallbackPrevProps = props
+    _fallbackPrevResult = component(props)
+    return _fallbackPrevResult
   }
+  memoized.displayName =
+    (component as unknown as { displayName?: string }).displayName || component.name || 'Memo'
+  return memoized
+}
+
+// ─── forwardRef ─────────────────────────────────────────────────────────────
+
+/**
+ * Preact-compatible `forwardRef` — pass-through in Pyreon.
+ * Refs are regular props in Pyreon, so no wrapper is needed.
+ * The render function receives (props, ref) — we merge ref into props.
+ */
+export function forwardRef<P extends Record<string, unknown>>(
+  render: (props: P, ref: { current: unknown } | null) => VNodeChild,
+): (props: P & { ref?: { current: unknown } | null }) => VNodeChild {
+  const forwarded = (props: P & { ref?: { current: unknown } | null }) => {
+    const { ref, ...rest } = props
+    return render(rest as P, ref ?? null)
+  }
+  forwarded.displayName =
+    (render as unknown as { displayName?: string }).displayName || render.name || 'ForwardRef'
+  return forwarded
+}
+
+// ─── useImperativeHandle ────────────────────────────────────────────────────
+
+/**
+ * Preact-compatible `useImperativeHandle`.
+ */
+export function useImperativeHandle<T>(
+  ref: { current: T | null } | null | undefined,
+  init: () => T,
+  deps?: unknown[],
+): void {
+  useLayoutEffect(() => {
+    if (ref) ref.current = init()
+    return () => {
+      if (ref) ref.current = null
+    }
+  }, deps)
+}
+
+// ─── useDebugValue ──────────────────────────────────────────────────────────
+
+/**
+ * Preact-compatible `useDebugValue` — no-op in Pyreon (no Preact DevTools integration).
+ */
+export function useDebugValue<T>(_value: T, _format?: (v: T) => unknown): void {}
+
+// ─── useTransition ──────────────────────────────────────────────────────
+
+/**
+ * Preact-compatible `useTransition` — returns `[isPending, startTransition]`.
+ *
+ * In Pyreon's signal-based reactivity there is no concept of concurrent
+ * rendering lanes. The callback is executed synchronously and `isPending`
+ * is always `false`. This shim exists so Preact/React code that uses
+ * `useTransition` compiles and runs without changes.
+ */
+export function useTransition(): [boolean, (fn: () => void) => void] {
+  return [false, (fn) => fn()]
+}
+
+// ─── useDeferredValue ───────────────────────────────────────────────────
+
+/**
+ * Preact-compatible `useDeferredValue` — returns the value as-is.
+ *
+ * In Pyreon's signal-based reactivity there are no concurrent rendering lanes,
+ * so the value is never "deferred". This shim exists so Preact/React code that
+ * uses `useDeferredValue` compiles and runs without changes.
+ */
+export function useDeferredValue<T>(value: T): T {
+  return value
 }
 
 // ─── useErrorBoundary ────────────────────────────────────────────────────────
