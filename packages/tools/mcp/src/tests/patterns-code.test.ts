@@ -83,6 +83,15 @@ interface SyntaxFailure {
   blockLine: number // line WITHIN the block (1-based)
 }
 
+// `SourceFile.parseDiagnostics` is an internal TS field — not on the
+// public .d.ts surface, but available at runtime after `createSourceFile`
+// with setParentNodes=true. Using a structural cast keeps the test
+// syntax-only (no Program / no type resolution) without pulling in a
+// heavier `transpileModule` pipeline.
+interface SourceFileWithParseDiagnostics extends ts.SourceFile {
+  readonly parseDiagnostics: readonly ts.Diagnostic[]
+}
+
 function checkBlock(
   patternName: string,
   block: CodeBlock,
@@ -93,7 +102,7 @@ function checkBlock(
     ts.ScriptTarget.ESNext,
     true,
     scriptKindFor(block.lang),
-  )
+  ) as SourceFileWithParseDiagnostics
   const failures: SyntaxFailure[] = []
   for (const d of sf.parseDiagnostics) {
     const { line } = sf.getLineAndCharacterOfPosition(d.start ?? 0)

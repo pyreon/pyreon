@@ -193,7 +193,7 @@ export function formatAntiPatterns(
   )
   parts.push('')
 
-  for (const [category, catEntries] of byCategory) {
+  for (const [, catEntries] of byCategory) {
     parts.push(`## ${catEntries[0]!.categoryHeading} (${catEntries.length})`)
     parts.push('')
     for (const entry of catEntries) {
