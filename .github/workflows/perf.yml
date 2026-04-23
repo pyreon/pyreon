@@ -1,0 +1,138 @@
+name: Perf
+
+# Advisory-only perf regression workflow. Does NOT block merges — once the
+# baseline is trusted (multiple nightly runs landed, noise bounded), promote
+# this to a required check in branch protection.
+#
+# Triggers:
+#   - workflow_dispatch: manual run, any branch. Useful for reproducing a PR
+#     author's local perf claim in a clean VM.
+#   - pull_request: auto-runs when a PR gets the `perf` label (filter below).
+#     Skipped otherwise — most PRs don't need a perf run.
+#   - schedule: nightly drift check against main. Uploads results as artifact
+#     so regressions that land between PR labels are still caught.
+#
+# Baselines:
+#   - `perf-results/baseline-<app>-<journey>.json` is the committed baseline.
+#     A PR run compares its recording against the baseline and posts a diff
+#     as a PR comment. A missing baseline → diff step is skipped with a
+#     notice (first-time PRs can't regress against a non-existent baseline).
+#   - Scheduled runs on main regenerate the baseline and upload as artifact
+#     but do NOT auto-commit — intentional: baselines should be reviewed,
+#     not silently updated by a cron job.
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'Example app name'
+        required: false
+        default: 'perf-dashboard'
+      journey:
+        description: 'Journey name'
+        required: false
+        default: 'boot'
+  pull_request:
+    types: [labeled, synchronize]
+  schedule:
+    - cron: '17 3 * * *'
+
+jobs:
+  perf:
+    # Only run on perf-labelled PRs — skip by default.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
+    name: Record ${{ matrix.app }}/${{ matrix.journey }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: perf-dashboard
+            journey: boot
+          - app: perf-dashboard
+            journey: toggleTheme
+          - app: perf-dashboard
+            journey: themeThrash
+          - app: perf-dashboard
+            journey: shuffleRows
+          - app: perf-dashboard
+            journey: regenRows
+          - app: perf-dashboard
+            journey: modalCycle
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - name: Install deps
+        run: bun install --frozen-lockfile
+      - name: Cache Playwright browsers
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: playwright-chromium-${{ runner.os }}-
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Record
+        run: |
+          bun run perf:record \
+            --app ${{ matrix.app }} \
+            --journey ${{ matrix.journey }} \
+            --runs 5 \
+            --mode preview
+
+      # Resolve short SHA so artifact names match `perf:record` output.
+      - name: Compute SHA
+        id: sha
+        run: echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload current result
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874 # v4.4.0
+        with:
+          name: perf-${{ matrix.app }}-${{ matrix.journey }}-${{ steps.sha.outputs.sha }}
+          path: perf-results/${{ steps.sha.outputs.sha }}-${{ matrix.app }}-${{ matrix.journey }}.json
+          retention-days: 30
+
+      - name: Diff against baseline (if present)
+        id: diff
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          baseline="perf-results/baseline-${{ matrix.app }}-${{ matrix.journey }}.json"
+          current="perf-results/${{ steps.sha.outputs.sha }}-${{ matrix.app }}-${{ matrix.journey }}.json"
+          summary="perf-results/summary-${{ matrix.app }}-${{ matrix.journey }}.md"
+          if [ -f "$baseline" ]; then
+            bun run perf:diff "$baseline" "$current" --output "$summary" || echo "regressed=true" >> "$GITHUB_OUTPUT"
+            echo "summary_path=$summary" >> "$GITHUB_OUTPUT"
+          else
+            echo "No baseline committed at $baseline — skipping diff." > "$summary"
+            echo "(add one via a nightly run artifact when ready.)" >> "$summary"
+            echo "summary_path=$summary" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post diff as PR comment
+        if: github.event_name == 'pull_request' && steps.diff.outputs.summary_path != ''
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const fs = require('node:fs')
+            const summary = fs.readFileSync('${{ steps.diff.outputs.summary_path }}', 'utf8')
+            const { owner, repo } = context.repo
+            const issue_number = context.issue.number
+            const marker = `<!-- perf-${{ matrix.app }}-${{ matrix.journey }} -->`
+            const body = `${marker}\n${summary}`
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number, per_page: 100 },
+            )
+            const existing = comments.find((c) => c.body?.startsWith(marker))
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body })
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body })
+            }
