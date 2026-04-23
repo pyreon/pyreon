@@ -54,6 +54,26 @@ counter.doubled() // 12
 getSnapshot(counter) // { count: 6 }
 ```
 
+<Playground title="State Tree Model" :height="100">
+const count = signal(0)
+const doubled = computed(() => count() * 2)
+const history = signal([])
+
+effect(() => { history.update(h => [...h.slice(-9), count()]) })
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('div', { style: { fontSize: '24px', fontWeight: 'bold' } }, () => count() + ' (doubled: ' + doubled() + ')'),
+  h('div', { style: { display: 'flex', gap: '8px', margin: '8px 0' } },
+    h('button', { onClick: () => count.update(n => n + 1) }, '+1'),
+    h('button', { onClick: () => count.update(n => n - 1) }, '-1'),
+    h('button', { onClick: () => count.set(0) }, 'Reset'),
+  ),
+  h('div', { style: { fontSize: '12px', color: '#666' } }, () => 'History: [' + history().join(', ') + ']'),
+)
+mount(ui, app)
+</Playground>
+
 ## Defining a Model
 
 Use `model()` to define a reactive model with state, views, and actions.

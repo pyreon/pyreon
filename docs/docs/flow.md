@@ -59,6 +59,56 @@ function WorkflowBuilder() {
 
 No callbacks, no `applyNodeChanges`. The flow instance manages everything.
 
+<Playground title="Node Graph" :height="200">
+const nodes = signal([
+  { id: '1', x: 30, y: 30, label: 'Start' },
+  { id: '2', x: 180, y: 80, label: 'Process' },
+  { id: '3', x: 330, y: 30, label: 'End' },
+])
+const edges = [{ from: '1', to: '2' }, { from: '2', to: '3' }]
+const selected = signal(null)
+const dragging = signal(null)
+const dragOffset = signal({ x: 0, y: 0 })
+
+const app = document.getElementById('app')
+const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+svg.setAttribute('width', '100%')
+svg.setAttribute('height', '180')
+svg.style.border = '1px solid #ddd'
+svg.style.borderRadius = '4px'
+
+effect(() => {
+  svg.innerHTML = ''
+  const ns = nodes()
+  const nodeMap = Object.fromEntries(ns.map(n => [n.id, n]))
+  for (const e of edges) {
+    const a = nodeMap[e.from], b = nodeMap[e.to]
+    if (!a || !b) continue
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line')
+    Object.entries({ x1: a.x+50, y1: a.y+15, x2: b.x+50, y2: b.y+15, stroke: '#999', 'stroke-width': '2' }).forEach(([k,v]) => line.setAttribute(k, String(v)))
+    svg.appendChild(line)
+  }
+  for (const n of ns) {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
+    Object.entries({ x: n.x, y: n.y, width: 100, height: 30, rx: 6, fill: selected() === n.id ? '#0d6efd' : '#f8f9fa', stroke: '#ddd', 'stroke-width': '1', cursor: 'grab' }).forEach(([k,v]) => rect.setAttribute(k, String(v)))
+    rect.addEventListener('mousedown', (e) => { selected.set(n.id); dragging.set(n.id); dragOffset.set({ x: e.clientX - n.x, y: e.clientY - n.y }) })
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text')
+    Object.entries({ x: n.x+50, y: n.y+20, 'text-anchor': 'middle', fill: selected() === n.id ? '#fff' : '#333', 'font-size': '13' }).forEach(([k,v]) => text.setAttribute(k, String(v)))
+    text.textContent = n.label
+    g.appendChild(rect); g.appendChild(text); svg.appendChild(g)
+  }
+})
+
+svg.addEventListener('mousemove', (e) => {
+  if (!dragging()) return
+  nodes.update(ns => ns.map(n => n.id === dragging() ? { ...n, x: e.clientX - dragOffset().x, y: e.clientY - dragOffset().y } : n))
+})
+svg.addEventListener('mouseup', () => dragging.set(null))
+
+app.appendChild(svg)
+</Playground>
+
 ## Creating a Flow
 
 `createFlow()` accepts a config object and returns a reactive `FlowInstance`:

@@ -46,6 +46,25 @@ function Editor() {
 
 `mod` = ⌘ on Mac, Ctrl on Windows/Linux.
 
+<Playground title="Keyboard Shortcuts" :height="100">
+const log = signal([])
+const add = (msg) => log.update(l => [...l.slice(-5), msg])
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowUp') { e.preventDefault(); add('↑ Up pressed') }
+  if (e.key === 'ArrowDown') { e.preventDefault(); add('↓ Down pressed') }
+  if (e.key === 'Enter') { e.preventDefault(); add('⏎ Enter pressed') }
+  if (e.key === ' ') { e.preventDefault(); add('␣ Space pressed') }
+})
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('div', { style: { fontSize: '13px', marginBottom: '8px', color: '#666' } }, 'Press ↑ ↓ Enter Space'),
+  h('pre', { class: 'output' }, () => log().join('\n') || 'Waiting for keypress...'),
+)
+mount(ui, app)
+</Playground>
+
 ## Component Hook — `useHotkey()`
 
 Registers a shortcut scoped to the component's lifecycle. Auto-unregisters on unmount.

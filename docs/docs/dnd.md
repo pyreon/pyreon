@@ -33,6 +33,33 @@ Peer dependencies: `@pyreon/core`, `@pyreon/reactivity`
 
 `@atlaskit/pragmatic-drag-and-drop` is bundled — no separate install needed.
 
+<Playground title="Native HTML5 Drag &amp; Drop" :height="140">
+const items = signal(['Apple', 'Banana', 'Cherry', 'Date'])
+const dragIndex = signal(-1)
+
+const move = (from, to) => {
+  if (from === to) return
+  const arr = [...items()]
+  const [m] = arr.splice(from, 1)
+  arr.splice(to, 0, m)
+  items.set(arr)
+}
+
+const app = document.getElementById('app')
+const ui = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '4px' } },
+  () => items().map((item, i) =>
+    h('div', {
+      draggable: 'true',
+      style: { padding: '8px 12px', background: '#e3f2fd', border: '1px solid #90caf9', borderRadius: '4px', cursor: 'move' },
+      onDragStart: () => dragIndex.set(i),
+      onDragOver: (e) => e.preventDefault(),
+      onDrop: (e) => { e.preventDefault(); move(dragIndex(), i); dragIndex.set(-1) },
+    }, '☰ ' + item),
+  ),
+)
+mount(ui, app)
+</Playground>
+
 ## Quick Start
 
 ```tsx

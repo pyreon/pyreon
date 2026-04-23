@@ -133,6 +133,31 @@ const query = useQuery(() => ({
 }))
 ```
 
+<Playground title="Reactive Data Fetching" :height="120">
+const userId = signal(1)
+const loading = signal(false)
+const data = signal(null)
+
+const fetchUser = async () => {
+  loading.set(true)
+  const res = await fetch('https://jsonplaceholder.typicode.com/users/' + userId())
+  data.set(await res.json())
+  loading.set(false)
+}
+fetchUser()
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('div', { style: { display: 'flex', gap: '8px', marginBottom: '8px' } },
+    h('button', { onClick: () => { userId.set(1); fetchUser() } }, 'User 1'),
+    h('button', { onClick: () => { userId.set(2); fetchUser() } }, 'User 2'),
+    h('button', { onClick: () => { userId.set(3); fetchUser() } }, 'User 3'),
+  ),
+  h('div', {}, () => loading() ? 'Loading...' : data() ? data().name + ' (' + data().email + ')' : ''),
+)
+mount(ui, app)
+</Playground>
+
 #### UseQueryResult
 
 | Signal       | Type                                        | Description                                  |

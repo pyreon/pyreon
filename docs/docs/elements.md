@@ -43,6 +43,24 @@ The package exports five components, each solving a specific layout concern:
 
 All components are plain functions -- they accept a props object and return `VNodeChild`. They work with Pyreon's `h()` function and can be composed together to build complex UIs.
 
+<Playground title="Three-Slot Layout" :height="120">
+const count = signal(3)
+
+const app = document.getElementById('app')
+const ui = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-start' } },
+  h('button', {
+    style: { display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '8px 12px', border: '1px solid #ccc', borderRadius: '6px', background: '#fff', cursor: 'pointer' },
+    onClick: () => count.update(n => n + 1),
+  },
+    h('span', { style: { flexShrink: 0 } }, '📬'),
+    h('span', { style: { flex: 1 } }, 'Messages'),
+    h('span', { style: { flexShrink: 0, padding: '2px 8px', background: '#2196f3', color: 'white', borderRadius: '10px', fontSize: '12px' } }, () => count()),
+  ),
+  h('div', { style: { fontSize: '13px', color: '#666' } }, 'Click the button to add a message'),
+)
+mount(ui, app)
+</Playground>
+
 ---
 
 ## Element
