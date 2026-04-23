@@ -32,35 +32,38 @@ import { API_REFERENCE } from './api-reference'
 import { generateContext, type ProjectContext } from './project-scanner'
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Server setup
+// Server setup — exported as a factory so tests can stand up a server with an
+// in-memory transport instead of stdio.
 // ═══════════════════════════════════════════════════════════════════════════════
-
-const server = new McpServer({
-  name: 'pyreon',
-  version: packageJson.version,
-})
-
-// Cache project context (regenerated on demand)
-let cachedContext: ProjectContext | null = null
-let contextCwd = process.cwd()
-
-function getContext(): ProjectContext {
-  if (!cachedContext || contextCwd !== process.cwd()) {
-    contextCwd = process.cwd()
-    cachedContext = generateContext(contextCwd)
-  }
-  return cachedContext
-}
 
 function textResult(text: string) {
   return { content: [{ type: 'text' as const, text }] }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Tool: get_api
-// ═══════════════════════════════════════════════════════════════════════════════
+export function createServer(): McpServer {
+  const server = new McpServer({
+    name: 'pyreon',
+    version: packageJson.version,
+  })
 
-server.tool(
+  // Project context cache is per-server-instance so the test server and the
+  // prod server do not share state.
+  let cachedContext: ProjectContext | null = null
+  let contextCwd = process.cwd()
+
+  function getContext(): ProjectContext {
+    if (!cachedContext || contextCwd !== process.cwd()) {
+      contextCwd = process.cwd()
+      cachedContext = generateContext(contextCwd)
+    }
+    return cachedContext
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Tool: get_api
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  server.tool(
   'get_api',
   {
     package: z.string(),
@@ -418,16 +421,29 @@ server.tool(
   },
 )
 
+  return server
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
-// Start server
+// Start server (stdio transport) when invoked directly as a binary.
+// Imports for tests do NOT auto-start — the integration test in
+// `tests/validate.test.ts` wires up an in-memory transport instead.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function main(): Promise<void> {
+  const server = createServer()
   const transport = new StdioServerTransport()
   await server.connect(transport)
 }
 
-main().catch((err) => {
-  console.error('MCP server error:', err)
-  process.exit(1)
-})
+// `import.meta.main` is Bun's "entry module" flag. The compiled Node bin
+// (via bun build) preserves this — the bunx / tsx invocation of the
+// shebang sets it truthy; `import { createServer } from '...'` does not.
+// Covers both "run as CLI" and "imported by a test" without needing
+// require.main shims.
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error('MCP server error:', err)
+    process.exit(1)
+  })
+}
