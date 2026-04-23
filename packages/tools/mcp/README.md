@@ -165,6 +165,24 @@ diagnose({ error: "TypeError: count is not a function" })
 <div>{count()}</div>
 ```
 
+### `get_pattern` — Fetch a "how do I do X" pattern
+
+```
+get_pattern({ name: "dev-warnings" })   # full body of the pattern
+get_pattern({})                          # list available patterns
+```
+
+Reads `docs/patterns/<name>.md` from the Pyreon monorepo. Each pattern file answers a "how do I do X the right way" question with a correct example, the rationale, and the anti-pattern to avoid. 8 foundational patterns ship today: `dev-warnings`, `controllable-state`, `ssr-safe-hooks`, `signal-writes`, `keyed-lists`, `reactive-context`, `event-listeners`, `form-fields`. A misspelled name returns substring-match suggestions. Complements `get_api` (symbol reference) and `get_anti_patterns` (catalogue of mistakes).
+
+### `get_anti_patterns` — Browse the anti-patterns catalog
+
+```
+get_anti_patterns({})                        # full list
+get_anti_patterns({ category: "reactivity" }) # single category
+```
+
+Parses `.claude/rules/anti-patterns.md` into per-category listings. Valid categories: `reactivity`, `jsx`, `context`, `architecture`, `testing`, `lifecycle`, `documentation`, `all`. Each entry carries a title, a rationale, and — when applicable — a `[detector: <code>]` tag pairing it with a `validate`-tool diagnostic. Use it BEFORE writing new code: the catalog is the surface `validate` enforces reactively.
+
 ### `get_routes` — List project routes
 
 ```
