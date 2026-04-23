@@ -384,9 +384,30 @@ function computeForLis(
   const { tails, tailIdx, pred } = lis
   let lisLen = 0
   let ops = 0
+  // Monotonic fast path. For append / prepend / "rows added at end without
+  // reordering existing ones", the position sequence is strictly increasing
+  // → the longest-increasing subsequence IS the entire sequence, with zero
+  // binary-search work needed. Without this fast path, appending 1000 rows
+  // to a 1000-row list does ~18k binary-search probes (caught by
+  // `big-list.test.ts`); with it, 0 probes.
+  //
+  // Once we hit a non-monotonic position, fall through to the full binary
+  // search path. Random shuffles and real reorders pay the full cost; only
+  // monotonic sequences hit the fast path.
+  let monotonic = true
+  let lastV = -1
   for (let i = 0; i < n; i++) {
     const key = newKeys[i] as string | number
     const v = cache.get(key)?.pos ?? 0
+    if (monotonic && v > lastV) {
+      tails[lisLen] = v
+      tailIdx[lisLen] = i
+      if (lisLen > 0) pred[i] = tailIdx[lisLen - 1] as number
+      lisLen++
+      lastV = v
+      continue
+    }
+    monotonic = false
     let lo = 0
     let hi = lisLen
     while (lo < hi) {
