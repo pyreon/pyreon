@@ -28,6 +28,9 @@ import { applyProps } from './props'
 // @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown at build time
 const __DEV__ = import.meta.env?.DEV === true
 
+// Dev-time counter sink — see packages/internals/perf-harness for contract.
+declare const globalThis: { __pyreon_count__?: (name: string, n?: number) => void }
+
 type Cleanup = () => void
 const noop: Cleanup = () => {
   /* noop */
@@ -56,6 +59,7 @@ export function mountChild(
   parent: Node,
   anchor: Node | null = null,
 ): Cleanup {
+  if (__DEV__) globalThis.__pyreon_count__?.('runtime.mountChild')
   // Reactive accessor — function that reads signals
   if (typeof child === 'function') {
     const sample = runUntracked(() => (child as () => VNodeChild | VNodeChild[])())

@@ -6,6 +6,12 @@ import { enqueuePendingNotification, isBatching } from './batch'
 import { _notifyTraceListeners, isTracing } from './debug'
 import { notifySubscribers, trackSubscriber } from './tracking'
 
+// Dev-time counter sink — see packages/internals/perf-harness for contract.
+interface ViteMeta {
+  readonly env?: { readonly DEV?: boolean }
+}
+declare const globalThis: { __pyreon_count__?: (name: string, n?: number) => void }
+
 export interface SignalDebugInfo<T> {
   /** Signal name (set via options or inferred) */
   name: string | undefined
@@ -80,6 +86,8 @@ function _peek(this: SignalFn<unknown>) {
 
 function _set(this: SignalFn<unknown>, newValue: unknown) {
   if (Object.is(this._v, newValue)) return
+  if ((import.meta as ViteMeta).env?.DEV === true)
+    globalThis.__pyreon_count__?.('reactivity.signalWrite')
   const prev = this._v
   this._v = newValue
   if (isTracing()) _notifyTraceListeners(this as unknown as Signal<unknown>, prev, newValue)
@@ -146,6 +154,8 @@ function _debug(this: SignalFn<unknown>): SignalDebugInfo<unknown> {
  * update, subscribe) are shared across all signals — not per-signal closures.
  */
 export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
+  if ((import.meta as ViteMeta).env?.DEV === true)
+    globalThis.__pyreon_count__?.('reactivity.signalCreate')
   // The read function is the only per-signal closure.
   // It doubles as the SubscriberHost (_s property) for trackSubscriber.
   const read = ((...args: unknown[]) => {

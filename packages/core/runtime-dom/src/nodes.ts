@@ -10,6 +10,9 @@ import { effect, runUntracked } from '@pyreon/reactivity'
 // @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown at build time
 const __DEV__ = import.meta.env?.DEV === true
 
+// Dev-time counter sink — see packages/internals/perf-harness for contract.
+declare const globalThis: { __pyreon_count__?: (name: string, n?: number) => void }
+
 type Cleanup = () => void
 
 /**
@@ -157,6 +160,7 @@ function computeKeyedLis(
 ): number {
   const { tails, tailIdx, pred } = lis
   let lisLen = 0
+  let ops = 0
   for (let i = 0; i < n; i++) {
     const key = newKeyOrder[i]
     if (key === undefined) continue
@@ -167,6 +171,7 @@ function computeKeyedLis(
     let hi = lisLen
     while (lo < hi) {
       const mid = (lo + hi) >> 1
+      ops++
       if ((tails[mid] as number) < v) lo = mid + 1
       else hi = mid
     }
@@ -175,6 +180,7 @@ function computeKeyedLis(
     if (lo > 0) pred[i] = tailIdx[lo - 1] as number
     if (lo === lisLen) lisLen++
   }
+  if (__DEV__ && ops > 0) globalThis.__pyreon_count__?.('runtime.mountFor.lisOps', ops)
   return lisLen
 }
 
