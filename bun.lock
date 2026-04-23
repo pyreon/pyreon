@@ -170,6 +170,22 @@
         "vite": "^8.0.0",
       },
     },
+    "examples/perf-dashboard": {
+      "name": "@pyreon/example-perf-dashboard",
+      "version": "0.1.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/perf-harness": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/styler": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/vite-plugin": "workspace:*",
+        "typescript": "^6.0.2",
+        "vite": "^8.0.0",
+      },
+    },
     "examples/playground": {
       "name": "@pyreon/playground",
       "version": "0.0.2",
@@ -1905,6 +1921,8 @@
     "@pyreon/elements": ["@pyreon/elements@workspace:packages/ui-system/elements"],
 
     "@pyreon/example-app-showcase": ["@pyreon/example-app-showcase@workspace:examples/app-showcase"],
+
+    "@pyreon/example-perf-dashboard": ["@pyreon/example-perf-dashboard@workspace:examples/perf-dashboard"],
 
     "@pyreon/example-preact-compat": ["@pyreon/example-preact-compat@workspace:examples/preact-compat"],
 
