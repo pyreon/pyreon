@@ -832,7 +832,9 @@
       "name": "@pyreon/perf-harness",
       "version": "0.13.1",
       "devDependencies": {
+        "@pyreon/compiler": "workspace:^",
         "@pyreon/core": "workspace:^",
+        "@pyreon/elements": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/rocketstyle": "workspace:^",
         "@pyreon/router": "workspace:^",

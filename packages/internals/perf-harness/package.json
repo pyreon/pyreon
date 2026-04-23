@@ -22,6 +22,7 @@
   "devDependencies": {
     "@pyreon/compiler": "workspace:^",
     "@pyreon/core": "workspace:^",
+    "@pyreon/elements": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/rocketstyle": "workspace:^",
     "@pyreon/router": "workspace:^",
