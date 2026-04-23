@@ -106,7 +106,7 @@ Runs two detectors and returns the merged result, sorted by source line:
   - `date-math-random-id` — `Date.now() + Math.random()` ID schemes collide under rapid operations; use a monotonic counter.
   - `on-click-undefined` — `onClick={undefined}` (or any `on*={undefined}`); omit the prop or gate with a ternary.
 
-Each diagnostic carries `{ code, message, line, column, current, suggested, fixable }`.
+Each diagnostic carries `{ code, message, line, column, current, suggested, fixable }`. **React diagnostics may report `fixable: true`** (handled by the `migrate_react` tool). **All Pyreon diagnostics report `fixable: false`** — no companion `migrate_pyreon` tool exists yet, so claiming auto-fix here would mislead consumers wiring UX off the flag. The invariant is locked in `packages/core/compiler/src/tests/pyreon-intercept.test.ts` under "fixable contract".
 
 ### `migrate_react` — Convert React code to Pyreon
 

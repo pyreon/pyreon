@@ -34,6 +34,16 @@
  *  - `detectPyreonPatterns(code)` — diagnostics only
  *  - `hasPyreonPatterns(code)`   — fast regex pre-filter
  *
+ * ## fixable: false (invariant)
+ *
+ * Every Pyreon diagnostic reports `fixable: false` — no exceptions.
+ * The `migrate_react` MCP tool only knows React mappings, so claiming
+ * a Pyreon code is auto-fixable would mislead a consumer who wires
+ * their UX off the flag and finds nothing applies the fix. Flip to
+ * `true` ONLY when a companion `migrate_pyreon` tool ships in a
+ * subsequent PR. The invariant is locked in
+ * `tests/pyreon-intercept.test.ts` under "fixable contract".
+ *
  * Designed for three consumers:
  *  1. Compiler pre-pass warnings during build
  *  2. CLI `pyreon doctor`
@@ -147,7 +157,10 @@ function detectForKeying(ctx: DetectContext, node: ts.JsxOpeningLikeElement): vo
       '`key` on <For> is reserved by JSX for VNode reconciliation and is extracted before the prop reaches the runtime. In Pyreon, use `by` for list identity.',
       getNodeText(ctx, keyAttr),
       getNodeText(ctx, keyAttr).replace(/^key\b/, 'by'),
-      true,
+      // fixable remains `false` until a `migrate_pyreon` tool exists —
+      // today the MCP only ships `migrate_react`, so claiming auto-fix
+      // here would mislead consumers building on the flag.
+      false,
     )
   }
 
@@ -273,7 +286,8 @@ function detectProcessDevGate(ctx: DetectContext, node: ts.BinaryExpression): vo
     'The `typeof process !== "undefined" && process.env.NODE_ENV !== "production"` gate is DEAD CODE in real Vite browser bundles — Vite does not polyfill `process`. Unit tests pass (vitest has `process`) but the warning never fires in production. Use `import.meta.env?.DEV` instead, which Vite literal-replaces at build time.',
     getNodeText(ctx, node),
     'import.meta.env?.DEV === true',
-    true,
+    // No `migrate_pyreon` tool yet — claiming fixable would mislead.
+    false,
   )
 }
 
@@ -297,7 +311,8 @@ function detectEmptyTheme(ctx: DetectContext, node: ts.CallExpression): void {
     '`.theme({})` is a no-op chain. If the component needs no base theme, skip `.theme()` entirely rather than calling it with an empty object.',
     getNodeText(ctx, node),
     getNodeText(ctx, callee.expression),
-    true,
+    // No `migrate_pyreon` tool yet — claiming fixable would mislead.
+    false,
   )
 }
 
@@ -419,7 +434,8 @@ function detectOnClickUndefined(ctx: DetectContext, node: ts.JsxAttribute): void
     `\`${attrName}={undefined}\` explicitly passes undefined as a listener. Pyreon's runtime guards against this, but the cleanest pattern is to omit the attribute entirely or use a conditional: \`${attrName}={condition ? handler : undefined}\`.`,
     getNodeText(ctx, node),
     `/* omit ${attrName} when the handler is not defined */`,
-    true,
+    // No `migrate_pyreon` tool yet — claiming fixable would mislead.
+    false,
   )
 }
 

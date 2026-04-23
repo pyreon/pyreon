@@ -31,7 +31,9 @@ describe('detectPyreonPatterns', () => {
       const withKey = diags.find((d) => d.code === 'for-with-key')
       expect(withKey).toBeDefined()
       expect(withKey!.suggested).toContain('by={')
-      expect(withKey!.fixable).toBe(true)
+      // fixable stays `false` until a `migrate_pyreon` tool ships; see
+      // the top-of-file note on detectPyreonPatterns.
+      expect(withKey!.fixable).toBe(false)
     })
 
     it('does not ALSO flag for-missing-by when for-with-key fires', () => {
@@ -93,7 +95,7 @@ describe('detectPyreonPatterns', () => {
       expect(diags).toHaveLength(1)
       expect(diags[0]!.code).toBe('process-dev-gate')
       expect(diags[0]!.suggested).toContain('import.meta.env')
-      expect(diags[0]!.fixable).toBe(true)
+      expect(diags[0]!.fixable).toBe(false)
     })
 
     it('flags the reversed operand order', () => {
@@ -123,7 +125,7 @@ describe('detectPyreonPatterns', () => {
       const diags = detectPyreonPatterns(code)
       expect(diags).toHaveLength(1)
       expect(diags[0]!.code).toBe('empty-theme')
-      expect(diags[0]!.fixable).toBe(true)
+      expect(diags[0]!.fixable).toBe(false)
     })
 
     it('does NOT flag `.theme(...)` with actual content', () => {
@@ -200,7 +202,7 @@ describe('detectPyreonPatterns', () => {
       const diags = detectPyreonPatterns(code)
       expect(diags).toHaveLength(1)
       expect(diags[0]!.code).toBe('on-click-undefined')
-      expect(diags[0]!.fixable).toBe(true)
+      expect(diags[0]!.fixable).toBe(false)
     })
 
     it('flags other on* handlers set to undefined', () => {
@@ -275,6 +277,33 @@ describe('detectPyreonPatterns', () => {
         }
       `
       expect(detectPyreonPatterns(code)).toEqual([])
+    })
+  })
+
+  describe('fixable contract — ALL Pyreon codes are fixable:false', () => {
+    // Binding invariant: until a `migrate_pyreon` tool exists, every
+    // Pyreon diagnostic must report `fixable: false`. Claiming a code
+    // is auto-fixable while no migrator handles it would mislead
+    // consumers building on the flag. Flip to `true` only when the
+    // companion migrator lands in a subsequent PR.
+    it('never emits a Pyreon diagnostic with fixable: true', () => {
+      const snippets = [
+        `<For each={x} key={(i) => i.id}>{(i) => <li />}</For>`, // for-with-key
+        `<For each={x}>{(i) => <li />}</For>`, // for-missing-by
+        `const X = ({ y }) => <div>{y}</div>`, // props-destructured
+        `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`, // process-dev-gate
+        `rocketstyle('div').theme({})`, // empty-theme
+        `window.addEventListener('x', h)`, // raw-add-event-listener
+        `document.removeEventListener('x', h)`, // raw-remove-event-listener
+        'const id = `${Date.now()}-${Math.random()}`', // date-math-random-id
+        `<button onClick={undefined}>x</button>`, // on-click-undefined
+      ]
+      for (const code of snippets) {
+        const diags = detectPyreonPatterns(code)
+        for (const d of diags) {
+          expect(d.fixable, `${d.code} must be fixable:false`).toBe(false)
+        }
+      }
     })
   })
 

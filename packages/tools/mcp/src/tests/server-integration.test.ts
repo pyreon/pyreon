@@ -107,6 +107,29 @@ describe('MCP server — validate tool over real JSON-RPC transport', () => {
     }
   })
 
+  it('locks the MCP response format (toMatchInlineSnapshot)', async () => {
+    // The textual format consumers render in their UI. An unannounced
+    // format change would drift consumer UIs silently. Update the
+    // snapshot deliberately via `bun run test -- -u` when the format
+    // is genuinely supposed to change.
+    const { client, close } = await newConnectedClient()
+    try {
+      // Single diagnostic so the snapshot stays readable.
+      const text = await callValidate(client, `<button onClick={undefined}>x</button>`)
+      expect(text).toMatchInlineSnapshot(`
+        "Found 1 issue:
+
+        1. **on-click-undefined** (line 1)
+           \`onClick={undefined}\` explicitly passes undefined as a listener. Pyreon's runtime guards against this, but the cleanest pattern is to omit the attribute entirely or use a conditional: \`onClick={condition ? handler : undefined}\`.
+           Current: \`onClick={undefined}\`
+           Fix: \`/* omit onClick when the handler is not defined */\`
+           Auto-fixable: no"
+      `)
+    } finally {
+      await close()
+    }
+  })
+
   it('sorts the merged diagnostics by line number in the response', async () => {
     // The handler merges React + Pyreon diagnostics and sorts by
     // (line, column). Verify the sort survived the round trip.
