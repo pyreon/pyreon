@@ -93,7 +93,20 @@ count.update(n => n + 1)  // update
 validate({ code: "import { useState } from 'react'" })
 ```
 
-Returns diagnostics for React patterns, wrong imports, and common Pyreon mistakes.
+Runs two detectors and returns the merged result, sorted by source line:
+
+- **React / coming-from-React mistakes** — `useState`, `useEffect`, `useMemo`, `useRef`, `className`, `htmlFor`, `onChange` on inputs, `.value` writes on signals, `Array.map()` in JSX, `memo` / `forwardRef` wrappers, React-package imports.
+- **Pyreon / using-Pyreon-wrong mistakes** (added 2026-Q2):
+  - `for-missing-by` — `<For each={...}>` without a `by` prop.
+  - `for-with-key` — `<For key={...}>` (the keying prop is `by`; JSX reserves `key`).
+  - `props-destructured` — `({ foo }: Props) => <JSX />` captures props at setup and loses reactivity. Use `props.foo` or `splitProps(props, [...])`.
+  - `process-dev-gate` — `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'` is dead code in real Vite browser bundles. Use `import.meta.env?.DEV`.
+  - `empty-theme` — `.theme({})` is a no-op chain.
+  - `raw-add-event-listener` / `raw-remove-event-listener` — use `useEventListener` from `@pyreon/hooks` for auto-cleanup.
+  - `date-math-random-id` — `Date.now() + Math.random()` ID schemes collide under rapid operations; use a monotonic counter.
+  - `on-click-undefined` — `onClick={undefined}` (or any `on*={undefined}`); omit the prop or gate with a ternary.
+
+Each diagnostic carries `{ code, message, line, column, current, suggested, fixable }`.
 
 ### `migrate_react` — Convert React code to Pyreon
 

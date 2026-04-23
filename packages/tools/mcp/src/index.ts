@@ -20,7 +20,12 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import { detectReactPatterns, diagnoseError, migrateReactCode } from '@pyreon/compiler'
+import {
+  detectPyreonPatterns,
+  detectReactPatterns,
+  diagnoseError,
+  migrateReactCode,
+} from '@pyreon/compiler'
 import { z } from 'zod'
 import packageJson from '../package.json' with { type: 'json' }
 import { API_REFERENCE } from './api-reference'
@@ -97,13 +102,33 @@ server.tool(
     filename: z.string().optional(),
   },
   async ({ code, filename }) => {
-    const diagnostics = detectReactPatterns(code, filename ?? 'snippet.tsx')
+    // Run both detectors. The React detector flags "coming from React"
+    // mistakes (useState, className, .value writes) — relevant when the
+    // code has not yet committed to Pyreon. The Pyreon detector flags
+    // "using Pyreon wrong" mistakes (missing <For by>, destructured
+    // props, typeof-process dev gates) — relevant once the imports are
+    // Pyreon. A single snippet may trigger both sets, so we merge.
+    const fname = filename ?? 'snippet.tsx'
+    const reactDiags = detectReactPatterns(code, fname)
+    const pyreonDiags = detectPyreonPatterns(code, fname)
 
-    if (diagnostics.length === 0) {
+    if (reactDiags.length === 0 && pyreonDiags.length === 0) {
       return textResult('✓ No issues found. The code follows Pyreon patterns correctly.')
     }
 
-    const issueText = diagnostics
+    type Diag = {
+      code: string
+      message: string
+      line: number
+      column: number
+      current: string
+      suggested: string
+      fixable: boolean
+    }
+    const merged: Diag[] = [...reactDiags, ...pyreonDiags]
+    merged.sort((a, b) => a.line - b.line || a.column - b.column)
+
+    const issueText = merged
       .map(
         (d, i) =>
           `${i + 1}. **${d.code}** (line ${d.line})\n   ${d.message}\n   Current: \`${d.current}\`\n   Fix: \`${d.suggested}\`\n   Auto-fixable: ${d.fixable ? 'yes' : 'no'}`,
@@ -111,7 +136,7 @@ server.tool(
       .join('\n\n')
 
     return textResult(
-      `Found ${diagnostics.length} issue${diagnostics.length === 1 ? '' : 's'}:\n\n${issueText}`,
+      `Found ${merged.length} issue${merged.length === 1 ? '' : 's'}:\n\n${issueText}`,
     )
   },
 )
