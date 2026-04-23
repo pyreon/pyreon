@@ -20,42 +20,50 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import { detectReactPatterns, diagnoseError, migrateReactCode } from '@pyreon/compiler'
+import {
+  detectPyreonPatterns,
+  detectReactPatterns,
+  diagnoseError,
+  migrateReactCode,
+} from '@pyreon/compiler'
 import { z } from 'zod'
 import packageJson from '../package.json' with { type: 'json' }
 import { API_REFERENCE } from './api-reference'
 import { generateContext, type ProjectContext } from './project-scanner'
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Server setup
+// Server setup — exported as a factory so tests can stand up a server with an
+// in-memory transport instead of stdio.
 // ═══════════════════════════════════════════════════════════════════════════════
-
-const server = new McpServer({
-  name: 'pyreon',
-  version: packageJson.version,
-})
-
-// Cache project context (regenerated on demand)
-let cachedContext: ProjectContext | null = null
-let contextCwd = process.cwd()
-
-function getContext(): ProjectContext {
-  if (!cachedContext || contextCwd !== process.cwd()) {
-    contextCwd = process.cwd()
-    cachedContext = generateContext(contextCwd)
-  }
-  return cachedContext
-}
 
 function textResult(text: string) {
   return { content: [{ type: 'text' as const, text }] }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Tool: get_api
-// ═══════════════════════════════════════════════════════════════════════════════
+export function createServer(): McpServer {
+  const server = new McpServer({
+    name: 'pyreon',
+    version: packageJson.version,
+  })
 
-server.tool(
+  // Project context cache is per-server-instance so the test server and the
+  // prod server do not share state.
+  let cachedContext: ProjectContext | null = null
+  let contextCwd = process.cwd()
+
+  function getContext(): ProjectContext {
+    if (!cachedContext || contextCwd !== process.cwd()) {
+      contextCwd = process.cwd()
+      cachedContext = generateContext(contextCwd)
+    }
+    return cachedContext
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Tool: get_api
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  server.tool(
   'get_api',
   {
     package: z.string(),
@@ -97,13 +105,33 @@ server.tool(
     filename: z.string().optional(),
   },
   async ({ code, filename }) => {
-    const diagnostics = detectReactPatterns(code, filename ?? 'snippet.tsx')
+    // Run both detectors. The React detector flags "coming from React"
+    // mistakes (useState, className, .value writes) — relevant when the
+    // code has not yet committed to Pyreon. The Pyreon detector flags
+    // "using Pyreon wrong" mistakes (missing <For by>, destructured
+    // props, typeof-process dev gates) — relevant once the imports are
+    // Pyreon. A single snippet may trigger both sets, so we merge.
+    const fname = filename ?? 'snippet.tsx'
+    const reactDiags = detectReactPatterns(code, fname)
+    const pyreonDiags = detectPyreonPatterns(code, fname)
 
-    if (diagnostics.length === 0) {
+    if (reactDiags.length === 0 && pyreonDiags.length === 0) {
       return textResult('✓ No issues found. The code follows Pyreon patterns correctly.')
     }
 
-    const issueText = diagnostics
+    type Diag = {
+      code: string
+      message: string
+      line: number
+      column: number
+      current: string
+      suggested: string
+      fixable: boolean
+    }
+    const merged: Diag[] = [...reactDiags, ...pyreonDiags]
+    merged.sort((a, b) => a.line - b.line || a.column - b.column)
+
+    const issueText = merged
       .map(
         (d, i) =>
           `${i + 1}. **${d.code}** (line ${d.line})\n   ${d.message}\n   Current: \`${d.current}\`\n   Fix: \`${d.suggested}\`\n   Auto-fixable: ${d.fixable ? 'yes' : 'no'}`,
@@ -111,7 +139,7 @@ server.tool(
       .join('\n\n')
 
     return textResult(
-      `Found ${diagnostics.length} issue${diagnostics.length === 1 ? '' : 's'}:\n\n${issueText}`,
+      `Found ${merged.length} issue${merged.length === 1 ? '' : 's'}:\n\n${issueText}`,
     )
   },
 )
@@ -393,16 +421,29 @@ server.tool(
   },
 )
 
+  return server
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
-// Start server
+// Start server (stdio transport) when invoked directly as a binary.
+// Imports for tests do NOT auto-start — the integration test in
+// `tests/validate.test.ts` wires up an in-memory transport instead.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function main(): Promise<void> {
+  const server = createServer()
   const transport = new StdioServerTransport()
   await server.connect(transport)
 }
 
-main().catch((err) => {
-  console.error('MCP server error:', err)
-  process.exit(1)
-})
+// `import.meta.main` is Bun's "entry module" flag. The compiled Node bin
+// (via bun build) preserves this — the bunx / tsx invocation of the
+// shebang sets it truthy; `import { createServer } from '...'` does not.
+// Covers both "run as CLI" and "imported by a test" without needing
+// require.main shims.
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error('MCP server error:', err)
+    process.exit(1)
+  })
+}

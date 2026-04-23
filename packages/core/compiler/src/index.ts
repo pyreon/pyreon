@@ -17,3 +17,5 @@ export {
   hasReactPatterns,
   migrateReactCode,
 } from './react-intercept'
+export type { PyreonDiagnostic, PyreonDiagnosticCode } from './pyreon-intercept'
+export { detectPyreonPatterns, hasPyreonPatterns } from './pyreon-intercept'
