@@ -13,28 +13,33 @@ Manage variable-length form inputs with `useFieldArray`. Each item has a **stabl
 ```tsx
 import { useFieldArray, For } from '@pyreon/form'
 
-const tags = useFieldArray<string>(['typescript', 'signals'])
+function TagEditor() {
+  const tags = useFieldArray<string>(['typescript', 'signals'])
 
-// Full mutation surface
-tags.append('reactive')
-tags.prepend('pyreon')
-tags.insert(1, 'framework')
-tags.move(0, 3)
-tags.swap(1, 2)
-tags.replace(['a', 'b', 'c'])
-tags.remove(0)
+  // Full mutation surface
+  tags.append('reactive')
+  tags.prepend('pyreon')
+  tags.insert(1, 'framework')
+  tags.move(0, 3)
+  tags.swap(1, 2)
+  tags.replace(['a', 'b', 'c'])
+  tags.remove(0)
 
-// Render — ALWAYS use `by={i => i.key}`, never the index
-<For each={tags.items()} by={(item) => item.key}>
-  {(item) => (
-    <input
-      value={() => item.value()}
-      onInput={(e) => item.value.set(e.currentTarget.value)}
-    />
-  )}
-</For>
-
-<button onClick={() => tags.append('')}>Add tag</button>
+  // Render — ALWAYS use `by={i => i.key}`, never the index
+  return (
+    <>
+      <For each={tags.items()} by={(item) => item.key}>
+        {(item) => (
+          <input
+            value={() => item.value()}
+            onInput={(e) => item.value.set(e.currentTarget.value)}
+          />
+        )}
+      </For>
+      <button onClick={() => tags.append('')}>Add tag</button>
+    </>
+  )
+}
 ```
 
 ## Why keys matter
@@ -47,26 +52,39 @@ Index-based keys defeat the whole design: moving item 0 to index 2 means every i
 
 ```tsx
 // BROKEN — index-based key scrambles focus on reorder
-<For each={tags.items()} by={(_, i) => i}>
-  {(item) => <input value={() => item.value()} />}
-</For>
+const BadList = () => (
+  <For each={tags.items()} by={(_, i) => i}>
+    {(item) => <input value={() => item.value()} />}
+  </For>
+)
 ```
 
 ```tsx
-// BROKEN — stored items array at setup, loses reactivity
-const items = tags.items()  // call inside setup: captures initial array
-return <For each={items}>…</For>
+function Bad() {
+  // BROKEN — stored items array at setup, loses reactivity
+  const items = tags.items()
+  return <For each={items}>{() => null}</For>
+}
 
-// Correct — read inside a reactive scope
-return <For each={tags.items()} by={(i) => i.key}>…</For>
+function Good() {
+  // Correct — read inside a reactive scope
+  return (
+    <For each={tags.items()} by={(i) => i.key}>
+      {() => null}
+    </For>
+  )
+}
 ```
 
 ```tsx
 // BROKEN — index for deletion is a race condition after reorder
-<button onClick={() => tags.remove(i)}>×</button>
+const BadRemove = (i: number) => <button onClick={() => tags.remove(i)}>×</button>
+
 // If the user reordered, the `i` captured at render time no longer
 // matches the item they clicked. Use the item identity instead:
-<button onClick={() => tags.remove(tags.items().findIndex(x => x.key === item.key))}>×</button>
+const GoodRemove = (item: { key: number }) => (
+  <button onClick={() => tags.remove(tags.items().findIndex((x) => x.key === item.key))}>×</button>
+)
 ```
 
 Cleanest: the `useFieldArray` API takes a key-or-predicate for mutations. Check `get_api({ package: "form", symbol: "useFieldArray" })` for the full surface.

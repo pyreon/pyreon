@@ -41,9 +41,11 @@ const mode = signal<'light' | 'dark'>('light')
 provide(ModeCtx, () => mode())
 
 // Consumer — useContext returns () => T
-const getMode = useContext(ModeCtx)
-// Inside reactive scopes (JSX expressions, effects, computeds):
-<div class={() => (getMode() === 'dark' ? 'dark-theme' : 'light-theme')}>...</div>
+function ThemedPanel() {
+  const getMode = useContext(ModeCtx)
+  // Inside reactive scopes (JSX expressions, effects, computeds):
+  return <div class={() => (getMode() === 'dark' ? 'dark-theme' : 'light-theme')}>...</div>
+}
 ```
 
 ## Why

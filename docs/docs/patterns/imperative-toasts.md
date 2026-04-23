@@ -64,28 +64,32 @@ Mount the `Toaster` ONCE at app root. Multiple `Toaster` instances stack visuall
 
 ```tsx
 // BROKEN — constructing a toast signal and mounting manually
-const toastMessage = signal('')
-<div class="toast">{() => toastMessage()}</div>
+function BadRoot() {
+  const toastMessage = signal('')
+  return <div class="toast">{() => toastMessage()}</div>
+}
 // This is the whole reason @pyreon/toast exists. Use it instead.
 ```
 
 ```tsx
 // BROKEN — <Toaster /> inside a conditional mount
-{() => showToaster() && <Toaster />}
+function BadRoot2() {
+  return <>{() => showToaster() && <Toaster />}</>
+}
 // Toaster is singleton-ish; toggling it dismisses active toasts.
 // Mount it once at the root, always on.
 ```
 
 ```tsx
 // BROKEN — calling toast() inside a render body fires on every render
-function Component() {
+function BadComponent() {
   toast('rendered!')  // fires once the FIRST render, then again if anything
                       // upstream triggers re-creation
   return <div>...</div>
 }
 
 // Correct — gate on an event:
-function Component() {
+function GoodComponent() {
   return <button onClick={() => toast('clicked!')}>Click</button>
 }
 ```

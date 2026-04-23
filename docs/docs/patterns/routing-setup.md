@@ -27,13 +27,17 @@ const router = createRouter({
   ],
 })
 
-<RouterProvider router={router}>
-  <nav>
-    <RouterLink name="home">Home</RouterLink>
-    <RouterLink name="user" params={{ id: '42' }}>User 42</RouterLink>
-  </nav>
-  <RouterView />
-</RouterProvider>
+function App() {
+  return (
+    <RouterProvider router={router}>
+      <nav>
+        <RouterLink name="home">Home</RouterLink>
+        <RouterLink name="user" params={{ id: '42' }}>User 42</RouterLink>
+      </nav>
+      <RouterView />
+    </RouterProvider>
+  )
+}
 ```
 
 For typed named navigation, constrain the `Router` generic:

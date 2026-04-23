@@ -16,9 +16,13 @@ import { signal } from '@pyreon/reactivity'
 
 const queryClient = new QueryClient()
 
-<QueryClientProvider client={queryClient}>
-  <App />
-</QueryClientProvider>
+function Root() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <App />
+    </QueryClientProvider>
+  )
+}
 
 function UserCard() {
   const userId = signal('alice')
@@ -83,12 +87,13 @@ const user = useQuery({
 ```
 
 ```tsx
-// BROKEN — mutate() fires on every render (component re-runs? no —
-// but onClick passing a call instead of a function is a common slip)
-<button onClick={deleteUser.mutate(id)}>Delete</button>
+// BROKEN — mutate() fires immediately on render (the call happens
+// during prop evaluation; the handler prop gets the return value,
+// not a function)
+const Broken = () => <button onClick={deleteUser.mutate(id)}>Delete</button>
 
-// Correct:
-<button onClick={() => deleteUser.mutate(id)}>Delete</button>
+// Correct — wrap in an arrow so onClick receives a callable
+const Correct = () => <button onClick={() => deleteUser.mutate(id)}>Delete</button>
 ```
 
 ## Related

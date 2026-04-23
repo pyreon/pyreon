@@ -24,14 +24,14 @@ count.peek()                     // read WITHOUT subscribing (rare — loop-prev
 In JSX, bare signal references auto-call (the compiler rewrites them):
 
 ```tsx
-<div>{count}</div>               // compiled → <div>{() => count()}</div>
-<div>count = {count()}</div>     // already called — compiler leaves it alone
+const AutoCall = () => <div>{count}</div>               // compiled → <div>{() => count()}</div>
+const AlreadyCalled = () => <div>count = {count()}</div> // already called — compiler leaves it alone
 ```
 
 For reactive expressions, call the signal explicitly inside the expression:
 
 ```tsx
-<div class={() => (count() > 10 ? 'hot' : 'cold')}>{count()}</div>
+const HotCold = () => <div class={() => (count() > 10 ? 'hot' : 'cold')}>{count()}</div>
 ```
 
 ## Why

@@ -97,14 +97,14 @@ Supports `getSnapshot()` / `applySnapshot()` for serialisation, `onPatch()` / `a
 
 ```tsx
 // BROKEN — creating a store inside a component body
-function App() {
-  const cart = defineStore('cart', () => ...)   // re-registers on every mount
+function BadApp() {
+  const cart = defineStore('cart', () => ({ /* ...setup */ }))   // re-registers on every mount
 }
 
 // Correct: module-scope definition, component-scope consumption
-export const useCartStore = defineStore('cart', () => ...)
+export const useCartStore = defineStore('cart', () => ({ /* ...setup */ }))
 
-function App() {
+function GoodApp() {
   const cart = useCartStore()
 }
 ```

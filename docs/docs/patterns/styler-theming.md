@@ -37,7 +37,7 @@ const Button = styled('button')`
   }
 `
 
-<Button onClick={...}>Click me</Button>
+const Example = () => <Button onClick={() => console.log('click')}>Click me</Button>
 ```
 
 Or use `css` for shared snippets + `keyframes` for animations:
@@ -72,9 +72,11 @@ init({ styled, css })     // PyreonUI does this internally; duplicate calls
                           // risk conflicting configs
 
 // Correct:
-<PyreonUI theme={theme}>
-  <App />
-</PyreonUI>
+const Root = () => (
+  <PyreonUI theme={theme}>
+    <App />
+  </PyreonUI>
+)
 ```
 
 ```tsx
