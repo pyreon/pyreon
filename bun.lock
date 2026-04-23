@@ -812,6 +812,14 @@
         "vitest": "^4.1.4",
       },
     },
+    "packages/internals/perf-harness": {
+      "name": "@pyreon/perf-harness",
+      "version": "0.13.1",
+      "devDependencies": {
+        "@pyreon/styler": "workspace:^",
+        "vitest": "^4.1.4",
+      },
+    },
     "packages/internals/test-utils": {
       "name": "@pyreon/test-utils",
       "version": "0.13.1",
@@ -1936,6 +1944,8 @@
     "@pyreon/mcp": ["@pyreon/mcp@workspace:packages/tools/mcp"],
 
     "@pyreon/meta": ["@pyreon/meta@workspace:packages/zero/meta"],
+
+    "@pyreon/perf-harness": ["@pyreon/perf-harness@workspace:packages/internals/perf-harness"],
 
     "@pyreon/permissions": ["@pyreon/permissions@workspace:packages/fundamentals/permissions"],
 

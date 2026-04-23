@@ -1,0 +1,26 @@
+{
+  "name": "@pyreon/perf-harness",
+  "private": true,
+  "version": "0.13.1",
+  "description": "Internal dev-time instrumentation for Pyreon framework perf work — call counters, snapshot/diff, window global",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "lint": "oxlint .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@pyreon/styler": "workspace:^",
+    "vitest": "^4.1.4"
+  }
+}

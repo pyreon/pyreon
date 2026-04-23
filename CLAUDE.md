@@ -38,6 +38,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/lint`           | Pyreon-specific linter — 59 rules, 12 categories, config files, watch mode, AST cache, LSP server                                             |
 | `@pyreon/test-utils`     | Testing utilities — initTestConfig, withThemeContext, getComputedTheme, renderProps, resolveRocketstyle, mountReactive, mountAndExpectOnce     |
 | `@pyreon/manifest`       | Private: type + `defineManifest` helper for per-package manifests that feed the doc + MCP generators (T2.1)                                    |
+| `@pyreon/perf-harness`   | Private: dev-time counter registry + snapshot/diff/record API. Framework packages emit via `globalThis.__pyreon_count__?.(name)` — zero import coupling |
 
 ### UI System (Component Library)
 
@@ -652,6 +653,23 @@ The mount pipeline is optimized for zero unnecessary allocations in production:
 - Devtools: component tree tracking, inspector overlay, highlight
 - All guarded by `__DEV__` — tree-shaken in production builds
 
+### Dev-mode perf counters (`@pyreon/perf-harness`)
+
+Framework packages emit named call counters for perf-driven debugging (real-app-shape instrumentation, not synthetic benchmarks). The counter contract is:
+
+```ts
+// In a framework package's hot path — NO import from @pyreon/perf-harness.
+declare const globalThis: { __pyreon_count__?: (name: string, n?: number) => void }
+
+if (import.meta.env?.DEV === true) globalThis.__pyreon_count__?.('styler.resolve')
+```
+
+- **Zero cross-package coupling.** Framework packages (styler, unistyle, router, …) are published to npm; they must not depend on the private `@pyreon/perf-harness` package. The global sink lets them emit without an import.
+- **Zero cost until opt-in.** `globalThis.__pyreon_count__` is `undefined` until a consumer calls `perfHarness.install()` or `perfHarness.enable()`. Optional-chaining short-circuits; prod tree-shakes the whole block via the `import.meta.env.DEV` gate.
+- **Counter names**: `<layer>.<action>`. One segment per framework layer, one per action. e.g. `styler.resolve`, `styler.sheet.insert`, `styler.sheet.insert.hit`, `unistyle.styles`, `unistyle.descriptor`.
+- **Consumers read via `perfHarness`**: `perfHarness.snapshot()`, `perfHarness.record(label, fn)`, `perfHarness.diff(a, b)`. See `packages/internals/perf-harness/README.md`.
+- **Instrumented today**: `@pyreon/styler` (`resolve`, `sheet.insert`, `sheet.insert.hit`), `@pyreon/unistyle` (`styles`, `descriptor`, `descriptor.fallback-scan`). More layers plug in as follow-up PRs surface hot paths.
+
 ### exactOptionalPropertyTypes
 
 Enabled in root tsconfig — optional properties need explicit `| undefined` when assigned from functions that may return undefined.
@@ -682,13 +700,13 @@ cd docs && bun run preview   # preview production build
 
 ## Monorepo Structure
 
-52 packages across 5 categories under `packages/`:
+53 packages across 5 categories under `packages/`:
 
 - `packages/core/` — 8 packages: reactivity, core, compiler, runtime-dom, runtime-server, router, head, server
 - `packages/fundamentals/` — 21 packages: store, state-tree, form, validation, query, table, virtual, i18n, feature, charts, storage, hooks, hotkeys, permissions, machine, flow, code, document, rx, toast, url-state
 - `packages/tools/` — 10 packages: cli, lint, mcp, vite-plugin, typescript, storybook, react-compat, preact-compat, vue-compat, solid-compat
 - `packages/ui-system/` — 11 packages: ui-core, styler, unistyle, elements, attrs, rocketstyle, coolgrid, kinetic, kinetic-presets, connector-document, document-primitives
-- `packages/internals/` — 2 packages: test-utils, manifest (both private, not published)
+- `packages/internals/` — 3 packages: test-utils, manifest, perf-harness (all private, not published)
 
 Plus: `docs/` (VitePress site), `examples/` (example apps).
 

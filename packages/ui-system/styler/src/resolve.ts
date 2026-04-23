@@ -6,6 +6,14 @@
 
 import type { DefaultTheme } from './ThemeProvider'
 
+// Dev-time counter sink — populated by `@pyreon/perf-harness` on install().
+// Guarded on call sites with `import.meta.env?.DEV === true` so prod bundles
+// tree-shake the entire reference. No cross-package import, no publish surface.
+interface ViteMeta {
+  readonly env?: { readonly DEV?: boolean }
+}
+declare const globalThis: { __pyreon_count__?: (name: string, n?: number) => void }
+
 /**
  * Props passed to interpolation functions inside tagged templates.
  * Generic `P` allows consumers to type their custom props (e.g. transient $-prefixed):
@@ -52,6 +60,8 @@ export const resolve = (
   values: Interpolation[],
   props: Record<string, any>,
 ): string => {
+  if ((import.meta as ViteMeta).env?.DEV === true)
+    globalThis.__pyreon_count__?.('styler.resolve')
   // Tagged templates guarantee strings.length === values.length + 1,
   // so strings[0] and strings[i+1] are always defined — no ?? needed.
   let result = strings[0] as string

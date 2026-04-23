@@ -8,6 +8,12 @@
 import { hash } from './hash'
 import { clearNormCache } from './resolve'
 
+// Dev-time counter sink — see styler/resolve.ts for the contract.
+interface ViteMeta {
+  readonly env?: { readonly DEV?: boolean }
+}
+declare const globalThis: { __pyreon_count__?: (name: string, n?: number) => void }
+
 const PREFIX = 'pyr'
 const ATTR = 'data-pyreon-styler'
 const DEFAULT_MAX_CACHE_SIZE = 10000
@@ -200,10 +206,16 @@ export class StyleSheet {
    *   via @layer order (base < rocketstyle) instead of specificity hacks.
    */
   insert(cssText: string, _unused = false, insertLayer?: string): string {
+    if ((import.meta as ViteMeta).env?.DEV === true)
+      globalThis.__pyreon_count__?.('styler.sheet.insert')
     // Fast path: skip hash computation on repeated insertions of same CSS text
     const icKey = insertLayer ? `${cssText}\0L:${insertLayer}` : cssText
     const icHit = this.insertCache.get(icKey)
-    if (icHit) return icHit
+    if (icHit) {
+      if ((import.meta as ViteMeta).env?.DEV === true)
+        globalThis.__pyreon_count__?.('styler.sheet.insert.hit')
+      return icHit
+    }
 
     const h = hash(cssText)
     const className = `${PREFIX}-${h}`
