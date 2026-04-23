@@ -1,6 +1,6 @@
 ---
-title: Keyed list rendering
-summary: Use <For each={items} by={i => i.id}> — never .map() in JSX, never key on <For>.
+title: "Keyed list rendering"
+summary: "Use <For each={items} by={i => i.id}> — never .map() in JSX, never key on <For>."
 seeAlso: [signal-writes]
 ---
 

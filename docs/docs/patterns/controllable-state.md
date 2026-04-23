@@ -1,6 +1,6 @@
 ---
-title: Controlled / uncontrolled components
-summary: Use useControllableState from @pyreon/hooks — never reimplement the isControlled/signal/getter pattern.
+title: "Controlled / uncontrolled components"
+summary: "Use useControllableState from @pyreon/hooks — never reimplement the isControlled/signal/getter pattern."
 seeAlso: [signal-writes]
 ---
 

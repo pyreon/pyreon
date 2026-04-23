@@ -1,6 +1,6 @@
 ---
-title: Signal reads and writes
-summary: Signals are callable. Read with mySignal(), write with mySignal.set(...), never mySignal(value).
+title: "Signal reads and writes"
+summary: "Signals are callable. Read with mySignal(), write with mySignal.set(...), never mySignal(value)."
 seeAlso: [controllable-state]
 ---
 

@@ -1,6 +1,6 @@
 ---
-title: Reactive context
-summary: Use createReactiveContext for live values; never destructure context return.
+title: "Reactive context"
+summary: "Use createReactiveContext for live values; never destructure context return."
 seeAlso: [signal-writes]
 ---
 

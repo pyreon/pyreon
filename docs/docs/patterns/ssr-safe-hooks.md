@@ -1,6 +1,6 @@
 ---
-title: SSR-safe hooks
-summary: Guard browser globals with typeof or bucket browser-only work into onMount.
+title: "SSR-safe hooks"
+summary: "Guard browser globals with typeof or bucket browser-only work into onMount."
 seeAlso: [dev-warnings, event-listeners]
 ---
 

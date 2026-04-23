@@ -22,18 +22,38 @@ describe('loadPatternRegistry — real repo docs/patterns', () => {
     expect(registry.root).toContain('docs/patterns')
   })
 
-  it('loads all 8 seeded patterns', () => {
+  it('loads all 14 seeded patterns', () => {
     const names = registry.patterns.map((p) => p.name).sort()
     expect(names).toEqual([
       'controllable-state',
+      'data-fetching',
       'dev-warnings',
+      'dynamic-fields',
       'event-listeners',
       'form-fields',
+      'imperative-toasts',
       'keyed-lists',
       'reactive-context',
+      'routing-setup',
       'signal-writes',
       'ssr-safe-hooks',
+      'state-management',
+      'styler-theming',
     ])
+  })
+
+  it('every pattern has a resolvable seeAlso (no dangling references)', () => {
+    // Drift guard: if pattern A says seeAlso: [b] and file b.md is
+    // renamed or removed, this test fails loudly. Otherwise the
+    // footer link in the MCP response would point at a ghost.
+    const valid = new Set(registry.patterns.map((p) => p.name))
+    const dangling: Array<{ from: string; to: string }> = []
+    for (const p of registry.patterns) {
+      for (const ref of p.seeAlso) {
+        if (!valid.has(ref)) dangling.push({ from: p.name, to: ref })
+      }
+    }
+    expect(dangling).toEqual([])
   })
 
   it('parses frontmatter on every seeded pattern', () => {

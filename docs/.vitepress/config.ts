@@ -54,6 +54,26 @@ export default defineConfig({
           ],
         },
         {
+          text: 'Patterns',
+          collapsed: false,
+          items: [
+            { text: 'Dev-mode warnings', link: '/docs/patterns/dev-warnings' },
+            { text: 'Signal reads and writes', link: '/docs/patterns/signal-writes' },
+            { text: 'Keyed list rendering', link: '/docs/patterns/keyed-lists' },
+            { text: 'Reactive context', link: '/docs/patterns/reactive-context' },
+            { text: 'SSR-safe hooks', link: '/docs/patterns/ssr-safe-hooks' },
+            { text: 'Event listeners', link: '/docs/patterns/event-listeners' },
+            { text: 'Controlled / uncontrolled', link: '/docs/patterns/controllable-state' },
+            { text: 'Form fields', link: '/docs/patterns/form-fields' },
+            { text: 'Dynamic form arrays', link: '/docs/patterns/dynamic-fields' },
+            { text: 'Router setup', link: '/docs/patterns/routing-setup' },
+            { text: 'Data fetching', link: '/docs/patterns/data-fetching' },
+            { text: 'State management', link: '/docs/patterns/state-management' },
+            { text: 'Styling & theming', link: '/docs/patterns/styler-theming' },
+            { text: 'Imperative toasts', link: '/docs/patterns/imperative-toasts' },
+          ],
+        },
+        {
           text: 'Core Framework',
           collapsed: false,
           items: [

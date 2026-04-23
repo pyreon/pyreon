@@ -47,12 +47,23 @@ export interface PatternRegistry {
 // Directory walk
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// Patterns live at `docs/docs/patterns/` — the VitePress content dir
+// so the same file serves both the MCP tool AND the docs website. We
+// also check the top-level `docs/patterns/` layout for forward
+// compatibility, in case a future migration moves them up.
+const PATTERN_PATH_CANDIDATES: ReadonlyArray<ReadonlyArray<string>> = [
+  ['docs', 'docs', 'patterns'],
+  ['docs', 'patterns'],
+]
+
 function findPatternsDir(startDir: string): string | null {
   let dir = resolve(startDir)
   for (let i = 0; i < 30; i++) {
-    const candidate = join(dir, 'docs', 'patterns')
-    if (existsSync(candidate) && statSync(candidate).isDirectory()) {
-      return candidate
+    for (const segments of PATTERN_PATH_CANDIDATES) {
+      const candidate = join(dir, ...segments)
+      if (existsSync(candidate) && statSync(candidate).isDirectory()) {
+        return candidate
+      }
     }
     const parent = dirname(dir)
     if (parent === dir) return null
@@ -178,10 +189,10 @@ export function loadPatternRegistry(startDir: string = process.cwd()): PatternRe
 export function formatPatternIndex(registry: PatternRegistry): string {
   if (!registry.root || registry.patterns.length === 0) {
     return (
-      'No patterns found. Patterns live at `docs/patterns/<name>.md` in the ' +
-      'Pyreon monorepo. If you are running the MCP in a consumer project, ' +
-      'patterns are not available locally — run the MCP in the Pyreon repo ' +
-      'to browse them.'
+      'No patterns found. Patterns live at `docs/docs/patterns/<name>.md` ' +
+      '(the VitePress content directory) in the Pyreon monorepo. If you ' +
+      'are running the MCP in a consumer project, patterns are not ' +
+      'available locally — run the MCP in the Pyreon repo to browse them.'
     )
   }
 

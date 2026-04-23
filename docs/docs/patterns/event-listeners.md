@@ -1,6 +1,6 @@
 ---
-title: Event listeners
-summary: Use useEventListener from @pyreon/hooks — never raw addEventListener in component bodies.
+title: "Event listeners"
+summary: "Use useEventListener from @pyreon/hooks — never raw addEventListener in component bodies."
 seeAlso: [ssr-safe-hooks]
 ---
 

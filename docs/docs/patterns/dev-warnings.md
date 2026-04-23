@@ -1,6 +1,6 @@
 ---
-title: Dev-mode warnings
-summary: Use import.meta.env?.DEV to gate warnings. Never typeof process.
+title: "Dev-mode warnings"
+summary: "Use import.meta.env?.DEV to gate warnings. Never typeof process."
 seeAlso: [ssr-safe-hooks]
 ---
 
