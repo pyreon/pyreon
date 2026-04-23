@@ -183,6 +183,17 @@ get_anti_patterns({ category: "reactivity" }) # single category
 
 Parses `.claude/rules/anti-patterns.md` into per-category listings. Valid categories: `reactivity`, `jsx`, `context`, `architecture`, `testing`, `lifecycle`, `documentation`, `all`. Each entry carries a title, a rationale, and — when applicable — a `[detector: <code>]` tag pairing it with a `validate`-tool diagnostic. Use it BEFORE writing new code: the catalog is the surface `validate` enforces reactively.
 
+### `get_changelog` — Recent release notes for a @pyreon/* package
+
+```
+get_changelog({ package: "query" })                   # latest 5 substantive versions
+get_changelog({ package: "query", limit: 10 })        # expand
+get_changelog({ package: "query", includeDependencyUpdates: true })  # include dep bumps
+get_changelog({})                                      # list every package + latest version
+```
+
+Parses the `CHANGELOG.md` file (changesets-populated) for the named package. The short slug auto-prefixes `@pyreon/` — `"query"` and `"@pyreon/query"` resolve to the same result. Empty "ceremonial" version bumps (pure dependency bumps with no user-facing body) are filtered by default; when the whole history is ceremonial, the tool surfaces a clear "no substantive changes" message. Complements `get_api` (current symbol reference) — changelog answers "what changed" while api-reference answers "what is it now".
+
 ### `get_routes` — List project routes
 
 ```

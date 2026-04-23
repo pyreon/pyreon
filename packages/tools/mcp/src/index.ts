@@ -15,6 +15,7 @@
  *   get_browser_smoke_status  — Report which browser-categorized packages have smoke coverage
  *   get_pattern               — Fetch a "how do I do X" pattern body from docs/patterns/
  *   get_anti_patterns         — Browse the anti-patterns catalog, optionally filtered by category
+ *   get_changelog             — Recent release notes for a @pyreon/* package, parsed from CHANGELOG.md
  *
  * Usage:
  *   bunx @pyreon/mcp          # stdio transport (for IDE integration)
@@ -39,6 +40,13 @@ import {
   parseAntiPatterns,
 } from './anti-patterns'
 import { API_REFERENCE } from './api-reference'
+import {
+  findChangelog,
+  formatChangelog,
+  formatChangelogIndex,
+  loadChangelogRegistry,
+  suggestChangelogs,
+} from './changelog'
 import {
   findPattern,
   formatPatternBody,
@@ -502,6 +510,53 @@ server.tool(
       const all = parseAntiPatterns(doc)
       const filtered = cat === 'all' ? all : all.filter((e) => e.category === cat)
       return textResult(formatAntiPatterns(filtered, cat))
+    },
+  )
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Tool: get_changelog — recent release notes for @pyreon/* packages
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  server.tool(
+    'get_changelog',
+    {
+      package: z
+        .string()
+        .optional()
+        .describe(
+          'Package name, e.g. "query" or "@pyreon/query". Omit to list every package with a CHANGELOG.',
+        ),
+      limit: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe('Maximum number of substantive versions to return. Default 5.'),
+      includeDependencyUpdates: z
+        .boolean()
+        .optional()
+        .describe('Include `Updated dependencies` bullets. Default false (usually noise).'),
+    },
+    async ({ package: pkg, limit, includeDependencyUpdates }) => {
+      const registry = loadChangelogRegistry()
+      if (!pkg) return textResult(formatChangelogIndex(registry))
+
+      const changelog = findChangelog(registry, pkg)
+      if (changelog) {
+        return textResult(
+          formatChangelog(changelog, {
+            limit,
+            includeDependencyUpdates,
+          }),
+        )
+      }
+
+      const suggestions = suggestChangelogs(registry, pkg)
+      const suggestText =
+        suggestions.length > 0
+          ? `Did you mean one of these?\n${suggestions.map((s) => `  - ${s}`).join('\n')}\n\nOr call get_changelog() with no arg for the full list.`
+          : 'Call get_changelog() with no arg for the list of packages that ship a CHANGELOG.'
+      return textResult(`Changelog for "${pkg}" not found.\n\n${suggestText}`)
     },
   )
 
