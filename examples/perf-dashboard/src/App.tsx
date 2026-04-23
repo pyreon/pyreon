@@ -12,7 +12,7 @@
  * the goal is to keep the counter signal clean for whichever layer is under
  * investigation.
  */
-import { For, h, provide, Show } from '@pyreon/core'
+import { For, provide, Show } from '@pyreon/core'
 import { perfHarness } from '@pyreon/perf-harness'
 import { computed, signal } from '@pyreon/reactivity'
 import { ThemeContext } from '@pyreon/styler'
