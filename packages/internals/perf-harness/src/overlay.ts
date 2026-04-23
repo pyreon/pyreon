@@ -31,14 +31,7 @@ export interface OverlayHandle {
   isVisible: () => boolean
 }
 
-const DEFAULT_PACKAGES = [
-  'styler',
-  'unistyle',
-  'rocketstyle',
-  'runtime',
-  'reactivity',
-  'router',
-]
+const DEFAULT_PACKAGES = ['styler', 'unistyle', 'rocketstyle', 'runtime', 'reactivity', 'router']
 
 // One overlay per window. Re-calling overlay() destroys the previous one.
 interface PerfWindow {

@@ -74,18 +74,14 @@ describe('install / uninstall', () => {
   it('install() attaches to globalThis and enables counters', () => {
     const h = install()
     expect(h).toBe(perfHarness)
-    expect((globalThis as unknown as Record<string, unknown>).__pyreon_perf__).toBe(
-      perfHarness,
-    )
+    expect((globalThis as unknown as Record<string, unknown>).__pyreon_perf__).toBe(perfHarness)
     expect(perfHarness.isEnabled()).toBe(true)
   })
 
   it('uninstall() removes the global but does not disable counters', () => {
     install()
     uninstall()
-    expect(
-      (globalThis as unknown as Record<string, unknown>).__pyreon_perf__,
-    ).toBeUndefined()
+    expect((globalThis as unknown as Record<string, unknown>).__pyreon_perf__).toBeUndefined()
     expect(perfHarness.isEnabled()).toBe(true)
   })
 })

@@ -13,7 +13,7 @@ import {
 interface ViteMeta {
   readonly env?: { readonly DEV?: boolean }
 }
-declare const globalThis: { __pyreon_count__?: (name: string, n?: number) => void }
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 export interface Computed<T> {
   (): T
@@ -87,7 +87,7 @@ function computedLazy<T>(fn: () => T): Computed<T> {
     trackSubscriber(host)
     if (dirty) {
       if ((import.meta as ViteMeta).env?.DEV === true)
-        globalThis.__pyreon_count__?.('reactivity.computedRecompute')
+        _countSink.__pyreon_count__?.('reactivity.computedRecompute')
       try {
         if (tracked) {
           // Deps already established from first run — skip adding to
@@ -154,7 +154,7 @@ function computedWithEquals<T>(fn: () => T, equals: (prev: T, next: T) => boolea
   const recompute = () => {
     if (disposed) return
     if ((import.meta as ViteMeta).env?.DEV === true)
-      globalThis.__pyreon_count__?.('reactivity.computedRecompute')
+      _countSink.__pyreon_count__?.('reactivity.computedRecompute')
     cleanupLocalDeps(deps, recompute)
     try {
       const next = trackWithLocalDeps(deps, recompute, fn)
@@ -174,7 +174,7 @@ function computedWithEquals<T>(fn: () => T, equals: (prev: T, next: T) => boolea
     trackSubscriber(host)
     if (dirty) {
       if ((import.meta as ViteMeta).env?.DEV === true)
-        globalThis.__pyreon_count__?.('reactivity.computedRecompute')
+        _countSink.__pyreon_count__?.('reactivity.computedRecompute')
       cleanupLocalDeps(deps, recompute)
       try {
         value = trackWithLocalDeps(deps, recompute, fn)

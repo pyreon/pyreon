@@ -11,7 +11,7 @@ import { effect, runUntracked } from '@pyreon/reactivity'
 const __DEV__ = import.meta.env?.DEV === true
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
-declare const globalThis: { __pyreon_count__?: (name: string, n?: number) => void }
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 type Cleanup = () => void
 
@@ -91,9 +91,7 @@ export function mountReactive(
       // (e.g. DynamicStyled's class swap effect). Those effects track
       // their own dependencies independently.
       const cleanup = runUntracked(() =>
-        restoreContextStack(contextSnapshot, () =>
-          mount(value, parent, marker),
-        ),
+        restoreContextStack(contextSnapshot, () => mount(value, parent, marker)),
       )
       // Guard: a re-entrant signal update (e.g. ErrorBoundary catching a child
       // throw) may have already re-run this effect and updated currentCleanup.
@@ -180,7 +178,7 @@ function computeKeyedLis(
     if (lo > 0) pred[i] = tailIdx[lo - 1] as number
     if (lo === lisLen) lisLen++
   }
-  if (__DEV__ && ops > 0) globalThis.__pyreon_count__?.('runtime.mountFor.lisOps', ops)
+  if (__DEV__ && ops > 0) _countSink.__pyreon_count__?.('runtime.mountFor.lisOps', ops)
   return lisLen
 }
 

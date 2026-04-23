@@ -8,7 +8,13 @@ export type { KeepAliveProps } from './keep-alive'
 export { KeepAlive } from './keep-alive'
 export { mountChild } from './mount'
 export type { SanitizeFn } from './props'
-export { applyProp, applyProps, applyProps as _applyProps, sanitizeHtml, setSanitizer } from './props'
+export {
+  applyProp,
+  applyProps,
+  applyProps as _applyProps,
+  sanitizeHtml,
+  setSanitizer,
+} from './props'
 export { _bindDirect, _bindText, _mountSlot, _tpl, createTemplate } from './template'
 export type { TransitionProps } from './transition'
 export { Transition } from './transition'
@@ -26,7 +32,7 @@ import { mountChild } from './mount'
 const __DEV__ = import.meta.env?.DEV === true
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
-declare const globalThis: { __pyreon_count__?: (name: string, n?: number) => void }
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 /**
  * Mount a VNode tree into a container element.
@@ -43,14 +49,14 @@ export function mount(root: VNodeChild, container: Element): () => void {
     )
   }
   if (__DEV__) {
-    globalThis.__pyreon_count__?.('runtime.mount')
+    _countSink.__pyreon_count__?.('runtime.mount')
     installDevTools()
   }
   setupDelegation(container)
   container.innerHTML = ''
   const unmount = mountChild(root, container, null)
   return () => {
-    if (__DEV__) globalThis.__pyreon_count__?.('runtime.unmount')
+    if (__DEV__) _countSink.__pyreon_count__?.('runtime.unmount')
     unmount()
   }
 }

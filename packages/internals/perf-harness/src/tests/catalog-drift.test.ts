@@ -39,10 +39,10 @@ const INSTRUMENTED_PACKAGE_ROOTS = [
   'packages/ui-system/rocketstyle/src',
 ]
 
-// Matches `globalThis.__pyreon_count__?.('<name>')` or the non-optional
-// `globalThis.__pyreon_count__('<name>')` form.
-const COUNT_CALL_RE =
-  /globalThis\.__pyreon_count__\??\.?\(\s*['"]([^'"]+)['"](?:\s*,[^)]*)?\)/g
+// Matches any `<ident>.__pyreon_count__?.('<name>')` call.
+// Framework packages use a locally-bound `_countSink = globalThis as { ... }`
+// instead of re-declaring `globalThis` (which would shadow the global).
+const COUNT_CALL_RE = /\.__pyreon_count__\??\.?\(\s*['"]([^'"]+)['"](?:\s*,[^)]*)?\)/g
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -98,9 +98,10 @@ describe('counter catalog drift', () => {
     // Defensive: if this ever trips, it means the walker isn't reaching a
     // package that should be instrumented (broken glob? moved package?).
     for (const rootRel of INSTRUMENTED_PACKAGE_ROOTS) {
-      const layer = rootRel.split('/').at(-2) === 'runtime-dom'
-        ? 'runtime'
-        : (rootRel.split('/').at(-2) as string)
+      const layer =
+        rootRel.split('/').at(-2) === 'runtime-dom'
+          ? 'runtime'
+          : (rootRel.split('/').at(-2) as string)
       const hasAny = [...emitted.keys()].some((n) => n.startsWith(`${layer}.`))
       expect(hasAny, `no counters emitted for layer ${layer} (${rootRel})`).toBe(true)
     }

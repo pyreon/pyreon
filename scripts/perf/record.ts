@@ -18,8 +18,7 @@
  *   3  — browser navigation or journey threw
  *   4  — harness not installed (counters empty — means the app forgot `install()`)
  */
-import { spawn } from 'node:child_process'
-import { execSync } from 'node:child_process'
+import { execSync, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -61,7 +60,9 @@ function parseArgs(argv: string[]): Args {
     }
   }
   if (!args.app || !args.journey) {
-    console.error('usage: bun run scripts/perf/record.ts --app <name> --journey <name> [--runs 5] [--mode dev|preview] [--out perf-results]')
+    console.error(
+      'usage: bun run scripts/perf/record.ts --app <name> --journey <name> [--runs 5] [--mode dev|preview] [--out perf-results]',
+    )
     process.exit(1)
   }
   args.outDir = args.outDir ?? resolve(REPO_ROOT, 'perf-results')
@@ -133,7 +134,9 @@ async function startServer(app: string, mode: 'dev' | 'preview'): Promise<Server
     proc.once('exit', (code) => {
       if (!resolved) {
         clearTimeout(timer)
-        rejectPromise(new Error(`[record] server exited before ready: ${app}/${mode} (code=${code})`))
+        rejectPromise(
+          new Error(`[record] server exited before ready: ${app}/${mode} (code=${code})`),
+        )
       }
     })
   })
@@ -160,9 +163,7 @@ async function snapshotCounters(page: Page): Promise<Record<string, number>> {
 // ── Journey catalog ──────────────────────────────────────────────────────────
 
 // Import an example's journey module. Paths are relative to repo root.
-async function loadJourneys(
-  app: string,
-): Promise<Record<string, (page: Page) => Promise<void>>> {
+async function loadJourneys(app: string): Promise<Record<string, (page: Page) => Promise<void>>> {
   const mod = (await import(resolve(REPO_ROOT, 'examples', app, 'src', 'journeys.ts'))) as {
     journeys: Record<string, (page: Page) => Promise<void>>
   }
@@ -221,8 +222,9 @@ async function main() {
   try {
     await page.goto(server.url, { waitUntil: 'networkidle', timeout: 15_000 })
     // Verify the harness installed.
-    const installed = await page.evaluate(() =>
-      typeof (window as unknown as { __pyreon_perf__?: unknown }).__pyreon_perf__ !== 'undefined',
+    const installed = await page.evaluate(
+      () =>
+        typeof (window as unknown as { __pyreon_perf__?: unknown }).__pyreon_perf__ !== 'undefined',
     )
     if (!installed) {
       console.error(

@@ -16,13 +16,20 @@ export interface PageLike {
   fill: (selector: string, value: string) => Promise<void>
   waitForSelector: (selector: string) => Promise<void>
   evaluate: <T>(fn: () => T) => Promise<T>
+  reload: (opts?: { waitUntil?: string }) => Promise<unknown>
 }
 
 export const journeys: Record<string, (page: PageLike) => Promise<void>> = {
-  /** Baseline: just boot, counters after initial mount. */
-  boot: async () => {
-    // Nothing — boot counters are captured by the record loop before any
-    // interaction runs.
+  /**
+   * Baseline: reload the page and let the full boot happen under fresh
+   * counters. Record loop resets counters before the journey runs, so the
+   * reload-then-let-the-app-boot flow captures mount + first-paint work.
+   */
+  boot: async (page) => {
+    await page.reload({ waitUntil: 'networkidle' })
+    // Wait for the first paint to settle — the install() in main.tsx re-runs
+    // after reload so the harness is live again by this point.
+    await page.waitForSelector('[data-testid="toggle-theme"]')
   },
 
   /** Theme swap — stresses the dynamic-styled re-resolve path. */

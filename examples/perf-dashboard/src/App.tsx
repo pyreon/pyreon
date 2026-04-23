@@ -94,8 +94,8 @@ function StatsSection() {
     <Section theme={themeSignal()}>
       <SectionTitle theme={themeSignal()}>Stats</SectionTitle>
       <Grid>
-        <For each={() => stats} by={(s: typeof stats[number]) => s.label}>
-          {(s: typeof stats[number]) => (
+        <For each={() => stats} by={(s: (typeof stats)[number]) => s.label}>
+          {(s: (typeof stats)[number]) => (
             <Card theme={themeSignal()}>
               <CardLabel theme={themeSignal()}>{s.label}</CardLabel>
               <CardValue theme={themeSignal()}>{s.value.toLocaleString()}</CardValue>
@@ -124,7 +124,10 @@ function TableSection() {
             const arr = [...rowsSignal()]
             for (let i = arr.length - 1; i > 0; i--) {
               const j = Math.floor(Math.random() * (i + 1))
-              ;[arr[i], arr[j]] = [arr[j]!, arr[i]!]
+              const ai = arr[i] as Row
+              const aj = arr[j] as Row
+              arr[i] = aj
+              arr[j] = ai
             }
             rowsSignal.set(arr)
           }}
@@ -150,13 +153,16 @@ function TableSection() {
           </tr>
         </thead>
         <tbody>
-          <For each={rowsSignal} by={(r: Row) => r.id}>
+          <For each={() => rowsSignal()} by={(r: Row) => r.id}>
             {(r: Row) => (
               <tr>
                 <Td theme={themeSignal()}>{r.id}</Td>
                 <Td theme={themeSignal()}>{r.name}</Td>
                 <Td theme={themeSignal()}>{r.metric}</Td>
-                <Td theme={themeSignal()}>{r.delta >= 0 ? '+' : ''}{r.delta}</Td>
+                <Td theme={themeSignal()}>
+                  {r.delta >= 0 ? '+' : ''}
+                  {r.delta}
+                </Td>
                 <Td theme={themeSignal()}>{r.status}</Td>
               </tr>
             )}
@@ -214,27 +220,20 @@ function ModalSection() {
       <Row>
         <SectionTitle theme={themeSignal()}>Modal</SectionTitle>
         <div style="flex: 1" />
-        <Button
-          theme={themeSignal()}
-          data-testid="open-modal"
-          onClick={() => modalOpen.set(true)}
-        >
+        <Button theme={themeSignal()} data-testid="open-modal" onClick={() => modalOpen.set(true)}>
           Open modal
         </Button>
       </Row>
-      <Show when={modalOpen}>
+      <Show when={() => modalOpen()}>
         {() => (
-          <ModalBackdrop
-            data-testid="modal-backdrop"
-            onClick={() => modalOpen.set(false)}
-          >
+          <ModalBackdrop data-testid="modal-backdrop" onClick={() => modalOpen.set(false)}>
             <ModalBody theme={themeSignal()} onClick={(ev: Event) => ev.stopPropagation()}>
               <h3 style="margin-top: 0;">Hello, modal</h3>
               <p>
                 Mounting and unmounting this modal bumps{' '}
                 <Accent theme={themeSignal()}>runtime.mount</Accent> /{' '}
-                <Accent theme={themeSignal()}>runtime.unmount</Accent> via the surrounding
-                Show's conditional mountChild.
+                <Accent theme={themeSignal()}>runtime.unmount</Accent> via the surrounding Show's
+                conditional mountChild.
               </p>
               <Row>
                 <div style="flex: 1" />
@@ -264,27 +263,27 @@ export function App() {
 
   return (
     <Shell theme={themeSignal()}>
-        <Header theme={themeSignal()}>
-          <Title theme={themeSignal()}>
-            Pyreon · <Accent theme={themeSignal()}>perf-dashboard</Accent>
-          </Title>
-          <Row>
-            <GhostButton
-              theme={themeSignal()}
-              data-testid="toggle-theme"
-              onClick={() => themeSignal.set(isLight() ? darkTheme : lightTheme)}
-            >
-              {() => (isLight() ? '☀ light' : '☾ dark')}
-            </GhostButton>
-            <GhostButton
-              theme={themeSignal()}
-              data-testid="open-overlay"
-              onClick={() => perfHarness.overlay()}
-            >
-              ⌃⇧P  perf
-            </GhostButton>
-          </Row>
-        </Header>
+      <Header theme={themeSignal()}>
+        <Title theme={themeSignal()}>
+          Pyreon · <Accent theme={themeSignal()}>perf-dashboard</Accent>
+        </Title>
+        <Row>
+          <GhostButton
+            theme={themeSignal()}
+            data-testid="toggle-theme"
+            onClick={() => themeSignal.set(isLight() ? darkTheme : lightTheme)}
+          >
+            {() => (isLight() ? '☀ light' : '☾ dark')}
+          </GhostButton>
+          <GhostButton
+            theme={themeSignal()}
+            data-testid="open-overlay"
+            onClick={() => perfHarness.overlay()}
+          >
+            ⌃⇧P perf
+          </GhostButton>
+        </Row>
+      </Header>
 
       <StatsSection />
       <TableSection />

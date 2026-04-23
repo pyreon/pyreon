@@ -12,13 +12,13 @@ Open `http://localhost:5800`, press **Ctrl+Shift+P** (or click `perf` in the hea
 
 ## What it stresses
 
-| Section | Counters it touches |
-| --- | --- |
-| `Stats` (24 cards) | `styler.resolve`, `unistyle.styles`, `runtime.mountChild` |
-| `Rows` (100-row table + shuffle) | `runtime.mountFor.lisOps`, `runtime.mountChild` |
-| `Form` (10 controlled fields) | `reactivity.signalWrite`, `reactivity.effectRun` |
-| `Modal` (mount/unmount toggle) | `runtime.mount`, `runtime.unmount` |
-| Theme toggle | `styler.resolve` (full re-resolve), `styler.sheet.insert.hit` |
+| Section                          | Counters it touches                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Stats` (24 cards)               | `styler.resolve`, `unistyle.styles`, `runtime.mountChild`                                                                                                                                                                                                                                                                                                                                                                      |
+| `Rows` (100-row table + shuffle) | `runtime.mountFor.lisOps`, `runtime.mountChild`                                                                                                                                                                                                                                                                                                                                                                                |
+| `Form` (10 controlled fields)    | `reactivity.signalWrite`, `reactivity.effectRun`                                                                                                                                                                                                                                                                                                                                                                               |
+| `Modal` (mount/unmount toggle)   | `runtime.mount`, `runtime.unmount`                                                                                                                                                                                                                                                                                                                                                                                             |
+| Theme toggle                     | `reactivity.signalWrite`, `reactivity.computedRecompute`. Note: does NOT fire `styler.resolve` because this example uses raw `styled()` (no rocketstyle). `styler` only wraps the CSS resolver in a reactive computed when `$rocketstyle`/`$rocketstate` props are present — see `packages/ui-system/styler/src/styled.tsx`. A follow-up `perf-ui-components` example will exercise that path via real rocketstyle components. |
 
 ## Recording a journey
 

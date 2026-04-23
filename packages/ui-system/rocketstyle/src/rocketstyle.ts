@@ -21,7 +21,7 @@ import { getDimensionThemes, getTheme, getThemeByMode, getThemeFromChain } from 
 interface ViteMeta {
   readonly env?: { readonly DEV?: boolean }
 }
-declare const globalThis: { __pyreon_count__?: (name: string, n?: number) => void }
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 /**
  * Core rocketstyle component factory. Creates a fully-featured Pyreon component
@@ -98,7 +98,10 @@ const rocketComponent: RocketComponent = (options) => {
   // (dimension structure comes from .sizes()/.states()/.variants() chain,
   // not from runtime theme values). Cache them so 50 instances of the same
   // component definition skip the rebuild entirely.
-  const _dimensionsCache = new WeakMap<object, { keysMap: Record<string, unknown>; keywords: Record<string, true | undefined> }>()
+  const _dimensionsCache = new WeakMap<
+    object,
+    { keysMap: Record<string, unknown>; keywords: Record<string, true | undefined> }
+  >()
   const _reservedKeysCache = new WeakMap<object, string[]>()
 
   // Pre-compute merged key arrays once per definition (not per mount)
@@ -169,7 +172,7 @@ const rocketComponent: RocketComponent = (options) => {
     let dimResult = _dimensionsCache.get(initialDimensionThemes as object)
     if (dimResult) {
       if ((import.meta as ViteMeta).env?.DEV === true)
-        globalThis.__pyreon_count__?.('rocketstyle.dimensionsMap.hit')
+        _countSink.__pyreon_count__?.('rocketstyle.dimensionsMap.hit')
     } else {
       dimResult = getDimensionsMap({
         themes: initialDimensionThemes,
@@ -194,7 +197,7 @@ const rocketComponent: RocketComponent = (options) => {
     // --------------------------------------------------
     const $rocketstyleAccessor = () => {
       if ((import.meta as ViteMeta).env?.DEV === true)
-        globalThis.__pyreon_count__?.('rocketstyle.getTheme')
+        _countSink.__pyreon_count__?.('rocketstyle.getTheme')
       // Read theme + mode LAZILY via the getter-backed themeAttrs object.
       // Both reads are tracked when this accessor runs inside a reactive
       // scope (styler's effect), so theme swap / mode toggle re-runs the
@@ -208,7 +211,7 @@ const rocketComponent: RocketComponent = (options) => {
       const baseThemeHelper = ThemeManager.baseTheme
       if (baseThemeHelper.has(theme)) {
         if ((import.meta as ViteMeta).env?.DEV === true)
-          globalThis.__pyreon_count__?.('rocketstyle.localThemeManager.hit')
+          _countSink.__pyreon_count__?.('rocketstyle.localThemeManager.hit')
       } else {
         baseThemeHelper.set(theme, getThemeFromChain(options.theme, theme))
       }
@@ -217,7 +220,7 @@ const rocketComponent: RocketComponent = (options) => {
       const dimHelper = ThemeManager.dimensionsThemes
       if (dimHelper.has(theme)) {
         if ((import.meta as ViteMeta).env?.DEV === true)
-          globalThis.__pyreon_count__?.('rocketstyle.localThemeManager.hit')
+          _countSink.__pyreon_count__?.('rocketstyle.localThemeManager.hit')
       } else {
         dimHelper.set(theme, getDimensionThemes(theme, options))
       }
@@ -233,7 +236,7 @@ const rocketComponent: RocketComponent = (options) => {
       const modeBaseHelper = ThemeManager.modeBaseTheme[mode]
       if (modeBaseHelper.has(baseTheme)) {
         if ((import.meta as ViteMeta).env?.DEV === true)
-          globalThis.__pyreon_count__?.('rocketstyle.localThemeManager.hit')
+          _countSink.__pyreon_count__?.('rocketstyle.localThemeManager.hit')
       } else {
         modeBaseHelper.set(baseTheme, getThemeByMode(baseTheme, mode))
       }
@@ -242,7 +245,7 @@ const rocketComponent: RocketComponent = (options) => {
       const modeDimHelper = ThemeManager.modeDimensionTheme[mode]
       if (modeDimHelper.has(themes)) {
         if ((import.meta as ViteMeta).env?.DEV === true)
-          globalThis.__pyreon_count__?.('rocketstyle.localThemeManager.hit')
+          _countSink.__pyreon_count__?.('rocketstyle.localThemeManager.hit')
       } else {
         modeDimHelper.set(themes, getThemeByMode(themes, mode))
       }
@@ -297,7 +300,7 @@ const rocketComponent: RocketComponent = (options) => {
     let omitSet = _omitSetCache.get(RESERVED_STYLING_PROPS_KEYS)
     if (omitSet) {
       if ((import.meta as ViteMeta).env?.DEV === true)
-        globalThis.__pyreon_count__?.('rocketstyle.omitSet.hit')
+        _countSink.__pyreon_count__?.('rocketstyle.omitSet.hit')
     } else {
       omitSet = new Set([...RESERVED_STYLING_PROPS_KEYS, ...STATIC_OMIT_KEYS])
       _omitSetCache.set(RESERVED_STYLING_PROPS_KEYS, omitSet)

@@ -21,23 +21,23 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 
 ## Package Overview
 
-| Package                  | Description                                                                                                                                   |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@pyreon/reactivity`     | signal, computed, effect, onCleanup, batch, createSelector, createStore, untrack                                                              |
-| `@pyreon/core`           | VNode, h(), Fragment, lifecycle, context, JSX runtime, Suspense, ErrorBoundary, lazy(), Dynamic, cx(), splitProps, mergeProps, createUniqueId |
-| `@pyreon/runtime-dom`    | DOM renderer, mount, hydrateRoot, Transition, TransitionGroup, KeepAlive, SVG/MathML namespace, custom elements                                |
-| `@pyreon/compiler`       | JSX transform: Rust native (napi-rs, 3.7-8.9x faster) + JS fallback. `shouldWrap`, static hoisting, `_bind`, pure calls, spread templates   |
-| `@pyreon/runtime-server` | renderToString, renderToStream, Suspense 30s timeout, XSS-safe templates, For key markers                                                     |
-| `@pyreon/router`         | hash+history+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params                  |
-| `@pyreon/head`           | useHead, HeadProvider, renderWithHead                                                                                                         |
-| `@pyreon/server`         | createHandler (SSR), prerender (SSG), island(), middleware                                                                                    |
-| `@pyreon/vite-plugin`    | JSX transform + SSR dev middleware + signal-preserving HMR                                                                                    |
-| `@pyreon/react-compat`   | useState, useEffect, useMemo, lazy, Suspense shims                                                                                            |
-| `@pyreon/storybook`      | Storybook renderer — mount, render, and interact with Pyreon components                                                                       |
-| `@pyreon/typescript`     | TypeScript config presets: base, app (noEmit), lib (declarations)                                                                             |
-| `@pyreon/lint`           | Pyreon-specific linter — 59 rules, 12 categories, config files, watch mode, AST cache, LSP server                                             |
-| `@pyreon/test-utils`     | Testing utilities — initTestConfig, withThemeContext, getComputedTheme, renderProps, resolveRocketstyle, mountReactive, mountAndExpectOnce     |
-| `@pyreon/manifest`       | Private: type + `defineManifest` helper for per-package manifests that feed the doc + MCP generators (T2.1)                                    |
+| Package                  | Description                                                                                                                                             |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@pyreon/reactivity`     | signal, computed, effect, onCleanup, batch, createSelector, createStore, untrack                                                                        |
+| `@pyreon/core`           | VNode, h(), Fragment, lifecycle, context, JSX runtime, Suspense, ErrorBoundary, lazy(), Dynamic, cx(), splitProps, mergeProps, createUniqueId           |
+| `@pyreon/runtime-dom`    | DOM renderer, mount, hydrateRoot, Transition, TransitionGroup, KeepAlive, SVG/MathML namespace, custom elements                                         |
+| `@pyreon/compiler`       | JSX transform: Rust native (napi-rs, 3.7-8.9x faster) + JS fallback. `shouldWrap`, static hoisting, `_bind`, pure calls, spread templates               |
+| `@pyreon/runtime-server` | renderToString, renderToStream, Suspense 30s timeout, XSS-safe templates, For key markers                                                               |
+| `@pyreon/router`         | hash+history+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params                           |
+| `@pyreon/head`           | useHead, HeadProvider, renderWithHead                                                                                                                   |
+| `@pyreon/server`         | createHandler (SSR), prerender (SSG), island(), middleware                                                                                              |
+| `@pyreon/vite-plugin`    | JSX transform + SSR dev middleware + signal-preserving HMR                                                                                              |
+| `@pyreon/react-compat`   | useState, useEffect, useMemo, lazy, Suspense shims                                                                                                      |
+| `@pyreon/storybook`      | Storybook renderer — mount, render, and interact with Pyreon components                                                                                 |
+| `@pyreon/typescript`     | TypeScript config presets: base, app (noEmit), lib (declarations)                                                                                       |
+| `@pyreon/lint`           | Pyreon-specific linter — 59 rules, 12 categories, config files, watch mode, AST cache, LSP server                                                       |
+| `@pyreon/test-utils`     | Testing utilities — initTestConfig, withThemeContext, getComputedTheme, renderProps, resolveRocketstyle, mountReactive, mountAndExpectOnce              |
+| `@pyreon/manifest`       | Private: type + `defineManifest` helper for per-package manifests that feed the doc + MCP generators (T2.1)                                             |
 | `@pyreon/perf-harness`   | Private: dev-time counter registry + snapshot/diff/record API. Framework packages emit via `globalThis.__pyreon_count__?.(name)` — zero import coupling |
 
 ### UI System (Component Library)
@@ -181,9 +181,9 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 
 ### Zero (Full-Stack Meta-Framework)
 
-| Package        | Description                                                                                                                                       |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@pyreon/zero` | Full-stack meta-framework: file-system routing, SSR/SSG/ISR/SPA, API routes, server actions, theme, fonts, image optimization, SEO, adapters      |
+| Package        | Description                                                                                                                                  |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@pyreon/zero` | Full-stack meta-framework: file-system routing, SSR/SSG/ISR/SPA, API routes, server actions, theme, fonts, image optimization, SEO, adapters |
 
 #### @pyreon/zero — Key Features
 
@@ -330,16 +330,17 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 
   **Pattern × bundler tree-shake matrix.** Each combination has a regression test backing it; "tree-shaken" means the warning string is absent from the prod bundle, "runtime-gated" means the string is retained as data but the warn never fires:
 
-  | Source pattern | Vite prod | Raw esbuild prod | Test |
-  | --- | --- | --- | --- |
-  | `if (!import.meta.env?.DEV) return` (inline early-return) | tree-shaken | tree-shaken | `flow/src/tests/integration.test.ts` (esbuild) |
-  | `const __DEV__ = import.meta.env?.DEV === true; if (__DEV__) console.warn(...)` (const + simple if) | tree-shaken | mostly tree-shaken | `runtime-dom/src/tests/dev-gate-treeshake.test.ts` (Vite) |
-  | `const __DEV__ = ...; __DEV__ && cond && console.warn(...)` (const + chained &&) | tree-shaken | runtime-gated only | `runtime-dom/src/tests/dev-gate-treeshake.test.ts` (Vite + non-Vite runtime smoke) |
-  | `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'` | dead code in browser, regardless of bundler | dead code in browser | `pyreon/no-process-dev-gate` lint rule |
+  | Source pattern                                                                                      | Vite prod                                   | Raw esbuild prod     | Test                                                                               |
+  | --------------------------------------------------------------------------------------------------- | ------------------------------------------- | -------------------- | ---------------------------------------------------------------------------------- |
+  | `if (!import.meta.env?.DEV) return` (inline early-return)                                           | tree-shaken                                 | tree-shaken          | `flow/src/tests/integration.test.ts` (esbuild)                                     |
+  | `const __DEV__ = import.meta.env?.DEV === true; if (__DEV__) console.warn(...)` (const + simple if) | tree-shaken                                 | mostly tree-shaken   | `runtime-dom/src/tests/dev-gate-treeshake.test.ts` (Vite)                          |
+  | `const __DEV__ = ...; __DEV__ && cond && console.warn(...)` (const + chained &&)                    | tree-shaken                                 | runtime-gated only   | `runtime-dom/src/tests/dev-gate-treeshake.test.ts` (Vite + non-Vite runtime smoke) |
+  | `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`                           | dead code in browser, regardless of bundler | dead code in browser | `pyreon/no-process-dev-gate` lint rule                                             |
 
   Vite is Pyreon's primary supported bundler. Non-Vite consumers (webpack, bunchee, raw esbuild bundles) may see dev-warning strings retained as data when the source uses the chained `&&` form, but runtime behavior is still correct — the `import.meta.env?.DEV === true` gate evaluates to `false` when `.DEV` is undefined, so warnings don't fire. Only a small bundle-size cost.
 
   **Why test runtime-dom with Vite (not raw esbuild)**: raw `esbuild --minify` cannot propagate a module-scope `const __DEV__` through chained `&&` patterns. Pyreon's runtime-dom uses that const pattern across multiple files. Raw esbuild is the wrong baseline for testing those files — Vite's full pipeline (Rolldown + `import.meta.env` replacement + tree-shake passes) is what consumers actually run. The flow test uses the inline early-return form and so works under raw esbuild; the runtime-dom test uses Vite's `build()` API to match the consumer pipeline.
+
 - No D3 — pan/zoom via pointer events + CSS transforms
 - **Peer dep**: `@pyreon/runtime-dom` is required because the JSX templates emit `_tpl()` calls — declare it in consumer apps' deps
 - **MCP api-reference is manifest-driven (T2.5.1)**: the flow region in `packages/tools/mcp/src/api-reference.ts` regenerates from the same manifest's `api[]`. Eight entries today (`createFlow`, `useFlow`, `Flow`, `Background`, `Controls`, `MiniMap`, `Handle`, `Panel`) — a strict superset of the previous hand-written surface, covering all child components. First real consumer of the marker-based `<gen-docs:api-reference:start/end @pyreon/<name>>` region protocol — `query` / `form` / `hooks` flip to the same protocol in follow-up PRs as their manifests are enriched to MCP density.
@@ -460,7 +461,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - `pendingComponent` per route — shown while loader runs, with `pendingMs` (delay before showing) and `pendingMinMs` (minimum display time). Signal-based state machine: hidden → pending → ready
 - `validateSearch` per route — transform raw query strings into typed values. Accepts any `(raw: Record<string, string>) => T` function — works with Zod `.parse`, Valibot, or plain functions. Result available on `route.search` and via `useValidatedSearch<T>()`
 - `useValidatedSearch<T>()` — reactive accessor for validated search params with structural sharing (shallow-equal check prevents re-renders when unrelated query params change)
-- **Loader cache** — key-based caching with dedup and TTL. `loaderKey: ({ params }) => \`user-${params.id}\`` controls cache identity. `gcTime` (default 5min) controls expiry. `router.invalidateLoader(key?)` clears cache entries. In-flight dedup prevents duplicate requests for the same key. SWR routes bypass cache for revalidation.
+- **Loader cache** — key-based caching with dedup and TTL. `loaderKey: ({ params }) => \`user-${params.id}\``controls cache identity.`gcTime`(default 5min) controls expiry.`router.invalidateLoader(key?)` clears cache entries. In-flight dedup prevents duplicate requests for the same key. SWR routes bypass cache for revalidation.
 
 ### @pyreon/hooks
 
@@ -536,11 +537,11 @@ View Transitions API integration: route changes wrapped in `document.startViewTr
 
 **What `await router.push()` / `.replace()` waits for** — the ViewTransition object exposes three promises, and picking the wrong one is easy to re-break:
 
-| Promise | Resolves when | Router awaits? |
-| --- | --- | --- |
-| `updateCallbackDone` | Callback (DOM commit) finished; new state is live | ✅ yes |
-| `ready` | Snapshot captured, pseudo-elements ready for animation | no — just `.catch()` |
-| `finished` | Full animation completed (typically 200-300ms) | no — just `.catch()` |
+| Promise              | Resolves when                                          | Router awaits?       |
+| -------------------- | ------------------------------------------------------ | -------------------- |
+| `updateCallbackDone` | Callback (DOM commit) finished; new state is live      | ✅ yes               |
+| `ready`              | Snapshot captured, pseudo-elements ready for animation | no — just `.catch()` |
+| `finished`           | Full animation completed (typically 200-300ms)         | no — just `.catch()` |
 
 The router awaits `updateCallbackDone` so callers can inspect the new route immediately after `await router.push()`. It does NOT wait for `.finished` because blocking every programmatic navigation on a 200-300ms animation is unacceptable. `.ready` + `.finished` get empty `.catch()` handlers so their `AbortError: Transition was skipped` rejections (fired when a newer navigation interrupts an in-flight transition) don't leak as unhandled promise rejections.
 
@@ -579,13 +580,14 @@ Template emission: JSX element trees with ≥1 DOM element emit `_tpl()` + `_bin
 Supports mixed element+expression children (via `childNodes[]` indexing), multiple expressions, and fragment inlining.
 Reactive text uses `document.createTextNode()` + `.data` (not `.textContent`).
 Per-text-node independent `_bind()`: each text node gets its own `_bind()` call for fine-grained reactivity (instead of grouping all bindings).
-Pure static call detection: 40+ functions treated as pure (Math.*, JSON.*, Object.keys/values/entries, Array.isArray, etc.) — not wrapped in reactive getters.
+Pure static call detection: 40+ functions treated as pure (Math._, JSON._, Object.keys/values/entries, Array.isArray, etc.) — not wrapped in reactive getters.
 Spread props on root element: when a root element has `{...props}`, emit `_tpl()` + `_applyProps()` instead of falling back to `h()` calls.
 Reactive props inlining: the compiler auto-detects `const` variables derived from `props.*` or `splitProps` results and inlines them at JSX use sites. `const x = props.y ?? 'default'; return <div>{x}</div>` compiles to `_bind(() => { t.data = (props.y ?? 'default') })` — fully reactive. Transitive resolution is fully AST-based: `collect_prop_derived_idents` walks `IdentifierReference` nodes in the expression subtree (never string-scans source text). `const a = props.x; const b = a + 1` inlines `b` as `((props.x) + 1)`. Only `const` is tracked (`let`/`var` are mutable, unsafe to inline). Non-JSX usage (e.g., `console.log(x)`) stays static (uses captured value). **Circular references are safe**: cycle detection via `resolving` set breaks infinite recursion, leaving the cyclic identifier as-is (falls back to captured const value at runtime).
 
 ### Context providing pattern
 
 Two context types:
+
 - `createContext<T>(default)` — static context, `useContext()` returns `T`, safe to destructure
 - `createReactiveContext<T>(default)` — reactive context, `useContext()` returns `() => T`, must call to read
 
@@ -593,6 +595,7 @@ Two context types:
 Low-level: `pushContext(new Map([[ctx.id, value]]))` + `onUnmount(() => popContext())`.
 
 For reactive values (mode, locale, etc.), always use `createReactiveContext`:
+
 ```tsx
 const ModeCtx = createReactiveContext<'light' | 'dark'>('light')
 // Provider: provide(ModeCtx, () => modeSignal())
@@ -659,11 +662,12 @@ Framework packages emit named call counters for perf-driven debugging (real-app-
 
 ```ts
 // In a framework package's hot path — NO import from @pyreon/perf-harness.
-interface ViteMeta { readonly env?: { readonly DEV?: boolean } }
+interface ViteMeta {
+  readonly env?: { readonly DEV?: boolean }
+}
 declare const globalThis: { __pyreon_count__?: (name: string, n?: number) => void }
 
-if ((import.meta as ViteMeta).env?.DEV === true)
-  globalThis.__pyreon_count__?.('styler.resolve')
+if ((import.meta as ViteMeta).env?.DEV === true) globalThis.__pyreon_count__?.('styler.resolve')
 ```
 
 - **Zero cross-package coupling.** Framework packages (styler, unistyle, rocketstyle, runtime-dom, reactivity, router) are published to npm; they must not depend on the private `@pyreon/perf-harness` package. The global sink lets them emit without an import.

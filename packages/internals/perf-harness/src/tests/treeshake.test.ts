@@ -91,7 +91,8 @@ async function bundleProd(entry: string): Promise<string> {
         rollupOptions: {
           // Externalise every workspace dep — we want to see THIS file's
           // strings, not its downstream consumers'.
-          external: (id) => id.startsWith('@pyreon/') || !id.startsWith('.') && !path.isAbsolute(id),
+          external: (id) =>
+            id.startsWith('@pyreon/') || (!id.startsWith('.') && !path.isAbsolute(id)),
         },
       },
     })

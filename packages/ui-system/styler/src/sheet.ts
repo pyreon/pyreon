@@ -12,7 +12,7 @@ import { clearNormCache } from './resolve'
 interface ViteMeta {
   readonly env?: { readonly DEV?: boolean }
 }
-declare const globalThis: { __pyreon_count__?: (name: string, n?: number) => void }
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 const PREFIX = 'pyr'
 const ATTR = 'data-pyreon-styler'
@@ -207,13 +207,13 @@ export class StyleSheet {
    */
   insert(cssText: string, _unused = false, insertLayer?: string): string {
     if ((import.meta as ViteMeta).env?.DEV === true)
-      globalThis.__pyreon_count__?.('styler.sheet.insert')
+      _countSink.__pyreon_count__?.('styler.sheet.insert')
     // Fast path: skip hash computation on repeated insertions of same CSS text
     const icKey = insertLayer ? `${cssText}\0L:${insertLayer}` : cssText
     const icHit = this.insertCache.get(icKey)
     if (icHit) {
       if ((import.meta as ViteMeta).env?.DEV === true)
-        globalThis.__pyreon_count__?.('styler.sheet.insert.hit')
+        _countSink.__pyreon_count__?.('styler.sheet.insert.hit')
       return icHit
     }
 
@@ -240,7 +240,7 @@ export class StyleSheet {
     // Apply @layer wrapping — per-insert layer takes precedence over sheet-level layer.
     // In SSR, always apply layers (output goes to real browsers).
     // In client, skip if @layer isn't supported (e.g. happy-dom in tests).
-    const layerName = (this.isSSR || this.supportsLayer) ? (insertLayer ?? this.layer) : undefined
+    const layerName = this.isSSR || this.supportsLayer ? (insertLayer ?? this.layer) : undefined
     const finalRules = layerName ? rules.map((r) => `@layer ${layerName}{${r}}`) : rules
 
     if (this.isSSR) {

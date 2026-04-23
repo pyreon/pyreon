@@ -15,16 +15,23 @@ Counter writes are gated at framework call sites with `import.meta.env?.DEV === 
 Framework packages (styler, unistyle, router, …) are PUBLISHED to npm and must not depend on this private package — it would break npm install for external consumers. Instead, they emit through a dev-only global sink:
 
 ```ts
-// Inside a framework package (e.g. styler/src/resolve.ts) — NO import.
-declare const globalThis: {
+// Inside a framework package (e.g. styler/src/resolve.ts) — NO import from
+// @pyreon/perf-harness.
+interface ViteMeta { readonly env?: { readonly DEV?: boolean } }
+const _countSink = globalThis as {
   __pyreon_count__?: (name: string, n?: number) => void
 }
 
 export function resolve(...) {
-  if (import.meta.env?.DEV === true) globalThis.__pyreon_count__?.('styler.resolve')
+  if ((import.meta as ViteMeta).env?.DEV === true)
+    _countSink.__pyreon_count__?.('styler.resolve')
   // ...
 }
 ```
+
+> `const _countSink = globalThis as T` is a type-only cast — zero runtime cost,
+> tree-shakes out of prod entirely. We avoid `declare const globalThis: { ... }`
+> because that trips the `no-shadow-restricted-names` lint rule.
 
 `@pyreon/perf-harness` publishes `_count` onto `globalThis.__pyreon_count__` on `install()` / `enable()`, and removes it on `disable()`. Until then the `?.` short-circuits — counter bookkeeping costs nothing, and there is no import-time coupling.
 
@@ -64,27 +71,32 @@ __pyreon_perf__.record('nav', () => router.push('/x'))
 
 ## API
 
-| Export | Purpose |
-| --- | --- |
-| `_count(name, n?)` | Increment a counter. No-op when disabled. Guard at call site. |
-| `_reset()` | Clear all counters. Does not change the enabled flag. |
-| `_snapshot()` | Materialise counter state as a plain object. |
-| `_enable()` | Enable counter writes + publish `globalThis.__pyreon_count__` sink. |
-| `_disable()` | Disable counter writes + remove the sink. |
-| `_isEnabled()` | Read current enabled state. |
-| `perfHarness` | Object bundling all of the above + `record`, `diff`, `formatDiff`. |
-| `install()` | `_enable()` + attach full API to `globalThis.__pyreon_perf__`. |
-| `uninstall()` | Remove the `__pyreon_perf__` global (writes stay on). |
-| `diffSnapshots(a,b)` | Structured diff of two snapshots. |
-| `formatDiff(diff)` | Fixed-width table for printing to console / overlay. |
+| Export               | Purpose                                                             |
+| -------------------- | ------------------------------------------------------------------- |
+| `_count(name, n?)`   | Increment a counter. No-op when disabled. Guard at call site.       |
+| `_reset()`           | Clear all counters. Does not change the enabled flag.               |
+| `_snapshot()`        | Materialise counter state as a plain object.                        |
+| `_enable()`          | Enable counter writes + publish `globalThis.__pyreon_count__` sink. |
+| `_disable()`         | Disable counter writes + remove the sink.                           |
+| `_isEnabled()`       | Read current enabled state.                                         |
+| `perfHarness`        | Object bundling all of the above + `record`, `diff`, `formatDiff`.  |
+| `install()`          | `_enable()` + attach full API to `globalThis.__pyreon_perf__`.      |
+| `uninstall()`        | Remove the `__pyreon_perf__` global (writes stay on).               |
+| `diffSnapshots(a,b)` | Structured diff of two snapshots.                                   |
+| `formatDiff(diff)`   | Fixed-width table for printing to console / overlay.                |
 
-## Scope & roadmap
+## What's shipped
 
-PR 1 (this one): counter API, snapshot/diff/reset, install/uninstall, record. Instrumentation for `@pyreon/styler` and `@pyreon/unistyle`.
+- Counter API: `_count`, `_snapshot`, `_reset`, `_enable`, `_disable`, `_isEnabled`
+- Harness API: `perfHarness.snapshot / reset / record / diff / formatDiff / overlay`, plus `install()` / `uninstall()` for the window global
+- Overlay — shadow-DOM floating panel, Ctrl+Shift+P toggle, reset/record/export buttons
+- Instrumentation across 6 layers / 22 counters (see `COUNTERS.md`)
+- `examples/perf-dashboard` — real-app-shape stress rig
+- `scripts/perf/record.ts` + `scripts/perf/diff.ts` — Playwright recorder + regression comparator
+- `.github/workflows/perf.yml` — advisory CI (manual + `perf`-labelled PRs + nightly)
 
-Planned in follow-up PRs:
+## Planned follow-ups
 
-- Overlay (`perfHarness.overlay()`) — in-page HTML panel showing live counters
-- Instrumentation for `@pyreon/rocketstyle`, `@pyreon/runtime-dom`, `@pyreon/router`
-- `examples/perf-*` stress apps (dashboard, list, form, realtime, route)
-- `scripts/perf/record.ts` + `scripts/perf/diff.ts` — Playwright-driven journeys + CI regression gate
+- `perf-list`, `perf-form`, `perf-realtime`, `perf-route` — more stress-rig shapes when `perf-dashboard` surfaces the next class of regressions
+- Promote `perf.yml` to a required check once baselines are trusted
+- `@pyreon/compiler` counters — build-time, different instrumentation shape

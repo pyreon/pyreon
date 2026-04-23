@@ -6,7 +6,10 @@
 import { describe, expect, it } from 'vitest'
 import { diffRecords, type RecordFile } from '../../../../../scripts/perf/diff'
 
-function makeRecord(counters: Record<string, number>, extras: Partial<RecordFile> = {}): RecordFile {
+function makeRecord(
+  counters: Record<string, number>,
+  extras: Partial<RecordFile> = {},
+): RecordFile {
   return {
     sha: 'deadbeef',
     app: 'perf-dashboard',

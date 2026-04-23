@@ -10,7 +10,7 @@ import { notifySubscribers, trackSubscriber } from './tracking'
 interface ViteMeta {
   readonly env?: { readonly DEV?: boolean }
 }
-declare const globalThis: { __pyreon_count__?: (name: string, n?: number) => void }
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 export interface SignalDebugInfo<T> {
   /** Signal name (set via options or inferred) */
@@ -87,7 +87,7 @@ function _peek(this: SignalFn<unknown>) {
 function _set(this: SignalFn<unknown>, newValue: unknown) {
   if (Object.is(this._v, newValue)) return
   if ((import.meta as ViteMeta).env?.DEV === true)
-    globalThis.__pyreon_count__?.('reactivity.signalWrite')
+    _countSink.__pyreon_count__?.('reactivity.signalWrite')
   const prev = this._v
   this._v = newValue
   if (isTracing()) _notifyTraceListeners(this as unknown as Signal<unknown>, prev, newValue)
@@ -155,7 +155,7 @@ function _debug(this: SignalFn<unknown>): SignalDebugInfo<unknown> {
  */
 export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
   if ((import.meta as ViteMeta).env?.DEV === true)
-    globalThis.__pyreon_count__?.('reactivity.signalCreate')
+    _countSink.__pyreon_count__?.('reactivity.signalCreate')
   // The read function is the only per-signal closure.
   // It doubles as the SubscriberHost (_s property) for trackSubscriber.
   const read = ((...args: unknown[]) => {

@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/perf-harness",
-  "private": true,
   "version": "0.13.1",
+  "private": true,
   "description": "Internal dev-time instrumentation for Pyreon framework perf work — call counters, snapshot/diff, window global",
   "license": "MIT",
   "type": "module",

@@ -93,7 +93,7 @@ export function formatMarkdown(
 | metric | baseline | current | Δ | % |
 | --- | ---: | ---: | ---: | ---: |
 | wall-clock (ms) | ${baseline.medianWallMs} | ${current.medianWallMs} | ${signed(diff.wallMsDelta)} | ${pctOf(baseline.medianWallMs, diff.wallMsDelta)} |
-| heap (MB) | ${mb(baseline.medianHeapBytes)} | ${mb(current.medianHeapBytes)} | ${signed(Math.round(diff.heapBytesDelta / 1024 / 1024 * 10) / 10)} | ${pctOf(baseline.medianHeapBytes, diff.heapBytesDelta)} |
+| heap (MB) | ${mb(baseline.medianHeapBytes)} | ${mb(current.medianHeapBytes)} | ${signed(Math.round((diff.heapBytesDelta / 1024 / 1024) * 10) / 10)} | ${pctOf(baseline.medianHeapBytes, diff.heapBytesDelta)} |
 `
 
   const counterRows = diff.entries
@@ -105,15 +105,16 @@ export function formatMarkdown(
         } |`,
     )
 
-  const counters = counterRows.length > 0
-    ? `
+  const counters =
+    counterRows.length > 0
+      ? `
 ## counters
 
 | metric | baseline | current | Δ | % |
 | --- | ---: | ---: | ---: | ---: |
 ${counterRows.join('\n')}
 `
-    : '\n_(no counter deltas)_\n'
+      : '\n_(no counter deltas)_\n'
 
   const verdict = diff.regressed
     ? `\n**${diff.regressions.length} counter(s) regressed past threshold.** 🔴\n`
@@ -161,7 +162,9 @@ function parseArgs(argv: string[]): {
     }
   }
   if (positional.length < 2) {
-    console.error('usage: bun run perf:diff <baseline.json> <current.json> [--threshold 0.10] [--output summary.md]')
+    console.error(
+      'usage: bun run perf:diff <baseline.json> <current.json> [--threshold 0.10] [--output summary.md]',
+    )
     process.exit(1)
   }
   return {

@@ -79,12 +79,18 @@ jobs:
         run: bunx playwright install --with-deps chromium
 
       - name: Record
+        # Dev mode only — preview (prod build) tree-shakes the counter
+        # emit call tree, so counters stay at zero and `perf:record` exits 4
+        # with "harness not installed" because `install()` in main.tsx is
+        # gated on `import.meta.env.DEV`. The tree-shake guarantee is the
+        # correct design; we just need to record against a DEV build where
+        # both the gate opens and the emits fire.
         run: |
           bun run perf:record \
             --app ${{ matrix.app }} \
             --journey ${{ matrix.journey }} \
             --runs 5 \
-            --mode preview
+            --mode dev
 
       # Resolve short SHA so artifact names match `perf:record` output.
       - name: Compute SHA

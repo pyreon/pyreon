@@ -69,9 +69,7 @@ export function formatDiff(diff: CounterDiff): string {
     e.pct === null ? '—' : `${e.pct >= 0 ? '+' : ''}${e.pct.toFixed(1)}%`,
   ])
 
-  const widths = headers.map((h, i) =>
-    Math.max(h.length, ...rows.map((r) => (r[i] ?? '').length)),
-  )
+  const widths = headers.map((h, i) => Math.max(h.length, ...rows.map((r) => (r[i] ?? '').length)))
   const pad = (s: string, w: number) => s + ' '.repeat(Math.max(0, w - s.length))
   const line = (cells: string[]) => cells.map((c, i) => pad(c, widths[i] ?? 0)).join('  ')
 

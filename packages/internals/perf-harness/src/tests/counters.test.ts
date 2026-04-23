@@ -1,12 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import {
-  _count,
-  _disable,
-  _enable,
-  _isEnabled,
-  _reset,
-  _snapshot,
-} from '../counters'
+import { _count, _disable, _enable, _isEnabled, _reset, _snapshot } from '../counters'
 
 beforeEach(() => {
   _reset()

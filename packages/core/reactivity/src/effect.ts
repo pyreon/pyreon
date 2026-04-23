@@ -5,7 +5,7 @@ import { _restoreActiveEffect, _setActiveEffect, setDepsCollector, withTracking 
 interface ViteMeta {
   readonly env?: { readonly DEV?: boolean }
 }
-declare const globalThis: { __pyreon_count__?: (name: string, n?: number) => void }
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 export interface Effect {
   dispose(): void
@@ -96,7 +96,7 @@ export function effect(fn: () => (() => void) | void): Effect {
   const run = () => {
     if (disposed) return
     if ((import.meta as ViteMeta).env?.DEV === true)
-      globalThis.__pyreon_count__?.('reactivity.effectRun')
+      _countSink.__pyreon_count__?.('reactivity.effectRun')
     // Run previous cleanup before re-running
     runCleanup()
     try {

@@ -1,12 +1,5 @@
 import type { CounterName } from './counters'
-import {
-  _count,
-  _disable,
-  _enable,
-  _isEnabled,
-  _reset,
-  _snapshot,
-} from './counters'
+import { _count, _disable, _enable, _isEnabled, _reset, _snapshot } from './counters'
 import { type CounterDiff, diffSnapshots, formatDiff } from './diff'
 import { mountOverlay, type OverlayHandle, type OverlayOptions } from './overlay'
 
@@ -23,10 +16,7 @@ export interface PerfHarness {
 
   reset: () => void
   snapshot: () => Record<CounterName, number>
-  diff: (
-    before: Record<CounterName, number>,
-    after: Record<CounterName, number>,
-  ) => CounterDiff
+  diff: (before: Record<CounterName, number>, after: Record<CounterName, number>) => CounterDiff
   formatDiff: (diff: CounterDiff) => string
 
   /**

@@ -12,7 +12,7 @@ import type { DefaultTheme } from './ThemeProvider'
 interface ViteMeta {
   readonly env?: { readonly DEV?: boolean }
 }
-declare const globalThis: { __pyreon_count__?: (name: string, n?: number) => void }
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 /**
  * Props passed to interpolation functions inside tagged templates.
@@ -60,8 +60,7 @@ export const resolve = (
   values: Interpolation[],
   props: Record<string, any>,
 ): string => {
-  if ((import.meta as ViteMeta).env?.DEV === true)
-    globalThis.__pyreon_count__?.('styler.resolve')
+  if ((import.meta as ViteMeta).env?.DEV === true) _countSink.__pyreon_count__?.('styler.resolve')
   // Tagged templates guarantee strings.length === values.length + 1,
   // so strings[0] and strings[i+1] are always defined — no ?? needed.
   let result = strings[0] as string

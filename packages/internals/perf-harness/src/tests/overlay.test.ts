@@ -36,9 +36,8 @@ describe('mountOverlay', () => {
     // Let rAF-driven render tick once.
     await new Promise<void>((r) => requestAnimationFrame(() => r()))
 
-    const root = (
-      document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement
-    ).shadowRoot!
+    const root = (document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement)
+      .shadowRoot!
     const rows = Array.from(root.querySelectorAll('tbody tr'))
     const names = rows.map((r) => r.querySelector('.name')?.textContent)
     expect(names).toEqual(['styler.resolve', 'runtime.mount', 'router.navigate'])
@@ -49,9 +48,8 @@ describe('mountOverlay', () => {
     _count('styler.resolve', 3)
     const handle = mountOverlay()
     await new Promise<void>((r) => requestAnimationFrame(() => r()))
-    const root = (
-      document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement
-    ).shadowRoot!
+    const root = (document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement)
+      .shadowRoot!
     ;(root.querySelector('.btn-reset') as HTMLButtonElement).click()
     await new Promise<void>((r) => requestAnimationFrame(() => r()))
     expect(root.querySelectorAll('tbody tr').length).toBe(0)
@@ -62,9 +60,8 @@ describe('mountOverlay', () => {
   it('close button hides without destroying', async () => {
     const handle = mountOverlay()
     await new Promise<void>((r) => requestAnimationFrame(() => r()))
-    const root = (
-      document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement
-    ).shadowRoot!
+    const root = (document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement)
+      .shadowRoot!
     ;(root.querySelector('.btn-close') as HTMLButtonElement).click()
     expect(handle.isVisible()).toBe(false)
     handle.show()
@@ -75,13 +72,9 @@ describe('mountOverlay', () => {
   it('ctrl+shift+p toggles visibility', async () => {
     const handle = mountOverlay({ visible: false })
     expect(handle.isVisible()).toBe(false)
-    window.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'P', ctrlKey: true, shiftKey: true }),
-    )
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'P', ctrlKey: true, shiftKey: true }))
     expect(handle.isVisible()).toBe(true)
-    window.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'P', ctrlKey: true, shiftKey: true }),
-    )
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'P', ctrlKey: true, shiftKey: true }))
     expect(handle.isVisible()).toBe(false)
     handle.destroy()
   })
@@ -91,9 +84,8 @@ describe('mountOverlay', () => {
     _count('router.navigate', 1)
     const handle = mountOverlay()
     await new Promise<void>((r) => requestAnimationFrame(() => r()))
-    const root = (
-      document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement
-    ).shadowRoot!
+    const root = (document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement)
+      .shadowRoot!
     const chips = Array.from(root.querySelectorAll('.chip')) as HTMLButtonElement[]
     const routerChip = chips.find((c) => c.textContent === 'router')!
     routerChip.click()
