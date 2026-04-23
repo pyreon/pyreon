@@ -18,11 +18,12 @@ import { mount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { _disable, _reset } from '../counters'
 import { install, perfHarness, uninstall } from '../harness'
+import { resetDom } from './_dom-setup'
 
 beforeEach(() => {
   _reset()
   install()
-  document.body.innerHTML = '<div id="root"></div>'
+  resetDom()
 })
 
 afterEach(() => {
@@ -67,15 +68,14 @@ describe('determinism', () => {
     const runOnce = async () => {
       const N = 50
       const items = signal(Array.from({ length: N }, (_, i) => i))
-      const root = document.getElementById('root')!
-      document.body.innerHTML = '<div id="root"></div>'
+      const root = resetDom()
       const dispose = mount(
         h(For, {
           each: () => items(),
           by: (n: number) => n,
           children: (n: number) => h('li', null, String(n)),
         }),
-        document.getElementById('root') ?? root,
+        root,
       )
       items.set([...items()].reverse())
       dispose()

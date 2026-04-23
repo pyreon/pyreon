@@ -18,58 +18,14 @@
  * Run with:  bun run scripts/perf/verify-overlay.ts
  * Exits 0 on success, non-zero with a clear message otherwise.
  */
-import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Page } from 'playwright'
+import { startServer as startViteServer } from './server'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(HERE, '../..')
 const APP = 'perf-dashboard'
-
-async function startServer(): Promise<{ url: string; stop: () => Promise<void> }> {
-  const cwd = resolve(REPO_ROOT, 'examples', APP)
-  if (!existsSync(resolve(cwd, 'package.json'))) {
-    throw new Error(`example not found: examples/${APP}`)
-  }
-  const proc = spawn('bun', ['run', 'dev'], {
-    cwd,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    env: process.env,
-  })
-  return new Promise((resolvePromise, rejectPromise) => {
-    let resolved = false
-    const timer = setTimeout(() => {
-      if (!resolved) {
-        proc.kill('SIGTERM')
-        rejectPromise(new Error(`server start timeout (30s)`))
-      }
-    }, 30_000)
-    const onData = (chunk: Buffer) => {
-      const line = chunk.toString()
-      process.stderr.write(`[${APP}] ${line}`)
-      const ESC = String.fromCharCode(0x1b)
-      const ansiRe = new RegExp(`${ESC}\\[[0-9;]*[a-zA-Z]`, 'g')
-      const stripped = line.replace(ansiRe, '')
-      const match = /Local:\s+(https?:\/\/[^\s]+)\//i.exec(stripped)
-      if (match && !resolved) {
-        resolved = true
-        clearTimeout(timer)
-        resolvePromise({
-          url: match[1] as string,
-          stop: () =>
-            new Promise<void>((resolveStop) => {
-              proc.once('exit', () => resolveStop())
-              proc.kill('SIGTERM')
-            }),
-        })
-      }
-    }
-    proc.stdout?.on('data', onData)
-    proc.stderr?.on('data', onData)
-  })
-}
 
 async function assert(cond: unknown, message: string): Promise<void> {
   if (!cond) throw new Error(`assertion failed: ${message}`)
@@ -77,7 +33,7 @@ async function assert(cond: unknown, message: string): Promise<void> {
 }
 
 async function main() {
-  const server = await startServer()
+  const server = await startViteServer({ repoRoot: REPO_ROOT, app: APP, mode: 'dev' })
   const browser = await chromium.launch({ headless: true })
   const context = await browser.newContext()
   const page = await context.newPage()

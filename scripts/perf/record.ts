@@ -18,11 +18,12 @@
  *   3  — browser navigation or journey threw
  *   4  — harness not installed (counters empty — means the app forgot `install()`)
  */
-import { execSync, spawn } from 'node:child_process'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { execSync } from 'node:child_process'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Page } from 'playwright'
+import { type ServerHandle, startServer as startViteServer, type ServerMode } from './server'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(HERE, '../..')
@@ -67,84 +68,6 @@ function parseArgs(argv: string[]): Args {
   }
   args.outDir = args.outDir ?? resolve(REPO_ROOT, 'perf-results')
   return args as Args
-}
-
-// ── Example server ───────────────────────────────────────────────────────────
-
-interface ServerHandle {
-  url: string
-  stop: () => Promise<void>
-}
-
-async function startServer(app: string, mode: 'dev' | 'preview'): Promise<ServerHandle> {
-  const cwd = resolve(REPO_ROOT, 'examples', app)
-  if (!existsSync(resolve(cwd, 'package.json'))) {
-    console.error(`[record] example not found: examples/${app}`)
-    process.exit(1)
-  }
-
-  if (mode === 'preview') {
-    // Preview mode: build once, then serve the built artifacts.
-    console.log(`[record] building examples/${app}`)
-    execSync('bun run build', { cwd, stdio: 'inherit' })
-  }
-
-  const proc = spawn('bun', ['run', mode], {
-    cwd,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    env: process.env,
-  })
-
-  return new Promise<ServerHandle>((resolvePromise, rejectPromise) => {
-    let resolved = false
-    const timer = setTimeout(() => {
-      if (!resolved) {
-        proc.kill('SIGTERM')
-        rejectPromise(new Error(`[record] server start timeout (30s) for ${app}/${mode}`))
-      }
-    }, 30_000)
-
-    const onData = (chunk: Buffer) => {
-      const line = chunk.toString()
-      process.stderr.write(`[${app}:${mode}] ${line}`)
-      // Strip ANSI colour codes — Vite in CI (non-TTY) still emits them,
-      // which breaks the `Local:` regex because the word gets wrapped in
-      // `[1m...[22m`. A local TTY tends to hide this because terminal output
-      // is filtered before our regex sees it. Caught by the first real CI
-      // run (server-start timeout exit 2 across every matrix job).
-      const stripped = line.replace(/\[[0-9;]*[a-zA-Z]/g, '')
-      const match = /Local:\s+(https?:\/\/[^\s]+)\//i.exec(stripped)
-      if (match && !resolved) {
-        resolved = true
-        clearTimeout(timer)
-        resolvePromise({
-          url: match[1] as string,
-          stop: () =>
-            new Promise<void>((resolveStop) => {
-              proc.once('exit', () => resolveStop())
-              proc.kill('SIGTERM')
-            }),
-        })
-      }
-    }
-
-    proc.stdout?.on('data', onData)
-    proc.stderr?.on('data', onData)
-    proc.once('error', (err) => {
-      if (!resolved) {
-        clearTimeout(timer)
-        rejectPromise(err)
-      }
-    })
-    proc.once('exit', (code) => {
-      if (!resolved) {
-        clearTimeout(timer)
-        rejectPromise(
-          new Error(`[record] server exited before ready: ${app}/${mode} (code=${code})`),
-        )
-      }
-    })
-  })
 }
 
 // ── Snapshot I/O over Playwright ─────────────────────────────────────────────
@@ -210,7 +133,11 @@ async function main() {
 
   let server: ServerHandle | null = null
   try {
-    server = await startServer(args.app, args.mode)
+    server = await startViteServer({
+      repoRoot: REPO_ROOT,
+      app: args.app,
+      mode: args.mode as ServerMode,
+    })
   } catch (err) {
     console.error(`[record] could not start server: ${String(err)}`)
     process.exit(2)

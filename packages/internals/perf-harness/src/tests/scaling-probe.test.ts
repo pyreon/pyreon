@@ -18,6 +18,7 @@ import { mount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { _disable, _reset } from '../counters'
 import { install, perfHarness, uninstall } from '../harness'
+import { resetDom } from './_dom-setup'
 
 beforeEach(() => {
   _reset()
@@ -59,8 +60,7 @@ function seededShuffle<T>(arr: T[], seed: number): T[] {
 }
 
 async function measureShuffleOps(N: number): Promise<number> {
-  document.body.innerHTML = '<div id="root"></div>'
-  const root = document.getElementById('root')!
+  const root = resetDom()
   const initial = Array.from({ length: N }, (_, i) => i)
   const items = signal(initial)
   const dispose = mount(
@@ -110,7 +110,7 @@ describe('runtime.mountFor.lisOps scaling', () => {
     ).toBeLessThan(25)
 
     // Log the actual numbers so the PR reviewer sees what "healthy" looks like.
-    // biome-ignore lint/suspicious/noConsole: intentional probe output
+    // oxlint-disable-next-line no-console
     console.log(
       `[scaling-probe] lisOps: 100→${ops100}, 500→${ops500}, 1000→${ops1000}; ` +
         `1000/100 = ${ratio1000over100.toFixed(2)}x (O(n log n) predicts ~15x)`,

@@ -40,13 +40,17 @@ describe('reactivity.signalCreate', () => {
 
 describe('reactivity.signalWrite', () => {
   it('fires for real writes and skips no-op writes via Object.is', async () => {
+    // Counter fires AFTER `if (Object.is(this._v, newValue)) return` in
+    // signal.ts — so writes that don't change the value are skipped.
+    // The identity-equal NaN / -0 / 0 edge cases aren't relevant here;
+    // we just need a sequence with a mix of real and no-op writes.
     const s = signal(0)
     const outcome = await perfHarness.record('writes', () => {
-      s.set(1) // fires
+      s.set(1) // fires — 0 !== 1
       s.set(1) // skipped — same value
-      s.set(2) // fires
-      s.update((n) => n + 1) // fires (3)
-      s.update((n) => n) // skipped — same value
+      s.set(2) // fires — 1 !== 2
+      s.set(s.peek()) // skipped — peek() returns 2, setting to 2 is a no-op
+      s.update((n) => n + 1) // fires — 2 !== 3
     })
     expect(outcome.after['reactivity.signalWrite']).toBe(3)
   })
@@ -57,8 +61,7 @@ describe('reactivity.effectRun', () => {
     const s = signal(0)
     const outcome = await perfHarness.record('effect-runs', () => {
       const e = effect(() => {
-        // biome-ignore lint/suspicious/noExplicitAny: reading the signal under tracking
-        s()
+        s() // read the signal to establish dependency
       })
       s.set(1)
       s.set(2)

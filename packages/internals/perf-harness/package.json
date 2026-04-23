@@ -22,9 +22,11 @@
   "devDependencies": {
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
+    "@pyreon/rocketstyle": "workspace:^",
     "@pyreon/router": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/styler": "workspace:^",
+    "@pyreon/test-utils": "workspace:^",
     "@pyreon/unistyle": "workspace:^",
     "happy-dom": "^20.8.3",
     "vitest": "^4.1.4"

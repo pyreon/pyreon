@@ -14,11 +14,12 @@ import { mount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { _disable, _reset } from '../counters'
 import { install, perfHarness, uninstall } from '../harness'
+import { resetDom } from './_dom-setup'
 
 beforeEach(() => {
   _reset()
   install()
-  document.body.innerHTML = '<div id="root"></div>'
+  resetDom()
 })
 
 afterEach(() => {
