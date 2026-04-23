@@ -100,6 +100,53 @@ const CreateTask = defineComponent(() => {
 })
 ```
 
+<Playground title="CRUD List from Schema" :height="260">
+// Mini feature — in-memory store, schema-driven list + create
+const tasks = signal([
+  { id: '1', title: 'Write docs', status: 'done' },
+  { id: '2', title: 'Ship feature', status: 'in-progress' },
+])
+const nextId = signal(3)
+
+const title = signal('')
+const status = signal('todo')
+
+const create = () => {
+  if (!title()) return
+  tasks.update(t => [...t, { id: String(nextId()), title: title(), status: status() }])
+  nextId.update(n => n + 1)
+  title.set('')
+}
+
+const remove = (id) => tasks.update(t => t.filter(x => x.id !== id))
+
+const color = (s) => s === 'done' ? '#4caf50' : s === 'in-progress' ? '#ff9800' : '#9e9e9e'
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('div', { style: { display: 'flex', gap: '6px', marginBottom: '10px' } },
+    h('input', { value: () => title(), onInput: (e) => title.set(e.target.value), placeholder: 'New task…', style: { flex: 1, padding: '6px 10px', border: '1px solid #ccc', borderRadius: '4px' } }),
+    h('select', { value: () => status(), onChange: (e) => status.set(e.target.value), style: { padding: '6px', border: '1px solid #ccc', borderRadius: '4px' } },
+      h('option', { value: 'todo' }, 'To Do'),
+      h('option', { value: 'in-progress' }, 'In Progress'),
+      h('option', { value: 'done' }, 'Done'),
+    ),
+    h('button', { onClick: create, style: { padding: '6px 14px', background: '#2196f3', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' } }, 'Create'),
+  ),
+  h('ul', { style: { listStyle: 'none', padding: 0, margin: 0 } },
+    () => tasks().map(t =>
+      h('li', { style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderBottom: '1px solid #eee' } },
+        h('span', { style: { width: '10px', height: '10px', borderRadius: '50%', background: color(t.status) } }),
+        h('span', { style: { flex: 1 } }, t.title),
+        h('span', { style: { fontSize: '12px', color: '#666' } }, t.status),
+        h('button', { onClick: () => remove(t.id), style: { border: 'none', background: 'transparent', cursor: 'pointer', color: '#f44336', fontSize: '16px' } }, '×'),
+      ),
+    ),
+  ),
+)
+mount(ui, app)
+</Playground>
+
 ## `defineFeature` Configuration
 
 The `defineFeature` function accepts a configuration object that drives all auto-generated hooks:
