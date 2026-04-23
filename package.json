@@ -30,6 +30,8 @@
     "bench:all": "bun scripts/bench/run-all.ts",
     "bench:compare": "bun scripts/bench/compare.ts",
     "bench:bundle-size": "bun scripts/bench/bundle-size.ts",
+    "perf:record": "bun scripts/perf/record.ts",
+    "perf:diff": "bun scripts/perf/diff.ts",
     "test:e2e": "bunx playwright test --project=e2e",
     "visual-test:capture": "bunx playwright test --project=visual",
     "visual-test:diff": "bun scripts/visual-test/diff.ts",

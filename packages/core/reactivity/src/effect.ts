@@ -1,6 +1,12 @@
 import { getCurrentScope } from './scope'
 import { _restoreActiveEffect, _setActiveEffect, setDepsCollector, withTracking } from './tracking'
 
+// Dev-time counter sink — see packages/internals/perf-harness for contract.
+interface ViteMeta {
+  readonly env?: { readonly DEV?: boolean }
+}
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 export interface Effect {
   dispose(): void
 }
@@ -32,6 +38,12 @@ export function onCleanup(fn: () => void): void {
     _cleanupCollector.push(fn)
   }
 }
+
+// Thread-local collector for nested effects — captures effect() calls made
+// inside another effect's fn() body so the parent can dispose them on
+// re-run / disposal. Without this, inner effects leak across outer
+// lifecycle boundaries (caught by cleanup-nested.test.ts).
+let _innerEffectCollector: Effect[] | null = null
 
 // Global error handler — called for unhandled errors thrown inside effects.
 // Defaults to console.error so silent failures are never swallowed.
@@ -65,8 +77,22 @@ export function effect(fn: () => (() => void) | void): Effect {
   const deps: Set<() => void>[] = []
 
   let cleanups: (() => void)[] | undefined
+  // Inner effects created during this effect's fn() body. Disposed on
+  // outer re-run (before the next fn()) and on outer dispose(). Without
+  // this, nested effects leak across outer lifecycle boundaries.
+  let innerEffects: Effect[] | null = null
 
   const runCleanup = () => {
+    if (innerEffects) {
+      for (const ie of innerEffects) {
+        try {
+          ie.dispose()
+        } catch (err) {
+          _errorHandler(err)
+        }
+      }
+      innerEffects = null
+    }
     if (cleanups) {
       for (const c of cleanups) {
         try {
@@ -89,8 +115,16 @@ export function effect(fn: () => (() => void) | void): Effect {
 
   const run = () => {
     if (disposed) return
+    if ((import.meta as ViteMeta).env?.DEV === true)
+      _countSink.__pyreon_count__?.('reactivity.effectRun')
     // Run previous cleanup before re-running
     runCleanup()
+    // Start a new inner-effect collection window. Effects created during
+    // fn() will push themselves into this array and be disposed on the
+    // next re-run or on dispose.
+    const outerCollector = _innerEffectCollector
+    const myInners: Effect[] = []
+    _innerEffectCollector = myInners
     try {
       cleanupLocalDeps(deps, run)
       setDepsCollector(deps)
@@ -105,7 +139,10 @@ export function effect(fn: () => (() => void) | void): Effect {
       _cleanupCollector = null
       setDepsCollector(null)
       _errorHandler(err)
+    } finally {
+      _innerEffectCollector = outerCollector
     }
+    if (myInners.length > 0) innerEffects = myInners
     // Notify scope after each reactive re-run (not the initial synchronous run)
     // so onUpdate hooks fire after the DOM has settled.
     if (!isFirstRun) scope?.notifyEffectRan()
@@ -122,8 +159,14 @@ export function effect(fn: () => (() => void) | void): Effect {
     },
   }
 
-  // Auto-register with the active EffectScope (if any)
-  getCurrentScope()?.add(e)
+  // If we're inside another effect's run, register with it so the outer
+  // disposes this inner automatically.
+  if (_innerEffectCollector !== null) {
+    _innerEffectCollector.push(e)
+  } else {
+    // Otherwise auto-register with the active EffectScope (if any)
+    getCurrentScope()?.add(e)
+  }
 
   return e
 }

@@ -170,6 +170,22 @@
         "vite": "^8.0.0",
       },
     },
+    "examples/perf-dashboard": {
+      "name": "@pyreon/example-perf-dashboard",
+      "version": "0.1.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/perf-harness": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/styler": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/vite-plugin": "workspace:*",
+        "typescript": "^6.0.2",
+        "vite": "^8.0.0",
+      },
+    },
     "examples/playground": {
       "name": "@pyreon/playground",
       "version": "0.0.2",
@@ -809,6 +825,24 @@
       "name": "@pyreon/manifest",
       "version": "0.13.1",
       "devDependencies": {
+        "vitest": "^4.1.4",
+      },
+    },
+    "packages/internals/perf-harness": {
+      "name": "@pyreon/perf-harness",
+      "version": "0.13.1",
+      "devDependencies": {
+        "@pyreon/compiler": "workspace:^",
+        "@pyreon/core": "workspace:^",
+        "@pyreon/elements": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/rocketstyle": "workspace:^",
+        "@pyreon/router": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
+        "@pyreon/styler": "workspace:^",
+        "@pyreon/test-utils": "workspace:^",
+        "@pyreon/unistyle": "workspace:^",
+        "happy-dom": "^20.8.3",
         "vitest": "^4.1.4",
       },
     },
@@ -1897,6 +1931,8 @@
 
     "@pyreon/example-app-showcase": ["@pyreon/example-app-showcase@workspace:examples/app-showcase"],
 
+    "@pyreon/example-perf-dashboard": ["@pyreon/example-perf-dashboard@workspace:examples/perf-dashboard"],
+
     "@pyreon/example-preact-compat": ["@pyreon/example-preact-compat@workspace:examples/preact-compat"],
 
     "@pyreon/example-react-compat": ["@pyreon/example-react-compat@workspace:examples/react-compat"],
@@ -1936,6 +1972,8 @@
     "@pyreon/mcp": ["@pyreon/mcp@workspace:packages/tools/mcp"],
 
     "@pyreon/meta": ["@pyreon/meta@workspace:packages/zero/meta"],
+
+    "@pyreon/perf-harness": ["@pyreon/perf-harness@workspace:packages/internals/perf-harness"],
 
     "@pyreon/permissions": ["@pyreon/permissions@workspace:packages/fundamentals/permissions"],
 

@@ -29,6 +29,9 @@ const _isBrowser = typeof window !== 'undefined'
 // @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown at build time
 const __DEV__ = import.meta.env?.DEV === true
 
+// Dev-time counter sink — see packages/internals/perf-harness for contract.
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 // ─── Router context ───────────────────────────────────────────────────────────
 // Context-based access: isolated per request in SSR (ALS-backed via
 // @pyreon/runtime-server), isolated per component tree in CSR.
@@ -253,9 +256,7 @@ export type SearchParamSchema = {
 
 /** Infer the typed result from a search param schema. */
 type InferSearchParams<T extends SearchParamSchema> = {
-  [K in keyof T]: T[K] extends 'number' ? number
-    : T[K] extends 'boolean' ? boolean
-    : string
+  [K in keyof T]: T[K] extends 'number' ? number : T[K] extends 'boolean' ? boolean : string
 }
 
 /**
@@ -316,7 +317,10 @@ export function useSearchParams<T extends Record<string, string>>(
  */
 export function useTypedSearchParams<T extends SearchParamSchema>(
   schema: T,
-): [get: () => InferSearchParams<T>, set: (updates: Partial<InferSearchParams<T>>) => Promise<void>] {
+): [
+  get: () => InferSearchParams<T>,
+  set: (updates: Partial<InferSearchParams<T>>) => Promise<void>,
+] {
   const router = _getRouter()
   const get = (): InferSearchParams<T> => {
     const query = router.currentRoute().query
@@ -326,8 +330,7 @@ export function useTypedSearchParams<T extends SearchParamSchema>(
       if (type === 'number') {
         const n = raw !== undefined ? Number(raw) : 0
         result[key] = Number.isNaN(n) ? 0 : n
-      }
-      else if (type === 'boolean') result[key] = raw === 'true' || raw === '1'
+      } else if (type === 'boolean') result[key] = raw === 'true' || raw === '1'
       else result[key] = raw ?? ''
     }
     return result as InferSearchParams<T>
@@ -364,7 +367,9 @@ export function useTypedSearchParams<T extends SearchParamSchema>(
  * // search().q — typed as string
  * ```
  */
-export function useValidatedSearch<T extends Record<string, unknown> = Record<string, unknown>>(): () => T {
+export function useValidatedSearch<
+  T extends Record<string, unknown> = Record<string, unknown>,
+>(): () => T {
   const router = _getRouter()
   // Structural sharing: cache the previous result and return it if
   // shallow-equal to the new one. Prevents downstream re-renders when
@@ -438,7 +443,9 @@ export function useMiddlewareData(): () => Record<string, unknown> {
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
 
-export function createRouter<TNames extends string = string>(options: RouterOptions | RouteRecord[]): Router<TNames> {
+export function createRouter<TNames extends string = string>(
+  options: RouterOptions | RouteRecord[],
+): Router<TNames> {
   const opts: RouterOptions = Array.isArray(options) ? { routes: options } : options
   const {
     routes,
@@ -607,7 +614,10 @@ export function createRouter<TNames extends string = string>(options: RouterOpti
   }
 
   /** Default cache key: path + serialized params */
-  function defaultLoaderKey(record: RouteRecord, ctx: Pick<LoaderContext, 'params' | 'query'>): string {
+  function defaultLoaderKey(
+    record: RouteRecord,
+    ctx: Pick<LoaderContext, 'params' | 'query'>,
+  ): string {
     return `${record.path}:${JSON.stringify(ctx.params)}`
   }
 
@@ -638,6 +648,7 @@ export function createRouter<TNames extends string = string>(options: RouterOpti
     if (!record.staleWhileRevalidate) {
       const cached = router._loaderCache.get(key)
       if (cached && isCacheFresh(cached, record)) {
+        if (__DEV__) _countSink.__pyreon_count__?.('router.loaderCache.hit')
         return Promise.resolve(cached.data)
       }
     }
@@ -647,14 +658,18 @@ export function createRouter<TNames extends string = string>(options: RouterOpti
     if (inflight) return inflight
 
     // 3. Execute
-    const promise = record.loader(loaderCtx).then((data) => {
-      router._loaderCache.set(key, { data, timestamp: Date.now() })
-      router._loaderInflight.delete(key)
-      return data
-    }).catch((err) => {
-      router._loaderInflight.delete(key)
-      throw err
-    })
+    if (__DEV__) _countSink.__pyreon_count__?.('router.loaderRun')
+    const promise = record
+      .loader(loaderCtx)
+      .then((data) => {
+        router._loaderCache.set(key, { data, timestamp: Date.now() })
+        router._loaderInflight.delete(key)
+        return data
+      })
+      .catch((err) => {
+        router._loaderInflight.delete(key)
+        throw err
+      })
 
     router._loaderInflight.set(key, promise)
     return promise
@@ -667,9 +682,7 @@ export function createRouter<TNames extends string = string>(options: RouterOpti
     ac: AbortController,
   ): Promise<boolean> {
     const loaderCtx: LoaderContext = { params: to.params, query: to.query, signal: ac.signal }
-    const results = await Promise.allSettled(
-      records.map((r) => executeLoader(r, loaderCtx)),
-    )
+    const results = await Promise.allSettled(records.map((r) => executeLoader(r, loaderCtx)))
     if (gen !== _navGen) return false
     for (let i = 0; i < records.length; i++) {
       const result = results[i]
@@ -751,9 +764,10 @@ export function createRouter<TNames extends string = string>(options: RouterOpti
 
     // Use View Transitions API when available and not explicitly disabled.
     // Route meta can opt out: meta: { viewTransition: false }
-    const useVT = _isBrowser
-      && to.meta.viewTransition !== false
-      && typeof (document as any).startViewTransition === 'function'
+    const useVT =
+      _isBrowser &&
+      to.meta.viewTransition !== false &&
+      typeof (document as any).startViewTransition === 'function'
 
     if (useVT) {
       // `startViewTransition(cb)` runs `cb` inside an async transition. Its
@@ -776,10 +790,11 @@ export function createRouter<TNames extends string = string>(options: RouterOpti
         ready?: Promise<void>
         finished?: Promise<void>
       }
-      const vt = (document as { startViewTransition?: (cb: () => void) => ViewTransitionLike | undefined })
-        .startViewTransition!(() => {
-          doCommit()
-        })
+      const vt = (
+        document as { startViewTransition?: (cb: () => void) => ViewTransitionLike | undefined }
+      ).startViewTransition!(() => {
+        doCommit()
+      })
       // `startViewTransition` may return `undefined` in test doubles
       // that shim it with a bare `(cb) => cb()`. Guard accordingly.
       if (vt) {
@@ -840,7 +855,9 @@ export function createRouter<TNames extends string = string>(options: RouterOpti
     to: ResolvedRoute,
     from: ResolvedRoute,
     gen: number,
-  ): Promise<{ action: 'continue' } | { action: 'cancel' } | { action: 'redirect'; target: string }> {
+  ): Promise<
+    { action: 'continue' } | { action: 'cancel' } | { action: 'redirect'; target: string }
+  > {
     const ctx: RouteMiddlewareContext = { to, from, data: {} }
 
     for (const record of to.matched) {
@@ -860,6 +877,7 @@ export function createRouter<TNames extends string = string>(options: RouterOpti
   }
 
   async function navigate(rawPath: string, replace: boolean, redirectDepth = 0): Promise<void> {
+    if (__DEV__) _countSink.__pyreon_count__?.('router.navigate')
     router._navigationStartTime = Date.now()
     if (redirectDepth > 10) {
       if (__DEV__) {
@@ -1151,7 +1169,7 @@ function resolveNamedPath(
       // oxlint-disable-next-line no-console
       console.warn(
         `[Pyreon Router] Unknown route name "${name}". ` +
-        `Available names: ${[...index.keys()].join(', ') || '(none)'}. Falling back to "/".`,
+          `Available names: ${[...index.keys()].join(', ') || '(none)'}. Falling back to "/".`,
       )
     }
     return '/'

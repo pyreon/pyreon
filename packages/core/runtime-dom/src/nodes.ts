@@ -10,6 +10,9 @@ import { effect, runUntracked } from '@pyreon/reactivity'
 // @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown at build time
 const __DEV__ = import.meta.env?.DEV === true
 
+// Dev-time counter sink — see packages/internals/perf-harness for contract.
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 type Cleanup = () => void
 
 /**
@@ -88,9 +91,7 @@ export function mountReactive(
       // (e.g. DynamicStyled's class swap effect). Those effects track
       // their own dependencies independently.
       const cleanup = runUntracked(() =>
-        restoreContextStack(contextSnapshot, () =>
-          mount(value, parent, marker),
-        ),
+        restoreContextStack(contextSnapshot, () => mount(value, parent, marker)),
       )
       // Guard: a re-entrant signal update (e.g. ErrorBoundary catching a child
       // throw) may have already re-run this effect and updated currentCleanup.
@@ -157,6 +158,7 @@ function computeKeyedLis(
 ): number {
   const { tails, tailIdx, pred } = lis
   let lisLen = 0
+  let ops = 0
   for (let i = 0; i < n; i++) {
     const key = newKeyOrder[i]
     if (key === undefined) continue
@@ -167,6 +169,7 @@ function computeKeyedLis(
     let hi = lisLen
     while (lo < hi) {
       const mid = (lo + hi) >> 1
+      ops++
       if ((tails[mid] as number) < v) lo = mid + 1
       else hi = mid
     }
@@ -175,6 +178,7 @@ function computeKeyedLis(
     if (lo > 0) pred[i] = tailIdx[lo - 1] as number
     if (lo === lisLen) lisLen++
   }
+  if (__DEV__ && ops > 0) _countSink.__pyreon_count__?.('runtime.mountFor.lisOps', ops)
   return lisLen
 }
 
@@ -379,13 +383,36 @@ function computeForLis(
 ): number {
   const { tails, tailIdx, pred } = lis
   let lisLen = 0
+  let ops = 0
+  // Monotonic fast path. For append / prepend / "rows added at end without
+  // reordering existing ones", the position sequence is strictly increasing
+  // → the longest-increasing subsequence IS the entire sequence, with zero
+  // binary-search work needed. Without this fast path, appending 1000 rows
+  // to a 1000-row list does ~18k binary-search probes (caught by
+  // `big-list.test.ts`); with it, 0 probes.
+  //
+  // Once we hit a non-monotonic position, fall through to the full binary
+  // search path. Random shuffles and real reorders pay the full cost; only
+  // monotonic sequences hit the fast path.
+  let monotonic = true
+  let lastV = -1
   for (let i = 0; i < n; i++) {
     const key = newKeys[i] as string | number
     const v = cache.get(key)?.pos ?? 0
+    if (monotonic && v > lastV) {
+      tails[lisLen] = v
+      tailIdx[lisLen] = i
+      if (lisLen > 0) pred[i] = tailIdx[lisLen - 1] as number
+      lisLen++
+      lastV = v
+      continue
+    }
+    monotonic = false
     let lo = 0
     let hi = lisLen
     while (lo < hi) {
       const mid = (lo + hi) >> 1
+      ops++
       if ((tails[mid] as number) < v) lo = mid + 1
       else hi = mid
     }
@@ -394,6 +421,7 @@ function computeForLis(
     if (lo > 0) pred[i] = tailIdx[lo - 1] as number
     if (lo === lisLen) lisLen++
   }
+  if (__DEV__ && ops > 0) _countSink.__pyreon_count__?.('runtime.mountFor.lisOps', ops)
   return lisLen
 }
 

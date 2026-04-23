@@ -9,6 +9,12 @@ import {
   withTracking,
 } from './tracking'
 
+// Dev-time counter sink — see packages/internals/perf-harness for contract.
+interface ViteMeta {
+  readonly env?: { readonly DEV?: boolean }
+}
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 export interface Computed<T> {
   (): T
   /** Remove this computed from all its reactive dependencies. */
@@ -80,6 +86,8 @@ function computedLazy<T>(fn: () => T): Computed<T> {
   const read = (): T => {
     trackSubscriber(host)
     if (dirty) {
+      if ((import.meta as ViteMeta).env?.DEV === true)
+        _countSink.__pyreon_count__?.('reactivity.computedRecompute')
       try {
         if (tracked) {
           // Deps already established from first run — skip adding to
@@ -145,6 +153,8 @@ function computedWithEquals<T>(fn: () => T, equals: (prev: T, next: T) => boolea
 
   const recompute = () => {
     if (disposed) return
+    if ((import.meta as ViteMeta).env?.DEV === true)
+      _countSink.__pyreon_count__?.('reactivity.computedRecompute')
     cleanupLocalDeps(deps, recompute)
     try {
       const next = trackWithLocalDeps(deps, recompute, fn)
@@ -163,6 +173,8 @@ function computedWithEquals<T>(fn: () => T, equals: (prev: T, next: T) => boolea
   const read = (): T => {
     trackSubscriber(host)
     if (dirty) {
+      if ((import.meta as ViteMeta).env?.DEV === true)
+        _countSink.__pyreon_count__?.('reactivity.computedRecompute')
       cleanupLocalDeps(deps, recompute)
       try {
         value = trackWithLocalDeps(deps, recompute, fn)

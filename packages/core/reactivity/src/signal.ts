@@ -2,9 +2,15 @@ declare const process: { env: { NODE_ENV?: string } } | undefined
 
 const __DEV__ = typeof process !== 'undefined' && process?.env?.NODE_ENV !== 'production'
 
-import { enqueuePendingNotification, isBatching } from './batch'
+import { batch, enqueuePendingNotification, isBatching } from './batch'
 import { _notifyTraceListeners, isTracing } from './debug'
 import { notifySubscribers, trackSubscriber } from './tracking'
+
+// Dev-time counter sink — see packages/internals/perf-harness for contract.
+interface ViteMeta {
+  readonly env?: { readonly DEV?: boolean }
+}
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 export interface SignalDebugInfo<T> {
   /** Signal name (set via options or inferred) */
@@ -80,12 +86,33 @@ function _peek(this: SignalFn<unknown>) {
 
 function _set(this: SignalFn<unknown>, newValue: unknown) {
   if (Object.is(this._v, newValue)) return
+  if ((import.meta as ViteMeta).env?.DEV === true)
+    _countSink.__pyreon_count__?.('reactivity.signalWrite')
   const prev = this._v
   this._v = newValue
   if (isTracing()) _notifyTraceListeners(this as unknown as Signal<unknown>, prev, newValue)
-  // Direct updaters — flat array, no Set overhead, batch-aware
-  if (this._d) notifyDirect(this._d)
-  if (this._s) notifySubscribers(this._s)
+  // Auto-batch the notification chain. Without this, a diamond dependency
+  // graph (a → b, c → d → effect) fires the apex effect TWICE per write
+  // because subscribers cascade inline: the first path through `b` reaches
+  // `effect`, whose read clears `d`'s dirty flag; then `c`'s notification
+  // re-dirties `d` and re-notifies `effect`. Wrapping the notify chain in
+  // `batch()` routes cascade-notifications through the pending Set, which
+  // dedupes on `d.recompute` and on `effect.run`.
+  //
+  // The batch is synchronous — observable behaviour is unchanged for the
+  // common case (subscribers still fire immediately after the write). Only
+  // the dedup semantics change, which is a bug fix.
+  //
+  // Short-circuit when already inside a batch so we don't wrap redundantly.
+  if (isBatching()) {
+    if (this._d) notifyDirect(this._d)
+    if (this._s) notifySubscribers(this._s)
+  } else {
+    batch(() => {
+      if (this._d) notifyDirect(this._d)
+      if (this._s) notifySubscribers(this._s)
+    })
+  }
 }
 
 function _update(this: SignalFn<unknown>, fn: (current: unknown) => unknown) {
@@ -146,6 +173,8 @@ function _debug(this: SignalFn<unknown>): SignalDebugInfo<unknown> {
  * update, subscribe) are shared across all signals — not per-signal closures.
  */
 export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
+  if ((import.meta as ViteMeta).env?.DEV === true)
+    _countSink.__pyreon_count__?.('reactivity.signalCreate')
   // The read function is the only per-signal closure.
   // It doubles as the SubscriberHost (_s property) for trackSubscriber.
   const read = ((...args: unknown[]) => {

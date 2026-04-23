@@ -28,6 +28,9 @@ import { applyProps } from './props'
 // @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown at build time
 const __DEV__ = import.meta.env?.DEV === true
 
+// Dev-time counter sink — see packages/internals/perf-harness for contract.
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 type Cleanup = () => void
 const noop: Cleanup = () => {
   /* noop */
@@ -56,6 +59,7 @@ export function mountChild(
   parent: Node,
   anchor: Node | null = null,
 ): Cleanup {
+  if (__DEV__) _countSink.__pyreon_count__?.('runtime.mountChild')
   // Reactive accessor — function that reads signals
   if (typeof child === 'function') {
     const sample = runUntracked(() => (child as () => VNodeChild | VNodeChild[])())
@@ -192,21 +196,81 @@ const MATHML_NS = 'http://www.w3.org/1998/Math/MathML'
 
 // Tags that require namespace-aware creation
 const SVG_TAGS = new Set([
-  'svg', 'circle', 'ellipse', 'line', 'path', 'polygon', 'polyline', 'rect',
-  'g', 'defs', 'symbol', 'use', 'text', 'tspan', 'textPath', 'image',
-  'clipPath', 'mask', 'pattern', 'marker', 'linearGradient', 'radialGradient',
-  'stop', 'filter', 'feBlend', 'feColorMatrix', 'feComponentTransfer',
-  'feComposite', 'feConvolveMatrix', 'feDiffuseLighting', 'feDisplacementMap',
-  'feFlood', 'feGaussianBlur', 'feImage', 'feMerge', 'feMergeNode',
-  'feMorphology', 'feOffset', 'feSpecularLighting', 'feTile', 'feTurbulence',
-  'animate', 'animateMotion', 'animateTransform', 'set', 'desc', 'title',
-  'metadata', 'foreignObject',
+  'svg',
+  'circle',
+  'ellipse',
+  'line',
+  'path',
+  'polygon',
+  'polyline',
+  'rect',
+  'g',
+  'defs',
+  'symbol',
+  'use',
+  'text',
+  'tspan',
+  'textPath',
+  'image',
+  'clipPath',
+  'mask',
+  'pattern',
+  'marker',
+  'linearGradient',
+  'radialGradient',
+  'stop',
+  'filter',
+  'feBlend',
+  'feColorMatrix',
+  'feComponentTransfer',
+  'feComposite',
+  'feConvolveMatrix',
+  'feDiffuseLighting',
+  'feDisplacementMap',
+  'feFlood',
+  'feGaussianBlur',
+  'feImage',
+  'feMerge',
+  'feMergeNode',
+  'feMorphology',
+  'feOffset',
+  'feSpecularLighting',
+  'feTile',
+  'feTurbulence',
+  'animate',
+  'animateMotion',
+  'animateTransform',
+  'set',
+  'desc',
+  'title',
+  'metadata',
+  'foreignObject',
 ])
 
 const MATHML_TAGS = new Set([
-  'math', 'mi', 'mo', 'mn', 'ms', 'mtext', 'mspace', 'mrow', 'mfrac',
-  'msqrt', 'mroot', 'msub', 'msup', 'msubsup', 'munder', 'mover',
-  'munderover', 'mtable', 'mtr', 'mtd', 'mpadded', 'mphantom', 'menclose',
+  'math',
+  'mi',
+  'mo',
+  'mn',
+  'ms',
+  'mtext',
+  'mspace',
+  'mrow',
+  'mfrac',
+  'msqrt',
+  'mroot',
+  'msub',
+  'msup',
+  'msubsup',
+  'munder',
+  'mover',
+  'munderover',
+  'mtable',
+  'mtr',
+  'mtd',
+  'mpadded',
+  'mphantom',
+  'menclose',
 ])
 
 /** Track SVG context depth — children of <svg> inherit the SVG namespace. */
@@ -331,7 +395,8 @@ function mountComponent(
   // Convert compiler-emitted () => expr wrappers into getter properties.
   // This makes component props reactive — reading props.state inside an
   // effect/computed tracks the underlying signals.
-  const mergedProps = rawProps === EMPTY_PROPS ? rawProps : makeReactiveProps(rawProps as Record<string, unknown>)
+  const mergedProps =
+    rawProps === EMPTY_PROPS ? rawProps : makeReactiveProps(rawProps as Record<string, unknown>)
 
   try {
     const result = runWithHooks(vnode.type, mergedProps)
@@ -373,7 +438,7 @@ function mountComponent(
           'Components must be synchronous — use lazy() + Suspense for async loading, ' +
           'or fetch data in onMount and store it in a signal.',
       )
-    } else if (!('type' in output) && !Array.isArray(output) && !((output as any).__isNative)) {
+    } else if (!('type' in output) && !Array.isArray(output) && !(output as any).__isNative) {
       // Objects without `type` that are NOT arrays (valid VNodeChild[])
       // and NOT NativeItems (from _tpl()) are invalid. Arrays come from
       // Fragment returns, NativeItems come from compiled templates.
