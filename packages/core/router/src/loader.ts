@@ -2,6 +2,11 @@ import type { Context } from '@pyreon/core'
 import { createContext, useContext } from '@pyreon/core'
 import type { RouterInstance } from './types'
 
+// Dev-mode gate + counter sink. See packages/internals/perf-harness for contract.
+// @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown at build time
+const __DEV__ = import.meta.env?.DEV === true
+declare const globalThis: { __pyreon_count__?: (name: string, n?: number) => void }
+
 /**
  * Context frame that holds the loader data for the currently rendered route record.
  * Pushed by RouterView's withLoaderData wrapper before invoking the route component.
@@ -34,6 +39,7 @@ export function useLoaderData<T = unknown>(): T {
  * const html = await renderToString(h(App, { router }))
  */
 export async function prefetchLoaderData(router: RouterInstance, path: string): Promise<void> {
+  if (__DEV__) globalThis.__pyreon_count__?.('router.prefetch')
   const route = router._resolve(path)
   // Use a local AbortController — prefetch is best-effort and must NOT
   // clobber `router._abortController`, which belongs to the active

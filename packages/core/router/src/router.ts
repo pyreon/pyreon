@@ -29,6 +29,9 @@ const _isBrowser = typeof window !== 'undefined'
 // @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown at build time
 const __DEV__ = import.meta.env?.DEV === true
 
+// Dev-time counter sink — see packages/internals/perf-harness for contract.
+declare const globalThis: { __pyreon_count__?: (name: string, n?: number) => void }
+
 // ─── Router context ───────────────────────────────────────────────────────────
 // Context-based access: isolated per request in SSR (ALS-backed via
 // @pyreon/runtime-server), isolated per component tree in CSR.
@@ -638,6 +641,7 @@ export function createRouter<TNames extends string = string>(options: RouterOpti
     if (!record.staleWhileRevalidate) {
       const cached = router._loaderCache.get(key)
       if (cached && isCacheFresh(cached, record)) {
+        if (__DEV__) globalThis.__pyreon_count__?.('router.loaderCache.hit')
         return Promise.resolve(cached.data)
       }
     }
@@ -647,6 +651,7 @@ export function createRouter<TNames extends string = string>(options: RouterOpti
     if (inflight) return inflight
 
     // 3. Execute
+    if (__DEV__) globalThis.__pyreon_count__?.('router.loaderRun')
     const promise = record.loader(loaderCtx).then((data) => {
       router._loaderCache.set(key, { data, timestamp: Date.now() })
       router._loaderInflight.delete(key)
@@ -860,6 +865,7 @@ export function createRouter<TNames extends string = string>(options: RouterOpti
   }
 
   async function navigate(rawPath: string, replace: boolean, redirectDepth = 0): Promise<void> {
+    if (__DEV__) globalThis.__pyreon_count__?.('router.navigate')
     router._navigationStartTime = Date.now()
     if (redirectDepth > 10) {
       if (__DEV__) {
