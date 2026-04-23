@@ -1,6 +1,8 @@
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
+  compareVersions,
+  filterSince,
   findChangelog,
   formatChangelog,
   formatChangelogIndex,
@@ -195,6 +197,99 @@ describe('formatChangelog', () => {
     const out = formatChangelog(synthetic)
     expect(out).toContain('no substantive changes')
     expect(out).toContain('ceremonial version bump')
+  })
+})
+
+describe('compareVersions', () => {
+  it('orders by numeric segments', () => {
+    expect(compareVersions('1.0.0', '2.0.0')).toBeLessThan(0)
+    expect(compareVersions('0.13.0', '0.12.15')).toBeGreaterThan(0) // 13 > 12
+    expect(compareVersions('0.12.15', '0.13.0')).toBeLessThan(0)
+    expect(compareVersions('0.0.9', '0.0.10')).toBeLessThan(0)
+    expect(compareVersions('1.0.0', '1.0.0')).toBe(0)
+  })
+
+  it('handles missing segments as 0', () => {
+    expect(compareVersions('1.0', '1.0.0')).toBe(0)
+    expect(compareVersions('1', '1.0.1')).toBeLessThan(0)
+  })
+
+  it('orders stable above pre-release', () => {
+    expect(compareVersions('1.0.0', '1.0.0-alpha.1')).toBeGreaterThan(0)
+    expect(compareVersions('1.0.0-alpha.1', '1.0.0')).toBeLessThan(0)
+  })
+
+  it('orders pre-releases lexicographically within the same core', () => {
+    expect(compareVersions('1.0.0-alpha.1', '1.0.0-beta.1')).toBeLessThan(0)
+    expect(compareVersions('1.0.0-alpha.3', '1.0.0-alpha.2')).toBeGreaterThan(0)
+  })
+
+  it('tolerates non-numeric segments as 0', () => {
+    // Not expected from changesets but shouldn't crash.
+    // "abc" parses to 0, so "abc.1" == "0.1" == [0, 1] and they tie.
+    expect(compareVersions('abc.1', '0.1')).toBe(0)
+    expect(compareVersions('', '0.0.0')).toBe(0)
+    // Numeric still wins over non-numeric.
+    expect(compareVersions('1.0.0', 'abc.0.0')).toBeGreaterThan(0)
+  })
+})
+
+describe('filterSince', () => {
+  const entries = [
+    { version: '0.13.0', changes: ['X'], dependencyUpdates: [], empty: false },
+    { version: '0.12.15', changes: ['Y'], dependencyUpdates: [], empty: false },
+    { version: '0.12.14', changes: ['Z'], dependencyUpdates: [], empty: false },
+  ]
+
+  it('returns entries strictly newer than the floor', () => {
+    const after = filterSince(entries, '0.12.15')
+    expect(after.map((e) => e.version)).toEqual(['0.13.0'])
+  })
+
+  it('returns all entries when the floor is below every entry', () => {
+    const after = filterSince(entries, '0.0.1')
+    expect(after).toHaveLength(3)
+  })
+
+  it('returns empty when the floor equals or exceeds every entry', () => {
+    expect(filterSince(entries, '0.13.0')).toEqual([])
+    expect(filterSince(entries, '1.0.0')).toEqual([])
+  })
+
+  it('preserves file order (newest-first)', () => {
+    const after = filterSince(entries, '0.12.13')
+    expect(after.map((e) => e.version)).toEqual(['0.13.0', '0.12.15', '0.12.14'])
+  })
+})
+
+describe('formatChangelog — since option', () => {
+  const changelog = {
+    packageName: '@pyreon/foo',
+    path: '/tmp/CHANGELOG.md',
+    dir: '/tmp',
+    entries: [
+      { version: '0.13.0', changes: ['Latest change'], dependencyUpdates: [], empty: false },
+      { version: '0.12.15', changes: ['Middle'], dependencyUpdates: [], empty: false },
+      { version: '0.12.14', changes: ['Oldest'], dependencyUpdates: [], empty: false },
+    ],
+  }
+
+  it('includes only versions strictly newer than `since`', () => {
+    const out = formatChangelog(changelog, { since: '0.12.15', limit: 10 })
+    expect(out).toContain('## 0.13.0')
+    expect(out).not.toContain('## 0.12.15')
+    expect(out).not.toContain('## 0.12.14')
+  })
+
+  it('shows a dedicated "no changes since vX" miss message', () => {
+    const out = formatChangelog(changelog, { since: '0.13.0' })
+    expect(out).toContain('no changes since v0.13.0')
+    expect(out).toContain('known latest substantive version is v0.13.0')
+  })
+
+  it('labels the header with the since floor', () => {
+    const out = formatChangelog(changelog, { since: '0.12.15' })
+    expect(out).toMatch(/^# @pyreon\/foo — changelog since v0\.12\.15 \(\d+\/\d+ shown\)/)
   })
 })
 

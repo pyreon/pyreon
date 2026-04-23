@@ -264,6 +264,58 @@ export function suggestChangelogs(registry: ChangelogRegistry, needle: string): 
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Version comparison
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Compare two semver-ish version strings. Returns negative if `a < b`,
+ * positive if `a > b`, zero if equal. Pre-release suffixes (`-alpha.3`)
+ * are compared lexicographically AFTER the numeric portion.
+ *
+ * Scoped to what changesets actually produce (`0.13.0`, `1.0.0-alpha.3`,
+ * `2.5.1`). Not a general-purpose semver implementation — we intentionally
+ * do not depend on an external semver package for a 30-line need.
+ */
+export function compareVersions(a: string, b: string): number {
+  const parse = (v: string): { parts: number[]; pre: string } => {
+    const [core, ...preParts] = v.split('-')
+    const pre = preParts.join('-')
+    const parts = core!.split('.').map((n) => {
+      const num = Number.parseInt(n, 10)
+      return Number.isNaN(num) ? 0 : num
+    })
+    return { parts, pre }
+  }
+  const pa = parse(a)
+  const pb = parse(b)
+  const maxLen = Math.max(pa.parts.length, pb.parts.length)
+  for (let i = 0; i < maxLen; i++) {
+    const ai = pa.parts[i] ?? 0
+    const bi = pb.parts[i] ?? 0
+    if (ai !== bi) return ai - bi
+  }
+  // Core equal — no-pre beats any pre-release.
+  if (pa.pre === '' && pb.pre !== '') return 1
+  if (pa.pre !== '' && pb.pre === '') return -1
+  if (pa.pre < pb.pre) return -1
+  if (pa.pre > pb.pre) return 1
+  return 0
+}
+
+/**
+ * Filter entries to those strictly NEWER than `sinceVersion`. Ceremonial
+ * bumps are preserved — the caller decides whether to also filter them
+ * via the `empty` flag. Returns all entries in file order (newest first)
+ * that satisfy `compareVersions(entry.version, sinceVersion) > 0`.
+ */
+export function filterSince(
+  entries: ChangelogEntry[],
+  sinceVersion: string,
+): ChangelogEntry[] {
+  return entries.filter((e) => compareVersions(e.version, sinceVersion) > 0)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Formatters
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -272,6 +324,12 @@ export interface FormatOptions {
   limit?: number | undefined
   /** Show `Updated dependencies` bullets. Default false — AI consumers rarely care. */
   includeDependencyUpdates?: boolean | undefined
+  /**
+   * Only include versions strictly newer than this one. Accepts any
+   * semver-ish string changesets emits (`0.13.0`, `1.0.0-alpha.3`).
+   * Omit to show the most recent versions without a floor.
+   */
+  since?: string | undefined
 }
 
 /**
@@ -280,12 +338,20 @@ export interface FormatOptions {
  */
 export function formatChangelog(
   changelog: PackageChangelog,
-  { limit = 5, includeDependencyUpdates = false }: FormatOptions = {},
+  { limit = 5, includeDependencyUpdates = false, since }: FormatOptions = {},
 ): string {
   const nonEmpty = changelog.entries.filter((e) => !e.empty)
-  const sliced = nonEmpty.slice(0, limit)
+  const afterSince = since ? filterSince(nonEmpty, since) : nonEmpty
+  const sliced = afterSince.slice(0, limit)
 
   if (sliced.length === 0) {
+    if (since) {
+      return (
+        `# ${changelog.packageName} — no changes since v${since}\n\n` +
+        `The package has ${nonEmpty.length} substantive version entr${nonEmpty.length === 1 ? 'y' : 'ies'} in total, but none are newer than v${since}. The known latest substantive version is ` +
+        `v${nonEmpty[0]?.version ?? '(none)'}. Drop the \`since\` filter, or pass a lower floor, to see earlier entries.`
+      )
+    }
     const ceremonial = changelog.entries.length
     const versions = changelog.entries.slice(0, 3).map((e) => e.version).join(', ')
     return (
@@ -300,12 +366,15 @@ export function formatChangelog(
   }
 
   const parts: string[] = []
-  parts.push(`# ${changelog.packageName} — changelog (${sliced.length}/${nonEmpty.length} shown)`)
+  const sinceSuffix = since ? ` since v${since}` : ''
+  parts.push(
+    `# ${changelog.packageName} — changelog${sinceSuffix} (${sliced.length}/${afterSince.length} shown)`,
+  )
   parts.push('')
-  if (nonEmpty.length > limit) {
+  if (afterSince.length > limit) {
     parts.push(
-      `Showing the ${limit} most recent substantive versions. ` +
-        `${nonEmpty.length - limit} older versions omitted. Pass \`limit\` to expand.`,
+      `Showing the ${limit} most recent substantive versions${sinceSuffix}. ` +
+        `${afterSince.length - limit} older versions omitted. Pass \`limit\` to expand.`,
     )
     parts.push('')
   }

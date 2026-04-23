@@ -124,6 +124,43 @@ describe('MCP server — get_changelog tool', () => {
     }
   })
 
+  it('accepts a `since` floor and returns only newer versions', async () => {
+    const { client, close } = await newClient()
+    try {
+      // First get the full index to pick a real floor version.
+      const full = await callTool(client, 'get_changelog', { package: 'query', limit: 20 })
+      // Extract the 3rd-oldest version heading (needs at least 3 for the test to be meaningful).
+      const headings = [...full.matchAll(/^## (\S+)$/gm)].map((m) => m[1]!)
+      expect(headings.length).toBeGreaterThanOrEqual(3)
+      const floor = headings[headings.length - 2]! // everything newer than the second-oldest
+      const filtered = await callTool(client, 'get_changelog', {
+        package: 'query',
+        limit: 20,
+        since: floor,
+      })
+      expect(filtered).toContain(`since v${floor}`)
+      expect(filtered).not.toContain(`## ${floor}\n`) // floor itself excluded (strict)
+    } finally {
+      await close()
+    }
+  })
+
+  it('returns the "no changes since" miss message when the floor is the latest', async () => {
+    const { client, close } = await newClient()
+    try {
+      // Find the real latest substantive version from the package.
+      const full = await callTool(client, 'get_changelog', { package: 'query', limit: 1 })
+      const latest = /^## (\S+)$/m.exec(full)![1]!
+      const result = await callTool(client, 'get_changelog', {
+        package: 'query',
+        since: latest,
+      })
+      expect(result).toContain(`no changes since v${latest}`)
+    } finally {
+      await close()
+    }
+  })
+
   it('rejects a negative limit via zod', async () => {
     const { client, close } = await newClient()
     try {

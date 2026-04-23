@@ -536,8 +536,14 @@ server.tool(
         .boolean()
         .optional()
         .describe('Include `Updated dependencies` bullets. Default false (usually noise).'),
+      since: z
+        .string()
+        .optional()
+        .describe(
+          'Only include versions strictly newer than this one (e.g. "0.12.0"). Useful when an agent knows the version it was trained against and wants just the delta.',
+        ),
     },
-    async ({ package: pkg, limit, includeDependencyUpdates }) => {
+    async ({ package: pkg, limit, includeDependencyUpdates, since }) => {
       const registry = loadChangelogRegistry()
       if (!pkg) return textResult(formatChangelogIndex(registry))
 
@@ -547,6 +553,7 @@ server.tool(
           formatChangelog(changelog, {
             limit,
             includeDependencyUpdates,
+            since,
           }),
         )
       }

@@ -187,12 +187,13 @@ Parses `.claude/rules/anti-patterns.md` into per-category listings. Valid catego
 
 ```
 get_changelog({ package: "query" })                   # latest 5 substantive versions
-get_changelog({ package: "query", limit: 10 })        # expand
-get_changelog({ package: "query", includeDependencyUpdates: true })  # include dep bumps
+get_changelog({ package: "query", limit: 10 })        # expand the window
+get_changelog({ package: "query", since: "0.12.0" })  # only versions newer than 0.12.0
+get_changelog({ package: "query", includeDependencyUpdates: true })
 get_changelog({})                                      # list every package + latest version
 ```
 
-Parses the `CHANGELOG.md` file (changesets-populated) for the named package. The short slug auto-prefixes `@pyreon/` — `"query"` and `"@pyreon/query"` resolve to the same result. Empty "ceremonial" version bumps (pure dependency bumps with no user-facing body) are filtered by default; when the whole history is ceremonial, the tool surfaces a clear "no substantive changes" message. Complements `get_api` (current symbol reference) — changelog answers "what changed" while api-reference answers "what is it now".
+Parses the `CHANGELOG.md` file (changesets-populated) for the named package. The short slug auto-prefixes `@pyreon/` — `"query"` and `"@pyreon/query"` resolve to the same result. Empty "ceremonial" version bumps (pure dependency bumps with no user-facing body) are filtered by default; when the whole history is ceremonial, the tool surfaces a clear "no substantive changes" message. `since` accepts any semver-ish string changesets emits (`"0.13.0"`, `"1.0.0-alpha.3"`) — when the floor equals or exceeds the latest substantive version, the tool returns a dedicated "no changes since vX" miss message. Complements `get_api` (current symbol reference) — changelog answers "what changed" while api-reference answers "what is it now".
 
 ### `get_routes` — List project routes
 
