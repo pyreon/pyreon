@@ -659,16 +659,33 @@ Framework packages emit named call counters for perf-driven debugging (real-app-
 
 ```ts
 // In a framework package's hot path — NO import from @pyreon/perf-harness.
+interface ViteMeta { readonly env?: { readonly DEV?: boolean } }
 declare const globalThis: { __pyreon_count__?: (name: string, n?: number) => void }
 
-if (import.meta.env?.DEV === true) globalThis.__pyreon_count__?.('styler.resolve')
+if ((import.meta as ViteMeta).env?.DEV === true)
+  globalThis.__pyreon_count__?.('styler.resolve')
 ```
 
-- **Zero cross-package coupling.** Framework packages (styler, unistyle, router, …) are published to npm; they must not depend on the private `@pyreon/perf-harness` package. The global sink lets them emit without an import.
+- **Zero cross-package coupling.** Framework packages (styler, unistyle, rocketstyle, runtime-dom, reactivity, router) are published to npm; they must not depend on the private `@pyreon/perf-harness` package. The global sink lets them emit without an import.
 - **Zero cost until opt-in.** `globalThis.__pyreon_count__` is `undefined` until a consumer calls `perfHarness.install()` or `perfHarness.enable()`. Optional-chaining short-circuits; prod tree-shakes the whole block via the `import.meta.env.DEV` gate.
-- **Counter names**: `<layer>.<action>`. One segment per framework layer, one per action. e.g. `styler.resolve`, `styler.sheet.insert`, `styler.sheet.insert.hit`, `unistyle.styles`, `unistyle.descriptor`.
-- **Consumers read via `perfHarness`**: `perfHarness.snapshot()`, `perfHarness.record(label, fn)`, `perfHarness.diff(a, b)`. See `packages/internals/perf-harness/README.md`.
-- **Instrumented today**: `@pyreon/styler` (`resolve`, `sheet.insert`, `sheet.insert.hit`), `@pyreon/unistyle` (`styles`, `descriptor`, `descriptor.fallback-scan`). More layers plug in as follow-up PRs surface hot paths.
+- **Counter names live in ONE place**: `packages/internals/perf-harness/COUNTERS.md`. Adding a new counter means (a) adding the emit in source, and (b) adding a row to `COUNTERS.md`. The drift test (`catalog-drift.test.ts`) enforces both directions — emits without catalog entries fail CI, and catalog entries with no emitters also fail.
+- **Instrumented layers (22 counters today)**:
+  - `styler`: `resolve`, `sheet.insert`, `sheet.insert.hit`
+  - `unistyle`: `styles`, `descriptor`, `descriptor.fallback-scan`
+  - `rocketstyle`: `getTheme`, `dimensionsMap.hit`, `localThemeManager.hit`, `omitSet.hit`
+  - `runtime`: `mount`, `unmount`, `mountChild`, `mountFor.lisOps`
+  - `reactivity`: `signalCreate`, `signalWrite`, `effectRun`, `computedRecompute`
+  - `router`: `navigate`, `loaderRun`, `loaderCache.hit`, `prefetch`
+- **Consumer APIs**:
+  - `perfHarness.snapshot()` / `perfHarness.reset()` / `perfHarness.record(label, fn)` / `perfHarness.diff(a, b)`
+  - `perfHarness.overlay()` — in-page shadow-DOM panel with live counters, Ctrl+Shift+P toggle, reset/record/export buttons
+  - `install()` attaches everything to `globalThis.__pyreon_perf__` so devtools console can use it directly
+- **Tree-shake regression test**: `src/tests/treeshake.test.ts` in perf-harness Vite-production-bundles each instrumented file and asserts both the `__pyreon_count__` identifier and every counter name string are absent from the prod output. Proves the dev-gate folds to dead code across all five layers.
+- **Automation**:
+  - `examples/perf-dashboard` — single-page real-app-shape stress rig; auto-installs the harness in dev so counters are live from boot. Journeys exported from `src/journeys.ts`.
+  - `bun run perf:record --app <name> --journey <name>` — Playwright drives the example through the journey, N runs (default 5), writes `perf-results/<sha>-<app>-<journey>.json` with median counters + wall-clock + heap
+  - `bun run perf:diff <baseline> <current>` — compares two records, exits nonzero on regression (upward move > threshold, absolute floor max(3, before × threshold) prevents noisy rare-counter false positives)
+  - `.github/workflows/perf.yml` — advisory-only workflow; runs on manual dispatch, nightly schedule, and `perf`-labelled PRs; posts a sticky comment with the diff when a baseline is committed
 
 ### exactOptionalPropertyTypes
 
