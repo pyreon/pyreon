@@ -51,6 +51,21 @@ console.log(store.count()) // 1
 console.log(store.doubled()) // 2
 ```
 
+<Playground title="Counter Store" :height="100">
+const count = signal(0)
+const doubled = computed(() => count() * 2)
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('div', {}, () => 'Count: ' + count()),
+  h('div', {}, () => 'Doubled: ' + doubled()),
+  h('button', { onClick: () => count.update(n => n + 1) }, '+1'),
+  h('button', { onClick: () => count.update(n => n - 1), style: { marginLeft: '8px' } }, '-1'),
+  h('button', { onClick: () => count.set(0), style: { marginLeft: '8px' } }, 'Reset'),
+)
+mount(ui, app)
+</Playground>
+
 ## Core Concepts
 
 ### Defining a Store
@@ -184,6 +199,33 @@ The `Signal` type is also re-exported for TypeScript usage:
 ```ts
 import type { Signal } from '@pyreon/store'
 ```
+
+<Playground title="Todo Store" :height="140">
+const todos = signal([
+  { id: 1, text: 'Learn Pyreon', done: true },
+  { id: 2, text: 'Build an app', done: false },
+])
+const input = signal('')
+let nextId = 3
+
+const remaining = computed(() => todos().filter(t => !t.done).length)
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('div', { style: { display: 'flex', gap: '8px', marginBottom: '8px' } },
+    h('input', { placeholder: 'New todo', value: input, onInput: (e) => input.set(e.target.value) }),
+    h('button', { onClick: () => { if (input()) { todos.update(t => [...t, { id: nextId++, text: input(), done: false }]); input.set('') } } }, 'Add'),
+  ),
+  h('div', {}, () => todos().map(t =>
+    h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } },
+      h('input', { type: 'checkbox', checked: t.done, onInput: () => todos.update(all => all.map(x => x.id === t.id ? { ...x, done: !x.done } : x)) }),
+      h('span', { style: { textDecoration: t.done ? 'line-through' : 'none' } }, t.text),
+    )
+  )),
+  h('div', { style: { marginTop: '8px', fontSize: '13px', color: '#666' } }, () => remaining() + ' remaining'),
+)
+mount(ui, app)
+</Playground>
 
 ## Real-World Store Examples
 

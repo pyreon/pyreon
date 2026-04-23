@@ -48,6 +48,16 @@ count.set(5)
 count.update((n) => n + 1) // now 6
 ```
 
+<Playground title="Signals" :height="80">
+const count = signal(0)
+
+const app = document.getElementById('app')
+const btn = h('button', { onClick: () => count.update(n => n + 1) },
+  () => 'Count: ' + count()
+)
+mount(btn, app)
+</Playground>
+
 ### Signal Interface
 
 ```ts
@@ -199,6 +209,20 @@ firstName.set('Bob')
 console.log(fullName()) // "Bob Smith"
 ```
 
+<Playground title="Computed Values" :height="80">
+const firstName = signal('Alice')
+const lastName = signal('Smith')
+const fullName = computed(() => firstName() + ' ' + lastName())
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('div', {}, () => 'Full name: ' + fullName()),
+  h('button', { onClick: () => firstName.set('Bob') }, 'Change to Bob'),
+  h('button', { onClick: () => lastName.set('Jones'), style: { marginLeft: '8px' } }, 'Change to Jones'),
+)
+mount(ui, app)
+</Playground>
+
 ### Computed Interface
 
 ```ts
@@ -310,6 +334,22 @@ count.set(2) // logs "Count is: 2"
 e.dispose() // stops the effect
 count.set(3) // nothing logged
 ```
+
+<Playground title="Effects" :height="140">
+const count = signal(0)
+const log = signal('')
+
+effect(() => {
+  log.update(prev => prev + 'Count is: ' + count() + '\n')
+})
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('button', { onClick: () => count.update(n => n + 1) }, 'Increment'),
+  h('pre', { class: 'output' }, () => log()),
+)
+mount(ui, app)
+</Playground>
 
 ### Effect Interface
 

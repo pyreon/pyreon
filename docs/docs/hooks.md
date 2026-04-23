@@ -70,6 +70,17 @@ setTrue()
 value() // true
 ```
 
+<Playground title="useToggle" :height="80">
+const isOpen = signal(false)
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('button', { onClick: () => isOpen.update(v => !v) }, () => isOpen() ? 'Close' : 'Open'),
+  h('div', { style: { marginTop: '8px', display: isOpen() ? 'block' : 'none' } }, () => isOpen() ? 'Content is visible!' : ''),
+)
+mount(ui, app)
+</Playground>
+
 ### Disclosure Pattern
 
 ```tsx

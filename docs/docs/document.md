@@ -58,6 +58,42 @@ await doc.toNotion() // Notion blocks
 await doc.download('report.pdf') // Browser download
 ```
 
+<Playground title="Document → Markdown Live" :height="280">
+const title = signal('Sales Report')
+const revenue = signal('$2.5M')
+const growth = signal(25)
+
+const markdown = computed(() => {
+  const t = title()
+  const r = revenue()
+  const g = growth()
+  return [
+    `# ${t}`,
+    '',
+    `Revenue grew **${g}%** quarter over quarter.`,
+    '',
+    '| Region | Revenue | Growth |',
+    '| --- | --- | --- |',
+    '| US | $1.2M | +30% |',
+    '| EU | $800K | +15% |',
+    '| APAC | $500K | +40% |',
+    '',
+    `> Total: **${r}**`,
+  ].join('\n')
+})
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('div', { style: { display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' } },
+    h('input', { value: () => title(), onInput: (e) => title.set(e.target.value), placeholder: 'Title', style: { padding: '4px 8px', border: '1px solid #ccc', borderRadius: '4px' } }),
+    h('input', { value: () => revenue(), onInput: (e) => revenue.set(e.target.value), placeholder: 'Revenue', style: { padding: '4px 8px', border: '1px solid #ccc', borderRadius: '4px', width: '100px' } }),
+    h('input', { type: 'number', value: () => growth(), onInput: (e) => growth.set(+e.target.value), style: { padding: '4px 8px', border: '1px solid #ccc', borderRadius: '4px', width: '70px' } }),
+  ),
+  h('pre', { class: 'output', style: { whiteSpace: 'pre-wrap' } }, () => markdown()),
+)
+mount(ui, app)
+</Playground>
+
 ## Quick Start — JSX Pattern
 
 ```tsx

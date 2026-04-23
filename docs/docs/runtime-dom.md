@@ -60,6 +60,21 @@ The `mount` function performs three steps internally:
 
 The returned `unmount` function is safe to call multiple times -- subsequent calls are no-ops after the first.
 
+<Playground title="Mounting + Reactive DOM" :height="100">
+const items = signal(['Apple', 'Banana', 'Cherry'])
+const input = signal('')
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('div', { style: { display: 'flex', gap: '8px', marginBottom: '8px' } },
+    h('input', { placeholder: 'Add item', value: input, onInput: (e) => input.set(e.target.value) }),
+    h('button', { onClick: () => { if (input()) { items.update(i => [...i, input()]); input.set('') } } }, 'Add'),
+  ),
+  h('ul', {}, () => items().map(item => h('li', {}, item))),
+)
+mount(ui, app)
+</Playground>
+
 ### render
 
 An alias for `mount`. Use whichever name you prefer:

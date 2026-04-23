@@ -40,6 +40,22 @@ The library exposes four main primitives:
 - **Stagger** -- sequences transitions across a list of children with a configurable delay between each.
 - **Collapse** -- animates height between `0` and `auto` for expand/collapse patterns.
 
+<Playground title="CSS Transition" :height="100">
+const visible = signal(true)
+const opacity = signal(1)
+
+effect(() => { opacity.set(visible() ? 1 : 0) })
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('button', { onClick: () => visible.update(v => !v) }, () => visible() ? 'Hide' : 'Show'),
+  h('div', { style: () => ({ opacity: opacity(), transition: 'opacity 0.3s ease', padding: '12px', marginTop: '8px', background: '#f0f0f0', borderRadius: '6px' }) },
+    'Animated content',
+  ),
+)
+mount(ui, app)
+</Playground>
+
 ## Transition
 
 The `Transition` component wraps a single child element and orchestrates enter/leave animations controlled by a reactive `show` accessor.

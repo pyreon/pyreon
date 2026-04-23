@@ -54,6 +54,44 @@ init({
 
 This must happen before any `@pyreon/rocketstyle` or `@pyreon/elements` components render, as they rely on the configured engine to generate and inject styles.
 
+<Playground title="Theme Mode Provider" :height="180">
+const mode = signal('light')
+const inversed = signal(false)
+
+const resolved = computed(() => {
+  const m = mode()
+  return inversed() ? (m === 'light' ? 'dark' : 'light') : m
+})
+
+const themes = {
+  light: { bg: '#ffffff', fg: '#1f2937', border: '#e5e7eb', accent: '#2196f3' },
+  dark: { bg: '#1f2937', fg: '#f9fafb', border: '#374151', accent: '#60a5fa' },
+}
+
+const app = document.getElementById('app')
+const ui = h('div', {
+  style: () => ({ background: themes[resolved()].bg, color: themes[resolved()].fg, border: `1px solid ${themes[resolved()].border}`, borderRadius: '8px', padding: '16px', transition: 'all 200ms' }),
+},
+  h('div', { style: { marginBottom: '12px', fontSize: '15px', fontWeight: 'bold' } }, () => 'Resolved mode: ' + resolved()),
+  h('div', { style: { display: 'flex', gap: '8px', marginBottom: '8px' } },
+    h('button', { onClick: () => mode.set('light'), style: { padding: '4px 10px', cursor: 'pointer' } }, 'Light'),
+    h('button', { onClick: () => mode.set('dark'), style: { padding: '4px 10px', cursor: 'pointer' } }, 'Dark'),
+    h('button', { onClick: () => mode.set('system'), style: { padding: '4px 10px', cursor: 'pointer' } }, 'System'),
+  ),
+  h('label', { style: { fontSize: '13px' } },
+    h('input', { type: 'checkbox', onChange: (e) => inversed.set(e.target.checked) }),
+    ' Inversed (flip for this subtree)',
+  ),
+)
+mount(ui, app)
+effect(() => {
+  if (mode() === 'system') {
+    const mq = matchMedia('(prefers-color-scheme: dark)')
+    mode.set(mq.matches ? 'dark' : 'light')
+  }
+})
+</Playground>
+
 ## Context and Provider
 
 UI Core provides a shared context and `Provider` component for distributing configuration through the component tree:

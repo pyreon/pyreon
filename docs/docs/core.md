@@ -49,6 +49,18 @@ const Counter = defineComponent((props: { initial: number }) => {
 })
 ```
 
+<Playground title="Component (runs once)" :height="80">
+const count = signal(0)
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('span', { style: { fontSize: '24px', fontWeight: 'bold' } }, () => String(count())),
+  h('button', { onClick: () => count.update(n => n + 1), style: { marginLeft: '12px' } }, '+1'),
+  h('button', { onClick: () => count.update(n => n - 1), style: { marginLeft: '4px' } }, '-1'),
+)
+mount(ui, app)
+</Playground>
+
 ### defineComponent
 
 An identity wrapper that marks a function as a Pyreon component. It preserves the function's type and is useful for IDE tooling, future compiler optimizations, and making component intent explicit in your codebase.
@@ -293,6 +305,20 @@ import { h, Fragment } from '@pyreon/core'
 <div style={{ color: "red", fontSize: "16px" }} />
 <div style={() => ({ color: isError() ? "red" : "green" })} />
 ```
+
+<Playground title="Creating Elements" :height="80">
+const active = signal(true)
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('button', {
+    onClick: () => active.update(v => !v),
+    style: { padding: '8px 16px', borderRadius: '6px' },
+  }, () => active() ? 'Active' : 'Inactive'),
+  h('span', { style: { marginLeft: '12px' } }, () => 'Status: ' + (active() ? 'ON' : 'OFF')),
+)
+mount(ui, app)
+</Playground>
 
 ### Nesting Children
 

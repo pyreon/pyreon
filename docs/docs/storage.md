@@ -41,6 +41,19 @@ theme() // 'light' (or stored value)
 theme.set('dark') // updates signal + localStorage
 ```
 
+<Playground title="Reactive Storage" :height="80">
+const theme = signal('light')
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('div', { style: () => ({ padding: '12px', borderRadius: '8px', background: theme() === 'dark' ? '#1a1a2e' : '#f8f9fa', color: theme() === 'dark' ? '#e2e8f0' : '#1a1a2e', transition: 'all 0.3s' }) },
+    h('span', {}, () => 'Current theme: ' + theme()),
+    h('button', { onClick: () => theme.set(theme() === 'light' ? 'dark' : 'light'), style: { marginLeft: '12px' } }, 'Toggle'),
+  ),
+)
+mount(ui, app)
+</Playground>
+
 ## Storage Backends
 
 ### localStorage — `useStorage()`

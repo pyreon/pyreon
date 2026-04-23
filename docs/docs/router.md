@@ -59,6 +59,26 @@ function App() {
 mount(<App />, document.getElementById('app')!)
 ```
 
+<Playground title="Simple Router" :height="100">
+const route = signal('/')
+const pages = { '/': 'Home Page', '/about': 'About Us', '/contact': 'Contact' }
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('nav', { style: { display: 'flex', gap: '12px', marginBottom: '12px', borderBottom: '1px solid #eee', paddingBottom: '8px' } },
+    ...Object.keys(pages).map(path =>
+      h('a', {
+        href: '#',
+        onClick: (e) => { e.preventDefault(); route.set(path) },
+        style: () => ({ fontWeight: route() === path ? 'bold' : 'normal', color: route() === path ? '#0d6efd' : 'inherit', textDecoration: 'none' }),
+      }, path === '/' ? 'Home' : path.slice(1))
+    ),
+  ),
+  h('div', { style: { fontSize: '18px' } }, () => pages[route()] || 'Not Found'),
+)
+mount(ui, app)
+</Playground>
+
 ## createRouter
 
 Create a router instance. Accepts a `RouterOptions` object or a shorthand array of `RouteRecord[]`.

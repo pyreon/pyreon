@@ -53,6 +53,36 @@ console.log(defaultBreakpoints)
 
 The breakpoint values are always in ascending order and the smallest breakpoint always starts at `0`.
 
+<Playground title="Live Breakpoint Detection" :height="140">
+const breakpoints = { xs: 0, sm: 576, md: 768, lg: 992, xl: 1200, xxl: 1400 }
+const width = signal(window.innerWidth)
+
+const resolve = (w) => {
+  let name = 'xs'
+  for (const [k, v] of Object.entries(breakpoints)) if (w >= v) name = k
+  return name
+}
+
+window.addEventListener('resize', () => width.set(window.innerWidth))
+
+const current = () => resolve(width())
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('div', { style: { fontSize: '13px', color: '#666', marginBottom: '8px' } }, 'Resize the preview pane to see breakpoints change'),
+  h('div', { style: { fontSize: '32px', fontWeight: 'bold', color: '#2196f3' } }, () => current()),
+  h('div', { style: { fontSize: '13px' } }, () => width() + 'px wide'),
+  h('div', { style: { marginTop: '12px', display: 'flex', gap: '4px' } },
+    ...Object.entries(breakpoints).map(([name, min]) =>
+      h('span', {
+        style: () => ({ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', background: current() === name ? '#2196f3' : '#e0e0e0', color: current() === name ? 'white' : '#666' }),
+      }, `${name} ≥${min}`),
+    ),
+  ),
+)
+mount(ui, app)
+</Playground>
+
 ### `BreakpointMap` Type
 
 A `BreakpointMap` is a record mapping breakpoint names to pixel values:
