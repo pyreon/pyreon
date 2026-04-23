@@ -8,6 +8,7 @@ import {
   _snapshot,
 } from './counters'
 import { type CounterDiff, diffSnapshots, formatDiff } from './diff'
+import { mountOverlay, type OverlayHandle, type OverlayOptions } from './overlay'
 
 /**
  * Public runtime harness API. Consumers use this to read counters, run
@@ -43,6 +44,12 @@ export interface PerfHarness {
     after: Record<CounterName, number>
     diff: CounterDiff
   }>
+
+  /**
+   * Mount the in-page overlay. Ctrl+Shift+P toggles visibility. Only one
+   * overlay per window — calling twice destroys and remounts.
+   */
+  overlay: (options?: OverlayOptions) => OverlayHandle
 }
 
 export const perfHarness: PerfHarness = {
@@ -73,6 +80,7 @@ export const perfHarness: PerfHarness = {
     if (!wasEnabled) _disable()
     return { label, result, before, after, diff }
   },
+  overlay: mountOverlay,
 }
 
 // ─── Window global ───────────────────────────────────────────────────────────

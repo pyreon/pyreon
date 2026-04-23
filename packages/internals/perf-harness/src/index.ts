@@ -20,3 +20,6 @@ export type { CounterDiff, CounterDiffEntry } from './diff'
 
 export { perfHarness, install, uninstall } from './harness'
 export type { PerfHarness } from './harness'
+
+export { mountOverlay } from './overlay'
+export type { OverlayHandle, OverlayOptions } from './overlay'
