@@ -832,7 +832,12 @@
       "name": "@pyreon/perf-harness",
       "version": "0.13.1",
       "devDependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/router": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/styler": "workspace:^",
+        "@pyreon/unistyle": "workspace:^",
         "happy-dom": "^20.8.3",
         "vitest": "^4.1.4",
       },

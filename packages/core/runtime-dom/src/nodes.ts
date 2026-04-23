@@ -383,6 +383,7 @@ function computeForLis(
 ): number {
   const { tails, tailIdx, pred } = lis
   let lisLen = 0
+  let ops = 0
   for (let i = 0; i < n; i++) {
     const key = newKeys[i] as string | number
     const v = cache.get(key)?.pos ?? 0
@@ -390,6 +391,7 @@ function computeForLis(
     let hi = lisLen
     while (lo < hi) {
       const mid = (lo + hi) >> 1
+      ops++
       if ((tails[mid] as number) < v) lo = mid + 1
       else hi = mid
     }
@@ -398,6 +400,7 @@ function computeForLis(
     if (lo > 0) pred[i] = tailIdx[lo - 1] as number
     if (lo === lisLen) lisLen++
   }
+  if (__DEV__ && ops > 0) _countSink.__pyreon_count__?.('runtime.mountFor.lisOps', ops)
   return lisLen
 }
 
