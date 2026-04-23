@@ -11,7 +11,7 @@
 import { computed, effect, onCleanup, setErrorHandler, signal } from '@pyreon/reactivity'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { _disable, _reset } from '../counters'
-import { install, perfHarness, uninstall } from '../harness'
+import { install, uninstall } from '../harness'
 
 beforeEach(() => {
   _reset()

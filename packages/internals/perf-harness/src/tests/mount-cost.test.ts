@@ -10,7 +10,7 @@
  * future regressions in the mount pipeline (e.g., accidentally double-
  * mounting children) surface as a counter jump.
  */
-import { h } from '@pyreon/core'
+import { h, type VNodeChild } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { _disable, _reset } from '../counters'
@@ -30,8 +30,8 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-function nested(depth: number, child?: unknown): unknown {
-  if (depth === 0) return child ?? 'leaf'
+function nested(depth: number, child: VNodeChild = 'leaf'): VNodeChild {
+  if (depth === 0) return child
   return h('div', null, nested(depth - 1, child))
 }
 
@@ -60,11 +60,11 @@ describe('mount cost scaling', () => {
   it('depth: N-deep nested divs → O(N) mountChild, not O(N²)', async () => {
     const root = document.getElementById('root')!
     const out100 = await perfHarness.record('depth-100', () => {
-      const dispose = mount(nested(100) as never, root)
+      const dispose = mount(nested(100), root)
       dispose()
     })
     const out1000 = await perfHarness.record('depth-1000', () => {
-      const dispose = mount(nested(1000) as never, root)
+      const dispose = mount(nested(1000), root)
       dispose()
     })
     const ratio = (out1000.after['runtime.mountChild'] ?? 0) / (out100.after['runtime.mountChild'] ?? 1)

@@ -32,6 +32,7 @@ describe('equality-computed downstream skip', () => {
     // Derived value: always returns constant 42 regardless of s. equals=true
     // so any write to s that doesn't change the derived value should skip
     // downstream notifications.
+    // oxlint-disable-next-line erasing-op -- intentional: track s() but always return 42
     const c = computed(() => (s() * 0) + 42, { equals: (a, b) => a === b })
 
     const outcome = await perfHarness.record('equals-skip', () => {

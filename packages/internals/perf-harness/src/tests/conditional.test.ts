@@ -6,7 +6,7 @@
  * subtrees that must tear down cleanly on the flip. This probe toggles
  * N times and asserts no accumulating counters.
  */
-import { For, h, Show, Switch, Match } from '@pyreon/core'
+import { For, h, Show } from '@pyreon/core'
 import { effect, signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'

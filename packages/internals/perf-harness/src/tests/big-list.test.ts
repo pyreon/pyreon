@@ -79,20 +79,24 @@ describe('big-list scaling', () => {
     // Each row = 2 VNodes (li + text). 1000 rows → ~2000+ mountChild plus scaffolding.
     // Upper bound: 10× = 10000 would flag something wrong.
     expect(mountChild).toBeLessThan(10_000)
-    // biome-ignore lint/suspicious/noConsole: probe output
-    console.log(`[big-list] 1k mount: mountChild=${mountChild}, wall=${outcome.diff.wallMsDelta ?? 'n/a'}`)
+    // oxlint-disable-next-line no-console
+    console.log(`[big-list] 1k mount: mountChild=${mountChild}`)
   })
 
-  it('10000-row INITIAL MOUNT counter shape', async () => {
-    const outcome = await perfHarness.record('mount-10k', async () => {
-      const { dispose } = await mountList(10_000)
-      dispose()
-    })
-    const mountChild = outcome.after['runtime.mountChild'] ?? 0
-    expect(mountChild).toBeLessThan(100_000)
-    // oxlint-disable-next-line no-console
-    console.log(`[big-list] 10k mount: mountChild=${mountChild}`)
-  })
+  it(
+    '10000-row INITIAL MOUNT counter shape',
+    async () => {
+      const outcome = await perfHarness.record('mount-10k', async () => {
+        const { dispose } = await mountList(10_000)
+        dispose()
+      })
+      const mountChild = outcome.after['runtime.mountChild'] ?? 0
+      expect(mountChild).toBeLessThan(100_000)
+      // oxlint-disable-next-line no-console
+      console.log(`[big-list] 10k mount: mountChild=${mountChild}`)
+    },
+    30_000, // happy-dom takes ~15s on CI to mount 10k nodes
+  )
 
   it('1000-row RANDOM SHUFFLE — scaling snapshot', async () => {
     const { items, dispose } = await mountList(1000)
@@ -106,17 +110,21 @@ describe('big-list scaling', () => {
     dispose()
   })
 
-  it('10000-row RANDOM SHUFFLE — scaling snapshot', async () => {
-    const { items, dispose } = await mountList(10_000)
-    const outcome = await perfHarness.record('shuffle-10k', () => {
-      items.set(seededShuffle(items(), 42))
-    })
-    const lisOps = outcome.after['runtime.mountFor.lisOps'] ?? 0
-    expect(lisOps).toBeGreaterThan(0)
-    // oxlint-disable-next-line no-console
-    console.log(`[big-list] 10k shuffle: lisOps=${lisOps}`)
-    dispose()
-  })
+  it(
+    '10000-row RANDOM SHUFFLE — scaling snapshot',
+    async () => {
+      const { items, dispose } = await mountList(10_000)
+      const outcome = await perfHarness.record('shuffle-10k', () => {
+        items.set(seededShuffle(items(), 42))
+      })
+      const lisOps = outcome.after['runtime.mountFor.lisOps'] ?? 0
+      expect(lisOps).toBeGreaterThan(0)
+      // oxlint-disable-next-line no-console
+      console.log(`[big-list] 10k shuffle: lisOps=${lisOps}`)
+      dispose()
+    },
+    30_000,
+  )
 
   it('1000-row REVERSAL', async () => {
     const { items, dispose } = await mountList(1000)
@@ -130,17 +138,21 @@ describe('big-list scaling', () => {
     dispose()
   })
 
-  it('10000-row REVERSAL', async () => {
-    const { items, dispose } = await mountList(10_000)
-    const outcome = await perfHarness.record('reverse-10k', () => {
-      items.set([...items()].reverse())
-    })
-    const lisOps = outcome.after['runtime.mountFor.lisOps'] ?? 0
-    // oxlint-disable-next-line no-console
-    console.log(`[big-list] 10k reverse: lisOps=${lisOps}`)
-    expect(lisOps).toBeGreaterThan(0)
-    dispose()
-  })
+  it(
+    '10000-row REVERSAL',
+    async () => {
+      const { items, dispose } = await mountList(10_000)
+      const outcome = await perfHarness.record('reverse-10k', () => {
+        items.set([...items()].reverse())
+      })
+      const lisOps = outcome.after['runtime.mountFor.lisOps'] ?? 0
+      // oxlint-disable-next-line no-console
+      console.log(`[big-list] 10k reverse: lisOps=${lisOps}`)
+      expect(lisOps).toBeGreaterThan(0)
+      dispose()
+    },
+    30_000,
+  )
 
   it('append 1000 rows to existing 1000-row list', async () => {
     const { items, dispose } = await mountList(1000)

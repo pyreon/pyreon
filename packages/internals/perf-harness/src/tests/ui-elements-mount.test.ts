@@ -6,7 +6,7 @@
  * cost compounds across every component that wraps it, so any regression
  * here shows up linearly across a real app.
  */
-import { h } from '@pyreon/core'
+import { h, type VNodeChild } from '@pyreon/core'
 import { Element } from '@pyreon/elements'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -65,12 +65,12 @@ describe('@pyreon/elements Element mount cost', () => {
 
   it('nested Elements (depth 10) — linear in depth', async () => {
     const root = document.getElementById('root')!
-    const build = (depth: number): unknown => {
+    const build = (depth: number): VNodeChild => {
       if (depth === 0) return 'leaf'
       return h(Element, null, build(depth - 1))
     }
     const outcome = await perfHarness.record('depth-10', () => {
-      const dispose = mount(build(10) as never, root)
+      const dispose = mount(build(10), root)
       dispose()
     })
     const mountChild = outcome.after['runtime.mountChild'] ?? 0

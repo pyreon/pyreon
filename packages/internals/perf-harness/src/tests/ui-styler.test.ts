@@ -7,8 +7,7 @@
  *   - Resolve with identical props — producing identical output
  *   - Static fast path (no dynamic values) hit
  */
-import { h } from '@pyreon/core'
-import { provide } from '@pyreon/core'
+import { h, provide } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { styled, ThemeContext } from '@pyreon/styler'

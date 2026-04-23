@@ -59,7 +59,8 @@ describe('dispose cleans subscriber set', () => {
     const b = signal('b')
     const which = signal<'a' | 'b'>('a')
     const e = effect(() => {
-      which() === 'a' ? a() : b()
+      if (which() === 'a') a()
+      else b()
     })
     expect(a.debug().subscriberCount).toBe(1)
     expect(b.debug().subscriberCount).toBe(0)

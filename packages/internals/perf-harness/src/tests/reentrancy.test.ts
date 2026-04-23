@@ -25,12 +25,10 @@ describe('effect re-entrancy', () => {
   it('effect writes to a DIFFERENT signal — terminates (no infinite loop)', async () => {
     const a = signal(0)
     const b = signal(0)
-    let aRuns = 0
     let bRuns = 0
 
     effect(() => {
       a()
-      aRuns++
     })
     effect(() => {
       b()
