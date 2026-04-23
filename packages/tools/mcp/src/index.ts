@@ -13,6 +13,8 @@
  *   get_routes                — List all routes in the current project
  *   get_components            — List all components with their props and signals
  *   get_browser_smoke_status  — Report which browser-categorized packages have smoke coverage
+ *   get_pattern               — Fetch a "how do I do X" pattern body from docs/patterns/
+ *   get_anti_patterns         — Browse the anti-patterns catalog, optionally filtered by category
  *
  * Usage:
  *   bunx @pyreon/mcp          # stdio transport (for IDE integration)
@@ -26,9 +28,24 @@ import {
   diagnoseError,
   migrateReactCode,
 } from '@pyreon/compiler'
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { z } from 'zod'
 import packageJson from '../package.json' with { type: 'json' }
+import {
+  ANTI_PATTERN_CATEGORIES,
+  type AntiPatternCategory,
+  formatAntiPatterns,
+  parseAntiPatterns,
+} from './anti-patterns'
 import { API_REFERENCE } from './api-reference'
+import {
+  findPattern,
+  formatPatternBody,
+  formatPatternIndex,
+  loadPatternRegistry,
+  suggestPatterns,
+} from './patterns'
 import { generateContext, type ProjectContext } from './project-scanner'
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -421,7 +438,98 @@ server.tool(
   },
 )
 
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Tool: get_pattern — serves docs/patterns/<name>.md
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  server.tool(
+    'get_pattern',
+    {
+      name: z
+        .string()
+        .optional()
+        .describe(
+          'Pattern slug (e.g. "dev-warnings", "controllable-state"). Omit to list available patterns.',
+        ),
+    },
+    async ({ name }) => {
+      const registry = loadPatternRegistry()
+      if (!name) return textResult(formatPatternIndex(registry))
+
+      const pattern = findPattern(registry, name)
+      if (pattern) return textResult(formatPatternBody(pattern))
+
+      const suggestions = suggestPatterns(registry, name)
+      const suggestText =
+        suggestions.length > 0
+          ? `Did you mean one of these?\n${suggestions.map((s) => `  - ${s}`).join('\n')}\n\nOr call get_pattern() with no arg to see the full list.`
+          : 'Call get_pattern() with no arg to see available patterns.'
+      return textResult(`Pattern "${name}" not found.\n\n${suggestText}`)
+    },
+  )
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Tool: get_anti_patterns — parses .claude/rules/anti-patterns.md
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  server.tool(
+    'get_anti_patterns',
+    {
+      category: z
+        .enum([
+          'reactivity',
+          'jsx',
+          'context',
+          'architecture',
+          'testing',
+          'lifecycle',
+          'documentation',
+          'all',
+        ])
+        .optional()
+        .describe(
+          `Category filter: ${ANTI_PATTERN_CATEGORIES.join(', ')}, or "all" (default).`,
+        ),
+    },
+    async ({ category = 'all' }) => {
+      const cat = category as AntiPatternCategory | 'all'
+      const doc = loadAntiPatternsDoc()
+      if (!doc) {
+        return textResult(
+          'Could not locate `.claude/rules/anti-patterns.md`. This tool reads the file from the Pyreon monorepo — running in a consumer project without the rules directory surfaces this miss. File issues against pyreon/pyreon if the file exists but is not being found.',
+        )
+      }
+      const all = parseAntiPatterns(doc)
+      const filtered = cat === 'all' ? all : all.filter((e) => e.category === cat)
+      return textResult(formatAntiPatterns(filtered, cat))
+    },
+  )
+
   return server
+}
+
+/**
+ * Locate `.claude/rules/anti-patterns.md` by walking up from cwd.
+ * Returns the file contents or null if not found within 30 levels.
+ * Separate from the patterns loader because the doc path is fixed
+ * (`.claude/rules/`) — no glob needed.
+ */
+function loadAntiPatternsDoc(startDir: string = process.cwd()): string | null {
+  let dir = resolve(startDir)
+  for (let i = 0; i < 30; i++) {
+    const candidate = join(dir, '.claude', 'rules', 'anti-patterns.md')
+    if (existsSync(candidate)) {
+      try {
+        return readFileSync(candidate, 'utf8')
+      } catch {
+        return null
+      }
+    }
+    const parent = dirname(dir)
+    if (parent === dir) return null
+    dir = parent
+  }
+  return null
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
