@@ -111,7 +111,6 @@ export function mountOverlay(options: OverlayOptions = {}): OverlayHandle {
   // ── Rendering ──────────────────────────────────────────────────────────────
   let rafId = 0
   let visible = options.visible !== false
-  let recording = false
   const rowEls = new Map<CounterName, { tr: HTMLTableRowElement; val: HTMLElement }>()
 
   const render = () => {
@@ -176,28 +175,35 @@ export function mountOverlay(options: OverlayOptions = {}): OverlayHandle {
     statusEl.textContent = 'reset'
   })
 
-  btnRecord.addEventListener('click', async () => {
-    if (recording) return
-    recording = true
+  // Record-button state machine: click-to-start, click-again-to-stop.
+  // Kept deliberately as one handler driving a two-state FSM rather than
+  // the earlier "register a second click listener inside the awaited
+  // promise" pattern — the FSM form is straightforward to reason about
+  // and disposes cleanly if the overlay is destroyed mid-recording.
+  let stopRecording: (() => void) | null = null
+
+  btnRecord.addEventListener('click', () => {
+    if (stopRecording !== null) {
+      // Second click — stop the active recording.
+      stopRecording()
+      return
+    }
+    // First click — begin a new recording window.
     btnRecord.textContent = '● recording'
     btnRecord.classList.add('recording')
-    const outcome = await perfHarness.record('overlay-manual', async () => {
-      // Hold recording for 5s — user clicks again to stop. We use a promise
-      // that resolves on the next click.
-      await new Promise<void>((resolve) => {
-        const onClick = () => {
-          btnRecord.removeEventListener('click', onClick)
-          resolve()
-        }
-        btnRecord.addEventListener('click', onClick, { once: true })
-      })
+    const waitForStop = new Promise<void>((resolve) => {
+      stopRecording = resolve
     })
-    recording = false
-    btnRecord.textContent = 'record'
-    btnRecord.classList.remove('recording')
-    statusEl.textContent = `recorded: ${outcome.diff.entries.length} counters`
-    // eslint-disable-next-line no-console
-    console.log('[pyreon-perf] recorded:', outcome)
+    perfHarness
+      .record('overlay-manual', () => waitForStop)
+      .then((outcome) => {
+        stopRecording = null
+        btnRecord.textContent = 'record'
+        btnRecord.classList.remove('recording')
+        statusEl.textContent = `recorded: ${outcome.diff.entries.length} counters`
+        // oxlint-disable-next-line no-console
+        console.log('[pyreon-perf] recorded:', outcome)
+      })
   })
 
   btnExport.addEventListener('click', () => {
@@ -244,6 +250,9 @@ export function mountOverlay(options: OverlayOptions = {}): OverlayHandle {
   const destroy = () => {
     if (rafId) cancelAnimationFrame(rafId)
     window.removeEventListener('keydown', onKey)
+    // If a recording is still in progress, stop it so the awaiting
+    // perfHarness.record() call resolves and doesn't dangle.
+    stopRecording?.()
     if (!options.container) host.remove()
     else {
       while (root.firstChild) root.removeChild(root.firstChild)

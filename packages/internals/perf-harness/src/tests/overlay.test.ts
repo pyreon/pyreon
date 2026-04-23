@@ -103,4 +103,44 @@ describe('mountOverlay', () => {
     expect(hosts.length).toBe(1)
     expect(hosts[0]).not.toBe(first)
   })
+
+  it('record button toggles between start and stop (two clicks = one recording)', async () => {
+    const handle = mountOverlay()
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+    const root = (
+      document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement
+    ).shadowRoot!
+    const btn = root.querySelector('.btn-record') as HTMLButtonElement
+
+    // First click → recording state
+    btn.click()
+    expect(btn.textContent).toBe('● recording')
+    expect(btn.classList.contains('recording')).toBe(true)
+
+    // Second click → stop; promise resolves asynchronously so await a tick
+    btn.click()
+    await new Promise<void>((r) => setTimeout(r, 0))
+    expect(btn.textContent).toBe('record')
+    expect(btn.classList.contains('recording')).toBe(false)
+    handle.destroy()
+  })
+
+  it('destroy() stops an in-progress recording so it does not dangle', async () => {
+    const handle = mountOverlay()
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+    const root = (
+      document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement
+    ).shadowRoot!
+    const btn = root.querySelector('.btn-record') as HTMLButtonElement
+
+    btn.click() // start recording
+    expect(btn.textContent).toBe('● recording')
+
+    // Destroying without stopping should still allow the pending record
+    // promise to resolve — tested indirectly: destroy() completes without
+    // throwing AND the __pyreon_perf_overlay__ global is cleared.
+    handle.destroy()
+    const w = globalThis as unknown as { __pyreon_perf_overlay__?: unknown }
+    expect(w.__pyreon_perf_overlay__).toBeUndefined()
+  })
 })

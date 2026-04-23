@@ -70,7 +70,7 @@ async function main() {
     }
     const rowProbe = await page.evaluate((): RowProbe => {
       const host = document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement
-      const root = host.shadowRoot!
+      const root = (host.shadowRoot as ShadowRoot)
       const rows = Array.from(root.querySelectorAll('tbody tr'))
       const names = rows.map((r) => r.querySelector('.name')?.textContent ?? '')
       return {
@@ -86,19 +86,19 @@ async function main() {
     // Filter chips rendered?
     const chipCount = await page.evaluate(() => {
       const host = document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement
-      return host.shadowRoot!.querySelectorAll('.chip').length
+      return (host.shadowRoot as ShadowRoot).querySelectorAll('.chip').length
     })
     await assert(chipCount >= 6, `filter chips rendered (${chipCount} chips)`)
 
     // Reset button clears rows.
     await page.evaluate(() => {
       const host = document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement
-      ;(host.shadowRoot!.querySelector('.btn-reset') as HTMLButtonElement).click()
+      ;((host.shadowRoot as ShadowRoot).querySelector('.btn-reset') as HTMLButtonElement).click()
     })
     await page.waitForTimeout(100) // let rAF tick
     const rowsAfterReset = await page.evaluate(() => {
       const host = document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement
-      return host.shadowRoot!.querySelectorAll('tbody tr').length
+      return (host.shadowRoot as ShadowRoot).querySelectorAll('tbody tr').length
     })
     await assert(rowsAfterReset === 0, `reset button cleared rows (now ${rowsAfterReset})`)
 
@@ -107,7 +107,7 @@ async function main() {
     await page.waitForTimeout(100)
     const hiddenAfterKey = await page.evaluate(() => {
       const host = document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement
-      const panel = host.shadowRoot!.querySelector('.panel') as HTMLElement
+      const panel = (host.shadowRoot as ShadowRoot).querySelector('.panel') as HTMLElement
       return panel.style.display === 'none'
     })
     await assert(hiddenAfterKey, 'Ctrl+Shift+P hides the panel')
@@ -116,7 +116,7 @@ async function main() {
     await page.waitForTimeout(100)
     const shownAgain = await page.evaluate(() => {
       const host = document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement
-      const panel = host.shadowRoot!.querySelector('.panel') as HTMLElement
+      const panel = (host.shadowRoot as ShadowRoot).querySelector('.panel') as HTMLElement
       return panel.style.display !== 'none'
     })
     await assert(shownAgain, 'Ctrl+Shift+P shows the panel again')
