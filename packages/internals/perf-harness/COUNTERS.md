@@ -10,6 +10,13 @@ Canonical list of every counter name emitted through `globalThis.__pyreon_count_
 - **action** — what happened (`resolve`, `mount`, `navigate`)
 - **variant** (optional) — a qualifier like `.hit` for cache hits, `.fallback-scan` for unusual paths
 
+> **The `.hit` suffix is load-bearing.** `scripts/perf/diff.ts` treats counters
+> whose name ends in `.hit` as success counters — a DROP is a regression
+> (cache stopped working), not an improvement. Every other counter measures
+> work, so an INCREASE is a regression. Rename accordingly when adding new
+> counters: if the counter measures "how many times a fast path fired,"
+> end the name in `.hit`; otherwise don't.
+
 ## Counters
 
 | Name                                | Emitted from                                             | What a healthy number looks like                                                                                                                                                    |

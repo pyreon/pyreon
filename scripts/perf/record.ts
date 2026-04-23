@@ -107,8 +107,13 @@ async function startServer(app: string, mode: 'dev' | 'preview'): Promise<Server
     const onData = (chunk: Buffer) => {
       const line = chunk.toString()
       process.stderr.write(`[${app}:${mode}] ${line}`)
-      // Match Vite's ready line: "Local:   http://localhost:XXXX/"
-      const match = /Local:\s+(https?:\/\/[^\s]+)\//i.exec(line)
+      // Strip ANSI colour codes — Vite in CI (non-TTY) still emits them,
+      // which breaks the `Local:` regex because the word gets wrapped in
+      // `[1m...[22m`. A local TTY tends to hide this because terminal output
+      // is filtered before our regex sees it. Caught by the first real CI
+      // run (server-start timeout exit 2 across every matrix job).
+      const stripped = line.replace(/\[[0-9;]*[a-zA-Z]/g, '')
+      const match = /Local:\s+(https?:\/\/[^\s]+)\//i.exec(stripped)
       if (match && !resolved) {
         resolved = true
         clearTimeout(timer)

@@ -95,4 +95,29 @@ describe('diffRecords', () => {
     expect(diff.wallMsDelta).toBe(20)
     expect(diff.heapBytesDelta).toBe(1_000_000)
   })
+
+  describe('.hit suffix — drop is regression, not improvement', () => {
+    it('flags a .hit counter going down', () => {
+      // Real scenario: cache stopped working. sheet.insert.hit drops to 0.
+      const baseline = makeRecord({ 'styler.sheet.insert.hit': 621 })
+      const current = makeRecord({ 'styler.sheet.insert.hit': 0 })
+      const diff = diffRecords(baseline, current, 0.1)
+      expect(diff.regressed).toBe(true)
+      expect(diff.regressions.map((r) => r.name)).toEqual(['styler.sheet.insert.hit'])
+    })
+
+    it('does NOT flag a .hit counter going UP (more cache hits = good)', () => {
+      const baseline = makeRecord({ 'styler.sheet.insert.hit': 100 })
+      const current = makeRecord({ 'styler.sheet.insert.hit': 500 })
+      const diff = diffRecords(baseline, current, 0.1)
+      expect(diff.regressed).toBe(false)
+    })
+
+    it('treats non-.hit counters the normal way (UP is bad)', () => {
+      const baseline = makeRecord({ 'unistyle.descriptor': 20 })
+      const current = makeRecord({ 'unistyle.descriptor': 250 })
+      const diff = diffRecords(baseline, current, 0.1)
+      expect(diff.regressed).toBe(true)
+    })
+  })
 })

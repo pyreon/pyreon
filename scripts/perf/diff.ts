@@ -45,6 +45,18 @@ export interface DiffResult {
   regressed: boolean
 }
 
+/**
+ * "Hit" counters (suffix `.hit`) measure successful cache hits — a DROP
+ * means cache stopped working, which is a regression. All other counters
+ * measure work done — increases are regressions, drops are improvements.
+ *
+ * This naming convention is what lets the diff tool flip the sign
+ * correctly without extra catalog metadata.
+ */
+function isHitCounter(name: string): boolean {
+  return name.endsWith('.hit')
+}
+
 export function diffRecords(
   baseline: RecordFile,
   current: RecordFile,
@@ -60,16 +72,25 @@ export function diffRecords(
     const after = current.counters[name] ?? 0
     const delta = after - before
     const pct = before === 0 ? null : delta / before
-    // A regression is an upward move greater than the threshold fraction.
-    // Tiny absolute increases (e.g. 2 → 3 on a rarely-hit counter) are
-    // filtered by requiring the ABSOLUTE delta exceed max(3, before * threshold).
-    // This prevents 0 → 1 or 2 → 3 from tripping the gate when the threshold
-    // ratio would otherwise be infinite or massive.
+    // A regression is a MEANINGFUL movement in the BAD direction:
+    //   - work counters (default): UP is bad
+    //   - hit counters (.hit suffix): DOWN is bad (cache stopped working)
+    //
+    // Tiny absolute movements are filtered by requiring the ABSOLUTE delta
+    // exceed max(3, before * threshold). Prevents 0 → 1 or 2 → 3 from
+    // tripping the gate on rarely-hit counters.
     const absoluteFloor = Math.max(3, before * threshold)
-    const regressed = delta > absoluteFloor
+    const badMove = isHitCounter(name) ? -delta : delta
+    const regressed = badMove > absoluteFloor
     entries.push({ name, before, after, delta, pct, regressed })
   }
-  entries.sort((a, b) => b.delta - a.delta)
+  // Sort by "bad move" magnitude descending so the worst regressions bubble
+  // up regardless of whether they're hit-drops or work-spikes.
+  entries.sort((a, b) => {
+    const badA = isHitCounter(a.name) ? -a.delta : a.delta
+    const badB = isHitCounter(b.name) ? -b.delta : b.delta
+    return badB - badA
+  })
 
   return {
     entries,
