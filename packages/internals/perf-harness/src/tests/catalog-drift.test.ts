@@ -33,6 +33,7 @@ const CATALOG_PATH = resolve(HERE, '../../COUNTERS.md')
 const INSTRUMENTED_PACKAGE_ROOTS = [
   'packages/core/reactivity/src',
   'packages/core/runtime-dom/src',
+  'packages/core/runtime-server/src',
   'packages/core/router/src',
   'packages/ui-system/styler/src',
   'packages/ui-system/unistyle/src',

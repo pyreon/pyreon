@@ -63,6 +63,14 @@ const FILES_UNDER_TEST: { layer: string; file: string; counterNames: string[] }[
     file: 'packages/core/router/src/router.ts',
     counterNames: ['router.navigate', 'router.loaderRun', 'router.loaderCache.hit'],
   },
+  // runtime-server is NOT in this list — it's a server package with a
+  // `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`
+  // dev gate. The `typeof process` half can't be folded at build time
+  // (runtime check), so even with `process.env.NODE_ENV` defined as
+  // `"production"`, esbuild keeps the gate + counter strings in the bundle.
+  // For server code the contract is RUNTIME gating, not tree-shake —
+  // `runtime-server-runtime-gate.test.ts` verifies that NODE_ENV=production
+  // skips the counter call at execution time.
 ]
 
 async function bundleProd(entry: string): Promise<string> {

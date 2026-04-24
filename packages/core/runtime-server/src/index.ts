@@ -27,6 +27,13 @@ import {
 
 const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 
+// Dev-mode perf counter sink. Zero coupling to @pyreon/perf-harness — we just
+// call the global if it's installed. Guarded on __DEV__ so NODE_ENV=production
+// short-circuits at runtime; @pyreon/runtime-server is a server package, so the
+// `typeof process` gate is correct here (not `import.meta.env.DEV`, which is a
+// browser-bundler concern). See .claude/rules/test-environment-parity.md.
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 // ─── Streaming Suspense context ───────────────────────────────────────────────
 // Tracks in-flight async Suspense boundary resolutions within a single stream.
 
@@ -82,6 +89,7 @@ function withStoreContext<T>(fn: () => T): T {
 /** Render a VNode tree to an HTML string. Supports async component functions. */
 export async function renderToString(root: VNode | null): Promise<string> {
   if (root === null) return ''
+  if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.render')
   // Each call gets a fresh isolated context stack and (optionally) store registry
   return withStoreContext(() => _contextAls.run([], () => renderNode(root)))
 }
@@ -109,6 +117,7 @@ export function runWithRequestContext<T>(fn: () => Promise<T>): Promise<T> {
  * Each renderToStream call gets its own isolated ALS context stack.
  */
 export function renderToStream(root: VNode | null): ReadableStream<string> {
+  if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.stream')
   return new ReadableStream<string>({
     start(controller) {
       const enqueue = (chunk: string) => controller.enqueue(chunk)
@@ -150,6 +159,7 @@ async function streamVNode(vnode: VNode, enqueue: (s: string) => void): Promise<
     enqueue('<!--pyreon-for-->')
     for (const item of each()) {
       const key = by(item)
+      if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.for.keyMarker')
       enqueue(`<!--k:${safeKeyForMarker(key)}-->`)
       await streamNode(children(item) as VNodeChild, enqueue)
     }
@@ -170,6 +180,7 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
     await streamSuspenseBoundary(vnode, enqueue)
     return
   }
+  if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.component')
   try {
     const { vnode: output } = runWithHooks(vnode.type as ComponentFn, mergeChildrenIntoProps(vnode))
     const resolved = output instanceof Promise ? await output : output
@@ -261,6 +272,7 @@ const SUSPENSE_SWAP_FN =
  * main stream enqueue so it always arrives after the fallback placeholder.
  */
 async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void): Promise<void> {
+  if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.suspense.boundary')
   const ctx = _streamCtxAls.getStore()
   const { fallback, children } = vnode.props as { fallback: VNodeChild; children?: VNodeChild }
 
@@ -304,6 +316,7 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
 
         if (result === 'timeout') {
           if (__DEV__) {
+            _countSink.__pyreon_count__?.('runtime-server.suspense.fallback')
             console.warn(
               `[Pyreon SSR] Suspense boundary timed out after ${SUSPENSE_TIMEOUT_MS}ms — fallback will remain.`,
             )
@@ -361,6 +374,7 @@ async function renderNode(node: VNodeChild | (() => VNodeChild)): Promise<string
     let forHtml = '<!--pyreon-for-->'
     for (const item of each()) {
       const key = by(item)
+      if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.for.keyMarker')
       forHtml += `<!--k:${safeKeyForMarker(key)}-->`
       forHtml += await renderNode(children(item) as VNodeChild)
     }
@@ -382,6 +396,7 @@ async function renderChildren(children: VNodeChild[]): Promise<string> {
 }
 
 async function renderComponent(vnode: VNode & { type: ComponentFn }): Promise<string> {
+  if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.component')
   const { vnode: output } = runWithHooks(vnode.type, mergeChildrenIntoProps(vnode))
 
   // Async component function (async function Component()) — await the promise
@@ -601,6 +616,7 @@ const NEEDS_ESCAPE_RE = /[&<>"']/
 
 function escapeHtml(str: string): string {
   if (!NEEDS_ESCAPE_RE.test(str)) return str
+  if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.escape')
   return str.replace(/[&<>"']/g, (c) => ESCAPE_MAP[c] ?? c)
 }
 
