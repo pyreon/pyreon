@@ -1,3 +1,4 @@
+import { h } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { I18nProvider, useI18n } from '../context'
@@ -863,5 +864,109 @@ describe('i18n core subpath', () => {
     const mod = await import('../core')
     expect(mod.createI18n).toBeDefined()
     expect(mod.interpolate).toBeDefined()
+  })
+})
+
+// ─── Trans: real h() round-trip (parallel coverage for the mock-vnode tests above) ──
+//
+// The mock-vnode tests above use `{ type, props, children }` literals as
+// the components-map return values and assert against the resulting
+// Fragment shape. That's the contract at the type level, but it skips
+// the path a real consumer actually hits: `h('strong', null, child)` →
+// Fragment → `mount` → DOM. PR #197's silent metadata drop was caused
+// by exactly this gap (mock literals didn't exercise the real
+// rocketstyle/attrs pipeline). This block adds the real-h() parallel:
+// the components map returns real VNodes, the Trans output is mounted
+// via @pyreon/runtime-dom, and the assertions are on rendered HTML
+// (what users see) rather than VNode shape (what tests can lie about).
+
+describe('Trans — real h() + mount round-trip', () => {
+  function newContainer(): HTMLElement {
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    return el
+  }
+
+  it('renders a single component-tag through h() into the right DOM', () => {
+    const t = () => 'Click <link>here</link> please'
+    const result = Trans({
+      t,
+      i18nKey: 'action',
+      components: {
+        link: (children: string) => h('a', { href: '/go' }, children),
+      },
+    })
+    const container = newContainer()
+    mount(result as never, container)
+    // Real h() output rendered as actual <a> with the href attribute set.
+    expect(container.innerHTML).toContain('<a href="/go">here</a>')
+    expect(container.textContent).toBe('Click here please')
+    container.remove()
+  })
+
+  it('renders multiple component tags interleaved with plain text', () => {
+    const t = () => 'Hi <bold>Alice</bold>, click <link>here</link>'
+    const result = Trans({
+      t,
+      i18nKey: 'mixed',
+      components: {
+        bold: (children: string) => h('strong', null, children),
+        link: (children: string) => h('a', { href: '/go' }, children),
+      },
+    })
+    const container = newContainer()
+    mount(result as never, container)
+    expect(container.innerHTML).toContain('<strong>Alice</strong>')
+    expect(container.innerHTML).toContain('<a href="/go">here</a>')
+    expect(container.textContent).toBe('Hi Alice, click here')
+    container.remove()
+  })
+
+  it('combines values + components and renders the interpolated DOM', () => {
+    const i18n = createI18n({
+      locale: 'en',
+      messages: { en: { items: 'You have <bold>{{count}}</bold> items' } },
+    })
+    const result = Trans({
+      t: i18n.t,
+      i18nKey: 'items',
+      values: { count: 42 },
+      components: { bold: (children: string) => h('strong', null, children) },
+    })
+    const container = newContainer()
+    mount(result as never, container)
+    expect(container.innerHTML).toContain('<strong>42</strong>')
+    expect(container.textContent).toBe('You have 42 items')
+    container.remove()
+  })
+
+  it('renders unmatched tags as plain text (no raw HTML injection)', () => {
+    const t = () => 'Hello <unknown>world</unknown>'
+    const result = Trans({
+      t,
+      i18nKey: 'safety',
+      components: { bold: (children: string) => h('strong', null, children) },
+    })
+    const container = newContainer()
+    mount(result as never, container)
+    // The unknown tag must NOT appear in the rendered DOM. It falls
+    // back to plain text, which is the XSS-safety contract.
+    expect(container.innerHTML).not.toContain('<unknown>')
+    expect(container.textContent).toBe('Hello world')
+    container.remove()
+  })
+
+  it('plain string (no tags) — Trans returns the string and DOM is text-only', () => {
+    const t = () => 'No tags here'
+    const result = Trans({
+      t,
+      i18nKey: 'plain',
+      components: { bold: (children: string) => h('strong', null, children) },
+    })
+    expect(result).toBe('No tags here')
+    const container = newContainer()
+    mount(result as never, container)
+    expect(container.innerHTML).toBe('No tags here')
+    container.remove()
   })
 })
