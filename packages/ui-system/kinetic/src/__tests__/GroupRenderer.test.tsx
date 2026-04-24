@@ -1,4 +1,5 @@
 import type { VNode } from '@pyreon/core'
+import { h } from '@pyreon/core'
 import GroupRenderer from '../kinetic/GroupRenderer'
 import type { KineticConfig } from '../kinetic/types'
 
@@ -47,12 +48,13 @@ const unwrap = (val: any): any => {
   return result
 }
 
-const makeKeyedChild = (key: string | number, text: string): VNode => ({
-  type: 'span',
-  props: { 'data-testid': `child-${key}` },
-  children: [text],
-  key,
-})
+// Real h() instead of a hand-built `{ type, props, children, key }`
+// literal — same VNode shape as production, so any test running the
+// returned node through the runtime sees real h()-normalised output.
+const makeKeyedChild = (key: string | number, text: string): VNode => {
+  const vnode = h('span', { 'data-testid': `child-${key}` }, text) as VNode
+  return { ...vnode, key }
+}
 
 describe('GroupRenderer', () => {
   it('returns a VNode wrapping children in config.tag', () => {
@@ -285,7 +287,8 @@ describe('GroupRenderer', () => {
   it('ignores children without keys', () => {
     const config = makeConfig()
     const keyedChild = makeKeyedChild('a', 'Alpha')
-    const unkeyedChild: VNode = { type: 'span', props: {}, children: ['No key'], key: null }
+    // Real h() output instead of a mock literal — same shape, real path.
+    const unkeyedChild: VNode = h('span', null, 'No key') as VNode
 
     const vnode = unwrap(
       GroupRenderer({

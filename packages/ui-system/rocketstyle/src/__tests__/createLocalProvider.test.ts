@@ -1,4 +1,4 @@
-import { provide } from '@pyreon/core'
+import { h, provide } from '@pyreon/core'
 import createLocalProvider from '../context/createLocalProvider'
 
 // Mock @pyreon/core provide
@@ -244,5 +244,37 @@ describe('createLocalProvider', () => {
     const result = HOC({} as any)
 
     expect(result).toBe(expectedResult)
+  })
+})
+
+// ─── createLocalProvider — real h() round-trip ──────────────────────
+//
+// The tests above use a `BaseComponent` mock that returns
+// `{ type, props, children, key }` literals and assert against the
+// shape. This block re-runs key contracts with a base component
+// that returns real h() output — same divergence guard as the
+// attrs / connector-document parallels.
+
+describe('createLocalProvider — real h() round-trip', () => {
+  it('passes children through a real h() base component', () => {
+    const BaseComponentH = vi.fn((props: Record<string, unknown>) =>
+      h('div', { 'data-real-h': 'yes', ...props }, props.children as never),
+    )
+    const HOC = createLocalProvider(BaseComponentH as any)
+    const result = HOC({ children: 'hello' } as any) as any
+    expect(BaseComponentH).toHaveBeenCalled()
+    expect(result.type).toBe('div')
+    expect(result.props['data-real-h']).toBe('yes')
+  })
+
+  it('forwards arbitrary props through real h() output', () => {
+    const BaseComponentH = vi.fn((props: Record<string, unknown>) =>
+      h('button', props, props.label as never),
+    )
+    const HOC = createLocalProvider(BaseComponentH as any)
+    const result = HOC({ label: 'Click', 'data-id': '42' } as any) as any
+    expect(result.type).toBe('button')
+    expect(result.props.label).toBe('Click')
+    expect(result.props['data-id']).toBe('42')
   })
 })

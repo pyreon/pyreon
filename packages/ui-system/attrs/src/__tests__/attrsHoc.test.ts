@@ -1,3 +1,4 @@
+import { h } from '@pyreon/core'
 import createAttrsHOC from '../hoc/attrsHoc'
 
 const Receiver = (props: any) => ({
@@ -129,6 +130,48 @@ describe('attrsHoc - ref passthrough', () => {
     const hoc = createAttrsHOC({ attrs: [], priorityAttrs: [] })
     const Enhanced = hoc(Receiver)
 
+    const refObj = { current: null }
+    const result = Enhanced({ ref: refObj }) as any
+    expect(result.props.ref).toBe(refObj)
+  })
+})
+
+// ─── attrsHoc — real h() round-trip (parallel to the Receiver mock) ──
+//
+// The Receiver above is a mock that returns a `{ type, props,
+// children, key }` literal. The tests assert against that shape.
+// This block re-runs the core HOC contracts against a Receiver that
+// builds its return value via real `h()` from `@pyreon/core` —
+// catches divergence between the mock shape and the actual VNode
+// shape h() produces.
+
+describe('attrsHoc — real h() round-trip', () => {
+  // Receiver that returns a real VNode via h() instead of a literal.
+  const ReceiverH = (props: any) =>
+    h('div', { ...props, 'data-testid': 'receiver' }, props.label ?? '')
+
+  it('passes through props unchanged when no attrs defined', () => {
+    const hoc = createAttrsHOC({ attrs: [], priorityAttrs: [] })
+    const Enhanced = hoc(ReceiverH as any)
+    const result = Enhanced({ label: 'hello', 'data-custom': 'yes' }) as any
+    expect(result.props.label).toBe('hello')
+    expect(result.props['data-custom']).toBe('yes')
+    expect(result.type).toBe('div')
+  })
+
+  it('applies attrs as default props through real h()', () => {
+    const hoc = createAttrsHOC({
+      attrs: [(_props: any) => ({ label: 'default' })],
+      priorityAttrs: [],
+    })
+    const Enhanced = hoc(ReceiverH as any)
+    const result = Enhanced({}) as any
+    expect(result.props.label).toBe('default')
+  })
+
+  it('passes ref through real h() output unchanged', () => {
+    const hoc = createAttrsHOC({ attrs: [], priorityAttrs: [] })
+    const Enhanced = hoc(ReceiverH as any)
     const refObj = { current: null }
     const result = Enhanced({ ref: refObj }) as any
     expect(result.props.ref).toBe(refObj)

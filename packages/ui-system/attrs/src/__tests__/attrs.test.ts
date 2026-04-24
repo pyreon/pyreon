@@ -1,3 +1,4 @@
+import { h } from '@pyreon/core'
 import attrsComponent from '../attrs'
 import attrs from '../init'
 import isAttrsComponent from '../isAttrsComponent'
@@ -6,12 +7,8 @@ import isAttrsComponent from '../isAttrsComponent'
  * Simple base component for testing.
  * Returns a VNode-like object so we can inspect the final props.
  */
-const BaseComponent = (props: any) => ({
-  type: 'div',
-  props: { ...props, 'data-testid': 'base' },
-  children: props.children ?? props.label ?? null,
-  key: null,
-})
+const BaseComponent = (props: any) =>
+  h('div', { ...props, 'data-testid': 'base' }, props.children ?? props.label ?? null)
 
 /** Helper: call the component and return its output for inspection. */
 const renderProps = (Component: any, props: Record<string, any> = {}) => {
@@ -158,35 +155,30 @@ describe('.config() chaining', () => {
   })
 
   it('should swap the rendered component', () => {
-    const AltComponent = (props: any) => ({
-      type: 'span',
-      props: { ...props, 'data-testid': 'alt' },
-      children: props.label,
-      key: null,
-    })
+    const AltComponent = (props: any) =>
+      h('span', { ...props, 'data-testid': 'alt' }, props.label)
 
     const Original = attrs({ name: 'Test', component: BaseComponent })
     const Swapped = Original.config({ component: AltComponent })
 
     const result = Swapped({ label: 'swapped' }) as any
     expect(result.props['data-testid']).toBe('alt')
-    expect(result.children).toBe('swapped')
+    // h() wraps single string children in an array. The contract here
+    // is "the rendered component received the right child text", so
+    // assert against the flattened content rather than the bare string.
+    expect(result.children).toEqual(['swapped'])
   })
 
   it('should preserve attrs chain after config swap', () => {
-    const AltComponent = (props: any) => ({
-      type: 'span',
-      props: { ...props, 'data-testid': 'alt' },
-      children: props.label,
-      key: null,
-    })
+    const AltComponent = (props: any) =>
+      h('span', { ...props, 'data-testid': 'alt' }, props.label)
 
     const Component = attrs({ name: 'Test', component: BaseComponent })
       .attrs(() => ({ label: 'from-attrs' }))
       .config({ component: AltComponent })
 
     const result = Component({}) as any
-    expect(result.children).toBe('from-attrs')
+    expect(result.children).toEqual(['from-attrs'])
   })
 })
 
@@ -226,12 +218,8 @@ describe('.statics() chaining', () => {
 // --------------------------------------------------------
 describe('.compose() chaining', () => {
   it('should wrap component with a HOC', () => {
-    const withWrapper = (WrappedComponent: any) => (props: any) => ({
-      type: 'div',
-      props: { 'data-testid': 'hoc-wrapper' },
-      children: WrappedComponent(props),
-      key: null,
-    })
+    const withWrapper = (WrappedComponent: any) => (props: any) =>
+      h('div', { 'data-testid': 'hoc-wrapper' }, WrappedComponent(props))
 
     const Component = attrs({
       name: 'Test',
@@ -240,7 +228,10 @@ describe('.compose() chaining', () => {
 
     const result = Component({ label: 'composed' }) as any
     expect(result.props['data-testid']).toBe('hoc-wrapper')
-    expect(result.children.children).toBe('composed')
+    // Real h() wraps single children in an array; nested wrapper holds
+    // its inner WrappedComponent(props) result whose `children` is now
+    // also wrapped — so two array layers down sits the final string.
+    expect(result.children[0].children).toEqual(['composed'])
   })
 
   it('should apply multiple HOCs in correct order', () => {
@@ -267,12 +258,8 @@ describe('.compose() chaining', () => {
   })
 
   it('should remove a HOC by setting it to false', () => {
-    const withWrapper = (WrappedComponent: any) => (props: any) => ({
-      type: 'div',
-      props: { 'data-testid': 'hoc-wrapper' },
-      children: WrappedComponent(props),
-      key: null,
-    })
+    const withWrapper = (WrappedComponent: any) => (props: any) =>
+      h('div', { 'data-testid': 'hoc-wrapper' }, WrappedComponent(props))
 
     const WithHoc = attrs({
       name: 'Test',
@@ -284,7 +271,7 @@ describe('.compose() chaining', () => {
     const result = WithoutHoc({ label: 'no-hoc' }) as any
     // Should render base component directly, no wrapper
     expect(result.props['data-testid']).toBe('base')
-    expect(result.children).toBe('no-hoc')
+    expect(result.children).toEqual(['no-hoc'])
   })
 })
 
@@ -359,12 +346,7 @@ describe('isAttrsComponent', () => {
 // --------------------------------------------------------
 describe('displayName resolution', () => {
   it('should fall back to component.displayName when name is not provided', () => {
-    const NamedComponent = (props: any) => ({
-      type: 'div',
-      props,
-      children: props.children,
-      key: null,
-    })
+    const NamedComponent = (props: any) => h('div', props, props.children)
     NamedComponent.displayName = 'MyDisplayName'
 
     const Component = attrsComponent({
@@ -381,12 +363,7 @@ describe('displayName resolution', () => {
 
   it('should fall back to component.name when name and displayName are not provided', () => {
     function ExplicitNameComponent(props: any) {
-      return {
-        type: 'div',
-        props,
-        children: props.children,
-        key: null,
-      }
+      return h('div', props, props.children)
     }
 
     const Component = attrsComponent({
@@ -484,5 +461,71 @@ describe('deep chaining', () => {
 
     const result = renderProps(Component)
     expect(result.label).toBe('third')
+  })
+})
+
+// ─── attrs — real h() round-trip (parallel to the BaseComponent mocks) ──
+//
+// The tests above use a `BaseComponent` mock that returns
+// `{ type, props, children, key }` literals, then assert against the
+// `vnode.props` shape. That's the contract at the type level, but it
+// skips the actual h() call shape — `h('div', props, ...children)`
+// flattens children differently than the mock and may pass props
+// through different normalization paths in the runtime. PR #197 was
+// caused by exactly this kind of mock-vs-real divergence.
+//
+// This block re-runs the key attrs contracts through a base component
+// that uses real `h()` from `@pyreon/core`. The mock tests stay as
+// the fast unit-test path; these are the safety net.
+
+describe('attrs — real h() round-trip', () => {
+  // BaseComponent that returns a real VNode via h(). Same shape as
+  // the mock, but built through the public h() API.
+  const BaseComponentH = (props: any) =>
+    h('div', { ...props, 'data-testid': 'base' }, props.children ?? props.label ?? null)
+
+  it('passes through props unchanged when no attrs defined', () => {
+    const Component = attrs({ name: 'BareH', component: BaseComponentH })
+    const result = (Component as any)({ label: 'hello', 'data-custom': 'yes' }) as any
+    expect(result.props.label).toBe('hello')
+    expect(result.props['data-custom']).toBe('yes')
+    expect(result.props['data-testid']).toBe('base')
+  })
+
+  it('applies attrs as default props through real h()', () => {
+    const Component = attrs({ name: 'WithAttrs', component: BaseComponentH }).attrs(
+      (_props: any) => ({ label: 'default' }),
+    )
+    const result = (Component as any)({}) as any
+    expect(result.props.label).toBe('default')
+    expect(result.type).toBe('div')
+  })
+
+  it('overrides default attrs with explicit props', () => {
+    const Component = attrs({ name: 'Overridable', component: BaseComponentH }).attrs(
+      (_props: any) => ({ label: 'default' }),
+    )
+    const result = (Component as any)({ label: 'explicit' }) as any
+    expect(result.props.label).toBe('explicit')
+  })
+
+  it('chains multiple attrs() calls through real h()', () => {
+    const Component = attrs({ name: 'Chained', component: BaseComponentH })
+      .attrs(() => ({ a: 1 }))
+      .attrs(() => ({ b: 2 }))
+      .attrs(() => ({ c: 3 }))
+    const result = (Component as any)({}) as any
+    expect(result.props.a).toBe(1)
+    expect(result.props.b).toBe(2)
+    expect(result.props.c).toBe(3)
+  })
+
+  it('later attrs override earlier ones (real h() parallel)', () => {
+    const Component = attrs({ name: 'OrderH', component: BaseComponentH })
+      .attrs(() => ({ label: 'first' }))
+      .attrs(() => ({ label: 'second' }))
+      .attrs(() => ({ label: 'third' }))
+    const result = (Component as any)({}) as any
+    expect(result.props.label).toBe('third')
   })
 })

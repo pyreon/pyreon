@@ -1,4 +1,5 @@
 import type { VNode } from '@pyreon/core'
+import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import Collapse from '../Collapse'
 import CollapseRenderer from '../kinetic/CollapseRenderer'
@@ -95,7 +96,7 @@ describe('Collapse', () => {
 
   it('returns a VNode', () => {
     const show = signal(true)
-    const child = { type: 'div', props: {}, children: ['Hello'], key: undefined }
+    const child = h('div', null, 'Hello') as VNode
     const vnode = Collapse({ show, children: child } as any)
     expect(vnode).not.toBeNull()
   })
@@ -107,7 +108,7 @@ describe('Collapse', () => {
     setupCollapse({
       show,
       onEnter,
-      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
+      children: h('div', null, 'Hello') as VNode,
     })
 
     show.set(true)
@@ -121,7 +122,7 @@ describe('Collapse', () => {
     const { wrapperEl } = setupCollapse({
       show,
       onAfterEnter,
-      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
+      children: h('div', null, 'Hello') as VNode,
     })
 
     show.set(true)
@@ -138,7 +139,7 @@ describe('Collapse', () => {
     setupCollapse({
       show,
       onLeave,
-      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
+      children: h('div', null, 'Hello') as VNode,
     })
 
     show.set(false)
@@ -152,7 +153,7 @@ describe('Collapse', () => {
     const { wrapperEl } = setupCollapse({
       show,
       onAfterLeave,
-      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
+      children: h('div', null, 'Hello') as VNode,
     })
 
     show.set(false)
@@ -167,7 +168,7 @@ describe('Collapse', () => {
 
     const { wrapperEl } = setupCollapse({
       show,
-      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
+      children: h('div', null, 'Hello') as VNode,
     })
 
     show.set(true)
@@ -181,7 +182,7 @@ describe('Collapse', () => {
 
     const { wrapperEl } = setupCollapse({
       show,
-      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
+      children: h('div', null, 'Hello') as VNode,
     })
 
     show.set(true)
@@ -197,7 +198,7 @@ describe('Collapse', () => {
 
     const { wrapperEl } = setupCollapse({
       show,
-      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
+      children: h('div', null, 'Hello') as VNode,
     })
 
     show.set(false)
@@ -212,7 +213,7 @@ describe('Collapse', () => {
     const { wrapperEl } = setupCollapse({
       show,
       transition: 'height 500ms ease-in-out',
-      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
+      children: h('div', null, 'Hello') as VNode,
     })
 
     show.set(true)
@@ -228,7 +229,7 @@ describe('Collapse', () => {
       show,
       appear: true,
       onEnter,
-      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
+      children: h('div', null, 'Hello') as VNode,
     })
 
     // appear defers via queueMicrotask so all refs are wired first
@@ -246,7 +247,7 @@ describe('Collapse', () => {
       show,
       timeout: 800,
       onAfterLeave,
-      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
+      children: h('div', null, 'Hello') as VNode,
     })
 
     show.set(false)
@@ -266,7 +267,7 @@ describe('Collapse', () => {
       show,
       onEnter,
       onLeave,
-      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
+      children: h('div', null, 'Hello') as VNode,
     })
 
     // Start leaving
@@ -288,7 +289,7 @@ describe('Collapse', () => {
       show,
       onEnter,
       onLeave,
-      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
+      children: h('div', null, 'Hello') as VNode,
     })
 
     // Start entering
@@ -307,7 +308,7 @@ describe('Collapse', () => {
     const { wrapperEl } = setupCollapse({
       show,
       onEnter,
-      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
+      children: h('div', null, 'Hello') as VNode,
     })
 
     show.set(true)
@@ -329,7 +330,7 @@ describe('Collapse', () => {
     const { wrapperEl } = setupCollapse({
       show,
       onLeave,
-      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
+      children: h('div', null, 'Hello') as VNode,
     })
 
     show.set(false)
@@ -350,7 +351,7 @@ describe('Collapse', () => {
       show,
       appear: true,
       onAfterEnter,
-      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
+      children: h('div', null, 'Hello') as VNode,
     })
 
     await Promise.resolve()
@@ -365,7 +366,7 @@ describe('Collapse', () => {
 
     const { wrapperEl } = setupCollapse({
       show,
-      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
+      children: h('div', null, 'Hello') as VNode,
     })
 
     show.set(false)
@@ -443,7 +444,7 @@ const setupCollapseRenderer = (props: {
   })
 
   const config = props.config ?? makeCollapseConfig()
-  const child: VNode = { type: 'p', props: {}, children: ['Content'], key: null }
+  const child = h('p', null, 'Content') as VNode
 
   const vnode = CollapseRenderer({
     config,
@@ -473,7 +474,7 @@ describe('CollapseRenderer', () => {
   it('returns a VNode with the config.tag', () => {
     const show = signal(true)
     const config = makeCollapseConfig({ tag: 'section' })
-    const child: VNode = { type: 'p', props: {}, children: ['Content'], key: null }
+    const child = h('p', null, 'Content') as VNode
 
     const vnode = CollapseRenderer({
       config,
@@ -748,7 +749,7 @@ describe('Collapse — reduced motion', () => {
       show,
       onEnter,
       onAfterEnter,
-      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
+      children: h('div', null, 'Hello') as VNode,
     })
 
     show.set(true)
@@ -768,7 +769,7 @@ describe('Collapse — reduced motion', () => {
       show,
       onLeave,
       onAfterLeave,
-      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
+      children: h('div', null, 'Hello') as VNode,
     })
 
     show.set(false)

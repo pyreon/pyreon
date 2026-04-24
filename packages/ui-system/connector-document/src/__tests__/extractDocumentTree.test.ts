@@ -1,17 +1,22 @@
+import { h } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
 import type { DocumentMarker } from '../extractDocumentTree'
 import { extractDocumentTree } from '../extractDocumentTree'
 
-// Helper: create a mock VNode
-const vnode = (
+// Helper: build a real VNode via @pyreon/core's h(). The third arg
+// is an array (kept for parity with the prior mock helper) and
+// spreads into h()'s varargs. All tests below run real-h() VNodes
+// through the extraction pipeline — see PR #197 for why mock-only
+// tests masked a silent metadata drop in the real attrs HOC path.
+const node = (
   type: string | ((...args: any[]) => any),
   props: Record<string, any> = {},
   children: unknown[] = [],
-) => ({ type, props, children })
+) => h(type as any, props, ...(children as any[])) as any
 
 // Helper: create a document-marked component function
 const docComponent = (docType: string, render?: (...args: any[]) => any) => {
-  const fn = render ?? ((props: any) => vnode('div', props, props.children ? [props.children] : []))
+  const fn = render ?? ((props: any) => node('div', props, props.children ? [props.children] : []))
   ;(fn as any)._documentType = docType
   return fn as ((...args: any[]) => any) & DocumentMarker
 }
@@ -19,7 +24,7 @@ const docComponent = (docType: string, render?: (...args: any[]) => any) => {
 describe('extractDocumentTree', () => {
   it('extracts a simple document node', () => {
     const Heading = docComponent('heading')
-    const tree = vnode(
+    const tree = node(
       Heading,
       { $rocketstyle: { fontSize: 24, fontWeight: 'bold' }, _documentProps: { level: 1 } },
       ['Hello World'],
@@ -37,9 +42,9 @@ describe('extractDocumentTree', () => {
     const Section = docComponent('section')
     const Text = docComponent('text')
 
-    const tree = vnode(Section, { $rocketstyle: { padding: 16 } }, [
-      vnode(Text, { $rocketstyle: { fontSize: 14, color: '#333' } }, ['Paragraph one']),
-      vnode(Text, { $rocketstyle: { fontSize: 14, color: '#333' } }, ['Paragraph two']),
+    const tree = node(Section, { $rocketstyle: { padding: 16 } }, [
+      node(Text, { $rocketstyle: { fontSize: 14, color: '#333' } }, ['Paragraph one']),
+      node(Text, { $rocketstyle: { fontSize: 14, color: '#333' } }, ['Paragraph two']),
     ])
 
     const result = extractDocumentTree(tree)
@@ -56,8 +61,8 @@ describe('extractDocumentTree', () => {
     const Text = docComponent('text')
 
     // A plain div wrapper (no _documentType) should be transparent
-    const tree = vnode(Section, {}, [
-      vnode('div', {}, [vnode(Text, { $rocketstyle: { fontSize: 14 } }, ['Hello'])]),
+    const tree = node(Section, {}, [
+      node('div', {}, [node(Text, { $rocketstyle: { fontSize: 14 } }, ['Hello'])]),
     ])
 
     const result = extractDocumentTree(tree)
@@ -69,7 +74,7 @@ describe('extractDocumentTree', () => {
 
   it('handles string children', () => {
     const Text = docComponent('text')
-    const tree = vnode(Text, {}, ['Hello', ' ', 'World'])
+    const tree = node(Text, {}, ['Hello', ' ', 'World'])
 
     const result = extractDocumentTree(tree)
 
@@ -78,7 +83,7 @@ describe('extractDocumentTree', () => {
 
   it('handles number children', () => {
     const Text = docComponent('text')
-    const tree = vnode(Text, {}, [42])
+    const tree = node(Text, {}, [42])
 
     const result = extractDocumentTree(tree)
 
@@ -87,7 +92,7 @@ describe('extractDocumentTree', () => {
 
   it('skips null and boolean children', () => {
     const Section = docComponent('section')
-    const tree = vnode(Section, {}, [null, false, true, 'visible'])
+    const tree = node(Section, {}, [null, false, true, 'visible'])
 
     const result = extractDocumentTree(tree)
 
@@ -96,7 +101,7 @@ describe('extractDocumentTree', () => {
 
   it('resolves reactive getter children', () => {
     const Text = docComponent('text')
-    const tree = vnode(Text, {}, [() => 'dynamic text'])
+    const tree = node(Text, {}, [() => 'dynamic text'])
 
     const result = extractDocumentTree(tree)
 
@@ -105,7 +110,7 @@ describe('extractDocumentTree', () => {
 
   it('omits styles when includeStyles is false', () => {
     const Heading = docComponent('heading')
-    const tree = vnode(Heading, { $rocketstyle: { fontSize: 24 } }, ['Hello'])
+    const tree = node(Heading, { $rocketstyle: { fontSize: 24 } }, ['Hello'])
 
     const result = extractDocumentTree(tree, { includeStyles: false })
 
@@ -113,7 +118,7 @@ describe('extractDocumentTree', () => {
   })
 
   it('wraps in document node when root has no _documentType', () => {
-    const tree = vnode('div', {}, ['raw text'])
+    const tree = node('div', {}, ['raw text'])
 
     const result = extractDocumentTree(tree)
 
@@ -124,9 +129,9 @@ describe('extractDocumentTree', () => {
   it('handles component functions without _documentType by calling them', () => {
     const Text = docComponent('text')
     const Wrapper = (props: any) =>
-      vnode(Text, { $rocketstyle: { fontSize: 14 } }, [props.children])
+      node(Text, { $rocketstyle: { fontSize: 14 } }, [props.children])
 
-    const tree = vnode(Wrapper, {}, ['wrapped text'])
+    const tree = node(Wrapper, {}, ['wrapped text'])
 
     const result = extractDocumentTree(tree)
 
@@ -136,7 +141,7 @@ describe('extractDocumentTree', () => {
 
   it('handles function passed directly', () => {
     const Text = docComponent('text')
-    const template = () => vnode(Text, { $rocketstyle: { fontSize: 14 } }, ['Hello'])
+    const template = () => node(Text, { $rocketstyle: { fontSize: 14 } }, ['Hello'])
 
     const result = extractDocumentTree(template)
 
@@ -165,7 +170,7 @@ describe('extractDocumentTree', () => {
 
     it('calls function values in _documentProps and stores the result', () => {
       const Document = docComponent('document')
-      const tree = vnode(
+      const tree = node(
         Document,
         {
           _documentProps: {
@@ -193,7 +198,7 @@ describe('extractDocumentTree', () => {
       // two extractDocumentTree calls on the same vnode.
       let counter = 0
       const Document = docComponent('document')
-      const tree = vnode(
+      const tree = node(
         Document,
         {
           _documentProps: {
@@ -214,7 +219,7 @@ describe('extractDocumentTree', () => {
 
     it('mixes function and plain values in the same _documentProps object', () => {
       const Image = docComponent('image')
-      const tree = vnode(
+      const tree = node(
         Image,
         {
           _documentProps: {
@@ -242,7 +247,7 @@ describe('extractDocumentTree', () => {
       // change must not break them. This test mirrors the shape
       // of DocHeading's existing _documentProps.
       const Heading = docComponent('heading')
-      const tree = vnode(
+      const tree = node(
         Heading,
         { _documentProps: { level: 1 } },
         ['Hello'],
@@ -284,7 +289,7 @@ describe('extractDocumentTree', () => {
       // takes user props, returns a vnode with _documentProps
       // populated by the "attrs callback".
       const DocDocLike = ((userProps: { title?: string; author?: string }) =>
-        vnode('div', {
+        node('div', {
           _documentProps: {
             ...(userProps.title ? { title: userProps.title } : {}),
             ...(userProps.author ? { author: userProps.author } : {}),
@@ -293,7 +298,7 @@ describe('extractDocumentTree', () => {
       ;(DocDocLike as any)._documentType = 'document'
 
       // The JSX vnode has user props but NO _documentProps directly
-      const jsxVnode = vnode(DocDocLike, { title: 'My Doc', author: 'Alice' }, [])
+      const jsxVnode = node(DocDocLike, { title: 'My Doc', author: 'Alice' }, [])
 
       const result = extractDocumentTree(jsxVnode)
 
@@ -308,14 +313,14 @@ describe('extractDocumentTree', () => {
       // callback) gets the live value resolved at extraction time.
       let liveTitle = 'First'
       const DocDocLike = ((userProps: { title?: () => string }) =>
-        vnode('div', {
+        node('div', {
           _documentProps: {
             title: userProps.title, // store the accessor as-is
           },
         })) as ((...args: any[]) => any) & DocumentMarker
       ;(DocDocLike as any)._documentType = 'document'
 
-      const jsxVnode = vnode(DocDocLike, { title: () => liveTitle }, [])
+      const jsxVnode = node(DocDocLike, { title: () => liveTitle }, [])
 
       const first = extractDocumentTree(jsxVnode)
       expect(first.props.title).toBe('First')
@@ -334,11 +339,11 @@ describe('extractDocumentTree', () => {
       let componentCalled = false
       const DocDocLike = (() => {
         componentCalled = true
-        return vnode('div', { _documentProps: { title: 'from-call' } })
+        return node('div', { _documentProps: { title: 'from-call' } })
       }) as ((...args: any[]) => any) & DocumentMarker
       ;(DocDocLike as any)._documentType = 'document'
 
-      const jsxVnode = vnode(
+      const jsxVnode = node(
         DocDocLike,
         { _documentProps: { title: 'from-jsx' } },
         [],
@@ -348,5 +353,106 @@ describe('extractDocumentTree', () => {
       expect(result.props.title).toBe('from-jsx')
       expect(componentCalled).toBe(false)
     })
+  })
+})
+
+// ─── Real h() round-trip (parallel to the mock-vnode tests above) ────────
+//
+// This is the exact file PR #197 fixed — `extractDocumentTree` was
+// silently dropping metadata from real rocketstyle primitives because
+// the existing tests ONLY used the local `node(...)` helper that
+// hardcodes `{ type, props, children }` literals. The mock path
+// worked; the real pipeline (where `_documentProps` is only attached
+// AFTER the attrs HOC runs) didn't. The `audit_test_environment` tool
+// from PR #311 flagged this file HIGH (27 mock-helper call-sites, 0
+// real `h()` calls, no `@pyreon/core` import).
+//
+// This block adds a parallel: the same tree shapes built via real
+// `h(...)` from `@pyreon/core`. The mock `node()` helper returns a
+// hand-built object literal; real `h()` returns whatever the current
+// Pyreon VNode shape is — if the two ever drift, only the real-`h()`
+// path catches it. The mock tests above stay as the fast unit-test
+// path; these are the safety net.
+
+describe('extractDocumentTree — real h() round-trip', () => {
+  it('extracts a simple document node built via real h()', () => {
+    const Heading = docComponent('heading')
+    const tree = h(
+      Heading,
+      { $rocketstyle: { fontSize: 24, fontWeight: 'bold' }, _documentProps: { level: 1 } },
+      'Hello World',
+    )
+
+    const result = extractDocumentTree(tree)
+    expect(result.type).toBe('heading')
+    expect(result.props).toEqual({ level: 1 })
+    expect(result.children).toEqual(['Hello World'])
+    expect(result.styles).toEqual({ fontSize: 24, fontWeight: 'bold' })
+  })
+
+  it('extracts nested document nodes through real h() trees', () => {
+    const Section = docComponent('section')
+    const Text = docComponent('text')
+
+    const tree = h(
+      Section,
+      { $rocketstyle: { padding: 16 } },
+      h(Text, { $rocketstyle: { fontSize: 14 } }, 'Paragraph one'),
+      h(Text, { $rocketstyle: { fontSize: 14 } }, 'Paragraph two'),
+    )
+
+    const result = extractDocumentTree(tree)
+    expect(result.type).toBe('section')
+    expect(result.styles).toEqual({ padding: 16 })
+    expect(result.children).toHaveLength(2)
+    const child0 = result.children[0] as { type: string; children: unknown[] }
+    const child1 = result.children[1] as { type: string; children: unknown[] }
+    expect(child0.type).toBe('text')
+    expect(child0.children).toEqual(['Paragraph one'])
+    expect(child1.type).toBe('text')
+    expect(child1.children).toEqual(['Paragraph two'])
+  })
+
+  it('transparent wrappers (no _documentType) are flattened by the extractor', () => {
+    const Section = docComponent('section')
+    const Text = docComponent('text')
+    // A plain `div` wrapper nested inside a section — no document
+    // marker on the div — should be invisible to the extractor.
+    // Consumers sprinkle layout containers without breaking the
+    // extraction pipeline.
+    const tree = h(
+      Section,
+      {},
+      h('div', {}, h(Text, { $rocketstyle: { fontSize: 14 } }, 'Hello')),
+    )
+
+    const result = extractDocumentTree(tree)
+    expect(result.type).toBe('section')
+    expect(result.children).toHaveLength(1)
+    const child0 = result.children[0] as { type: string; children: unknown[] }
+    expect(child0.type).toBe('text')
+    expect(child0.children).toEqual(['Hello'])
+  })
+
+  it('component is INVOKED during extraction (the PR #197 fix)', () => {
+    // The fix in PR #197: when a docComponent has attrs-HOC-style
+    // post-processing, extractDocumentTree must call the component to
+    // see its post-attrs VNode. With real `h()` the contract is the
+    // same — the component function on `vnode.type` must be invoked
+    // so that attrs-populated `_documentProps` surface correctly.
+    let callCount = 0
+    const Enriched = docComponent('heading', (props: any) => {
+      callCount++
+      // Mimic an attrs HOC that stamps post-attrs metadata onto a
+      // child VNode instead of the outer wrapper (the exact shape
+      // PR #197 discovered).
+      return h('div', { ...props, _documentProps: { level: 2 } }, props.children)
+    })
+
+    const tree = h(Enriched, {}, 'After attrs')
+    const result = extractDocumentTree(tree)
+    expect(callCount).toBeGreaterThan(0)
+    expect(result.type).toBe('heading')
+    expect(result.props.level).toBe(2)
   })
 })

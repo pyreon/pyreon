@@ -129,9 +129,21 @@ const MOCK_VNODE_LITERAL_PATTERN =
  *   const vnode = (...) => ({ type, props, children })
  *   const mockVNode = ({ type, props, children })
  *   function createVNode(type, props, children)
+ *
+ * Does NOT match bindings that merely STORE a real VNode with a
+ * `vnode`-like name, which are common in component tests:
+ *   const vnode = defaultRender(...)         // real render result
+ *   const vnode = <span>cell content</span>  // real JSX expression
+ *   const vnode = h('div', null, 'x')        // real h() call
+ *
+ * Distinguisher: a mock helper definition either
+ *   (a) starts an arrow function / function — RHS begins with `(` or the
+ *       keyword `function`, OR
+ *   (b) is itself an inline object literal — RHS begins with `{`.
+ * `const vnode = <anything else>` is a binding, not a definition.
  */
 const MOCK_HELPER_PATTERN =
-  /(?:const|let|function)\s+(?:mockV[Nn]ode|vnode|createV[Nn]ode|V[Nn]odeMock|makeV[Nn]ode)\s*[=(]/g
+  /(?:(?:const|let)\s+(?:mockV[Nn]ode|vnode|createV[Nn]ode|V[Nn]odeMock|makeV[Nn]ode)\s*=\s*(?:\(|\{|function\b|async\s))|(?:function\s+(?:mockV[Nn]ode|vnode|createV[Nn]ode|V[Nn]odeMock|makeV[Nn]ode)\s*\()/g
 
 /**
  * Matches CALLS to a known mock-helper name:
@@ -162,10 +174,86 @@ const REAL_H_CALL_PATTERN = /(?:^|\W)h\s*\(\s*["'A-Z]/g
 
 const IMPORT_H_PATTERN = /import\s*(?:type\s*)?\{[^}]*\bh\b[^}]*\}\s*from\s*['"]@pyreon\/core['"]/
 
+/**
+ * Predicate: does the `{type, props, children}` literal at this
+ * position appear as an argument to a type-guard-like call
+ * (`isDocNode(...)`, `hasVNode(...)`, `assertVNode(...)`, etc.)?
+ *
+ * Type guards take any object shape and return boolean — passing a
+ * `{type, props, children}` literal there is testing the guard's
+ * duck-typing, not building a mock vnode for a rendering pipeline.
+ * False-positive coverage for `utils-coverage.test.ts` and similar.
+ */
+function isLiteralInsideTypeGuardCall(source: string, literalStart: number): boolean {
+  // Scan back ~60 chars from the literal for `(\b(?:is|has|assert|validate|check)[A-Z]\w*\s*\()`.
+  // We're looking for a function-call opening paren that directly
+  // contains this literal (no closer `)` in between).
+  const window = source.slice(Math.max(0, literalStart - 60), literalStart)
+  // The nearest `(` before the literal — count unmatched parens.
+  let unmatched = 0
+  let openAt = -1
+  for (let i = window.length - 1; i >= 0; i--) {
+    const ch = window[i]
+    if (ch === ')') unmatched++
+    else if (ch === '(') {
+      if (unmatched === 0) {
+        openAt = i
+        break
+      }
+      unmatched--
+    }
+  }
+  if (openAt < 0) return false
+  // Is the token immediately before `openAt` an is*/has*/assert*/check*/validate* identifier?
+  const head = window.slice(0, openAt)
+  return /\b(?:is|has|assert|validate|check)[A-Z]\w*\s*$/.test(head)
+}
+
+/**
+ * Mask the inside of every backtick-delimited template-literal with
+ * spaces. Preserves length so positions/lines/columns stay aligned.
+ * Used to keep the literal scanner from counting `{type,props,children}`
+ * patterns that live inside test FIXTURE strings (the `cli/doctor.test.ts`
+ * case — those are fixtures for the audit tool itself, not actual code).
+ *
+ * Limitations: doesn't parse `${...}` interpolations precisely. If a
+ * fixture contains a balanced `${ ... }` with code we'd want scanned,
+ * the surrounding template string still masks it. In practice, mock-
+ * vnode literals are never interpolation expressions, so this is fine.
+ */
+function maskTemplateStrings(source: string): string {
+  return source.replace(/`(?:\\.|[^`\\])*`/g, (m) => `\`${' '.repeat(m.length - 2)}\``)
+}
+
 function countMatches(source: string, pattern: RegExp): number {
   let count = 0
   pattern.lastIndex = 0
   while (pattern.exec(source) !== null) count++
+  pattern.lastIndex = 0
+  return count
+}
+
+/**
+ * Counts `{type, props, children}` literals, skipping those that
+ * appear inside a type-guard-looking call OR inside a template-literal
+ * (which is fixture text, not code). Dedicated because the existing
+ * `countMatches` helper has no context-aware skip.
+ */
+function countMockVNodeLiterals(source: string): number {
+  // First mask template-literal contents — fixtures inside backticks
+  // (e.g. `\`const v = { type, props, children }\`` written via
+  // writeFile in audit's own test) shouldn't count. The mask
+  // preserves positions, so the type-guard skip logic still works.
+  const masked = maskTemplateStrings(source)
+  const pattern = MOCK_VNODE_LITERAL_PATTERN
+  let count = 0
+  pattern.lastIndex = 0
+  let m: RegExpExecArray | null
+  while (true) {
+    m = pattern.exec(masked)
+    if (m === null) break
+    if (!isLiteralInsideTypeGuardCall(masked, m.index)) count++
+  }
   pattern.lastIndex = 0
   return count
 }
@@ -209,11 +297,19 @@ export function auditTestEnvironment(startDir: string): TestAuditResult {
       continue
     }
 
-    const mockVNodeLiteralCount = countMatches(source, MOCK_VNODE_LITERAL_PATTERN)
-    const mockHelperCount = countMatches(source, MOCK_HELPER_PATTERN)
-    const mockHelperCallCount = countMatches(source, MOCK_HELPER_CALL_PATTERN)
-    const realHCallCount = countMatches(source, REAL_H_CALL_PATTERN)
-    const importsH = IMPORT_H_PATTERN.test(source)
+    // Mask template-literal contents once, then run every counter
+    // against the masked source. Patterns inside backticks are
+    // FIXTURE strings (the audit tool's own test fixtures, doctest
+    // examples, etc.) — they shouldn't count toward any metric.
+    // `countMockVNodeLiterals` already does its own masking and runs
+    // on `source` so it can do its own work; we pass `source` to
+    // keep that contract intact.
+    const masked = maskTemplateStrings(source)
+    const mockVNodeLiteralCount = countMockVNodeLiterals(source)
+    const mockHelperCount = countMatches(masked, MOCK_HELPER_PATTERN)
+    const mockHelperCallCount = countMatches(masked, MOCK_HELPER_CALL_PATTERN)
+    const realHCallCount = countMatches(masked, REAL_H_CALL_PATTERN)
+    const importsH = IMPORT_H_PATTERN.test(masked)
 
     const base = {
       path,

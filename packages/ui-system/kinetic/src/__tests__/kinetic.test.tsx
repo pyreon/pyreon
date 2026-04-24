@@ -1,4 +1,5 @@
 import type { VNode, VNodeChild } from '@pyreon/core'
+import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 
 let _reducedMotion = false
@@ -353,7 +354,11 @@ describe('kinetic() — collapse mode', () => {
         show,
         onEnter,
         onAfterEnter,
-        children: { type: 'p', props: {}, children: ['Content'], key: null },
+        // Real h() instead of a mock literal — same VNode shape as
+        // production, so the test exercises whatever flattening /
+        // normalisation h() applies (instead of asserting the
+        // hand-built shape always matches).
+        children: h('p', null, 'Content'),
       }),
     )
 

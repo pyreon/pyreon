@@ -1,4 +1,5 @@
 import type { VNode } from '@pyreon/core'
+import { h } from '@pyreon/core'
 import StaggerRenderer from '../kinetic/StaggerRenderer'
 import type { KineticConfig } from '../kinetic/types'
 
@@ -40,12 +41,12 @@ const makeConfig = (overrides: Partial<KineticConfig> = {}): KineticConfig => ({
   ...overrides,
 })
 
-const makeChild = (key: string | number, text: string): VNode => ({
-  type: 'span',
-  props: { 'data-testid': `child-${key}` },
-  children: [text],
-  key,
-})
+// Real h() instead of a hand-built `{ type, props, children, key }`
+// literal — same VNode shape as production.
+const makeChild = (key: string | number, text: string): VNode => {
+  const vnode = h('span', { 'data-testid': `child-${key}` }, text) as VNode
+  return { ...vnode, key }
+}
 
 /**
  * Extract the cloned child VNode from a TransitionItem VNode.
@@ -476,12 +477,8 @@ describe('StaggerRenderer', () => {
 
   it('preserves existing style on child when injecting stagger styles', () => {
     const config = makeConfig()
-    const childWithStyle: VNode = {
-      type: 'span',
-      props: { style: { color: 'red', fontWeight: 'bold' } },
-      children: ['Styled'],
-      key: 'styled',
-    }
+    const realVnode = h('span', { style: { color: 'red', fontWeight: 'bold' } }, 'Styled') as VNode
+    const childWithStyle: VNode = { ...realVnode, key: 'styled' }
 
     const vnode = StaggerRenderer({
       config,

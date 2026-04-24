@@ -87,6 +87,8 @@ const tree = extractDocumentTree(vnode)
 expect(tree.props.title).toBe('Test')
 ```
 
+**Detection.** The `audit_test_environment` MCP tool (also wired into `pyreon doctor --audit-tests`) scans every test file for this anti-pattern and classifies the file HIGH / MEDIUM / LOW based on the balance of mock-vnode literals + helpers + helper-call sites vs real `h()` calls + `@pyreon/core` import. Run it before merging a new test file or after a framework change to verify the parallel real-`h()` coverage is in place. The scanner's heuristics include three context-aware skips (helper-def vs binding discrimination, type-guard call-arg skip, template-string fixture mask) so genuine code patterns aren't drowned out by false positives — see `packages/core/compiler/src/test-audit.ts` for the implementation and `tests/test-audit.test.ts` for the bisect-verified test suite.
+
 The mock test is the fast unit-test path. The real-`h()` test is the safety net that catches contract bugs. Always have both. The connector-document bug fixed in PR #197 was hidden for the entire lifetime of the package because no test used the real-`h()` form.
 
 ### 2. `typeof process !== 'undefined'` as a dev-mode gate in browser packages
