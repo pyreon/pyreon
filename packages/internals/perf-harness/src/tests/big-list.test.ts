@@ -98,16 +98,30 @@ describe('big-list scaling', () => {
     30_000, // happy-dom takes ~15s on CI to mount 10k nodes
   )
 
-  it('1000-row RANDOM SHUFFLE — scaling snapshot', async () => {
-    const { items, dispose } = await mountList(1000)
-    const outcome = await perfHarness.record('shuffle-1k', () => {
-      items.set(seededShuffle(items(), 42))
-    })
-    const lisOps = outcome.after['runtime.mountFor.lisOps'] ?? 0
-    expect(lisOps).toBeGreaterThan(0)
+  it('1000-row RANDOM SHUFFLE — bounded across 5 seeds', async () => {
+    // Regression guard: the known-slot tier-2 fast path fires ~40-56% of
+    // the time on random shuffles because coincidentally `tails[v] === v`
+    // on a significant fraction of items. Locking an upper bound catches
+    // any change that regresses the hit rate. Measured across seeds
+    // {1, 7, 42, 100, 999}: lisOps ranged 2255-2982 (vs ~5100 pre-fix).
+    const maxOps: Record<number, number> = {}
+    for (const seed of [1, 7, 42, 100, 999]) {
+      const { items, dispose } = await mountList(1000)
+      perfHarness.reset()
+      const outcome = await perfHarness.record(`shuffle-1k-seed${seed}`, () => {
+        items.set(seededShuffle(items(), seed))
+      })
+      const lisOps = outcome.after['runtime.mountFor.lisOps'] ?? 0
+      maxOps[seed] = lisOps
+      expect(lisOps).toBeGreaterThan(0)
+      // Upper bound = 3500 (current max is 2982 across these seeds; headroom
+      // for minor algorithm drift). Falls BACK to ~5100 if tier 2 regresses.
+      expect(lisOps).toBeLessThan(3500)
+      dispose()
+      document.body.innerHTML = ''
+    }
     // oxlint-disable-next-line no-console
-    console.log(`[big-list] 1k shuffle: lisOps=${lisOps}`)
-    dispose()
+    console.log(`[big-list] 1k shuffle multi-seed: ${JSON.stringify(maxOps)}`)
   })
 
   it(
