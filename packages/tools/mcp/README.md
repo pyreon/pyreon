@@ -211,6 +211,24 @@ get_components({})
 
 Returns component names, file paths, props, and signal usage.
 
+### `audit_test_environment` — Scan tests for mock-vnode patterns
+
+```
+audit_test_environment({})                          # risk-grouped report (minRisk: medium)
+audit_test_environment({ minRisk: "high" })         # only the riskiest
+audit_test_environment({ minRisk: "low", limit: 3 }) # full coverage, 3 per group
+```
+
+Scans every `*.test.ts` / `*.test.tsx` file under the `packages` tree for **mock-vnode patterns** — tests that construct `{ type, props, children }` object literals or a custom `vnode()` helper instead of going through the real `h()` from `@pyreon/core`. This class of pattern silently drops rocketstyle / compiler / attrs work from the pipeline and was the cause of PR #197's silent metadata drop.
+
+Classification per file:
+
+- **HIGH** — mock patterns present, no real `h()` calls, and no `h` import from `@pyreon/core`. At risk: the file has no pathway to exercise the real pipeline.
+- **MEDIUM** — mock patterns present AND some real `h()` usage, but mocks outnumber real calls. Spot-check coverage.
+- **LOW** — either no mocks, or mock count is dwarfed by real usage.
+
+Each entry reports the literal count, helper count (definitions of `vnode` / `mockVNode` / `createVNode` / `VNodeMock` / `makeVNode`), real `h(...)` call count, and whether `h` is imported. Use the tool BEFORE modifying a test file to see if strengthening is warranted, or AFTER a framework change to audit for regression.
+
 ## Pyreon Patterns for AI
 
 These are the key patterns the MCP server teaches AI assistants:

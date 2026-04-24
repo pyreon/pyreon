@@ -19,3 +19,10 @@ export {
 } from './react-intercept'
 export type { PyreonDiagnostic, PyreonDiagnosticCode } from './pyreon-intercept'
 export { detectPyreonPatterns, hasPyreonPatterns } from './pyreon-intercept'
+export type {
+  AuditFormatOptions,
+  AuditRisk,
+  TestAuditEntry,
+  TestAuditResult,
+} from './test-audit'
+export { auditTestEnvironment, formatTestAudit } from './test-audit'

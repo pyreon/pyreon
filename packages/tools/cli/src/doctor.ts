@@ -17,7 +17,10 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import {
+  auditTestEnvironment,
+  type AuditRisk,
   detectReactPatterns,
+  formatTestAudit,
   hasReactPatterns,
   migrateReactCode,
   type ReactDiagnostic,
@@ -28,6 +31,16 @@ export interface DoctorOptions {
   json: boolean
   ci: boolean
   cwd: string
+  /**
+   * When true, run the test-environment audit (mock-vnode pattern
+   * detection) and append the result to the doctor output. Default
+   * false — the audit is scoped to test files only and isn't part of
+   * the React-migration check pipeline, so we gate it to avoid noise
+   * in the typical "is my migration done?" call.
+   */
+  auditTests?: boolean | undefined
+  /** Minimum risk level to include in the test-audit report. Default 'medium'. */
+  auditMinRisk?: AuditRisk | undefined
 }
 
 interface FileResult {
@@ -58,6 +71,23 @@ export async function doctor(options: DoctorOptions): Promise<number> {
     printJson(result)
   } else {
     printHuman(result, elapsed)
+  }
+
+  // Test-environment audit — optional follow-on pass. We run AFTER the
+  // main React-migration output so a migration-focused run isn't
+  // contaminated; pass `--audit-tests` to see it. The exit code is
+  // unaffected since mock-vnode test risk is a "should review" signal,
+  // not a "broken build" signal.
+  if (options.auditTests) {
+    const auditResult = auditTestEnvironment(options.cwd)
+    if (options.json) {
+      console.log('')
+      console.log(JSON.stringify({ testAudit: auditResult }, null, 2))
+    } else {
+      console.log('')
+      console.log(formatTestAudit(auditResult, { minRisk: options.auditMinRisk ?? 'medium' }))
+      console.log('')
+    }
   }
 
   return result.summary.totalErrors
