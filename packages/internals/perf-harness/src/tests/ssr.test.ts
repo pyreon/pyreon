@@ -8,6 +8,7 @@
  * fired ≥ N times" bounds. A future PR can tighten them to absolute
  * bounds when the probe numbers stabilise.
  */
+import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { For, Fragment, h, Suspense } from '@pyreon/core'
 import { renderToStream, renderToString } from '@pyreon/runtime-server'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -29,7 +30,7 @@ function List({ items }: { items: string[] }) {
   return h(
     'ul',
     null,
-    h(For as unknown as (p: { each: () => string[]; by: (s: string) => string; children: (s: string) => unknown }) => unknown, {
+    h(For, {
       each: () => items,
       by: (s: string) => s,
       children: (s: string) => h('li', null, s),
@@ -93,10 +94,14 @@ describe('SSR counter shape', () => {
   })
 
   it('renderToStream fires runtime-server.suspense.boundary once per Suspense', async () => {
-    const AsyncChild = async () => {
+    // Async component — the SSR renderer `await`s the returned Promise.
+    // Pyreon's type sig is `(p) => VNodeChild` (sync) but the runtime
+    // accepts Promise<VNode> too; cast via `unknown` since the TS type
+    // doesn't have an async overload.
+    const AsyncChild = (async () => {
       await new Promise((r) => setTimeout(r, 1))
-      return h('span', null, 'ready')
-    }
+      return h('span', null, 'ready') as VNodeChild
+    }) as unknown as ComponentFn
     const outcome = await perfHarness.record('ssr-suspense', async () => {
       const stream = renderToStream(
         h(

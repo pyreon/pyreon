@@ -59,6 +59,11 @@ const FILES_UNDER_TEST: { layer: string; file: string; counterNames: string[] }[
     counterNames: ['runtime.mountChild'],
   },
   {
+    layer: 'runtime-dom-template',
+    file: 'packages/core/runtime-dom/src/template.ts',
+    counterNames: ['runtime.tpl'],
+  },
+  {
     layer: 'router',
     file: 'packages/core/router/src/router.ts',
     counterNames: ['router.navigate', 'router.loaderRun', 'router.loaderCache.hit'],

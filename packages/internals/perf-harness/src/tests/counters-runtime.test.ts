@@ -107,3 +107,38 @@ describe('runtime.mountFor.lisOps', () => {
     expect(outcome.after['runtime.mountFor.lisOps'] ?? 0).toBe(0)
   })
 })
+
+describe('runtime.tpl', () => {
+  it('fires once per _tpl() call (compiled-template fast path)', async () => {
+    // Import via runtime-dom — _tpl is the exported cloneNode helper that
+    // the JSX compiler emits for element-rooted JSX trees.
+    const { _tpl } = await import('@pyreon/runtime-dom')
+    const root = document.getElementById('root')!
+    const outcome = await perfHarness.record('tpl-emit', () => {
+      // Simulate what the compiler emits: three separate _tpl() calls, e.g.
+      // three distinct JSX trees. Each clones a template; each should emit.
+      const a = _tpl('<div class="a"></div>', () => null)
+      const b = _tpl('<div class="b"></div>', () => null)
+      const c = _tpl('<div class="c"></div>', () => null)
+      root.appendChild(a.el)
+      root.appendChild(b.el)
+      root.appendChild(c.el)
+    })
+    expect(outcome.after['runtime.tpl']).toBe(3)
+  })
+
+  it('identical template strings still emit per-call (cache is on tpl HTML, not on emit)', async () => {
+    // The internal _tplCache dedupes the parsed HTMLTemplate. Each clone
+    // still counts as one _tpl() invocation — the counter measures
+    // "template instantiation count," not "unique template parses."
+    const { _tpl } = await import('@pyreon/runtime-dom')
+    const root = document.getElementById('root')!
+    const outcome = await perfHarness.record('tpl-cache-repeat', () => {
+      for (let i = 0; i < 100; i++) {
+        const item = _tpl('<span></span>', () => null)
+        root.appendChild(item.el)
+      }
+    })
+    expect(outcome.after['runtime.tpl']).toBe(100)
+  })
+})

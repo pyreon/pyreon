@@ -27,6 +27,7 @@
     "@pyreon/rocketstyle": "workspace:^",
     "@pyreon/router": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/runtime-server": "workspace:^",
     "@pyreon/styler": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/unistyle": "workspace:^",

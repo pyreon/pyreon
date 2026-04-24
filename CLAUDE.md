@@ -673,15 +673,16 @@ if ((import.meta as ViteMeta).env?.DEV === true) globalThis.__pyreon_count__?.('
 - **Zero cross-package coupling.** Framework packages (styler, unistyle, rocketstyle, runtime-dom, reactivity, router) are published to npm; they must not depend on the private `@pyreon/perf-harness` package. The global sink lets them emit without an import.
 - **Zero cost until opt-in.** `globalThis.__pyreon_count__` is `undefined` until a consumer calls `perfHarness.install()` or `perfHarness.enable()`. Optional-chaining short-circuits; prod tree-shakes the whole block via the `import.meta.env.DEV` gate.
 - **Counter names live in ONE place**: `packages/internals/perf-harness/COUNTERS.md`. Adding a new counter means (a) adding the emit in source, and (b) adding a row to `COUNTERS.md`. The drift test (`catalog-drift.test.ts`) enforces both directions — emits without catalog entries fail CI, and catalog entries with no emitters also fail.
-- **Instrumented layers (29 counters today)**:
+- **Instrumented layers (30 counters today)**:
   - `styler`: `resolve`, `sheet.insert`, `sheet.insert.hit`
   - `unistyle`: `styles`, `descriptor`, `descriptor.fallback-scan`
   - `rocketstyle`: `getTheme`, `dimensionsMap.hit`, `localThemeManager.hit`, `omitSet.hit`
-  - `runtime`: `mount`, `unmount`, `mountChild`, `mountFor.lisOps`
+  - `runtime`: `mount`, `unmount`, `mountChild`, `mountFor.lisOps`, `tpl` (cloneNode fast-path count — compiled-template mount hits vs `h()`-allocated mounts)
   - `runtime-server` (SSR): `render`, `stream`, `component`, `escape`, `suspense.boundary`, `suspense.fallback`, `for.keyMarker`
   - `reactivity`: `signalCreate`, `signalWrite`, `effectRun`, `computedRecompute`
   - `router`: `navigate`, `loaderRun`, `loaderCache.hit`, `prefetch`
 - **Gate shape differs by package category.** Browser packages (runtime-dom, router, styler, reactivity, etc.) use `import.meta.env.DEV` so the gate folds to `false` at Vite build time and the counter strings tree-shake out. Server packages (runtime-server) use `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'` because they don't run through a Vite bundle in production — the gate evaluates at runtime under Node and correctly short-circuits when `NODE_ENV=production`. Consequence: server-side counter strings remain in the bundle (few bytes) but the runtime cost is zero. Verified by `src/tests/runtime-server-runtime-gate.test.ts` in perf-harness.
+- **Dev-mode overhead is trivial.** `src/tests/ssr-overhead.test.ts` measures a 1k-row SSR render three ways: NODE_ENV=production (~1.14ms baseline), NODE_ENV=development with no sink (~1.12ms — within noise), NODE_ENV=development with a no-op sink installed (~1.20ms — ~5% overhead). The gate + optional-chain is essentially free, and even fully-firing counters add only a few percent.
 - **Consumer APIs**:
   - `perfHarness.snapshot()` / `perfHarness.reset()` / `perfHarness.record(label, fn)` / `perfHarness.diff(a, b)`
   - `perfHarness.overlay()` — in-page shadow-DOM panel with live counters, Ctrl+Shift+P toggle, reset/record/export buttons
