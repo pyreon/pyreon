@@ -1,4 +1,6 @@
+import { h } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
+import { mount } from '@pyreon/runtime-dom'
 import { createI18n } from '../create-i18n'
 import { parseRichText, Trans } from '../trans'
 import type { TranslationDictionary } from '../types'
@@ -386,5 +388,61 @@ describe('addMessages deep merge edge cases', () => {
     const i18n = createI18n({ locale: 'en', messages: { en: {} } })
     i18n.addMessages('en', { key: undefined as any, valid: 'yes' })
     expect(i18n.t('valid')).toBe('yes')
+  })
+})
+
+// ─── Trans: real h() round-trip parallel to the mock-vnode test above ───
+//
+// The "Trans with multiple components" test above (around line 345)
+// uses `{ type: 'a', props, children }` literals in the components
+// map and asserts on `vnode.children[N]` equality. The shape test is
+// fine as far as it goes — but a real consumer passes `h('a', {
+// href: '/terms' }, children)` and mounts the result. This block adds
+// that parallel coverage: real `h()` + `mount` into happy-dom +
+// assertion on rendered HTML. Same contract, different layer —
+// catches breaks the shape test can't see (DOM attribute forwarding,
+// Fragment child flattening, runtime handling of mixed string/VNode
+// children).
+
+describe('Trans — real h() + mount round-trip (i18n-additional)', () => {
+  function newContainer(): HTMLElement {
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    return el
+  }
+
+  it('renders TWO component-tagged anchors in one translation', () => {
+    const i18n = createI18n({
+      locale: 'en',
+      messages: {
+        en: { tos: 'Read <terms>terms</terms> and <privacy>privacy</privacy>' },
+      },
+    })
+    const result = Trans({
+      t: i18n.t,
+      i18nKey: 'tos',
+      components: {
+        terms: (children: string) => h('a', { href: '/terms' }, children),
+        privacy: (children: string) => h('a', { href: '/privacy' }, children),
+      },
+    })
+    const container = newContainer()
+    mount(result as never, container)
+    // Both anchors rendered with their href attributes intact.
+    expect(container.innerHTML).toContain('<a href="/terms">terms</a>')
+    expect(container.innerHTML).toContain('<a href="/privacy">privacy</a>')
+    // Plain-text segments flanking the two tags survive the Fragment.
+    expect(container.textContent).toBe('Read terms and privacy')
+    container.remove()
+  })
+
+  it('plain-text translation path renders as text-only DOM', () => {
+    const t = (key: string) => (key === 'plain' ? 'Just plain text' : key)
+    const result = Trans({ t, i18nKey: 'plain' })
+    expect(result).toBe('Just plain text')
+    const container = newContainer()
+    mount(result as never, container)
+    expect(container.innerHTML).toBe('Just plain text')
+    container.remove()
   })
 })
