@@ -2,6 +2,14 @@ import type { NativeItem, VNodeChild } from '@pyreon/core'
 import { renderEffect } from '@pyreon/reactivity'
 import { mountChild } from './mount'
 
+// Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
+// uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
+// @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown at build time
+const __DEV__ = import.meta.env?.DEV === true
+
+// Dev-time counter sink — see packages/internals/perf-harness for contract.
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 /**
  * Creates a row/item factory backed by HTML template cloning.
  *
@@ -144,6 +152,7 @@ const _tplCache = new Map<string, HTMLTemplateElement>()
  * })
  */
 export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | null): NativeItem {
+  if (__DEV__) _countSink.__pyreon_count__?.('runtime.tpl')
   let tpl = _tplCache.get(html)
   if (!tpl) {
     tpl = document.createElement('template')
