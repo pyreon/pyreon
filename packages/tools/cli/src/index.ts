@@ -19,7 +19,10 @@ function printUsage(): void {
   pyreon <command> [options]
 
   Commands:
-    doctor [--fix] [--json] [--ci]   Scan for React patterns, bad imports, and common mistakes
+    doctor [--fix] [--json] [--ci] [--audit-tests] [--audit-min-risk <level>]
+                                     Scan for React patterns, bad imports, common mistakes.
+                                     --audit-tests appends mock-vnode test-audit (PR #197 class).
+                                     --audit-min-risk is high|medium|low (default medium).
     context [--out <path>]           Generate .pyreon/context.json for AI tools
 
   Options:
@@ -40,11 +43,19 @@ async function main(): Promise<void> {
   }
 
   if (command === 'doctor') {
+    const riskIdx = args.indexOf('--audit-min-risk')
+    const rawRisk = riskIdx >= 0 ? args[riskIdx + 1] : undefined
+    if (rawRisk !== undefined && rawRisk !== 'high' && rawRisk !== 'medium' && rawRisk !== 'low') {
+      console.error(`--audit-min-risk must be high | medium | low, got '${rawRisk}'`)
+      process.exit(1)
+    }
     const options: DoctorOptions = {
       fix: args.includes('--fix'),
       json: args.includes('--json'),
       ci: args.includes('--ci'),
       cwd: process.cwd(),
+      auditTests: args.includes('--audit-tests'),
+      auditMinRisk: rawRisk as DoctorOptions['auditMinRisk'],
     }
     const exitCode = await doctor(options)
     if (options.ci && exitCode > 0) {

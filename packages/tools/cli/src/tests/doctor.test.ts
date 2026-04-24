@@ -255,3 +255,102 @@ export function B() { const [x, setX] = useState(0); return <div>{x}</div> }
     expect(result.summary.filesWithIssues).toBe(2)
   })
 })
+
+describe('doctor — --audit-tests integration', () => {
+  let logSpy: ReturnType<typeof vi.spyOn>
+  let tmpDir: string
+
+  beforeEach(() => {
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    tmpDir = makeTmpDir()
+    fs.mkdirSync(path.join(tmpDir, 'packages'), { recursive: true })
+  })
+  afterEach(() => {
+    logSpy.mockRestore()
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('does NOT print audit output when --audit-tests is absent (default)', async () => {
+    writeFile(
+      tmpDir,
+      'packages/x/src/tests/mock.test.ts',
+      `const vnode = { type: 'div', props: {}, children: [] }`,
+    )
+    const opts: DoctorOptions = {
+      fix: false,
+      json: false,
+      ci: false,
+      cwd: tmpDir,
+      auditTests: false,
+    }
+    await doctor(opts)
+    const output = logSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n')
+    expect(output).not.toContain('Test environment audit')
+  })
+
+  it('prints the test-audit report when --audit-tests is passed', async () => {
+    writeFile(
+      tmpDir,
+      'packages/x/src/tests/mock.test.ts',
+      `const vnode = { type: 'div', props: {}, children: [] }`,
+    )
+    const opts: DoctorOptions = {
+      fix: false,
+      json: false,
+      ci: false,
+      cwd: tmpDir,
+      auditTests: true,
+    }
+    await doctor(opts)
+    const output = logSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n')
+    expect(output).toContain('Test environment audit')
+    expect(output).toContain('Mock-vnode exposure')
+    // The HIGH file we wrote surfaces at the default minRisk=medium.
+    expect(output).toContain('mock.test.ts')
+  })
+
+  it('emits machine-readable JSON when --json + --audit-tests both set', async () => {
+    writeFile(
+      tmpDir,
+      'packages/x/src/tests/mock.test.ts',
+      `const vnode = { type: 'div', props: {}, children: [] }`,
+    )
+    const opts: DoctorOptions = {
+      fix: false,
+      json: true,
+      ci: false,
+      cwd: tmpDir,
+      auditTests: true,
+    }
+    await doctor(opts)
+    // Two JSON blobs logged separately — doctor result then the audit.
+    const blobs = logSpy.mock.calls
+      .map((c: unknown[]) => String(c[0] ?? ''))
+      .filter((s: string) => s.trim().startsWith('{'))
+    expect(blobs.length).toBeGreaterThanOrEqual(2)
+    const auditBlob = blobs.find((s: string) => s.includes('testAudit'))
+    expect(auditBlob).toBeDefined()
+    const parsed = JSON.parse(auditBlob!) as { testAudit: { entries: unknown[] } }
+    expect(Array.isArray(parsed.testAudit.entries)).toBe(true)
+  })
+
+  it('honours --audit-min-risk=high — surfaces only HIGH files', async () => {
+    writeFile(
+      tmpDir,
+      'packages/x/src/tests/mock.test.ts',
+      `const vnode = { type: 'div', props: {}, children: [] }`,
+    )
+    const opts: DoctorOptions = {
+      fix: false,
+      json: false,
+      ci: false,
+      cwd: tmpDir,
+      auditTests: true,
+      auditMinRisk: 'high',
+    }
+    await doctor(opts)
+    const output = logSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n')
+    expect(output).toContain('## HIGH')
+    expect(output).not.toMatch(/^## MEDIUM/m)
+  })
+})

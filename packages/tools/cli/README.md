@@ -19,6 +19,11 @@ pyreon doctor              # human-readable output
 pyreon doctor --fix        # auto-fix safe transforms
 pyreon doctor --json       # structured JSON output for AI tools
 pyreon doctor --ci         # exit code 1 on any error (for CI)
+
+# Test-environment audit (mock-vnode patterns — the PR #197 bug class)
+pyreon doctor --audit-tests                     # appends test-audit with minRisk=medium
+pyreon doctor --audit-tests --audit-min-risk high  # only HIGH-risk files
+pyreon doctor --json --audit-tests              # audit emitted as a second JSON blob
 ```
 
 #### What it detects and suggests

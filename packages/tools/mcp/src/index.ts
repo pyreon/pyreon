@@ -16,6 +16,7 @@
  *   get_pattern               — Fetch a "how do I do X" pattern body from docs/patterns/
  *   get_anti_patterns         — Browse the anti-patterns catalog, optionally filtered by category
  *   get_changelog             — Recent release notes for a @pyreon/* package, parsed from CHANGELOG.md
+ *   audit_test_environment    — Scan test files for mock-vnode patterns (PR #197 bug class)
  *
  * Usage:
  *   bunx @pyreon/mcp          # stdio transport (for IDE integration)
@@ -24,9 +25,12 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
+  type AuditRisk,
+  auditTestEnvironment,
   detectPyreonPatterns,
   detectReactPatterns,
   diagnoseError,
+  formatTestAudit,
   migrateReactCode,
 } from '@pyreon/compiler'
 import { existsSync, readFileSync } from 'node:fs'
@@ -564,6 +568,37 @@ server.tool(
           ? `Did you mean one of these?\n${suggestions.map((s) => `  - ${s}`).join('\n')}\n\nOr call get_changelog() with no arg for the full list.`
           : 'Call get_changelog() with no arg for the list of packages that ship a CHANGELOG.'
       return textResult(`Changelog for "${pkg}" not found.\n\n${suggestText}`)
+    },
+  )
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Tool: audit_test_environment — mock-vnode pattern audit (T2.5.7)
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  server.tool(
+    'audit_test_environment',
+    {
+      minRisk: z
+        .enum(['high', 'medium', 'low'])
+        .optional()
+        .describe(
+          'Minimum risk level to surface. Default "medium" — HIGH + MEDIUM files. Use "high" for only the riskiest, "low" to see everything.',
+        ),
+      limit: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe('Maximum entries to show per risk group. Default 20.'),
+    },
+    async ({ minRisk, limit }) => {
+      const result = auditTestEnvironment(process.cwd())
+      return textResult(
+        formatTestAudit(result, {
+          minRisk: minRisk as AuditRisk | undefined,
+          limit,
+        }),
+      )
     },
   )
 
