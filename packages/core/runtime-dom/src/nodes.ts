@@ -384,22 +384,33 @@ function computeForLis(
   const { tails, tailIdx, pred } = lis
   let lisLen = 0
   let ops = 0
-  // Monotonic fast path. For append / prepend / "rows added at end without
-  // reordering existing ones", the position sequence is strictly increasing
-  // → the longest-increasing subsequence IS the entire sequence, with zero
-  // binary-search work needed. Without this fast path, appending 1000 rows
-  // to a 1000-row list does ~18k binary-search probes (caught by
-  // `big-list.test.ts`); with it, 0 probes.
+  // Two-tier fast path.
   //
-  // Once we hit a non-monotonic position, fall through to the full binary
-  // search path. Random shuffles and real reorders pay the full cost; only
-  // monotonic sequences hit the fast path.
-  let monotonic = true
+  // Tier 1 — "extend LIS": if v > the current tail-of-tails, v becomes the
+  // new tail. O(1). Covers APPEND: positions [0..N-1] are strictly
+  // increasing → the whole sequence is the LIS, 0 probes.
+  //
+  // Tier 2 — "known slot": if v ≤ lastV but tails[v] === v already, the
+  // binary-search answer is provably lo = v (strict-increase invariant
+  // guarantees tails[v-1] < v, so v slots exactly at index v). O(1) too.
+  // Covers PREPEND: [new N rows, old M rows] produces positions [0..N-1,
+  // 0..M-1] — the second monotonic run replaces tails[0..M-1] at indices
+  // N..N+M-1 with zero probes each. Before this tier, 1k prepend was ~10k
+  // probes; with it, 0.
+  //
+  // Tier 3 — binary search fallback. Random shuffles and other mixed
+  // reorders pay the standard log₂(lisLen) per index.
+  //
+  // Safety: the `v < lisLen && tails[v] === v` check is a strict subset of
+  // "binary-search would return v", so it never produces a wrong answer on
+  // shufles — it just opportunistically avoids probing when the answer
+  // happens to be the index itself. No behaviour change, only fewer probes.
   let lastV = -1
   for (let i = 0; i < n; i++) {
     const key = newKeys[i] as string | number
     const v = cache.get(key)?.pos ?? 0
-    if (monotonic && v > lastV) {
+    // Tier 1: extend LIS.
+    if (v > lastV) {
       tails[lisLen] = v
       tailIdx[lisLen] = i
       if (lisLen > 0) pred[i] = tailIdx[lisLen - 1] as number
@@ -407,19 +418,25 @@ function computeForLis(
       lastV = v
       continue
     }
-    monotonic = false
-    let lo = 0
-    let hi = lisLen
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1
-      ops++
-      if ((tails[mid] as number) < v) lo = mid + 1
-      else hi = mid
+    // Tier 2: known slot for piecewise-monotonic patterns (prepend, etc.).
+    let lo: number
+    if (v < lisLen && (tails[v] as number) === v) {
+      lo = v
+    } else {
+      // Tier 3: binary search.
+      lo = 0
+      let hi = lisLen
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1
+        ops++
+        if ((tails[mid] as number) < v) lo = mid + 1
+        else hi = mid
+      }
     }
     tails[lo] = v
     tailIdx[lo] = i
     if (lo > 0) pred[i] = tailIdx[lo - 1] as number
-    if (lo === lisLen) lisLen++
+    // v ≤ lastV here, so tails can't be extended: lo < lisLen always.
   }
   if (__DEV__ && ops > 0) _countSink.__pyreon_count__?.('runtime.mountFor.lisOps', ops)
   return lisLen

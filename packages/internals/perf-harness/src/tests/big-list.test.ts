@@ -170,7 +170,7 @@ describe('big-list scaling', () => {
     dispose()
   })
 
-  it('prepend 1000 rows to existing 1000-row list', async () => {
+  it('prepend 1000 rows to existing 1000-row list — zero lisOps via known-slot fast path', async () => {
     const { items, dispose } = await mountList(1000)
     const outcome = await perfHarness.record('prepend-1k-to-1k', () => {
       items.set([...Array.from({ length: 1000 }, (_, i) => i + 1000), ...items()])
@@ -179,6 +179,11 @@ describe('big-list scaling', () => {
     const lisOps = outcome.after['runtime.mountFor.lisOps'] ?? 0
     // oxlint-disable-next-line no-console
     console.log(`[big-list] 1k→2k prepend: mountChild=${mountChild}, lisOps=${lisOps}`)
+    // Should mount 1000 new rows.
+    expect(mountChild).toBeGreaterThanOrEqual(1000)
+    // Piecewise-monotonic known-slot fast path: zero binary-search probes.
+    // Before the fix, this was ~10000 probes.
+    expect(lisOps).toBe(0)
     dispose()
   })
 })
