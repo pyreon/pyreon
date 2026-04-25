@@ -11,8 +11,15 @@ import { onMount, splitProps } from '@pyreon/core'
 import { render } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
 import { Content, Wrapper } from '../helpers'
+import WrapperStyled from '../helpers/Wrapper/styled'
+import { isWebFixNeeded } from '../helpers/Wrapper/utils'
+import { IS_DEVELOPMENT } from '../utils'
 import type { PyreonElement } from './types'
 import { getShouldBeEmpty, isInlineElement } from './utils'
+
+const WRAPPER_DEV_PROPS: Record<string, string> = IS_DEVELOPMENT
+  ? { 'data-pyr-element': 'Element' }
+  : {}
 
 const equalize = (el: HTMLElement, direction: unknown) => {
   const beforeEl = el.firstElementChild as HTMLElement | null
@@ -156,6 +163,45 @@ const Component: PyreonElement = (props) => {
     return <Wrapper {...rest} {...WRAPPER_PROPS} />
   }
 
+  // Simple-Element fast path: no beforeContent / afterContent slots, and no
+  // button/fieldset/legend two-layer flex fix needed. Inline the Wrapper
+  // helper directly into a single Styled invocation — saves one component
+  // hop, one splitProps call, and one mountChild per Element. The Wrapper
+  // helper still exists for the rare needsFix case below; tests that asserted
+  // Wrapper appears in the VNode tree are updated to the new shape.
+  const dangerouslySetInnerHTML = (rest as { dangerouslySetInnerHTML?: unknown })
+    .dangerouslySetInnerHTML
+  const needsFix = !dangerouslySetInnerHTML && isWebFixNeeded(own.tag)
+
+  if (isSimpleElement && !needsFix) {
+    return (
+      <WrapperStyled
+        {...rest}
+        {...WRAPPER_DEV_PROPS}
+        ref={mergedRef}
+        as={own.tag}
+        $element={{
+          block: own.block,
+          direction: wrapperDirection,
+          alignX: wrapperAlignX,
+          alignY: wrapperAlignY,
+          equalCols: own.equalCols,
+          extraStyles: own.css,
+        }}
+      >
+        {render(getChildren())}
+      </WrapperStyled>
+    )
+  }
+
+  if (isSimpleElement) {
+    return (
+      <Wrapper {...rest} {...WRAPPER_PROPS} isInline={isInline}>
+        {render(getChildren())}
+      </Wrapper>
+    )
+  }
+
   return (
     <Wrapper {...rest} {...WRAPPER_PROPS} isInline={isInline}>
       {own.beforeContent && (
@@ -174,22 +220,18 @@ const Component: PyreonElement = (props) => {
         </Content>
       )}
 
-      {isSimpleElement ? (
-        render(getChildren())
-      ) : (
-        <Content
-          tag={SUB_TAG}
-          contentType="content"
-          parentDirection={wrapperDirection}
-          extendCss={own.contentCss}
-          direction={contentDirection}
-          alignX={contentAlignX}
-          alignY={contentAlignY}
-          equalCols={own.equalCols}
-        >
-          {getChildren()}
-        </Content>
-      )}
+      <Content
+        tag={SUB_TAG}
+        contentType="content"
+        parentDirection={wrapperDirection}
+        extendCss={own.contentCss}
+        direction={contentDirection}
+        alignX={contentAlignX}
+        alignY={contentAlignY}
+        equalCols={own.equalCols}
+      >
+        {getChildren()}
+      </Content>
 
       {own.afterContent && (
         <Content
