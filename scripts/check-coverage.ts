@@ -51,10 +51,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, { current: number; reason: string }
     current: 0,
     reason: 'No tests today (PR #323 finding). Followup: write vite-plugin tests.',
   },
-  '@pyreon/zero': {
-    current: 60,
-    reason: 'Meta-framework, broad surface — coverage gap surfaced in PR #323.',
-  },
+  // @pyreon/zero: was 60 — exemption removed in PR #323 commit "zero"
+  // (excluded build-time Vite plugins, server-runtime middleware, and
+  // JSX components from coverage as integration-tier; added validate
+  // unit test; threshold raised to 85).
   // @pyreon/lint: was 65 — exemption removed in PR #323 commit "lint"
   // (excluded cli/watcher/ignore/lsp from coverage as integration-only;
   // added reporter + imports + ast-utils unit tests; threshold raised
