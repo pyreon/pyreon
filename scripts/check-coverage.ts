@@ -55,10 +55,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, { current: number; reason: string }
     current: 60,
     reason: 'Meta-framework, broad surface — coverage gap surfaced in PR #323.',
   },
-  '@pyreon/lint': {
-    current: 65,
-    reason: '59 rules, only 2 test files (runner + LSP) — PR #323 finding.',
-  },
+  // @pyreon/lint: was 65 — exemption removed in PR #323 commit "lint"
+  // (excluded cli/watcher/ignore/lsp from coverage as integration-only;
+  // added reporter + imports + ast-utils unit tests; threshold raised
+  // to 85).
   '@pyreon/coolgrid': {
     current: 68,
     reason: 'PR #323 finding. Followup: raise to ≥85%.',
