@@ -7,6 +7,19 @@
  * Reads coverage thresholds from each package's vitest.config.ts.
  * If no threshold is configured, uses the default (90% statements).
  * Supports parallel execution and CI-friendly output.
+ *
+ * ## Coverage floor (PR #323)
+ *
+ * MINIMUM_FLOOR is the lowest threshold any package may configure
+ * without an explicit entry in BELOW_FLOOR_EXEMPTIONS. The floor is
+ * 85% — any package whose vitest.config.ts sets `statements:` below
+ * 85 fails the check unless its name appears in the exemption list.
+ *
+ * BELOW_FLOOR_EXEMPTIONS is the visible-debt list — every entry must
+ * carry a reason and is intended to be REMOVED in a follow-up PR
+ * once that package's threshold is raised to ≥ MINIMUM_FLOOR. The
+ * list is the floor's canonical exception register; do not add to it
+ * without also opening a tracking issue or referencing one.
  */
 import { spawn } from 'node:child_process'
 import { readdirSync, existsSync, readFileSync, appendFileSync } from 'node:fs'
@@ -20,7 +33,53 @@ const PACKAGE_DIRS = [
   'packages/zero',
 ]
 const DEFAULT_THRESHOLD = 90
+const MINIMUM_FLOOR = 85
 const CONCURRENCY = 4
+
+/**
+ * Packages allowed to configure a `statements` threshold below
+ * `MINIMUM_FLOOR`. Each entry carries the current threshold and the
+ * reason it's exempt; the floor enforcement skips the package when
+ * its name appears here, so the package's own configured threshold
+ * still applies. **Remove the entry the same PR that raises the
+ * package's threshold to ≥ MINIMUM_FLOOR.**
+ *
+ * Tracked debt as of PR #323 (coverage sweep findings):
+ */
+const BELOW_FLOOR_EXEMPTIONS: Record<string, { current: number; reason: string }> = {
+  '@pyreon/vite-plugin': {
+    current: 0,
+    reason: 'No tests today (PR #323 finding). Followup: write vite-plugin tests.',
+  },
+  '@pyreon/zero': {
+    current: 60,
+    reason: 'Meta-framework, broad surface — coverage gap surfaced in PR #323.',
+  },
+  '@pyreon/lint': {
+    current: 65,
+    reason: '59 rules, only 2 test files (runner + LSP) — PR #323 finding.',
+  },
+  '@pyreon/coolgrid': {
+    current: 68,
+    reason: 'PR #323 finding. Followup: raise to ≥85%.',
+  },
+  '@pyreon/storybook': {
+    current: 75,
+    reason: 'PR #323 finding. Small package — likely 1-2 hrs to raise.',
+  },
+  '@pyreon/vue-compat': {
+    current: 75,
+    reason: 'PR #323 finding. Compat shim, follow react-compat shape.',
+  },
+  '@pyreon/styler': {
+    current: 82,
+    reason: 'PR #323 finding. Just below floor — small effort to raise.',
+  },
+  '@pyreon/unistyle': {
+    current: 84,
+    reason: 'PR #323 finding. One percentage point below floor.',
+  },
+}
 
 interface CoverageResult {
   package: string
@@ -160,10 +219,76 @@ async function runWithConcurrency(
   return results
 }
 
+/**
+ * Enforce the MINIMUM_FLOOR. Returns a list of misconfigured-threshold
+ * errors: any package whose configured threshold falls below the
+ * floor without an explicit entry in BELOW_FLOOR_EXEMPTIONS, OR any
+ * exempt entry whose listed `current` no longer matches the actual
+ * configured threshold (drift detection — keeps the exemption list
+ * honest as packages are improved).
+ */
+function enforceFloor(
+  packages: { dir: string; name: string; threshold: number }[],
+): string[] {
+  const errors: string[] = []
+  const seenExemptions = new Set<string>()
+
+  for (const pkg of packages) {
+    const exemption = BELOW_FLOOR_EXEMPTIONS[pkg.name]
+    if (exemption) {
+      seenExemptions.add(pkg.name)
+      // Drift: the exemption claims a threshold that no longer matches
+      // the package's actual config. Either the threshold was raised
+      // (good — drop the exemption) or it was changed without updating
+      // the list (the list is now lying).
+      if (exemption.current !== pkg.threshold) {
+        errors.push(
+          `${pkg.name}: BELOW_FLOOR_EXEMPTIONS lists current=${exemption.current}% but vitest.config.ts has ${pkg.threshold}%. ` +
+            (pkg.threshold >= MINIMUM_FLOOR
+              ? `Drop the exemption — package now meets the floor.`
+              : `Update the exemption entry to current=${pkg.threshold}.`),
+        )
+      }
+      continue
+    }
+    if (pkg.threshold < MINIMUM_FLOOR) {
+      errors.push(
+        `${pkg.name}: configured threshold ${pkg.threshold}% is below MINIMUM_FLOOR (${MINIMUM_FLOOR}%) and no exemption is registered. ` +
+          `Either raise the threshold in ${pkg.dir}/vitest.config.ts, or add a BELOW_FLOOR_EXEMPTIONS entry with a reason.`,
+      )
+    }
+  }
+
+  // Stale exemptions — listed but the package no longer exists.
+  for (const exemptName of Object.keys(BELOW_FLOOR_EXEMPTIONS)) {
+    if (!seenExemptions.has(exemptName)) {
+      errors.push(
+        `${exemptName}: BELOW_FLOOR_EXEMPTIONS entry is stale (no matching package). Remove it.`,
+      )
+    }
+  }
+
+  return errors
+}
+
 // ─── Main ──────────────────────────────────────────────────────────────────
 
 const isCI = !!process.env.CI
 const packages = collectPackages()
+
+// Enforce the 85% floor before running coverage so misconfigured
+// thresholds surface even if coverage execution times out / skips.
+const floorErrors = enforceFloor(packages)
+if (floorErrors.length > 0) {
+  console.error('\n❌ Coverage floor violations (MINIMUM_FLOOR = ' + MINIMUM_FLOOR + '%):\n')
+  for (const err of floorErrors) console.error('  - ' + err)
+  console.error(
+    '\nFix by either raising the package threshold in vitest.config.ts ' +
+      'or by adding a BELOW_FLOOR_EXEMPTIONS entry with a reason. See ' +
+      'scripts/check-coverage.ts for the canonical list.\n',
+  )
+  process.exit(1)
+}
 
 console.log(`\nRunning coverage for ${packages.length} packages (${CONCURRENCY} parallel)...\n`)
 
