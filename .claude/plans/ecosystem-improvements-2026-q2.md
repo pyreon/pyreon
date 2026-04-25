@@ -86,20 +86,9 @@ The recent catalog work (PRs #193–#200) shipped real fixes but exposed five re
 
 ### T0.2 — Compiler stack overflow on cross-referencing const accessors
 
-**Status**: discovered while building examples, no investigation has happened yet, no reproduction script exists.
+**Status**: ✅ VERIFIED FIXED. Investigation in PR #320 confirmed the original symptom does not reproduce on current `main` — chains of depth 4, 5, 10, 20, and 50 all compile correctly. The likely fix landed transitively with the cycle-detection `resolving` Set (`packages/core/compiler/src/jsx.ts:554-570`), which made the recursive resolver well-founded for both cycles AND linear chains. The original report may have been a misdiagnosed cycle case, or may have been fixed silently before being investigated.
 
-**Symptoms**: when a JSX template has multiple `const` declarations that reference each other and are derived from `props.*`, the compiler's reactive-prop inlining pass enters an infinite recursion (the `const a = props.x; const b = a + 1; const c = b * 2; return <div>{c}</div>` pattern).
-
-**Approach**:
-
-1. **Reproduction first**: write a minimal failing test in `@pyreon/compiler/src/tests/`. Without a repro the fix is guessing.
-2. Identify which transitive-resolution function is recursing without a base case.
-3. Add a depth-limit + visited-set guard to break the cycle.
-4. Regression test: the original repro + 3-4 variants (chains of length 1, 2, 5, 10).
-
-**Success criterion**: The repro test exists and passes. The compiler does not crash on any chain length. CLAUDE.md compiler section gains a note about transitive-resolution depth limits.
-
-**Open question**: should the compiler emit a warning when a chain exceeds N depth (potential perf issue) or silently support arbitrary depth?
+**Regression coverage**: `packages/core/compiler/src/tests/depth-stress.test.ts` covers chain depths 4 / 5 / 10 / 20 / 50 with mechanically-generated `const v0 = props.x; const v1 = v0 + 1; ... const vN = v(N-1) + 1; return <div>{vN}</div>` shape. Locks in the well-founded-recursion property so a future refactor can't reintroduce the bug.
 
 ---
 
