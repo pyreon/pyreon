@@ -75,10 +75,8 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, { current: number; reason: string }
     current: 82,
     reason: 'PR #323 finding. Just below floor — small effort to raise.',
   },
-  '@pyreon/unistyle': {
-    current: 84,
-    reason: 'PR #323 finding. One percentage point below floor.',
-  },
+  // @pyreon/unistyle: was 84 — exemption removed in PR #323 commit "unistyle"
+  // (deleted dead spacingShorthand utils.ts, threshold raised to 95).
 }
 
 interface CoverageResult {
