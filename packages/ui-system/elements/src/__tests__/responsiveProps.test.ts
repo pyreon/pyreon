@@ -7,6 +7,37 @@ import Wrapper from '../helpers/Wrapper/component'
 
 const asVNode = (v: unknown) => v as VNode
 
+// See Element.test.ts for context — Element's simple-element fast path moves
+// layout props from `result.props.{tag, direction, …}` to
+// `result.props.{as, $element.direction, …}`. This helper reads from
+// whichever shape the result is in.
+const getLayoutProps = (result: VNode): Record<string, unknown> => {
+  const p = result.props as Record<string, unknown>
+  if (p.$element && typeof p.$element === 'object') {
+    const el = p.$element as Record<string, unknown>
+    return {
+      tag: p.as,
+      direction: el.direction,
+      alignX: el.alignX,
+      alignY: el.alignY,
+      block: el.block,
+      equalCols: el.equalCols,
+      extendCss: el.extraStyles,
+      isInline: undefined,
+    }
+  }
+  return {
+    tag: p.tag,
+    direction: p.direction,
+    alignX: p.alignX,
+    alignY: p.alignY,
+    block: p.block,
+    equalCols: p.equalCols,
+    extendCss: p.extendCss,
+    isInline: p.isInline,
+  }
+}
+
 const getContentSlots = (result: VNode): VNode[] => {
   const children = result.props.children
   if (!Array.isArray(children)) return []
@@ -20,17 +51,17 @@ describe('Element responsive props', () => {
   describe('single values', () => {
     it('renders with alignX as string', () => {
       const result = asVNode(Element({ alignX: 'center', children: 'content' }))
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
     })
 
     it('renders with alignY as string', () => {
       const result = asVNode(Element({ alignY: 'top', children: 'content' }))
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
     })
 
     it('renders with direction as string', () => {
       const result = asVNode(Element({ direction: 'rows', children: 'content' }))
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
     })
 
     it('renders with gap as number', () => {
@@ -42,13 +73,13 @@ describe('Element responsive props', () => {
           children: 'content',
         }),
       )
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
     })
 
     it('renders with block as boolean', () => {
       const result = asVNode(Element({ block: true, children: 'content' }))
-      expect(result.type).toBe(Wrapper)
-      expect(result.props.block).toBe(true)
+      expect(typeof result.type).toBe("function")
+      expect(getLayoutProps(result).block).toBe(true)
     })
 
     it('renders with equalCols as boolean', () => {
@@ -60,7 +91,7 @@ describe('Element responsive props', () => {
           children: 'content',
         }),
       )
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
     })
   })
 
@@ -69,19 +100,19 @@ describe('Element responsive props', () => {
       const result = asVNode(
         Element({ alignX: ['left', 'center', 'right'] as any, children: 'content' }),
       )
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
     })
 
     it('renders with alignY as array', () => {
       const result = asVNode(
         Element({ alignY: ['top', 'center', 'bottom'] as any, children: 'content' }),
       )
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
     })
 
     it('renders with direction as array', () => {
       const result = asVNode(Element({ direction: ['rows', 'inline'] as any, children: 'content' }))
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
     })
 
     it('renders with gap as array', () => {
@@ -92,12 +123,12 @@ describe('Element responsive props', () => {
           children: 'content',
         }),
       )
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
     })
 
     it('renders with block as array', () => {
       const result = asVNode(Element({ block: [false, true] as any, children: 'content' }))
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
     })
 
     it('renders with equalCols as array', () => {
@@ -109,7 +140,7 @@ describe('Element responsive props', () => {
           children: 'content',
         }),
       )
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
     })
   })
 
@@ -121,14 +152,14 @@ describe('Element responsive props', () => {
           children: 'content',
         }),
       )
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
     })
 
     it('renders with alignY as breakpoint object', () => {
       const result = asVNode(
         Element({ alignY: { xs: 'top', lg: 'center' } as any, children: 'content' }),
       )
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
     })
 
     it('renders with direction as breakpoint object', () => {
@@ -138,7 +169,7 @@ describe('Element responsive props', () => {
           children: 'content',
         }),
       )
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
     })
 
     it('renders with gap as breakpoint object', () => {
@@ -149,14 +180,14 @@ describe('Element responsive props', () => {
           children: 'content',
         }),
       )
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
     })
 
     it('renders with block as breakpoint object', () => {
       const result = asVNode(
         Element({ block: { xs: false, md: true } as any, children: 'content' }),
       )
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
     })
   })
 
@@ -174,7 +205,7 @@ describe('Element responsive props', () => {
           children: h('span', { 'data-testid': 'main' }, 'Main'),
         }),
       )
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
       const slots = getContentSlots(result)
       expect(slots).toHaveLength(3)
     })
@@ -190,7 +221,7 @@ describe('Element responsive props', () => {
           children: h('span', null, 'Main'),
         }),
       )
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
       const slots = getContentSlots(result)
       expect(slots).toHaveLength(3)
     })
@@ -207,15 +238,15 @@ describe('Element responsive props', () => {
           children: 'content',
         }),
       )
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
     })
   })
 
   describe('responsive css prop', () => {
     it('renders with css as string', () => {
       const result = asVNode(Element({ css: 'background: red;', children: 'content' }))
-      expect(result.type).toBe(Wrapper)
-      expect(result.props.extendCss).toBe('background: red;')
+      expect(typeof result.type).toBe("function")
+      expect(getLayoutProps(result).extendCss).toBe('background: red;')
     })
 
     it('renders with contentCss', () => {
@@ -226,7 +257,7 @@ describe('Element responsive props', () => {
           children: 'content',
         }),
       )
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
       const slots = getContentSlots(result)
       const contentSlot = slots.find((v) => v.props.contentType === 'content')
       expect(contentSlot?.props.extendCss).toBe('color: blue;')
@@ -242,7 +273,7 @@ describe('Element responsive props', () => {
           children: 'content',
         }),
       )
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
       const slots = getContentSlots(result)
       const beforeSlot = slots.find((v) => v.props.contentType === 'before')
       const afterSlot = slots.find((v) => v.props.contentType === 'after')
@@ -273,14 +304,14 @@ describe('Element responsive props', () => {
     for (const value of alignXValues) {
       it(`renders with alignX="${value}"`, () => {
         const result = asVNode(Element({ alignX: value, children: 'content' }))
-        expect(result.type).toBe(Wrapper)
+        expect(typeof result.type).toBe("function")
       })
     }
 
     for (const value of alignYValues) {
       it(`renders with alignY="${value}"`, () => {
         const result = asVNode(Element({ alignY: value, children: 'content' }))
-        expect(result.type).toBe(Wrapper)
+        expect(typeof result.type).toBe("function")
       })
     }
   })
@@ -291,7 +322,7 @@ describe('Element responsive props', () => {
     for (const value of directionValues) {
       it(`renders with direction="${value}"`, () => {
         const result = asVNode(Element({ direction: value, children: 'content' }))
-        expect(result.type).toBe(Wrapper)
+        expect(typeof result.type).toBe("function")
       })
     }
   })

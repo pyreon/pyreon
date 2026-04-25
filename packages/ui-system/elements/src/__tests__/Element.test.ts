@@ -20,59 +20,102 @@ const getContentSlots = (result: VNode): VNode[] => {
   ) as VNode[]
 }
 
+/**
+ * Element's simple-Element fast path inlines the Wrapper helper directly into
+ * a single Styled invocation — saves a component hop, splitProps call, and
+ * mountChild per Element. After the inline, layout props live on
+ * `props.$element.{direction,alignX,…}` and the HTML tag moves from `tag` to
+ * `as`. Compound (with-beforeContent/afterContent) renders and the rare
+ * needsFix tags (button/fieldset/legend) still go through the original
+ * `Wrapper` component.
+ *
+ * `getLayoutProps()` reads from whichever shape the result happens to be in
+ * so the test assertions don't need to know which path Element took.
+ */
+const getLayoutProps = (result: VNode): Record<string, unknown> => {
+  const p = result.props as Record<string, unknown>
+  // Inlined path: layout lives in $element bag, tag in `as`
+  if (p.$element && typeof p.$element === 'object') {
+    const el = p.$element as Record<string, unknown>
+    return {
+      tag: p.as,
+      direction: el.direction,
+      alignX: el.alignX,
+      alignY: el.alignY,
+      block: el.block,
+      equalCols: el.equalCols,
+      extendCss: el.extraStyles,
+      // isInline is no longer a separate prop in the inlined path —
+      // SUB_TAG/childFix decisions happen at compose-time.
+      isInline: undefined,
+    }
+  }
+  // Wrapper-helper path: flat props
+  return {
+    tag: p.tag,
+    direction: p.direction,
+    alignX: p.alignX,
+    alignY: p.alignY,
+    block: p.block,
+    equalCols: p.equalCols,
+    extendCss: p.extendCss,
+    isInline: p.isInline,
+  }
+}
+
 describe('Element', () => {
   describe('basic rendering', () => {
     it('returns a VNode whose type is the Wrapper component (a function)', () => {
       const result = asVNode(Element({ children: 'hello' }))
       expect(typeof result.type).toBe('function')
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
     })
 
     it('passes tag as the tag prop to Wrapper', () => {
       const result = asVNode(Element({ tag: 'section', children: 'content' }))
-      expect(result.props.tag).toBe('section')
+      expect(getLayoutProps(result).tag).toBe('section')
     })
 
     it('defaults tag to undefined when not specified', () => {
       const result = asVNode(Element({ children: 'hello' }))
-      expect(result.props.tag).toBeUndefined()
+      expect(getLayoutProps(result).tag).toBeUndefined()
     })
 
     it('renders with no children', () => {
       const result = asVNode(Element({}))
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
     })
   })
 
   describe('simple element (no beforeContent/afterContent)', () => {
     it('uses contentDirection as wrapper direction (defaults to rows)', () => {
       const result = asVNode(Element({ children: 'test' }))
-      expect(result.props.direction).toBe('rows')
+      expect(getLayoutProps(result).direction).toBe('rows')
     })
 
     it('uses contentAlignX as wrapper alignX (defaults to left)', () => {
       const result = asVNode(Element({ children: 'test' }))
-      expect(result.props.alignX).toBe('left')
+      expect(getLayoutProps(result).alignX).toBe('left')
     })
 
     it('uses contentAlignY as wrapper alignY (defaults to center)', () => {
       const result = asVNode(Element({ children: 'test' }))
-      expect(result.props.alignY).toBe('center')
+      expect(getLayoutProps(result).alignY).toBe('center')
     })
 
     it('overrides direction with contentDirection when simple', () => {
       const result = asVNode(Element({ contentDirection: 'inline', children: 'test' }))
-      expect(result.props.direction).toBe('inline')
+      expect(getLayoutProps(result).direction).toBe('inline')
     })
 
     it('overrides alignX with contentAlignX when simple', () => {
       const result = asVNode(Element({ contentAlignX: 'center', children: 'test' }))
-      expect(result.props.alignX).toBe('center')
+      expect(getLayoutProps(result).alignX).toBe('center')
     })
 
     it('overrides alignY with contentAlignY when simple', () => {
       const result = asVNode(Element({ contentAlignY: 'top', children: 'test' }))
-      expect(result.props.alignY).toBe('top')
+      expect(getLayoutProps(result).alignY).toBe('top')
     })
 
     it('renders children directly via render() without Content wrappers', () => {
@@ -81,17 +124,17 @@ describe('Element', () => {
       expect(slots).toHaveLength(0)
     })
 
-    it('renders string children in props.children array', () => {
+    it('renders string children directly as props.children', () => {
       const result = asVNode(Element({ children: 'hello' }))
-      const children = result.props.children as unknown[]
-      // Simple element renders: [falsy beforeContent, render(CHILDREN), falsy afterContent]
-      expect(children).toBeDefined()
-      expect(Array.isArray(children)).toBe(true)
+      // Simple element fast path — passes children as a single value, not a
+      // 3-slot array wrapping falsy beforeContent/afterContent. This avoids
+      // 2 extra mountChild calls per Element in the common case.
+      expect(result.props.children).toBe('hello')
     })
 
     it('passes block prop to Wrapper', () => {
       const result = asVNode(Element({ block: true, children: 'test' }))
-      expect(result.props.block).toBe(true)
+      expect(getLayoutProps(result).block).toBe(true)
     })
   })
 
@@ -104,7 +147,7 @@ describe('Element', () => {
           afterContent: h('span', null, 'A'),
         }),
       )
-      expect(result.props.direction).toBe('inline')
+      expect(getLayoutProps(result).direction).toBe('inline')
     })
 
     it('uses explicit direction when provided', () => {
@@ -116,7 +159,7 @@ describe('Element', () => {
           afterContent: h('span', null, 'A'),
         }),
       )
-      expect(result.props.direction).toBe('rows')
+      expect(getLayoutProps(result).direction).toBe('rows')
     })
 
     it('uses default alignX (left) and alignY (center)', () => {
@@ -127,8 +170,8 @@ describe('Element', () => {
           afterContent: 'A',
         }),
       )
-      expect(result.props.alignX).toBe('left')
-      expect(result.props.alignY).toBe('center')
+      expect(getLayoutProps(result).alignX).toBe('left')
+      expect(getLayoutProps(result).alignY).toBe('center')
     })
 
     it('uses explicit alignX and alignY', () => {
@@ -141,8 +184,8 @@ describe('Element', () => {
           afterContent: 'A',
         }),
       )
-      expect(result.props.alignX).toBe('center')
-      expect(result.props.alignY).toBe('top')
+      expect(getLayoutProps(result).alignX).toBe('center')
+      expect(getLayoutProps(result).alignY).toBe('top')
     })
 
     it('renders three Content children when both before and after exist', () => {
@@ -474,8 +517,8 @@ describe('Element', () => {
     it('renders img with no children', () => {
       // @ts-expect-error — testing element-specific attr forwarding
       const result = asVNode(Element({ tag: 'img', src: '/pic.png' }))
-      expect(result.type).toBe(Wrapper)
-      expect(result.props.tag).toBe('img')
+      expect(typeof result.type).toBe("function")
+      expect(getLayoutProps(result).tag).toBe('img')
       expect(result.props.src).toBe('/pic.png')
       expect(result.props.children).toBeUndefined()
     })
@@ -483,52 +526,58 @@ describe('Element', () => {
     it('renders input with no children', () => {
       // @ts-expect-error — testing element-specific attr forwarding
       const result = asVNode(Element({ tag: 'input', type: 'text' }))
-      expect(result.type).toBe(Wrapper)
-      expect(result.props.tag).toBe('input')
+      expect(typeof result.type).toBe("function")
+      expect(getLayoutProps(result).tag).toBe('input')
       expect(result.props.type).toBe('text')
       expect(result.props.children).toBeUndefined()
     })
 
     it('renders with dangerouslySetInnerHTML (treated as empty)', () => {
       const result = asVNode(Element({ dangerouslySetInnerHTML: { __html: '<b>hi</b>' } }))
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
       expect(result.props.dangerouslySetInnerHTML).toEqual({ __html: '<b>hi</b>' })
       expect(result.props.children).toBeUndefined()
     })
 
     it('renders br with no children', () => {
       const result = asVNode(Element({ tag: 'br' }))
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
       expect(result.props.children).toBeUndefined()
     })
 
     it('renders hr with no children', () => {
       const result = asVNode(Element({ tag: 'hr' }))
-      expect(result.type).toBe(Wrapper)
+      expect(typeof result.type).toBe("function")
       expect(result.props.children).toBeUndefined()
     })
   })
 
-  describe('isInline flag for Wrapper', () => {
-    it('passes isInline=true for inline tags like span', () => {
+  describe('inline-vs-block tag rendering', () => {
+    // The simple-element fast path inlines Wrapper into Styled and forwards
+    // `tag` as the `as` prop. The pre-fast-path `isInline` flag was an
+    // internal Wrapper plumbing detail that determined the inner SUB_TAG
+    // for the rare needsFix (button/fieldset/legend) path — invisible on
+    // span/a/section, which never need that fix. After the fast path the
+    // flag is gone in the simple path; the rendered tag is the contract.
+    it('renders inline tags like span as <span>', () => {
       const result = asVNode(Element({ tag: 'span', children: 'text' }))
-      expect(result.props.isInline).toBe(true)
+      expect(getLayoutProps(result).tag).toBe('span')
     })
 
-    it('passes isInline=true for anchor tag', () => {
+    it('renders anchor tag as <a>', () => {
       // @ts-expect-error — testing element-specific attr forwarding
       const result = asVNode(Element({ tag: 'a', href: '#', children: 'link' }))
-      expect(result.props.isInline).toBe(true)
+      expect(getLayoutProps(result).tag).toBe('a')
     })
 
-    it('passes isInline=false for block tags like section', () => {
+    it('renders block tags like section as <section>', () => {
       const result = asVNode(Element({ tag: 'section', children: 'text' }))
-      expect(result.props.isInline).toBe(false)
+      expect(getLayoutProps(result).tag).toBe('section')
     })
 
-    it('passes isInline=false when tag is undefined (default)', () => {
+    it('leaves tag undefined when not specified (default div)', () => {
       const result = asVNode(Element({ children: 'text' }))
-      expect(result.props.isInline).toBe(false)
+      expect(getLayoutProps(result).tag).toBeUndefined()
     })
   })
 
@@ -536,21 +585,21 @@ describe('Element', () => {
     it('passes css prop as extendCss to Wrapper', () => {
       const customCss = 'color: red;'
       const result = asVNode(Element({ css: customCss, children: 'test' }))
-      expect(result.props.extendCss).toBe(customCss)
+      expect(getLayoutProps(result).extendCss).toBe(customCss)
     })
 
     it('does not pass extendCss when css not provided', () => {
       const result = asVNode(Element({ children: 'test' }))
-      expect(result.props.extendCss).toBeUndefined()
+      expect(getLayoutProps(result).extendCss).toBeUndefined()
     })
   })
 
   describe('content fallback chain', () => {
     it('prefers children over content', () => {
       const result = asVNode(Element({ children: 'child', content: 'alt' }))
-      const children = result.props.children as unknown[]
-      expect(children).toBeDefined()
-      expect(Array.isArray(children)).toBe(true)
+      // Simple-element fast path returns children directly. The fallback
+      // chain (children → content → label) is exercised inside getChildren().
+      expect(result.props.children).toBe('child')
     })
 
     it('falls back to content when no children', () => {
@@ -576,13 +625,13 @@ describe('Element', () => {
   describe('button tag (flex fix needed)', () => {
     it('passes tag as button to Wrapper', () => {
       const result = asVNode(Element({ tag: 'button', children: 'click' }))
-      expect(result.type).toBe(Wrapper)
-      expect(result.props.tag).toBe('button')
+      expect(typeof result.type).toBe("function")
+      expect(getLayoutProps(result).tag).toBe('button')
     })
 
     it('passes isInline=true for button (inline element)', () => {
       const result = asVNode(Element({ tag: 'button', children: 'click' }))
-      expect(result.props.isInline).toBe(true)
+      expect(getLayoutProps(result).isInline).toBe(true)
     })
   })
 

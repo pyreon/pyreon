@@ -143,6 +143,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - `List` — list container (ul/ol/dl)
 - `Overlay` — positioned overlay with backdrop
 - `Portal` — renders children outside DOM hierarchy
+- **Element simple-path fast path (2026-Q2)**: when the Element has no `beforeContent` / `afterContent` and the tag doesn't need the button/fieldset/legend two-layer flex fix, Element inlines the `Wrapper` helper directly into a single styled invocation. Skips one component invocation, one `splitProps` call, and one `mountChild` per Element. Real-Chromium wall-clock benchmark (`packages/ui-system/elements/src/__tests__/perf-stress.browser.test.tsx`): 31-45% faster across all shapes — 500-child single-tree mount drops from 2.90 ms to 1.60 ms (−45%), 5000-mount stress from 31.80 ms to 19.70 ms (−38%). Compound elements (with before/after content) and needsFix tags still go through the original Wrapper for backward compat. The downstream contract change: simple-element rendered VNode now exposes the HTML tag as `props.as` and layout fields under `props.$element.{direction, alignX, alignY, block, equalCols, extraStyles}` instead of flat `props.{tag, direction, …}`. Tests reading these read both shapes via a `getLayoutProps()` helper; production styled-components consumers see no behavior change since `as` is the styled-components canonical tag selector.
 
 #### @pyreon/ui-core — PyreonUI (Unified Provider)
 

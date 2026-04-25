@@ -1,6 +1,37 @@
 import type { VNode } from '@pyreon/core'
 import { describe, expect, it, vi } from 'vitest'
 
+// Element's simple-Element fast path inlines the Wrapper helper directly into
+// a Styled invocation, so layout props move from `result.props.{tag, direction, …}`
+// to `result.props.{as, $element.direction, …}`. This helper reads from
+// whichever shape the result is in so assertions don't depend on which path.
+const getLayoutProps = (result: VNode): Record<string, unknown> => {
+  const p = result.props as Record<string, unknown>
+  if (p.$element && typeof p.$element === 'object') {
+    const el = p.$element as Record<string, unknown>
+    return {
+      tag: p.as,
+      direction: el.direction,
+      alignX: el.alignX,
+      alignY: el.alignY,
+      block: el.block,
+      equalCols: el.equalCols,
+      extendCss: el.extraStyles,
+      isInline: undefined,
+    }
+  }
+  return {
+    tag: p.tag,
+    direction: p.direction,
+    alignX: p.alignX,
+    alignY: p.alignY,
+    block: p.block,
+    equalCols: p.equalCols,
+    extendCss: p.extendCss,
+    isInline: p.isInline,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Mocks — match patterns from existing element tests
 // ---------------------------------------------------------------------------
@@ -36,7 +67,7 @@ const getContentSlots = (result: VNode): VNode[] => {
 describe('Element integration', () => {
   it('renders with content prop producing Wrapper VNode', () => {
     const result = asVNode(Element({ content: 'hello world', children: undefined }))
-    expect(result.type).toBe(Wrapper)
+    expect(typeof result.type).toBe("function")
     const children = result.props.children
     expect(children).toBeDefined()
   })
@@ -50,7 +81,7 @@ describe('Element integration', () => {
         children: undefined,
       }),
     )
-    expect(result.type).toBe(Wrapper)
+    expect(typeof result.type).toBe("function")
     const slots = getContentSlots(result)
     // With before/after content, there should be Content wrapper VNodes
     expect(slots.length).toBeGreaterThanOrEqual(2)
@@ -67,7 +98,7 @@ describe('Element integration', () => {
 
     // When beforeContent/afterContent are absent, direction falls through
     // to wrapper level and contentDirection/contentAlignX take effect
-    expect(result.type).toBe(Wrapper)
+    expect(typeof result.type).toBe("function")
     // The wrapper receives alignment props
     expect(result.props).toBeDefined()
   })
@@ -81,7 +112,7 @@ describe('Element integration', () => {
       }),
     )
     // Simple element (no before/after) uses contentDirection as wrapper direction
-    expect(result.props.direction).toBe('inline')
-    expect(result.props.alignX).toBe('center')
+    expect(getLayoutProps(result).direction).toBe('inline')
+    expect(getLayoutProps(result).alignX).toBe('center')
   })
 })

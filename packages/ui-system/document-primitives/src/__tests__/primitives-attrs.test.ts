@@ -14,7 +14,7 @@ describe('DocDocument attrs', () => {
   it('sets tag to div', async () => {
     const DocDocument = (await import('../primitives/DocDocument')).default
     const result = renderProps(DocDocument, { children: 'test' })
-    expect(result.tag).toBe('div')
+    expect(result.as).toBe('div')
   })
 
   it('passes title to _documentProps', async () => {
@@ -158,7 +158,7 @@ describe('DocTable attrs', () => {
   it('sets tag to table', async () => {
     const DocTable = (await import('../primitives/DocTable')).default
     const result = renderProps(DocTable, { children: null })
-    expect(result.tag).toBe('table')
+    expect(result.as).toBe('table')
   })
 
   it('defaults columns and rows to empty arrays', async () => {
@@ -195,13 +195,13 @@ describe('DocList attrs', () => {
   it('sets tag to ul by default', async () => {
     const DocList = (await import('../primitives/DocList')).default
     const result = renderProps(DocList, { children: null })
-    expect(result.tag).toBe('ul')
+    expect(result.as).toBe('ul')
   })
 
   it('sets tag to ol when ordered is true', async () => {
     const DocList = (await import('../primitives/DocList')).default
     const result = renderProps(DocList, { ordered: true, children: null })
-    expect(result.tag).toBe('ol')
+    expect(result.as).toBe('ol')
     expect(result._documentProps.ordered).toBe(true)
   })
 
@@ -278,7 +278,7 @@ describe('DocPage attrs', () => {
   it('sets tag to div', async () => {
     const DocPage = (await import('../primitives/DocPage')).default
     const result = renderProps(DocPage, { children: 'page' })
-    expect(result.tag).toBe('div')
+    expect(result.as).toBe('div')
   })
 
   it('passes size and orientation when provided', async () => {
@@ -306,7 +306,7 @@ describe('DocPageBreak attrs', () => {
   it('sets tag to div with empty _documentProps', async () => {
     const DocPageBreak = (await import('../primitives/DocPageBreak')).default
     const result = renderProps(DocPageBreak, { children: null })
-    expect(result.tag).toBe('div')
+    expect(result.as).toBe('div')
     expect(result._documentProps).toEqual({})
   })
 })
@@ -318,7 +318,7 @@ describe('DocQuote attrs', () => {
   it('sets tag to blockquote', async () => {
     const DocQuote = (await import('../primitives/DocQuote')).default
     const result = renderProps(DocQuote, { children: 'quote' })
-    expect(result.tag).toBe('blockquote')
+    expect(result.as).toBe('blockquote')
   })
 
   it('passes borderColor when provided', async () => {
@@ -341,7 +341,7 @@ describe('DocRow attrs', () => {
   it('sets tag to div with empty _documentProps', async () => {
     const DocRow = (await import('../primitives/DocRow')).default
     const result = renderProps(DocRow, { children: null })
-    expect(result.tag).toBe('div')
+    expect(result.as).toBe('div')
     expect(result._documentProps).toEqual({})
   })
 })
@@ -353,7 +353,7 @@ describe('DocColumn attrs', () => {
   it('sets tag to div', async () => {
     const DocColumn = (await import('../primitives/DocColumn')).default
     const result = renderProps(DocColumn, { children: null })
-    expect(result.tag).toBe('div')
+    expect(result.as).toBe('div')
   })
 
   it('passes width to _documentProps when provided', async () => {
@@ -376,7 +376,7 @@ describe('DocSpacer attrs', () => {
   it('sets tag to div', async () => {
     const DocSpacer = (await import('../primitives/DocSpacer')).default
     const result = renderProps(DocSpacer, { children: null })
-    expect(result.tag).toBe('div')
+    expect(result.as).toBe('div')
   })
 
   it('defaults height to 16', async () => {
@@ -399,7 +399,7 @@ describe('DocSection attrs', () => {
   it('sets tag to div', async () => {
     const DocSection = (await import('../primitives/DocSection')).default
     const result = renderProps(DocSection, { children: null })
-    expect(result.tag).toBe('div')
+    expect(result.as).toBe('div')
   })
 
   it('defaults direction to column', async () => {
@@ -445,7 +445,7 @@ describe('DocumentPreview attrs', () => {
   it('sets tag to div', async () => {
     const DocumentPreview = (await import('../DocumentPreview')).default
     const result = renderProps(DocumentPreview, { children: null })
-    expect(result.tag).toBe('div')
+    expect(result.as).toBe('div')
   })
 
   it('defaults size to A4 when not provided', async () => {
