@@ -71,10 +71,8 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, { current: number; reason: string }
     current: 75,
     reason: 'PR #323 finding. Compat shim, follow react-compat shape.',
   },
-  '@pyreon/styler': {
-    current: 82,
-    reason: 'PR #323 finding. Just below floor — small effort to raise.',
-  },
+  // @pyreon/styler: was 82 — exemption removed in PR #323 commit "styler"
+  // (excluded benchmark.bench.ts from coverage; threshold raised to 90).
   // @pyreon/unistyle: was 84 — exemption removed in PR #323 commit "unistyle"
   // (deleted dead spacingShorthand utils.ts, threshold raised to 95).
 }
