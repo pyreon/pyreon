@@ -7,9 +7,9 @@ export default mergeConfig(
     coverageThresholds: {
       // onCleanup callbacks from @pyreon/reactivity only execute inside
       // reactive component scopes — unreachable in unit tests
-      statements: 88,
-      branches: 84,
-      functions: 88,
+      statements: 90,
+      branches: 85,
+      functions: 89,
     },
   }),
   defineConfig({

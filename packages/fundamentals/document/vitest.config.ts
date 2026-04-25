@@ -7,7 +7,8 @@ export default mergeConfig(
     // Branch threshold lowered: V8 counts both sides of ?? and ||
     // operators, plus typeof checks are always true in happy-dom.
     // PDF/DOCX renderers have many format-specific branches.
-    coverageThresholds: { branches: 75 },
+    // Floor-bumped 75 → 80 in PR #324 (actual 80.67%).
+    coverageThresholds: { branches: 80 },
   }),
   defineConfig({
     resolve: {

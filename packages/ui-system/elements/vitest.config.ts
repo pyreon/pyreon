@@ -12,7 +12,13 @@ export default mergeConfig(
   createVitestConfig({
     environment: 'happy-dom',
     coverageThresholds: {
-      statements: 88,
+      // Bumped statements 88 → 90 in PR #324 to match the new floor
+      // (actual 90.24%). Branches stays at 76 (actual 79.83%) and
+      // functions at 84 (actual 86.02%) — Overlay's SSR /
+      // happy-dom-only DOM event branches and ref-callback paths are
+      // legitimately harder to cover; tracked via
+      // BELOW_FLOOR_EXEMPTIONS for branches < 80.
+      statements: 90,
       branches: 76,
       functions: 84,
       lines: 89,
