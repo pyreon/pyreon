@@ -92,63 +92,41 @@ function extractNode(vnode: VNodeLike, options: ExtractOptions): DocNode | DocCh
   if (docType) {
     // ── _documentProps resolution ────────────────────────────────────
     //
-    // Two paths to find _documentProps on a documentType vnode:
+    // Three paths to find `_documentProps` on a documentType vnode,
+    // tried in order:
     //
-    //   (A) **Pre-resolved on the JSX vnode itself** — used by
-    //       test fixtures that hand-construct vnodes without
-    //       going through rocketstyle. Less common in real usage.
+    //   (A) **Pre-resolved on the JSX vnode itself** — used by test
+    //       fixtures that hand-construct vnodes with `_documentProps`
+    //       baked in. Cheapest path; tried first.
     //
-    //   (B) **Post-attrs result of calling the component** — the
-    //       real-world path. When a real `DocDocument` (or any
-    //       rocketstyle primitive with `.statics({ _documentType })`)
-    //       is rendered via JSX, the JSX vnode's `props` are the
-    //       USER-PROVIDED props (e.g. `{ title, author }`) — NOT
-    //       `_documentProps`. The rocketstyle attrs HOC adds
-    //       `_documentProps` to the wrapped component's vnode by
-    //       running the `.attrs()` callback during invocation. To
-    //       see the post-attrs result, we must CALL the component
-    //       function and read from THAT vnode's props.
+    //   (C) **Hoisted-attrs fast path (T3.1, PR #321)** — when the
+    //       component is a real rocketstyle primitive, it exposes
+    //       `__rs_attrs` (the accumulated `.attrs()` callback chain)
+    //       as a typed static. We run the chain DIRECTLY with the
+    //       JSX vnode's props — `chain.reduce(Object.assign, {})` —
+    //       and read `_documentProps` from the result. No styled
+    //       wrapper invocation, no JSX tree creation, no dimension
+    //       resolution. This is the production path for every real
+    //       Pyreon doc-primitive (DocDocument, DocHeading, etc.).
     //
-    // We try path (A) first because mock-vnode tests rely on it
-    // and we don't want to invoke component functions when we
-    // don't have to. If path (A) yields no _documentProps, we
-    // fall back to path (B) and call the component.
+    //   (B) **Full component invocation (legacy fallback)** — only
+    //       fires when neither A nor C applies. Used by hand-rolled
+    //       test fixtures that mark a function with `_documentType`
+    //       but don't go through rocketstyle (so `__rs_attrs` is
+    //       absent). Calls the component with the JSX props and
+    //       reads `_documentProps` from the post-call vnode.
+    //
+    // Why three paths instead of one: (A) is for test fixtures that
+    // hardcode `_documentProps` directly on the JSX vnode — a pattern
+    // that pre-dates the attrs HOC. (C) is the real-world path. (B)
+    // is what (C) replaced — kept so non-rocketstyle fixtures still
+    // work. See PR #197 for the original metadata-drop bug and
+    // PR #321 (T3.1) for the architectural fast path.
     //
     // **Function values in _documentProps are resolved at this
     // point** — primitives like DocDocument can store accessor
     // thunks (`() => string`) for reactive metadata, and the
     // export pipeline reads the LIVE value on each extraction.
-    // See PR #197 for the original use case (resume builder).
-    //
-    // ── Architectural note ──────────────────────────────────────────
-    //
-    // Path B is a workaround. The architecturally cleaner fix is to
-    // have rocketstyle's `.statics()` mechanism hoist `_documentProps`
-    // (or its accessor functions) directly onto the component
-    // function — so `extractNode` could read it via
-    // `(type as { _documentProps?: ... })._documentProps` without
-    // ever invoking the component.
-    //
-    // That would require teaching rocketstyle that `.statics()`
-    // values can be derived from `.attrs()` callbacks. It's a
-    // bigger change in `@pyreon/rocketstyle/src/utils/statics.ts`
-    // and was deemed out of scope for PR #197. The current
-    // workaround works because:
-    //
-    //   1. rocketstyle's attrs HOC is meant to be PURE setup —
-    //      no observable side effects on the second call.
-    //   2. The idempotence test in
-    //      `document-primitives/src/__tests__/useDocumentExport.test.ts`
-    //      locks in the purity assumption: extracting twice produces
-    //      structurally equivalent doc nodes.
-    //   3. Path A is tried first, so existing fast-path tests don't
-    //      pay the component-invocation cost.
-    //
-    // If a future primitive accidentally introduces a side effect
-    // in its setup body, the idempotence test catches it. If
-    // performance becomes a concern (extractDocumentTree is called
-    // per export, not per render — so this is unlikely), the
-    // architectural fix in rocketstyle becomes worth doing.
 
     let rawDocProps: Record<string, unknown> | undefined
     let extractedFromCall: VNodeLike | null = null
