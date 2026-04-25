@@ -135,6 +135,13 @@
         "vite": "^8.0.0",
       },
     },
+    "examples/experiments": {
+      "name": "@pyreon/experiments",
+      "version": "0.1.0",
+      "devDependencies": {
+        "typescript": "^6.0.2",
+      },
+    },
     "examples/fundamentals-playground": {
       "name": "@pyreon/fundamentals-playground",
       "version": "0.0.8",
@@ -1953,6 +1960,8 @@
     "@pyreon/example-ui-showcase": ["@pyreon/example-ui-showcase@workspace:examples/ui-showcase"],
 
     "@pyreon/example-vue-compat": ["@pyreon/example-vue-compat@workspace:examples/vue-compat"],
+
+    "@pyreon/experiments": ["@pyreon/experiments@workspace:examples/experiments"],
 
     "@pyreon/feature": ["@pyreon/feature@workspace:packages/fundamentals/feature"],
 
