@@ -132,10 +132,30 @@ export function mountChild(
   if (vnode.type === Fragment) return mountChildren(vnode.children ?? [], parent, anchor)
 
   if (vnode.type === (ForSymbol as unknown as string)) {
-    const { each, by, children } = vnode.props as unknown as ForProps<unknown>
+    // Compiler wraps `<For each={signal}>` in `_rp(() => signal())` →
+    // `props.each` is a getter that returns the resolved array, not the
+    // function. Destructuring eagerly captures the array and breaks
+    // reactivity + crashes mountFor (which calls `source()`). Read each
+    // lazily so the _rp getter fires inside mountFor's effect, preserving
+    // signal tracking. User-written `each={() => fn()}` (already a
+    // function, not _rp-wrapped) still works because props.each is the
+    // function itself.
+    const props = vnode.props as unknown as ForProps<unknown>
+    const initialEach = props.each as unknown
+    const source: () => unknown[] =
+      typeof initialEach === 'function'
+        ? (initialEach as () => unknown[])
+        : (() => props.each as unknown as unknown[])
     const prevDepth = _elementDepth
     _elementDepth = 0
-    const cleanup = mountFor(each, by, children, parent, anchor, mountChild)
+    const cleanup = mountFor(
+      source as () => unknown[],
+      props.by,
+      props.children,
+      parent,
+      anchor,
+      mountChild,
+    )
     _elementDepth = prevDepth
     return cleanup
   }
