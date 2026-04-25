@@ -55,7 +55,7 @@ afterEach(() => {
 
 function bootstrap(opts?: PyreonPluginOptions) {
   const plugin = pyreonPlugin(opts)
-  ;(plugin.config as ConfigHook)({ root }, { command: 'serve' })
+  ;(plugin.config as unknown as ConfigHook)({ root }, { command: 'serve' })
   return plugin
 }
 

@@ -28,7 +28,7 @@ type ResolveIdHook = (
 
 function bootstrap(opts?: PyreonPluginOptions) {
   const plugin = pyreonPlugin(opts)
-  ;(plugin.config as ConfigHook)({}, { command: 'serve' })
+  ;(plugin.config as unknown as ConfigHook)({}, { command: 'serve' })
   return plugin
 }
 

@@ -64,7 +64,7 @@ function writeFile(rel: string, contents: string): string {
 
 function bootstrap(opts?: PyreonPluginOptions) {
   const plugin = pyreonPlugin(opts)
-  ;(plugin.config as ConfigHook)({ root }, { command: 'build' })
+  ;(plugin.config as unknown as ConfigHook)({ root }, { command: 'build' })
   return plugin
 }
 
