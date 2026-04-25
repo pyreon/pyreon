@@ -48,8 +48,9 @@ const CONCURRENCY = 4
  */
 const BELOW_FLOOR_EXEMPTIONS: Record<string, { current: number; reason: string }> = {
   '@pyreon/vite-plugin': {
-    current: 0,
-    reason: 'No tests today (PR #323 finding). Followup: write vite-plugin tests.',
+    current: 55,
+    reason:
+      'PR #323 enabled coverage measurement (was 0% — index.ts was excluded). Existing 30 tests cover transform pipeline (signal naming, HMR, compat aliases, virtual modules, file filtering, plugin config) at 56% statements. Remaining gap is cross-module signal resolution (prescan + resolve), which needs mocked Vite resolve hook + virtual filesystem. Followup PR: write integration-style tests for that feature, then drop this exemption.',
   },
   // @pyreon/zero: was 60 — exemption removed in PR #323 commit "zero"
   // (excluded build-time Vite plugins, server-runtime middleware, and
