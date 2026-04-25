@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "bench": "bun --conditions browser bench-cli.ts",
+    "bench:fair": "bun bench-fair.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },
@@ -24,8 +25,10 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.8.9",
     "@pyreon/vite-plugin": "workspace:*",
+    "@types/node": "^22.10.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "playwright": "^1.49.0",
     "typescript": "^6.0.2",
     "vite": "^8.0.0"
   }

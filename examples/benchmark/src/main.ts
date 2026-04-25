@@ -27,38 +27,38 @@ function score(ms: number): string {
   return `<span class="${cls}">${fmt(ms)}</span>`
 }
 
-function ratioCell(mean: number, best: number): string {
-  const ratio = mean / best
+function ratioCell(median: number, best: number): string {
+  const ratio = median / best
   const cls = ratio < 1.5 ? 'fast' : ratio < 3 ? 'ok' : 'slow'
-  return `<td><span class="${cls}">${ratio.toFixed(2)}\u00d7</span></td>`
+  return `<td><span class="${cls}">${ratio.toFixed(2)}×</span></td>`
 }
 
 function buildSlowdownRow(name: string, subset: BenchSuite[], best: number): string {
   let row = `<tr><td class="test-name">${name}</td>`
   for (const suite of subset) {
     const r = suite.results.find((x) => x.name === name)
-    row += r ? ratioCell(r.mean, best) : '<td>\u2014</td>'
+    row += r ? ratioCell(r.median, best) : '<td>—</td>'
   }
   row += '</tr>'
   return row
 }
 
-function bestMean(name: string, subset: BenchSuite[]): number {
-  const means = subset.map(
-    (s) => s.results.find((x) => x.name === name)?.mean ?? Number.POSITIVE_INFINITY,
+function bestMedian(name: string, subset: BenchSuite[]): number {
+  const medians = subset.map(
+    (s) => s.results.find((x) => x.name === name)?.median ?? Number.POSITIVE_INFINITY,
   )
-  return Math.min(...means)
+  return Math.min(...medians)
 }
 
 function buildSlowdownTable(label: string, subset: BenchSuite[], testNames: string[]): string {
-  let t = `<p class="note">${label} (lower = better, 1.00\u00d7 = fastest)</p>`
+  let t = `<p class="note">${label} (lower = better, 1.00× = fastest)</p>`
   t += '<table><thead><tr><th>Test</th>'
   for (const s of subset) {
     t += `<th>${s.framework}</th>`
   }
   t += '</tr></thead><tbody>'
   for (const name of testNames) {
-    t += buildSlowdownRow(name, subset, bestMean(name, subset))
+    t += buildSlowdownRow(name, subset, bestMedian(name, subset))
   }
   t += '</tbody></table>'
   return t
@@ -80,7 +80,7 @@ function buildTable(suites: BenchSuite[]) {
     for (const suite of suites) {
       const r = suite.results.find((x) => x.name === name)
       html += r
-        ? `<td>${score(r.mean)}<span class="stddev"> ±${fmt(r.stddev)}</span></td>`
+        ? `<td>${score(r.median)}<span class="stddev"> p90 ${fmt(r.p90)}</span></td>`
         : `<td>—</td>`
     }
     html += `</tr>`
@@ -117,7 +117,7 @@ function removeContainer(el: HTMLElement) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-runBtn.addEventListener('click', async () => {
+async function runAll(): Promise<BenchSuite[]> {
   runBtn.disabled = true
   tableEl.innerHTML = ''
 
@@ -161,4 +161,17 @@ runBtn.addEventListener('click', async () => {
 
   setStatus('Done ✓')
   runBtn.disabled = false
+  // Expose to Playwright runner / external harnesses.
+  ;(globalThis as { __benchResults?: BenchSuite[] }).__benchResults = suites
+  return suites
+}
+
+runBtn.addEventListener('click', () => {
+  void runAll()
 })
+
+// Auto-run when loaded with `?auto=1` — drives the headless Chromium
+// fair-bench harness without needing to script clicks.
+if (new URL(window.location.href).searchParams.get('auto') === '1') {
+  void runAll()
+}

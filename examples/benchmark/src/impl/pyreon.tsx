@@ -11,9 +11,10 @@ import { For } from '@pyreon/core'
 import { createSelector, signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import type { BenchSuite } from '../runner'
-import { bench, buildRowsWith, tick } from '../runner'
+import { bench, buildRowsWith, expectRows, expectRowsWithSelected, resetRng, tick } from '../runner'
 
 export async function runPyreon(container: HTMLElement): Promise<BenchSuite> {
+  resetRng()
   const suite: BenchSuite = { framework: 'Pyreon', container, results: [] }
 
   type ReactiveRow = { id: number; label: ReturnType<typeof signal<string>> }
@@ -42,15 +43,25 @@ export async function runPyreon(container: HTMLElement): Promise<BenchSuite> {
   const mkRows = (n: number) =>
     buildRowsWith<ReactiveRow>(n, (id, label) => ({ id, label: signal(label) }))
 
-  await bench('create 1,000 rows', suite, async () => {
-    rows.set(mkRows(1_000))
-    await tick()
-  })
+  await bench(
+    'create 1,000 rows',
+    suite,
+    async () => {
+      rows.set(mkRows(1_000))
+      await tick()
+    },
+    { verify: expectRows(1_000) },
+  )
 
-  await bench('replace all rows', suite, async () => {
-    rows.set(mkRows(1_000))
-    await tick()
-  })
+  await bench(
+    'replace all rows',
+    suite,
+    async () => {
+      rows.set(mkRows(1_000))
+      await tick()
+    },
+    { verify: expectRows(1_000) },
+  )
 
   // Capture original labels for reset between partial update runs
   let originalLabels: string[] = rows().map((r) => r.label())
@@ -64,15 +75,18 @@ export async function runPyreon(container: HTMLElement): Promise<BenchSuite> {
       }
       await tick()
     },
-    // Reset labels before each run to avoid accumulation
-    () => {
-      const current = rows()
-      for (let i = 0; i < current.length; i += 10) {
-        const orig = originalLabels[i]
-        if (orig !== undefined) {
-          current[i]?.label.set(orig)
+    {
+      // Reset labels before each run to avoid accumulation
+      reset: () => {
+        const current = rows()
+        for (let i = 0; i < current.length; i += 10) {
+          const orig = originalLabels[i]
+          if (orig !== undefined) {
+            current[i]?.label.set(orig)
+          }
         }
-      }
+      },
+      verify: expectRows(1_000),
     },
   )
 
@@ -82,38 +96,58 @@ export async function runPyreon(container: HTMLElement): Promise<BenchSuite> {
   originalLabels = rows().map((r) => r.label())
   await tick()
 
-  await bench('select row', suite, async () => {
-    const r = rows()
-    selectedId.set(r[Math.floor(r.length / 2)]?.id ?? null)
-    await tick()
-  })
+  await bench(
+    'select row',
+    suite,
+    async () => {
+      const r = rows()
+      selectedId.set(r[Math.floor(r.length / 2)]?.id ?? null)
+      await tick()
+    },
+    { verify: expectRowsWithSelected(1_000, 1) },
+  )
 
-  await bench('swap rows', suite, async () => {
-    const current = [...rows()]
-    if (current.length >= 999) {
-      const a = current[1]
-      const b = current[998]
-      if (a && b) {
-        current[1] = b
-        current[998] = a
-        rows.set(current)
+  await bench(
+    'swap rows',
+    suite,
+    async () => {
+      const current = [...rows()]
+      if (current.length >= 999) {
+        const a = current[1]
+        const b = current[998]
+        if (a && b) {
+          current[1] = b
+          current[998] = a
+          rows.set(current)
+        }
       }
-    }
-    await tick()
-  })
+      await tick()
+    },
+    { verify: expectRows(1_000) },
+  )
 
-  await bench('clear rows', suite, async () => {
-    rows.set([])
-    await tick()
-  })
+  await bench(
+    'clear rows',
+    suite,
+    async () => {
+      rows.set([])
+      await tick()
+    },
+    { verify: expectRows(0) },
+  )
 
   rows.set(mkRows(1_000))
   await tick()
 
-  await bench('create 10,000 rows', suite, async () => {
-    rows.set(mkRows(10_000))
-    await tick()
-  })
+  await bench(
+    'create 10,000 rows',
+    suite,
+    async () => {
+      rows.set(mkRows(10_000))
+      await tick()
+    },
+    { verify: expectRows(10_000) },
+  )
 
   rows.set([])
   unmount()
