@@ -1,4 +1,4 @@
-import { For, h, Portal } from '@pyreon/core'
+import { For, h, Portal, _rp } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -60,6 +60,68 @@ describe('runtime-dom in real browser', () => {
     expect(items).toHaveLength(3)
     expect(Array.from(items).map((el) => el.dataset.id)).toEqual(['1', '3', '2'])
     expect(Array.from(items).map((el) => el.textContent)).toEqual(['a', 'c', 'b'])
+    unmount()
+  })
+
+  it('keyed <For> with _rp-wrapped each (compiled JSX shape) renders + reacts to signal updates', async () => {
+    // Regression for the `<For each={signal}>` JSX form. The compiler emits
+    // `h(For, { each: _rp(() => rows()), ... })`. `makeReactiveProps` (via
+    // mountComponent) converts the `_rp`-branded function to a getter on
+    // `props.each`. `For()` then forwards those props onto a `ForSymbol`
+    // VNode, which reaches `mountChild`'s ForSymbol branch.
+    //
+    // Before the fix, that branch destructured `{ each, by, children }`
+    // eagerly — firing the getter and binding `each` to the *resolved
+    // array*, not the function. `mountFor` then crashed on `source()`
+    // (calling an array) and the list never rendered. This test produces
+    // the exact same vnode shape the compiler emits, so it catches the
+    // regression without needing a JSX transform pipeline in the test.
+    type Row = { id: number; label: string }
+    const rows = signal<Row[]>([
+      { id: 1, label: 'a' },
+      { id: 2, label: 'b' },
+      { id: 3, label: 'c' },
+    ])
+
+    const { container, unmount } = mountInBrowser(
+      h(
+        'ul',
+        { id: 'rp-list' },
+        h(For, {
+          each: _rp(() => rows()),
+          by: (r: Row) => r.id,
+          children: (r: Row) => h('li', { 'data-id': String(r.id) }, r.label),
+        }),
+      ),
+    )
+
+    let items = container.querySelectorAll<HTMLLIElement>('#rp-list li')
+    expect(items).toHaveLength(3)
+    expect(Array.from(items).map((el) => el.dataset.id)).toEqual(['1', '2', '3'])
+
+    // Signal-driven update — replace + reorder the list.
+    rows.set([
+      { id: 2, label: 'b' },
+      { id: 4, label: 'd' },
+      { id: 1, label: 'a' },
+    ])
+    await flush()
+
+    items = container.querySelectorAll<HTMLLIElement>('#rp-list li')
+    expect(items).toHaveLength(3)
+    expect(Array.from(items).map((el) => el.dataset.id)).toEqual(['2', '4', '1'])
+    expect(Array.from(items).map((el) => el.textContent)).toEqual(['b', 'd', 'a'])
+
+    // Append — confirms reactivity persists across multiple updates.
+    rows.set([
+      { id: 2, label: 'b' },
+      { id: 4, label: 'd' },
+      { id: 1, label: 'a' },
+      { id: 5, label: 'e' },
+    ])
+    await flush()
+    items = container.querySelectorAll<HTMLLIElement>('#rp-list li')
+    expect(items).toHaveLength(4)
     unmount()
   })
 
