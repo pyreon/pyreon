@@ -16,6 +16,7 @@ export default mergeConfig(
       include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
       coverage: {
         provider: 'v8',
+        reporter: ['text', 'json'],
         include: ['src/**/*.ts', 'src/**/*.tsx'],
         exclude: [
           'src/**/*.test.ts',
@@ -26,18 +27,9 @@ export default mergeConfig(
           'src/hmr-runtime.ts',
         ],
         thresholds: {
-          // Remaining debt as of PR #323. Coverage reveals 30 existing
-          // tests cover the per-file transform pipeline (signal naming,
-          // HMR injection, compat alias resolution, virtual modules,
-          // file-extension filtering, plugin config) but NOT the
-          // cross-module signal resolution feature
-          // (`prescanSignalExports`, `scanSignalExports`,
-          // `resolveImportedSignals`) which needs mocked Vite resolve
-          // hook + virtual filesystem to test properly. Tracked via
-          // BELOW_FLOOR_EXEMPTIONS in scripts/check-coverage.ts.
-          statements: 55,
-          branches: 45,
-          functions: 55,
+          statements: 85,
+          branches: 80,
+          functions: 90,
         },
       },
     },

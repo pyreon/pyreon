@@ -47,11 +47,11 @@ const CONCURRENCY = 4
  * Tracked debt as of PR #323 (coverage sweep findings):
  */
 const BELOW_FLOOR_EXEMPTIONS: Record<string, { current: number; reason: string }> = {
-  '@pyreon/vite-plugin': {
-    current: 55,
-    reason:
-      'PR #323 enabled coverage measurement (was 0% — index.ts was excluded). Existing 30 tests cover transform pipeline (signal naming, HMR, compat aliases, virtual modules, file filtering, plugin config) at 56% statements. Remaining gap is cross-module signal resolution (prescan + resolve), which needs mocked Vite resolve hook + virtual filesystem. Followup PR: write integration-style tests for that feature, then drop this exemption.',
-  },
+  // @pyreon/vite-plugin: was 0 (hidden) → 87.5% — exemption removed in
+  // PR #323 final commit (enabled coverage measurement; added
+  // cross-module-signals.test.ts, compat-resolve.test.ts,
+  // dev-server.test.ts). All 8 packages now meet the 85% floor; the
+  // exemption list is empty.
   // @pyreon/zero: was 60 — exemption removed in PR #323 commit "zero"
   // (excluded build-time Vite plugins, server-runtime middleware, and
   // JSX components from coverage as integration-tier; added validate
