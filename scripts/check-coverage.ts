@@ -59,10 +59,9 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, { current: number; reason: string }
   // (excluded cli/watcher/ignore/lsp from coverage as integration-only;
   // added reporter + imports + ast-utils unit tests; threshold raised
   // to 85).
-  '@pyreon/coolgrid': {
-    current: 68,
-    reason: 'PR #323 finding. Followup: raise to ≥85%.',
-  },
+  // @pyreon/coolgrid: was 68 — exemption removed in PR #323 commit
+  // "coolgrid" (excluded styled.ts integration-tier files; threshold
+  // raised to 90).
   // @pyreon/storybook: was 75 — exemption removed in PR #323 commit "storybook"
   // (deleted unused _getAbsolutePath, added preset shape test, threshold raised
   // to 95).

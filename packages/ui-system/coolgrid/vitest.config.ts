@@ -7,9 +7,9 @@ export default mergeConfig(
     createVitestConfig({
       environment: 'happy-dom',
       coverageThresholds: {
-        statements: 68,
-        branches: 55,
-        functions: 65,
+        statements: 90,
+        branches: 80,
+        functions: 90,
       },
     }),
     defineConfig({
@@ -18,6 +18,19 @@ export default mergeConfig(
       },
       test: {
         testTimeout: 15000,
+        coverage: {
+          // Excluded from Node-side coverage — these files are CSS-in-JS
+          // styled-component templates whose inner `styles` callback only
+          // runs when the styler resolver mounts a component via the real
+          // styler runtime. Exercised end-to-end by
+          // `coolgrid.browser.test.tsx` (Playwright Chromium). PR #323
+          // finding.
+          exclude: [
+            'src/Col/styled.ts',
+            'src/Row/styled.ts',
+            'src/Container/styled.ts',
+          ],
+        },
       },
     }),
   ),
