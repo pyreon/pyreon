@@ -66,10 +66,8 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, { current: number; reason: string }
   // @pyreon/storybook: was 75 — exemption removed in PR #323 commit "storybook"
   // (deleted unused _getAbsolutePath, added preset shape test, threshold raised
   // to 95).
-  '@pyreon/vue-compat': {
-    current: 75,
-    reason: 'PR #323 finding. Compat shim, follow react-compat shape.',
-  },
+  // @pyreon/vue-compat: was 75 — exemption removed in PR #323 commit
+  // "vue-compat" (added jsx-runtime wrapper tests, threshold raised to 85).
   // @pyreon/styler: was 82 — exemption removed in PR #323 commit "styler"
   // (excluded benchmark.bench.ts from coverage; threshold raised to 90).
   // @pyreon/unistyle: was 84 — exemption removed in PR #323 commit "unistyle"
