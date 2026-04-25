@@ -157,17 +157,48 @@ function extractNode(vnode: VNodeLike, options: ExtractOptions): DocNode | DocCh
     if (props._documentProps && typeof props._documentProps === 'object') {
       rawDocProps = props._documentProps as Record<string, unknown>
     } else if (typeof type === 'function') {
-      // Path B: invoke the component to get the post-attrs vnode
-      const mergedProps = { ...props }
-      if (children && children.length > 0) {
-        mergedProps.children = children.length === 1 ? children[0] : children
-      }
-      const result = (type as (p: Record<string, unknown>) => unknown)(mergedProps)
-      if (isVNode(result)) {
-        extractedFromCall = result
-        const innerProps = (result as { props?: Record<string, unknown> }).props
-        if (innerProps?._documentProps && typeof innerProps._documentProps === 'object') {
-          rawDocProps = innerProps._documentProps as Record<string, unknown>
+      // ── Path C (T3.1 fast path) ─────────────────────────────────────
+      //
+      // Rocketstyle exposes the accumulated `.attrs()` callback chain
+      // as `__rs_attrs` on the component function. Run the chain
+      // directly with the JSX vnode's props to get the post-attrs
+      // result — no full component invocation, no styling work, no
+      // wrapped JSX tree creation. Just the user-supplied attrs
+      // callback(s) folded into a single props object.
+      //
+      // This eliminates the per-export cost of Path B for every real
+      // rocketstyle primitive (DocDocument, DocHeading, etc.). The
+      // idempotence assumption is now structural rather than implicit:
+      // we never call the component, so it cannot have side effects
+      // that affect the second extraction.
+      const rsAttrs = (type as { __rs_attrs?: Array<(p: Record<string, unknown>) => Record<string, unknown>> }).__rs_attrs
+      if (rsAttrs && rsAttrs.length > 0) {
+        const mergedProps = { ...props }
+        if (children && children.length > 0) {
+          mergedProps.children = children.length === 1 ? children[0] : children
+        }
+        const attrsResult = rsAttrs.reduce<Record<string, unknown>>(
+          (acc, fn) => Object.assign(acc, fn(mergedProps)),
+          {},
+        )
+        if (attrsResult._documentProps && typeof attrsResult._documentProps === 'object') {
+          rawDocProps = attrsResult._documentProps as Record<string, unknown>
+        }
+      } else {
+        // Path B (fallback for non-rocketstyle docComponents):
+        // invoke the component to get the post-attrs vnode. Used by
+        // hand-rolled test fixtures that don't go through rocketstyle.
+        const mergedProps = { ...props }
+        if (children && children.length > 0) {
+          mergedProps.children = children.length === 1 ? children[0] : children
+        }
+        const result = (type as (p: Record<string, unknown>) => unknown)(mergedProps)
+        if (isVNode(result)) {
+          extractedFromCall = result
+          const innerProps = (result as { props?: Record<string, unknown> }).props
+          if (innerProps?._documentProps && typeof innerProps._documentProps === 'object') {
+            rawDocProps = innerProps._documentProps as Record<string, unknown>
+          }
         }
       }
     }
