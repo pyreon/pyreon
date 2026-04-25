@@ -1,17 +1,22 @@
 import type { DocumentMarker } from '@pyreon/connector-document'
+import { h } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
 import { createDocumentExport, extractDocNode } from '../useDocumentExport'
 
-// Mock VNode
-const vnode = (
+// Helper: build a real VNode via @pyreon/core's h(). The third arg
+// is an array (kept for parity with the prior mock helper) and
+// spreads into h()'s varargs. Tests run real-h() VNodes through
+// the export pipeline — the mock-only path masked PR #197's silent
+// metadata drop bug.
+const node = (
   type: string | ((...args: any[]) => any),
   props: Record<string, any> = {},
   children: unknown[] = [],
-) => ({ type, props, children })
+) => h(type as any, props, ...(children as any[])) as any
 
-// Mock document-marked component
+// Document-marked component
 const docComponent = (docType: string) => {
-  const fn = (props: any) => vnode('div', props, props.children ? [props.children] : [])
+  const fn = (props: any) => node('div', props, props.children ? [props.children] : [])
   ;(fn as any)._documentType = docType
   return fn as ((...args: any[]) => any) & DocumentMarker
 }
@@ -23,8 +28,8 @@ const DocText = docComponent('text')
 describe('createDocumentExport', () => {
   it('extracts a document tree from template function', () => {
     const doc = createDocumentExport(() =>
-      vnode(DocDocument, { _documentProps: { title: 'Test' } }, [
-        vnode(
+      node(DocDocument, { _documentProps: { title: 'Test' } }, [
+        node(
           DocHeading,
           {
             $rocketstyle: { fontSize: 24, fontWeight: 'bold' },
@@ -32,7 +37,7 @@ describe('createDocumentExport', () => {
           },
           ['Hello'],
         ),
-        vnode(
+        node(
           DocText,
           {
             $rocketstyle: { fontSize: 14, color: '#333' },
@@ -62,7 +67,7 @@ describe('createDocumentExport', () => {
 
   it('can be called multiple times', () => {
     const doc = createDocumentExport(() =>
-      vnode(DocText, { $rocketstyle: { fontSize: 14 } }, ['Static']),
+      node(DocText, { $rocketstyle: { fontSize: 14 } }, ['Static']),
     )
 
     const tree1 = doc.getDocNode()
@@ -74,7 +79,7 @@ describe('createDocumentExport', () => {
 
   it('respects includeStyles option', () => {
     const doc = createDocumentExport(
-      () => vnode(DocHeading, { $rocketstyle: { fontSize: 24 } }, ['Hello']),
+      () => node(DocHeading, { $rocketstyle: { fontSize: 24 } }, ['Hello']),
       { includeStyles: false },
     )
 
@@ -99,8 +104,8 @@ describe('extractDocNode (one-step alias)', () => {
 
   it('extracts a tree from a template function in one call', () => {
     const tree = extractDocNode(() =>
-      vnode(DocDocument, { _documentProps: { title: 'Test' } }, [
-        vnode(DocHeading, { _documentProps: { level: 1 } }, ['Hello']),
+      node(DocDocument, { _documentProps: { title: 'Test' } }, [
+        node(DocHeading, { _documentProps: { level: 1 } }, ['Hello']),
       ]),
     )
 
@@ -114,7 +119,7 @@ describe('extractDocNode (one-step alias)', () => {
 
   it('respects extraction options (includeStyles: false)', () => {
     const tree = extractDocNode(
-      () => vnode(DocHeading, { $rocketstyle: { fontSize: 24 } }, ['Hello']),
+      () => node(DocHeading, { $rocketstyle: { fontSize: 24 } }, ['Hello']),
       { includeStyles: false },
     )
     expect(tree.styles).toBeUndefined()
@@ -125,7 +130,7 @@ describe('extractDocNode (one-step alias)', () => {
     // one-step form internally, so they MUST produce identical
     // output for identical input.
     const template = () =>
-      vnode(DocText, { $rocketstyle: { fontSize: 14 } }, ['Hello'])
+      node(DocText, { $rocketstyle: { fontSize: 14 } }, ['Hello'])
 
     const oneStep = extractDocNode(template)
     const twoStep = createDocumentExport(template).getDocNode()
@@ -150,12 +155,12 @@ describe('extractDocNode (one-step alias)', () => {
     // catch the regression. The three extractions should be deeply
     // equal under any change to the primitive's setup path.
     const template = () =>
-      vnode(
+      node(
         DocDocument,
         { _documentProps: { title: 'Idempotent', author: 'Test' } },
         [
-          vnode(DocHeading, { _documentProps: { level: 1 } }, ['Hello']),
-          vnode(DocText, { $rocketstyle: { fontSize: 14 } }, ['World']),
+          node(DocHeading, { _documentProps: { level: 1 } }, ['Hello']),
+          node(DocText, { $rocketstyle: { fontSize: 14 } }, ['World']),
         ],
       )
 
@@ -174,7 +179,7 @@ describe('extractDocNode (one-step alias)', () => {
     // value of any accessor in _documentProps.
     let counter = 0
     const template = () =>
-      vnode(
+      node(
         DocDocument,
         {
           _documentProps: {

@@ -1,4 +1,5 @@
 import type { VNode } from '@pyreon/core'
+import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 
 let _reducedMotion = false
@@ -88,12 +89,8 @@ const wireRef = (vnode: VNode | null, el: HTMLElement) => {
  */
 const setupTransitionItem = (props: Record<string, unknown>) => {
   const el = document.createElement('div')
-  const child: VNode = {
-    type: 'div',
-    props: { 'data-testid': 'child' },
-    children: ['Hello'],
-    key: null,
-  }
+  // Real h() instead of a mock literal — same VNode shape as production.
+  const child = h('div', { 'data-testid': 'child' }, 'Hello') as VNode
 
   const vnode = TransitionItem({
     ...props,
@@ -108,14 +105,14 @@ const setupTransitionItem = (props: Record<string, unknown>) => {
 describe('TransitionItem', () => {
   it('returns a VNode when show returns true', () => {
     const show = () => true
-    const child: VNode = { type: 'div', props: {}, children: ['Hello'], key: null }
+    const child = h('div', null, 'Hello') as VNode
     const vnode = TransitionItem({ show, children: child })
     expect(vnode).not.toBeNull()
   })
 
   it('wraps child in a Show component', () => {
     const show = () => true
-    const child: VNode = { type: 'div', props: {}, children: ['Hello'], key: null }
+    const child = h('div', null, 'Hello') as VNode
     const vnode = TransitionItem({ show, children: child })
     expect(vnode).not.toBeNull()
     expect(typeof vnode?.type).toBe('function')
@@ -123,7 +120,7 @@ describe('TransitionItem', () => {
 
   it('clones child VNode with merged ref', () => {
     const show = () => true
-    const child: VNode = { type: 'div', props: {}, children: ['Hello'], key: null }
+    const child = h('div', null, 'Hello') as VNode
     const vnode = TransitionItem({ show, children: child })
 
     // The Show component's children (or fallback) should have a ref prop
@@ -358,7 +355,7 @@ describe('TransitionItem', () => {
 
   it('unmount=false keeps element with display:none when hidden', () => {
     const show = () => false
-    const child: VNode = { type: 'div', props: {}, children: ['Hello'], key: null }
+    const child = h('div', null, 'Hello') as VNode
     const vnode = TransitionItem({ show, unmount: false, children: child })
 
     expect(vnode).not.toBeNull()
@@ -374,7 +371,7 @@ describe('TransitionItem', () => {
 
   it('unmount=false fallback has a merged ref', () => {
     const show = () => false
-    const child: VNode = { type: 'div', props: {}, children: ['Hello'], key: null }
+    const child = h('div', null, 'Hello') as VNode
     const vnode = TransitionItem({ show, unmount: false, children: child })
 
     const showProps = vnode?.props as Record<string, unknown>
@@ -388,12 +385,7 @@ describe('TransitionItem', () => {
 
   it('unmount=false merges existing child style with display:none', () => {
     const show = () => false
-    const child: VNode = {
-      type: 'div',
-      props: { style: { color: 'red', opacity: 1 } },
-      children: ['Hello'],
-      key: null,
-    }
+    const child = h('div', { style: { color: 'red', opacity: 1 } }, 'Hello') as VNode
     const vnode = TransitionItem({ show, unmount: false, children: child })
 
     const showProps = vnode?.props as Record<string, unknown>

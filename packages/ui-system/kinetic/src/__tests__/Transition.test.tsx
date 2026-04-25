@@ -1,4 +1,5 @@
 import type { VNode } from '@pyreon/core'
+import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 
 let _reducedMotion = false
@@ -88,12 +89,9 @@ const wireRef = (vnode: VNode | null, el: HTMLElement) => {
  */
 const setupTransition = (props: Record<string, unknown>) => {
   const el = document.createElement('div')
-  const child: VNode = {
-    type: 'div',
-    props: { 'data-testid': 'child' },
-    children: ['Hello'],
-    key: null,
-  }
+  // Real h() instead of a mock literal — same VNode shape as
+  // production, so the runtime sees real h()-normalised output.
+  const child = h('div', { 'data-testid': 'child' }, 'Hello') as VNode
 
   const vnode = Transition({
     ...props,
@@ -108,14 +106,14 @@ const setupTransition = (props: Record<string, unknown>) => {
 describe('Transition', () => {
   it('returns a VNode when show=true', () => {
     const show = signal(true)
-    const child: VNode = { type: 'div', props: {}, children: ['Hello'], key: null }
+    const child = h('div', null, 'Hello') as VNode
     const vnode = Transition({ show, children: child })
     expect(vnode).not.toBeNull()
   })
 
   it('returns a VNode with Show component', () => {
     const show = signal(true)
-    const child: VNode = { type: 'div', props: {}, children: ['Hello'], key: null }
+    const child = h('div', null, 'Hello') as VNode
     const vnode = Transition({ show, children: child })
     expect(vnode).not.toBeNull()
     // The outermost VNode should be a Show component

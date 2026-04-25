@@ -44,8 +44,12 @@ describe('MCP server — audit_test_environment tool', () => {
       // match the substring rather than the literal label.
       expect(text).toMatch(/Mock-vnode exposure.*\d+ \/ \d+/)
       expect(text).toMatch(/Risk counts.*\d+ high/)
-      // At least one risk group surfaces at the default minRisk.
-      expect(text).toMatch(/^## (HIGH|MEDIUM)/m)
+      // At default minRisk='medium', either at least one HIGH/MEDIUM
+      // group surfaces, OR the "no files at risk level …" sentinel
+      // appears (the case after the T1.2 cleanup brought both counts
+      // to zero). The HIGH/MEDIUM section path is covered by the
+      // synthetic-fixture tests in the compiler package.
+      expect(text).toMatch(/^## (HIGH|MEDIUM)|No files at risk level/m)
     } finally {
       await close()
     }
@@ -61,13 +65,15 @@ describe('MCP server — audit_test_environment tool', () => {
     }
   })
 
-  it('honours minRisk="low" — surfaces every risk tier', async () => {
+  it('honours minRisk="low" — surfaces every risk tier present', async () => {
     const { client, close } = await newClient()
     try {
       const text = await callTool(client, 'audit_test_environment', { minRisk: 'low', limit: 3 })
-      // With minRisk=low, HIGH + MEDIUM + LOW all appear if the repo
-      // has entries at each tier (the real repo does).
-      expect(text).toMatch(/^## HIGH/m)
+      // With minRisk=low, every present risk tier surfaces. The repo
+      // currently has MEDIUM + LOW (HIGH count is 0 after the T1.2
+      // cleanup), so just verify LOW renders. The HIGH section
+      // appears when at least one HIGH file exists — covered by the
+      // synthetic-fixture tests in the compiler package.
       expect(text).toMatch(/^## LOW/m)
     } finally {
       await close()

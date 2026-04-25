@@ -1,5 +1,5 @@
 import type { VNodeChild } from '@pyreon/core'
-import { useContext } from '@pyreon/core'
+import { h, useContext } from '@pyreon/core'
 import { Provider as CoreProvider } from '@pyreon/ui-core'
 import Provider from '../context/context'
 
@@ -46,7 +46,7 @@ describe('Provider (context)', () => {
   it('uses MODE_DEFAULT (light) when no mode is provided', () => {
     mockedUseContext.mockReturnValue((() => ({})) as any)
 
-    const children = { type: 'span', props: {}, children: ['Hello'], key: null }
+    const children = h('span', null, 'Hello')
     Provider({ children })
 
     expect(mockedCoreProvider).toHaveBeenCalledTimes(1)
@@ -59,7 +59,7 @@ describe('Provider (context)', () => {
   it('passes mode directly when inversed is false', () => {
     mockedUseContext.mockReturnValue((() => ({ mode: 'dark' })) as any)
 
-    const children = { type: 'span', props: {}, children: ['Hello'], key: null }
+    const children = h('span', null, 'Hello')
     Provider({ children, mode: 'dark', inversed: false })
 
     const callArgs = mockedCoreProvider.mock.calls[0]?.[0] as Record<string, unknown>
@@ -69,7 +69,7 @@ describe('Provider (context)', () => {
   })
 
   it('passes mode directly when inversed is undefined', () => {
-    const children = { type: 'span', props: {}, children: ['Hello'], key: null }
+    const children = h('span', null, 'Hello')
     Provider({ children, mode: 'dark' })
 
     const callArgs = mockedCoreProvider.mock.calls[0]?.[0] as Record<string, unknown>
@@ -79,7 +79,7 @@ describe('Provider (context)', () => {
   })
 
   it('inverts light to dark when inversed is true', () => {
-    const children = { type: 'span', props: {}, children: ['Hello'], key: null }
+    const children = h('span', null, 'Hello')
     Provider({ children, mode: 'light', inversed: true })
 
     const callArgs = mockedCoreProvider.mock.calls[0]?.[0] as Record<string, unknown>
@@ -89,7 +89,7 @@ describe('Provider (context)', () => {
   })
 
   it('inverts dark to light when inversed is true', () => {
-    const children = { type: 'span', props: {}, children: ['Hello'], key: null }
+    const children = h('span', null, 'Hello')
     Provider({ children, mode: 'dark', inversed: true })
 
     const callArgs = mockedCoreProvider.mock.calls[0]?.[0] as Record<string, unknown>
@@ -100,7 +100,7 @@ describe('Provider (context)', () => {
 
   it('passes theme to provider when provided', () => {
     const theme = { rootSize: 16, breakpoints: { sm: 576 } }
-    const children = { type: 'span', props: {}, children: ['Hello'], key: null }
+    const children = h('span', null, 'Hello')
     Provider({ children, theme })
 
     const callArgs = mockedCoreProvider.mock.calls[0]?.[0] as Record<string, unknown>
@@ -108,7 +108,7 @@ describe('Provider (context)', () => {
   })
 
   it('does not pass theme key when theme is undefined', () => {
-    const children = { type: 'span', props: {}, children: ['Hello'], key: null }
+    const children = h('span', null, 'Hello')
     Provider({ children })
 
     const callArgs = mockedCoreProvider.mock.calls[0]?.[0] as Record<string, unknown>
@@ -123,7 +123,7 @@ describe('Provider (context)', () => {
       key: null,
     }))
 
-    const children = { type: 'span', props: {}, children: ['Hello'], key: null }
+    const children = h('span', null, 'Hello')
     Provider({ children, provider: customProvider as any })
 
     expect(customProvider).toHaveBeenCalledTimes(1)
@@ -132,7 +132,7 @@ describe('Provider (context)', () => {
   })
 
   it('defaults to CoreProvider when no provider prop is given', () => {
-    const children = { type: 'span', props: {}, children: ['Hello'], key: null }
+    const children = h('span', null, 'Hello')
     Provider({ children })
 
     expect(mockedCoreProvider).toHaveBeenCalledTimes(1)
@@ -147,7 +147,7 @@ describe('Provider (context)', () => {
   })
 
   it('passes provider reference to the provider call', () => {
-    const children = { type: 'span', props: {}, children: ['Hello'], key: null }
+    const children = h('span', null, 'Hello')
     Provider({ children })
 
     const callArgs = mockedCoreProvider.mock.calls[0]?.[0] as Record<string, unknown>
@@ -157,7 +157,7 @@ describe('Provider (context)', () => {
   it('returns null when provider returns null', () => {
     mockedCoreProvider.mockReturnValue(null as any)
 
-    const children = { type: 'span', props: {}, children: ['Hello'], key: null }
+    const children = h('span', null, 'Hello')
     const result = Provider({ children })
 
     expect(result).toBeNull()
@@ -166,7 +166,7 @@ describe('Provider (context)', () => {
   it('returns null when provider returns undefined', () => {
     mockedCoreProvider.mockReturnValue(undefined as any)
 
-    const children = { type: 'span', props: {}, children: ['Hello'], key: null }
+    const children = h('span', null, 'Hello')
     const result = Provider({ children })
 
     expect(result).toBeNull()
@@ -179,7 +179,7 @@ describe('Provider (context)', () => {
     })) as any)
 
     const overrideTheme = { rootSize: 20 }
-    const children = { type: 'span', props: {}, children: ['Hello'], key: null }
+    const children = h('span', null, 'Hello')
     Provider({ children, theme: overrideTheme, mode: 'dark' })
 
     const callArgs = mockedCoreProvider.mock.calls[0]?.[0] as Record<string, unknown>
@@ -190,7 +190,7 @@ describe('Provider (context)', () => {
   it('uses context mode when no mode prop is given', () => {
     mockedUseContext.mockReturnValue((() => ({ mode: 'dark' })) as any)
 
-    const children = { type: 'span', props: {}, children: ['Hello'], key: null }
+    const children = h('span', null, 'Hello')
     Provider({ children })
 
     const callArgs = mockedCoreProvider.mock.calls[0]?.[0] as Record<string, unknown>

@@ -178,6 +178,123 @@ describe('auditTestEnvironment — synthetic fixtures', () => {
     expect(r.entries[0]!.mockHelperCount).toBe(5)
   })
 
+  it('does NOT flag `const vnode = someCall()` — that is a binding, not a helper def', () => {
+    // False positive the scanner used to hit — real render-result
+    // bindings got counted as mock factories, inflating the HIGH list
+    // with files like `table.test.tsx` and `storybook.test.tsx`.
+    f.writeTest(
+      'foo/src/tests/bindings.test.ts',
+      `
+        const vnode = defaultRender(Component, { name: 'World' })
+        const mockVNode = buildSomething()
+        const createVNode = factory.make(props)
+      `,
+    )
+    const r = auditTestEnvironment(f.root)
+    expect(r.entries[0]!.mockHelperCount).toBe(0)
+  })
+
+  it('does NOT flag `const vnode = <jsx />` — JSX bindings are real VNodes', () => {
+    // `table.test.tsx` had `const vnode = <span>cell content</span>`
+    // — a legitimate real VNode stored in a local, not a mock factory.
+    f.writeTest(
+      'foo/src/tests/jsx-binding.test.tsx',
+      `
+        const vnode = <span>cell content</span>
+        const createVNode = <div />
+      `,
+    )
+    const r = auditTestEnvironment(f.root)
+    expect(r.entries[0]!.mockHelperCount).toBe(0)
+  })
+
+  it('still flags `const vnode = (...) => ({ type, props, children })` arrow factories', () => {
+    f.writeTest(
+      'foo/src/tests/arrow-factory.test.ts',
+      `
+        const vnode = (type, props, children) => ({ type, props, children })
+      `,
+    )
+    const r = auditTestEnvironment(f.root)
+    expect(r.entries[0]!.mockHelperCount).toBe(1)
+  })
+
+  it('still flags `const vnode = { type, props, children }` inline-object factories', () => {
+    f.writeTest(
+      'foo/src/tests/inline-factory.test.ts',
+      `
+        const vnode = { type: 'div', props: {}, children: [] }
+      `,
+    )
+    const r = auditTestEnvironment(f.root)
+    expect(r.entries[0]!.mockHelperCount).toBe(1)
+  })
+
+  it('skips `{type,props,children}` literals inside type-guard call-args', () => {
+    // `isDocNode({ type, props, children })` is testing a duck-type
+    // guard — the literal IS the test input, not a mock-render input.
+    // `utils-coverage.test.ts` was the motivating false positive.
+    f.writeTest(
+      'foo/src/tests/type-guard.test.ts',
+      `
+        expect(isDocNode({ type: 'text', props: {}, children: [] })).toBe(true)
+        expect(hasVNodeShape({ type: 'div', props: {}, children: [] })).toBe(true)
+        expect(assertVNode({ type: 'span', props: {}, children: [] })).toBe(undefined)
+        expect(validateNode({ type: 'p', props: {}, children: [] })).toBe(true)
+      `,
+    )
+    const r = auditTestEnvironment(f.root)
+    expect(r.entries[0]!.mockVNodeLiteralCount).toBe(0)
+  })
+
+  it('still flags `{type,props,children}` literals bound to a variable', () => {
+    f.writeTest(
+      'foo/src/tests/bound-literal.test.ts',
+      `
+        const v = { type: 'div', props: {}, children: [] }
+      `,
+    )
+    const r = auditTestEnvironment(f.root)
+    expect(r.entries[0]!.mockVNodeLiteralCount).toBe(1)
+  })
+
+  it('skips `{type,props,children}` literals inside template strings (fixtures)', () => {
+    // The scanner's own test suite (cli/doctor.test.ts) writes mock-
+    // vnode literals to disk as fixture content via `writeFile(...,
+    // \`const v = { type, props, children: [] }\`)`. The literal is
+    // STRING DATA passed to the audit tool, not code that ever runs.
+    // The masking pass must skip backtick-delimited regions.
+    f.writeTest(
+      'foo/src/tests/template-fixture.test.ts',
+      `
+        writeFile(tmp, 'fixture.test.ts', \`const vnode = { type: 'div', props: {}, children: [] }\`)
+        writeFile(tmp, 'helper.test.ts', \`const mockVNode = (a, b) => ({ type: a, props: b, children: [] })\`)
+      `,
+    )
+    const r = auditTestEnvironment(f.root)
+    const e = r.entries[0]!
+    // Both literals AND the helper definition are inside template
+    // strings — neither should count.
+    expect(e.mockVNodeLiteralCount).toBe(0)
+    expect(e.mockHelperCount).toBe(0)
+  })
+
+  it('still flags literals/helpers OUTSIDE template strings, even when fixtures are nearby', () => {
+    // Mixed file: a real top-level `const vnode = (...)` factory plus
+    // a fixture string. Scanner counts the real one, skips the fixture.
+    f.writeTest(
+      'foo/src/tests/mixed.test.ts',
+      `
+        const vnode = (t, p) => ({ type: t, props: p, children: [] })
+        writeFile(tmp, 'fixture.test.ts', \`const v = { type: 'div', props: {}, children: [] }\`)
+      `,
+    )
+    const r = auditTestEnvironment(f.root)
+    const e = r.entries[0]!
+    expect(e.mockHelperCount).toBe(1) // the real factory at module scope
+    // The fixture string content is masked, so its literal doesn't count.
+  })
+
   it('sorts entries by risk (HIGH first) then path', () => {
     f.writeTest(
       'z/src/tests/low.test.ts',
@@ -243,24 +360,17 @@ describe('auditTestEnvironment — real Pyreon repo', () => {
     expect(result.totalScanned).toBeGreaterThan(50)
   })
 
-  it('finds a known mock-helper test file and classifies it correctly', () => {
-    // `i18n.test.tsx` defines a `vnode` helper and uses it throughout
-    // — the scanner should pick it up. We don't pin the risk level
-    // because the file may pick up a parallel real-h() test in the
-    // future (which is exactly the outcome this tool drives toward).
-    const known = result.entries.find((e) =>
-      e.relPath.includes('fundamentals/i18n/src/tests/i18n.test.tsx'),
-    )
-    expect(known).toBeDefined()
-    expect(known!.mockHelperCount).toBeGreaterThan(0)
-  })
-
-  it('classifies at least one file as HIGH — the audit is actionable today', () => {
-    // The scanner reporting zero HIGH files in a repo that ships many
-    // mock-vnode tests would mean the detector is broken. If this
-    // fails, investigate whether HIGH classification regressed.
-    const highs = result.entries.filter((e) => e.risk === 'high')
-    expect(highs.length).toBeGreaterThan(0)
+  it('scanner picks up real h() usage across the repo — sanity check', () => {
+    // The full T1.2 cleanup drove the real-repo HIGH and MEDIUM counts
+    // to zero — every test file now either avoids mock vnodes entirely
+    // or pairs them with real-`h()` coverage. So there's no longer any
+    // mock-helper or risk-level anchor that's stable over time on the
+    // real repo. The synthetic-fixture suites above (which we control)
+    // are what cover classifier correctness. The only stable invariant
+    // left for the live scan is: real `h()` from `@pyreon/core` IS used
+    // in test files. Zero would indicate the scanner regex broke.
+    const realHUsers = result.entries.filter((e) => e.realHCallCount > 0)
+    expect(realHUsers.length).toBeGreaterThan(0)
   })
 
   it('never produces NaN or negative counts', () => {
