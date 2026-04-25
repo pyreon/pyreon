@@ -8,7 +8,7 @@ export default mergeConfig(
       environment: 'happy-dom',
       coverageThresholds: {
         statements: 90,
-        branches: 80,
+        branches: 90,
         functions: 90,
       },
     }),
