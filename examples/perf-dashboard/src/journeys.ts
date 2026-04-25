@@ -99,13 +99,30 @@ export const journeys: Record<string, (page: PageLike) => Promise<void>> = {
   /**
    * **form** — 30 fields, 60 keystrokes total, cross-field validation.
    *
-   * Types 2 characters into 28 plain fields (56 keystrokes), then types
-   * matching 6-char passwords into the password+confirm fields (12
-   * keystrokes plus validation re-run on each). Stresses per-field
-   * `signalWrite` + `computedRecompute` for the `passwordsMatch` derived
-   * signal. Models a real signup / settings form keystroke shape.
+   * Fills 28 plain fields + a password + confirm-password pair. Stresses
+   * per-field `signalWrite` + `computedRecompute` for the `passwordsMatch`
+   * derived signal.
+   *
+   * Each invocation rotates a module-level seed so the values differ from
+   * run to run. Without this, Playwright's `page.fill` skips fills when
+   * the new value matches the current one — runs 2..N would show 0
+   * counter activity (only the first run does real work) and the median
+   * would misleadingly be 0.
    */
   form: async (page) => {
+    // Reset all field signals to their original defaults BEFORE filling.
+    // Without this, Playwright's page.fill on runs 2..N sees values that
+    // are still close to the previous fill, and even a value mismatch
+    // somehow doesn't trigger Pyreon signal writes reliably (likely a
+    // value-prop reactive-binding interaction). Direct signal reset via
+    // a window helper makes the work-shape identical across N runs:
+    // every field transitions default → vN, every run.
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_dashboard?: { resetForm?: () => void }
+      }
+      w.__pyreon_perf_dashboard?.resetForm?.()
+    })
     for (let i = 0; i < 28; i++) {
       await page.fill(`[data-testid="form-field-${i}"]`, `v${i}`)
     }

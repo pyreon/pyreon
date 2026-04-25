@@ -1,0 +1,15 @@
+{
+  "sha": "b47238a5",
+  "app": "perf-dashboard",
+  "journey": "chat",
+  "mode": "dev",
+  "runs": 5,
+  "timestamp": "2026-04-25T22:40:16.757Z",
+  "medianWallMs": 227,
+  "medianHeapBytes": 10000000,
+  "counters": {
+    "reactivity.signalWrite": 11,
+    "reactivity.effectRun": 11,
+    "runtime.tpl": 1000
+  }
+}
