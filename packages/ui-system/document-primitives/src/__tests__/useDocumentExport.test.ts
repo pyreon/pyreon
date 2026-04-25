@@ -317,4 +317,50 @@ describe('DocDocument reactive metadata (D1 integration)', () => {
       cleanup()
     }
   })
+
+  it('extractDocNode does NOT invoke a real DocDocument component (T3.1 Path C)', { timeout: 30_000 }, async () => {
+    // The architectural invariant locked in by T3.1 (PR #321):
+    // `extractDocumentTree` consumes a real rocketstyle primitive's
+    // `__rs_attrs` chain directly, never invoking the wrapped component
+    // function. The previous Path B workaround had to call the full
+    // styled wrapper per export to read post-attrs `_documentProps`.
+    //
+    // Spy mechanism: wrap the imported component in a Proxy whose
+    // `apply` trap counts function-call invocations. Property reads
+    // (IS_ROCKETSTYLE, __rs_attrs, _documentType, .meta, .displayName,
+    // etc.) flow through to the original via the default `get` handler,
+    // so extractDocumentTree's contract still works — but any code
+    // path that CALLS the spied component bumps the counter.
+    //
+    // The connector-document tests already pin this with a
+    // `FakeRocketDoc` fixture; this test pins it for a real
+    // rocketstyle primitive end-to-end, closing the abstract /
+    // concrete coverage gap.
+    const { initTestConfig } = await import('@pyreon/test-utils')
+    const { h } = await import('@pyreon/core')
+    const cleanup = initTestConfig()
+    try {
+      const RealDocDocument = (await import('../primitives/DocDocument')).default
+
+      let callCount = 0
+      const SpiedDoc = new Proxy(RealDocDocument, {
+        apply(target, thisArg, args) {
+          callCount++
+          return Reflect.apply(target as (...a: unknown[]) => unknown, thisArg, args as unknown[])
+        },
+      })
+
+      const tree = extractDocNode(() =>
+        h(SpiedDoc as never, { title: 'Hoisted', author: 'Aisha' } as never),
+      )
+
+      expect(tree.type).toBe('document')
+      expect(tree.props.title).toBe('Hoisted')
+      expect(tree.props.author).toBe('Aisha')
+      // The architectural assertion — the styled wrapper must NOT run.
+      expect(callCount).toBe(0)
+    } finally {
+      cleanup()
+    }
+  })
 })

@@ -399,12 +399,16 @@ const rocketComponent: RocketComponent = (options) => {
   // had to run the entire styled wrapper — JSX tree creation, dimension
   // resolution, the lot — just to read `_documentProps` off the result.
   //
-  // The chain is a `Array<(props) => Record<string, unknown>>` matching
-  // the shape consumed by `calculateChainOptions(chain)([props])`. Empty
-  // when no `.attrs()` was ever called. This is a deliberately exposed
-  // hoist point — opaque to consumers that don't need it, free for the
-  // ones that do.
-  ;(FinalComponent as any).__rs_attrs = options.attrs
+  // Typed surface: `RocketStyleComponent.__rs_attrs` is a `readonly
+  // ReadonlyArray<(props) => Record<string, unknown>>`. Empty when
+  // no `.attrs()` was ever called. `chain.reduce(Object.assign, {})`
+  // produces the post-attrs result for a given props bag.
+  //
+  // The `readonly` modifier guards external CONSUMERS — internal
+  // assignment from the factory itself is the only legitimate write,
+  // hence the cast. Do not drop the readonly on the type.
+  ;(FinalComponent as unknown as { __rs_attrs: typeof options.attrs }).__rs_attrs =
+    options.attrs ?? []
 
   Object.assign(FinalComponent, {
     attrs: (attrs: any, { priority, filter }: any = {}) => {

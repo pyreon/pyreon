@@ -153,4 +153,19 @@ export interface IRocketStyleComponent<
 
   IS_ROCKETSTYLE: true
   displayName: string
+
+  /**
+   * The accumulated `.attrs()` callback chain — hoisted at component-creation
+   * time so external inspectors (notably `extractDocumentTree` from
+   * `@pyreon/connector-document`) can compute post-attrs props without
+   * invoking the full styled wrapper. Each callback maps user props to a
+   * partial props object; `chain.reduce(Object.assign, {})` produces the
+   * post-attrs result.
+   *
+   * Stable contract — consumers can rely on this property being present on
+   * every rocketstyle-wrapped component. Empty array when no `.attrs()`
+   * was ever called on the chain. Treat as read-only; mutating breaks
+   * `extractDocumentTree` and any other inspector consuming the hoist.
+   */
+  readonly __rs_attrs: ReadonlyArray<(props: Record<string, unknown>) => Record<string, unknown>>
 }
