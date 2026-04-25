@@ -244,97 +244,103 @@ const User = () => {
 >
 > **For uses by, not key**: `<For>` in route lists uses `by` not `key`. `<For each={routes()} key={r => r.path}>` silently passes the key to VNode reconciliation instead of the list reconciler. Use `by={r => r.path}`.
 
-## @pyreon/head — Complete API
+## @pyreon/head — Head Management
+
+Reactive head tag management for Pyreon — `useHead()` collects title, meta, link, script, style, noscript, base, jsonLd entries from any component in the tree (static or signal-driven). `HeadProvider` collects them on the client and syncs to the live `<head>` element; `renderWithHead()` collects them on the server and returns the serialized HTML alongside the rendered app.
 
 ```typescript
-useHead({
-  title: "Page Title",
-  titleTemplate: "{0} — My App",
-  meta: [
-    { name: "description", content: "Page description" },
-    { property: "og:title", content: "Open Graph Title" },
-  ],
-  link: [
-    { rel: "canonical", href: "https://example.com/page" },
-    { rel: "stylesheet", href: "/styles.css" },
-  ],
-  script: [
-    { src: "/analytics.js", async: true },
-    { children: "console.log('inline')" },
-  ],
-  style: [{ children: "body { margin: 0 }" }],
-  htmlAttrs: { lang: "en" },
-  bodyAttrs: { class: "dark" },
-  jsonLd: { "@type": "WebPage", name: "My Page" },
-})
+import { useHead, HeadProvider } from '@pyreon/head'
+import { renderWithHead } from '@pyreon/head'
+import { mount } from '@pyreon/runtime-dom'
+
+// Static head tags from any component
+function ProfilePage() {
+  useHead({
+    title: 'My Profile',
+    meta: [{ name: 'description', content: 'User profile page' }],
+    link: [{ rel: 'canonical', href: 'https://example.com/profile' }],
+  })
+  return <div>profile body</div>
+}
+
+// Reactive head — pass a function so signal reads re-register on change
+function ReactiveTitle() {
+  useHead(() => ({
+    title: `${username()} — Profile`,
+    meta: [{ property: 'og:title', content: username() }],
+  }))
+  return null
+}
+
+// Client setup
+mount(
+  <HeadProvider>
+    <App />
+  </HeadProvider>,
+  document.getElementById('app')!,
+)
+
+// Server setup — collects every useHead() call and serializes the head
+const { html, head, htmlAttrs, bodyAttrs } = await renderWithHead(<App />)
+const document = `<!doctype html><html${htmlAttrs}><head>${head}</head><body${bodyAttrs}>${html}</body></html>`
 ```
 
-## @pyreon/server — Complete API
+> **Key deduplication**: Tags with the same key replace each other (innermost wins). Meta keys: `name` → `property` → index. Link keys: `href + rel` → `rel` → index. Script keys: `src` → index. Style and noscript are unkeyed and always accumulated.
+>
+> **Inline script escaping**: Script / style / noscript bodies are not HTML-escaped, but the SSR serializer rewrites `</script>` / `</style>` / `</noscript>` and `<!--` to prevent breaking out of the wrapping tag. Inline JSON-LD via `jsonLd: {...}` auto-wraps in `<script type="application/ld+json">` and stringifies the value.
 
-### createHandler
+## @pyreon/server — SSR / SSG / Islands
+
+`@pyreon/server` is the production HTTP entry point and SSG generator. `createHandler()` produces a `(req: Request) => Promise<Response>` that handles SSR for every request, with a precompiled template (one parse at handler-creation, not per request) and middleware-chain support that short-circuits on the first `Response`. `prerender()` turns the same handler into a static-site generator. `island()` wraps a lazy-loaded component in a `<pyreon-island>` boundary with a hydration strategy (`load` / `idle` / `visible` / `media` / `never`) — the rest of the page stays HTML-only.
+
 ```typescript
+import { createHandler, prerender, island } from '@pyreon/server'
+import { App } from './App'
+import routes from './routes'
+
+// SSR handler — one precompiled template, middleware chain, stream mode
 const handler = createHandler({
-  App: RootApp,
-  routes: routeConfig,
-  clientEntry: "/src/entry-client.ts",
-  mode: "stream",
+  App,
+  routes,
+  clientEntry: '/src/entry-client.ts',
+  mode: 'stream',
   middleware: [
-    async (ctx, next) => {
-      ctx.locals.user = await getUser(ctx.req)
-      await next()
-    }
+    async (ctx) => {
+      ctx.locals.user = await getUser(ctx.headers.get('cookie'))
+    },
+    async (ctx) => {
+      if (ctx.path.startsWith('/admin') && !ctx.locals.user?.admin) {
+        return new Response('Forbidden', { status: 403 })
+      }
+    },
   ],
 })
 
-// Use with any server:
-Bun.serve({ fetch: handler })
-```
+export default { fetch: handler }
 
-### Island Architecture
-```typescript
-// Server component (SSR only):
-const Page = () => (
-  <div>
-    <h1>Static content (SSR)</h1>
-    <SearchBar query="initial" />  {/* hydrated island */}
-  </div>
-)
-
-// Island definition:
-const SearchBar = island(
-  () => import("./components/SearchBar"),
-  { name: "SearchBar", hydrate: "visible" }
-)
-
-// Client entry:
-import { hydrateIslands } from "@pyreon/server/client"
-hydrateIslands({
-  SearchBar: () => import("./components/SearchBar"),
-})
-```
-
-### Pre-rendering (SSG)
-```typescript
-import { prerender } from "@pyreon/server"
-
+// SSG — generate a static site from the same handler
 await prerender({
   handler,
-  paths: ["/", "/about", "/blog/1", "/blog/2"],
-  outDir: "./dist",
+  paths: ['/', '/about', '/blog/1', '/blog/2'],
+  outDir: './dist',
+  onPage: (path, html) => console.log(`generated ${path} (${html.length} bytes)`),
 })
+
+// Islands — hydrate selectively
+const SearchBar = island(
+  () => import('./SearchBar'),
+  { name: 'SearchBar', hydrate: 'visible' },
+)
+
+// Inside a component:
+function useUser() {
+  return useRequestLocals().user as User | null
+}
 ```
 
-### Template Compilation (Performance)
-```typescript
-import { compileTemplate, processCompiledTemplate, buildClientEntryTag } from "@pyreon/server"
-
-const compiled = compileTemplate(htmlTemplate)  // parse once
-const html = processCompiledTemplate(compiled, {
-  head: headTags,
-  body: renderedApp,
-  scripts: buildClientEntryTag("/src/entry-client.ts"),
-})
-```
+> **Stream mode**: `mode: "stream"` uses `renderToStream` with shell + app + tail emission; Suspense boundaries resolve out-of-order. The `<head>` collected via `@pyreon/head` is flushed in the shell before any Suspense boundaries resolve, so async-loaded data does not contribute to it.
+>
+> **Loader-data escaping**: Inline script JSON is rewritten — `</script>` becomes `<\/script>` to prevent breaking out of the wrapping `<script>` tag. User data in a custom template is your responsibility; only the loader-data injection point is escaped.
 
 ## @pyreon/runtime-dom — DOM Renderer
 
@@ -1897,15 +1903,19 @@ const isExactAdmin = useIsActive('/admin', true)  // exact match only
 </nav>
 ```
 
-## @pyreon/ui-core — PyreonUI Provider
+## @pyreon/ui-core — UI Provider + Config
 
-### PyreonUI
+Foundation layer for the Pyreon UI system. `PyreonUI` is the single provider replacing the previous theme / mode / config split — it accepts a theme, a `mode` of `"light" | "dark" | "system"`, and an optional `inversed` flip, then auto-detects OS preference via `prefers-color-scheme` when `mode="system"`. `useMode()` returns the resolved mode as a reactive signal. The package also exposes the `init()` escape hatch (called internally by `PyreonUI` but available for SSR / test setups), the static `HTML_TAGS` / `HTML_TEXT_TAGS` lists used by the bases, and zero-dep utilities (`get`, `set`, `merge`, `pick`, `omit`, `throttle`, `isEmpty`, `isEqual`).
+
 ```typescript
-import { PyreonUI } from "@pyreon/ui-core"
-import { enrichTheme } from "@pyreon/unistyle"
+import { PyreonUI, useMode } from '@pyreon/ui-core'
+import { enrichTheme } from '@pyreon/unistyle'
 
-// Unified provider — replaces ThemeProvider + ModeProvider + ConfigProvider
-const theme = enrichTheme({ colors: { primary: "#3b82f6" } })
+// Single provider — wraps theme, mode, and config in one tree
+const theme = enrichTheme({
+  colors: { primary: '#3b82f6', secondary: '#6366f1' },
+  fonts: { body: 'Inter, sans-serif' },
+})
 
 const App = () => (
   <PyreonUI theme={theme} mode="system">
@@ -1913,52 +1923,176 @@ const App = () => (
   </PyreonUI>
 )
 
-// Props:
-// - theme: Theme object (use enrichTheme() to merge with defaults)
-// - mode: "light" | "dark" | "system" (default: "light")
-// - inversed: boolean (flips resolved mode — light↔dark)
-
-// mode="system" auto-detects OS preference via prefers-color-scheme
-// and reactively updates when the user changes their OS setting.
-```
-
-### useMode()
-```typescript
-import { useMode } from "@pyreon/ui-core"
-
-const MyComponent = () => {
-  const mode = useMode()  // Signal<"light" | "dark">
-
-  return <div class={mode() === "dark" ? "bg-dark" : "bg-light"}>
-    Current mode: {mode()}
-  </div>
+// useMode() reads the resolved mode reactively
+function ThemeBadge() {
+  const mode = useMode()
+  return <div class={mode() === 'dark' ? 'badge-dark' : 'badge-light'}>{mode()}</div>
 }
+
+// inversed flips the resolved mode (light → dark and vice versa)
+const InvertedSection = () => (
+  <PyreonUI inversed>
+    <Sidebar />
+  </PyreonUI>
+)
 ```
-Returns the resolved mode as a reactive signal. When `mode="system"`, this reflects the OS preference. When `inversed` is true, the mode is flipped.
 
-### enrichTheme(theme)
+> **Provider replacement**: The legacy split (separate theme / mode / config providers) is removed. `PyreonUI` is the only correct mount; calling `init()` directly is the escape hatch for SSR or test environments where the provider tree is unavailable.
+>
+> **System-mode subscription**: `mode="system"` lazily creates a `matchMedia('(prefers-color-scheme: dark)')` subscription on first read; the listener stays alive for the document lifetime, so a single subscription handles every `useMode()` consumer.
+
+## @pyreon/unistyle — Responsive CSS Utilities
+
+Foundational responsive-style layer that powers every visual package above it (`elements`, `rocketstyle`, `coolgrid`, `kinetic`). `enrichTheme()` merges a partial user theme with the default breakpoints / spacing / unit utilities so the rest of the system has a complete theme to read. `makeItResponsive()` turns a value or per-breakpoint map into the right CSS for the current screen. `createMediaQueries()` builds breakpoint-keyed media queries; `styles()` generates CSS from a theme; `alignContent()` resolves alignment shorthand to flex / grid CSS. The package is the single source of truth for responsive prop semantics across the UI system.
+
 ```typescript
-import { enrichTheme } from "@pyreon/unistyle"
+import { enrichTheme, makeItResponsive, createMediaQueries, alignContent } from '@pyreon/unistyle'
 
-// Merges user theme with default breakpoints, spacing, and unit utilities:
+// 1. Enrich a partial user theme with defaults — required before passing to PyreonUI
 const theme = enrichTheme({
-  colors: { primary: "#3b82f6", secondary: "#6366f1" },
-  fonts: { body: "Inter, sans-serif" },
+  colors: { primary: '#3b82f6', secondary: '#6366f1' },
+  fonts: { body: 'Inter, sans-serif' },
 })
 
-<PyreonUI theme={theme} mode="dark">
-  <App />
-</PyreonUI>
+// 2. Build media queries keyed by breakpoint name
+const queries = createMediaQueries(theme.breakpoints)
+// → { xs: '@media (min-width: 0)', sm: '@media (min-width: 640px)', md: '...', ... }
+
+// 3. Responsive props — single value, mobile-first array, or breakpoint object
+const padding = makeItResponsive({ value: [8, 12, 16], property: 'padding', theme })
+// → 'padding: 8px; @media (...) { padding: 12px } @media (...) { padding: 16px }'
+
+const padding2 = makeItResponsive({
+  value: { xs: 8, md: 16, xl: 24 },
+  property: 'padding',
+  theme,
+})
+
+// 4. alignContent maps shorthand to flex CSS
+const flexCss = alignContent({ alignX: 'center', alignY: 'start', direction: 'row' })
+// → 'justify-content: center; align-items: flex-start;'
 ```
 
-### init() — Custom Environments
+> **Single source for responsive semantics**: Every visual package (`elements`, `rocketstyle`, `coolgrid`, `kinetic`) reads breakpoints / spacing / unit conventions from this package. Override defaults via `enrichTheme()` once at the app root rather than per-component.
+>
+> **CSS property naming**: Unistyle uses property-first naming (`borderWidthTop`, `borderColorLeft`) rather than CSS-spec order (`borderTopWidth`, `borderLeftColor`). Stick to the unistyle convention when authoring components — the responsive transformer expects it.
+
+## @pyreon/lint — Pyreon-specific Linter
+
+Pyreon-specific lint rules powered by `oxc-parser`. Covers reactivity (10), JSX (11), lifecycle (4), performance (4), SSR (3), architecture (7), store (3), form (3), styling (4), hooks (3), accessibility (3), router (4) — 59 rules total. Programmatic API (`lint`, `lintFile`), CLI (`pyreon-lint`), watch mode (fs.watch + 100ms debounce + AstCache), LSP server, and `.pyreonlintrc.json` config with per-rule options via ESLint-style tuple form. Notable rules: `pyreon/no-process-dev-gate` (auto-fixable; replaces dead-in-browser `typeof process` gates with `import.meta.env?.DEV`), `pyreon/require-browser-smoke-test` (locks in T1.1 browser-test durability).
+
 ```typescript
-import { init } from "@pyreon/ui-core"
+import { lint, lintFile, allRules, getPreset, AstCache } from '@pyreon/lint'
 
-// PyreonUI calls init() internally, but for custom setups (e.g., tests,
-// SSR without PyreonUI, or non-standard environments) you can call it directly:
-init({ theme, mode: "dark" })
+// Programmatic — typical CI usage
+const result = lint({ paths: ['src/'], preset: 'recommended' })
+console.log(result.totalErrors, result.totalWarnings)
+for (const d of result.configDiagnostics) console.log(d.ruleId, d.message)
+
+// Per-rule overrides on a single run
+lint({
+  paths: ['.'],
+  ruleOverrides: { 'pyreon/no-classname': 'off' },
+  ruleOptionsOverrides: {
+    'pyreon/no-window-in-ssr': { exemptPaths: ['src/foundation/'] },
+  },
+})
+
+// Low-level single-file API with AST cache (watch mode)
+const cache = new AstCache()
+const config = getPreset('recommended')
+const fileResult = lintFile('app.tsx', source, allRules, config, cache)
+
+// CLI
+//   pyreon-lint --preset strict --quiet                    # CI mode
+//   pyreon-lint --fix                                      # auto-fix
+//   pyreon-lint --watch src/                               # watch mode
+//   pyreon-lint --list                                     # list all 59 rules
+//   pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/
 ```
+
+## @pyreon/mcp — MCP Server
+
+MCP server (stdio transport) that exposes Pyreon\'s structured knowledge to AI coding assistants (Claude Code, Cursor, etc.). Eleven tools: `get_api` (look up any Pyreon API), `validate` (catch React + Pyreon-specific anti-patterns in a snippet), `migrate_react` (auto-convert React code), `diagnose` (parse a Pyreon error into structured fix info), `get_routes` / `get_components` (project introspection), `get_browser_smoke_status` (which packages need a browser smoke test), `get_pattern` (canonical "how do I do X" docs), `get_anti_patterns` (the catalog from `.claude/rules/anti-patterns.md`), `get_changelog` (recent release notes per package), and `audit_test_environment` (mock-vnode test scanner — PR #197 bug class).
+
+```typescript
+// .mcp/config.json — register the server with any MCP-aware client
+{
+  "mcpServers": {
+    "pyreon": {
+      "command": "bunx",
+      "args": ["@pyreon/mcp"]
+    }
+  }
+}
+
+// Then from the client (Claude Code, Cursor, etc.):
+//   get_api({ package: 'flow', symbol: 'createFlow' })
+//     → signature, example, common mistakes
+//   validate({ code: '<MyButton onClick={handler}>...' })
+//     → React-pattern + Pyreon-pattern diagnostics with line/col
+//   get_pattern({ name: 'controllable-state' })
+//     → canonical pattern body from docs/patterns/
+//   get_anti_patterns({ category: 'reactivity' })
+//     → reactivity foot-guns from .claude/rules/anti-patterns.md
+//   get_changelog({ package: 'flow', limit: 5 })
+//     → recent release notes filtered through ceremonial-bump removal
+//   audit_test_environment({ minRisk: 'medium' })
+//     → mock-vnode test files ranked HIGH / MEDIUM / LOW
+```
+
+> **Project-context caching**: Each `createServer()` instance maintains its own cached context (routes, components, islands). The cache auto-resets when `process.cwd()` changes between tool invocations, so the same server can operate across multiple projects in one session.
+>
+> **Manifest-driven**: `get_api` reads `api-reference.ts`, which is generated from each package\'s `manifest.ts`. The marker-pair protocol (`<gen-docs:api-reference:start @pyreon/<name>>`) lets some packages be generated and others stay hand-written during incremental migration.
+
+## @pyreon/document-primitives — Document Primitives
+
+18 rocketstyle-based document primitives — `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocImage`, `DocTable`, `DocList`, `DocListItem`, `DocCode`, `DocDivider`, `DocSpacer`, `DocButton`, `DocQuote`, `DocPageBreak`. The same JSX tree renders in the browser AND exports to 14+ output formats (PDF, DOCX, XLSX, PPTX, HTML, Markdown, email, Slack, Teams, etc.). Primitives carry `_documentType` static markers; `extractDocumentTree` (from `@pyreon/connector-document`) walks the tree to produce a `DocNode` for `@pyreon/document`\'s `render()` to consume. `DocDocument` accepts reactive accessors for `title` / `author` / `subject` — function values are stored in `_documentProps` and resolved at extraction time so each export click reads the LIVE value from the underlying signal.
+
+```typescript
+import {
+  DocDocument, DocPage, DocSection, DocRow, DocColumn,
+  DocHeading, DocText, DocLink, DocImage, DocTable,
+  DocList, DocListItem, DocCode, DocDivider, DocSpacer,
+  DocButton, DocQuote, DocPageBreak,
+  extractDocNode,
+} from '@pyreon/document-primitives'
+import { download } from '@pyreon/document'
+
+interface Resume { name: string; headline: string }
+
+function ResumeTemplate(props: { resume: () => Resume }) {
+  return (
+    // title and author accept reactive accessors — extractDocNode
+    // resolves them at extraction time, so each export click reads
+    // the LIVE value from the underlying signal
+    <DocDocument
+      title={() => `${props.resume().name} — Resume`}
+      author={() => props.resume().name}
+    >
+      <DocPage>
+        <DocSection>
+          <DocHeading level="h1">{() => props.resume().name}</DocHeading>
+          <DocText>{() => props.resume().headline}</DocText>
+        </DocSection>
+      </DocPage>
+    </DocDocument>
+  )
+}
+
+// One-step extraction → render to any of 14+ formats
+const tree = extractDocNode(() => <ResumeTemplate resume={store.resume} />)
+await download(tree, 'resume.pdf')
+await download(tree, 'resume.docx')
+await download(tree, 'resume.html')
+await download(tree, 'resume.md')
+```
+
+> **Reactive metadata**: `DocDocument` `title` / `author` / `subject` accept either strings or `() => string` accessors. Function values are stored in `_documentProps` and resolved by `extractDocumentTree` at extraction time, so each export click reads the LIVE value from any underlying signal — no `const initial = get()` workaround needed.
+>
+> **PR #197 framework fix**: Before PR #197, `extractDocumentTree` only looked at the JSX vnode\'s direct props for `_documentProps` — but rocketstyle\'s attrs HOC stamps that field AFTER the component runs, so every real primitive\'s metadata was silently dropped during export. The extractor now CALLS the component function to capture the post-attrs vnode and reads `_documentProps` from there.
+>
+> **DocTable read-only DOM property collision**: `HTMLTableElement.rows` and `.cells` are read-only DOM properties — assigning to them throws. `DocTable` uses `.attrs(callback, { filter: ["rows", "columns", ...] })` to strip these props before they reach the DOM. Watch for similar collisions when adding new primitives that accept prop names matching native HTML element properties.
 
 ## AI Developer Tools
 

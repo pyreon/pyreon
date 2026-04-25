@@ -655,6 +655,8 @@ setSearch({ page: "2" })`,
   // @pyreon/head
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/head>
+
   'head/useHead': {
     signature: 'useHead(input: UseHeadInput | (() => UseHeadInput)): void',
     example: `// Static:
@@ -665,22 +667,57 @@ useHead(() => ({
   title: \`\${username()} — Profile\`,
   meta: [{ property: "og:title", content: username() }]
 }))`,
+    notes: 'Register head tags from any component in the tree. Pass a static `UseHeadInput` object for one-shot registration, or a `() => UseHeadInput` thunk for reactive re-registration when signal reads inside the thunk change. Calling `useHead()` outside a `HeadProvider` ancestor (CSR) or `renderWithHead()` invocation (SSR) is a silent no-op — it does not throw. See also: HeadProvider, renderWithHead.',
+    mistakes: `- Using \`\${...}\` in a \`titleTemplate\` string — the placeholder is \`%s\` (or pass a function form \`(title) => …\`)
+- Calling \`useHead()\` outside any \`HeadProvider\` / \`renderWithHead()\` boundary — silent no-op, the entries simply go nowhere
+- Wrapping the input in \`computed()\` instead of a thunk — pass a plain \`() => ({...})\` arrow; \`useHead\` registers its own effect
+- Expecting \`</script>\` inside an inline script body to render verbatim — the SSR escaper rewrites it as \`<\/script>\` to prevent breaking out of the inline tag`,
   },
 
   'head/HeadProvider': {
-    signature: '<HeadProvider>{children}</HeadProvider>',
-    example: `// Client-side setup:
+    signature: '(props: HeadProviderProps) => VNodeChild',
+    example: `<HeadProvider>{children}</HeadProvider>
+
+// Client-side setup:
 mount(
   <HeadProvider>
     <App />
   </HeadProvider>,
   document.getElementById("app")!
 )`,
+    notes: 'Client-side context provider that collects every `useHead()` call from descendants and syncs the resolved tags into the live `document.head` element. Mount once near the application root. Auto-creates a `HeadContextValue` when no `context` prop is passed; nested providers each own an independent context. See also: useHead, renderWithHead, createHeadContext.',
+    mistakes: `- Mounting two \`HeadProvider\` instances at sibling roots — each owns an independent context, so a \`useHead()\` deeper in tree A is invisible to tree B
+- Forgetting to mount \`HeadProvider\` and expecting \`useHead()\` to still update \`document.head\` — silent no-op outside a provider`,
   },
+
+  'head/renderWithHead': {
+    signature: 'renderWithHead(app: VNode): Promise<{ html: string; head: string; htmlAttrs: string; bodyAttrs: string }>',
+    example: `import { renderWithHead } from '@pyreon/head'
+
+const { html, head, htmlAttrs, bodyAttrs } = await renderWithHead(<App />)
+const doc = \`<!doctype html><html\${htmlAttrs}><head>\${head}</head><body\${bodyAttrs}>\${html}</body></html>\``,
+    notes: 'SSR companion to `HeadProvider`. Renders the app to HTML via `renderToString` while collecting every `useHead()` call from the tree, then serializes the resolved tags into a single `head` string plus separate `htmlAttrs` / `bodyAttrs` strings. Async components that call `useHead()` in their body work — the renderer awaits suspended subtrees before serialization. See also: useHead, HeadProvider.',
+    mistakes: `- Awaiting \`renderWithHead\` and then NOT splicing \`head\` into the \`<head>\` element — every \`useHead()\` call quietly disappears
+- Forgetting to interpolate \`htmlAttrs\` / \`bodyAttrs\` (the leading space is included in each string) — \`htmlAttrs.lang\` and \`bodyAttrs.class\` set via \`useHead\` won\'t reach the DOM`,
+  },
+
+  'head/createHeadContext': {
+    signature: '() => HeadContextValue',
+    example: `import { createHeadContext, HeadContext } from '@pyreon/head'
+
+const ctx = createHeadContext()
+provide(HeadContext, ctx)
+// ... render tree that calls useHead() ...
+const { tags, htmlAttrs, bodyAttrs } = ctx.resolve()`,
+    notes: 'Manual factory for a `HeadContextValue` — only needed when wiring up a custom SSR pipeline that bypasses `renderWithHead`, or when running multiple isolated head contexts in the same process. The value exposes `add` / `remove` / `resolve` / `resolveTitleTemplate` / `resolveHtmlAttrs` / `resolveBodyAttrs` for full programmatic control. See also: HeadProvider, renderWithHead.',
+  },
+  // <gen-docs:api-reference:end @pyreon/head>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/server
   // ═══════════════════════════════════════════════════════════════════════════
+
+  // <gen-docs:api-reference:start @pyreon/server>
 
   'server/createHandler': {
     signature: 'createHandler(options: HandlerOptions): (req: Request) => Promise<Response>',
@@ -692,17 +729,26 @@ export default createHandler({
   clientEntry: "/src/entry-client.ts",
   mode: "stream",  // or "string"
 })`,
+    notes: 'Build a production SSR handler from your `App`, `routes`, and optional template / client entry / middleware. The template is precompiled once at handler-creation (split into 4 parts to skip three string scans per request); a missing `<!--pyreon-app-->` placeholder throws at creation time, not per request. Middleware runs before render with `ctx.locals` for cross-middleware data passing — return a `Response` to short-circuit the chain. `mode: "stream"` uses `renderToStream` so Suspense boundaries flush out-of-order; `mode: "string"` uses `renderToString` (default). See also: prerender, island, useRequestLocals.',
+    mistakes: `- Omitting \`<!--pyreon-app-->\` from the custom template — throws at handler-creation, not per request
+- Returning a \`Response\` from middleware and expecting downstream middleware to still run — the chain short-circuits on the first \`Response\`
+- Reading \`ctx.locals\` from inside the component without \`useRequestLocals()\` — the component tree only sees locals when bridged through that hook
+- Forgetting to escape user data inserted into a custom template — \`createHandler\` only escapes its own loader-data injection (\`</script>\` → \`<\/script>\`); your template content is your responsibility`,
   },
 
   'server/island': {
-    signature:
-      'island(loader: () => Promise<ComponentFn>, options: { name: string; hydrate?: HydrationStrategy }): ComponentFn',
+    signature: 'island(loader: () => Promise<ComponentFn>, options: { name: string; hydrate?: HydrationStrategy }): ComponentFn',
     example: `const SearchBar = island(
   () => import("./SearchBar"),
   { name: "SearchBar", hydrate: "visible" }
 )
 
 // Hydration strategies: "load" | "idle" | "visible" | "media" | "never"`,
+    notes: 'Wrap a lazily-loaded component in a `<pyreon-island>` boundary with a hydration strategy. The rest of the page stays HTML-only; only the island fetches its JS bundle and hydrates. Strategies: `"load"` (immediate), `"idle"` (`requestIdleCallback`), `"visible"` (IntersectionObserver), `"media(query)"` (matchMedia), `"never"` (HTML-only, no JS). Props passed to islands are JSON-serialized — non-JSON values (functions, symbols, undefined, children) are stripped. See also: createHandler, hydrateIslands.',
+    mistakes: `- Passing function props (event handlers, callbacks) — silently stripped during JSON serialization, the island sees \`undefined\`
+- Passing children to an island — stripped; islands cannot render arbitrary descendant trees from props
+- Forgetting to call \`hydrateIslands({ Name: () => import("./Path") })\` on the client — islands render as HTML and never hydrate
+- Using a duplicate \`name\` across two islands — the client-side registry collapses them, only one loader will fire`,
   },
 
   'server/prerender': {
@@ -712,7 +758,12 @@ export default createHandler({
   paths: ["/", "/about", "/blog/1", "/blog/2"],
   outDir: "./dist",
 })`,
+    notes: 'Static-site generator built on `createHandler`. Walks the `paths` array (or async generator), invokes the handler for each path, and writes the rendered HTML to `outDir/<path>.html`. The `onPage(path, html)` callback fires per page so callers can post-process or stream output. Validates `outDir` against path traversal (`../` segments are rejected). Errors per-page are collected in the result, not thrown. See also: createHandler.',
+    mistakes: `- Passing a relative \`outDir\` and being surprised when it resolves against \`process.cwd()\` — pass an absolute path for predictability
+- Expecting per-page errors to throw — they\'re collected in \`result.errors\`; check the array after \`await\`
+- Generating thousands of paths without batching — the function processes the array sequentially; if you need parallelism, batch the \`paths\` array yourself`,
   },
+  // <gen-docs:api-reference:end @pyreon/server>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/runtime-dom
@@ -2127,6 +2178,8 @@ Posts.useTable({ columns: ['title', 'author'] })`,
   // @pyreon/lint
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/lint>
+
   'lint/lint': {
     signature: 'lint(options?: LintOptions): LintResult',
     example: `import { lint } from "@pyreon/lint"
@@ -2144,34 +2197,29 @@ lint({
     "pyreon/no-window-in-ssr": { exemptPaths: ["src/foundation/"] },
   },
 })`,
-    notes:
-      'Programmatic API. 59 rules across 12 categories. Auto-loads .pyreonlintrc.json. Presets: recommended, strict, app, lib. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. Wrong-typed options surface on `result.configDiagnostics`. Uses oxc-parser with AST caching.',
+    notes: '59 rules across 12 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. Wrong-typed options surface on `result.configDiagnostics`. Uses `oxc-parser` with AST caching. See also: lintFile, getPreset, AstCache.',
   },
 
   'lint/lintFile': {
-    signature:
-      'lintFile(filePath: string, sourceText: string, rules: Rule[], config: LintConfig, cache?: AstCache, configDiagnosticsSink?: ConfigDiagnostic[]): LintFileResult',
+    signature: 'lintFile(filePath: string, sourceText: string, rules: Rule[], config: LintConfig, cache?: AstCache, configDiagnosticsSink?: ConfigDiagnostic[]): LintFileResult',
     example: `import { lintFile, allRules, getPreset, AstCache } from "@pyreon/lint"
 
 const cache = new AstCache()
 const config = getPreset("recommended")
 const configSink: ConfigDiagnostic[] = []
 const result = lintFile("app.tsx", source, allRules, config, cache, configSink)`,
-    notes:
-      'Low-level single-file API. Optional AstCache for repeat runs (FNV-1a hash keyed). Optional `configDiagnosticsSink` collects malformed-option diagnostics; without it they print to stderr.',
+    notes: 'Low-level single-file API. Optional `AstCache` for repeat runs (FNV-1a hash keyed). Optional `configDiagnosticsSink` collects malformed-option diagnostics; without it they print to stderr. See also: lint, AstCache.',
   },
 
   'lint/cli': {
-    signature:
-      'pyreon-lint [--preset name] [--fix] [--format text|json|compact] [--quiet] [--watch] [--list] [--config path] [--ignore path] [--rule id=severity] [--rule-options id=\'{json}\'] [path...]',
+    signature: `pyreon-lint [--preset name] [--fix] [--format text|json|compact] [--quiet] [--watch] [--list] [--config path] [--ignore path] [--rule id=severity] [--rule-options id='{json}'] [path...]`,
     example: `pyreon-lint --preset strict --quiet    # CI mode
 pyreon-lint --fix                       # auto-fix
 pyreon-lint --watch src/                # watch mode
 pyreon-lint --list                      # list all 59 rules
 pyreon-lint --format json               # machine-readable
 pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/`,
-    notes:
-      "CLI entry. Config: .pyreonlintrc.json (reference schema/pyreonlintrc.schema.json for IDE autocomplete), package.json 'pyreonlint' field. Ignore: .pyreonlintignore + .gitignore. Watch: fs.watch recursive with 100ms debounce. `--rule-options id='{json}'` passes per-rule options on a single run.",
+    notes: `CLI entry. Config: \`.pyreonlintrc.json\` (reference \`schema/pyreonlintrc.schema.json\` for IDE autocomplete) or \`package.json\`'s \`'pyreonlint'\` field. Ignore: \`.pyreonlintignore\` + \`.gitignore\`. Watch: \`fs.watch\` recursive with 100ms debounce. \`--rule-options id='{json}'\` passes per-rule options on a single run. See also: lint.`,
   },
 
   'lint/no-process-dev-gate': {
@@ -2184,8 +2232,7 @@ if (__DEV__) console.warn('hello')
 // @ts-ignore — provided by Vite/Rolldown at build time
 const __DEV__ = import.meta.env?.DEV === true
 if (__DEV__) console.warn('hello')`,
-    notes:
-      "The `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'` pattern works in vitest (Node, `process` is defined) but is silently dead code in real Vite browser bundles because Vite does NOT polyfill `process` for the client. Every `console.warn` gated on the broken constant never fires for real users in dev mode — unit tests pass while users get nothing. Use `import.meta.env.DEV` instead — Vite/Rolldown literal-replace it at build time, prod tree-shakes the warning to zero bytes, and vitest sets it to `true` automatically. Server-only packages (`zero`, `core/server`, `core/runtime-server`, `vite-plugin`, `cli`, `lint`, `mcp`, `storybook`, `typescript`) and test files are exempt. Reference implementation: `packages/fundamentals/flow/src/layout.ts:warnIgnoredOptions`. The rule has an auto-fix that replaces the broken expression with `import.meta.env?.DEV === true`.",
+    notes: `The \`typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'\` pattern works in vitest (Node, \`process\` is defined) but is silently dead code in real Vite browser bundles because Vite does NOT polyfill \`process\` for the client. Every \`console.warn\` gated on the broken constant never fires for real users in dev mode — unit tests pass while users get nothing. Use \`import.meta.env.DEV\` instead — Vite/Rolldown literal-replace it at build time, prod tree-shakes the warning to zero bytes, and vitest sets it to \`true\` automatically. Server-only packages (\`zero\`, \`core/server\`, \`core/runtime-server\`, \`vite-plugin\`, \`cli\`, \`lint\`, \`mcp\`, \`storybook\`, \`typescript\`) and test files are exempt. Reference implementation: \`packages/fundamentals/flow/src/layout.ts:warnIgnoredOptions\`. The rule has an auto-fix that replaces the broken expression with \`import.meta.env?.DEV === true\`. See also: require-browser-smoke-test.`,
     mistakes: `- Copying the \`typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'\` pattern from existing codebases — it works in Node but is dead in browser bundles
 - Trying to test with \`delete globalThis.process\` — vitest's own \`import.meta.env\` depends on \`process\`, so deleting it breaks the FIXED gate too (not because the gate is wrong, but because vitest can't resolve it)
 - Adding \`process: { env: { ... } }\` polyfills to vite.config.ts as a workaround — fix the source instead
@@ -2206,13 +2253,19 @@ if (__DEV__) console.warn('hello')`,
     ]
   }
 }`,
-    notes:
-      "Locks in the durability of the T1.1 browser smoke harness (PRs #224, #227, #229, #231). Every browser-categorized package MUST ship at least one \`*.browser.test.{ts,tsx}\` file under \`src/\`. Without this rule, new browser packages can quietly ship without smoke coverage and we drift back to the world before T1.1 — happy-dom silently masks environment-divergence bugs (PR #197 mock-vnode metadata drop, PR #200 \`typeof process\` dead code, multi-word event delegation bug). Default browser-package list mirrors \`.claude/rules/test-environment-parity.md\`. The rule fires once per package on its \`src/index.ts\`, walks the package directory looking for \`*.browser.test.*\`, and reports if none are found. Off in \`app\` preset because apps don't ship as packages with smoke obligations.",
+    notes: `Locks in the durability of the T1.1 browser smoke harness (PRs #224, #227, #229, #231). Every browser-categorized package MUST ship at least one \`*.browser.test.{ts,tsx}\` file under \`src/\`. Without this rule, new browser packages can quietly ship without smoke coverage and we drift back to the world before T1.1 — happy-dom silently masks environment-divergence bugs (PR #197 mock-vnode metadata drop, PR #200 \`typeof process\` dead code, multi-word event delegation bug). Default browser-package list mirrors \`.claude/rules/test-environment-parity.md\`. The rule fires once per package on its \`src/index.ts\`, walks the package directory looking for \`*.browser.test.*\`, and reports if none are found. Off in \`app\` preset because apps don't ship as packages with smoke obligations. See also: no-process-dev-gate.`,
     mistakes: `- Adding a new browser-running package without a browser test — the rule will fail your PR
 - Hardcoding the browser-package list in the rule — the list lives in \`.claude/rules/browser-packages.json\` (single source of truth), not in the rule source
 - Disabling the rule globally — use \`exemptPaths\` to exempt specific packages still under construction
 - Shipping a \`sanity.browser.test.ts\` with \`expect(1).toBe(1)\` just to satisfy the rule — it passes but provides zero signal. The rule is a GATE, not a quality check; review actual contents on PR`,
   },
+  // <gen-docs:api-reference:end @pyreon/lint>
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/mcp
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // <gen-docs:api-reference:start @pyreon/mcp>
 
   'mcp/get_browser_smoke_status': {
     signature: 'tool: get_browser_smoke_status — no args',
@@ -2220,18 +2273,103 @@ if (__DEV__) console.warn('hello')`,
 //   "which Pyreon packages are missing browser smoke coverage?"
 // Tool walks packages/, matches against .claude/rules/browser-packages.json,
 // returns a coverage report.`,
-    notes:
-      "Companion to the `pyreon/require-browser-smoke-test` lint rule. Reports which browser-categorized Pyreon packages have at least one `*.browser.test.{ts,tsx}` file under `src/`. Uses the same `.claude/rules/browser-packages.json` single source of truth as the rule + the CI script. Lets an AI agent check coverage before writing a new browser package (so it adds a smoke test in the same PR) instead of discovering the failure when CI runs. Falls back with a clear message if the JSON isn't present (e.g. consumer apps that don't ship the Pyreon monorepo layout).",
+    notes: `Companion to the \`pyreon/require-browser-smoke-test\` lint rule. Reports which browser-categorized Pyreon packages have at least one \`*.browser.test.{ts,tsx}\` file under \`src/\`. Uses the same \`.claude/rules/browser-packages.json\` single source of truth as the rule + the CI script. Lets an AI agent check coverage before writing a new browser package (so it adds a smoke test in the same PR) instead of discovering the failure when CI runs. Falls back with a clear message if the JSON isn't present (e.g. consumer apps that don't ship the Pyreon monorepo layout). See also: audit_test_environment.`,
     mistakes: `- Using the tool's output as a substitute for running the CI script — this tool only checks file existence, not the self-expiring-exemption check that \`bun run lint:browser-smoke\` performs`,
   },
+
+  'mcp/get_api': {
+    signature: 'tool: get_api({ package: string; symbol: string }) → APIEntry',
+    example: `// Agent-side
+get_api({ package: 'flow', symbol: 'createFlow' })
+get_api({ package: '@pyreon/router', symbol: 'useTypedSearchParams' })`,
+    notes: `Look up any Pyreon API by \`package\` (e.g. \`"flow"\` or \`"@pyreon/flow"\`) and \`symbol\` (e.g. \`"createFlow"\`). Returns the canonical signature, example, foot-gun catalogue, and cross-references — drawn from \`api-reference.ts\`, which is regenerated from each package\'s \`manifest.ts\`. The single agent-facing entry point for "what does this API do and how do I avoid the common mistakes." See also: validate, get_pattern.`,
+  },
+
+  'mcp/validate': {
+    signature: 'tool: validate({ code: string; filename?: string }) → Diagnostics[]',
+    example: `validate({ code: \`
+function MyComp(props) {
+  const { value } = props          // → props-destructured
+  return <For each={items}>{...}</For>  // → for-missing-by
+}
+\` })`,
+    notes: 'Two AST-based detectors run in parallel: `detectReactPatterns` flags "coming from React" mistakes (`useState`, `useEffect`, `className`, `onChange` on inputs, React-package imports), and `detectPyreonPatterns` flags "using Pyreon wrong" mistakes (`<For>` missing `by`, props destructured at component signature, `typeof process` dev gates, raw `addEventListener`, `Date.now() + Math.random()` IDs). Diagnostics are merged + sorted by line / column for top-down reading. See also: get_anti_patterns, migrate_react.',
+  },
+
+  'mcp/migrate_react': {
+    signature: 'tool: migrate_react({ code: string; filename?: string }) → MigrationResult',
+    example: `migrate_react({ code: \`
+import { useState, useEffect } from 'react'
+function Counter() {
+  const [count, setCount] = useState(0)
+  useEffect(() => { console.log(count) }, [count])
+  return <button onClick={() => setCount(count + 1)}>{count}</button>
+}
+\` })`,
+    notes: 'Convert React code to idiomatic Pyreon. Handles `useState` → `signal()`, `useEffect` → `effect()`, `className` → `class`, `onChange` → `onInput`, `useMemo` → `computed()`, React imports → Pyreon imports. Reports per-edit fixable diagnostics so callers can apply or review. See also: validate.',
+  },
+
+  'mcp/diagnose': {
+    signature: 'tool: diagnose({ error: string }) → DiagnoseResult',
+    example: `diagnose({ error: 'Cannot redefine property X on object [object Object]' })
+// → cause: configurable: false on a getter; fix: set configurable: true`,
+    notes: 'Parse a Pyreon runtime / build error message into structured fix information: probable cause, recommended fix, related docs, and the `.claude/rules/anti-patterns.md` entry (if any) the error matches. Useful when an agent sees a stack trace and wants to skip the "search the codebase for similar errors" step. See also: validate, get_anti_patterns.',
+  },
+
+  'mcp/get_routes': {
+    signature: 'tool: get_routes() → Route[]',
+    example: `get_routes()
+// → [{ path: '/', name: 'home', hasLoader: true, params: [] }, ...]`,
+    notes: 'List every route in the current project — path, loader presence, guards, params, and named-route name. Walks the project source from `process.cwd()` down. Cached per server instance with auto-invalidation on `cwd` change. See also: get_components.',
+  },
+
+  'mcp/get_components': {
+    signature: 'tool: get_components() → ComponentInfo[]',
+    example: `get_components()
+// → [{ name: 'Button', file: 'src/Button.tsx', props: ['onClick', 'children'], signals: ['count'] }, ...]`,
+    notes: 'List every component in the current project with its props and signal usage. Same scanner as `get_routes`. Useful for an agent before generating new code that needs to reference existing components. See also: get_routes.',
+  },
+
+  'mcp/get_pattern': {
+    signature: 'tool: get_pattern({ name?: string }) → PatternBody | string[]',
+    example: `get_pattern({ name: 'controllable-state' })
+// → full canonical pattern body
+get_pattern({})
+// → [{ name: 'controllable-state', summary: '...' }, ...]`,
+    notes: 'Fetch a canonical "how do I do X" pattern body from `docs/patterns/`. Eight foundational patterns ship: `dev-warnings`, `controllable-state`, `ssr-safe-hooks`, `signal-writes`, `keyed-lists`, `reactive-context`, `event-listeners`, `form-fields`. Omit `name` to list available patterns. Drop a new `docs/patterns/<slug>.md` file to add one — picked up on next call. See also: get_anti_patterns.',
+  },
+
+  'mcp/get_anti_patterns': {
+    signature: `tool: get_anti_patterns({ category?: 'reactivity' | 'jsx' | 'context' | 'architecture' | 'testing' | 'lifecycle' | 'documentation' | 'all' }) → AntiPattern[]`,
+    example: `get_anti_patterns({ category: 'reactivity' })
+// → ['Bare signal in JSX text', 'Stale closures', 'Destructuring props', ...]`,
+    notes: 'Browse the anti-patterns catalog parsed from `.claude/rules/anti-patterns.md`. Each entry surfaces its `[detector: <code>]` tag inline so an agent can pair the catalog entry with the live static detector exposed by `validate`. Optional `category` filter; default returns all categories. See also: validate, get_pattern.',
+  },
+
+  'mcp/get_changelog': {
+    signature: 'tool: get_changelog({ package?: string; limit?: number; includeDependencyUpdates?: boolean; since?: string }) → ChangelogEntry[]',
+    example: `get_changelog({ package: 'flow', limit: 5 })
+get_changelog({ package: '@pyreon/router', since: '0.12.0' })`,
+    notes: 'Recent release notes for any `@pyreon/*` package without scraping `git log`. Parses `packages/**/CHANGELOG.md` into version entries (`{ version, changes[], dependencyUpdates[], empty }`) and returns the N most recent substantive versions (default 5). Filters out ceremonial version bumps (pure dependency-update releases with no user-facing body) by default — opt back in with `includeDependencyUpdates: true`. `since: "0.12.0"` returns the delta from a known floor — useful when an agent knows the version it was trained against. See also: get_api.',
+  },
+
+  'mcp/audit_test_environment': {
+    signature: `tool: audit_test_environment({ minRisk?: 'high' | 'medium' | 'low'; limit?: number }) → AuditReport`,
+    example: `audit_test_environment({ minRisk: 'medium', limit: 10 })
+// → grouped report with HIGH / MEDIUM / LOW sections`,
+    notes: `Scan every \`*.test.{ts,tsx}\` under \`packages/\` for the mock-vnode anti-pattern that caused PR #197\'s silent metadata drop. Files are classified HIGH / MEDIUM / LOW based on the balance of mock-vnode literals + helpers + helper-call sites vs real \`h()\` calls + \`@pyreon/core\` import. Three context-aware skips (helper-def vs binding discrimination, type-guard call-arg skip, template-string fixture mask) keep the false-positive rate low. Run before merging a new test file or after a framework change. See also: get_browser_smoke_status.`,
+  },
+  // <gen-docs:api-reference:end @pyreon/mcp>
+
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/ui-core
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/ui-core>
+
   'ui-core/PyreonUI': {
-    signature:
-      "PyreonUI(props: { theme?: Theme; mode?: 'light' | 'dark' | 'system'; inversed?: boolean; children: VNodeChild }): VNodeChild",
+    signature: `(props: { theme?: Theme; mode?: 'light' | 'dark' | 'system'; inversed?: boolean; children: VNodeChild }) => VNodeChild`,
     example: `import { PyreonUI } from "@pyreon/ui-core"
 import { enrichTheme } from "@pyreon/unistyle"
 
@@ -2243,26 +2381,31 @@ const theme = enrichTheme({ colors: { primary: "#3b82f6" } })
 
 // mode="system" auto-detects OS dark mode via prefers-color-scheme
 // inversed flips the resolved mode (light↔dark)`,
-    notes:
-      "Unified provider replacing 3 separate providers (theme, mode, config). Calls init() internally. mode='system' uses matchMedia('(prefers-color-scheme: dark)') and reactively updates.",
-    mistakes: `- Using ThemeProvider + ModeProvider + ConfigProvider separately → Use PyreonUI instead
-- Forgetting enrichTheme() → raw theme objects miss default breakpoints/spacing`,
+    notes: `Unified provider replacing the previous theme / mode / config split (3 nested providers became 1). Accepts an enriched \`theme\` object (merge with defaults via \`enrichTheme()\`), a \`mode\` of \`'light' | 'dark' | 'system'\`, and an optional \`inversed\` flip. When \`mode='system'\`, the provider subscribes to \`matchMedia('(prefers-color-scheme: dark)')\` and re-resolves the mode reactively. Calls \`init()\` internally so consumers don\'t need to wire it up themselves. Whole-theme swaps (user-preference themes) propagate through the styler resolver and re-resolve CSS without remounting the VNode. See also: useMode, enrichTheme, init.`,
+    mistakes: `- Using \`ThemeProvider\` + \`ModeProvider\` + \`ConfigProvider\` separately — \`PyreonUI\` is the single replacement covering all three
+- Forgetting \`enrichTheme()\` — raw theme objects miss default breakpoints / spacing / unit utilities
+- Destructuring \`props\` inside the provider — components run once; destructuring captures values at setup. Read \`props.mode\` lazily inside reactive scopes
+- Re-augmenting the \`ThemeDefault\` / \`StylesDefault\` interfaces in your app — \`@pyreon/ui-theme\` already augments them; double-augmentation throws TS2320`,
   },
 
   'ui-core/useMode': {
-    signature: "useMode(): Signal<'light' | 'dark'>",
+    signature: `useMode(): Signal<'light' | 'dark'>`,
     example: `import { useMode } from "@pyreon/ui-core"
 
 const mode = useMode()
 // mode() returns "light" or "dark" (resolved, reactive)
 // Reflects OS preference when PyreonUI mode="system"`,
-    notes:
-      "Returns the resolved mode as a reactive signal. When mode='system', reflects the OS preference. When inversed is true, the mode is flipped.",
+    notes: `Returns the currently resolved mode as a reactive signal — \`'light'\` or \`'dark'\`. When the nearest \`PyreonUI\` ancestor uses \`mode='system'\`, the signal reflects the OS preference and updates when the user changes their system setting. When \`inversed\` is true on any ancestor, the mode is flipped before resolution. Component-scoped subscription — readers re-run only when the resolved mode actually changes. See also: PyreonUI.`,
+    mistakes: `- Reading \`useMode()\` without calling it — the value is a \`Signal\`; use \`mode()\` to read
+- Using \`useMode()\` outside any \`PyreonUI\` ancestor — falls back to a default but loses the reactive system / inversed handling`,
   },
+  // <gen-docs:api-reference:end @pyreon/ui-core>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/unistyle
   // ═══════════════════════════════════════════════════════════════════════════
+
+  // <gen-docs:api-reference:start @pyreon/unistyle>
 
   'unistyle/enrichTheme': {
     signature: 'enrichTheme(theme: PartialTheme): Theme',
@@ -2274,9 +2417,100 @@ const theme = enrichTheme({
 })
 
 // Merges user overrides with default breakpoints, spacing, and units`,
-    notes:
-      'Merges a partial theme with the full default theme (breakpoints, spacing, unit utilities). Always use when passing a theme to PyreonUI.',
+    notes: 'Merge a partial theme with the full default theme (breakpoints, spacing, unit utilities, fallback colors). Always call this before passing a user theme to `PyreonUI` — raw theme objects miss the default breakpoints and spacing scale that the rest of the UI system reads from. Idempotent: enriching an already-enriched theme is a no-op. See also: breakpoints, createMediaQueries.',
+    mistakes: `- Passing the raw partial theme to \`<PyreonUI theme={...}>\` without enriching — \`theme.breakpoints\` is undefined and every responsive prop falls back to the desktop value
+- Mutating the theme after passing it to \`PyreonUI\` — the styler resolver caches off the theme identity; clone + re-enrich for whole-theme swaps`,
   },
+
+  'unistyle/breakpoints': {
+    signature: 'breakpoints(): Breakpoints',
+    example: `import { breakpoints } from '@pyreon/unistyle'
+
+const bp = breakpoints()
+// { xs: 0, sm: 640, md: 768, lg: 1024, xl: 1280, xxl: 1536 }`,
+    notes: 'Return the default breakpoint set keyed by name (`xs`, `sm`, `md`, `lg`, `xl`, `xxl`) with min-width values in pixels. The same map is folded into `enrichTheme()` output, so most consumers read `theme.breakpoints` rather than calling this directly. Use it when you need the defaults outside a theme context (e.g. building a custom theme programmatically). See also: enrichTheme, createMediaQueries.',
+  },
+
+  'unistyle/createMediaQueries': {
+    signature: 'createMediaQueries(breakpoints: Breakpoints): Record<string, string>',
+    example: `import { createMediaQueries, breakpoints } from '@pyreon/unistyle'
+
+const queries = createMediaQueries(breakpoints())
+// { xs: '@media (min-width: 0)', sm: '@media (min-width: 640px)', md: '@media (min-width: 768px)', ... }`,
+    notes: 'Build a record of media-query strings keyed by breakpoint name. Each value is a `min-width` query — `xs` is `(min-width: 0)`, `sm` becomes `(min-width: 640px)`, and so on. Used internally by `makeItResponsive()`; expose to consumers when they need to compose custom CSS-in-JS rules outside the responsive-prop pipeline. See also: breakpoints, makeItResponsive.',
+  },
+
+  'unistyle/makeItResponsive': {
+    signature: 'makeItResponsive<T>(options: { value: T | T[] | Record<string, T>; property: string; theme: Theme }): string',
+    example: `import { makeItResponsive } from '@pyreon/unistyle'
+
+makeItResponsive({ value: 16, property: 'padding', theme })
+// → 'padding: 16px;'
+
+makeItResponsive({ value: [8, 12, 16], property: 'padding', theme })
+// → 'padding: 8px; @media (min-width: 640px) { padding: 12px } @media (min-width: 768px) { padding: 16px }'
+
+makeItResponsive({ value: { xs: 8, md: 16, xl: 24 }, property: 'padding', theme })
+// → '@media (min-width: 0) { padding: 8px } @media (min-width: 768px) { padding: 16px } @media (min-width: 1280px) { padding: 24px }'`,
+    notes: 'Resolve a responsive prop value to CSS for the current screen. Accepts three input shapes: single value (applies at all breakpoints), mobile-first array `[xs, sm, md, lg]` (each entry maps to the next breakpoint), or breakpoint object `{ xs: ..., md: ..., xl: ... }` (named keys map directly). The output is a CSS string with media queries already embedded; insert into a styled component template literal. See also: createMediaQueries, styles.',
+    mistakes: `- Passing CSS-spec property names (\`borderTopWidth\`) — unistyle uses property-first naming (\`borderWidthTop\`); the responsive transformer expects the unistyle convention
+- Forgetting to pass an enriched theme — without \`theme.breakpoints\`, the array form falls back to the first value at every breakpoint`,
+  },
+
+  'unistyle/styles': {
+    signature: 'styles(theme: Theme): string',
+    example: `import { styles, enrichTheme } from '@pyreon/unistyle'
+
+const theme = enrichTheme({ colors: { primary: '#3b82f6' } })
+const css = styles(theme)
+// → ':root { --color-primary: #3b82f6; --spacing-xs: 4px; ... }'`,
+    notes: `Generate the CSS string for a complete theme — colors, spacing, fonts, breakpoints, the works. Used to produce the cascade of CSS variables / global declarations that backs every styled component. Most consumers don\'t call this directly; the \`PyreonUI\` provider invokes it internally on theme mount. See also: enrichTheme, extendCss.`,
+  },
+
+  'unistyle/alignContent': {
+    signature: `alignContent(options: { alignX?: AlignXKey; alignY?: AlignYKey; direction?: 'row' | 'column' | 'inline' | 'rows' }): string`,
+    example: `import { alignContent } from '@pyreon/unistyle'
+
+alignContent({ alignX: 'center', alignY: 'start', direction: 'row' })
+// → 'justify-content: center; align-items: flex-start;'
+
+alignContent({ alignX: 'spaceBetween', direction: 'inline' })
+// → 'justify-content: space-between;'`,
+    notes: `Resolve \`alignX\` / \`alignY\` / \`direction\` shorthand to the matching flex / grid CSS (\`justify-content\`, \`align-items\`). The Element / Row / Column primitives use this internally — it\'s exposed for custom layout components that want the same alignment semantics. \`direction: "inline"\` maps to \`row\`; \`direction: "rows"\` maps to \`column\`. See also: makeItResponsive.`,
+  },
+
+  'unistyle/extendCss': {
+    signature: 'extendCss(base: ExtendCss, override?: ExtendCss): ExtendCss',
+    example: `import { extendCss } from '@pyreon/unistyle'
+
+const base = { color: 'red', hover: { color: 'darkred' } }
+const extended = extendCss(base, { hover: { background: 'pink' } })
+// → { color: 'red', hover: { color: 'darkred', background: 'pink' } }`,
+    notes: 'Extend a CSS definition (theme block, style descriptor) with overrides — deep-merges nested objects without losing the base. Used by rocketstyle dimension chains to layer dimension-specific CSS over a baseline. The base is not mutated; the result is a new object. See also: styles.',
+  },
+
+  'unistyle/stripUnit': {
+    signature: 'stripUnit(value: string | number): number',
+    example: `import { stripUnit } from '@pyreon/unistyle'
+
+stripUnit('16px')   // → 16
+stripUnit('1.5rem') // → 1.5
+stripUnit(16)       // → 16`,
+    notes: 'Strip the unit suffix from a CSS value and return the numeric part (`"16px"` → `16`, `"1.5rem"` → `1.5`). Returns the input unchanged when already a number. Useful for arithmetic on theme values declared as strings (`"16px"`) without manually parsing. See also: value, values.',
+  },
+
+  'unistyle/value': {
+    signature: 'value(input: PropertyValue, fallback?: PropertyValue): UnitValue',
+    example: `import { value } from '@pyreon/unistyle'
+
+value(16)         // → { value: 16, unit: 'px' }
+value('1.5rem')   // → { value: 1.5, unit: 'rem' }
+value('50%')      // → { value: 50, unit: '%' }
+value('garbage', 0) // → { value: 0, unit: 'px' }`,
+    notes: 'Parse and validate a single property value into a `UnitValue` shape (`{ value, unit }`). Accepts numbers (treated as pixels), strings with units (`"16px"`, `"1rem"`, `"50%"`), or objects already in `UnitValue` form. Optional `fallback` is returned when the input is invalid. The companion `values()` does the same over an array. See also: stripUnit, values.',
+  },
+  // <gen-docs:api-reference:end @pyreon/unistyle>
+
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/storybook
@@ -2406,6 +2640,8 @@ setUrlRouter(router)
   // @pyreon/document-primitives
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/document-primitives>
+
   'document-primitives/extractDocNode': {
     signature: 'extractDocNode(templateFn: () => VNode, options?: ExtractOptions): DocNode',
     example: `import {
@@ -2414,52 +2650,239 @@ setUrlRouter(router)
 } from '@pyreon/document-primitives'
 import { download } from '@pyreon/document'
 
-interface Resume { name: string; headline: string }
-
-function ResumeTemplate(props: { resume: () => Resume }) {
-  return (
-    // title and author accept reactive accessors — extractDocNode
-    // resolves them at extraction time, so each export click reads
-    // the LIVE value from the underlying signal
-    <DocDocument
-      title={() => \`\${props.resume().name} — Resume\`}
-      author={() => props.resume().name}
-    >
-      <DocPage>
-        <DocHeading level="h1">{() => props.resume().name}</DocHeading>
-        <DocText>{() => props.resume().headline}</DocText>
-      </DocPage>
-    </DocDocument>
-  )
-}
-
-// One-step extraction. The two-step createDocumentExport(...).getDocNode()
-// form is still exported for callers that want to pass the helper
-// object around, but extractDocNode is the recommended form.
-const tree = extractDocNode(() => <ResumeTemplate resume={store.resume} />)
-await download(tree, 'resume.pdf')
-await download(tree, 'resume.docx')
-await download(tree, 'resume.html')
-await download(tree, 'resume.md')`,
-    notes:
-      "18 primitives: DocDocument, DocPage, DocSection, DocRow, DocColumn, DocHeading, DocText, DocLink, DocImage, DocTable, DocList, DocListItem, DocCode, DocDivider, DocSpacer, DocButton, DocQuote, DocPageBreak. Same component tree renders in browser AND exports — primitives carry _documentType statics that extractDocumentTree (from @pyreon/connector-document) walks to produce a DocNode for @pyreon/document's render() to consume. DocDocument's title/author/subject accept either a string OR a `() => string` accessor; function values are stored in _documentProps and resolved at extraction time so reactive metadata works without `const initial = get()` workarounds. PR #197 also fixed a latent bug in extractDocumentTree: it now CALLS rocketstyle component functions to read post-attrs _documentProps, where before it only looked at the JSX vnode's props directly — every primitive's metadata was silently dropped during export until that fix landed.",
-    mistakes: `- Calling props.title() at the top of a template body to "fix" reactivity — components run ONCE at mount, so this captures the initial value forever. Pass the accessor through to DocDocument as-is: <DocDocument title={() => get().name}>
-- DocRow direction: layout props (direction, gap) go in .attrs() not .theme(). Element accepts 'inline' | 'rows' | 'reverseInline' | 'reverseRows' — 'row' is NOT valid
-- For text children reactivity, pass a signal accessor and read inside body: <DocText>{() => store.field()}</DocText>
-- Don't declare runtime-filled fields (tag, _documentProps) in the rocketstyle .attrs<P>() generic — they leak as required JSX props
-- Using createDocumentExport(...).getDocNode() in new code — prefer extractDocNode(fn) which is one call instead of two. createDocumentExport is kept for backward compat`,
+const tree = extractDocNode(() => (
+  <DocDocument title="Quarterly Report" author="Aisha">
+    <DocPage>
+      <DocHeading level="h1">Q4 Results</DocHeading>
+      <DocText>Revenue grew 23% YoY.</DocText>
+    </DocPage>
+  </DocDocument>
+))
+await download(tree, 'report.pdf')
+await download(tree, 'report.docx')`,
+    notes: `18 primitives: \`DocDocument\`, \`DocPage\`, \`DocSection\`, \`DocRow\`, \`DocColumn\`, \`DocHeading\`, \`DocText\`, \`DocLink\`, \`DocImage\`, \`DocTable\`, \`DocList\`, \`DocListItem\`, \`DocCode\`, \`DocDivider\`, \`DocSpacer\`, \`DocButton\`, \`DocQuote\`, \`DocPageBreak\`. Same component tree renders in browser AND exports — primitives carry \`_documentType\` statics that \`extractDocumentTree\` (from \`@pyreon/connector-document\`) walks to produce a \`DocNode\` for \`@pyreon/document\`\'s \`render()\` to consume. \`DocDocument\`\'s \`title\` / \`author\` / \`subject\` accept either a string OR a \`() => string\` accessor; function values are stored in \`_documentProps\` and resolved at extraction time so reactive metadata works without \`const initial = get()\` workarounds. PR #197 also fixed a latent bug in \`extractDocumentTree\`: it now CALLS rocketstyle component functions to read post-attrs \`_documentProps\`, where before it only looked at the JSX vnode\'s props directly — every primitive\'s metadata was silently dropped during export until that fix landed. See also: createDocumentExport.`,
+    mistakes: `- Calling \`props.title()\` at the top of a template body to "fix" reactivity — components run ONCE at mount, so this captures the initial value forever. Pass the accessor through to DocDocument as-is: \`<DocDocument title={() => get().name}>\`
+- DocRow direction: layout props (direction, gap) go in \`.attrs()\` not \`.theme()\`. Element accepts \`'inline'\` | \`'rows'\` | \`'reverseInline'\` | \`'reverseRows'\` — \`'row'\` is NOT valid
+- For text children reactivity, pass a signal accessor and read inside body: \`<DocText>{() => store.field()}</DocText>\`
+- Don't declare runtime-filled fields (\`tag\`, \`_documentProps\`) in the rocketstyle \`.attrs<P>()\` generic — they leak as required JSX props
+- Using \`createDocumentExport(...).getDocNode()\` in new code — prefer \`extractDocNode(fn)\` which is one call instead of two. \`createDocumentExport\` is kept for backward compat`,
   },
 
   'document-primitives/createDocumentExport': {
-    signature:
-      'createDocumentExport(templateFn: () => VNode): { getDocNode(): DocNode }',
+    signature: 'createDocumentExport(templateFn: () => VNode): { getDocNode(): DocNode }',
     example: `// Two-step form (kept for backward compat). New code should
 // prefer the one-step extractDocNode helper.
 import { createDocumentExport } from '@pyreon/document-primitives'
 
 const helper = createDocumentExport(() => <Resume name="Aisha" />)
 const tree = helper.getDocNode()`,
-    notes:
-      "Wrapper around extractDocNode. The wrapper-object form is kept for callers that want to pass the helper around (e.g. to wrapper components that take a DocumentExport instance). New code should use extractDocNode(templateFn) which is one call instead of two.",
+    notes: 'Wrapper around `extractDocNode`. The wrapper-object form is kept for callers that want to pass the helper around (e.g. to wrapper components that take a `DocumentExport` instance). New code should use `extractDocNode(templateFn)` which is one call instead of two. See also: extractDocNode.',
   },
+
+  'document-primitives/DocDocument': {
+    signature: '(props: { title?: string | (() => string); author?: string | (() => string); subject?: string | (() => string); children: VNodeChild }) => VNodeChild',
+    example: `<DocDocument title="Quarterly Report" author="Aisha" subject="Q4 2025">
+  <DocPage>...</DocPage>
+</DocDocument>
+
+// Reactive metadata via accessor
+<DocDocument title={() => \`\${user().name} — Resume\`}>
+  <DocPage>...</DocPage>
+</DocDocument>`,
+    notes: 'Root container for a document tree — produces a `_documentType: "document"` node. Accepts optional metadata: `title`, `author`, `subject`. Each accepts either a plain string OR a `() => string` accessor; function values are stored in `_documentProps` and resolved at extraction time so each export call reads the LIVE value from any underlying signal. See also: DocPage, extractDocNode.',
+  },
+
+  'document-primitives/DocPage': {
+    signature: `(props: { size?: string; orientation?: 'portrait' | 'landscape'; children: VNodeChild }) => VNodeChild`,
+    example: `<DocDocument>
+  <DocPage size="A4" orientation="portrait">
+    <DocHeading level="h1">Page 1</DocHeading>
+  </DocPage>
+  <DocPage size="A4" orientation="landscape">
+    <DocHeading level="h1">Page 2 — landscape</DocHeading>
+  </DocPage>
+</DocDocument>`,
+    notes: 'A page boundary inside a `DocDocument`. Paginated outputs (PDF, DOCX) treat each `DocPage` as a separate page; flow outputs (HTML, Markdown) render the contents inline with no page boundary. `size` and `orientation` configure paginated formats — common values: `"A4"`, `"Letter"`, `"Legal"`. See also: DocDocument, DocPageBreak.',
+  },
+
+  'document-primitives/DocSection': {
+    signature: `(props: { direction?: 'column' | 'row'; children: VNodeChild }) => VNodeChild`,
+    example: `<DocPage>
+  <DocSection direction="column">
+    <DocHeading level="h2">Introduction</DocHeading>
+    <DocText>Background paragraph.</DocText>
+  </DocSection>
+</DocPage>`,
+    notes: 'Semantic grouping inside a page. Default `direction` is `"column"` (children stack vertically); `"row"` arranges them horizontally. Use to group related content for visual rhythm and for export targets that emit semantic section markers (HTML `<section>`, DOCX section breaks). See also: DocRow, DocColumn.',
+  },
+
+  'document-primitives/DocRow': {
+    signature: '(props: { children: VNodeChild }) => VNodeChild',
+    example: `<DocRow>
+  <DocText>Name:</DocText>
+  <DocText>Aisha Patel</DocText>
+</DocRow>`,
+    notes: 'Horizontal layout container — children flow inline with a fixed 8px gap. Use for side-by-side content (label + value pairs, columns of metadata, button rows). Layout-only — no user-configurable props on this primitive; for columns with custom widths use `DocColumn` inside. See also: DocColumn, DocSection.',
+  },
+
+  'document-primitives/DocColumn': {
+    signature: '(props: { width?: number | string; children: VNodeChild }) => VNodeChild',
+    example: `<DocRow>
+  <DocColumn width="30%">
+    <DocText>Label</DocText>
+  </DocColumn>
+  <DocColumn width="70%">
+    <DocText>Value</DocText>
+  </DocColumn>
+</DocRow>`,
+    notes: `A column inside a row layout. Optional \`width\` controls the column\'s share of the row — accepts a number (interpreted as pixels) or a string (\`"50%"\`, \`"1fr"\`). When omitted, columns share available width equally. Most common shape is \`<DocRow><DocColumn width="30%" /> <DocColumn width="70%" /></DocRow>\`. See also: DocRow, DocSection.`,
+  },
+
+  'document-primitives/DocHeading': {
+    signature: `(props: { level?: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'; children: VNodeChild }) => VNodeChild`,
+    example: `<DocHeading level="h1">Quarterly Report</DocHeading>
+<DocHeading level="h2">Q4 Results</DocHeading>
+<DocHeading level="h3">Revenue Breakdown</DocHeading>`,
+    notes: 'Heading text — `level` (`"h1"` through `"h6"`) controls both visual size and the semantic level emitted to outputs (HTML `<h1>...<h6>`, DOCX heading styles, Markdown `#`...`######`). Default `level` is `"h1"`. Used for document structure that downstream tooling can build a TOC from. See also: DocText, DocSection.',
+  },
+
+  'document-primitives/DocText': {
+    signature: '(props: { children: VNodeChild }) => VNodeChild',
+    example: `<DocText>Static paragraph content.</DocText>
+
+// Reactive children
+<DocText>{() => \`Hello, \${user().name}\`}</DocText>`,
+    notes: 'Paragraph / inline text. The most common primitive — wraps any text content for the document. Children may be string literals OR signal accessors (`{() => store.field()}`) for reactive content. Visual styling (font weight, variant) is controlled via rocketstyle dimension props on the wrapping component definition. See also: DocHeading, DocLink.',
+  },
+
+  'document-primitives/DocLink': {
+    signature: '(props: { href?: string; children: VNodeChild }) => VNodeChild',
+    example: `<DocText>
+  Read more on
+  <DocLink href="https://pyreon.dev">our blog</DocLink>
+  for the latest releases.
+</DocText>`,
+    notes: 'Hyperlink within text. `href` is the URL — defaults to `"#"`. Outputs that support hyperlinks (HTML, PDF, DOCX, email) render this as a clickable link; flat outputs (plain text, certain Slack variants) render the link target inline as `text (href)`. See also: DocText.',
+  },
+
+  'document-primitives/DocImage': {
+    signature: '(props: { src: string; alt?: string; width?: number; height?: number; caption?: string }) => VNodeChild',
+    example: `<DocImage
+  src="/charts/q4-revenue.png"
+  alt="Revenue grew 23% in Q4"
+  width={600}
+  height={400}
+  caption="Figure 1: Quarterly revenue, 2024-2025"
+/>`,
+    notes: 'An image embedded in the document. `src` is the image URL or data URI. `alt` is the accessible description (also used as fallback text in non-visual outputs). `width` / `height` constrain dimensions in pixels. Optional `caption` renders a caption beneath the image. See also: DocCode.',
+  },
+
+  'document-primitives/DocTable': {
+    signature: '(props: { columns: TableColumn[]; rows: TableRow[]; headerStyle?: object; striped?: boolean; bordered?: boolean; caption?: string }) => VNodeChild',
+    example: `<DocTable
+  caption="Q4 results by region"
+  bordered
+  striped
+  columns={[
+    { key: 'region', label: 'Region', align: 'left' },
+    { key: 'revenue', label: 'Revenue', align: 'right' },
+    { key: 'growth', label: 'YoY Growth', align: 'right' },
+  ]}
+  rows={[
+    { region: 'NA', revenue: '$12.4M', growth: '+23%' },
+    { region: 'EU', revenue: '$8.7M', growth: '+18%' },
+    { region: 'APAC', revenue: '$5.1M', growth: '+41%' },
+  ]}
+/>`,
+    notes: 'Tabular data. `columns` defines the header cells (label, key, optional alignment). `rows` is an array of data rows keyed by column key. `striped` adds alternating row backgrounds; `bordered` adds cell borders; `caption` renders an accessible table caption. Both `rows` and `columns` are filtered before reaching the DOM via `.attrs(..., { filter: [...] })` because `HTMLTableElement.rows` / `.cells` are read-only DOM properties — assignment would crash. See also: DocList, DocSection.',
+  },
+
+  'document-primitives/DocList': {
+    signature: '(props: { ordered?: boolean; children: VNodeChild }) => VNodeChild',
+    example: `<DocList>
+  <DocListItem>First bullet</DocListItem>
+  <DocListItem>Second bullet</DocListItem>
+</DocList>
+
+<DocList ordered>
+  <DocListItem>First step</DocListItem>
+  <DocListItem>Second step</DocListItem>
+</DocList>`,
+    notes: 'Bulleted (default) or numbered (`ordered`) list. Children are typically `DocListItem` instances. Outputs map this to the right native list type — HTML `<ul>` / `<ol>`, Markdown `-` / `1.`, DOCX list styles. See also: DocListItem.',
+  },
+
+  'document-primitives/DocListItem': {
+    signature: '(props: { children: VNodeChild }) => VNodeChild',
+    example: `<DocList>
+  <DocListItem>Top-level item</DocListItem>
+  <DocListItem>
+    Item with nested list
+    <DocList>
+      <DocListItem>Nested A</DocListItem>
+      <DocListItem>Nested B</DocListItem>
+    </DocList>
+  </DocListItem>
+</DocList>`,
+    notes: `Single item inside a \`DocList\`. Children may be plain text, \`DocText\`, nested \`DocList\` for sublists, or any other inline primitive. Visual marker (bullet vs number) is decided by the parent list\'s \`ordered\` prop, not by the item. See also: DocList.`,
+  },
+
+  'document-primitives/DocCode': {
+    signature: '(props: { language?: string; children: VNodeChild }) => VNodeChild',
+    example: `<DocCode language="typescript">{
+\`const flow = createFlow({
+  nodes: [{ id: '1', position: { x: 0, y: 0 } }],
+  edges: [],
+})\`
+}</DocCode>`,
+    notes: 'Monospace code block. Optional `language` hint enables syntax highlighting in outputs that support it (HTML via Prism / Shiki, Markdown fenced code blocks with language tag). Whitespace is preserved verbatim — pass code as a single string child to keep newlines. See also: DocText.',
+  },
+
+  'document-primitives/DocDivider': {
+    signature: '(props: { color?: string; thickness?: number }) => VNodeChild',
+    example: `<DocText>Above the divider.</DocText>
+<DocDivider color="#e5e7eb" thickness={1} />
+<DocText>Below the divider.</DocText>`,
+    notes: 'Horizontal rule — visual section separator. `color` controls the line color (any CSS color string); `thickness` controls the line thickness in pixels. Outputs map this to native dividers — HTML `<hr>`, Markdown `---`, DOCX horizontal rule. See also: DocSpacer.',
+  },
+
+  'document-primitives/DocSpacer': {
+    signature: '(props: { height?: number }) => VNodeChild',
+    example: `<DocSection>
+  <DocHeading level="h2">Section A</DocHeading>
+  <DocText>Content...</DocText>
+  <DocSpacer height={32} />
+  <DocHeading level="h2">Section B</DocHeading>
+  <DocText>More content...</DocText>
+</DocSection>`,
+    notes: 'Vertical whitespace — adds a blank vertical gap. `height` is in pixels (default 16). Use to space out content beyond what `DocSection` / `DocPage` margins provide. In flow outputs this becomes a styled blank block; in plain-text outputs, a sequence of newlines. See also: DocDivider.',
+  },
+
+  'document-primitives/DocButton': {
+    signature: '(props: { href?: string; children: VNodeChild }) => VNodeChild',
+    example: `<DocButton href="https://pyreon.dev/signup">
+  Get started
+</DocButton>`,
+    notes: 'Call-to-action button. Renders as a styled clickable element in HTML / email outputs (mail-safe button table layout for email), and as a labeled link in PDF / DOCX. `href` is the action URL — defaults to `"#"`. Visual style (variant) is controlled via rocketstyle dimensions on the component definition. See also: DocLink.',
+  },
+
+  'document-primitives/DocQuote': {
+    signature: '(props: { borderColor?: string; children: VNodeChild }) => VNodeChild',
+    example: `<DocQuote borderColor="#3b82f6">
+  <DocText>"The best way to predict the future is to build it."</DocText>
+  <DocText>— Aisha Patel, Q4 keynote</DocText>
+</DocQuote>`,
+    notes: 'Block quote — sets off a quoted passage with an indented left border. `borderColor` controls the indicator stripe (any CSS color). Outputs map this to native quote styling — HTML `<blockquote>`, Markdown `> ...`, DOCX quote style. See also: DocText.',
+  },
+
+  'document-primitives/DocPageBreak': {
+    signature: '() => VNodeChild',
+    example: `<DocPage>
+  <DocHeading level="h1">Section 1</DocHeading>
+  <DocText>...long content...</DocText>
+  <DocPageBreak />
+  <DocHeading level="h1">Section 2 — new page</DocHeading>
+</DocPage>`,
+    notes: 'Explicit page boundary inside a `DocPage`. Forces the renderer to start a new page at this point in paginated outputs (PDF, DOCX). In flow outputs (HTML, Markdown), it renders as visible whitespace or is omitted entirely. Use for explicit pagination control beyond what `DocPage` boundaries already provide. See also: DocPage.',
+  },
+  // <gen-docs:api-reference:end @pyreon/document-primitives>
 }

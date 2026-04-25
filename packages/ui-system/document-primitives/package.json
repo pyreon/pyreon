@@ -46,6 +46,7 @@
   "devDependencies": {
     "@pyreon/core": "workspace:^",
     "@pyreon/elements": "workspace:^",
+    "@pyreon/manifest": "workspace:*",
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/rocketstyle": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",

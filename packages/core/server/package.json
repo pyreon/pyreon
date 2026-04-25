@@ -53,5 +53,8 @@
     "@pyreon/router": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/runtime-server": "workspace:^"
+  },
+  "devDependencies": {
+    "@pyreon/manifest": "workspace:*"
   }
 }
