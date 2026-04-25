@@ -9,11 +9,7 @@
  * - What framework name to report
  */
 
-import { dirname, join } from 'node:path'
-
-function _getAbsolutePath(value: string): string {
-  return dirname(require.resolve(join(value, 'package.json')))
-}
+import { join } from 'node:path'
 
 export const addons: string[] = []
 

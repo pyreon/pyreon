@@ -7,9 +7,9 @@ export default mergeConfig(
     createVitestConfig({
       environment: 'happy-dom',
       coverageThresholds: {
-        statements: 84,
-        branches: 75,
-        functions: 80,
+        statements: 95,
+        branches: 90,
+        functions: 95,
       },
     }),
     defineConfig({
