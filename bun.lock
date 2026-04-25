@@ -353,6 +353,7 @@
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.8.9",
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/runtime-server": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
@@ -426,6 +427,9 @@
         "@pyreon/router": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/runtime-server": "workspace:^",
+      },
+      "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
       },
     },
     "packages/fundamentals/charts": {
@@ -888,6 +892,9 @@
         "@oxc-project/types": "^0.123.0",
         "oxc-parser": "^0.123.0",
       },
+      "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
+      },
     },
     "packages/tools/mcp": {
       "name": "@pyreon/mcp",
@@ -1046,6 +1053,7 @@
       "devDependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/elements": "workspace:^",
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/rocketstyle": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
@@ -1145,6 +1153,7 @@
       "name": "@pyreon/ui-core",
       "version": "0.13.1",
       "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/typescript": "workspace:^",
         "@vitus-labs/tools-rolldown": "^1.15.3",
       },
@@ -1159,6 +1168,7 @@
       "name": "@pyreon/unistyle",
       "version": "0.13.1",
       "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
         "@vitest/browser-playwright": "^4.1.4",

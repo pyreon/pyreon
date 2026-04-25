@@ -298,7 +298,13 @@ describe('gen-docs CLI — subprocess smoke', () => {
   // entry shape works end-to-end. Faster in-process coverage in the
   // suite above; this is the environment-parity guard.
 
-  it('CLI exits 0 on the real repo (--check)', () => {
+  it('CLI exits 0 on the real repo (--check)', { timeout: 30_000 }, () => {
+    // Vitest's default test timeout is 5s. The subprocess `timeout: 30000`
+    // option below caps the spawned process, but vitest itself still
+    // kills the test at 5s if we don't override the harness timeout —
+    // which is what happened on CI after the manifest count grew from
+    // 25 to 32 in PR #319 and the cold-start subprocess exceeded 5s on
+    // the slower CI runner. The 30s test timeout matches the spawn cap.
     const result = spawnSync('bun', [join(REPO_ROOT, 'scripts', 'gen-docs.ts'), '--check'], {
       cwd: REPO_ROOT,
       encoding: 'utf8',
