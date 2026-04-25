@@ -71,8 +71,8 @@ describe('vue-compat — wrapCompatComponent (jsx-runtime)', () => {
   })
 
   it('handles components with children prop (passes children through to wrapped fn)', () => {
-    const Wrapper = (props: { children?: unknown }) =>
-      jsx('section', { children: props.children })
+    const Wrapper = (props: { children?: string }) =>
+      jsx('section', { children: props.children ?? '' })
     const c = container()
     mount(jsx(Wrapper, { children: 'inner' }), c)
     expect(c.textContent).toContain('inner')

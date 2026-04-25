@@ -6,6 +6,8 @@ import type { LintResult } from '../types'
 // shapes into one of three formats (text / JSON / compact). Pure pretty-
 // printing — no I/O, no async — but uncovered until now.
 
+const span = (start: number, end: number) => ({ start, end })
+
 const fileWithErr = {
   filePath: '/abs/foo.ts',
   diagnostics: [
@@ -14,9 +16,9 @@ const fileWithErr = {
       severity: 'error' as const,
       message: 'window is undefined in SSR',
       loc: { line: 12, column: 4 },
+      span: span(0, 6),
     },
   ],
-  fixed: 0,
 }
 const fileWithMixed = {
   filePath: '/abs/bar.ts',
@@ -26,20 +28,20 @@ const fileWithMixed = {
       severity: 'warn' as const,
       message: 'bare signal in JSX text',
       loc: { line: 5, column: 10 },
+      span: span(20, 26),
     },
     {
       ruleId: 'pyreon/use-pyreon-hooks',
       severity: 'info' as const,
       message: 'consider useEventListener',
       loc: { line: 7, column: 2 },
+      span: span(40, 60),
     },
   ],
-  fixed: 0,
 }
 const cleanFile = {
   filePath: '/abs/clean.ts',
   diagnostics: [],
-  fixed: 0,
 }
 
 const result: LintResult = {
@@ -47,7 +49,6 @@ const result: LintResult = {
   totalErrors: 1,
   totalWarnings: 1,
   totalInfos: 1,
-  totalFixed: 0,
   configDiagnostics: [],
 }
 
@@ -56,7 +57,6 @@ const empty: LintResult = {
   totalErrors: 0,
   totalWarnings: 0,
   totalInfos: 0,
-  totalFixed: 0,
   configDiagnostics: [],
 }
 
@@ -94,18 +94,16 @@ describe('reporter — formatText', () => {
         {
           filePath: '/x.ts',
           diagnostics: [
-            { ruleId: 'r', severity: 'error', message: 'm', loc: { line: 1, column: 1 } },
-            { ruleId: 'r', severity: 'error', message: 'm', loc: { line: 2, column: 1 } },
-            { ruleId: 'r', severity: 'warn', message: 'm', loc: { line: 3, column: 1 } },
-            { ruleId: 'r', severity: 'warn', message: 'm', loc: { line: 4, column: 1 } },
+            { ruleId: 'r', severity: 'error', message: 'm', loc: { line: 1, column: 1 }, span: span(0, 1) },
+            { ruleId: 'r', severity: 'error', message: 'm', loc: { line: 2, column: 1 }, span: span(2, 3) },
+            { ruleId: 'r', severity: 'warn', message: 'm', loc: { line: 3, column: 1 }, span: span(4, 5) },
+            { ruleId: 'r', severity: 'warn', message: 'm', loc: { line: 4, column: 1 }, span: span(6, 7) },
           ],
-          fixed: 0,
         },
       ],
       totalErrors: 2,
       totalWarnings: 2,
       totalInfos: 0,
-      totalFixed: 0,
       configDiagnostics: [],
     }
     const text = formatText(multi)
