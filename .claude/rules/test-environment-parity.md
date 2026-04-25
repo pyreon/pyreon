@@ -112,6 +112,10 @@ happy-dom is fine for testing your component renders ANY DOM at all. It is NOT f
 
 If a test mocks `@pyreon/core`, `@pyreon/runtime-dom`, or any other framework package, it's testing the mock, not the framework integration. Use the real package. If the real package is too slow to set up, the package itself probably has an ergonomics problem worth fixing.
 
+## Pre-merge audit guard
+
+Before merging any PR that adds or modifies `*.test.{ts,tsx}` files, run `pyreon doctor --audit-tests` and verify HIGH + MEDIUM count is still 0. If it regressed, either convert the new test to use real `h()` from `@pyreon/core` (or rename mock helpers off the scanner's name list — `mockVNode` / `vnode` / `createVNode` / `VNodeMock` / `makeVNode`) or document the exception in the PR description with the rationale. The T1.2 sweep brought the count to 0/0; this guard locks it in without CI tooling.
+
 ## How to add a browser smoke test
 
 The harness is set up (T1.1 Phase 1). Tests run in real Chromium via `@vitest/browser` + Playwright — not happy-dom, not Node.
