@@ -456,3 +456,93 @@ describe('extractDocumentTree — real h() round-trip', () => {
     expect(result.props.level).toBe(2)
   })
 })
+
+// ─── T3.1 hoisted-attrs fast path (Path C) ────────────────────────────
+//
+// Real rocketstyle primitives now expose `__rs_attrs` — the accumulated
+// `.attrs()` callback chain — on the component function itself.
+// `extractDocumentTree` runs that chain DIRECTLY instead of invoking
+// the full component, so `_documentProps` resolution doesn't pay for
+// the styled wrapper / dimension resolution / JSX tree creation.
+//
+// The test below mimics rocketstyle's exposed surface (no real
+// `@pyreon/rocketstyle` import needed — the contract is just "if
+// `__rs_attrs` is present on the component function, use it"). A
+// counter-spied "render" function asserts the body is NEVER called when
+// the fast path is taken.
+
+describe('extractDocumentTree — T3.1 hoisted-attrs fast path', () => {
+  it('uses __rs_attrs without invoking the component function (Path C)', () => {
+    let callCount = 0
+    // Mimic a rocketstyle primitive: function with _documentType static
+    // AND __rs_attrs static (the hoisted attrs chain). The body is what
+    // would be the styled wrapper; we count its invocations.
+    const FakeRocketDoc = ((props: any) => {
+      callCount++
+      return h('div', props, props.children)
+    }) as ((p: any) => any) & DocumentMarker
+    ;(FakeRocketDoc as any)._documentType = 'document'
+    ;(FakeRocketDoc as any).__rs_attrs = [
+      (props: { title?: string; author?: string }) => ({
+        _documentProps: {
+          ...(props.title ? { title: props.title } : {}),
+          ...(props.author ? { author: props.author } : {}),
+        },
+      }),
+    ]
+
+    const tree = h(FakeRocketDoc, { title: 'My Doc', author: 'Alice' })
+    const result = extractDocumentTree(tree)
+
+    expect(result.type).toBe('document')
+    expect(result.props.title).toBe('My Doc')
+    expect(result.props.author).toBe('Alice')
+    // The architectural assertion — the component body must NOT run.
+    expect(callCount).toBe(0)
+  })
+
+  it('also resolves accessor function values from __rs_attrs (composes with D1 fix)', () => {
+    let liveTitle = 'First'
+    let callCount = 0
+    const FakeRocketDoc = ((props: any) => {
+      callCount++
+      return h('div', props, props.children)
+    }) as ((p: any) => any) & DocumentMarker
+    ;(FakeRocketDoc as any)._documentType = 'document'
+    ;(FakeRocketDoc as any).__rs_attrs = [
+      (props: { title?: () => string }) => ({
+        _documentProps: { title: props.title },
+      }),
+    ]
+
+    const jsx = h(FakeRocketDoc, { title: () => liveTitle })
+    const first = extractDocumentTree(jsx)
+    expect(first.props.title).toBe('First')
+
+    liveTitle = 'Second'
+    const second = extractDocumentTree(jsx)
+    expect(second.props.title).toBe('Second')
+
+    // Two extractions, zero component invocations.
+    expect(callCount).toBe(0)
+  })
+
+  it('falls back to Path B (full component invocation) when __rs_attrs is absent', () => {
+    // Non-rocketstyle docComponents (test fixtures, hand-rolled HOCs)
+    // don't have __rs_attrs and must still work via the legacy Path B.
+    let callCount = 0
+    const PlainDoc = ((props: any) => {
+      callCount++
+      return h('div', { ...props, _documentProps: { level: 3 } }, props.children)
+    }) as ((p: any) => any) & DocumentMarker
+    ;(PlainDoc as any)._documentType = 'heading'
+    // Note: NO __rs_attrs here — Path B should fire
+
+    const tree = h(PlainDoc, {}, 'Body')
+    const result = extractDocumentTree(tree)
+
+    expect(result.type).toBe('heading')
+    expect(result.props.level).toBe(3)
+    expect(callCount).toBeGreaterThan(0)
+  })
+})

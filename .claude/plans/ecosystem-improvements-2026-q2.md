@@ -598,7 +598,7 @@ For each tool: 1-2 happy-path tests + 1 error-path test.
 
 ### T3.1 — Rocketstyle `.statics()` hoisting from `.attrs()` callbacks
 
-**Status**: PR #197 deferred this. The current `extractDocumentTree` workaround (Path B) invokes the component to read post-attrs `_documentProps`. Works because `.attrs()` is "supposed to be" pure — but that's an unenforced contract.
+**Status**: ✅ DONE in PR #321. Implementation differs slightly from the plan: instead of a new `from: 'attrs'` `.statics()` mode (which would have required per-key opt-in and a closure-based design to handle prop-derived values), `@pyreon/rocketstyle` now exposes the accumulated `.attrs()` callback chain as `__rs_attrs` on every rocketstyle component function. `extractDocumentTree` (Path C) runs the chain directly with the JSX vnode's props — `chain.reduce(Object.assign, {})` — and reads `_documentProps` from the result. The original Path B (full component invocation) stays as fallback for hand-rolled test fixtures that don't go through rocketstyle. New regression tests in `connector-document/src/__tests__/extractDocumentTree.test.ts` lock in: (a) the fast path produces the right `_documentProps` without invoking the component (callCount === 0), (b) accessor function values still resolve correctly through the new path, (c) Path B fallback still fires for non-rocketstyle docComponents. Bisect-verified: reverting just the implementation files (rocketstyle.ts + extractDocumentTree.ts) leaves the test files in place and 2 of 3 new tests fail with `expected undefined to be 'First'`. Restored: all 3 pass.
 
 **The architectural fix**: teach `.statics({ key })` to support a `from: 'attrs'` mode that hoists the value from the `.attrs()` callback's return:
 

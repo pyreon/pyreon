@@ -390,6 +390,22 @@ const rocketComponent: RocketComponent = (options) => {
     options: options.statics,
   })
 
+  // ─── Hoisted attrs chain (T3.1) ──────────────────────────────────────
+  //
+  // Expose the accumulated `.attrs()` callback chain on the component so
+  // external inspectors (notably `extractDocumentTree` from
+  // `@pyreon/connector-document`) can compute the post-attrs props
+  // without invoking the full component. The previous Path B workaround
+  // had to run the entire styled wrapper — JSX tree creation, dimension
+  // resolution, the lot — just to read `_documentProps` off the result.
+  //
+  // The chain is a `Array<(props) => Record<string, unknown>>` matching
+  // the shape consumed by `calculateChainOptions(chain)([props])`. Empty
+  // when no `.attrs()` was ever called. This is a deliberately exposed
+  // hoist point — opaque to consumers that don't need it, free for the
+  // ones that do.
+  ;(FinalComponent as any).__rs_attrs = options.attrs
+
   Object.assign(FinalComponent, {
     attrs: (attrs: any, { priority, filter }: any = {}) => {
       const result: Record<string, any> = {}
