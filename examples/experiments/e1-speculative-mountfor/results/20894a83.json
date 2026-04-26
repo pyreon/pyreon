@@ -1,0 +1,50 @@
+{
+  "experiment": "e1-speculative-mountfor",
+  "sha": "20894a83",
+  "baseline_sha": "20894a83",
+  "wall_clock": {
+    "chat_baseline_no_e1": {
+      "median": 182,
+      "p90": 189,
+      "samples": 3,
+      "min": 182,
+      "max": 189
+    },
+    "chat_with_e1": {
+      "median": 182,
+      "p90": 183,
+      "samples": 3,
+      "min": 182,
+      "max": 183
+    },
+    "shuffleRows_baseline_no_e1": {
+      "median": 16,
+      "p90": 16,
+      "samples": 2,
+      "min": 16,
+      "max": 16
+    },
+    "shuffleRows_with_e1": {
+      "median": 16,
+      "p90": 23,
+      "samples": 3,
+      "min": 15,
+      "max": 23
+    }
+  },
+  "counters": {
+    "runtime.mountFor.appendFast": 10,
+    "runtime.mountFor.lisOps": 186,
+    "runtime.tpl": 1000,
+    "reactivity.signalWrite": 11,
+    "reactivity.effectRun": 11
+  },
+  "decision": "DEFER",
+  "decision_notes": "Append-only fast path is correctly exercised (counter fires 10 times per chat run) but the work it skips is microseconds — dwarfed by the millisecond cloneNode cost. Bisect-verified: same SHA, stash-on/off both produce 182ms median on chat. Zero shuffle regression. Worth re-evaluating with a 10k+ row stress journey where LIS iteration cost would surface above the noise floor.",
+  "environment": {
+    "os": "macOS 14.x",
+    "browser": "headless Chromium via Playwright",
+    "mode": "vite dev",
+    "notes": "noisy host (~30 concurrent worktrees + dev servers); 1ms wall-clock jitter is typical"
+  }
+}
