@@ -72,6 +72,7 @@ Five experiments, ~1 week each, run in parallel worktrees. Cheap enough to kill 
 - **KILL**: <20% statically resolvable OR ≤10% throughput win on the resolved sites.
 - **C**: 1 week.
 - **Pyreon-unique**: nobody else can do this — requires Pyreon's typed multi-dimensional theme system.
+- **OUTCOME**: GRADUATE (PR #338, math corrected in #341). 44× wall-clock speedup on collapsed Buttons; audit (PR #340) showed 95.3% of rocketstyle call sites in `examples/` are statically resolvable. Probe (PR #342) identified a separate runtime-side optimization (dimension-prop memoization at the wrapper level). Compiler-pass plan: see `compiler-pass-rocketstyle-collapse.md`.
 
 ### E3: Local-first todo (architectural pivot test)
 
