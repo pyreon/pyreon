@@ -1,5 +1,18 @@
 # @pyreon/vue-compat
 
+## 0.14.0
+
+### Minor Changes
+
+- [#291](https://github.com/pyreon/pyreon/pull/291) [`9e81660`](https://github.com/pyreon/pyreon/commit/9e81660481af0cf49d245e008ab17a30eaf5b8ed) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Production-ready Vue 3 Composition API surface with 144 tests. Adds deep recursive readonly, isReactive/isReadonly/isProxy/markRaw, effectScope/getCurrentScope/onScopeDispose, watch with array source, onErrorCaptured/onRenderTracked/onRenderTriggered, Teleport/KeepAlive, watchPostEffect/watchSyncEffect, customRef, createApp.use()/provide(), version string, and 8 type exports (PropType, ExtractPropTypes, EmitsOptions, SetupContext, Plugin, Directive, InjectionKey, Component/VNode).
+
+### Patch Changes
+
+- Updated dependencies [[`c97783a`](https://github.com/pyreon/pyreon/commit/c97783a85b6f7ffc5d25ad16fd280c92808b5ea6), [`12dbf14`](https://github.com/pyreon/pyreon/commit/12dbf14c92ea3e107c89039a269181a500cb60d4)]:
+  - @pyreon/runtime-dom@0.14.0
+  - @pyreon/core@0.14.0
+  - @pyreon/reactivity@0.14.0
+
 ## 0.13.0
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/i18n",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "description": "Reactive internationalization for Pyreon with async namespace loading",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/i18n#readme",
   "bugs": {

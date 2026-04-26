@@ -1,5 +1,38 @@
 # @pyreon/meta
 
+## 0.14.0
+
+### Patch Changes
+
+- Updated dependencies [[`2911026`](https://github.com/pyreon/pyreon/commit/29110269b01a1f2d3dad8c4cd02b424c076ae71e)]:
+  - @pyreon/elements@0.14.0
+  - @pyreon/reactivity@0.14.0
+  - @pyreon/charts@0.14.0
+  - @pyreon/code@0.14.0
+  - @pyreon/feature@0.14.0
+  - @pyreon/flow@0.14.0
+  - @pyreon/form@0.14.0
+  - @pyreon/hooks@0.14.0
+  - @pyreon/hotkeys@0.14.0
+  - @pyreon/i18n@1.0.0
+  - @pyreon/machine@0.14.0
+  - @pyreon/permissions@0.14.0
+  - @pyreon/query@0.14.0
+  - @pyreon/state-tree@0.14.0
+  - @pyreon/storage@0.14.0
+  - @pyreon/store@0.14.0
+  - @pyreon/table@0.14.0
+  - @pyreon/validation@0.14.0
+  - @pyreon/virtual@0.14.0
+  - @pyreon/attrs@0.14.0
+  - @pyreon/coolgrid@0.14.0
+  - @pyreon/kinetic-presets@0.14.0
+  - @pyreon/kinetic@0.14.0
+  - @pyreon/rocketstyle@0.14.0
+  - @pyreon/styler@0.14.0
+  - @pyreon/ui-core@0.14.0
+  - @pyreon/unistyle@0.14.0
+
 ## 0.13.0
 
 ### Patch Changes

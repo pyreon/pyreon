@@ -1,5 +1,11 @@
 # create-zero
 
+## 0.14.0
+
+### Minor Changes
+
+- [#305](https://github.com/pyreon/pyreon/pull/305) [`f3c3644`](https://github.com/pyreon/pyreon/commit/f3c3644499b89d4c72644ed8fad112e15fb0f7b0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Enhanced project wizard: compat mode prompt (React/Vue/Solid/Preact migration), @pyreon/lint setup, 4 new features (toast, permissions, url-state, rx), Counter template showcases signal auto-call.
+
 ## 0.13.0
 
 ## 0.12.15

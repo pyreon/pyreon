@@ -1,5 +1,14 @@
 # @pyreon/head
 
+## 0.14.0
+
+### Patch Changes
+
+- Updated dependencies [[`12dbf14`](https://github.com/pyreon/pyreon/commit/12dbf14c92ea3e107c89039a269181a500cb60d4)]:
+  - @pyreon/runtime-server@0.14.0
+  - @pyreon/core@0.14.0
+  - @pyreon/reactivity@0.14.0
+
 ## 0.13.0
 
 ### Patch Changes

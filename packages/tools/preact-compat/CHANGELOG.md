@@ -1,5 +1,18 @@
 # @pyreon/preact-compat
 
+## 0.14.0
+
+### Minor Changes
+
+- [#293](https://github.com/pyreon/pyreon/pull/293) [`1f31c6b`](https://github.com/pyreon/pyreon/commit/1f31c6bddfa2589d3f0e16b813021220b95b3a5b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Production-ready Preact API surface. Fixes setter identity stability, effect unmount cleanup, memo per-instance cache, signals peek untracking. Adds forwardRef, useImperativeHandle, useDebugValue, PureComponent, createPortal, lazy, Suspense, ErrorBoundary, version. JSX runtime: className, htmlFor, onChange mapping, autoFocus, defaultValue/defaultChecked, native component marker for Provider.
+
+### Patch Changes
+
+- Updated dependencies [[`c97783a`](https://github.com/pyreon/pyreon/commit/c97783a85b6f7ffc5d25ad16fd280c92808b5ea6), [`12dbf14`](https://github.com/pyreon/pyreon/commit/12dbf14c92ea3e107c89039a269181a500cb60d4)]:
+  - @pyreon/runtime-dom@0.14.0
+  - @pyreon/core@0.14.0
+  - @pyreon/reactivity@0.14.0
+
 ## 0.13.0
 
 ### Patch Changes

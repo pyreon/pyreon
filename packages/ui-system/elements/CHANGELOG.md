@@ -1,5 +1,17 @@
 # @pyreon/elements
 
+## 0.14.0
+
+### Patch Changes
+
+- [#317](https://github.com/pyreon/pyreon/pull/317) [`2911026`](https://github.com/pyreon/pyreon/commit/29110269b01a1f2d3dad8c4cd02b424c076ae71e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Element simple-path fast path. When an Element has no `beforeContent` / `afterContent` slots and the tag doesn't need the button/fieldset/legend two-layer flex fix, the `Wrapper` helper is now inlined directly into a single styled invocation — saving one component hop, one `splitProps` call, and one `mountChild` per Element. Measured 31-45% wall-clock speedup across mount shapes in real Chromium: 500-child single-tree mount 2.90 ms → 1.60 ms (−45%), 5000 mount-stress 31.80 ms → 19.70 ms (−38%), 50× depth-10 nesting 3.30 ms → 1.80 ms (−45%). Compound Elements (with before/after) and the rare flex-fix tags still route through the original `Wrapper` for backward compat. The simple-path rendered VNode now carries the HTML tag on `props.as` and layout fields under `props.$element.*` instead of flat `props.tag` / `props.direction` / etc. — production styled-components consumers see no behavior change; downstream tests reading the VNode shape get a `getLayoutProps()` helper that reads from both shapes.
+
+- Updated dependencies []:
+  - @pyreon/core@0.14.0
+  - @pyreon/reactivity@0.14.0
+  - @pyreon/ui-core@0.14.0
+  - @pyreon/unistyle@0.14.0
+
 ## 0.13.0
 
 ### Patch Changes
