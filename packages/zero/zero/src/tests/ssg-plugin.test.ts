@@ -23,23 +23,36 @@ describe('ssgPlugin', () => {
       expect(typeof plugin.closeBundle).toBe('function')
     })
 
-    it('resolves the synthetic SSR entry id', () => {
-      const plugin = ssgPlugin() as any
-      const resolved = plugin.resolveId(_internal.SYNTHETIC_SSR_ID)
-      expect(resolved).toBe(_internal.SYNTHETIC_SSR_ID)
+    it('exposes a stable SSR entry filename for the materialized sub-build entry', () => {
+      // The plugin writes a temporary `__pyreon-zero-ssg-entry.js` file at
+      // the project root for the SSR sub-build. The name must start with
+      // `__` so it doesn't collide with user route files (which never start
+      // with double underscore).
+      expect(_internal.SSR_ENTRY_FILENAME).toMatch(/^__/)
+      expect(_internal.SSR_ENTRY_FILENAME).toMatch(/\.js$/)
     })
 
-    it('does not resolve other ids', () => {
-      const plugin = ssgPlugin() as any
-      expect(plugin.resolveId('some-other-id')).toBeNull()
-    })
-
-    it('loads the synthetic entry source', () => {
-      const plugin = ssgPlugin() as any
-      const code = plugin.load(_internal.SYNTHETIC_SSR_ID)
-      expect(code).toContain('virtual:zero/routes')
-      expect(code).toContain('createServer')
-      expect(code).toContain('export default')
+    it('SSR entry source imports zero virtual modules and renders fresh per path', () => {
+      // The materialized entry must:
+      // 1. Import the virtual route tree
+      // 2. Use `createApp({ url: path })` to get a fresh router PER REQUEST
+      //    (NOT createServer, which bakes in a single router that always
+      //    points at "/")
+      // 3. Preload loaders for the path
+      // 4. Use renderWithHead to produce HTML
+      // 5. Serialize loader data for hydration
+      // 6. Default-export the renderer
+      expect(_internal.SSR_ENTRY_SOURCE).toContain('virtual:zero/routes')
+      expect(_internal.SSR_ENTRY_SOURCE).toContain('@pyreon/zero/server')
+      expect(_internal.SSR_ENTRY_SOURCE).toContain('createApp')
+      expect(_internal.SSR_ENTRY_SOURCE).toContain('url: path')
+      expect(_internal.SSR_ENTRY_SOURCE).toContain('router.preload(path)')
+      expect(_internal.SSR_ENTRY_SOURCE).toContain('renderWithHead')
+      expect(_internal.SSR_ENTRY_SOURCE).toContain('serializeLoaderData')
+      expect(_internal.SSR_ENTRY_SOURCE).toContain('export default')
+      // Must NOT use createServer — that's the bug we fixed (single-router
+      // instance baked in at app creation, can't render different paths).
+      expect(_internal.SSR_ENTRY_SOURCE).not.toContain('createServer')
     })
   })
 

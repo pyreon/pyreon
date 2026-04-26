@@ -27,7 +27,7 @@ import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { Plugin } from 'vite'
 import { resolveConfig } from './config'
-import { scanRouteFiles, parseFileRoutes } from './fs-router'
+import { parseFileRoutes, scanRouteFiles } from './fs-router'
 import type { ZeroConfig } from './types'
 
 // Marker env var used to skip the SSG hook on the recursive SSR sub-build —
@@ -37,23 +37,51 @@ const SSG_BUILD_FLAG = 'PYREON_ZERO_SSG_INNER_BUILD'
 
 // Synthetic SSR entry source. Imports the user's route tree via the virtual
 // module that zero's main plugin already registers, then exports a default
-// `(req: Request) => Promise<Response>` handler — the shape `prerender`
-// expects. Kept inline so the plugin is fully self-contained; no template
-// file to ship.
+// `(path: string) => Promise<string>` renderer that returns the full HTML
+// for a single path.
+//
+// The entry is materialized to disk (not registered as a virtual module)
+// because Rolldown's `rollupOptions.input` phase doesn't reliably resolve
+// `\0`-prefixed virtual ids when used as build entries — a virtual id
+// returned from `resolveId` works fine for downstream imports but fails
+// the entry-resolution stage with `Cannot resolve entry module`.
+//
+// We do NOT use zero's `createServer` because it wraps the user's App with
+// a router whose URL is baked in at App-creation time. SSG needs a fresh
+// router per path, so we mirror the dev SSR pipeline (`renderSsr` in
+// vite-plugin.ts): per request → new createApp({ url: path }) → preload
+// loaders → renderWithHead → serialize loader data → done.
 const SSR_ENTRY_SOURCE = `
 import { routes } from "virtual:zero/routes"
-import { routeMiddleware } from "virtual:zero/route-middleware"
-import { apiRoutes } from "virtual:zero/api-routes"
-import { createServer } from "@pyreon/zero/server"
+import { h } from "@pyreon/core"
+import { renderWithHead } from "@pyreon/head/ssr"
+import { serializeLoaderData } from "@pyreon/router"
+import { runWithRequestContext } from "@pyreon/runtime-server"
+import { createApp } from "@pyreon/zero/server"
 
-export default createServer({
-  routes,
-  routeMiddleware,
-  apiRoutes,
-})
+export default async function renderPath(path) {
+  const { App, router } = createApp({
+    routes,
+    routerMode: "history",
+    url: path,
+  })
+
+  await router.preload(path)
+
+  return runWithRequestContext(async () => {
+    const app = h(App, null)
+    const { html: appHtml, head } = await renderWithHead(app)
+    const loaderData = serializeLoaderData(router)
+    const hasData = loaderData && Object.keys(loaderData).length > 0
+    const loaderScript = hasData
+      ? \`<script>window.__PYREON_LOADER_DATA__=\${JSON.stringify(loaderData).replace(/<\\//g, "<\\\\/")}</script>\`
+      : ""
+    return { appHtml, head, loaderScript }
+  })
+}
 `.trimStart()
 
-const SYNTHETIC_SSR_ID = '\0pyreon-zero-ssg-entry.js'
+const SSR_ENTRY_FILENAME = '__pyreon-zero-ssg-entry.js'
 
 /**
  * Auto-detect static paths from the route tree. A "static" path is one with
@@ -133,18 +161,6 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       distDir = resolve(root, resolved.build.outDir)
     },
 
-    // Synthetic SSR entry — only resolved during the inner SSR build. The
-    // outer client build never imports this id.
-    resolveId(id) {
-      if (id === SYNTHETIC_SSR_ID) return SYNTHETIC_SSR_ID
-      return null
-    },
-
-    load(id) {
-      if (id === SYNTHETIC_SSR_ID) return SSR_ENTRY_SOURCE
-      return null
-    },
-
     async closeBundle() {
       if (config.mode !== 'ssg') return
       if (isInnerBuild) return
@@ -163,17 +179,32 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         return
       }
 
+      // Materialize the SSR entry to disk inside the routes directory so
+      // its imports resolve relative to the user's source tree. Doing this
+      // INSIDE node_modules-equivalent paths breaks Vite's plugin-resolution
+      // semantics; placing it next to the user's routes lets zero's main
+      // plugin pick it up identically to user code. Cleaned up after the
+      // build.
+      const entryPath = join(root, SSR_ENTRY_FILENAME)
+      await writeFile(entryPath, SSR_ENTRY_SOURCE, 'utf-8')
+
       // Vite's programmatic build API. Loaded lazily so the plugin doesn't
       // pull `vite` into the runtime dep graph at module-evaluation time.
       const { build } = await import('vite')
 
-      // Inner SSR sub-build. Uses the SAME zero plugin chain (so virtual
-      // modules resolve identically), guarded by the env flag.
+      // Inner SSR sub-build. Re-assembles zero's plugin chain plus
+      // `@pyreon/vite-plugin` (JSX compiler) — every Pyreon app already
+      // has both because zero is built on top of pyreon. Loading both
+      // lazily keeps the SSG plugin off the module-eval critical path.
+      // Env-flag gate prevents the inner ssgPlugin instance from
+      // re-triggering itself.
       process.env[SSG_BUILD_FLAG] = '1'
       try {
-        // We import zero's vite-plugin lazily so the SSG plugin file
-        // doesn't bring in the whole plugin module unless SSG actually runs.
-        const { zeroPlugin } = await import('./vite-plugin')
+        const [{ zeroPlugin }, pyreonModule] = await Promise.all([
+          import('./vite-plugin'),
+          import('@pyreon/vite-plugin'),
+        ])
+        const pyreon = (pyreonModule as { default: () => unknown }).default
 
         await build({
           root,
@@ -181,30 +212,35 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           logLevel: 'error',
           configFile: false,
           publicDir: false,
-          plugins: [zeroPlugin(userConfig)],
+          plugins: [pyreon(), zeroPlugin(userConfig)] as Plugin[],
           resolve: { conditions: ['bun'] },
           build: {
-            ssr: SYNTHETIC_SSR_ID,
+            ssr: entryPath,
             outDir: ssrOutDir,
             emptyOutDir: true,
             target: 'esnext',
             rollupOptions: {
-              input: SYNTHETIC_SSR_ID,
+              input: entryPath,
               output: {
                 format: 'es',
                 entryFileNames: 'entry-server.mjs',
               },
-              external: [
-                /^node:/,
-              ],
+              external: [/^node:/],
             },
           },
         })
       } finally {
         delete process.env[SSG_BUILD_FLAG]
+        // Remove the synthetic entry file so it never lands in user's
+        // working tree.
+        try {
+          await rm(entryPath, { force: true })
+        } catch {
+          // best-effort cleanup
+        }
       }
 
-      // Load the built handler. Use a file:// URL to avoid Node import
+      // Load the built renderer. Use a file:// URL to avoid Node import
       // cache collisions across multiple builds within the same process.
       const handlerPath = join(ssrOutDir, 'entry-server.mjs')
       if (!existsSync(handlerPath)) {
@@ -213,15 +249,17 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         return
       }
       const handlerMod = (await import(pathToFileURL(handlerPath).href)) as {
-        default: (req: Request) => Promise<Response>
+        default: (path: string) => Promise<{ appHtml: string; head: string; loaderScript: string }>
       }
-      const handler = handlerMod.default
+      const renderPath = handlerMod.default
 
-      // Read the client index.html template — used as the shell for any
-      // path the handler returns as raw HTML body. Currently the zero
-      // handler produces a complete document, so we just write it.
-      // (Reserved for future template-merging if handler shape changes.)
-      const _template = await readFile(indexHtmlPath, 'utf-8')
+      // Read the user's built index.html template. Vite has just produced it
+      // with hashed asset URLs (`/assets/index-XYZ.js`), preload links, etc.
+      // We inject the rendered head/body/loader-data into placeholder
+      // comments — same convention as zero's dev SSR. If the template lacks
+      // the placeholders, we fall back to inserting before `</head>` and
+      // `</body>` respectively so a bare `index.html` still works.
+      const template = await readFile(indexHtmlPath, 'utf-8')
 
       // Resolve paths and render.
       const routesDir = join(root, 'src', 'routes')
@@ -234,30 +272,46 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         return
       }
 
-      // Inline a minimal prerender — we can't import @pyreon/server here
-      // without making zero depend on it as a runtime dep. Pyreon's `prerender`
-      // is open-coded below to keep the dep graph clean.
       let pages = 0
       const errors: { path: string; error: unknown }[] = []
       const start = Date.now()
 
       for (const p of paths) {
         try {
-          const url = new URL(p, 'http://localhost')
-          const req = new Request(url.href)
-          const res = await Promise.race([
-            handler(req),
+          const result = await Promise.race([
+            renderPath(p),
             new Promise<never>((_, reject) =>
               setTimeout(() => reject(new Error(`Prerender timeout for "${p}" (30s)`)), 30_000),
             ),
           ])
 
-          if (!res.ok) {
-            errors.push({ path: p, error: new Error(`HTTP ${res.status}`) })
-            continue
+          // Inject into the index.html template. Prefer Pyreon's standard
+          // placeholders; fall back to <head>/<body>/<#app> insertion
+          // points so apps with a minimal `<div id="app"></div>` template
+          // still render content.
+          let html = template
+          if (html.includes('<!--pyreon-head-->')) {
+            html = html.replace('<!--pyreon-head-->', result.head)
+          } else if (result.head) {
+            html = html.replace('</head>', `${result.head}</head>`)
+          }
+          if (html.includes('<!--pyreon-app-->')) {
+            html = html.replace('<!--pyreon-app-->', result.appHtml)
+          } else if (result.appHtml) {
+            // Drop the rendered HTML inside #app; if not found, append to body.
+            const appDivMatch = html.match(/<div\s+id=["']app["']\s*>([\s\S]*?)<\/div>/)
+            if (appDivMatch) {
+              html = html.replace(appDivMatch[0], `<div id="app">${result.appHtml}</div>`)
+            } else {
+              html = html.replace('</body>', `<div id="app">${result.appHtml}</div></body>`)
+            }
+          }
+          if (html.includes('<!--pyreon-scripts-->')) {
+            html = html.replace('<!--pyreon-scripts-->', result.loaderScript)
+          } else if (result.loaderScript) {
+            html = html.replace('</body>', `${result.loaderScript}</body>`)
           }
 
-          const html = await res.text()
           const filePath = resolveOutputPath(distDir, p)
 
           // Path-traversal guard — same as @pyreon/server's prerender.
@@ -302,5 +356,5 @@ export const _internal = {
   autoDetectStaticPaths,
   resolveOutputPath,
   SSR_ENTRY_SOURCE,
-  SYNTHETIC_SSR_ID,
+  SSR_ENTRY_FILENAME,
 }
