@@ -61,7 +61,7 @@ describe('rocketstyle hot-path', () => {
     expect(omitHits).toBeGreaterThanOrEqual(99)
   })
 
-  it('mode toggle (light ↔ dark) 50 times — caches work across modes', async () => {
+  it('mode toggle (light ↔ dark) 50 times — dimension-prop memo catches both modes', async () => {
     const Comp = rocketstyle()({
       name: 'ModeToggle',
       component: ThemeCapture,
@@ -69,7 +69,8 @@ describe('rocketstyle hot-path', () => {
       color: m('#fff', '#000'),
     }))
 
-    // Warm up both modes
+    // Warm up both modes — populates the dimension-prop memo with one
+    // entry per mode (key includes the mode value).
     getComputedTheme(Comp, {}, { mode: 'light' })
     getComputedTheme(Comp, {}, { mode: 'dark' })
     perfHarness.reset()
@@ -80,13 +81,16 @@ describe('rocketstyle hot-path', () => {
         getComputedTheme(Comp, {}, { mode: 'dark' })
       }
     })
-    // 100 renders total, each should hit all caches
-    const themeHits = outcome.after['rocketstyle.localThemeManager.hit'] ?? 0
+    const memoHits = outcome.after['rocketstyle.dimensionMemo.hit'] ?? 0
+    const freshResolves = outcome.after['rocketstyle.getTheme'] ?? 0
     // oxlint-disable-next-line no-console
-    console.log(`[rocketstyle] mode toggle: localTheme.hit=${themeHits}`)
-    // Every render should hit all 4 cache tiers (baseTheme, dimensions,
-    // modeBaseTheme, modeDimensionTheme) = at least 400 total hits for 100 renders.
-    expect(themeHits).toBeGreaterThan(100)
+    console.log(
+      `[rocketstyle] mode toggle: dimensionMemo.hit=${memoHits}, getTheme=${freshResolves}`,
+    )
+    // 100 renders × 2 accessor calls each (ThemeCapture invokes both
+    // `$rocketstyle()` and `$rocketstate()`) = 200 lookups, all hits.
+    expect(memoHits).toBe(200)
+    expect(freshResolves).toBe(0)
   })
 
   it('4 different components with identical themes — each hits its own definition cache', async () => {
@@ -133,12 +137,19 @@ describe('rocketstyle hot-path', () => {
       getComputedTheme(Comp, { size: 'large' }, { mode: 'light' })
     }
     const snap = perfHarness.snapshot()
-    // 90 renders total; all should hit the caches except the first mount for
-    // each dimensions/theme combination.
+    // 90 renders × 3 unique size values → memo populates 3 entries on the
+    // first render of each. ThemeCapture invokes both `$rocketstyle()` and
+    // `$rocketstate()` per render, so each render is 2 lookups: the first
+    // is a miss-or-hit, the second is always a hit (entry just stored or
+    // already cached). Net: 3 misses + (90 × 2 - 3) = 177 hits.
     // oxlint-disable-next-line no-console
     console.log(
-      `[rocketstyle] with sizes: dimMap.hit=${snap['rocketstyle.dimensionsMap.hit']}, localTheme.hit=${snap['rocketstyle.localThemeManager.hit']}`,
+      `[rocketstyle] with sizes: dimMap.hit=${snap['rocketstyle.dimensionsMap.hit']}, ` +
+        `localTheme.hit=${snap['rocketstyle.localThemeManager.hit']}, ` +
+        `dimensionMemo.hit=${snap['rocketstyle.dimensionMemo.hit']}, ` +
+        `getTheme=${snap['rocketstyle.getTheme']}`,
     )
-    expect(snap['rocketstyle.getTheme']).toBe(90)
+    expect(snap['rocketstyle.getTheme']).toBe(3)
+    expect(snap['rocketstyle.dimensionMemo.hit']).toBe(177)
   })
 })
