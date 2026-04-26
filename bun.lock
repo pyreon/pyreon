@@ -140,8 +140,12 @@
     "examples/experiments": {
       "name": "@pyreon/experiments",
       "version": "0.1.0",
+      "dependencies": {
+        "@pyreon/reactivity": "workspace:*",
+      },
       "devDependencies": {
         "typescript": "^6.0.2",
+        "vitest": "^4.0.0",
       },
     },
     "examples/fundamentals-playground": {
