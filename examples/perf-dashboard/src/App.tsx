@@ -144,20 +144,18 @@ export const longFormFields: FormField[] = Array.from({ length: 28 }, (_, i) => 
   id: i,
   sig: signal(`field-${i}-default`),
 }))
-export const passwordSignal = signal('')
-export const confirmPasswordSignal = signal('')
-export const passwordsMatch = computed(() => {
-  const p = passwordSignal()
-  const c = confirmPasswordSignal()
-  // Defensive guard: under certain dev-mode HMR / signal-restoration paths
-  // the signal value transiently reads as undefined, which would throw
-  // `Cannot read 'length' of undefined`. Treating non-strings as a
-  // non-match is safe — the validation just shows "no" briefly. Worth
-  // a follow-up to find the upstream cause in @pyreon/reactivity's
-  // signal initialization, but unblocks Phase 0.6 baselines.
-  if (typeof p !== 'string' || typeof c !== 'string') return false
-  return p === c && p.length >= 6
-})
+// NOTE: the explicit `<string>` generic is load-bearing — it bypasses the
+// Pyreon Vite plugin's HMR-signal-wrapper regex (which doesn't account for
+// type parameters on `signal<T>(...)`). Without it, the plugin rewrites
+// `signal('')` → `__hmr_signal(..., signal, '')` and the wrapper somehow
+// produces a signal that reads as `undefined` (root cause unknown,
+// reproducible only with `''` initial value — `signal(false)` works fine).
+// See follow-up issue.
+export const passwordSignal = signal<string>('')
+export const confirmPasswordSignal = signal<string>('')
+export const passwordsMatch = computed(
+  () => passwordSignal() === confirmPasswordSignal() && passwordSignal().length >= 6,
+)
 
 interface Row {
   id: number
