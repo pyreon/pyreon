@@ -179,16 +179,16 @@ describe('probe — what fires 22 styler.resolve per Button mount', () => {
       `[probe] TWO-buttons-one-provider mount counters: ${JSON.stringify(delta, null, 2)}`,
     )
 
-    // First Button: full pipeline (22 resolves). Second Button: dimension
-    // memo hits → rocketstyle layer skipped → styler classCache hits the
-    // (rocketstyle, rocketstate) pair → most resolves skipped. The remaining
-    // ~6 come from styled wrappers OUTSIDE the rocketstyle layer (Element's
-    // own styled wrapper, which doesn't see `$rocketstyle`/`$rocketstate`
-    // and so its classCache miss path runs every mount). 22 → 28 total
-    // (instead of 22 → 44) is a ~73% reduction on the second Button.
+    // First Button: full pipeline. Second Button: dimension memo (PR #344)
+    // hits → rocketstyle layer skipped → styler classCache hits → resolve
+    // skipped. Element-bundle interning (this PR) catches the residual
+    // styled wrappers below the rocketstyle layer too. Net total drops to
+    // ~16 (down from 28 pre-element-intern, 44 pre-memo). The first Button
+    // also benefits because Button internally renders multiple Elements
+    // that share `$element` bundles via intern.
     expect(delta['rocketstyle.dimensionMemo.hit']).toBeGreaterThanOrEqual(1)
     expect(delta['rocketstyle.getTheme']).toBe(1) // only first Button computes fresh
-    expect(delta['styler.resolve']).toBe(28) // 22 first + ~6 leak from non-rocketstyle styled
+    expect(delta['styler.resolve']).toBe(16) // ~22 first + 0 second + intra-Button intern savings
 
     dispose()
     root.remove()
