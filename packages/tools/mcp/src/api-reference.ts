@@ -271,10 +271,10 @@ const getMode = useContext(ModeCtx)    // reactive: returns () => T`,
     example: `<Show when={isLoggedIn()} fallback={<LoginForm />}>
   <Dashboard />
 </Show>`,
-    notes: 'Reactive conditional rendering. Mounts children when `when` is truthy, unmounts and shows `fallback` when falsy. More efficient than ternary for signal-driven conditions because it avoids re-evaluating the entire branch expression on every signal change — `Show` only transitions between mounted/unmounted when the boolean flips. `when` accepts BOTH a value (`when={true}`, `when={signal()}`) and an accessor (`when={() => signal()}`) — the framework normalizes via `typeof === "function"`. The accessor form is required for true reactivity (the framework re-evaluates it on signal change); a bare `when={signal}` reference works because the compiler\'s signal auto-call rewrites it to `when={signal()}`. See also: Switch, Match, For.',
+    notes: `Reactive conditional rendering. Mounts children when \`when\` is truthy, unmounts and shows \`fallback\` when falsy. More efficient than ternary for signal-driven conditions because it avoids re-evaluating the entire branch expression on every signal change — \`Show\` only transitions between mounted/unmounted when the boolean flips. \`when\` accepts BOTH a value (\`when={true}\`, \`when={signal()}\`) and an accessor (\`when={() => signal()}\`) — the framework normalizes via \`typeof === "function"\`. The accessor form is required for true reactivity (the framework re-evaluates it on signal change); a bare \`when={signal}\` reference works because the compiler's signal auto-call rewrites it to \`when={signal()}\`. See also: Switch, Match, For.`,
     mistakes: `- \`{cond() ? <A /> : <B />}\` — works but less efficient than \`<Show>\` for signal-driven conditions
 - \`<Show when={items().length}>\` — works (truthy check), but be explicit: \`<Show when={items().length > 0}>\`
-- \`<Show when={signal}>\` (bare reference) — relies on the compiler\'s signal auto-call to rewrite to \`when={signal()}\`. Works defensively but use \`when={() => signal()}\` for explicit accessor semantics across the entire reactive lifecycle.`,
+- \`<Show when={signal}>\` (bare reference) — relies on the compiler's signal auto-call to rewrite to \`when={signal()}\`. Works defensively but use \`when={() => signal()}\` for explicit accessor semantics across the entire reactive lifecycle.`,
   },
 
   'core/Switch': {
