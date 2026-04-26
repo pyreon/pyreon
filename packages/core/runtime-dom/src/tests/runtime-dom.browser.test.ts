@@ -171,10 +171,10 @@ describe('runtime-dom in real browser', () => {
           onInput: (ev: Event) => {
             const ct = ev.currentTarget as HTMLInputElement | null
             // Capture observable signals so the test can assert on them
-            ;(globalThis as { __test_ct_tag?: string }).__test_ct_tag = ct?.tagName
+            ;(globalThis as { __test_ct_tag?: string | undefined }).__test_ct_tag = ct?.tagName
             ;(globalThis as { __test_ct_value?: string | undefined }).__test_ct_value =
               ct?.value
-            ;(globalThis as { __test_ct_marker?: string | null }).__test_ct_marker =
+            ;(globalThis as { __test_ct_marker?: string | null | undefined }).__test_ct_marker =
               ct?.getAttribute('data-marker') ?? null
           },
         }),
@@ -188,16 +188,16 @@ describe('runtime-dom in real browser', () => {
 
     // Without the fix: tagName would be 'DIV' (or whatever container is),
     // value would be undefined, marker would be null.
-    expect((globalThis as { __test_ct_tag?: string }).__test_ct_tag).toBe('INPUT')
-    expect((globalThis as { __test_ct_value?: string }).__test_ct_value).toBe('hello')
-    expect((globalThis as { __test_ct_marker?: string | null }).__test_ct_marker).toBe(
+    expect((globalThis as { __test_ct_tag?: string | undefined }).__test_ct_tag).toBe('INPUT')
+    expect((globalThis as { __test_ct_value?: string | undefined }).__test_ct_value).toBe('hello')
+    expect((globalThis as { __test_ct_marker?: string | null | undefined }).__test_ct_marker).toBe(
       'real-input',
     )
 
     unmount()
-    delete (globalThis as { __test_ct_tag?: string }).__test_ct_tag
+    delete (globalThis as { __test_ct_tag?: string | undefined }).__test_ct_tag
     delete (globalThis as { __test_ct_value?: string | undefined }).__test_ct_value
-    delete (globalThis as { __test_ct_marker?: string | null }).__test_ct_marker
+    delete (globalThis as { __test_ct_marker?: string | null | undefined }).__test_ct_marker
   })
 
   it('dispatches a real PointerEvent and fires the onClick handler', async () => {
