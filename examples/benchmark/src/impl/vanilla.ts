@@ -6,9 +6,10 @@
  * Full rebuild is only used for create/replace/clear where it's necessary.
  */
 import type { BenchSuite, Row } from '../runner'
-import { bench, buildRows, tick } from '../runner'
+import { bench, buildRows, expectRows, expectRowsWithSelected, resetRng, tick } from '../runner'
 
 export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
+  resetRng()
   const suite: BenchSuite = { framework: 'Vanilla JS', container, results: [] }
 
   let rows: Row[] = []
@@ -44,13 +45,23 @@ export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
     container.appendChild(table)
   }
 
-  await bench('create 1,000 rows', suite, async () => {
-    renderAll(buildRows(1_000))
-  })
+  await bench(
+    'create 1,000 rows',
+    suite,
+    async () => {
+      renderAll(buildRows(1_000))
+    },
+    { verify: expectRows(1_000) },
+  )
 
-  await bench('replace all rows', suite, async () => {
-    renderAll(buildRows(1_000))
-  })
+  await bench(
+    'replace all rows',
+    suite,
+    async () => {
+      renderAll(buildRows(1_000))
+    },
+    { verify: expectRows(1_000) },
+  )
 
   // Store original labels for reset
   let originalLabels: string[] = rows.map((r) => r.label)
@@ -64,15 +75,18 @@ export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
         ;(labelTds[i] as HTMLElement).textContent = row.label
       }
     },
-    // Reset labels before each run
-    () => {
-      for (let i = 0; i < rows.length; i += 10) {
-        const orig = originalLabels[i]
-        if (orig !== undefined) {
-          ;(rows[i] as Row).label = orig
-          ;(labelTds[i] as HTMLElement).textContent = orig
+    {
+      // Reset labels before each run
+      reset: () => {
+        for (let i = 0; i < rows.length; i += 10) {
+          const orig = originalLabels[i]
+          if (orig !== undefined) {
+            ;(rows[i] as Row).label = orig
+            ;(labelTds[i] as HTMLElement).textContent = orig
+          }
         }
-      }
+      },
+      verify: expectRows(1_000),
     },
   )
 
@@ -81,43 +95,63 @@ export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
   originalLabels = rows.map((r) => r.label)
   await tick()
 
-  await bench('select row', suite, async () => {
-    if (selectedTr) selectedTr.className = ''
-    selectedTr = trElements[500] as HTMLElement
-    selectedTr.className = 'selected'
-  })
+  await bench(
+    'select row',
+    suite,
+    async () => {
+      if (selectedTr) selectedTr.className = ''
+      selectedTr = trElements[500] as HTMLElement
+      selectedTr.className = 'selected'
+    },
+    { verify: expectRowsWithSelected(1_000, 1) },
+  )
 
-  await bench('swap rows', suite, async () => {
-    if (rows.length < 999 || !tbody) return
-    // Swap data
-    const tmp = rows[1] as Row
-    rows[1] = rows[998] as Row
-    rows[998] = tmp
-    // Swap element references
-    const tmpTr = trElements[1] as HTMLElement
-    trElements[1] = trElements[998] as HTMLElement
-    trElements[998] = tmpTr
-    const tmpTd = labelTds[1] as HTMLElement
-    labelTds[1] = labelTds[998] as HTMLElement
-    labelTds[998] = tmpTd
-    // Move DOM nodes
-    const ref2 = trElements[2] as HTMLElement
-    tbody.insertBefore(trElements[1] as HTMLElement, ref2)
-    const ref999 = (trElements[999] as HTMLElement | undefined) ?? null
-    tbody.insertBefore(trElements[998] as HTMLElement, ref999)
-  })
+  await bench(
+    'swap rows',
+    suite,
+    async () => {
+      if (rows.length < 999 || !tbody) return
+      // Swap data
+      const tmp = rows[1] as Row
+      rows[1] = rows[998] as Row
+      rows[998] = tmp
+      // Swap element references
+      const tmpTr = trElements[1] as HTMLElement
+      trElements[1] = trElements[998] as HTMLElement
+      trElements[998] = tmpTr
+      const tmpTd = labelTds[1] as HTMLElement
+      labelTds[1] = labelTds[998] as HTMLElement
+      labelTds[998] = tmpTd
+      // Move DOM nodes
+      const ref2 = trElements[2] as HTMLElement
+      tbody.insertBefore(trElements[1] as HTMLElement, ref2)
+      const ref999 = (trElements[999] as HTMLElement | undefined) ?? null
+      tbody.insertBefore(trElements[998] as HTMLElement, ref999)
+    },
+    { verify: expectRows(1_000) },
+  )
 
-  await bench('clear rows', suite, async () => {
-    renderAll([])
-  })
+  await bench(
+    'clear rows',
+    suite,
+    async () => {
+      renderAll([])
+    },
+    { verify: expectRows(0) },
+  )
 
   // Re-create for the big test
   renderAll(buildRows(1_000))
   await tick()
 
-  await bench('create 10,000 rows', suite, async () => {
-    renderAll(buildRows(10_000))
-  })
+  await bench(
+    'create 10,000 rows',
+    suite,
+    async () => {
+      renderAll(buildRows(10_000))
+    },
+    { verify: expectRows(10_000) },
+  )
 
   // Cleanup
   renderAll([])

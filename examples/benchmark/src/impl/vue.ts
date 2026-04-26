@@ -4,9 +4,10 @@
  */
 import { createApp, defineComponent, h, ref } from 'vue'
 import type { BenchSuite, Row } from '../runner'
-import { bench, buildRows, tick } from '../runner'
+import { bench, buildRows, expectRows, expectRowsWithSelected, resetRng, tick } from '../runner'
 
 export async function runVue(container: HTMLElement): Promise<BenchSuite> {
+  resetRng()
   const suite: BenchSuite = { framework: 'Vue 3', container, results: [] }
 
   const rows = ref<Row[]>([])
@@ -40,15 +41,25 @@ export async function runVue(container: HTMLElement): Promise<BenchSuite> {
 
   let currentRows: Row[] = []
 
-  await bench('create 1,000 rows', suite, async () => {
-    rows.value = currentRows = buildRows(1_000)
-    await tick()
-  })
+  await bench(
+    'create 1,000 rows',
+    suite,
+    async () => {
+      rows.value = currentRows = buildRows(1_000)
+      await tick()
+    },
+    { verify: expectRows(1_000) },
+  )
 
-  await bench('replace all rows', suite, async () => {
-    rows.value = currentRows = buildRows(1_000)
-    await tick()
-  })
+  await bench(
+    'replace all rows',
+    suite,
+    async () => {
+      rows.value = currentRows = buildRows(1_000)
+      await tick()
+    },
+    { verify: expectRows(1_000) },
+  )
 
   let originalLabels: string[] = currentRows.map((r) => r.label)
   await bench(
@@ -63,14 +74,17 @@ export async function runVue(container: HTMLElement): Promise<BenchSuite> {
       rows.value = currentRows = updated
       await tick()
     },
-    // Reset labels before each run
-    async () => {
-      currentRows = currentRows.map((row, i) => {
-        const orig = originalLabels[i]
-        return orig !== undefined ? { ...row, label: orig } : row
-      })
-      rows.value = currentRows
-      await tick()
+    {
+      // Reset labels before each run
+      reset: async () => {
+        currentRows = currentRows.map((row, i) => {
+          const orig = originalLabels[i]
+          return orig !== undefined ? { ...row, label: orig } : row
+        })
+        rows.value = currentRows
+        await tick()
+      },
+      verify: expectRows(1_000),
     },
   )
 
@@ -79,34 +93,54 @@ export async function runVue(container: HTMLElement): Promise<BenchSuite> {
   originalLabels = currentRows.map((r) => r.label)
   await tick()
 
-  await bench('select row', suite, async () => {
-    selectedId.value = currentRows[Math.floor(currentRows.length / 2)]?.id ?? null
-    await tick()
-  })
+  await bench(
+    'select row',
+    suite,
+    async () => {
+      selectedId.value = currentRows[Math.floor(currentRows.length / 2)]?.id ?? null
+      await tick()
+    },
+    { verify: expectRowsWithSelected(1_000, 1) },
+  )
 
-  await bench('swap rows', suite, async () => {
-    const updated = [...currentRows]
-    if (updated.length >= 999) {
-      const tmp = updated[1] as Row
-      updated[1] = updated[998] as Row
-      updated[998] = tmp
-    }
-    rows.value = currentRows = updated
-    await tick()
-  })
+  await bench(
+    'swap rows',
+    suite,
+    async () => {
+      const updated = [...currentRows]
+      if (updated.length >= 999) {
+        const tmp = updated[1] as Row
+        updated[1] = updated[998] as Row
+        updated[998] = tmp
+      }
+      rows.value = currentRows = updated
+      await tick()
+    },
+    { verify: expectRows(1_000) },
+  )
 
-  await bench('clear rows', suite, async () => {
-    rows.value = currentRows = []
-    await tick()
-  })
+  await bench(
+    'clear rows',
+    suite,
+    async () => {
+      rows.value = currentRows = []
+      await tick()
+    },
+    { verify: expectRows(0) },
+  )
 
   rows.value = currentRows = buildRows(1_000)
   await tick()
 
-  await bench('create 10,000 rows', suite, async () => {
-    rows.value = currentRows = buildRows(10_000)
-    await tick()
-  })
+  await bench(
+    'create 10,000 rows',
+    suite,
+    async () => {
+      rows.value = currentRows = buildRows(10_000)
+      await tick()
+    },
+    { verify: expectRows(10_000) },
+  )
 
   rows.value = []
   app.unmount()

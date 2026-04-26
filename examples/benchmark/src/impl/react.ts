@@ -9,7 +9,7 @@
 import * as React from 'react'
 import * as ReactDOM from 'react-dom/client'
 import type { BenchSuite, Row } from '../runner'
-import { bench, buildRows } from '../runner'
+import { bench, buildRows, expectRows, expectRowsWithSelected, resetRng } from '../runner'
 
 const { createElement: r, useState, useEffect, memo } = React
 
@@ -53,6 +53,7 @@ function App({ onMounted }: { onMounted: (setters: Setters) => void }) {
 }
 
 export async function runReact(container: HTMLElement): Promise<BenchSuite> {
+  resetRng()
   const suite: BenchSuite = { framework: 'React 19', container, results: [] }
   const root = ReactDOM.createRoot(container)
 
@@ -78,15 +79,25 @@ export async function runReact(container: HTMLElement): Promise<BenchSuite> {
 
   let currentRows: Row[] = []
 
-  await bench('create 1,000 rows', suite, async () => {
-    currentRows = buildRows(1_000)
-    await setRows(currentRows)
-  })
+  await bench(
+    'create 1,000 rows',
+    suite,
+    async () => {
+      currentRows = buildRows(1_000)
+      await setRows(currentRows)
+    },
+    { verify: expectRows(1_000) },
+  )
 
-  await bench('replace all rows', suite, async () => {
-    currentRows = buildRows(1_000)
-    await setRows(currentRows)
-  })
+  await bench(
+    'replace all rows',
+    suite,
+    async () => {
+      currentRows = buildRows(1_000)
+      await setRows(currentRows)
+    },
+    { verify: expectRows(1_000) },
+  )
 
   let originalLabels: string[] = currentRows.map((row) => row.label)
   await bench(
@@ -101,13 +112,16 @@ export async function runReact(container: HTMLElement): Promise<BenchSuite> {
       currentRows = updated
       await setRows(currentRows)
     },
-    // Reset labels before each run
-    async () => {
-      currentRows = currentRows.map((row, i) => {
-        const orig = originalLabels[i]
-        return orig !== undefined ? { ...row, label: orig } : row
-      })
-      await setRows(currentRows)
+    {
+      // Reset labels before each run
+      reset: async () => {
+        currentRows = currentRows.map((row, i) => {
+          const orig = originalLabels[i]
+          return orig !== undefined ? { ...row, label: orig } : row
+        })
+        await setRows(currentRows)
+      },
+      verify: expectRows(1_000),
     },
   )
 
@@ -116,36 +130,56 @@ export async function runReact(container: HTMLElement): Promise<BenchSuite> {
   await setRows(currentRows)
   originalLabels = currentRows.map((row) => row.label)
 
-  await bench('select row', suite, async () => {
-    await setSelected(currentRows[Math.floor(currentRows.length / 2)]?.id ?? null)
-  })
+  await bench(
+    'select row',
+    suite,
+    async () => {
+      await setSelected(currentRows[Math.floor(currentRows.length / 2)]?.id ?? null)
+    },
+    { verify: expectRowsWithSelected(1_000, 1) },
+  )
 
-  await bench('swap rows', suite, async () => {
-    const updated = [...currentRows]
-    if (updated.length >= 999) {
-      const tmp = updated[1]
-      const b = updated[998]
-      if (tmp && b) {
-        updated[1] = b
-        updated[998] = tmp
+  await bench(
+    'swap rows',
+    suite,
+    async () => {
+      const updated = [...currentRows]
+      if (updated.length >= 999) {
+        const tmp = updated[1]
+        const b = updated[998]
+        if (tmp && b) {
+          updated[1] = b
+          updated[998] = tmp
+        }
       }
-    }
-    currentRows = updated
-    await setRows(currentRows)
-  })
+      currentRows = updated
+      await setRows(currentRows)
+    },
+    { verify: expectRows(1_000) },
+  )
 
-  await bench('clear rows', suite, async () => {
-    currentRows = []
-    await setRows([])
-  })
+  await bench(
+    'clear rows',
+    suite,
+    async () => {
+      currentRows = []
+      await setRows([])
+    },
+    { verify: expectRows(0) },
+  )
 
   currentRows = buildRows(1_000)
   await setRows(currentRows)
 
-  await bench('create 10,000 rows', suite, async () => {
-    currentRows = buildRows(10_000)
-    await setRows(currentRows)
-  })
+  await bench(
+    'create 10,000 rows',
+    suite,
+    async () => {
+      currentRows = buildRows(10_000)
+      await setRows(currentRows)
+    },
+    { verify: expectRows(10_000) },
+  )
 
   await setRows([])
   root.unmount()
