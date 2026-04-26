@@ -882,3 +882,28 @@ CI runs this on every PR as a required check (`Verify Modes` job in `.github/wor
 3. Add at least one cell exercising the new mode against an existing example
 
 The matrix today (post-PR introducing the gate): 11 cells covering ssr-showcase, app-showcase, ui-showcase, playground, fundamentals-playground across ssr/ssg/spa modes. Total runtime ~90s. SSG cells include both explicit-paths and autodetect variants (different code paths in `ssg-plugin.ts`).
+
+## E2E — real-Chromium tests against example apps
+
+`bun run test:e2e` runs Playwright against `examples/playground` in real Chromium. Tests live in `e2e/` and exercise framework primitives via `window.__pyreon` (mount/unmount, signal-driven DOM updates, computed values, batching, conditional rendering, list reconciliation, router navigation). Companion to `verify-modes` (build artifacts) — together they cover both the static output AND the runtime behavior.
+
+```bash
+bun run test:e2e                                              # default — playground project
+bunx playwright test --project=playground                     # same
+bunx playwright test --project=playground --grep="signal"     # filter
+```
+
+CI runs the playground project on every PR as a required check (`E2E` job). 25 tests, ~90s. Playwright report uploaded as artifact on failure.
+
+**Project status** (see [`playwright.config.ts`](playwright.config.ts) header for full detail):
+
+| Project | Status | Coverage |
+| --- | --- | --- |
+| `playground` | ✓ active | reactivity, mount, bench (25 tests covering signal → DOM, mount/unmount, batching, computed, conditional rendering, list reconciliation, perf benchmarks) |
+| `ssr-showcase` | ⚠ disabled | SSR + SSG + hydration; blocked on a real `_layout.tsx` double-mount bug in fs-router |
+| `fundamentals` | ⚠ disabled | fundamentals-package demos; selector mismatch with current example markup |
+| `visual` | ⚠ disabled | visual regressions; needs baseline-image capture pass |
+
+Re-enabling a disabled project: uncomment the project block + matching webServer block in `playwright.config.ts`, run locally to verify, update the CI job's project filter.
+
+**Why this exists** (the gap pre-Phase-2): the e2e suite has been in `e2e/` for some time, but the playwright config pointed port 5173 at `fundamentals-playground` (where most tests don't work) AND the wiring wasn't in CI. Several real bugs the suite would have caught (the `_layout.tsx` double-mount, zero's `port: 3000` plugin override) shipped to users because nothing exercised these tests on PRs.

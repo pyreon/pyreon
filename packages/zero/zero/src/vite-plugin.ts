@@ -255,11 +255,11 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 			});
 		},
 
-		config(userConfig) {
+		config(viteUserConfig) {
 			// Discover all @pyreon/* packages installed in node_modules.
 			// The "bun" export condition points to TS source — esbuild's
 			// dep optimizer would compile them with the wrong JSX runtime.
-			const root = userConfig.root ?? process.cwd()
+			const root = viteUserConfig.root ?? process.cwd()
 			const pyreonExclude = scanPyreonPackages(root)
 
 			// `@pyreon/runtime-server` is only imported by zero's dev SSR
@@ -293,9 +293,16 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 				optimizeDeps: {
 					exclude: pyreonExclude,
 				},
-				server: {
-					port: config.port,
-				},
+				// Only set the port when the user explicitly provided one in
+				// `zero({ port: N })`. Without this guard, the plugin always
+				// returned `server: { port: 3000 }` which overrode Vite's CLI
+				// `--port` flag and made multi-example dev impossible — every
+				// example tried to bind 3000 even when launched with
+				// `vite --port 5173`. Surfaced when wiring up the playwright
+				// e2e suite.
+				...(userConfig.port !== undefined
+					? { server: { port: config.port } }
+					: {}),
 				define: {
 					__ZERO_MODE__: JSON.stringify(config.mode),
 					__ZERO_BASE__: JSON.stringify(config.base),
