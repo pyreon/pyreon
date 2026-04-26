@@ -7,10 +7,14 @@
   "scripts": {
     "lint": "oxlint .",
     "typecheck": "tsc --noEmit",
-    "test": "echo 'no tests — experiments package is documentation + result archives'",
+    "test": "vitest run",
     "build": "echo 'no build — experiments package is documentation + result archives'"
   },
+  "dependencies": {
+    "@pyreon/reactivity": "workspace:*"
+  },
   "devDependencies": {
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.2",
+    "vitest": "^4.0.0"
   }
 }
