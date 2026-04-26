@@ -70,6 +70,22 @@ export function setupDelegation(container: Element): void {
       while (el && el !== container) {
         const handler = el[prop]
         if (typeof handler === 'function') {
+          // Per-handler `currentTarget` patch: native event delegation leaves
+          // `e.currentTarget` as the container (the listener root). Without
+          // this override, `ev.currentTarget.value` in user code reads from
+          // the container — silently `undefined` for inputs, the wrong tag
+          // type, etc. Pyreon's `TargetedEvent<E>` type *promises* the
+          // matched element; this override makes the runtime keep that
+          // promise, matching what React, Vue, and Solid all do for
+          // delegated events.
+          //
+          // `currentTarget` is a read-only accessor on native Event types,
+          // so direct assignment is silently ignored — `Object.defineProperty`
+          // with `configurable: true` is the only portable override.
+          Object.defineProperty(e, 'currentTarget', {
+            value: el,
+            configurable: true,
+          })
           batch(() => handler(e))
           // Don't break — allow ancestor handlers too (consistent with addEventListener)
           // But if stopPropagation was called, stop walking
