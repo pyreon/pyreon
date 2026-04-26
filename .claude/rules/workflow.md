@@ -56,12 +56,13 @@
 2. `bun run typecheck` — zero errors (MCP pre-existing TS2589 is known)
 3. `bun run test` — all tests pass
 4. `bun run gen-docs --check` — no manifest/api-reference drift (catches the "I edited the generated file directly" mistake)
-5. `bun run verify-modes` — every example × mode cell still produces correctly-rendered output (catches the "typed-but-unimplemented" / regression class)
-6. If you changed `ZeroConfig`, router types, or any public config-shaped surface: `bun run audit-types --all` — verify your new fields aren't typed-but-unimplemented (zero non-type refs = bug)
-7. If API surface changed: update CLAUDE.md, docs/, README, llms.txt, llms-full.txt, MCP api-reference (via the manifest, not the generated file)
-8. **NEVER merge PRs.** Open PRs and stop. Report the URL. The user merges every PR themselves. Never run `gh pr merge` (with or without `--auto`) unless the user explicitly says "merge it" for that specific PR. Authorization to merge does not generalize to follow-up PRs.
+5. `bun run verify-modes` — every example × mode cell still produces correctly-rendered output (catches "typed-but-unimplemented" at the build-artifact level)
+6. If you changed `ZeroConfig`, router types, or any public config-shaped surface: `bun run audit-types --all` — verify your new fields aren't typed-but-unimplemented at the type-surface level (zero non-type refs = bug)
+7. If you changed runtime behavior of signals / mount / router / fs-router: `bun run test:e2e` — exercise primitives in real Chromium (~90s, requires Playwright Chromium via `bunx playwright install chromium`)
+8. If API surface changed: update CLAUDE.md, docs/, README, llms.txt, llms-full.txt, MCP api-reference (via the manifest, not the generated file)
+9. **NEVER merge PRs.** Open PRs and stop. Report the URL. The user merges every PR themselves. Never run `gh pr merge` (with or without `--auto`) unless the user explicitly says "merge it" for that specific PR. Authorization to merge does not generalize to follow-up PRs.
 
-Steps 1-3 are local-fast (~10s combined). Step 4 is local-fast (~1s). Step 6 takes ~5s. Step 5 takes ~90s — run before push, not after every commit. All run in CI as required checks; running them locally just shortens the feedback loop from "CI fails 5min after push" to "blocked locally, fix in 10s."
+Steps 1-4 are local-fast (~10s combined). Step 6 (audit-types) takes ~5s. Steps 5 and 7 (verify-modes, test:e2e) take ~90s each — run before push, not after every commit. All run in CI as required checks; running them locally just shortens the feedback loop from "CI fails 5min after push" to "blocked locally, fix in 10s."
 
 ## Bisect-verify regression tests — MANDATORY for fix PRs
 
