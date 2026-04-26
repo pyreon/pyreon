@@ -39,6 +39,7 @@
     "visual-test:update": "bun scripts/visual-test/update.ts",
     "coverage": "bun scripts/check-coverage.ts",
     "test:coverage": "bun scripts/check-coverage.ts",
+    "audit-types": "bun scripts/audit-types.ts",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "bun run build && bun run scripts/publish.ts"
@@ -66,6 +67,7 @@
     "happy-dom": "^20.9.0",
     "hono": "^4.12.14",
     "next": "^16.2.4",
+    "oxc-parser": "^0.123.0",
     "oxc-transform": "^0.123.0",
     "oxfmt": "^0.43.0",
     "oxlint": "^1.61.0",
