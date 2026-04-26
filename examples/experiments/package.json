@@ -8,7 +8,8 @@
     "lint": "oxlint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:browser": "vitest run --config ./vitest.browser.config.ts",
+    "test:browser": "echo 'experiment browser tests are opt-in — run via test:browser:<experiment> (e.g. test:browser:e2)'",
+    "test:browser:e2": "vitest run --config ./vitest.browser.config.ts e2-static-rocketstyle",
     "build": "echo 'no build — experiments package is documentation + result archives'"
   },
   "dependencies": {
