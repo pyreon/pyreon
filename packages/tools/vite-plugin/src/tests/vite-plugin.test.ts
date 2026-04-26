@@ -133,6 +133,32 @@ export function App() { return null }
     expect(result!.code).toContain('__hmr_signal("/src/theme.tsx", "theme", signal, "light")')
   })
 
+  it('rewrites generic-typed signals (signal<T>(value))', async () => {
+    // Regression for the silent-skip bug: SIGNAL_PREFIX_RE used to match
+    // `signal(` but not `signal<T>(`. Pre-rewrite TypeScript still has type
+    // parameters; declarations like `signal<string>('')` would skip HMR
+    // preservation silently and produce an empty-string-valued signal that
+    // — under a separate `__hmr_signal` interaction — could read as
+    // undefined. Discovered via PR #329 (perf-dashboard form section).
+    const plugin = createPlugin()
+    const code = `
+import { signal } from "@pyreon/reactivity"
+export const password = signal<string>("")
+export const items = signal<Array<{ id: number }>>([])
+export const count = signal<number>(0)
+export function App() { return null }
+`
+    const result = await transform(plugin, code, '/src/state.tsx')
+    expect(result).toBeDefined()
+    expect(result!.code).toContain(
+      '__hmr_signal("/src/state.tsx", "password", signal, "")',
+    )
+    expect(result!.code).toContain(
+      '__hmr_signal("/src/state.tsx", "items", signal, [])',
+    )
+    expect(result!.code).toContain('__hmr_signal("/src/state.tsx", "count", signal, 0)')
+  })
+
   it('does not rewrite signal() inside functions to __hmr_signal (but injects name)', async () => {
     const plugin = createPlugin()
     const code = `

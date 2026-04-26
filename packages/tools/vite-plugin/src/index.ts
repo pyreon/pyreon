@@ -361,8 +361,19 @@ function generateProjectContext(root: string): void {
  * The arguments are extracted via balanced-paren matching in `injectHmr`.
  * A brace-depth check filters out matches inside functions/blocks — only
  * module-scope (depth 0) signals are rewritten for HMR state preservation.
+ *
+ * The optional `<...>` group accepts a TypeScript type parameter so that
+ * `signal<T>(initial)` declarations are also rewritten — without it, any
+ * generic-typed module-scope signal silently skipped HMR preservation.
+ *
+ * The inner `(?:[^<>]|<[^<>]*>)*` permits one level of generic nesting
+ * (e.g. `signal<Array<Row>>([])`, `signal<Map<string, number>>(m)`).
+ * Deeper nesting (`signal<Array<{ id: T<U> }>>(...)`) falls back to
+ * not-rewritten — tracked as a follow-up if real consumers need it,
+ * but unlikely at module scope where generics are usually shallow.
  */
-const SIGNAL_PREFIX_RE = /^((?:export\s+)?(?:const|let)\s+(\w+)\s*=\s*)signal\(/gm
+const SIGNAL_PREFIX_RE =
+  /^((?:export\s+)?(?:const|let)\s+(\w+)\s*=\s*)signal(?:<(?:[^<>]|<[^<>]*>)*>)?\(/gm
 
 /**
  * Detect whether the module exports any component-like functions
