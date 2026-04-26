@@ -24,6 +24,12 @@ import { isDynamic } from './shared'
 import { sheet } from './sheet'
 import { useThemeAccessor } from './ThemeProvider'
 
+// Dev-time counter sink — see packages/internals/perf-harness/COUNTERS.md.
+interface ViteMeta {
+  readonly env?: { readonly DEV?: boolean }
+}
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 type Tag = string | ComponentFn<any>
 
 export interface StyledOptions {
@@ -185,7 +191,11 @@ const createStyledComponent = (
         const inner = elClassCache.get($el as object)
         if (inner) {
           const cached = inner.get($childFix)
-          if (cached !== undefined) return cached
+          if (cached !== undefined) {
+            if ((import.meta as ViteMeta).env?.DEV === true)
+              _countSink.__pyreon_count__?.('styler.elClassCache.hit')
+            return cached
+          }
         }
       }
 
