@@ -7,6 +7,7 @@
 import { splitProps } from '@pyreon/core'
 import { getShouldBeEmpty } from '../../Element/utils'
 import { IS_DEVELOPMENT } from '../../utils'
+import { internElementBundle } from '../internElementBundle'
 import Styled from './styled'
 import type { Props } from './types'
 import { isWebFixNeeded } from './utils'
@@ -50,60 +51,41 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
   const isVoidTag = !own.dangerouslySetInnerHTML && getShouldBeEmpty(own.tag)
 
   if (!needsFix) {
+    const bundle = internElementBundle({
+      block: own.block,
+      direction: own.direction,
+      alignX: own.alignX,
+      alignY: own.alignY,
+      equalCols: own.equalCols,
+      extraStyles: own.extendCss,
+    })
     if (isVoidTag) {
-      return (
-        <Styled
-          {...commonProps}
-          $element={{
-            block: own.block,
-            direction: own.direction,
-            alignX: own.alignX,
-            alignY: own.alignY,
-            equalCols: own.equalCols,
-            extraStyles: own.extendCss,
-          }}
-        />
-      )
+      return <Styled {...commonProps} $element={bundle} />
     }
     return (
-      <Styled
-        {...commonProps}
-        $element={{
-          block: own.block,
-          direction: own.direction,
-          alignX: own.alignX,
-          alignY: own.alignY,
-          equalCols: own.equalCols,
-          extraStyles: own.extendCss,
-        }}
-      >
+      <Styled {...commonProps} $element={bundle}>
         {own.children}
       </Styled>
     )
   }
 
   const asTag = own.isInline ? 'span' : 'div'
+  const parentBundle = internElementBundle({
+    parentFix: true as const,
+    block: own.block,
+    extraStyles: own.extendCss,
+  })
+  const childBundle = internElementBundle({
+    childFix: true as const,
+    direction: own.direction,
+    alignX: own.alignX,
+    alignY: own.alignY,
+    equalCols: own.equalCols,
+  })
 
   return (
-    <Styled
-      {...commonProps}
-      $element={{
-        parentFix: true as const,
-        block: own.block,
-        extraStyles: own.extendCss,
-      }}
-    >
-      <Styled
-        as={asTag}
-        $childFix
-        $element={{
-          childFix: true as const,
-          direction: own.direction,
-          alignX: own.alignX,
-          alignY: own.alignY,
-          equalCols: own.equalCols,
-        }}
-      >
+    <Styled {...commonProps} $element={parentBundle}>
+      <Styled as={asTag} $childFix $element={childBundle}>
         {own.children}
       </Styled>
     </Styled>

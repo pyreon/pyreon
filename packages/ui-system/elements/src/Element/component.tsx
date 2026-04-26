@@ -11,6 +11,7 @@ import { onMount, splitProps } from '@pyreon/core'
 import { render } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
 import { Content, Wrapper } from '../helpers'
+import { internElementBundle } from '../helpers/internElementBundle'
 import WrapperStyled from '../helpers/Wrapper/styled'
 import { isWebFixNeeded } from '../helpers/Wrapper/utils'
 import { IS_DEVELOPMENT } from '../utils'
@@ -180,14 +181,14 @@ const Component: PyreonElement = (props) => {
         {...WRAPPER_DEV_PROPS}
         ref={mergedRef}
         as={own.tag}
-        $element={{
+        $element={internElementBundle({
           block: own.block,
           direction: wrapperDirection,
           alignX: wrapperAlignX,
           alignY: wrapperAlignY,
           equalCols: own.equalCols,
           extraStyles: own.css,
-        }}
+        })}
       >
         {render(getChildren())}
       </WrapperStyled>

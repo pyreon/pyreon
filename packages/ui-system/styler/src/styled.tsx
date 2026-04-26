@@ -130,6 +130,14 @@ const createStyledComponent = (
   // Two-level WeakMap: $rocketstyle → $rocketstate → className.
   // 50 identical Items with the same resolved theme → 1 resolve + 49 hits.
   const classCache = new WeakMap<object, WeakMap<object, string>>()
+  // Single-key cache for non-rocketstyle styled components (e.g. Element's
+  // Wrapper, which depends on `$element` + `$childFix`). The key is the
+  // `$element` object identity; `$childFix` is folded into a `Map<bool,
+  // string>` per `$element` to avoid wrong-cache hits when childFix differs.
+  // Element-layer interning (see `@pyreon/elements` Element/component.tsx)
+  // gives `$element` stable identity across mounts, which is what makes this
+  // cache fire — analogous to PR #344's rocketstyle dimension memo.
+  const elClassCache = new WeakMap<object, Map<unknown, string>>()
 
   // DYNAMIC PATH: uses computed() for reactive class derivation.
   //
@@ -164,6 +172,23 @@ const createStyledComponent = (
         }
       }
 
+      // Element-layer cache (no rocketstyle props, but $element is present
+      // and an object). Fires only when the rocketstyle path didn't apply
+      // — they're mutually exclusive in practice.
+      const $el = rawProps.$element
+      const $childFix = rawProps.$childFix
+      const useElCache =
+        (!rs || typeof rs !== 'object' || !rsState || typeof rsState !== 'object') &&
+        $el &&
+        typeof $el === 'object'
+      if (useElCache) {
+        const inner = elClassCache.get($el as object)
+        if (inner) {
+          const cached = inner.get($childFix)
+          if (cached !== undefined) return cached
+        }
+      }
+
       const resolveProps = {
         ...rawProps,
         ...(isReactiveRS ? { $rocketstyle: rs } : {}),
@@ -180,6 +205,13 @@ const createStyledComponent = (
           classCache.set(rs, inner)
         }
         inner.set(rsState, className)
+      } else if (useElCache) {
+        let inner = elClassCache.get($el as object)
+        if (!inner) {
+          inner = new Map()
+          elClassCache.set($el as object, inner)
+        }
+        inner.set($childFix, className)
       }
       return className
     }
