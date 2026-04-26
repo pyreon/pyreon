@@ -140,6 +140,59 @@ describe('probe — what fires 22 styler.resolve per Button mount', () => {
     dispose()
     root.remove()
   })
+
+  it('mounts TWO Buttons under ONE PyreonUI — second is dimension-memo HIT (real-app shape)', async () => {
+    // The previous tests each mounted their own PyreonUI provider, which
+    // produces a fresh enrichedTheme reference per mount. Real apps mount
+    // PyreonUI once at boot — every rocketstyle instance shares the same
+    // enriched theme reference, which is the case the dimension-prop memo
+    // is designed for. This test asserts that on the SECOND identical
+    // mount under the same provider, the memo hits and the styler resolve
+    // pipeline is skipped entirely.
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+
+    perfHarness.reset()
+    const before = perfHarness.snapshot()
+
+    const dispose = mount(
+      h(
+        PyreonUI,
+        { theme, mode: 'light' as const },
+        h('div', null, [
+          h(Button, { state: 'primary', size: 'large' }, 'probe-shared-1'),
+          h(Button, { state: 'primary', size: 'large' }, 'probe-shared-2'),
+        ]),
+      ) as unknown as VNodeChild,
+      root,
+    )
+    await flush()
+
+    const after = perfHarness.snapshot()
+    const delta: Record<string, number> = {}
+    for (const k of new Set([...Object.keys(before), ...Object.keys(after)])) {
+      delta[k] = (after[k] ?? 0) - (before[k] ?? 0)
+    }
+
+    // oxlint-disable-next-line no-console
+    console.warn(
+      `[probe] TWO-buttons-one-provider mount counters: ${JSON.stringify(delta, null, 2)}`,
+    )
+
+    // First Button: full pipeline (22 resolves). Second Button: dimension
+    // memo hits → rocketstyle layer skipped → styler classCache hits the
+    // (rocketstyle, rocketstate) pair → most resolves skipped. The remaining
+    // ~6 come from styled wrappers OUTSIDE the rocketstyle layer (Element's
+    // own styled wrapper, which doesn't see `$rocketstyle`/`$rocketstate`
+    // and so its classCache miss path runs every mount). 22 → 28 total
+    // (instead of 22 → 44) is a ~73% reduction on the second Button.
+    expect(delta['rocketstyle.dimensionMemo.hit']).toBeGreaterThanOrEqual(1)
+    expect(delta['rocketstyle.getTheme']).toBe(1) // only first Button computes fresh
+    expect(delta['styler.resolve']).toBe(28) // 22 first + ~6 leak from non-rocketstyle styled
+
+    dispose()
+    root.remove()
+  })
 })
 
 // Suppress unused-import warnings for the wrapper-attempt code above

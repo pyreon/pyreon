@@ -114,6 +114,28 @@ const rocketComponent: RocketComponent = (options) => {
   // dimension-dependent reserved keys are known (first mount), then reused.
   const _omitSetCache = new WeakMap<string[], Set<string>>()
 
+  // ── Dimension-prop memo (per-definition) ─────────────────────────────
+  // Keyed on theme identity → Map<keyString, { rocketstyle, rocketstate }>.
+  // The accessors below build a key from (mode, dimension prop tuple,
+  // pseudo state tuple) and look up here. On hit they return the SAME
+  // object identities for both `$rocketstyle` and `$rocketstate`, which
+  // lets the styler's existing `classCache` (keyed on those identities)
+  // skip the entire CSS resolve pipeline. On miss they compute fresh
+  // and store the result.
+  //
+  // Why this matters: B-FINDING.md (PR #342) showed every Button mount
+  // fires 22 styler.resolve calls even when the styler-sheet cache hits
+  // — the cache catches at the LAST step (insert dedup), but the resolve
+  // pipeline still runs to compute the hash. Stable accessor identities
+  // mean the styler's classCache hits earlier and the resolves don't run.
+  //
+  // LRU bound prevents unbounded growth from prop-tuple churn (e.g. a
+  // table where every cell has a unique state). 32 entries per theme
+  // covers ~99% of unique combos in real apps.
+  type RsMemoEntry = { readonly rocketstyle: object; readonly rocketstate: object }
+  const _rsMemo = new WeakMap<object, Map<string, RsMemoEntry>>()
+  const RS_MEMO_CAP = 32
+
   // --------------------------------------------------------
   // COMPOSE - high-order components
   // --------------------------------------------------------
@@ -189,21 +211,83 @@ const rocketComponent: RocketComponent = (options) => {
       _reservedKeysCache.set(reservedPropNames as object, RESERVED_STYLING_PROPS_KEYS)
     }
 
+    // Silence "unused" warnings for initialBaseTheme / initialDimensionThemes —
+    // they're eagerly populated into ThemeManager caches so the first accessor
+    // call hits cache, but not referenced directly.
+    void initialBaseTheme
+    void initialDimensionThemes
+
+    // Capture pseudo from localCtx once at setup — pseudo properties are
+    // getters (from createLocalProvider) that read signals lazily.
+    // Passing them through preserves reactivity without subscribing here.
+    const localPseudo = localCtx?.pseudo
+
     // --------------------------------------------------
-    // $rocketstyle as a FUNCTION ACCESSOR — fully reactive.
-    // Re-evaluates when THEME, MODE, or dimension props change.
-    // Props are resolved fresh each call so reactive prop accessors
-    // (signals, getters) produce updated dimension values.
+    // Shared accessor resolver.
+    //
+    // Both `$rocketstyleAccessor` and `$rocketstateAccessor` derive from the
+    // same input set (theme, mode, dimension props, pseudo state). Folding
+    // them into one resolver lets the dimension-prop memo return the SAME
+    // object identities for both — which is what the styler's `classCache`
+    // (keyed on `(rocketstyle, rocketstate)` identity) needs to skip the
+    // resolve pipeline on cache hit.
+    //
+    // Reactive contract: this runs inside the styler's `computed()` (one per
+    // mounted instance). All signal reads — theme, mode, dimension props,
+    // pseudo getters from localCtx — are TRACKED, so any change re-runs the
+    // computed which re-resolves the entry. Same key → cached entry; new key
+    // → fresh computation, stored under LRU cap.
     // --------------------------------------------------
-    const $rocketstyleAccessor = () => {
+    const _resolveRsEntry = (): RsMemoEntry => {
+      // Read reactive inputs (tracks theme + mode signals)
+      const theme = themeAttrs.theme
+      const mode = themeAttrs.mode
+
+      // Build key: mode | dimensionProps | pseudoState. Reading dimension
+      // props + pseudo signals here tracks them in the surrounding computed
+      // so any change re-runs us with a different key.
+      let key = mode as string
+      const propsRec = props as Record<string, unknown>
+      for (const dimName in dimensions) {
+        const v = propsRec[dimName]
+        // String/number/boolean serialize directly. Anything else (including
+        // undefined / objects) gets a typeof tag so we don't collide.
+        key +=
+          '|' +
+          (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+            ? String(v)
+            : v === undefined
+              ? ''
+              : '~' + typeof v)
+      }
+      for (const k of ALL_PSEUDO_KEYS) {
+        const propV = propsRec[k]
+        const localV = localPseudo?.[k as keyof typeof localPseudo]
+        const v = propV !== undefined ? propV : localV
+        key += '|' + (v === undefined ? '' : v ? '1' : '0')
+      }
+
+      // Cache lookup
+      let themeMemo = _rsMemo.get(theme as object)
+      if (!themeMemo) {
+        themeMemo = new Map()
+        _rsMemo.set(theme as object, themeMemo)
+      }
+
+      const cached = themeMemo.get(key)
+      if (cached) {
+        if ((import.meta as ViteMeta).env?.DEV === true)
+          _countSink.__pyreon_count__?.('rocketstyle.dimensionMemo.hit')
+        // LRU touch: move to end so eviction targets oldest unused entry
+        themeMemo.delete(key)
+        themeMemo.set(key, cached)
+        return cached
+      }
+
+      // Miss: compute fresh. Counter measures actual theme resolutions
+      // (not accessor invocations) — see COUNTERS.md.
       if ((import.meta as ViteMeta).env?.DEV === true)
         _countSink.__pyreon_count__?.('rocketstyle.getTheme')
-      // Read theme + mode LAZILY via the getter-backed themeAttrs object.
-      // Both reads are tracked when this accessor runs inside a reactive
-      // scope (styler's effect), so theme swap / mode toggle re-runs the
-      // surrounding resolver and swaps the generated class.
-      const theme = themeAttrs.theme // reactive: tracks theme signal
-      const mode = themeAttrs.mode // reactive: tracks mode signal
 
       // Resolve base + dimension themes for the CURRENT theme. WeakMap
       // keyed on theme identity — stable-theme renders hit cache in O(1),
@@ -227,8 +311,8 @@ const rocketComponent: RocketComponent = (options) => {
       const themes = dimHelper.get(theme)
 
       // Resolve active dimensions from props (not localCtx which has pseudo getters)
-      const rocketstate = _calculateStylingAttrs({
-        props: pickStyledAttrs(props as Record<string, unknown>, reservedPropNames),
+      const rocketstateRaw = _calculateStylingAttrs({
+        props: pickStyledAttrs(propsRec, reservedPropNames),
         dimensions,
       })
 
@@ -251,46 +335,34 @@ const rocketComponent: RocketComponent = (options) => {
       }
       const currentModeThemes = modeDimHelper.get(themes)
 
-      return getTheme({
-        rocketstate,
+      const rocketstyle = getTheme({
+        rocketstate: rocketstateRaw,
         themes: currentModeThemes,
         baseTheme: currentModeBaseTheme,
         transformKeys: options.transformKeys,
         appTheme: theme,
       })
-    }
 
-    // Silence "unused" warnings for initialBaseTheme / initialDimensionThemes —
-    // they're eagerly populated into ThemeManager caches so the first accessor
-    // call hits cache, but not referenced directly.
-    void initialBaseTheme
-    void initialDimensionThemes
-
-    // --------------------------------------------------
-    // $rocketstate as a FUNCTION ACCESSOR — reactive on prop changes.
-    // Re-evaluates active dimensions + pseudo state from current props.
-    // --------------------------------------------------
-    // Capture pseudo from localCtx once at setup — pseudo properties are
-    // getters (from createLocalProvider) that read signals lazily.
-    // Passing them through preserves reactivity without subscribing here.
-    const localPseudo = localCtx?.pseudo
-
-    const $rocketstateAccessor = () => {
-      const rocketstate = _calculateStylingAttrs({
-        props: pickStyledAttrs(props as Record<string, unknown>, reservedPropNames),
-        dimensions,
-      })
-
-      // Read pseudo props fresh each call — props may have reactive getters
-      // from _rp() wrapping. Reading inside the accessor (which runs in an
-      // effect) ensures changes to pseudo props like active={isDark()} are tracked.
-      const propPseudo = pick(props, ALL_PSEUDO_KEYS)
-
-      return {
-        ...rocketstate,
+      // $rocketstate carries dimension state + pseudo flags so the styler
+      // emits matching pseudo selectors (`:hover`, `:focus`, etc.).
+      const propPseudo = pick(propsRec, ALL_PSEUDO_KEYS)
+      const rocketstate = {
+        ...rocketstateRaw,
         pseudo: { ...localPseudo, ...propPseudo },
       }
+
+      // LRU eviction at cap — drop the oldest (first-inserted) entry.
+      if (themeMemo.size >= RS_MEMO_CAP) {
+        const oldestKey = themeMemo.keys().next().value
+        if (oldestKey !== undefined) themeMemo.delete(oldestKey)
+      }
+      const entry: RsMemoEntry = { rocketstyle, rocketstate }
+      themeMemo.set(key, entry)
+      return entry
     }
+
+    const $rocketstyleAccessor = () => _resolveRsEntry().rocketstyle
+    const $rocketstateAccessor = () => _resolveRsEntry().rocketstate
 
     // --------------------------------------------------
     // final props passed to WrappedComponent

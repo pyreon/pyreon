@@ -29,7 +29,7 @@ afterEach(() => {
 })
 
 describe('rocketstyle.getTheme', () => {
-  it('fires once per $rocketstyleAccessor invocation', async () => {
+  it('fires on the first $rocketstyleAccessor invocation (memo miss)', async () => {
     const Comp = rocketstyle()({
       name: 'GetThemeProbe',
       component: ThemeCapture,
@@ -38,7 +38,27 @@ describe('rocketstyle.getTheme', () => {
     const outcome = await perfHarness.record('resolve-once', () => {
       getComputedTheme(Comp, {}, { mode: 'light' })
     })
+    // First render: dimension-prop memo misses, fresh resolution fires.
     expect(outcome.after['rocketstyle.getTheme']).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe('rocketstyle.dimensionMemo.hit', () => {
+  it('fires on the second+ render with the same prop tuple (skips fresh resolve)', async () => {
+    const Comp = rocketstyle()({
+      name: 'MemoProbe',
+      component: ThemeCapture,
+    }).theme(() => ({ color: 'red' }))
+
+    // Prime the memo
+    getComputedTheme(Comp, {}, { mode: 'light' })
+    const outcome = await perfHarness.record('memo-hit', () => {
+      getComputedTheme(Comp, {}, { mode: 'light' })
+      getComputedTheme(Comp, {}, { mode: 'light' })
+    })
+    // Two renders with identical key → two memo hits, zero fresh resolves
+    expect(outcome.after['rocketstyle.dimensionMemo.hit']).toBeGreaterThanOrEqual(2)
+    expect(outcome.after['rocketstyle.getTheme'] ?? 0).toBe(0)
   })
 })
 
@@ -62,20 +82,23 @@ describe('rocketstyle.dimensionsMap.hit', () => {
 })
 
 describe('rocketstyle.localThemeManager.hit', () => {
-  it('fires when theme + mode are stable (WeakMap tier hit)', async () => {
+  it('fires when theme is warm but the dimension-prop memo misses', async () => {
+    // Use sizes() so we can force a memo miss with a different prop tuple
+    // while the underlying theme + mode caches are already warm.
     const Comp = rocketstyle()({
       name: 'ThemeMgrProbe',
       component: ThemeCapture,
-    }).theme(() => ({ color: 'red' }))
+    })
+      .sizes(() => ({ small: { fontSize: '12px' }, large: { fontSize: '16px' } }))
+      .theme(() => ({ color: 'red' }))
 
-    // Prime caches.
-    getComputedTheme(Comp, {}, { mode: 'light' })
-    // Subsequent renders with the same theme + mode should hit all four
-    // cache tiers (baseTheme, dimensionsThemes, modeBaseTheme,
-    // modeDimensionTheme) — the counter rolls them up, so 4 hits per
-    // render.
-    const outcome = await perfHarness.record('same-theme-same-mode', () => {
-      getComputedTheme(Comp, {}, { mode: 'light' })
+    // Prime: warms theme + mode + memo for size=small
+    getComputedTheme(Comp, { size: 'small' }, { mode: 'light' })
+    // Now render with size=large — memo misses but theme/mode caches hit.
+    // The localThemeManager rollup fires 4× (baseTheme, dimensionsThemes,
+    // modeBaseTheme, modeDimensionTheme) on the fresh resolution path.
+    const outcome = await perfHarness.record('warm-theme-cold-memo', () => {
+      getComputedTheme(Comp, { size: 'large' }, { mode: 'light' })
     })
     expect(outcome.after['rocketstyle.localThemeManager.hit']).toBeGreaterThanOrEqual(4)
   })
