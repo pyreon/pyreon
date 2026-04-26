@@ -60,6 +60,14 @@ jobs:
             journey: regenRows
           - app: perf-dashboard
             journey: modalCycle
+          # Canonical journeys for the architectural-experiments plan (#325).
+          # Every architectural experiment will be measured against these.
+          - app: perf-dashboard
+            journey: chat
+          - app: perf-dashboard
+            journey: dashboard
+          - app: perf-dashboard
+            journey: form
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6

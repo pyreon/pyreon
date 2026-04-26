@@ -63,6 +63,100 @@ export const formState = {
   budget: signal('10000'),
 }
 
+// ── Journey-shaped state ─────────────────────────────────────────────────────
+//
+// Three canonical journeys (chat / dashboard / form) that drive the
+// architectural-experiments harness. Each is a real-app-shape workload —
+// not a synthetic microbenchmark — so wins/regressions show up the way
+// they would in production.
+
+interface ChatMessage {
+  id: number
+  text: string
+  author: string
+}
+
+let _chatId = 0
+function makeChatMessage(): ChatMessage {
+  _chatId++
+  return {
+    id: _chatId,
+    text: `Message ${_chatId} — ${'lorem ipsum dolor sit amet '.repeat(2 + (_chatId % 3))}`,
+    author: ['ada', 'grace', 'linus', 'guido'][_chatId % 4]!,
+  }
+}
+
+/** Append-only chat log. Journey: append N messages, scroll. */
+export const chatMessages = signal<ChatMessage[]>(
+  Array.from({ length: 50 }, () => makeChatMessage()),
+)
+
+/**
+ * 50 reactive widget values. Journey: start churn, wait 5s, stop. Each tick
+ * updates a random subset of widgets — stresses signal write throughput +
+ * downstream effect cascade in a real-app shape (live dashboard).
+ */
+export interface Widget {
+  id: number
+  sig: ReturnType<typeof signal<number>>
+}
+export const widgetValues: Widget[] = Array.from({ length: 50 }, (_, i) => ({
+  id: i,
+  sig: signal(((i * 137) % 9000) + 100),
+}))
+
+let _churnIntervalId: ReturnType<typeof setInterval> | null = null
+export const churnRunning = signal(false)
+
+export function startWidgetChurn(): void {
+  if (_churnIntervalId !== null) return
+  churnRunning.set(true)
+  _churnIntervalId = setInterval(() => {
+    // Update 5 random widgets per tick — same shape as a live dashboard
+    // receiving 5 metric updates per 100ms window.
+    for (let i = 0; i < 5; i++) {
+      const idx = Math.floor(Math.random() * widgetValues.length)
+      const w = widgetValues[idx]
+      if (w) w.sig.set(Math.floor(Math.random() * 9999))
+    }
+  }, 100)
+}
+
+export function stopWidgetChurn(): void {
+  if (_churnIntervalId !== null) {
+    clearInterval(_churnIntervalId)
+    _churnIntervalId = null
+  }
+  churnRunning.set(false)
+}
+
+/**
+ * 30-field form with cross-field validation. Journey: type 60 keystrokes
+ * across multiple fields. Stresses per-field signal updates + computed
+ * recomputation (the `passwordsMatch` derived signal fires when either
+ * password input changes).
+ */
+export interface FormField {
+  id: number
+  sig: ReturnType<typeof signal<string>>
+}
+export const longFormFields: FormField[] = Array.from({ length: 28 }, (_, i) => ({
+  id: i,
+  sig: signal(`field-${i}-default`),
+}))
+// NOTE: the explicit `<string>` generic is load-bearing — it bypasses the
+// Pyreon Vite plugin's HMR-signal-wrapper regex (which doesn't account for
+// type parameters on `signal<T>(...)`). Without it, the plugin rewrites
+// `signal('')` → `__hmr_signal(..., signal, '')` and the wrapper somehow
+// produces a signal that reads as `undefined` (root cause unknown,
+// reproducible only with `''` initial value — `signal(false)` works fine).
+// See follow-up issue.
+export const passwordSignal = signal<string>('')
+export const confirmPasswordSignal = signal<string>('')
+export const passwordsMatch = computed(
+  () => passwordSignal() === confirmPasswordSignal() && passwordSignal().length >= 6,
+)
+
 interface Row {
   id: number
   name: string
@@ -214,6 +308,144 @@ function FormSection() {
   )
 }
 
+// ── Journey-shaped sections ──────────────────────────────────────────────────
+
+function ChatSection() {
+  const append = (n: number) => {
+    const next = [...chatMessages()]
+    for (let i = 0; i < n; i++) next.push(makeChatMessage())
+    chatMessages.set(next)
+  }
+  return (
+    <Section theme={themeSignal()}>
+      <Row>
+        <SectionTitle theme={themeSignal()}>Chat (append-heavy)</SectionTitle>
+        <div style="flex: 1" />
+        <GhostButton
+          theme={themeSignal()}
+          data-testid="chat-append-1"
+          onClick={() => append(1)}
+        >
+          Append 1
+        </GhostButton>
+        <GhostButton
+          theme={themeSignal()}
+          data-testid="chat-append-100"
+          onClick={() => append(100)}
+        >
+          Append 100
+        </GhostButton>
+        <GhostButton
+          theme={themeSignal()}
+          data-testid="chat-reset"
+          onClick={() => {
+            _chatId = 0
+            chatMessages.set(Array.from({ length: 50 }, () => makeChatMessage()))
+          }}
+        >
+          Reset
+        </GhostButton>
+      </Row>
+      <div
+        style="max-height: 240px; overflow-y: auto; border: 1px solid var(--c, #444); padding: 8px;"
+        data-testid="chat-scroll"
+      >
+        <For each={() => chatMessages()} by={(m: ChatMessage) => m.id}>
+          {(m: ChatMessage) => (
+            <div style="padding: 4px 0; font-family: monospace; font-size: 12px;">
+              <strong>{m.author}</strong>: {m.text}
+            </div>
+          )}
+        </For>
+      </div>
+    </Section>
+  )
+}
+
+function WidgetGridSection() {
+  return (
+    <Section theme={themeSignal()}>
+      <Row>
+        <SectionTitle theme={themeSignal()}>Live widgets (50)</SectionTitle>
+        <div style="flex: 1" />
+        <GhostButton
+          theme={themeSignal()}
+          data-testid="dashboard-churn-start"
+          onClick={() => startWidgetChurn()}
+        >
+          Start churn
+        </GhostButton>
+        <GhostButton
+          theme={themeSignal()}
+          data-testid="dashboard-churn-stop"
+          onClick={() => stopWidgetChurn()}
+        >
+          Stop churn
+        </GhostButton>
+      </Row>
+      <Grid>
+        <For each={() => widgetValues} by={(w: Widget) => w.id}>
+          {(w: Widget) => (
+            <Card theme={themeSignal()} data-testid={`widget-${w.id}`}>
+              <CardLabel theme={themeSignal()}>Widget {w.id}</CardLabel>
+              <CardValue theme={themeSignal()}>{() => w.sig().toLocaleString()}</CardValue>
+            </Card>
+          )}
+        </For>
+      </Grid>
+    </Section>
+  )
+}
+
+function LongFormSection() {
+  return (
+    <Section theme={themeSignal()}>
+      <SectionTitle theme={themeSignal()}>Long form (30 fields, cross-field validation)</SectionTitle>
+      <Grid>
+        <For each={() => longFormFields} by={(f: FormField) => f.id}>
+          {(f: FormField) => (
+            <Field theme={themeSignal()}>
+              Field {f.id}
+              <Input
+                theme={themeSignal()}
+                data-testid={`form-field-${f.id}`}
+                value={f.sig()}
+                onInput={(ev: Event) => f.sig.set((ev.currentTarget as HTMLInputElement).value)}
+              />
+            </Field>
+          )}
+        </For>
+        <Field theme={themeSignal()}>
+          Password
+          <Input
+            theme={themeSignal()}
+            data-testid="form-password"
+            value={passwordSignal()}
+            onInput={(ev: Event) =>
+              passwordSignal.set((ev.currentTarget as HTMLInputElement).value)
+            }
+          />
+        </Field>
+        <Field theme={themeSignal()}>
+          Confirm password
+          <Input
+            theme={themeSignal()}
+            data-testid="form-confirm-password"
+            value={confirmPasswordSignal()}
+            onInput={(ev: Event) =>
+              confirmPasswordSignal.set((ev.currentTarget as HTMLInputElement).value)
+            }
+          />
+        </Field>
+      </Grid>
+      <div data-testid="form-validation-state" style="font-family: monospace; padding: 8px;">
+        passwords match (and ≥6 chars):{' '}
+        <Accent theme={themeSignal()}>{() => (passwordsMatch() ? 'yes' : 'no')}</Accent>
+      </div>
+    </Section>
+  )
+}
+
 function ModalSection() {
   return (
     <Section theme={themeSignal()}>
@@ -288,6 +520,9 @@ export function App() {
       <StatsSection />
       <TableSection />
       <FormSection />
+      <ChatSection />
+      <WidgetGridSection />
+      <LongFormSection />
       <ModalSection />
     </Shell>
   )
