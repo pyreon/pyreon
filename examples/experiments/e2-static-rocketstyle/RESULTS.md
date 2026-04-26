@@ -30,14 +30,16 @@ Does compile-time resolution of rocketstyle dimension props for literal-prop cal
 | Wall-clock per mount | 44µs | 1µs | 44× |
 | mountChild per visible button | **9.0** | **1.0** | 9× reduction |
 | runtime.tpl per visible button | 0 | 1 | cloneNode fast path active |
-| styler.resolve per button | **110** | 0 | -100% |
-| unistyle.descriptor per button | **105** | 0 | -100% |
-| unistyle.styles per button | 25 | 0 | -100% |
-| rocketstyle.getTheme per button | 5 | 0 | -100% |
-| rocketstyle.localThemeManager.hit per button | 20 | 0 | -100% |
-| reactivity.computedRecompute per button | 5 | 0 | -100% |
-| styler.sheet.insert per button | 15 | 0 | -100% |
-| reactivity.effectRun per button | 5 | 0 | -100% |
+| styler.resolve per button | **22** | 0 | -100% |
+| unistyle.descriptor per button | **21** | 0 | -100% |
+| unistyle.styles per button | 5 | 0 | -100% |
+| rocketstyle.getTheme per button | 1 | 0 | -100% |
+| rocketstyle.localThemeManager.hit per button | 4 | 0 | -100% |
+| reactivity.computedRecompute per button | 1 | 0 | -100% |
+| styler.sheet.insert per button | 3 | 0 | -100% |
+| reactivity.effectRun per button | 1 | 0 | -100% |
+
+> **Correction note (added after first ship)**: my first writeup divided these counters by `N=200` instead of `N × RUNS = 1000`, inflating every per-button counter 5×. Fixed above. The wall-clock numbers (44× speedup, mountChild 9 vs 1) were computed correctly from per-run totals. Lesson logged: always divide counter totals by `N × RUNS`, never just `N`.
 
 Raw bench output:
 ```
@@ -61,7 +63,7 @@ Raw bench output:
 
 These weren't part of the original hypothesis but the data surfaced them:
 
-1. **Each rocketstyle Button mount fires ~110 styler.resolve and ~105 unistyle.descriptor calls.** That's per single button. Even WITHOUT compile-time collapse, this volume is concerning. Most are probably cache-hits (the existing resolve cache works) but the lookup cost adds up. Worth a separate audit of WHY styler.resolve fires so many times per rocketstyle component.
+1. **Each rocketstyle Button mount fires ~22 styler.resolve and ~21 unistyle.descriptor calls** (corrected from the original "110 / 105" — my first writeup divided counter totals by `N` instead of `N × RUNS`, inflating 5×). Still significant: 22 nested CSS-template evaluations per single Button instantiation. Each is fast individually (~1.8µs) but ~40µs aggregate per mount, ~8ms per 200-mount run = roughly half the wall-clock cost of the rocketstyle path. Even WITHOUT compile-time collapse, reducing this count is real perf work.
 
 2. **mountChild = 9 per visible button**, not the 5 I estimated from the architectural diagram. There are more wrapper layers than expected. Likely candidates: nested `Wrapper` helper inside `Element`, dimension-applier HOC inside rocketstyle, additional context providers inside PyreonUI. A `runtime.mountChild` flame chart would show the exact tree.
 
