@@ -8,6 +8,15 @@ import { chainOptions } from './utils/chaining'
 import { calculateHocsFuncs } from './utils/compose'
 import { createStaticsEnhancers } from './utils/statics'
 
+// Dev-mode gate. `import.meta.env.DEV` is literal-replaced by Vite at build
+// time and tree-shakes to zero bytes in prod. The previous
+// `process.env.NODE_ENV !== 'production'` form was dead code in real Vite
+// browser bundles (Vite does not polyfill `process`).
+interface ViteMeta {
+  readonly env?: { readonly DEV?: boolean }
+}
+const __DEV__ = (import.meta as ViteMeta).env?.DEV === true
+
 /**
  * Clones the current configuration and merges new options, then creates a
  * fresh component. This makes the chaining API immutable — each `.attrs()`
@@ -61,10 +70,9 @@ const attrsComponent: InitAttrsComponent = (options) => {
 
     const filteredProps = needsFiltering ? omit(props, options.filterAttrs) : props
 
-    const finalProps =
-      process.env.NODE_ENV !== 'production'
-        ? { ...filteredProps, 'data-attrs': componentName }
-        : filteredProps
+    const finalProps = __DEV__
+      ? { ...filteredProps, 'data-attrs': componentName }
+      : filteredProps
 
     return RenderComponent(finalProps)
   }

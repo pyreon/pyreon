@@ -1021,14 +1021,16 @@ function DrawingCanvas() {
 
 ### Show
 
-Conditionally render children based on a reactive condition. The `when` prop must be a reactive accessor (a function). Children render when the return value is truthy; the `fallback` renders when falsy.
+Conditionally render children based on a reactive condition. The `when` prop accepts a reactive accessor (a function) OR a value. Children render when the value is truthy; the `fallback` renders when falsy.
+
+For reactive cases, pass an accessor (`when={() => signal()}`) so the framework re-evaluates on signal change. The value form (`when={true}`, `when={signal()}`) is accepted for static booleans and to gracefully handle the compiler's signal auto-call (which rewrites bare `when={mySignal}` to `when={mySignal()}`).
 
 <PropTable
   title="Show Props"
   :props='[
-    { name: "when", type: "() => boolean", required: true, description: "Reactive accessor that determines whether children or fallback render." },
-    { name: "fallback", type: "VNodeChild", description: "Content to render when when() returns a falsy value." },
-    { name: "children", type: "VNodeChild", required: true, description: "Content to render when when() returns a truthy value." },
+    { name: "when", type: "unknown | (() => unknown)", required: true, description: "Truthy condition. Accessor for reactive cases; value for static cases." },
+    { name: "fallback", type: "VNodeChild", description: "Content to render when the condition is falsy." },
+    { name: "children", type: "VNodeChild", required: true, description: "Content to render when the condition is truthy." },
   ]'
 />
 

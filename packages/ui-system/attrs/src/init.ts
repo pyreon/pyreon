@@ -3,6 +3,15 @@ import attrsComponent from './attrs'
 import type { InitAttrsComponent } from './types/InitAttrsComponent'
 import type { ElementType } from './types/utils'
 
+// Dev-mode gate. `import.meta.env.DEV` is literal-replaced by Vite at build
+// time and tree-shakes to zero bytes in prod. The previous
+// `process.env.NODE_ENV !== 'production'` form was dead code in real Vite
+// browser bundles (Vite does not polyfill `process`).
+interface ViteMeta {
+  readonly env?: { readonly DEV?: boolean }
+}
+const __DEV__ = (import.meta as ViteMeta).env?.DEV === true
+
 /**
  * Public entry point for creating an attrs-enhanced component.
  *
@@ -24,7 +33,7 @@ export type Attrs = <C extends ElementType>({
 
 const attrs: Attrs = ({ name, component }) => {
   // Validate required params in development — fail fast with clear errors.
-  if (process.env.NODE_ENV !== 'production') {
+  if (__DEV__) {
     type Errors = Partial<{
       component: string
       name: string

@@ -1,5 +1,5 @@
 /** @jsxImportSource @pyreon/core */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { Element } from '../Element'
@@ -55,5 +55,27 @@ describe('@pyreon/elements browser smoke', () => {
   it('runs in a real browser — `typeof process` is undefined, `import.meta.env.DEV` is true', () => {
     expect(typeof process).toBe('undefined')
     expect(import.meta.env.DEV).toBe(true)
+  })
+
+  // Void HTML elements via Element must not trip runtime-dom's
+  // "<X> is a void element and cannot have children" warning.
+  // Wrapper used to leak an `undefined` child into the vnode for void tags.
+  describe('void HTML element tags', () => {
+    const voidTags: Array<'hr' | 'br' | 'input' | 'img'> = ['hr', 'br', 'input', 'img']
+
+    for (const tag of voidTags) {
+      it(`<${tag}> mounts without "void element" console.warn`, () => {
+        const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        const { container, unmount } = mountInBrowser(<Element tag={tag} data-id={tag} />)
+        const el = container.querySelector(`[data-id="${tag}"]`)
+        expect(el?.tagName.toLowerCase()).toBe(tag)
+        const voidWarnings = warnSpy.mock.calls.filter((args) =>
+          typeof args[0] === 'string' && args[0].includes('void element'),
+        )
+        expect(voidWarnings).toEqual([])
+        warnSpy.mockRestore()
+        unmount()
+      })
+    }
   })
 })

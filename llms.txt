@@ -288,7 +288,7 @@ const mode = useMode()  // "light" | "dark" (reactive signal)
 @pyreon/zero — full-stack meta-framework built on Pyreon + Vite:
 - Client-safe main entry: `@pyreon/zero` = client components only, `@pyreon/zero/server` = server-only
 - File-system routing (src/routes/) with layouts, error boundaries, loading states, 404 pages
-- SSR + SSG + ISR rendering modes
+- SSR + SSG + ISR rendering modes — `mode: "ssg"` auto-wires the build-time prerender pipeline (`closeBundle` → SSR sub-build → write `dist/<path>/index.html` per `ssg.paths` entry; auto-detects static paths from the route tree when paths are omitted)
 - API routes (src/routes/api/) with typed handlers
 - Image optimization — responsive srcset, blur placeholders, WebP/AVIF, lazy loading
 - Favicon generation — single source SVG/PNG → ICO, Apple touch, manifest, dark mode SVG
@@ -308,7 +308,7 @@ const mode = useMode()  // "light" | "dark" (reactive signal)
 - SEO — sitemap.xml, robots.txt, JSON-LD helpers
 - Dev error overlay with stack traces
 - Adapters — Node, Bun, static, Vercel, Cloudflare Pages, Netlify Functions
-- Layouts use `<RouterView />` (not props.children)
+- Layouts receive the route content as `props.children` (zero's `createApp` passes `<RouterView />` as the layout's child); render `{props.children}` inside the layout — do NOT render `<RouterView />` directly, or you'll mount it twice
 
 ## Key Ecosystem Patterns
 

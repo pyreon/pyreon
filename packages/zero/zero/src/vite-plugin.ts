@@ -45,6 +45,7 @@ import {
 	scanRouteFilesWithExports,
 } from "./fs-router";
 import { render404Page } from "./not-found";
+import { ssgPlugin } from "./ssg-plugin";
 import type { ZeroConfig } from "./types";
 
 const VIRTUAL_ROUTES_ID = "virtual:zero/routes";
@@ -69,12 +70,12 @@ const RESOLVED_VIRTUAL_API_ROUTES_ID = `\0${VIRTUAL_API_ROUTES_ID}`;
  *   plugins: [pyreon(), zero()],
  * }
  */
-export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin {
+export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 	const config = resolveConfig(userConfig);
 	let routesDir: string;
 	let root: string;
 
-	const plugin: Plugin & { _zeroConfig: ZeroConfig } = {
+	const mainPlugin: Plugin & { _zeroConfig: ZeroConfig } = {
 		name: "pyreon-zero",
 		enforce: "pre",
 		_zeroConfig: userConfig,
@@ -303,7 +304,11 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin {
 		},
 	};
 
-	return plugin;
+	// SSG mode auto-wires the static-site generation hook. Other modes get
+	// just the main plugin. The SSG plugin internally no-ops when
+	// `mode !== 'ssg'`, but skipping it entirely keeps the plugin chain
+	// minimal for SSR/SPA/ISR builds (one less `closeBundle` to call).
+	return config.mode === "ssg" ? [mainPlugin, ssgPlugin(userConfig)] : [mainPlugin];
 }
 
 /**

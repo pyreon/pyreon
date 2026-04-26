@@ -1,5 +1,5 @@
 import { splitProps, useContext } from '@pyreon/core'
-import { PKG_NAME } from '../constants'
+import { __DEV__, PKG_NAME } from '../constants'
 import { RowContext } from '../context'
 import type { ElementType } from '../types'
 import useGridContext from '../useContext'
@@ -12,8 +12,7 @@ import Styled from './styled'
  * of the total columns. Supports responsive size, padding, and visibility.
  */
 
-const DEV_PROPS: Record<string, string> =
-  process.env.NODE_ENV !== 'production' ? { 'data-coolgrid': 'col' } : {}
+const DEV_PROPS: Record<string, string> = __DEV__ ? { 'data-coolgrid': 'col' } : {}
 
 const Component: ElementType<
   [

@@ -5,6 +5,7 @@
  * support `display: flex` consistently across browsers.
  */
 import { splitProps } from '@pyreon/core'
+import { getShouldBeEmpty } from '../../Element/utils'
 import { IS_DEVELOPMENT } from '../../utils'
 import Styled from './styled'
 import type { Props } from './types'
@@ -41,7 +42,29 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
 
   const needsFix = !own.dangerouslySetInnerHTML && isWebFixNeeded(own.tag)
 
+  // Void HTML elements (hr, input, img, br, …) cannot have children. Even
+  // a falsy `{own.children}` slot becomes `[undefined]` in the vnode and
+  // trips runtime-dom's void-element warning. Element already skips passing
+  // children to Wrapper for void tags; this guard makes sure the empty
+  // slot is dropped here too instead of leaking into the JSX.
+  const isVoidTag = !own.dangerouslySetInnerHTML && getShouldBeEmpty(own.tag)
+
   if (!needsFix) {
+    if (isVoidTag) {
+      return (
+        <Styled
+          {...commonProps}
+          $element={{
+            block: own.block,
+            direction: own.direction,
+            alignX: own.alignX,
+            alignY: own.alignY,
+            equalCols: own.equalCols,
+            extraStyles: own.extendCss,
+          }}
+        />
+      )
+    }
     return (
       <Styled
         {...commonProps}

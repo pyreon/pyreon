@@ -1307,8 +1307,15 @@ export function generateRouteModuleFromRoutes(
 /**
  * Generate a virtual module that maps URL patterns to their middleware exports.
  * Used by the server entry to dispatch per-route middleware.
+ *
+ * Detects whether each route file actually exports `middleware` (via
+ * `detectRouteExports` source scanning) and only emits an import for files
+ * that do. The `lazy()` import path tolerates missing exports, but the SSG
+ * static-import path fails Rolldown's missing-export check at build time —
+ * skipping no-middleware files keeps both paths working.
  */
 export function generateMiddlewareModule(files: string[], routesDir: string): string {
+  const { readFileSync } = require('node:fs') as typeof import('node:fs')
   const routes = parseFileRoutes(files)
   const imports: string[] = []
   const entries: string[] = []
@@ -1316,6 +1323,14 @@ export function generateMiddlewareModule(files: string[], routesDir: string): st
 
   for (const route of routes) {
     if (route.isLayout || route.isError || route.isLoading || route.isNotFound) continue
+    let hasMw = false
+    try {
+      const source = readFileSync(`${routesDir}/${route.filePath}`, 'utf-8')
+      hasMw = detectRouteExports(source).hasMiddleware
+    } catch {
+      // File can't be read — skip; the SSR runtime falls back gracefully.
+    }
+    if (!hasMw) continue
     const name = `_mw${counter++}`
     const fullPath = `${routesDir}/${route.filePath}`
     imports.push(`import { middleware as ${name} } from "${fullPath}"`)
@@ -1372,8 +1387,17 @@ export async function scanRouteFilesWithExports(
   defaultMode: RenderMode = 'ssr',
 ): Promise<FileRoute[]> {
   const { readFile } = await import('node:fs/promises')
+  const { isApiRoute } = await import('./api-routes')
 
-  const files = await scanRouteFiles(routesDir)
+  // Api routes (`api/**/*.ts`) live in the same routes tree but are served by
+  // a separate virtual module (`virtual:zero/api-routes`). Page-route
+  // generation MUST skip them — they export named HTTP method handlers
+  // (`GET`/`POST`/...), not a default page component, so the SSG `staticImports`
+  // mode would emit `import _N from "api/posts.ts"` and fail Rolldown's
+  // missing-export check at build time. The bug only surfaced under SSG
+  // because the regular lazy()-mode `import()` doesn't fail on missing
+  // default exports.
+  const files = (await scanRouteFiles(routesDir)).filter((f) => !isApiRoute(f))
   const exportsMap = new Map<string, RouteFileExports>()
 
   await Promise.all(

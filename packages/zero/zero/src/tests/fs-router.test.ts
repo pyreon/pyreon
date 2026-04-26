@@ -419,21 +419,58 @@ export default function Page() { return null }
 // ─── generateMiddlewareModule ───────────────────────────────────────────────
 
 describe('generateMiddlewareModule', () => {
-  it('generates middleware imports for route files', () => {
-    const code = generateMiddlewareModule(['index.tsx', 'about.tsx'], '/src/routes')
+  // The generator now reads each route file's source to detect whether it
+  // actually exports `middleware` (so SSG's static-import path doesn't fail
+  // Rolldown's missing-export check). Tests need real files on disk so the
+  // detection has source to read.
+  let mwTmp = ''
+
+  beforeEach(() => {
+    mwTmp = mkdtempSync(join(tmpdir(), 'pyreon-mw-'))
+  })
+
+  afterEach(() => {
+    if (mwTmp) rmSync(mwTmp, { recursive: true, force: true })
+  })
+
+  function writeRouteWithMiddleware(name: string): void {
+    writeFileSync(
+      join(mwTmp, name),
+      `export const middleware = [() => {}]\nexport default function Page() { return null }\n`,
+    )
+  }
+
+  function writeRouteWithoutMiddleware(name: string): void {
+    writeFileSync(
+      join(mwTmp, name),
+      `export default function Page() { return null }\n`,
+    )
+  }
+
+  it('generates middleware imports for route files that export middleware', () => {
+    writeRouteWithMiddleware('index.tsx')
+    writeRouteWithMiddleware('about.tsx')
+    const code = generateMiddlewareModule(['index.tsx', 'about.tsx'], mwTmp)
     expect(code).toContain('import { middleware as')
     expect(code).toContain('export const routeMiddleware')
   })
 
   it('maps URL patterns to middleware', () => {
-    const code = generateMiddlewareModule(['about.tsx'], '/src/routes')
+    writeRouteWithMiddleware('about.tsx')
+    const code = generateMiddlewareModule(['about.tsx'], mwTmp)
     expect(code).toContain('pattern: "/about"')
   })
 
   it('skips layout, error, loading, and not-found files', () => {
+    writeRouteWithMiddleware('_layout.tsx')
+    writeRouteWithMiddleware('_error.tsx')
+    writeRouteWithMiddleware('_loading.tsx')
+    writeRouteWithMiddleware('_404.tsx')
+    writeRouteWithMiddleware('_not-found.tsx')
+    writeRouteWithMiddleware('index.tsx')
     const code = generateMiddlewareModule(
       ['_layout.tsx', '_error.tsx', '_loading.tsx', '_404.tsx', '_not-found.tsx', 'index.tsx'],
-      '/src/routes',
+      mwTmp,
     )
     expect(code).not.toContain('_layout')
     expect(code).not.toContain('_error')
@@ -444,8 +481,19 @@ describe('generateMiddlewareModule', () => {
   })
 
   it('filters out entries with no middleware at runtime', () => {
-    const code = generateMiddlewareModule(['index.tsx'], '/src/routes')
+    writeRouteWithMiddleware('index.tsx')
+    const code = generateMiddlewareModule(['index.tsx'], mwTmp)
     expect(code).toContain('.filter(e => e.middleware)')
+  })
+
+  // New: regression test for the SSG / static-import path. Routes WITHOUT
+  // a `middleware` export must not appear as `import { middleware as ... }`
+  // in the generated module — Rolldown's static-import check would fail
+  // the build with `"middleware" is not exported by ...`.
+  it('OMITS imports for route files that do not export middleware', () => {
+    writeRouteWithoutMiddleware('about.tsx')
+    const code = generateMiddlewareModule(['about.tsx'], mwTmp)
+    expect(code).not.toContain('import { middleware as')
   })
 })
 

@@ -3,10 +3,23 @@ import type { Props, VNode, VNodeChild, VNodeChildAtom } from './types'
 // ─── Show ─────────────────────────────────────────────────────────────────────
 
 export interface ShowProps extends Props {
-  /** Accessor — children render when truthy, fallback when falsy. */
-  when: () => unknown
+  /**
+   * Truthy condition. Accepts a value or an accessor.
+   *
+   * Use an accessor (`() => signal()`) for reactive conditions.
+   * Bare values are accepted for static cases and as a defensive normalization
+   * for cases where the compiler's signal auto-call has already invoked
+   * a signal at the prop site (e.g. `when={mySignal}` becomes `when={mySignal()}`).
+   */
+  when: unknown | (() => unknown)
   fallback?: VNodeChild
   children?: VNodeChild
+}
+
+// Normalize a value-or-accessor `when` into a single accessor.
+// Same shape used by Match — kept inline (one branch) to stay zero-cost.
+function callWhen(when: unknown): unknown {
+  return typeof when === 'function' ? (when as () => unknown)() : when
 }
 
 /**
@@ -25,7 +38,7 @@ export interface ShowProps extends Props {
 export function Show(props: ShowProps): VNode | null {
   // Returns a reactive accessor; the renderer unwraps it at mount time.
   return ((): VNodeChildAtom =>
-    (props.when()
+    (callWhen(props.when)
       ? (props.children ?? null)
       : (props.fallback ?? null)) as VNodeChildAtom) as unknown as VNode
 }
@@ -33,8 +46,8 @@ export function Show(props: ShowProps): VNode | null {
 // ─── Switch / Match ───────────────────────────────────────────────────────────
 
 export interface MatchProps extends Props {
-  /** Accessor — this branch renders when truthy. */
-  when: () => unknown
+  /** Truthy condition. Accepts a value or an accessor — see {@link ShowProps.when}. */
+  when: unknown | (() => unknown)
   children?: VNodeChild
 }
 
@@ -97,7 +110,7 @@ export function Switch(props: SwitchProps): VNode | null {
     for (const branch of branches) {
       if (!isMatchVNode(branch)) continue
       const matchProps = branch.props as unknown as MatchProps
-      if (matchProps.when()) return resolveMatchChildren(branch)
+      if (callWhen(matchProps.when)) return resolveMatchChildren(branch)
     }
 
     return (props.fallback ?? null) as VNodeChildAtom

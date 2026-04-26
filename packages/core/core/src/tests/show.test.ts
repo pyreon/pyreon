@@ -100,6 +100,54 @@ describe('Show', () => {
     }) as unknown as () => VNodeChild
     expect(getter()).toBe('shown')
   })
+
+  // Value-or-accessor normalization. Previously `when` was strictly an
+  // accessor; passing a value crashed with "props.when is not a function".
+  // The compiler's signal auto-call rewrites bare `when={mySignal}` to
+  // `when={mySignal()}` at the prop site, producing a value — so the
+  // framework now accepts both shapes defensively.
+  test('accepts boolean value (true)', () => {
+    const getter = Show({ when: true, children: 'shown' }) as unknown as () => VNodeChild
+    expect(getter()).toBe('shown')
+  })
+
+  test('accepts boolean value (false)', () => {
+    const getter = Show({
+      when: false,
+      children: 'shown',
+      fallback: 'hidden',
+    }) as unknown as () => VNodeChild
+    expect(getter()).toBe('hidden')
+  })
+
+  test('accepts truthy value (string)', () => {
+    const getter = Show({ when: 'yes', children: 'shown' }) as unknown as () => VNodeChild
+    expect(getter()).toBe('shown')
+  })
+
+  test('accepts falsy value (0)', () => {
+    const getter = Show({
+      when: 0,
+      children: 'shown',
+      fallback: 'hidden',
+    }) as unknown as () => VNodeChild
+    expect(getter()).toBe('hidden')
+  })
+
+  test('accepts undefined as falsy', () => {
+    const getter = Show({
+      when: undefined as unknown as boolean,
+      children: 'shown',
+      fallback: 'hidden',
+    }) as unknown as () => VNodeChild
+    expect(getter()).toBe('hidden')
+  })
+
+  test('accessor and value forms produce identical behavior', () => {
+    const valueGetter = Show({ when: true, children: 'x' }) as unknown as () => VNodeChild
+    const accessorGetter = Show({ when: () => true, children: 'x' }) as unknown as () => VNodeChild
+    expect(valueGetter()).toBe(accessorGetter())
+  })
 })
 
 describe('Match', () => {
@@ -234,5 +282,33 @@ describe('Switch', () => {
     })
     const getter = result as unknown as () => VNodeChild
     expect(getter()).toBe('single')
+  })
+
+  // Match `when` accepts value or accessor — same defensive normalization as Show.
+  test('Match accepts boolean value', () => {
+    const result = Switch({
+      fallback: 'none',
+      children: [h(Match, { when: true }, 'matched')],
+    })
+    const getter = result as unknown as () => VNodeChild
+    expect(getter()).toBe('matched')
+  })
+
+  test('Match with all-false boolean values renders fallback', () => {
+    const result = Switch({
+      fallback: 'none',
+      children: [h(Match, { when: false }, 'a'), h(Match, { when: false }, 'b')],
+    })
+    const getter = result as unknown as () => VNodeChild
+    expect(getter()).toBe('none')
+  })
+
+  test('Match mixes value and accessor branches in same Switch', () => {
+    const result = Switch({
+      fallback: 'none',
+      children: [h(Match, { when: false }, 'a'), h(Match, { when: () => true }, 'b')],
+    })
+    const getter = result as unknown as () => VNodeChild
+    expect(getter()).toBe('b')
   })
 })

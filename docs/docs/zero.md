@@ -227,6 +227,22 @@ defineConfig({
 })
 ```
 
+When `mode: "ssg"` is set, `vite build` runs the regular client build, then triggers a programmatic SSR sub-build, loads the resulting handler, and writes one HTML file per path:
+
+- `'/'` → `dist/index.html`
+- `'/about'` → `dist/about/index.html`
+- `'/blog/hello-world'` → `dist/blog/hello-world/index.html`
+
+The temporary `dist/.zero-ssg-server/` artifacts are cleaned up automatically after rendering.
+
+`ssg.paths` accepts three shapes:
+
+- `string[]` — explicit list (most common)
+- `() => string[]` — sync function, useful for deriving paths from a glob or static config
+- `() => Promise<string[]>` — async function, useful for fetching paths from a CMS or database
+
+If `ssg.paths` is omitted, the plugin auto-detects static paths from the file-system route tree — every route without a `:param` or `*` catch-all segment is included. Dynamic routes are skipped (no `getStaticPaths`-style API yet — pass them explicitly via `ssg.paths`). When no static paths exist, a single `/` fallback is always produced so the static host has at least an `index.html`.
+
 ### SPA (Single-Page Application)
 
 Client-only rendering. The server sends a minimal HTML shell and all rendering happens in the browser.
