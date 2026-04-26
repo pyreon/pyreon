@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "lint": "oxlint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'no tests — experiments package is documentation + result archives'",
+    "build": "echo 'no build — experiments package is documentation + result archives'"
   },
   "devDependencies": {
     "typescript": "^6.0.2"
