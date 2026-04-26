@@ -1,5 +1,5 @@
 import { provide, splitProps } from '@pyreon/core'
-import { PKG_NAME } from '../constants'
+import { __DEV__, PKG_NAME } from '../constants'
 import ContainerContext from '../context/ContainerContext'
 import type { ElementType } from '../types'
 import useGridContext from '../useContext'
@@ -13,8 +13,7 @@ import Styled from './styled'
  * responsive max-width.
  */
 
-const DEV_PROPS: Record<string, string> =
-  process.env.NODE_ENV !== 'production' ? { 'data-coolgrid': 'container' } : {}
+const DEV_PROPS: Record<string, string> = __DEV__ ? { 'data-coolgrid': 'container' } : {}
 
 const Component: ElementType<['containerWidth']> = (props) => {
   const [own, rest] = splitProps(props, ['children', 'component', 'css', 'width'])

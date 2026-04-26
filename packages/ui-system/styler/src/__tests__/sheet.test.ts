@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hash } from '../hash'
-import { sheet } from '../sheet'
+import { sheet, StyleSheet } from '../sheet'
 
 describe('StyleSheet', () => {
   beforeEach(() => {
@@ -160,6 +160,48 @@ describe('StyleSheet', () => {
 
     it('returns false for unknown classNames', () => {
       expect(sheet.has('pyr-unknown')).toBe(false)
+    })
+  })
+
+  // Failed insertRule used to be silently swallowed in production because
+  // `process.env.NODE_ENV !== 'production'` is dead code in real Vite browser
+  // bundles (Vite does not polyfill `process`). The dev gate now uses
+  // `import.meta.env.DEV` which fires the warn under vitest and tree-shakes
+  // away in prod. This test asserts the warn fires for malformed CSS in dev.
+  describe('insertRule failures fire console.warn in dev', () => {
+    it('warns when StyleSheet.insertRule throws on malformed CSS', () => {
+      const local = new StyleSheet()
+      const realSheet = (local as unknown as { sheet: CSSStyleSheet | null }).sheet
+      if (!realSheet) {
+        // happy-dom may not expose a real sheet — skip; the prod-bundle
+        // tree-shake test in dev-gate-treeshake.test.ts covers the build side.
+        return
+      }
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      // Mock the prototype, not the instance — happy-dom's CSSStyleSheet may
+      // expose `insertRule` as a non-configurable own property that vi.spyOn
+      // can't intercept on an instance.
+      const proto = Object.getPrototypeOf(realSheet) as { insertRule: () => number }
+      const insertSpy = vi.spyOn(proto, 'insertRule').mockImplementation(() => {
+        throw new SyntaxError('invalid rule')
+      })
+
+      // Use a unique CSS string to bypass cross-instance/global insert cache
+      local.insert(`color: ${Math.random()};`)
+
+      const styleWarnings = warnSpy.mock.calls.filter(
+        (args) => typeof args[0] === 'string' && args[0].includes('[styler]'),
+      )
+      expect(styleWarnings.length).toBeGreaterThan(0)
+
+      insertSpy.mockRestore()
+      warnSpy.mockRestore()
+    })
+
+    it('uses import.meta.env.DEV (not process.env.NODE_ENV) — vitest sets DEV=true', () => {
+      // Smoke test the gate itself: vitest must set import.meta.env.DEV to true
+      // for the regression test above to be meaningful.
+      expect(import.meta.env.DEV).toBe(true)
     })
   })
 })

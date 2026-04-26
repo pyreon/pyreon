@@ -14,6 +14,13 @@ interface ViteMeta {
 }
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
+// Dev-mode gate. `import.meta.env.DEV` is literal-replaced by Vite at build
+// time and tree-shakes to zero bytes in prod. The previous
+// `process.env.NODE_ENV !== 'production'` form was dead code in real Vite
+// browser bundles (Vite does not polyfill `process`), so insertRule failures
+// were silently swallowed in production — masking malformed CSS bugs.
+const __DEV__ = (import.meta as ViteMeta).env?.DEV === true
+
 const PREFIX = 'pyr'
 const ATTR = 'data-pyreon-styler'
 const DEFAULT_MAX_CACHE_SIZE = 10000
@@ -252,7 +259,7 @@ export class StyleSheet {
         try {
           this.sheet.insertRule(rule, this.sheet.cssRules.length)
         } catch (_e) {
-          if (process.env.NODE_ENV !== 'production') {
+          if (__DEV__) {
             // oxlint-disable-next-line no-console
             console.warn('[styler] Failed to insert CSS rule:', rule, _e)
           }
@@ -279,8 +286,9 @@ export class StyleSheet {
       try {
         this.sheet.insertRule(rule, this.sheet.cssRules.length)
       } catch (_e) {
-        if (process.env.NODE_ENV !== 'production') {
-          // silently ignore invalid CSS rules in production
+        if (__DEV__) {
+          // oxlint-disable-next-line no-console
+          console.warn('[styler] Failed to insert @keyframes rule:', rule, _e)
         }
       }
     }
@@ -329,7 +337,7 @@ export class StyleSheet {
         try {
           this.sheet.insertRule(rule, this.sheet.cssRules.length)
         } catch (_e) {
-          if (process.env.NODE_ENV !== 'production') {
+          if (__DEV__) {
             // oxlint-disable-next-line no-console
             console.warn('[styler] Failed to insert global CSS rule:', rule, _e)
           }

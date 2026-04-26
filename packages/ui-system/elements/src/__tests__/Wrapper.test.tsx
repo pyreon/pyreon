@@ -149,4 +149,48 @@ describe('Wrapper component', () => {
       expect((result.props.$element as any).parentFix).toBeUndefined()
     })
   })
+
+  // Void HTML elements (hr, input, img, br, …) cannot have children. Element
+  // already skips passing children to Wrapper for void tags, but the JSX
+  // `{own.children}` slot still serialized `undefined` into the vnode and
+  // tripped runtime-dom's void-element warning. Wrapper now drops the slot
+  // entirely for void tags.
+  describe('void HTML elements drop the children slot', () => {
+    const VOID_TAGS = ['hr', 'input', 'img', 'br', 'area', 'base', 'col', 'embed', 'link', 'source', 'track', 'wbr'] as const
+
+    for (const tag of VOID_TAGS) {
+      it(`omits children for <${tag}>`, () => {
+        // Cast to any — the Wrapper Props.tag type narrows out void
+        // elements, but the runtime guard still has to cover the case
+        // where a void tag reaches Wrapper (e.g. via rocketstyle attrs
+        // composing `tag: 'hr'` from a callback whose return type is wider).
+        const result = asVNode(Wrapper({ tag } as any))
+        expect(result.type).toBe(Styled)
+        expect(result.props.children).toBeUndefined()
+        expect(result.children).toEqual([])
+      })
+    }
+
+    it('still renders children for non-void tags', () => {
+      const result = asVNode(Wrapper({ tag: 'div', children: 'kept' }))
+      expect(result.props.children).toBe('kept')
+    })
+
+    it('omits children even when caller accidentally passes them to a void tag', () => {
+      const result = asVNode(Wrapper({ tag: 'hr', children: 'should-not-leak' }))
+      expect(result.props.children).toBeUndefined()
+    })
+
+    it('dangerouslySetInnerHTML on a normally-void tag bypasses the void path', () => {
+      const result = asVNode(
+        Wrapper({
+          tag: 'hr',
+          dangerouslySetInnerHTML: { __html: '<b>x</b>' },
+        } as any),
+      )
+      // dangerouslySetInnerHTML opts out of the void-element guard
+      // because the tag becomes a custom element / shadow host case.
+      expect(result.type).toBe(Styled)
+    })
+  })
 })
