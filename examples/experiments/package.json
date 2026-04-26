@@ -27,6 +27,7 @@
     "@pyreon/test-utils": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@vitest/browser-playwright": "^4.1.4",
+    "oxc-parser": "^0.123.0",
     "playwright": "^1.49.0",
     "typescript": "^6.0.2",
     "vitest": "^4.0.0"
