@@ -1,0 +1,52 @@
+{
+  "experiment": "e2-static-rocketstyle",
+  "sha": "b8819ace",
+  "baseline_sha": "b8819ace",
+  "wall_clock": {
+    "baseline_200_mounts_per_run": {
+      "median": 8.8,
+      "p90": 9.9,
+      "samples": 5,
+      "min": 8.4,
+      "max": 9.9
+    },
+    "collapsed_200_mounts_per_run": {
+      "median": 0.2,
+      "p90": 0.2,
+      "samples": 5,
+      "min": 0.1,
+      "max": 0.2
+    },
+    "per_mount_baseline_us": {
+      "median": 44,
+      "p90": 49,
+      "samples": 5
+    },
+    "per_mount_collapsed_us": {
+      "median": 1,
+      "p90": 1,
+      "samples": 5
+    }
+  },
+  "counters": {
+    "baseline_per_button_mountChild": 9,
+    "baseline_per_button_styler_resolve": 110,
+    "baseline_per_button_unistyle_descriptor": 105,
+    "baseline_per_button_unistyle_styles": 25,
+    "baseline_per_button_rocketstyle_getTheme": 5,
+    "baseline_per_button_rocketstyle_localThemeManager_hit": 20,
+    "baseline_per_button_styler_sheet_insert": 15,
+    "baseline_per_button_reactivity_effectRun": 5,
+    "baseline_per_button_reactivity_computedRecompute": 5,
+    "collapsed_per_button_mountChild": 1,
+    "collapsed_per_button_runtime_tpl": 1,
+    "wall_clock_ratio_x100": 23
+  },
+  "decision": "GRADUATE",
+  "decision_notes": "Wall-clock collapsed = 2.3% of baseline (target: ≤30%, exceeds by 13×). mountChild collapsed = 1.0 per visible (target: ≤1.5, exact). Hypothesis dramatically validated. Next step is NOT another experiment — it's a compiler-pass RFC for `@pyreon/compiler` that detects literal-prop rocketstyle call sites and emits `_tpl()` cloneNode with pre-resolved class strings. Honest caveat: 44× is the upper bound; a real compiler must handle reactive props, event delegation, and dynamic dimensions, falling through to the regular path for non-resolvable sites. Even at 30%-resolvable + 44× win + identity-on-rest, weighted improvement is ~6× — still enormous. Striking secondary findings: each Button mount fires 110 styler.resolve + 105 unistyle.descriptor calls, suggesting the resolve cache is hit-heavy but the lookup cost itself is significant. Worth a separate audit even if the compiler-collapse RFC takes its own time.",
+  "environment": {
+    "os": "macOS 14.x",
+    "browser": "headless Chromium via Playwright",
+    "vitest": "4.1.5"
+  }
+}

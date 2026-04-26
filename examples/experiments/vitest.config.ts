@@ -1,8 +1,8 @@
 import { defineConfig, mergeConfig } from 'vitest/config'
-import { sharedConfig } from '../../vitest.shared'
+import { nodeExcludeBrowserTests, sharedConfig } from '../../vitest.shared'
 
 export default mergeConfig(
-  sharedConfig,
+  mergeConfig(sharedConfig, nodeExcludeBrowserTests),
   defineConfig({
     test: {
       globals: true,
