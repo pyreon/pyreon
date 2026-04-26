@@ -49,7 +49,7 @@ Cost: 2-3 days. Without this, every experiment reinvents measurement and results
   ```
 - **0.5** Extend `bun run perf:diff` (already exists in `@pyreon/perf-harness`) to read the new shape. CI workflow `.github/workflows/perf.yml` already supports posting deltas to a PR — wire experiment results into that surface so each experiment branch automatically posts its delta.
 - **0.6** Run baseline measurement against `origin/main` before any experiment starts. Pin the baseline SHA in every experiment's `RESULTS.md`. Re-baseline only if main moves >5% on any tracked metric.
-- **0.7** Experiment-tracking issue per E1-E11 in the GitHub repo (template: question + criteria + decision). Branch names pre-allocated as `experiment/e<n>-<slug>`. Discussed but **not opened in this plan PR** — opened separately when experiments are scheduled.
+- **0.7** Experiment-tracking issue per E1-E11 in the GitHub repo (template: question + criteria + decision). Branch names pre-allocated as `chore/experiment-e<n>-<slug>` — the repo's `.claude/scripts/guard-branch-name.sh` blocks anything not in `feat|fix|docs|release|chore|refactor|test|perf`, and `chore/` is the right semantic prefix for experiment scaffolding. Discussed but **not opened in this plan PR** — opened separately when experiments are scheduled.
 
 ## Phase 1 — Cheap parallel experiments (Weeks 1-2)
 
@@ -168,6 +168,44 @@ Run **≤1** of these, ONLY if Phase 1+2 surfaced a strong direction worth betti
 - **GRADUATE**: hot template throughput ≥25% faster; bundle growth ≤10%.
 - **KILL**: <15% win OR unmaintainable code-gen.
 - **C**: 4-6 weeks.
+
+## Modern-API additions (added post-E1)
+
+Two real wins identified during the perf-experiments planning that weren't in the original Phase 1/2 set. Both target navigation perf, which doesn't show up on `<For>` benchmarks but matters in real apps.
+
+### E12: Speculation Rules in `@pyreon/router`
+
+- **Q**: Does declarative prerendering via the Speculation Rules API meaningfully cut perceived navigation latency, and does the ~50KB-per-prerender memory cost stay bounded under realistic prefetch patterns?
+- **M**: Add a `<script type="speculationrules">` emitter to `@pyreon/router` for routes already marked `prefetch="intent"`. Browsers fully prerender the next page in the background. Measure first-meaningful-paint on intra-app navigation in the perf-dashboard with N route variants. Watch heap growth with `--browser-args=--enable-features=SpeculationRulesPrefetchFuture`.
+- **GRADUATE**: ≥50% reduction in perceived navigation latency on prefetched routes AND ≤2× heap growth at steady state with 5 prerendered candidates.
+- **KILL**: heap explodes (>5×), OR no measurable navigation win, OR triggers prerender cancellations >50% of the time (browser bailing out).
+- **C**: 1 week.
+- **Modern-API alignment**: Speculation Rules is the canonical browser primitive for this use case. Hand-rolling `<link rel=prefetch>` doesn't actually prerender; speculation rules do.
+
+### E13: Worker-pool for `@pyreon/router` loaders
+
+- **Q**: Does offloading CPU-heavy router loaders to a worker pool measurably improve main-thread responsiveness during navigation?
+- **M**: Add an opt-in `loader: { worker: true }` option to route definitions. Loader functions run in a `Worker` via `Comlink`-style RPC; result is post-message'd back. Build a synthetic CPU-heavy loader (parse 500KB of JSON + regex over it). Measure main-thread frame budget during the load, before/after worker offload.
+- **GRADUATE**: main-thread blocking time during a heavy-loader navigation drops by ≥50% AND no measurable wall-clock regression for cheap loaders (overhead of worker dispatch must amortize).
+- **KILL**: cheap-loader regression >5%, OR worker dispatch+postMessage cost wipes the heavy-loader win, OR Comlink-style RPC adds prohibitive bundle size (>30KB gz).
+- **C**: 2 weeks.
+- **Modern-API alignment**: Web Workers are the only way to actually free up the main thread during compute. Other "async" idioms (microtasks, scheduler.yield) just yield within the same thread.
+
+## Calibration learning from E1 (added post-E1)
+
+E1 (speculative monomorphic `mountFor`) ran cleanly through the Phase 0 pipeline and produced a clear DEFER. The result surfaced a real rubric problem worth flagging for future Phase 1 picks:
+
+**The 15% wall-clock GRADUATE threshold is unfair when the targeted optimization isn't the dominant cost in the chosen journey.** E1 picked the canonical chat journey because it's the canonical append-heavy shape — but the chat journey's wall-clock is dominated by 1000 `cloneNode` calls (~180ms), not by the LIS / position-update work that E1 optimized (~40µs total). Even a perfect optimization of the targeted layer can only move the dominant cost by ~0.02% — well below the noise floor.
+
+**Rule for future Phase 1 / Phase 2 experiment scheduling:**
+
+Before locking the GRADUATE threshold for an experiment, verify:
+
+1. **The targeted layer is actually the dominant cost in the chosen journey.** Quantify: "this experiment optimizes layer X, which contributes Y% of journey wall-clock per a baseline counter analysis." If Y < 30%, even a 100% improvement on layer X yields ≤30% on wall-clock — and the rubric should be set against layer X's cost (counter-based), not against wall-clock.
+2. **If the targeted layer's cost is structurally below measurement noise**, switch to counter-based GRADUATE criteria. E.g. instead of "≥15% wall-clock," use "≥X% reduction in `runtime.mountFor.lisOps`" or "≥Y% drop in allocation count from `_reusableKeySet.add` call site."
+3. **Be honest in the experiment writeup** about which level the win lives at. A "wall-clock neutral but counter-down by 80%" result is still a real win — just at a different layer than the user perceives. Mark such results as GRADUATE-LAYER (counter-level win, not wall-clock-level), distinct from GRADUATE-USER (perceived wall-clock win).
+
+E1's RESULTS.md captures this and recommends a 10k+ row stress journey for re-evaluation. Future experiments should ALSO check journey/layer fit before starting.
 
 ## Measurement framework
 
