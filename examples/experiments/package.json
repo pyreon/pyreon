@@ -1,0 +1,14 @@
+{
+  "name": "@pyreon/experiments",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Architectural experiments parent — see README.md and the plan at .claude/plans/architectural-experiments-2026-q2.md.",
+  "type": "module",
+  "scripts": {
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2"
+  }
+}
