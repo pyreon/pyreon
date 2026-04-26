@@ -854,3 +854,29 @@ Once these are triaged (real bug → fix; false positive → add to `EXEMPT_FIEL
 **Adding a new package to the high-risk list**: edit `HIGH_RISK_PACKAGES` in `scripts/audit-types.ts`. The list grows from observed bugs, not from speculation — only add when a typed-but-unimplemented bug surfaces in that package's history.
 
 **Exempting a known-good field**: add to `EXEMPT_FIELDS` array with a one-line rationale. Use sparingly — exemptions are technical debt the audit can't see.
+
+## Verify Modes — real-app build matrix gate
+
+`scripts/verify-modes.ts` is the structural gate against typed-but-unimplemented features at the build-output level (audit-types catches them at the type-surface level — these complement each other). It runs `vite build` against every cell defined in `MATRIX` (example × mode) and asserts the resulting `dist/` has actual rendered content (not just a build that didn't crash).
+
+```bash
+bun run verify-modes                          # all cells
+bun run verify-modes ssr-showcase             # only ssr-showcase cells
+bun run verify-modes --only ssg               # only ssg-mode cells
+```
+
+CI runs this on every PR as a required check (`Verify Modes` job in `.github/workflows/ci.yml`). The gate exists because 0.14.0 shipped with `mode: "ssg"` typed in the public API but no runtime implementation — apps configured for SSG silently shipped a SPA shell. No internal test caught it because nothing exercised the typed surface end-to-end. This matrix does, against the real example apps that already live in `examples/`.
+
+**Adding a new cell**:
+
+1. Add to `MATRIX` in `scripts/verify-modes.ts`
+2. Implement the smoke assertion — must verify CONTENT, not just that the build succeeded. "Build green but output is empty" is the whole class of bug this gate exists to catch
+3. Run locally to verify the cell passes
+
+**Adding a new mode** (isr/edge/...):
+
+1. Add to the `Mode` union
+2. Define the per-mode dist/ shape in the smoke assertion (what files should exist, what content should they contain)
+3. Add at least one cell exercising the new mode against an existing example
+
+The matrix today (post-PR introducing the gate): 11 cells covering ssr-showcase, app-showcase, ui-showcase, playground, fundamentals-playground across ssr/ssg/spa modes. Total runtime ~90s. SSG cells include both explicit-paths and autodetect variants (different code paths in `ssg-plugin.ts`).
