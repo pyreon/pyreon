@@ -1,5 +1,18 @@
 # @pyreon/react-compat
 
+## 0.14.0
+
+### Minor Changes
+
+- [#289](https://github.com/pyreon/pyreon/pull/289) [`b952f7b`](https://github.com/pyreon/pyreon/commit/b952f7bcf9c512b7bba6b7488f02f7b0e6cae304) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Production-ready React 19 API surface with 205 tests and 97%+ coverage. Adds useSyncExternalStore, use(), startTransition, flushSync, isValidElement, useInsertionEffect, useActionState, StrictMode, Component/PureComponent, 30+ type exports. Fixes useEffect unmount cleanup, memo per-instance cache, onChange→onInput mapping, Children.map key assignment, useSyncExternalStore re-subscribe.
+
+### Patch Changes
+
+- Updated dependencies [[`c97783a`](https://github.com/pyreon/pyreon/commit/c97783a85b6f7ffc5d25ad16fd280c92808b5ea6), [`12dbf14`](https://github.com/pyreon/pyreon/commit/12dbf14c92ea3e107c89039a269181a500cb60d4)]:
+  - @pyreon/runtime-dom@0.14.0
+  - @pyreon/core@0.14.0
+  - @pyreon/reactivity@0.14.0
+
 ## 0.13.0
 
 ### Patch Changes

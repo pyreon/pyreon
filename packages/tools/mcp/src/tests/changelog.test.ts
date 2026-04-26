@@ -78,7 +78,7 @@ describe('parseChangelog — synthetic inputs', () => {
 
   it('collapses ### Patch/Minor/Major Changes headings — keeps only bullets', () => {
     const doc = `
-## 1.0.0
+## 0.14.0
 
 ### Major Changes
 

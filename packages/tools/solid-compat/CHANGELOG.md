@@ -1,5 +1,18 @@
 # @pyreon/solid-compat
 
+## 0.14.0
+
+### Minor Changes
+
+- [#290](https://github.com/pyreon/pyreon/pull/290) [`1eac951`](https://github.com/pyreon/pyreon/commit/1eac951e4057c91a1cb37e514b3164a163c27b05) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Production-ready SolidJS API surface with 155 tests and 97%+ coverage. Adds createResource, createStore/produce, createSignal equals option, startTransition/useTransition, observable/from, mapArray/indexArray. Fixes getter/setter identity stability. Adds type exports (Accessor, Setter, Signal, Component, etc.).
+
+### Patch Changes
+
+- Updated dependencies [[`c97783a`](https://github.com/pyreon/pyreon/commit/c97783a85b6f7ffc5d25ad16fd280c92808b5ea6), [`12dbf14`](https://github.com/pyreon/pyreon/commit/12dbf14c92ea3e107c89039a269181a500cb60d4)]:
+  - @pyreon/runtime-dom@0.14.0
+  - @pyreon/core@0.14.0
+  - @pyreon/reactivity@0.14.0
+
 ## 0.13.0
 
 ### Patch Changes

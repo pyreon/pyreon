@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/storybook",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "description": "Storybook renderer for Pyreon — mount, render, and interact with Pyreon components in Storybook",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/storybook#readme",
   "bugs": {
