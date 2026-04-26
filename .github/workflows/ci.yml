@@ -275,6 +275,41 @@ jobs:
           key: ${{ env.BOOTSTRAP_KEY }}
       - run: bun run coverage
 
+  # ── Audit Types: typed-but-unimplemented detector ─────────────────────
+  # Runs `audit-types --all` against the high-risk packages (zero,
+  # router, core, server, runtime-server, vite-plugin) and reports
+  # fields with zero non-type references. Currently informational —
+  # ships with 3 known HIGH findings to triage in follow-up PRs. Once
+  # the baseline reaches 0, flip this job to `--strict` to fail CI on
+  # any new typed-but-unimplemented surface. See scripts/audit-types.ts
+  # for the heuristic + EXEMPT_FIELDS / EXEMPT_FILES escape hatches.
+  audit-types:
+    name: Audit Types
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            node_modules
+            packages/*/*/node_modules
+            examples/*/node_modules
+            docs/node_modules
+          key: ${{ env.NM_KEY }}
+      # Note: not `--strict` yet. Job is informational while the
+      # current baseline (3 HIGH findings) is triaged in follow-up PRs.
+      - name: Audit typed-but-unimplemented surfaces
+        run: bun run audit-types --all
+      - name: Summary
+        if: always()
+        run: |
+          echo "::notice::audit-types ran in informational mode. Once baseline HIGH count reaches 0, flip this job to --strict in .github/workflows/ci.yml."
+
   docs-sync:
     name: Docs Sync
     needs: install

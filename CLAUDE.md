@@ -828,3 +828,29 @@ oxfmt --check .                       # check formatting
 
 Every package and example must have `"lint": "oxlint ."` and `"typecheck": "tsc --noEmit"` in scripts.
 Examples use `noEmit: true` in tsconfig (not `rootDir`) since they include vite.config.ts.
+
+## Audit Types — typed-but-unimplemented detector
+
+`scripts/audit-types.ts` walks every public interface field in a package's `src/` and counts non-type references across the package. Fields with zero references are flagged as HIGH (likely typed-but-unimplemented). Catches the bug class where a feature is documented and typed but the runtime never reads the configured value — exactly what shipped in 0.14.0 with `mode: "ssg"` / `ssg.paths` / `ISRConfig.revalidate` / every `Adapter.build()`.
+
+```bash
+bun run audit-types                    # default — @pyreon/zero
+bun run audit-types @pyreon/router     # one specific package
+bun run audit-types --all              # high-risk-package list (zero, router, core, server, runtime-server, vite-plugin)
+bun run audit-types --all --strict     # exit non-zero if any HIGH findings (CI gate, post-baseline)
+bun run audit-types --json             # machine-readable output
+```
+
+CI runs `audit-types --all` informationally as a separate `Audit Types` job — reports findings, doesn't fail the build yet. The current baseline is 3 HIGH findings:
+
+- `@pyreon/zero LoaderContext.query` — duplicate type definition (router has its own LoaderContext that's the actually-constructed one; zero's version adds a `request` field that the runtime doesn't populate)
+- `@pyreon/router RouteMeta.requiresAuth` — typed as `if true, guards can redirect to login` but no built-in guard reads it
+- `@pyreon/core NativeItem.__isNative` — likely a brand marker (false positive); needs an `EXEMPT_FIELDS` entry or rename
+
+Once these are triaged (real bug → fix; false positive → add to `EXEMPT_FIELDS`), the CI job flips to `--strict` and fails any PR introducing a new HIGH finding.
+
+**Heuristic**: counts whole-word `\bfieldName\b` occurrences across the package's src (excluding tests, .d.ts, jsx-runtime catalogs). Subtracts 1 for the declaration itself. Permissive — matches member access, destructuring, bracket access, and object literals all at once. Trade-off: same-named locals get counted (false negatives where a real bug is hidden), but the bug class we're catching (zero references anywhere in the package) survives the noise.
+
+**Adding a new package to the high-risk list**: edit `HIGH_RISK_PACKAGES` in `scripts/audit-types.ts`. The list grows from observed bugs, not from speculation — only add when a typed-but-unimplemented bug surfaces in that package's history.
+
+**Exempting a known-good field**: add to `EXEMPT_FIELDS` array with a one-line rationale. Use sparingly — exemptions are technical debt the audit can't see.
