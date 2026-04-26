@@ -21,6 +21,7 @@ export default mergeConfig(
           //
           // Build-time / Vite plugins:
           'src/vite-plugin.ts',
+          'src/ssg-plugin.ts',
           'src/app.ts',
           'src/index.ts',
           'src/favicon.ts',
