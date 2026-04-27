@@ -951,6 +951,8 @@
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.8.9",
+        "@pyreon/test-utils": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
         "happy-dom": "^20.8.3",
       },
     },
@@ -964,6 +966,8 @@
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.8.9",
+        "@pyreon/test-utils": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
         "happy-dom": "^20.8.3",
       },
     },
@@ -977,6 +981,8 @@
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.8.9",
+        "@pyreon/test-utils": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
         "happy-dom": "^20.8.3",
       },
     },
@@ -1021,6 +1027,8 @@
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.8.9",
+        "@pyreon/test-utils": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
         "happy-dom": "^20.8.3",
       },
     },
@@ -1218,6 +1226,7 @@
       "devDependencies": {
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
       },
       "peerDependencies": {
         "@pyreon/coolgrid": "workspace:^",
@@ -1235,7 +1244,9 @@
       "name": "@pyreon/ui-primitives",
       "version": "0.14.0",
       "devDependencies": {
+        "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
@@ -1253,7 +1264,9 @@
         "@pyreon/unistyle": "workspace:^",
       },
       "devDependencies": {
+        "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
       },
     },
     "packages/zero/cli": {

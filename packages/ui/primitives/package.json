@@ -31,11 +31,14 @@
     "build": "echo 'private package — consumed via bun condition'",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },
   "devDependencies": {
-    "@pyreon/typescript": "workspace:^"
+    "@pyreon/test-utils": "workspace:^",
+    "@pyreon/typescript": "workspace:^",
+    "@vitest/browser-playwright": "^4.1.4"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
