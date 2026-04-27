@@ -62,7 +62,7 @@
     "@vitest/browser": "^4.1.5",
     "@vitest/coverage-v8": "^4.1.5",
     "@vitus-labs/tools-rolldown": "^1.15.5",
-    "@vitus-labs/tools-typescript": "^1.15.5",
+    "@vitus-labs/tools-typescript": "^2.1.0",
     "@vitus-labs/tools-vitest": "^1.15.5",
     "esbuild": "^0.27.7",
     "find-my-way": "^9.5.0",
