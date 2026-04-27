@@ -893,14 +893,14 @@ bunx playwright test --project=playground                     # same
 bunx playwright test --project=playground --grep="signal"     # filter
 ```
 
-CI runs the playground project on every PR as a required check (`E2E` job). 25 tests, ~90s. Playwright report uploaded as artifact on failure.
+CI runs the playground + ssr-showcase projects on every PR as a required check (`E2E` job). **55 tests** (43 playground + 12 ssr-showcase) plus 5 fixme'd compiler-bug tests, ~90s. Playwright report uploaded as artifact on failure.
 
 **Project status** (see [`playwright.config.ts`](playwright.config.ts) header for full detail):
 
 | Project | Status | Coverage |
 | --- | --- | --- |
-| `playground` | ✓ active | reactivity, mount, bench (25 tests covering signal → DOM, mount/unmount, batching, computed, conditional rendering, list reconciliation, perf benchmarks) |
-| `ssr-showcase` | ⚠ disabled | SSR + SSG + hydration; blocked on a real `_layout.tsx` double-mount bug in fs-router |
+| `playground` | ✓ active | reactivity, mount, bench, app shape (43 tests covering signal → DOM, mount/unmount, batching, computed, conditional rendering, list reconciliation, perf benchmarks, app routing). 5 fixme'd tests block on Pyreon compiler bugs (signal-method auto-call, JSX text/expression whitespace, event-name casing). |
+| `ssr-showcase` | ✓ active | SSR + hydration + nav + loaders + theme (12 tests). Was disabled until #345 — fixed in tandem by removing zero's dev-SSR `_layout.tsx` auto-load (it was wrapping createApp with a layout that fs-router was already emitting as a parent route, causing double mount). |
 | `fundamentals` | ⚠ disabled | fundamentals-package demos; selector mismatch with current example markup |
 | `visual` | ⚠ disabled | visual regressions; needs baseline-image capture pass |
 

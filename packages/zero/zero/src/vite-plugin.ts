@@ -415,25 +415,20 @@ async function renderSsr(
 		],
 	);
 
-	// Build the SAME app tree the client will hydrate against. `entry-client`
-	// imports `layout` from `_layout.tsx` and passes it explicitly to
-	// `startClient` → `createApp`. We mirror that here: discover the user's
-	// `_layout` (if present) via Vite's SSR module graph and pass it along.
-	// Without this, SSR renders a different tree (no outer Layout wrapper)
-	// and hydration mismatches at the very first nesting level — cascading
-	// into duplicated mounts of every section below.
-	let userLayout: unknown
-	for (const ext of ['tsx', 'ts', 'jsx', 'js']) {
-		try {
-			const layoutMod = (await server.ssrLoadModule(
-				`/src/routes/_layout.${ext}`,
-			)) as { layout?: unknown; default?: unknown }
-			userLayout = layoutMod.layout ?? layoutMod.default
-			if (userLayout) break
-		} catch {
-			// Try the next extension. If none exist, createApp uses DefaultLayout.
-		}
-	}
+	// Don't auto-load `_layout.tsx` as the outer Layout. fs-router already
+	// emits it as a parent route in the matched chain — wrapping createApp
+	// with the same layout AGAIN produced a double mount: the App tree was
+	// `<Layout><RouterView/></Layout>` AND the router's first matched
+	// record was the layout, rendering it a second time inside RouterView.
+	// Symptom: duplicate `<nav>`, duplicate `<div id="layout">`,
+	// hydration mismatches, strict-mode locator violations in playwright.
+	//
+	// If a user genuinely needs an outer wrapper that sits ABOVE the
+	// router (e.g. a global provider not tied to any route), they can
+	// still pass it via `startClient({ layout })` — but the file should
+	// NOT live under `src/routes/_layout.{ts,tsx,…}` (which fs-router
+	// always treats as a parent route).
+	const userLayout: unknown = undefined
 
 	// Use zero's own `createApp` rather than reassembling the tree by hand —
 	// guarantees server and client agree on every wrapper component (any
