@@ -92,6 +92,22 @@ export function createFlow<TData = Record<string, unknown>>(
   let _layoutFrameId: number | null = null
   let _viewportFrameId: number | null = null
 
+  // ── Safe rAF / cAF ───────────────────────────────────────────────────────
+  // Two scenarios where the browser globals are unavailable:
+  //   1. SSR — `requestAnimationFrame` doesn't exist in Node.
+  //   2. Test teardown — vitest tears down the global scope between test
+  //      files. An async `flow.layout()` that resolves AFTER the test
+  //      returns may try to schedule a frame in a stripped environment,
+  //      throwing `ReferenceError: requestAnimationFrame is not defined`
+  //      from inside our recursive `animateFrame`.
+  // Returning 0 / no-op in both cases is correct — there's no point
+  // animating in a context that has no DOM and won't render anyway.
+  const _raf = (cb: FrameRequestCallback): number =>
+    typeof requestAnimationFrame === 'function' ? requestAnimationFrame(cb) : 0
+  const _caf = (id: number): void => {
+    if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(id)
+  }
+
   // ── Monotonic paste counter ─────────────────────────────────────────────
   // Avoids Date.now() + random collision risk under rapid paste operations.
   let _pasteCounter = 0
@@ -392,7 +408,7 @@ export function createFlow<TData = Record<string, unknown>>(
     // Animated transition — interpolate positions over duration.
     // Cancel any in-flight layout animation to prevent frame stacking.
     if (_layoutFrameId !== null) {
-      cancelAnimationFrame(_layoutFrameId)
+      _caf(_layoutFrameId)
       _layoutFrameId = null
     }
 
@@ -425,13 +441,13 @@ export function createFlow<TData = Record<string, unknown>>(
       })
 
       if (t < 1) {
-        _layoutFrameId = requestAnimationFrame(animateFrame)
+        _layoutFrameId = _raf(animateFrame)
       } else {
         _layoutFrameId = null
       }
     }
 
-    _layoutFrameId = requestAnimationFrame(animateFrame)
+    _layoutFrameId = _raf(animateFrame)
   }
 
   // ── Batch ────────────────────────────────────────────────────────────────
@@ -989,7 +1005,7 @@ export function createFlow<TData = Record<string, unknown>>(
   ): void {
     // Cancel any in-flight viewport animation
     if (_viewportFrameId !== null) {
-      cancelAnimationFrame(_viewportFrameId)
+      _caf(_viewportFrameId)
       _viewportFrameId = null
     }
 
@@ -1013,13 +1029,13 @@ export function createFlow<TData = Record<string, unknown>>(
       })
 
       if (t < 1) {
-        _viewportFrameId = requestAnimationFrame(frame)
+        _viewportFrameId = _raf(frame)
       } else {
         _viewportFrameId = null
       }
     }
 
-    _viewportFrameId = requestAnimationFrame(frame)
+    _viewportFrameId = _raf(frame)
   }
 
   // ── Dispose ──────────────────────────────────────────────────────────────
@@ -1027,11 +1043,11 @@ export function createFlow<TData = Record<string, unknown>>(
   function dispose(): void {
     // Cancel any in-flight animations to prevent stale state mutations
     if (_layoutFrameId !== null) {
-      cancelAnimationFrame(_layoutFrameId)
+      _caf(_layoutFrameId)
       _layoutFrameId = null
     }
     if (_viewportFrameId !== null) {
-      cancelAnimationFrame(_viewportFrameId)
+      _caf(_viewportFrameId)
       _viewportFrameId = null
     }
 
