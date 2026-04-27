@@ -22,7 +22,7 @@
  * Heuristics, not gospel. The output is a starting point for a human review.
  */
 
-import { execSync, spawnSync } from 'node:child_process'
+import { execSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 
