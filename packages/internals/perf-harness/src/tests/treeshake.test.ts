@@ -3,25 +3,27 @@
  *
  * Contract:
  *   Every counter write in a framework package is gated on
- *   `(import.meta as ViteMeta).env?.DEV === true`. In a Vite production
- *   bundle `import.meta.env.DEV` is replaced with the literal `false`,
- *   the gate folds to `if (false)`, esbuild's minifier proves the
- *   branch is unreachable, and tree-shaking drops the entire call
- *   tree — including the counter NAME string and the `__pyreon_count__`
- *   identifier.
+ *   `process.env.NODE_ENV !== 'production'` — the bundler-agnostic
+ *   library standard used by React, Vue, Preact, Solid. Every modern
+ *   bundler (Vite, Webpack/Next.js, esbuild, Rollup, Parcel, Bun)
+ *   auto-replaces `process.env.NODE_ENV` at consumer build time. In a
+ *   prod build the literal lands as `"production" !== "production"` →
+ *   `false`, the gate folds, esbuild's minifier proves the branch is
+ *   unreachable, and tree-shaking drops the entire call tree — including
+ *   the counter NAME string and the `__pyreon_count__` identifier.
  *
  * What this catches:
  *   - A dev gate that was removed by mistake, leaving the counter call
  *     unconditionally in the source (then reference-alive in prod).
  *   - A Vite / Rolldown / esbuild behavior change that stops eliminating
  *     this shape of dead code.
- *   - A non-Vite bundler in the consumer's path producing different
- *     behavior (documented in CLAUDE.md as "Vite is primary supported
- *     bundler", but this test proves it for the counter path).
+ *   - A regression to a bundler-coupled pattern (`import.meta.env.DEV` is
+ *     Vite-only; `typeof process` is dead in Vite browser bundles). Both
+ *     are flagged by the `pyreon/no-process-dev-gate` lint rule, but this
+ *     test confirms the contract end-to-end at the bundle level.
  *
  * Same pattern + rationale as
  * `packages/core/runtime-dom/src/tests/dev-gate-treeshake.test.ts`.
- * See that file for the longer history of the dev-gate drift problem.
  */
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -68,14 +70,15 @@ const FILES_UNDER_TEST: { layer: string; file: string; counterNames: string[] }[
     file: 'packages/core/router/src/router.ts',
     counterNames: ['router.navigate', 'router.loaderRun', 'router.loaderCache.hit'],
   },
-  // runtime-server is NOT in this list — it's a server package with a
-  // `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`
-  // dev gate. The `typeof process` half can't be folded at build time
-  // (runtime check), so even with `process.env.NODE_ENV` defined as
-  // `"production"`, esbuild keeps the gate + counter strings in the bundle.
-  // For server code the contract is RUNTIME gating, not tree-shake —
-  // `runtime-server-runtime-gate.test.ts` verifies that NODE_ENV=production
-  // skips the counter call at execution time.
+  // runtime-server is NOT in this list — it's a server package that keeps
+  // the `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`
+  // compound (server-only packages are exempt from `pyreon/no-process-dev-gate`
+  // because Node always has `process`). The `typeof process` half can't be
+  // folded at build time (runtime check), so even with `process.env.NODE_ENV`
+  // defined as `"production"`, esbuild keeps the gate + counter strings in
+  // the bundle. For server code the contract is RUNTIME gating, not
+  // tree-shake — `runtime-server-runtime-gate.test.ts` verifies that
+  // NODE_ENV=production skips the counter call at execution time.
 ]
 
 async function bundleProd(entry: string): Promise<string> {
@@ -87,12 +90,11 @@ async function bundleProd(entry: string): Promise<string> {
       configFile: false,
       resolve: { conditions: ['bun'] },
       define: {
-        'import.meta.env.DEV': 'false',
-        'import.meta.env': JSON.stringify({
-          DEV: false,
-          PROD: true,
-          MODE: 'production',
-        }),
+        // Bundler-agnostic dev gate: every modern bundler replaces
+        // `process.env.NODE_ENV` at consumer build time. We mimic that
+        // here so the counter calls fold to `if (false) ...` and
+        // tree-shake out of the prod bundle.
+        'process.env.NODE_ENV': '"production"',
       },
       build: {
         minify: 'esbuild',
