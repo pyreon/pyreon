@@ -18,9 +18,6 @@ import { calculateStyles } from './utils/styles'
 import { getDimensionThemes, getTheme, getThemeByMode, getThemeFromChain } from './utils/theme'
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
-interface ViteMeta {
-  readonly env?: { readonly DEV?: boolean }
-}
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 /**
@@ -193,7 +190,7 @@ const rocketComponent: RocketComponent = (options) => {
     // of the same component definition share the same dimension structure.
     let dimResult = _dimensionsCache.get(initialDimensionThemes as object)
     if (dimResult) {
-      if ((import.meta as ViteMeta).env?.DEV === true)
+      if (process.env.NODE_ENV !== 'production')
         _countSink.__pyreon_count__?.('rocketstyle.dimensionsMap.hit')
     } else {
       dimResult = getDimensionsMap({
@@ -276,7 +273,7 @@ const rocketComponent: RocketComponent = (options) => {
 
       const cached = themeMemo.get(key)
       if (cached) {
-        if ((import.meta as ViteMeta).env?.DEV === true)
+        if (process.env.NODE_ENV !== 'production')
           _countSink.__pyreon_count__?.('rocketstyle.dimensionMemo.hit')
         // LRU touch: move to end so eviction targets oldest unused entry
         themeMemo.delete(key)
@@ -286,7 +283,7 @@ const rocketComponent: RocketComponent = (options) => {
 
       // Miss: compute fresh. Counter measures actual theme resolutions
       // (not accessor invocations) — see COUNTERS.md.
-      if ((import.meta as ViteMeta).env?.DEV === true)
+      if (process.env.NODE_ENV !== 'production')
         _countSink.__pyreon_count__?.('rocketstyle.getTheme')
 
       // Resolve base + dimension themes for the CURRENT theme. WeakMap
@@ -294,7 +291,7 @@ const rocketComponent: RocketComponent = (options) => {
       // theme swaps fall through to recompute (once per new theme).
       const baseThemeHelper = ThemeManager.baseTheme
       if (baseThemeHelper.has(theme)) {
-        if ((import.meta as ViteMeta).env?.DEV === true)
+        if (process.env.NODE_ENV !== 'production')
           _countSink.__pyreon_count__?.('rocketstyle.localThemeManager.hit')
       } else {
         baseThemeHelper.set(theme, getThemeFromChain(options.theme, theme))
@@ -303,7 +300,7 @@ const rocketComponent: RocketComponent = (options) => {
 
       const dimHelper = ThemeManager.dimensionsThemes
       if (dimHelper.has(theme)) {
-        if ((import.meta as ViteMeta).env?.DEV === true)
+        if (process.env.NODE_ENV !== 'production')
           _countSink.__pyreon_count__?.('rocketstyle.localThemeManager.hit')
       } else {
         dimHelper.set(theme, getDimensionThemes(theme, options))
@@ -319,7 +316,7 @@ const rocketComponent: RocketComponent = (options) => {
       // Resolve mode-specific theme
       const modeBaseHelper = ThemeManager.modeBaseTheme[mode]
       if (modeBaseHelper.has(baseTheme)) {
-        if ((import.meta as ViteMeta).env?.DEV === true)
+        if (process.env.NODE_ENV !== 'production')
           _countSink.__pyreon_count__?.('rocketstyle.localThemeManager.hit')
       } else {
         modeBaseHelper.set(baseTheme, getThemeByMode(baseTheme, mode))
@@ -328,7 +325,7 @@ const rocketComponent: RocketComponent = (options) => {
 
       const modeDimHelper = ThemeManager.modeDimensionTheme[mode]
       if (modeDimHelper.has(themes)) {
-        if ((import.meta as ViteMeta).env?.DEV === true)
+        if (process.env.NODE_ENV !== 'production')
           _countSink.__pyreon_count__?.('rocketstyle.localThemeManager.hit')
       } else {
         modeDimHelper.set(themes, getThemeByMode(themes, mode))
@@ -371,7 +368,7 @@ const rocketComponent: RocketComponent = (options) => {
     // the key array on every mount. Same dimension structure = same Set.
     let omitSet = _omitSetCache.get(RESERVED_STYLING_PROPS_KEYS)
     if (omitSet) {
-      if ((import.meta as ViteMeta).env?.DEV === true)
+      if (process.env.NODE_ENV !== 'production')
         _countSink.__pyreon_count__?.('rocketstyle.omitSet.hit')
     } else {
       omitSet = new Set([...RESERVED_STYLING_PROPS_KEYS, ...STATIC_OMIT_KEYS])

@@ -228,12 +228,13 @@ describe('runtime-dom in real browser', () => {
     unmount()
   })
 
-  it('emits the duplicate-key __DEV__ warning under Vite (DEV=true)', async () => {
-    // import.meta.env.DEV is true in this dev-mode browser run, which is the
-    // exact replacement Vite/Rolldown apply at build-time. The warning must
-    // fire here. The companion `runtime-dom.prod-bundle.test.ts` Node test
-    // proves the same code path is dead in a prod bundle (DEV=false).
-    expect(import.meta.env.DEV).toBe(true)
+  it('emits the duplicate-key dev warning under non-production NODE_ENV', async () => {
+    // process.env.NODE_ENV !== 'production' in this dev browser run — the
+    // bundler-agnostic gate that every modern bundler auto-replaces at
+    // consumer build time. The warning must fire here. The companion
+    // `runtime-dom.prod-bundle.test.ts` Node test proves the same code path
+    // is dead in a prod bundle (NODE_ENV='production').
+    expect(process.env.NODE_ENV).not.toBe('production')
 
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const dupes = signal([

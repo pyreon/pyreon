@@ -24,8 +24,7 @@
  * AsyncLocalStorage-backed provider so each request gets isolated store state.
  */
 
-// @ts-ignore — import.meta.env.DEV is Vite/Rolldown literal-replaced at build time
-const __DEV__: boolean = import.meta.env?.DEV === true
+const __DEV__: boolean = process.env.NODE_ENV !== 'production'
 
 export type { Signal } from '@pyreon/reactivity'
 export { batch, computed, effect, signal } from '@pyreon/reactivity'

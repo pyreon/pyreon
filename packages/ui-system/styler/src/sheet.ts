@@ -9,9 +9,6 @@ import { hash } from './hash'
 import { clearNormCache } from './resolve'
 
 // Dev-time counter sink — see styler/resolve.ts for the contract.
-interface ViteMeta {
-  readonly env?: { readonly DEV?: boolean }
-}
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 // Dev-mode gate. `import.meta.env.DEV` is literal-replaced by Vite at build
@@ -19,7 +16,7 @@ const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number)
 // `process.env.NODE_ENV !== 'production'` form was dead code in real Vite
 // browser bundles (Vite does not polyfill `process`), so insertRule failures
 // were silently swallowed in production — masking malformed CSS bugs.
-const __DEV__ = (import.meta as ViteMeta).env?.DEV === true
+const __DEV__ = process.env.NODE_ENV !== 'production'
 
 const PREFIX = 'pyr'
 const ATTR = 'data-pyreon-styler'
@@ -213,13 +210,13 @@ export class StyleSheet {
    *   via @layer order (base < rocketstyle) instead of specificity hacks.
    */
   insert(cssText: string, _unused = false, insertLayer?: string): string {
-    if ((import.meta as ViteMeta).env?.DEV === true)
+    if (process.env.NODE_ENV !== 'production')
       _countSink.__pyreon_count__?.('styler.sheet.insert')
     // Fast path: skip hash computation on repeated insertions of same CSS text
     const icKey = insertLayer ? `${cssText}\0L:${insertLayer}` : cssText
     const icHit = this.insertCache.get(icKey)
     if (icHit) {
-      if ((import.meta as ViteMeta).env?.DEV === true)
+      if (process.env.NODE_ENV !== 'production')
         _countSink.__pyreon_count__?.('styler.sheet.insert.hit')
       return icHit
     }

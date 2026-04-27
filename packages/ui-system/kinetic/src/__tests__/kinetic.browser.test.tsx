@@ -51,8 +51,11 @@ describe('@pyreon/kinetic browser smoke', () => {
     expect(mergeClassNames(undefined, undefined)).toBe(undefined)
   })
 
-  it('runs in a real browser — `typeof process` is undefined, `import.meta.env.DEV` is true', () => {
-    expect(typeof process).toBe('undefined')
-    expect(import.meta.env.DEV).toBe(true)
+  it('runs in a real browser — Vitest defines `process.env.NODE_ENV !== "production"`', () => {
+    // Sanity check the test env: dev gates use bundler-agnostic
+    // `process.env.NODE_ENV !== 'production'`. Vitest's Vite pipeline
+    // replaces this at build time so the literal lands as
+    // `"development" !== "production"` → `true` in dev runs.
+    expect(process.env.NODE_ENV).not.toBe('production')
   })
 })

@@ -2,9 +2,6 @@ import { getCurrentScope } from './scope'
 import { _restoreActiveEffect, _setActiveEffect, setDepsCollector, withTracking } from './tracking'
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
-interface ViteMeta {
-  readonly env?: { readonly DEV?: boolean }
-}
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 export interface Effect {
@@ -115,7 +112,7 @@ export function effect(fn: () => (() => void) | void): Effect {
 
   const run = () => {
     if (disposed) return
-    if ((import.meta as ViteMeta).env?.DEV === true)
+    if (process.env.NODE_ENV !== 'production')
       _countSink.__pyreon_count__?.('reactivity.effectRun')
     // Run previous cleanup before re-running
     runCleanup()

@@ -3,8 +3,7 @@ import { getEntry, removeEntry, setEntry } from './registry'
 import type { IndexedDBOptions, StorageSignal } from './types'
 import { deserialize, isBrowser, serialize } from './utils'
 
-// @ts-ignore — import.meta.env.DEV is Vite/Rolldown literal-replaced at build time
-const __DEV__: boolean = import.meta.env?.DEV === true
+const __DEV__: boolean = process.env.NODE_ENV !== 'production'
 
 // ─── Database management ─────────────────────────────────────────────────────
 

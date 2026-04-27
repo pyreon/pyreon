@@ -4,10 +4,7 @@ export const PKG_NAME = '@pyreon/coolgrid'
 // time and tree-shakes to zero bytes in prod. The previous
 // `process.env.NODE_ENV !== 'production'` form was dead code in real Vite
 // browser bundles (Vite does not polyfill `process`).
-interface ViteMeta {
-  readonly env?: { readonly DEV?: boolean }
-}
-export const __DEV__ = (import.meta as ViteMeta).env?.DEV === true
+export const __DEV__ = process.env.NODE_ENV !== 'production'
 
 /**
  * Grid configuration keys that are passed through context

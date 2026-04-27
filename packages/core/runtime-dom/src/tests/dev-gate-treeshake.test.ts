@@ -8,28 +8,24 @@ import { build } from 'vite'
 const here = path.dirname(fileURLToPath(import.meta.url))
 const SRC = path.resolve(here, '..')
 
-// Bundle-level regression test for the T1.1 C-2 finding.
+// Bundle-level regression test for the dev-warning gate.
 //
-// Background — the shape of the problem from PR #227 bring-up:
-//   Raw `esbuild --minify` preserves chained `__DEV__ && cond &&
-//   console.warn(...)` patterns even when `import.meta.env.DEV` is
-//   defined to `false`. That tempted a pattern-rewrite across all
-//   Pyreon sources.
+// runtime-dom uses bundler-agnostic `process.env.NODE_ENV !== 'production'`
+// for dev gates — the cross-bundler library convention used by React, Vue,
+// Preact, Solid, MobX, Redux. Every modern bundler (Vite, Webpack/Next.js,
+// esbuild, Rollup, Parcel, Bun) auto-replaces `process.env.NODE_ENV` at
+// consumer build time. This test bundles each representative runtime-dom
+// file through Vite's production build and asserts dev-warning strings
+// are GONE from the output — proving literal-replacement + dead-code
+// elimination work end-to-end.
 //
-// What the C-2 investigation actually found:
-//   Pyreon's real consumer path is Vite (which uses Rolldown under the
-//   hood plus its own import.meta.env replacement + tree-shake passes).
-//   Vite's production build DOES eliminate the chained patterns
-//   correctly — the raw esbuild baseline was misleading. Raw Rolldown
-//   alone also doesn't replicate Vite's behavior because Rolldown's
-//   `define` doesn't rewrite optional-chain access paths.
+// The test uses Vite because that's Pyreon's reference consumer pipeline
+// today; the same files under Webpack / esbuild / Rollup etc. tree-shake
+// equivalently because they all replace `process.env.NODE_ENV`. Vite is
+// just the most-tested path.
 //
-// This test bundles a runtime-dom entry through Vite's production
-// build and asserts dev-warning strings are GONE. If Vite's handling
-// ever regresses, this catches it.
-//
-// Scope note: the existing `dev-gate-pattern.test.ts` is the cheap
-// source-level guard (grep for `typeof process`, require `import.meta.env.DEV`).
+// Scope note: `dev-gate-pattern.test.ts` is the cheap source-level guard
+// (grep for the broken patterns, require bare `process.env.NODE_ENV`).
 // This test is the expensive end-to-end guard for the bundle path.
 
 interface FileContract {
@@ -84,19 +80,17 @@ const FILES_UNDER_TEST: FileContract[] = [
 async function bundleWithVite(entry: string, dev: boolean): Promise<string> {
   const outDir = mkdtempSync(path.join(tmpdir(), 'pyreon-vite-treeshake-'))
   try {
-    // Vite library-mode build with explicit minify. `define` on
-    // `import.meta.env` isn't usually needed (Vite sets it automatically
-    // based on mode), but `mode: 'production'` flips DEV to false.
+    // Vite library-mode build with explicit minify. The bundler-agnostic
+    // gate uses `process.env.NODE_ENV` — Vite's library mode doesn't apply
+    // the default replacement automatically, so we set it ourselves to
+    // match what every modern bundler does at consumer build time.
     await build({
       mode: dev ? 'development' : 'production',
       logLevel: 'error',
       configFile: false,
       resolve: { conditions: ['bun'] },
-      // Explicit define — Vite in lib mode doesn't always apply the
-      // default production env replacement, so we set it ourselves.
       define: {
-        'import.meta.env.DEV': JSON.stringify(dev),
-        'import.meta.env': JSON.stringify({ DEV: dev, PROD: !dev, MODE: dev ? 'development' : 'production' }),
+        'process.env.NODE_ENV': JSON.stringify(dev ? 'development' : 'production'),
       },
       build: {
         // PINNED minifier: 'esbuild' is what Pyreon's reference consumers

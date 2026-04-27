@@ -18,11 +18,12 @@ const SRC = path.resolve(here, '..')
 //   produced no diagnostic — empty <style> tag, classes assigned, no
 //   console output).
 //
-// The fix is to use `import.meta.env.DEV` instead. This test bundles
-// `sheet.ts` through Vite's production build and asserts the dev-warning
-// strings are GONE from the output. It also bundles in dev mode and
-// asserts the strings are PRESENT, so a source-level deletion can't
-// trivially pass the prod test.
+// The fix is to use bundler-agnostic `process.env.NODE_ENV !== 'production'`
+// — every modern bundler auto-replaces `process.env.NODE_ENV` at consumer
+// build time. This test bundles `sheet.ts` through Vite's production build
+// and asserts the dev-warning strings are GONE. It also bundles in dev
+// mode and asserts the strings are PRESENT, so a source-level deletion
+// can't trivially pass the prod test.
 //
 // Mirrors `packages/core/runtime-dom/src/tests/dev-gate-treeshake.test.ts`.
 
@@ -41,12 +42,7 @@ async function bundleWithVite(entry: string, dev: boolean): Promise<string> {
       configFile: false,
       resolve: { conditions: ['bun'] },
       define: {
-        'import.meta.env.DEV': JSON.stringify(dev),
-        'import.meta.env': JSON.stringify({
-          DEV: dev,
-          PROD: !dev,
-          MODE: dev ? 'development' : 'production',
-        }),
+        'process.env.NODE_ENV': JSON.stringify(dev ? 'development' : 'production'),
       },
       build: {
         // PINNED minifier — see runtime-dom's tree-shake test for rationale.

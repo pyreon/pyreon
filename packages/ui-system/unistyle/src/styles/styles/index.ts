@@ -6,9 +6,6 @@ import type { ITheme, InnerTheme, Theme } from './types'
 
 // Dev-time counter sink — populated by `@pyreon/perf-harness` on install().
 // No import so unistyle carries zero coupling to a private package.
-interface ViteMeta {
-  readonly env?: { readonly DEV?: boolean }
-}
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 export type { ITheme, Theme as StylesTheme }
@@ -74,7 +71,7 @@ const _seen = new Set<number>()
 const _fragments: unknown[] = []
 
 const styles: Styles = ({ theme: t, css, rootSize }) => {
-  if ((import.meta as ViteMeta).env?.DEV === true) _countSink.__pyreon_count__?.('unistyle.styles')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('unistyle.styles')
 
   const calc = (...params: any[]) => values(params, rootSize)
   const shorthand = edge(rootSize)
@@ -91,7 +88,7 @@ const styles: Styles = ({ theme: t, css, rootSize }) => {
     for (const idx of indices) {
       if (_seen.has(idx)) continue
       _seen.add(idx)
-      if ((import.meta as ViteMeta).env?.DEV === true)
+      if (process.env.NODE_ENV !== 'production')
         _countSink.__pyreon_count__?.('unistyle.descriptor')
       _fragments.push(processDescriptor(propertyMap[idx]!, t, css, calc, shorthand, borderRadiusFn))
     }
@@ -100,10 +97,10 @@ const styles: Styles = ({ theme: t, css, rootSize }) => {
   // Fallback: if lookup produced nothing, full scan (handles edge cases
   // where theme uses non-standard keys that aren't in propertyMap)
   if (_fragments.length === 0 && Object.keys(t).length > 0) {
-    if ((import.meta as ViteMeta).env?.DEV === true)
+    if (process.env.NODE_ENV !== 'production')
       _countSink.__pyreon_count__?.('unistyle.descriptor.fallback-scan')
     for (const d of propertyMap) {
-      if ((import.meta as ViteMeta).env?.DEV === true)
+      if (process.env.NODE_ENV !== 'production')
         _countSink.__pyreon_count__?.('unistyle.descriptor')
       _fragments.push(processDescriptor(d, t, css, calc, shorthand, borderRadiusFn))
     }
