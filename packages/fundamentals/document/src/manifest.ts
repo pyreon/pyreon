@@ -6,7 +6,7 @@ export default defineManifest({
   tagline:
     'Universal document rendering — 18 primitives, 14+ output formats',
   description:
-    'Universal document rendering for Pyreon. One template, every output format: HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, plain text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence, WhatsApp, Google Chat. Heavy renderers (PDF ~300KB, DOCX ~100KB, XLSX ~500KB, PPTX ~200KB) are lazy-loaded on demand. Supports both JSX primitives and a fluent builder API.',
+    'Universal document rendering for Pyreon. One template, every output format: HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, plain text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence, WhatsApp, Google Chat. Heavy renderers are lazy-loaded — chunks (PDF ~3MB pdfmake + fonts, DOCX ~700KB, XLSX ~1.1MB, PPTX ~400KB) only load when invoked. The vendored architecture means one npm install covers every format; apps that never render to a heavy format never pay its chunk cost. Supports both JSX primitives and a fluent builder API.',
   category: 'universal',
   longExample: `import { Document, Page, Heading, Text, Table, Image, List, Code, Divider, render, createDocument, download } from '@pyreon/document'
 
@@ -133,7 +133,7 @@ download(pdf, 'report.pdf')`,
     },
   ],
   gotchas: [
-    'Heavy format renderers are lazy-loaded: PDF (~300KB via pdfmake), DOCX (~100KB via docx), XLSX (~500KB via exceljs), PPTX (~200KB via pptxgenjs). First render of each format has an async import overhead; subsequent renders are instant.',
+    'Heavy format renderers are lazy-loaded: PDF (~3MB via pdfmake + bundled fonts), DOCX (~700KB via docx), XLSX (~1.1MB via exceljs), PPTX (~400KB via pptxgenjs). First render of each format triggers the dynamic import; subsequent renders are instant. The vendored architecture means apps download all renderer chunks during npm install (14MB total `lib/`), but consumer-side bundlers tree-shake to only ship the renderers an app actually invokes.',
     {
       label: 'Format return types',
       note: 'Binary formats (pdf, docx, xlsx, pptx) return Uint8Array. Text formats (html, email, md, text, csv, slack, teams, discord, telegram, notion, confluence, whatsapp, gchat, svg) return string.',
