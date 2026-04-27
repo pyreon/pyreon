@@ -7,11 +7,8 @@
 import type { DefaultTheme } from './ThemeProvider'
 
 // Dev-time counter sink — populated by `@pyreon/perf-harness` on install().
-// Guarded on call sites with `import.meta.env?.DEV === true` so prod bundles
+// Guarded on call sites with `process.env.NODE_ENV !== 'production'` so prod bundles
 // tree-shake the entire reference. No cross-package import, no publish surface.
-interface ViteMeta {
-  readonly env?: { readonly DEV?: boolean }
-}
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 /**
@@ -60,7 +57,7 @@ export const resolve = (
   values: Interpolation[],
   props: Record<string, any>,
 ): string => {
-  if ((import.meta as ViteMeta).env?.DEV === true) _countSink.__pyreon_count__?.('styler.resolve')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('styler.resolve')
   // Tagged templates guarantee strings.length === values.length + 1,
   // so strings[0] and strings[i+1] are always defined — no ?? needed.
   let result = strings[0] as string

@@ -3,8 +3,7 @@ import { createContext, useContext } from '@pyreon/core'
 import type { RouterInstance } from './types'
 
 // Dev-mode gate + counter sink. See packages/internals/perf-harness for contract.
-// @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown at build time
-const __DEV__ = import.meta.env?.DEV === true
+const __DEV__ = process.env.NODE_ENV !== 'production'
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 /**

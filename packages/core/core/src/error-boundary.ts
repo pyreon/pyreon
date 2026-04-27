@@ -6,8 +6,7 @@ import type { VNodeChild, VNodeChildAtom } from './types'
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
-// @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown at build time
-const __DEV__ = import.meta.env?.DEV === true
+const __DEV__ = process.env.NODE_ENV !== 'production'
 
 /**
  * ErrorBoundary — catches errors thrown by child components and renders a

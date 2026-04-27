@@ -198,10 +198,12 @@ describe('StyleSheet', () => {
       warnSpy.mockRestore()
     })
 
-    it('uses import.meta.env.DEV (not process.env.NODE_ENV) — vitest sets DEV=true', () => {
-      // Smoke test the gate itself: vitest must set import.meta.env.DEV to true
-      // for the regression test above to be meaningful.
-      expect(import.meta.env.DEV).toBe(true)
+    it('uses bundler-agnostic process.env.NODE_ENV — vitest sets NODE_ENV !== "production"', () => {
+      // Smoke test the gate itself: vitest must set process.env.NODE_ENV to
+      // a non-production value for the regression test above to be meaningful.
+      // Every modern bundler (incl. Vitest's Vite pipeline) auto-replaces
+      // `process.env.NODE_ENV` at build time.
+      expect(process.env.NODE_ENV).not.toBe('production')
     })
   })
 })

@@ -7,10 +7,7 @@ import type { ElementType } from './types/utils'
 // time and tree-shakes to zero bytes in prod. The previous
 // `process.env.NODE_ENV !== 'production'` form was dead code in real Vite
 // browser bundles (Vite does not polyfill `process`).
-interface ViteMeta {
-  readonly env?: { readonly DEV?: boolean }
-}
-const __DEV__ = (import.meta as ViteMeta).env?.DEV === true
+const __DEV__ = process.env.NODE_ENV !== 'production'
 
 /**
  * Public entry point for creating an attrs-enhanced component.

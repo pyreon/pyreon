@@ -28,8 +28,7 @@ import { mountChild } from './mount'
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
-// @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown at build time
-const __DEV__ = import.meta.env?.DEV === true
+const __DEV__ = process.env.NODE_ENV !== 'production'
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }

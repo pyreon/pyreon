@@ -2,11 +2,8 @@
 // literal-replaced so prod bundles tree-shake the dev branch to zero bytes.
 // Typed through a narrowing interface so downstream packages don't need
 // `vite/client` in their tsconfigs to type-check this file transitively.
-interface ViteMeta {
-  readonly env?: { readonly DEV?: boolean }
-}
 /** Tree-shakeable dev-mode flag. `true` in dev, `false` (dead code eliminated) in prod. */
-export const __DEV__: boolean = (import.meta as ViteMeta).env?.DEV === true
+export const __DEV__: boolean = process.env.NODE_ENV !== 'production'
 
 /** Default theme mode used when no mode is provided via context. */
 export const MODE_DEFAULT = 'light'

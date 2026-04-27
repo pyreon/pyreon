@@ -7,8 +7,7 @@ import { effect, runUntracked, signal } from '@pyreon/reactivity'
 // pattern was dead code in real Vite browser bundles because Vite does not
 // polyfill `process` for the client — every wrapped warning silently never
 // fired in dev. Enforced by the `pyreon/no-process-dev-gate` lint rule.
-// @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown at build time
-const __DEV__ = import.meta.env?.DEV === true
+const __DEV__ = process.env.NODE_ENV !== 'production'
 
 export interface TransitionProps {
   /**

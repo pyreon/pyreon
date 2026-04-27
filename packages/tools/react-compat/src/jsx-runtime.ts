@@ -70,7 +70,7 @@ export function endRender(): void {
   if (_currentCtx) {
     // Dev-mode: check hook count matches expected
     if (
-      (import.meta as { env?: { DEV?: boolean } }).env?.DEV &&
+      process.env.NODE_ENV !== 'production' &&
       _expectedHookCount !== -1 &&
       _hookIndex !== _expectedHookCount
     ) {

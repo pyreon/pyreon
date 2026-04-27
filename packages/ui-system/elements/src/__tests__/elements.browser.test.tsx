@@ -52,9 +52,13 @@ describe('@pyreon/elements browser smoke', () => {
     expect(document.querySelector('[data-portal-id="p"]')).toBeNull()
   })
 
-  it('runs in a real browser — `typeof process` is undefined, `import.meta.env.DEV` is true', () => {
-    expect(typeof process).toBe('undefined')
-    expect(import.meta.env.DEV).toBe(true)
+  it('runs in a real browser — Vitest defines `process.env.NODE_ENV !== "production"`', () => {
+    // Sanity check the test env: dev gates use bundler-agnostic
+    // `process.env.NODE_ENV !== 'production'`. Every modern bundler
+    // (incl. Vitest's Vite) replaces this at build time. In a real-browser
+    // test run the literal lands as `"development" !== "production"` →
+    // `true`, so dev warnings fire as expected.
+    expect(process.env.NODE_ENV).not.toBe('production')
   })
 
   // Void HTML elements via Element must not trip runtime-dom's

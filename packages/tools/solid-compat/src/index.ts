@@ -1089,8 +1089,7 @@ export function createUniqueId(): string {
  * Solid-compatible `DEV` — an object in dev mode, `undefined` in production.
  * Used for conditional dev-only code: `if (DEV) { ... }`
  */
-export const DEV =
-  (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true ? {} : undefined
+export const DEV = process.env.NODE_ENV !== 'production' ? {} : undefined
 
 // ─── catchError ─────────────────────────────────────────────────────────────
 

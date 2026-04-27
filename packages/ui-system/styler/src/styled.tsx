@@ -25,9 +25,6 @@ import { sheet } from './sheet'
 import { useThemeAccessor } from './ThemeProvider'
 
 // Dev-time counter sink — see packages/internals/perf-harness/COUNTERS.md.
-interface ViteMeta {
-  readonly env?: { readonly DEV?: boolean }
-}
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 type Tag = string | ComponentFn<any>
@@ -192,7 +189,7 @@ const createStyledComponent = (
         if (inner) {
           const cached = inner.get($childFix)
           if (cached !== undefined) {
-            if ((import.meta as ViteMeta).env?.DEV === true)
+            if (process.env.NODE_ENV !== 'production')
               _countSink.__pyreon_count__?.('styler.elClassCache.hit')
             return cached
           }
