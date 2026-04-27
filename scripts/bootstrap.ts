@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
- * Bootstrap script — ensures compiled `lib/` directories exist for packages
- * that Vite's config bundler needs during `vite build`.
+ * Bootstrap script — ensures compiled `lib/` directories exist AND ARE FRESH
+ * for packages that Vite's config bundler needs during `vite build`.
  *
  * ## Why this is needed
  *
@@ -16,8 +16,12 @@
  *   2. The bundled config is then executed by Node's ESM loader (even when
  *      invoked via `bun run`), and Node cannot import `.ts` files.
  *
- * So `import: "./lib/index.js"` must exist. In a fresh git worktree (or
- * after `git clean`), it doesn't — because no build has been run yet.
+ * So `import: "./lib/index.js"` must exist AND must reflect the current
+ * source. In a fresh git worktree (or after `git clean`), it doesn't exist
+ * — because no build has been run yet. After a `git pull` that touches
+ * source, it exists but is STALE — which silently breaks builds with
+ * confusing errors (e.g. `MISSING_EXPORT` for routes that the source
+ * correctly filters but the stale lib doesn't).
  *
  * ## When it runs
  *
@@ -28,16 +32,20 @@
  *
  * 1. Scans all workspace packages under `packages/` (not `examples/`).
  * 2. For each package with `./lib/` in exports AND a real build script,
- *    checks if `lib/` exists.
- * 3. If ANY package is missing `lib/`, runs `bun run --filter='./packages/*' build`
- *    to compile all packages (not examples — those aren't imported by others).
- * 4. If all `lib/` directories exist, exits immediately (~5ms no-op).
+ *    checks (a) does `lib/` exist, and (b) is its newest file older than
+ *    the package's newest source file (= stale).
+ * 3. If ANY package is missing OR stale, runs the workspace build filter
+ *    `bun run --filter='./packages/<category>/<pkg>' build` to compile all
+ *    packages (not examples — those aren't imported by others).
+ * 4. If all `lib/` directories exist AND are fresh, exits immediately (~80ms no-op).
  *
  * ## Performance
  *
  * - Fresh worktree: ~45s (packages-only build, no examples).
- * - Subsequent installs: instant (all `lib/` exist).
- * - Only triggered by: fresh clone, fresh worktree, `git clean -fdx`.
+ * - Stale lib (post-pull): same ~45s, but now we catch it instead of failing later.
+ * - Subsequent installs (no source changes): ~80ms (mtime walk over packages).
+ * - Triggered by: fresh clone, fresh worktree, `git clean -fdx`, OR any package
+ *   source touched since its last build.
  */
 
 import { execSync } from 'node:child_process'
@@ -49,6 +57,7 @@ const ROOT = resolve(import.meta.dirname, '..')
 interface MissingPackage {
   name: string
   path: string
+  reason: 'missing' | 'stale'
 }
 
 /**
@@ -100,27 +109,105 @@ function findBuildablePackages(): Array<{ name: string; path: string; hasLib: bo
   return result
 }
 
+/**
+ * Walk a directory recursively and return the newest mtime found across
+ * all regular files. Skips test fixtures, node_modules, and dotfiles —
+ * test changes shouldn't trigger a rebuild, but src/ changes should.
+ *
+ * Returns 0 if the directory doesn't exist (caller treats as "no signal").
+ */
+function maxFileMtime(dir: string): number {
+  if (!existsSync(dir)) return 0
+  let max = 0
+  const stack: string[] = [dir]
+  while (stack.length > 0) {
+    const current = stack.pop() as string
+    let entries
+    try {
+      entries = readdirSync(current, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const entry of entries) {
+      // Skip noise: hidden files, node_modules, nested lib/, generated dirs.
+      // Also skip __tests__ and tests/ — test edits shouldn't trigger rebuilds.
+      if (
+        entry.name.startsWith('.') ||
+        entry.name === 'node_modules' ||
+        entry.name === 'lib' ||
+        entry.name === '__tests__' ||
+        entry.name === 'tests' ||
+        entry.name === '__snapshots__' ||
+        entry.name.endsWith('.test.ts') ||
+        entry.name.endsWith('.test.tsx') ||
+        entry.name.endsWith('.test.js')
+      ) {
+        continue
+      }
+      const full = join(current, entry.name)
+      if (entry.isDirectory()) {
+        stack.push(full)
+      } else if (entry.isFile()) {
+        try {
+          const m = statSync(full).mtimeMs
+          if (m > max) max = m
+        } catch {
+          // Ignore
+        }
+      }
+    }
+  }
+  return max
+}
+
 // ── Main ────────────────────────────────────────────────────────────────────
 
 const packages = findBuildablePackages()
-const missing: MissingPackage[] = packages
-  .filter((p) => !p.hasLib)
-  .map((p) => ({ name: p.name, path: relative(ROOT, p.path) }))
 
-if (missing.length === 0) {
-  // All lib/ dirs exist — instant no-op.
+// Two failure modes both require a rebuild:
+// (1) Package has no `lib/` at all (fresh clone / fresh worktree)
+// (2) Package has `lib/` but its newest file is older than the newest src/
+//     file — i.e. someone changed source without rebuilding (post-pull,
+//     post-checkout-between-branches, or just developer iteration).
+const dirty: MissingPackage[] = []
+for (const pkg of packages) {
+  if (!pkg.hasLib) {
+    dirty.push({ name: pkg.name, path: relative(ROOT, pkg.path), reason: 'missing' })
+    continue
+  }
+  const srcDir = join(pkg.path, 'src')
+  const libDir = join(pkg.path, 'lib')
+  const srcM = maxFileMtime(srcDir)
+  const libM = maxFileMtime(libDir)
+  // Only flag stale when src is meaningfully newer (>2s tolerance covers
+  // filesystem-level mtime quirks across remounts / git checkout races).
+  if (srcM > 0 && libM > 0 && srcM > libM + 2_000) {
+    dirty.push({ name: pkg.name, path: relative(ROOT, pkg.path), reason: 'stale' })
+  }
+}
+
+if (dirty.length === 0) {
+  // All lib/ dirs exist AND are fresh — instant no-op.
   process.exit(0)
 }
 
-// Log which packages are missing so the user understands why the build runs.
+// Log which packages need rebuilding and why.
+const missingCount = dirty.filter((p) => p.reason === 'missing').length
+const staleCount = dirty.filter((p) => p.reason === 'stale').length
+const reasonStr = [
+  missingCount > 0 ? `${missingCount} missing lib/` : '',
+  staleCount > 0 ? `${staleCount} stale lib/ (source newer than build)` : '',
+]
+  .filter(Boolean)
+  .join(', ')
+
 // oxlint-disable-next-line no-console
 console.log(
-  `[bootstrap] ${missing.length} package${missing.length === 1 ? '' : 's'} missing lib/ — ` +
-    `running initial build (~45s, only happens once per fresh worktree):`,
+  `[bootstrap] ${dirty.length} package${dirty.length === 1 ? '' : 's'} need rebuild — ${reasonStr}.`,
 )
-for (const pkg of missing) {
+for (const pkg of dirty) {
   // oxlint-disable-next-line no-console
-  console.log(`  - ${pkg.name} (${pkg.path})`)
+  console.log(`  - ${pkg.name} (${pkg.path}) [${pkg.reason}]`)
 }
 
 try {

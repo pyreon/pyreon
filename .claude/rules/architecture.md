@@ -6,7 +6,7 @@
 - Examples under `examples/` — also part of the workspace
 - Workspace resolution via `"bun"` condition — no build step for dev
 - Dependencies between packages use workspace protocol
-- **Bootstrap on fresh install**: `postinstall` runs `scripts/bootstrap.ts` which builds all packages if any `lib/` directory is missing (~45s once, then no-op). This is required because Vite's config bundler hardcodes `conditions: ["node"]` and needs `lib/*.js` — not the TypeScript source. You do NOT need to run `bun run build` manually after cloning or creating a worktree.
+- **Bootstrap on fresh install + drift detection**: `postinstall` runs `scripts/bootstrap.ts` which builds all packages if any `lib/` directory is missing OR if any package's source is newer than its `lib/` (mtime drift). This is required because Vite's config bundler hardcodes `conditions: ["node"]` and needs `lib/*.js` — not the TypeScript source. You do NOT need to run `bun run build` manually after cloning or creating a worktree. **You DO need to re-run `bun install` (or `bun scripts/bootstrap.ts` directly) after `git pull` / `git checkout` if the diff touches package sources** — otherwise example builds use stale lib code and silently fail or produce wrong output. The bootstrap takes ~30ms when clean (mtime walk only), ~45s when rebuilding.
 
 ## CI Requirements
 
