@@ -9,15 +9,19 @@ All packages under `@pyreon/*` scope.
 
 ## Benchmark Results (Chromium via Playwright)
 
-Pyreon (compiled) is fastest framework on all benchmarks:
+Pyreon (compiled) is in the top performance tier on the JS Framework Benchmark — **competitive with Solid**, ahead of Vue and React. **Not "fastest on all benchmarks"**: most rows are tied with Solid within measurement noise. Real-app head-to-head measurements pending.
 
-- Create 1,000 rows: 9ms (1.00x) vs Solid 10ms, Vue 11ms, React 33ms
-- Replace 1,000 rows: 10ms (1.00x) vs Solid 10ms, Vue 11ms, React 31ms
-- Partial update: 5ms (1.00x) vs Solid 5ms, Vue 7ms, React 6ms
-- Select row: 5ms (1.00x) vs Solid 5ms, Vue 5ms, React 8ms
-- Create 10,000 rows: 103ms (1.00x) vs Solid 104ms, Vue 131ms, React 540ms
+| Benchmark | Pyreon | Solid | Vue | React | Honest read |
+|---|---|---|---|---|---|
+| Create 1,000 rows | 9ms | 10ms | 11ms | 33ms | tied with Solid (within noise) |
+| Replace 1,000 rows | 10ms | 10ms | 11ms | 31ms | tied with Solid |
+| Partial update | 5ms | 5ms | 7ms | 6ms | tied with Solid |
+| Select row | 5ms | 5ms | 5ms | 8ms | tied with Solid |
+| Create 10,000 rows | 103ms | 104ms | 131ms | 540ms | tied with Solid |
 
-Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextNode.data`, zero-alloc mount pipeline (lazy hooks, lazy EffectScope, devtools gated on `__DEV__`, per-definition WeakMap caches in rocketstyle)
+**What this means in practice:** competitive with Solid on the synthetic JS Framework Benchmark, meaningfully ahead of React. The "fastest" framing was overstated — fix is in this PR. Earning legitimate "fastest" claims requires either (a) the compiler-pass landed in `compiler-pass-rocketstyle-collapse.md` (no other framework has Pyreon's multi-dimensional theme system to compile away) or (b) real-app head-to-head measurements that we haven't run yet.
+
+Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextNode.data`, zero-alloc mount pipeline (lazy hooks, lazy EffectScope, devtools gated on `__DEV__`, per-definition WeakMap caches in rocketstyle, dimension-prop memo at the rocketstyle wrapper, `$element` bundle interning + styler classCache extension)
 
 ## Package Overview
 

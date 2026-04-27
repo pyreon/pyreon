@@ -1,7 +1,7 @@
 # Pyreon Framework — Complete AI Reference
 
 > Signal-based UI framework for TypeScript. SSR, SSG, islands, SPA.
-> Standard JSX + TypeScript. Fastest framework on all JS Framework Benchmark tests.
+> Standard JSX + TypeScript. Top-tier performance on the JS Framework Benchmark — competitive with Solid (most rows tied within noise), ahead of Vue and React.
 > All packages under @pyreon/* scope.
 
 ## Package Map
