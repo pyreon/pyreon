@@ -37,16 +37,13 @@ const repoRoot = path.resolve(here, '..')
 // removed when its smoke suite lands — the self-expiring check below
 // errors if a listed package now has a *.browser.test.* file so the
 // removal can't be forgotten.
-const PHASE_5_PENDING_PACKAGES = [
-  // ui (theme + components + primitives) — Phase 5 rollout
-  'packages/ui/theme/',
-  'packages/ui/components/',
-  'packages/ui/primitives/',
-  // compat layers — Phase 5 rollout
-  'packages/tools/react-compat/',
-  'packages/tools/preact-compat/',
-  'packages/tools/vue-compat/',
-  'packages/tools/solid-compat/',
+const PHASE_5_PENDING_PACKAGES: string[] = [
+  // Phase 5 rollout complete: ui (theme + components + primitives) +
+  // compat layers (react/preact/vue/solid) all have *.browser.test.*
+  // files. The list is kept here (empty) so the self-expiring check
+  // mechanism stays in place for any future browser-categorized
+  // packages that need a temporary exemption while smoke coverage is
+  // authored.
 ]
 
 // Walk packages/ to find every per-package src/index.ts. Bounded depth
