@@ -36,33 +36,41 @@ const LAYER_SPACING_ALGORITHMS = new Set<LayoutAlgorithm>(['layered'])
 const EDGE_ROUTING_ALGORITHMS = new Set<LayoutAlgorithm>(['layered'])
 
 function warnIgnoredOptions(algorithm: LayoutAlgorithm, options: LayoutOptions): void {
-  // Dev-mode gate via `import.meta.env.DEV` — the Vite/Rolldown standard.
+  // Dev-mode gate via bare `process.env.NODE_ENV !== 'production'` — the
+  // bundler-agnostic library convention. Used by React, Vue, Preact, Solid,
+  // MobX, Redux, and every other major published JS library.
   //
-  // - **Vite browser dev** build: literal-replaced with `true` →
-  //   `!true` is `false` → falls through → warning fires.
-  // - **Vite browser prod** build (minified): literal-replaced with
-  //   `false` → `!false` is `true` → returns. esbuild's minifier
-  //   then proves the rest of the function body is unreachable and
-  //   tree-shakes it to **zero bytes**. Verified empirically by
-  //   feeding this file to esbuild with the same defines Vite uses
-  //   (`'import.meta.env.DEV': 'false'`, `minify: true`,
-  //   `treeShaking: true`) and inspecting the output bundle — the
-  //   warning function disappears entirely from prod output.
-  // - **vitest**: vitest is Vite-based and sets
-  //   `import.meta.env.DEV === true` automatically, so the warning
-  //   fires in the regression tests below without any extra setup.
+  // **Why this pattern, not `import.meta.env.DEV`** (the previous reference
+  // implementation): `import.meta.env.DEV` is Vite/Rolldown-only. In a Pyreon
+  // library shipped to a Next.js (Webpack), esbuild, Rollup, Parcel, or Bun
+  // app, `import.meta.env.DEV` is `undefined` and dev warnings never fire —
+  // even in development. PR #200 introduced `import.meta.env.DEV` to fix the
+  // broken `typeof process` compound; that direction was right for app code
+  // but wrong for library code.
   //
-  // Why NOT `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`
-  // (the pattern used by `runtime-dom/src/transition.ts` and other
-  // files in this codebase): in a real Vite browser bundle, `process`
-  // is `undefined` (Vite does not polyfill it by default), so the
-  // guard is `false` and the warning is dead code WHERE USERS
-  // ACTUALLY HIT THE BUG. The codebase-wide pattern bug is tracked
-  // separately as a catalog finding — this file is the reference
-  // implementation for future dev-mode warnings.
-  // @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown
-  // at build time, not in the standard ImportMeta lib types.
-  if (!import.meta.env?.DEV) return
+  // **Why this pattern, not `typeof process !== 'undefined' && ...`** (the
+  // first broken pattern): the `typeof process` guard isn't replaced by Vite,
+  // evaluates to `false` in the browser, and the whole expression is dead
+  // code in Vite browser bundles. Wrapped warnings never fire for users.
+  //
+  // **How bare `process.env.NODE_ENV` works across bundlers**:
+  //
+  // - **Vite / Rolldown**: replace `process.env.NODE_ENV` with literal
+  //   `"production"` or `"development"` at build time. Tree-shakes the
+  //   dead branch in prod.
+  // - **Webpack (Next.js)**: same — DefinePlugin replaces it by default.
+  // - **esbuild**: same — `--define` is automatic for libraries.
+  // - **Rollup**: same via `@rollup/plugin-replace` (standard library setup).
+  // - **Parcel**: same — built-in env replacement.
+  // - **Bun**: same — built-in `define`. Direct Bun execution also resolves
+  //   it natively from the runtime env.
+  // - **Node SSR direct**: real env var read at runtime.
+  // - **vitest**: Vite-based, replaces it automatically, warnings fire in tests.
+  //
+  // Reference for future dev-mode warnings — keep this comment in sync if the
+  // pattern ever changes. Enforced by `@pyreon/lint`'s `pyreon/no-process-dev-gate`
+  // rule which flags both `typeof process` compounds and `import.meta.env.DEV`.
+  if (process.env.NODE_ENV === 'production') return
 
   if (options.direction !== undefined && !DIRECTION_ALGORITHMS.has(algorithm)) {
     // oxlint-disable-next-line no-console

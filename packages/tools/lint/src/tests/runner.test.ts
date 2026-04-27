@@ -747,7 +747,7 @@ describe('Architecture rules', () => {
     const diags = findByRule(result, 'pyreon/no-process-dev-gate')
     expect(diags.length).toBe(1)
     expect(diags[0]?.fix).toBeDefined()
-    expect(diags[0]?.fix?.replacement).toBe('import.meta.env?.DEV === true')
+    expect(diags[0]?.fix?.replacement).toBe(`process.env.NODE_ENV !== 'production'`)
   })
 
   it('pyreon/no-process-dev-gate: flags the reversed pattern (NODE_ENV first)', () => {
@@ -776,8 +776,13 @@ describe('Architecture rules', () => {
     expect(diags.length).toBe(1)
   })
 
-  it('pyreon/no-process-dev-gate: clean for the correct import.meta.env.DEV pattern', () => {
-    const source = `if (!import.meta.env?.DEV) return`
+  it('pyreon/no-process-dev-gate: clean for the bundler-agnostic process.env.NODE_ENV pattern', () => {
+    // The recommended pattern: bare `process.env.NODE_ENV !== 'production'`
+    // (no `typeof process` guard). Every modern bundler (Vite, Webpack,
+    // esbuild, Rollup, Parcel, Bun) auto-replaces `process.env.NODE_ENV`
+    // at consumer build time. Cross-bundler library convention used by
+    // React, Vue, Preact, Solid.
+    const source = `if (process.env.NODE_ENV !== 'production') console.warn('hi')`
     const result = lintFile(
       'packages/core/runtime-dom/src/transition.ts',
       source,
@@ -786,6 +791,107 @@ describe('Architecture rules', () => {
     )
     const diags = findByRule(result, 'pyreon/no-process-dev-gate')
     expect(diags.length).toBe(0)
+  })
+
+  // Regression: `import.meta.env.DEV` is Vite/Rolldown-specific. In a
+  // Pyreon library shipped to consumers using Webpack (Next.js), esbuild,
+  // Rollup, Parcel, or Bun, `import.meta.env.DEV` is undefined and dev
+  // warnings never fire — even in development. PR #200 made this the
+  // recommended replacement for the broken `typeof process` compound;
+  // that direction was wrong for library code. The bundler-agnostic
+  // standard is bare `process.env.NODE_ENV !== 'production'`.
+  it('pyreon/no-process-dev-gate: flags `import.meta.env.DEV` Vite-tied pattern', () => {
+    const source = `const __DEV__ = import.meta.env?.DEV === true`
+    const result = lintFile(
+      'packages/core/runtime-dom/src/transition.ts',
+      source,
+      allRules,
+      defaultConfig(),
+    )
+    const diags = findByRule(result, 'pyreon/no-process-dev-gate')
+    expect(diags.length).toBe(1)
+    expect(diags[0]?.fix?.replacement).toBe(`process.env.NODE_ENV !== 'production'`)
+  })
+
+  it('pyreon/no-process-dev-gate: flags bare `import.meta.env.DEV` truthy check', () => {
+    const source = `if (import.meta.env?.DEV) console.warn('hi')`
+    const result = lintFile(
+      'packages/core/runtime-dom/src/transition.ts',
+      source,
+      allRules,
+      defaultConfig(),
+    )
+    const diags = findByRule(result, 'pyreon/no-process-dev-gate')
+    expect(diags.length).toBe(1)
+  })
+
+  it('pyreon/no-process-dev-gate: flags negated `!import.meta.env.DEV` early-return', () => {
+    const source = `function f() { if (!import.meta.env?.DEV) return; console.warn('hi') }`
+    const result = lintFile(
+      'packages/core/runtime-dom/src/transition.ts',
+      source,
+      allRules,
+      defaultConfig(),
+    )
+    const diags = findByRule(result, 'pyreon/no-process-dev-gate')
+    expect(diags.length).toBe(1)
+  })
+
+  it('pyreon/no-process-dev-gate: flags `(import.meta as ViteMeta).env?.DEV === true` cast variant', () => {
+    const source = `interface ViteMeta { env?: { DEV?: boolean } }
+const __DEV__ = (import.meta as ViteMeta).env?.DEV === true`
+    const result = lintFile(
+      'packages/ui-system/styler/src/sheet.ts',
+      source,
+      allRules,
+      defaultConfig(),
+    )
+    const diags = findByRule(result, 'pyreon/no-process-dev-gate')
+    expect(diags.length).toBe(1)
+    expect(diags[0]?.fix?.replacement).toBe(`process.env.NODE_ENV !== 'production'`)
+  })
+
+  it('pyreon/no-process-dev-gate: does NOT flag `process.env.NODE_ENV` (the recommended pattern)', () => {
+    const source = `const __DEV__ = process.env.NODE_ENV !== 'production'`
+    const result = lintFile(
+      'packages/core/runtime-dom/src/transition.ts',
+      source,
+      allRules,
+      defaultConfig(),
+    )
+    const diags = findByRule(result, 'pyreon/no-process-dev-gate')
+    expect(diags.length).toBe(0)
+  })
+
+  // Regression: the optional-chaining variant `process?.env?.NODE_ENV` was
+  // silently missed. ESTree wraps `process?.env?.NODE_ENV` in a
+  // `ChainExpression` containing nested `MemberExpression` nodes with
+  // `optional: true`, but the original rule only matched plain
+  // `MemberExpression`. The bug shipped to `packages/ui-system/ui-core/src/context.tsx`
+  // — a real browser package whose dev warning was dead code in production.
+  it('pyreon/no-process-dev-gate: flags optional-chaining variant (process?.env?.NODE_ENV)', () => {
+    const source = `const __DEV__ = typeof process !== 'undefined' && process?.env?.NODE_ENV !== 'production'`
+    const result = lintFile(
+      'packages/ui-system/ui-core/src/context.tsx',
+      source,
+      allRules,
+      defaultConfig(),
+    )
+    const diags = findByRule(result, 'pyreon/no-process-dev-gate')
+    expect(diags.length).toBe(1)
+    expect(diags[0]?.fix?.replacement).toBe(`process.env.NODE_ENV !== 'production'`)
+  })
+
+  it('pyreon/no-process-dev-gate: flags partial optional-chaining (process.env?.NODE_ENV)', () => {
+    const source = `const __DEV__ = typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production'`
+    const result = lintFile(
+      'packages/ui-system/ui-core/src/context.tsx',
+      source,
+      allRules,
+      defaultConfig(),
+    )
+    const diags = findByRule(result, 'pyreon/no-process-dev-gate')
+    expect(diags.length).toBe(1)
   })
 
   it('pyreon/no-process-dev-gate: exempt via configured exemptPaths (server-only code)', () => {

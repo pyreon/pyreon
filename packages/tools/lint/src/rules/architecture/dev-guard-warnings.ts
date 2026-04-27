@@ -90,11 +90,55 @@ export const devGuardWarnings: Rule = {
       return false
     }
 
+    // `process.env.NODE_ENV` access — also matches optional-chaining shapes
+    // (`process?.env?.NODE_ENV`). Returns true when the node is the
+    // `process.env.NODE_ENV` member access itself.
+    function isProcessEnvNodeEnv(node: any): boolean {
+      let n = node
+      if (n?.type === 'ChainExpression') n = n.expression
+      if (n?.type !== 'MemberExpression') return false
+      if (n.property?.type !== 'Identifier' || n.property.name !== 'NODE_ENV') return false
+      let envObj = n.object
+      if (envObj?.type === 'ChainExpression') envObj = envObj.expression
+      if (envObj?.type !== 'MemberExpression') return false
+      if (envObj.property?.type !== 'Identifier' || envObj.property.name !== 'env') return false
+      const procObj = envObj.object
+      return procObj?.type === 'Identifier' && procObj.name === 'process'
+    }
+
+    // Match a development-mode check: `process.env.NODE_ENV !== 'production'`
+    // (and `!=` variant). The bundler-agnostic library convention for dev
+    // gates — every modern bundler auto-replaces `process.env.NODE_ENV`.
+    function isDevelopmentCheck(node: any): boolean {
+      if (node?.type !== 'BinaryExpression') return false
+      if (node.operator !== '!==' && node.operator !== '!=') return false
+      const matches = (a: any, b: any) =>
+        isProcessEnvNodeEnv(a) &&
+        (b?.type === 'Literal' || b?.type === 'StringLiteral') &&
+        b.value === 'production'
+      return matches(node.left, node.right) || matches(node.right, node.left)
+    }
+
+    // Match a production-mode check: `process.env.NODE_ENV === 'production'`.
+    // Used as the early-return guard form: `if (process.env.NODE_ENV === 'production') return`.
+    function isProductionCheck(node: any): boolean {
+      if (node?.type !== 'BinaryExpression') return false
+      if (node.operator !== '===' && node.operator !== '==') return false
+      const matches = (a: any, b: any) =>
+        isProcessEnvNodeEnv(a) &&
+        (b?.type === 'Literal' || b?.type === 'StringLiteral') &&
+        b.value === 'production'
+      return matches(node.left, node.right) || matches(node.right, node.left)
+    }
+
     // Match `<flag>`, `<flag> && X`, `X && <flag>`, `<flag> === true`, etc.
     // `&&` only — `||` doesn't guarantee dev-only execution.
+    // Also accepts the bundler-agnostic `process.env.NODE_ENV !== 'production'`
+    // dev check directly.
     function containsDevGuard(test: any): boolean {
       if (!test) return false
       if (isDevFlag(test)) return true
+      if (isDevelopmentCheck(test)) return true
       if (test.type === 'LogicalExpression' && test.operator === '&&') {
         return containsDevGuard(test.left) || containsDevGuard(test.right)
       }
@@ -109,18 +153,24 @@ export const devGuardWarnings: Rule = {
     }
 
     // Detects an early-return DEV guard at the head of a function body:
-    //   `if (!__DEV__) return`  /  `if (!import.meta.env.DEV) return`
+    //   `if (!__DEV__) return`                                  (legacy)
+    //   `if (!import.meta.env.DEV) return`                       (Vite-tied — also legacy)
+    //   `if (process.env.NODE_ENV === 'production') return`     (current bundler-agnostic standard)
     // Everything after this in the function is implicitly dev-only.
     function isEarlyReturnDevGuard(node: any): boolean {
       if (!node || node.type !== 'IfStatement') return false
       const t = node.test
+      const c = node.consequent
+      const isReturn =
+        c?.type === 'ReturnStatement' ||
+        (c?.type === 'BlockStatement' && c.body.length === 1 && c.body[0]?.type === 'ReturnStatement')
+      if (!isReturn) return false
+      // Bundler-agnostic: `if (process.env.NODE_ENV === 'production') return`
+      if (isProductionCheck(t)) return true
+      // Legacy: `if (!isDev) return`
       const arg = t?.type === 'UnaryExpression' && t.operator === '!' ? t.argument : null
       if (!arg) return false
-      if (!isDevFlag(arg)) return false
-      const c = node.consequent
-      if (c?.type === 'ReturnStatement') return true
-      if (c?.type === 'BlockStatement' && c.body.length === 1 && c.body[0]?.type === 'ReturnStatement') return true
-      return false
+      return isDevFlag(arg)
     }
 
     let devGuardDepth = 0
