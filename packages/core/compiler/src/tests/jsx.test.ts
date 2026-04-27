@@ -580,6 +580,39 @@ describe('JSX transform — template emission', () => {
     expect(result).toContain('__ev_click = handler')
   })
 
+  // Regression: multi-word event-name casing was broken — `onKeyDown`
+  // produced `addEventListener("keyDown", ...)` (camelCase) instead of
+  // `addEventListener("keydown", ...)` (DOM convention). The handler
+  // never fired because `keyDown` is not a real DOM event name.
+  // Same bug class affected `onMouseEnter`, `onMouseLeave`, etc.
+  test('lowercases multi-word event names (onKeyDown → keydown — delegated)', () => {
+    const result = t('<div><input onKeyDown={handler} /></div>')
+    // keydown IS in DELEGATED_EVENTS — must use the expando, not addEventListener.
+    // Prior behavior: addEventListener("keyDown", ...) — wrong casing AND
+    // wrong path (delegated check missed because case mismatched).
+    expect(result).toContain('__ev_keydown = handler')
+    expect(result).not.toContain('__ev_keyDown')
+    expect(result).not.toContain('"keyDown"')
+  })
+
+  test('lowercases multi-word event names (onMouseEnter → mouseenter — non-delegated)', () => {
+    const result = t('<div><span onMouseEnter={handler}>hi</span></div>')
+    // mouseenter is NOT delegated — must reach addEventListener with lowercase name
+    expect(result).toContain('addEventListener("mouseenter", handler)')
+    expect(result).not.toContain('"mouseEnter"')
+  })
+
+  test('lowercases multi-word event names for input change (onChange → change — delegated)', () => {
+    const result = t('<div><input onChange={handler} /></div>')
+    expect(result).toContain('__ev_change = handler')
+  })
+
+  test('lowercases multi-word event names with multiple capitals (onPointerLeave → pointerleave)', () => {
+    const result = t('<div><span onPointerLeave={handler}>hi</span></div>')
+    expect(result).toContain('addEventListener("pointerleave", handler)')
+    expect(result).not.toContain('"pointerLeave"')
+  })
+
   test('uses element children indexing for nested access', () => {
     const result = t('<div><span>{a()}</span><em>{b()}</em></div>')
     // Can't have two expression children in same parent, but each is in its own element
@@ -1116,10 +1149,13 @@ describe('JSX transform — template emission edge cases', () => {
   test('non-delegated event (onMouseEnter) uses addEventListener not delegation', () => {
     const result = t('<div onMouseEnter={handler}><span /></div>')
     expect(result).toContain('_tpl(')
-    // mouseenter is NOT in DELEGATED_EVENTS → must use addEventListener
-    // onMouseEnter → eventName = "m" + "ouseEnter" = "mouseEnter"
-    expect(result).toContain('addEventListener(')
-    expect(result).toContain('mouseEnter')
+    // mouseenter is NOT in DELEGATED_EVENTS → must use addEventListener.
+    // The event name is the JSX attribute with the "on" prefix dropped
+    // and the rest fully lowercased (`onMouseEnter` → `mouseenter`)
+    // — DOM events are all-lowercase. Prior to the fix this emitted
+    // `mouseEnter` (camelCase) which the browser never dispatches.
+    expect(result).toContain('addEventListener("mouseenter"')
+    expect(result).not.toContain('mouseEnter')
     expect(result).not.toContain('__ev_')
   })
 
@@ -1849,6 +1885,92 @@ describe('JSX transform — signal auto-call', () => {
     expect(result).toContain('props.label')
   })
 
+  // Regression: signal-method calls were getting double-wrapped — the
+  // auto-call inserted `()` after the bare signal reference inside
+  // `signal.set(value)`, producing `signal().set(value)`. That calls
+  // the signal (returns its current value, e.g. a string) then tries
+  // `.set` on the string (undefined → TypeError). Every `signal.set`,
+  // `signal.peek`, `signal.update` call inside event handlers / hot
+  // paths was silently broken.
+  test('signal.set() in event handler does NOT auto-call the bare signal reference', () => {
+    const result = t(
+      'function C() { const value = signal(""); return <input onInput={(e) => value.set(e.target.value)} /> }',
+    )
+    // Must keep `value.set(...)` — NOT `value().set(...)`.
+    expect(result).toContain('value.set(e.target.value)')
+    expect(result).not.toContain('value().set')
+  })
+
+  test('signal.peek() does NOT auto-call', () => {
+    const result = t(
+      'function C() { const count = signal(0); return <button onClick={() => console.log(count.peek())}>x</button> }',
+    )
+    expect(result).toContain('count.peek()')
+    expect(result).not.toContain('count().peek')
+  })
+
+  test('signal.update() does NOT auto-call', () => {
+    const result = t(
+      'function C() { const count = signal(0); return <button onClick={() => count.update(n => n + 1)}>+</button> }',
+    )
+    expect(result).toContain('count.update(')
+    expect(result).not.toContain('count().update')
+  })
+
+  // Bare member-access on a signal (no call) STILL auto-calls — preserves
+  // the existing convention where a signal containing an object can be
+  // dereferenced via `signalContainingObj.someProp` (compiles to
+  // `signalContainingObj().someProp`). Only the CALLED form
+  // (`signal.method(...)`) skips the auto-call. See findSignalIdents
+  // in jsx.ts for the rationale.
+  test('signal.someProp (bare member access) DOES auto-call', () => {
+    const result = t(
+      'function C() { const data = signal({ count: 0 }); return <div>{data.count}</div> }',
+    )
+    expect(result).toContain('data().count')
+  })
+
+  // The bare signal reference STILL auto-calls in JSX text — make sure
+  // the fix doesn't over-correct.
+  test('bare signal in JSX text still auto-calls (fix does not over-correct)', () => {
+    const result = t('function C() { const count = signal(0); return <div>{count}</div> }')
+    expect(result).toContain('count()')
+  })
+
+  // ── JSX text/expression whitespace (regression) ─────────────────────
+  // The compiler used `.replace(/\n\s*/g, '').trim()` on JSX text which
+  // stripped ALL leading/trailing whitespace — even spaces adjacent to
+  // expressions on the same line. So `<p>doubled: {x}</p>` produced
+  // `<p>doubled:</p>` + appended text node, rendering "doubled:0"
+  // instead of "doubled: 0". Same class for `<p>{x} remaining</p>` →
+  // text "remaining" loses its leading space, rendering as "Xremaining".
+  // Fix: only strip whitespace adjacent to newlines (multi-line JSX
+  // formatting), preserve same-line whitespace adjacent to expressions.
+  test('preserves trailing space in JSX text before expression on same line', () => {
+    const result = t('<p>doubled: {x()}</p>')
+    // The static text portion of the template must keep "doubled: "
+    // (with trailing space) so the appended expression value renders
+    // as "doubled: 0", not "doubled:0".
+    expect(result).toContain('doubled: ')
+  })
+
+  test('preserves leading space in JSX text after expression on same line', () => {
+    const result = t('<p>{x()} remaining</p>')
+    // Static portion must include " remaining" (with leading space).
+    expect(result).toContain(' remaining')
+  })
+
+  test('strips multi-line JSX text whitespace adjacent to newlines', () => {
+    // Multi-line JSX with indentation should still collapse — only
+    // SAME-LINE whitespace adjacent to expressions is preserved.
+    const result = t(`<div>
+  <span>hello</span>
+</div>`)
+    // The newlines + indentation should not produce stray text nodes.
+    expect(result).toContain('hello')
+    expect(result).not.toContain('"\\n  "')
+  })
+
   test('shadowed signal variable by const is NOT auto-called', () => {
     const result = t(`
       function App() {
@@ -2063,6 +2185,55 @@ describe('JSX transform — template reactive style _bindDirect path', () => {
     // The updater should handle both string and object
     expect(result).toContain('typeof v === "string"')
     expect(result).toContain('Object.assign')
+  })
+})
+
+// ── DOM-property assignment for value/checked/etc. (regression) ─────────
+// The compiler used `setAttribute("value", v)` for ALL non-class/style
+// attributes. For inputs that's wrong: `value` is a live DOM property,
+// `setAttribute` only sets the initial attribute. After the user types,
+// the property and attribute drift. Then `input.set('')` runs the
+// _bindDirect updater — which only resets the attribute, leaving the
+// stale typed text in the visible field. Same for `checked` on
+// checkboxes (presence of the attribute means checked, regardless of
+// value). Fix: emit property assignment for known DOM properties.
+describe('JSX transform — DOM properties use property assignment', () => {
+  test('reactive value on input emits property assignment, not setAttribute', () => {
+    const result = t('<div><input value={() => input()} /></div>')
+    // Should be `el.value = v`, not `setAttribute("value", ...)`
+    expect(result).toContain('.value = v')
+    expect(result).not.toContain('setAttribute("value"')
+  })
+
+  test('reactive checked on input emits property assignment', () => {
+    const result = t('<div><input checked={done()} /></div>')
+    expect(result).toContain('.checked = v')
+    expect(result).not.toContain('setAttribute("checked"')
+  })
+
+  test('static-call value on input emits property assignment', () => {
+    // Non-signal-direct dynamic expression goes through reactiveBindExprs
+    const result = t('<div><input value={x.y} /></div>')
+    expect(result).toContain('.value = x.y')
+    expect(result).not.toContain('setAttribute("value"')
+  })
+
+  test('selected on option emits property assignment', () => {
+    const result = t('<div><option selected={isSelected()}>x</option></div>')
+    expect(result).toContain('.selected = v')
+    expect(result).not.toContain('setAttribute("selected"')
+  })
+
+  test('disabled on button emits property assignment', () => {
+    const result = t('<div><button disabled={isDisabled()}>x</button></div>')
+    expect(result).toContain('.disabled = v')
+    expect(result).not.toContain('setAttribute("disabled"')
+  })
+
+  test('non-DOM-prop attribute still uses setAttribute', () => {
+    // placeholder is a real attribute, not a property-divergent IDL prop
+    const result = t('<div><input placeholder={msg()} /></div>')
+    expect(result).toContain('setAttribute("placeholder"')
   })
 })
 
