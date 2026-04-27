@@ -1873,50 +1873,47 @@ describe('computeLayout — silent-option dev warnings', () => {
 })
 
 describe('warnIgnoredOptions — gate pattern regression', () => {
-  // The whole reason `warnIgnoredOptions` exists is to fire IN A
-  // BROWSER VITE DEV BUILD where users actually call `flow.layout()`.
+  // `warnIgnoredOptions` must fire IN ANY BROWSER DEV BUILD — Vite,
+  // Webpack (Next.js), esbuild, Rollup, Parcel, Bun, Node SSR direct.
+  // Pyreon publishes libraries; consumers compile with their own
+  // bundler. The gate has had three pattern regimes:
   //
-  // The first attempt at this gate used `typeof process !==
-  // 'undefined' && process.env.NODE_ENV !== 'production'` — which
-  // works in vitest (where `process` exists) but is **dead code in
-  // a real browser bundle** because Vite does not polyfill
-  // `process`. The bug was invisible: the unit tests passed (vitest
-  // has `process`), but in production users got no warning at all.
+  // 1. **First broken pattern**: `typeof process !== 'undefined' &&
+  //    process.env.NODE_ENV !== 'production'`. The `typeof process`
+  //    guard is dead code in real Vite browser bundles (Vite does
+  //    not polyfill `process`). Warnings never fire for Vite users.
   //
-  // The fix uses `import.meta.env.DEV` — the Vite/Rolldown standard,
-  // literal-replaced at build time, independent of `process`. The
-  // bundler folds the gate to a literal in prod and tree-shakes the
-  // warning helper to zero bytes; in dev it stays live.
+  // 2. **Second broken pattern** (introduced in PR #200 as a fix to
+  //    #1): `import.meta.env.DEV`. Vite/Rolldown-only — `import.meta.env`
+  //    is `undefined` in a Webpack/Next.js, esbuild, Rollup, Parcel,
+  //    or Bun build, so warnings never fire for those users either.
   //
-  // We can't write a runtime test that simulates "browser without
-  // process" because vitest's own `import.meta.env` implementation
-  // depends on `process` (deleting `process` breaks the FIXED gate
-  // too — not because the gate is wrong, but because vitest can't
-  // resolve `import.meta.env` after `process` is gone). So this
-  // suite tests the property at TWO levels:
+  // 3. **Current bundler-agnostic pattern**: bare `process.env.NODE_ENV
+  //    !== 'production'` (no typeof guard). Every modern bundler
+  //    auto-replaces `process.env.NODE_ENV` at consumer build time.
+  //    This is the universal library convention used by React, Vue,
+  //    Preact, Solid, MobX, Redux, etc.
   //
-  //   1. Source-pattern level: assert that the `warnIgnoredOptions`
-  //      function uses `import.meta.env.DEV` and does NOT contain
-  //      `typeof process` in its body. Catches a regression where
-  //      someone "matches the rest of the codebase" and switches
-  //      back to the broken pattern.
+  // This suite locks in #3 at TWO levels:
   //
-  //   2. Bundle level: feed `layout.ts` to esbuild with the same
-  //      defines Vite uses, and assert the prod bundle has the
-  //      warning text tree-shaken out. Catches a regression where
-  //      the gate is rewritten in a way that the minifier can't
-  //      fold to a literal.
+  //   1. Source-pattern level: assert that `warnIgnoredOptions` uses
+  //      bare `process.env.NODE_ENV` and contains neither the
+  //      typeof-process compound nor `import.meta.env.DEV`.
+  //
+  //   2. Bundle level: feed `layout.ts` to esbuild with the defines
+  //      every modern bundler injects, and assert the prod bundle
+  //      has the warning text tree-shaken out (proves the gate folds
+  //      correctly).
 
-  it('warnIgnoredOptions function source uses import.meta.env.DEV, not typeof process', async () => {
+  it('warnIgnoredOptions source uses bundler-agnostic process.env.NODE_ENV', async () => {
     const fs = await import('node:fs')
     const path = await import('node:path')
 
     const layoutPath = path.resolve(import.meta.dirname, '../layout.ts')
     const source = fs.readFileSync(layoutPath, 'utf-8')
 
-    // Extract the warnIgnoredOptions function body. The function
-    // declaration plus everything up to and including its closing
-    // brace at column 0.
+    // Extract `warnIgnoredOptions`'s function body — declaration
+    // plus everything up to the closing brace at column 0.
     const fnMatch = source.match(
       /function warnIgnoredOptions\([^)]*\): void \{[\s\S]*?^\}/m,
     )
@@ -1924,31 +1921,29 @@ describe('warnIgnoredOptions — gate pattern regression', () => {
     const rawFnBody = fnMatch![0]
 
     // Strip comments before pattern-matching — the explanatory
-    // comment legitimately mentions `typeof process` to document
-    // why we don't use that pattern, and we don't want a comment
-    // to make the test pass or fail. Only the executable code
-    // should be checked.
+    // comment legitimately mentions all three regimes for
+    // documentation, and we don't want comment text to make the
+    // test pass or fail. Only the executable code is checked.
     const fnCode = rawFnBody
       .replace(/\/\*[\s\S]*?\*\//g, '') // block comments
       .replace(/^\s*\/\/.*$/gm, '') // line comments
 
-    // The gate MUST use Vite's `import.meta.env.DEV`, which is
-    // literal-replaced at build time and fires in real browser
-    // bundles.
-    expect(fnCode, 'warnIgnoredOptions must gate on import.meta.env.DEV').toMatch(
-      /import\.meta\.env\??\.DEV/,
+    // The gate MUST use bare `process.env.NODE_ENV` — bundler-agnostic.
+    expect(fnCode, 'warnIgnoredOptions must gate on process.env.NODE_ENV').toMatch(
+      /process\.env\.NODE_ENV/,
     )
 
-    // The gate MUST NOT contain `typeof process`, which is dead
-    // code in a Vite browser bundle (Vite does not polyfill
-    // `process`). If this assertion fails, someone reverted the
-    // gate and the warning is silent in production browsers.
-    expect(fnCode, 'warnIgnoredOptions gate must not depend on `process`').not.toMatch(
-      /typeof\s+process\s*!==\s*['"]undefined['"]/,
-    )
-    expect(fnCode, 'warnIgnoredOptions gate must not use `process.env`').not.toMatch(
-      /process\.env/,
-    )
+    // The gate MUST NOT use `import.meta.env.DEV` — Vite/Rolldown-only.
+    expect(
+      fnCode,
+      'warnIgnoredOptions gate must not depend on `import.meta.env.DEV` (Vite-only)',
+    ).not.toMatch(/import\.meta\.env\??\.DEV/)
+
+    // The gate MUST NOT contain the broken `typeof process` compound.
+    expect(
+      fnCode,
+      'warnIgnoredOptions gate must not use `typeof process !== "undefined"` compound',
+    ).not.toMatch(/typeof\s+process\s*!==\s*['"]undefined['"]/)
   })
 
   it('layout.ts produces a tree-shaken prod bundle (esbuild + Vite-realistic defines)', async () => {
