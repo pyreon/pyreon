@@ -370,7 +370,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - `createDocument(props?)` — builder: `.heading()`, `.text()`, `.table()`, `.toPdf()`, `.toEmail()`, etc.
 - JSX primitives: `Document`, `Page`, `Heading`, `Text`, `Table`, `Image`, `List`, `Code`, `Divider`, etc.
 - 14+ output formats: HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence, WhatsApp, Google Chat
-- Heavy renderers lazy-loaded (PDF ~300KB, DOCX ~100KB, XLSX ~500KB, PPTX ~200KB)
+- Heavy renderers lazy-loaded — chunks only load when `render(doc, '<format>')` is invoked. Approximate chunk sizes (vendored): PDF ~3MB (pdfmake + fonts), DOCX ~700KB, XLSX ~1.1MB, PPTX ~400KB. The 14MB published `lib/` is the trade-off for a single-install batteries-included experience; apps tree-shake at the consumer level so unused renderers don't ship to end users.
 
 ### @pyreon/document-primitives
 
