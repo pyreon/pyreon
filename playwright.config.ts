@@ -18,6 +18,22 @@ import { defineConfig } from '@playwright/test'
  *                   `_layout.tsx` AND fs-router emitted it as a parent
  *                   route → double mount). Fixed alongside this re-enable.
  *
+ *   ui-showcase   ✓ wired to CI as a SEPARATE step (own playwright
+ *                   config at `playwright.ui-regression.config.ts`).
+ *                   Real-app regression gate for the rendering/styling
+ *                   layer (rocketstyle, styler, unistyle, elements,
+ *                   runtime-dom). Targets `examples/ui-showcase`. Specs
+ *                   in `e2e/ui-showcase-regression.spec.ts` replicate
+ *                   bug-shapes from PRs #197/#200/#336/#349 so future
+ *                   regressions in the same shapes fail fast.
+ *
+ *                   Why a separate config: playwright's `webServer` array
+ *                   starts ALL listed servers regardless of which
+ *                   `--project` is selected. Lumping playground +
+ *                   ssr-showcase + ui-showcase into one config produces
+ *                   resource-contention flakes during boot. Two configs
+ *                   = two sequential boots = stable.
+ *
  *   fundamentals  ⚠ DISABLED — `nav.sidebar` selector mismatch with
  *                   current `examples/fundamentals-playground` markup.
  *                   Tests need to be re-aligned with the example or vice
@@ -75,6 +91,9 @@ export default defineConfig({
       use: { baseURL: 'http://localhost:5175' },
     },
 
+    // ui-showcase project lives in `playwright.ui-regression.config.ts`
+    // (own config + own webServer to avoid boot-time resource contention).
+
     // ── DISABLED PROJECTS — gated until follow-ups land ───────────────
     // Re-enable by uncommenting AND updating the disabled list in
     // .github/workflows/ci.yml's E2E job.
@@ -108,14 +127,9 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
     },
 
+    // ui-showcase webServer lives in `playwright.ui-regression.config.ts`.
+
     // Disabled servers — uncomment when re-enabling the matching project above.
-    /* {
-      command:
-        'bun run --filter=@pyreon/example-ui-showcase dev -- --port 5174 --strictPort',
-      port: 5174,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
-    }, */
     /* {
       command:
         'bun run --filter=@pyreon/fundamentals-playground dev -- --port 5176 --strictPort',

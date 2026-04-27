@@ -261,7 +261,14 @@ jobs:
           restore-keys: playwright-chromium-${{ runner.os }}-
       - name: Install Playwright Chromium
         run: bunx playwright install --with-deps chromium
-      - run: bun run test:e2e
+      - name: Run e2e — playground + ssr-showcase
+        run: bun run test:e2e
+      - name: Run e2e — ui-showcase regression gate
+        # Run as a separate step (own webServer boot) to avoid resource
+        # contention when all 3 dev servers fight to start at the same
+        # time. Locally and in CI the combined run produces flaky
+        # failures; sequential boots are stable.
+        run: bun run test:e2e:ui-regression
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

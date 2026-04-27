@@ -1,5 +1,8 @@
 import { routes } from 'virtual:zero/routes'
 import { startClient } from '@pyreon/zero/client'
-import { layout } from './routes/_layout'
 
-startClient({ routes, layout })
+// fs-router emits `_layout.tsx` as a parent route in the matched chain.
+// Passing `layout` to `startClient` is redundant (and contributes to
+// the double-mount bug-shape PR #349 partially fixed for ssr-showcase).
+// Mirroring the ssr-showcase entry-client pattern post-#349.
+startClient({ routes })

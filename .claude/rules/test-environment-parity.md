@@ -139,6 +139,31 @@ CI runs the root `test:browser` script across every opt-in package via the `Test
 
 Reference implementation: [packages/internals/test-utils/src/browser/sanity.browser.test.ts](../../packages/internals/test-utils/src/browser/sanity.browser.test.ts).
 
+## Real-app regression gate (ui-showcase)
+
+Browser smoke tests cover ONE package's surface in isolation. They do not cover the cross-package shapes where most real-world regressions land — rocketstyle's `attrs()` HOC moving props through styler + unistyle + elements + runtime-dom in a real app, with real signal handlers and real hydration.
+
+The audit (PR #351) found that 5 packages — `runtime-dom`, `styler`, `rocketstyle`, `elements`, `unistyle` — produced 24% of all `fix:` commits. Every one of those fixes came from a real app surfacing a bug that synthetic tests structurally couldn't catch:
+
+- **PR #197** — silent metadata drop. Mock-vnode test passed; real `h()` flow broke (rocketstyle attrs HOC moved `_documentProps`).
+- **PR #200** — `typeof process` dev-gate dead in real Vite browser bundles; vitest had `process` defined and missed it.
+- **PR #336** — 4 production regressions on a real consumer app (Show/Match crash on signal accessor, void-tag children leak, styler malformed-CSS silent, zero SSG typed-but-unimplemented).
+- **PR #349** — `_layout` double-mount in SSR, plus 5 compiler bugs only visible when real JSX runs through the compiler.
+
+The gate that catches this shape: `e2e/ui-showcase-regression.spec.ts` runs against `examples/ui-showcase` in real Chromium via `bun run test:e2e:ui-regression` (own [`playwright.ui-regression.config.ts`](../../playwright.ui-regression.config.ts), separate webServer boot to avoid resource contention with the existing `test:e2e` boot). Each spec maps to one of the bug-shapes above:
+
+- **Composition + interaction** — rocketstyle Button click increments via signal end-to-end (catches #336.1, #349)
+- **HOC contract walk-through** — `size` dimension prop reaches the rendered DOM with visibly different sizes (catches #197 — mock-vnode tests bypass the HOC)
+- **Element + Wrapper composition** — no `undefined` leaks, dev markers present (catches #336.2 void-tag children)
+- **SSR / hydration smoke** — full goto → wait → click → assert path; no console errors (catches #349)
+- **Theme + signal-driven styling** — styler injects ≥1 CSS rule, classes are non-empty (catches #336.3 styler dev-gate dead)
+
+CI runs `bun run test:e2e:ui-regression` as a separate step in the `E2E` job, after the existing `bun run test:e2e` (playground + ssr-showcase).
+
+**Adding a new spec when a real-app regression surfaces.** When a real consumer app finds a bug in any of the 5 target packages, the same PR that fixes the bug should also add a spec to `e2e/ui-showcase-regression.spec.ts` that would have caught it BEFORE merge. The bar is "would the spec have failed against the broken version?" — i.e. bisect-verify it (see below). The gate is only as good as its specs; treat each new bug as an opportunity to lock its shape in.
+
+**What this gate doesn't catch.** Bugs in packages OUTSIDE the 5 target ones (router, query, form, etc. — those have their own browser-test stories). Visual regressions (separate `visual` project, currently disabled). Performance regressions (covered by `@pyreon/perf-harness`). Bug shapes nobody wrote a spec for — gate is reactive, not predictive.
+
 ## Bisect-verify regression tests
 
 When you add a regression test, you must bisect-verify it before the PR is ready:
