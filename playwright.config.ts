@@ -6,15 +6,17 @@ import { defineConfig } from '@playwright/test'
  *
  * ## Project status (post-Phase-2)
  *
- *   playground    ✓ wired to CI — 30 tests covering reactivity, mount,
- *                   app shape, bench-compare. Targets `examples/playground`
- *                   which exposes `window.__pyreon` for direct primitive
- *                   access from tests.
+ *   playground    ✓ wired to CI — covers reactivity, mount, bench
+ *                   (signal → DOM, computed, batching, conditional
+ *                   rendering, list reconciliation, perf). Targets
+ *                   `examples/playground` which exposes `window.__pyreon`
+ *                   for direct primitive access from tests.
  *
- *   ssr-showcase  ⚠ DISABLED — has a real framework bug (fs-router
- *                   `_layout.tsx` mounts twice, surfaces as
- *                   strict-mode locator violations). Tracked as a
- *                   follow-up; see e2e/ssr-showcase.spec.ts header.
+ *   ssr-showcase  ✓ wired to CI — covers SSR + hydration + nav +
+ *                   loaders + theme. Targets `examples/ssr-showcase`.
+ *                   Was previously disabled (zero's dev-SSR auto-loaded
+ *                   `_layout.tsx` AND fs-router emitted it as a parent
+ *                   route → double mount). Fixed alongside this re-enable.
  *
  *   fundamentals  ⚠ DISABLED — `nav.sidebar` selector mismatch with
  *                   current `examples/fundamentals-playground` markup.
@@ -63,18 +65,19 @@ export default defineConfig({
     // to this regex and verifying locally.
     {
       name: 'playground',
-      testMatch: /e2e\/(reactivity|mount|bench)\.spec\.ts$/,
+      testMatch: /e2e\/(reactivity|mount|bench|app)\.spec\.ts$/,
       use: { baseURL: 'http://localhost:5173' },
+    },
+
+    {
+      name: 'ssr-showcase',
+      testMatch: /ssr-showcase\.spec\.ts$/,
+      use: { baseURL: 'http://localhost:5175' },
     },
 
     // ── DISABLED PROJECTS — gated until follow-ups land ───────────────
     // Re-enable by uncommenting AND updating the disabled list in
     // .github/workflows/ci.yml's E2E job.
-    /* {
-      name: 'ssr-showcase',
-      testMatch: /ssr-showcase\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5175' },
-    }, */
     /* {
       name: 'fundamentals',
       testMatch: /e2e\/fundamentals\/.*\.spec\.ts$/,
@@ -97,18 +100,19 @@ export default defineConfig({
       timeout: 120_000,
       reuseExistingServer: !process.env.CI,
     },
+    {
+      command:
+        'bun run --filter=@pyreon/ssr-showcase dev -- --port 5175 --strictPort',
+      port: 5175,
+      timeout: 120_000,
+      reuseExistingServer: !process.env.CI,
+    },
+
     // Disabled servers — uncomment when re-enabling the matching project above.
     /* {
       command:
         'bun run --filter=@pyreon/example-ui-showcase dev -- --port 5174 --strictPort',
       port: 5174,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
-    }, */
-    /* {
-      command:
-        'bun run --filter=@pyreon/ssr-showcase dev -- --port 5175 --strictPort',
-      port: 5175,
       timeout: 120_000,
       reuseExistingServer: !process.env.CI,
     }, */
