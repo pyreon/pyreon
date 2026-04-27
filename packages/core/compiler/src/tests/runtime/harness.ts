@@ -1,4 +1,5 @@
 import { h } from '@pyreon/core'
+import * as reactivity from '@pyreon/reactivity'
 import * as runtimeDom from '@pyreon/runtime-dom'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import type { MountInBrowserResult } from '@pyreon/test-utils/browser'
@@ -56,22 +57,32 @@ export function compileAndMount(
   const source = `export function App(props) { return ${jsxExpr} }`
   const compiled = transformJSX(source, 'compile-runtime-test.tsx').code
 
-  // Strip the `import { ... } from '@pyreon/runtime-dom'` line — we
-  // inject the symbols by name through `new Function` parameters
-  // instead. Strip the `export` keyword so `App` is in factory scope.
+  // Strip ALL `@pyreon/*` imports — we inject the symbols by name
+  // through `new Function` parameters instead. Both runtime-dom and
+  // reactivity exports are unioned in below, so any compiler-emitted
+  // import (`_tpl`, `_bind`, `_bindDirect`, `_bindText`, `_applyProps`,
+  // etc.) resolves through the parameter binding. Strip the `export`
+  // keyword so `App` is in factory scope.
   const code = compiled
-    .replace(/^\s*import\s*\{[^}]+\}\s*from\s*["']@pyreon\/runtime-dom["'];?\s*$/m, '')
+    .replace(/^\s*import\s*\{[^}]+\}\s*from\s*["']@pyreon\/[^"']+["'];?\s*$/gm, '')
     .replace(/export\s+function\s+App/, 'function App')
 
-  // Union of runtime-dom exports + test-supplied context, fed into the
-  // factory's parameter list. The compiled code uses these names directly
-  // (e.g. `_tpl(...)`, `sig.set(...)`) — `new Function` binds them via
-  // closure-equivalent parameter resolution.
+  // Union of runtime-dom + reactivity exports + test-supplied context,
+  // fed into the factory's parameter list. The compiled code uses these
+  // names directly (e.g. `_tpl(...)`, `_bind(...)`, `sig.set(...)`) —
+  // `new Function` binds them via closure-equivalent parameter resolution.
+  // Same-name overrides resolve in declaration order: later wins. We put
+  // user-supplied context LAST so a test can shadow a runtime export if
+  // it ever needs to (rare).
   const runtimeKeys = Object.keys(runtimeDom)
-  const contextKeys = Object.keys(context)
-  const allKeys = [...runtimeKeys, ...contextKeys]
+  const reactivityKeys = Object.keys(reactivity).filter((k) => !runtimeKeys.includes(k))
+  const contextKeys = Object.keys(context).filter(
+    (k) => !runtimeKeys.includes(k) && !reactivityKeys.includes(k),
+  )
+  const allKeys = [...runtimeKeys, ...reactivityKeys, ...contextKeys]
   const allValues = [
     ...runtimeKeys.map((k) => (runtimeDom as Record<string, unknown>)[k]),
+    ...reactivityKeys.map((k) => (reactivity as Record<string, unknown>)[k]),
     ...contextKeys.map((k) => context[k]),
   ]
 
