@@ -117,19 +117,7 @@ test.describe("TodoList", () => {
     await expect(page.locator(".remaining")).toContainText("remaining")
   })
 
-  // FIXME: tracked Pyreon compiler bugs blocking these tests:
-  //   1. Signal-method auto-call: `input.set(e.target.value)` is compiled
-  //      as `input().set(...)` — the auto-call wraps the bare reference
-  //      then tries `.set` on the resulting string. Input handler never
-  //      updates the signal, so the new todo's text is empty and addTodo
-  //      bails on `!text`.
-  //   2. Event name casing: `onKeyDown` is emitted as
-  //      `addEventListener("keyDown", ...)` (camelCase) instead of
-  //      `keydown` (DOM convention). Enter-key never fires the handler.
-  // Both are unrelated to layout-double-mount (this PR's scope) and need
-  // their own compiler fix. Re-enable both tests once the compiler PRs
-  // land.
-  test.fixme("add a new todo via button click", async ({ page }) => {
+  test("add a new todo via button click", async ({ page }) => {
     const input = page.locator('input[type="text"][placeholder="Add a todo…"]')
     await input.fill("New test todo")
     await page.locator("button", { hasText: "Add" }).click()
@@ -141,7 +129,7 @@ test.describe("TodoList", () => {
     await expect(input).toHaveValue("")
   })
 
-  test.fixme("add a new todo via Enter key", async ({ page }) => {
+  test("add a new todo via Enter key", async ({ page }) => {
     const input = page.locator('input[type="text"][placeholder="Add a todo…"]')
     await input.fill("Enter key todo")
     await input.press("Enter")
@@ -157,11 +145,7 @@ test.describe("TodoList", () => {
     await expect(items).toHaveCount(3)
   })
 
-  // FIXME: same event-name casing bug — `onChange` is emitted as
-  // `addEventListener("change", ...)` but the checkbox toggle doesn't
-  // fire the handler in this Pyreon path. Tracked alongside the keyDown
-  // bug above. Re-enable once the compiler fix lands.
-  test.fixme("toggle a todo marks it done", async ({ page }) => {
+  test("toggle a todo marks it done", async ({ page }) => {
     // Toggle the third item (Build the playground, currently unchecked)
     const thirdCheckbox = page.locator(".todo-list li").nth(2).locator('input[type="checkbox"]')
     await thirdCheckbox.click()
@@ -171,7 +155,7 @@ test.describe("TodoList", () => {
     await expect(thirdCheckbox).toBeChecked()
   })
 
-  test.fixme("toggle a done todo marks it undone", async ({ page }) => {
+  test("toggle a done todo marks it undone", async ({ page }) => {
     // First item (Build Pyreon framework) is done — uncheck it
     const firstCheckbox = page.locator(".todo-list li").nth(0).locator('input[type="checkbox"]')
     await firstCheckbox.click()
@@ -191,9 +175,7 @@ test.describe("TodoList", () => {
     await expect(items.nth(0).locator("span")).toHaveText("Write tests")
   })
 
-  // Same compiler bug — depends on `input.set(...)` working in the
-  // input handler.
-  test.fixme("add and remove a todo", async ({ page }) => {
+  test("add and remove a todo", async ({ page }) => {
     const input = page.locator('input[type="text"][placeholder="Add a todo…"]')
     await input.fill("Temporary todo")
     await input.press("Enter")

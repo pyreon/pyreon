@@ -196,6 +196,46 @@ fn escape_html_text(s: &str) -> String {
     out
 }
 
+// React/Babel JSX whitespace algorithm (cleanJSXElementLiteralChild).
+// Same-line text is preserved verbatim so adjacent expressions keep their
+// spacing (`<p>doubled: {x}</p>` keeps the trailing space). Multi-line text
+// strips leading whitespace from non-first lines and trailing whitespace
+// from non-last lines, drops fully-empty lines, and joins the survivors
+// with a single space — collapsing JSX indentation without losing
+// intentional inline spacing.
+fn clean_jsx_text(raw: &str) -> String {
+    if !raw.contains('\n') && !raw.contains('\r') {
+        return raw.to_string();
+    }
+    let lines: Vec<&str> = raw.split(|c| c == '\n' || c == '\r').collect();
+    let last_non_empty: Option<usize> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| l.bytes().any(|b| b != b' ' && b != b'\t'))
+        .map(|(i, _)| i)
+        .last();
+    let mut out = String::new();
+    let line_count = lines.len();
+    for (i, line_raw) in lines.iter().enumerate() {
+        let mut line: String = line_raw.replace('\t', " ");
+        if i != 0 {
+            let trimmed = line.trim_start_matches(' ').to_string();
+            line = trimmed;
+        }
+        if i != line_count - 1 {
+            let trimmed = line.trim_end_matches(' ').to_string();
+            line = trimmed;
+        }
+        if !line.is_empty() {
+            if Some(i) != last_non_empty {
+                line.push(' ');
+            }
+            out.push_str(&line);
+        }
+    }
+    out
+}
+
 // ─── Line index ───────────────────────────────────────────────────────────────
 
 struct LineIndex {
@@ -1683,13 +1723,32 @@ fn collect_signal_idents(
                 collect_signal_idents(e, ctx, out, range_start, range_end);
             }
         }
-        // Only collect callee if it's NOT an identifier signal (would double-call)
-        if let Expression::Identifier(id) = &call.callee {
-            if !is_active_signal(id.name.as_str(), ctx) {
+        // Callee handling:
+        match &call.callee {
+            // `signal()` — already-called, don't double-call
+            Expression::Identifier(id) if is_active_signal(id.name.as_str(), ctx) => {}
+            // `signal.method(...)` — the user is invoking a method on the
+            // signal OBJECT. Auto-calling the bare signal would produce
+            // `signal().method(...)` — calls the signal, gets its value,
+            // then `.method` on the value is undefined → TypeError. Every
+            // event handler that did `signal.set(x)` was silently broken.
+            // Skip the entire MemberExpression callee — neither object
+            // nor property gets auto-called.
+            Expression::StaticMemberExpression(m) => {
+                if let Expression::Identifier(id) = &m.object {
+                    if is_active_signal(id.name.as_str(), ctx) {
+                        // Skip — don't auto-call the signal in `signal.method()`
+                    } else {
+                        // Non-signal object — recurse normally
+                        collect_signal_idents(&call.callee, ctx, out, range_start, range_end);
+                    }
+                } else {
+                    collect_signal_idents(&call.callee, ctx, out, range_start, range_end);
+                }
+            }
+            _ => {
                 collect_signal_idents(&call.callee, ctx, out, range_start, range_end);
             }
-        } else {
-            collect_signal_idents(&call.callee, ctx, out, range_start, range_end);
         }
         return;
     }
@@ -2864,18 +2923,16 @@ fn emit_event_listener(
     tb: &mut TemplateBuilder,
     ctx: &mut Ctx,
 ) {
-    let event_name = {
-        let chars: Vec<char> = attr_name.chars().collect();
-        if chars.len() > 2 {
-            let mut s = String::new();
-            s.push(chars[2].to_ascii_lowercase());
-            for &c in &chars[3..] {
-                s.push(c);
-            }
-            s
-        } else {
-            return;
-        }
+    // Lowercase the entire event name (drop the "on" prefix). DOM events
+    // are all-lowercase ("keydown", "mouseenter") — emitting "keyDown" /
+    // "mouseEnter" produced events the browser never dispatches AND
+    // missed the delegated-event lookup (DELEGATED_EVENTS uses lowercase).
+    // Prior behavior only lowercased the first char after "on", breaking
+    // every multi-word event.
+    let event_name = if attr_name.len() > 2 {
+        attr_name[2..].to_ascii_lowercase()
+    } else {
+        return;
     };
     let expr = match &attr.value {
         Some(JSXAttributeValue::ExpressionContainer(c)) => {
@@ -2981,11 +3038,34 @@ fn unwrap_accessor(expr: &Expression, ctx: &mut Ctx) -> (String, bool) {
     }
 }
 
+// DOM properties whose live value diverges from the content attribute.
+// For these, emit property assignment (`el.value = v`) instead of
+// `setAttribute("value", v)`. Otherwise the property and attribute drift
+// apart in user-driven flows: typing in a controlled <input> updates the
+// .value property, but `input.set('')` clearing the signal only resets
+// the attribute — the stale typed text stays visible. Same for `checked`
+// on checkboxes (presence of the attribute means checked regardless of
+// value).
+fn is_dom_prop(name: &str) -> bool {
+    matches!(
+        name,
+        "value"
+            | "checked"
+            | "selected"
+            | "disabled"
+            | "multiple"
+            | "readOnly"
+            | "indeterminate"
+    )
+}
+
 fn attr_setter(html_attr_name: &str, var_name: &str, expr: &str) -> String {
     if html_attr_name == "class" {
         format!("{}.className = {}", var_name, expr)
     } else if html_attr_name == "style" {
         format!("{}.style.cssText = {}", var_name, expr)
+    } else if is_dom_prop(html_attr_name) {
+        format!("{}.{} = {}", var_name, html_attr_name, expr)
     } else {
         format!("{}.setAttribute(\"{}\", {})", var_name, html_attr_name, expr)
     }
@@ -3018,6 +3098,8 @@ fn emit_dynamic_attr(
                 "(v) => {{ if (typeof v === \"string\") {0}.style.cssText = v; else if (v) Object.assign({0}.style, v) }}",
                 var_name
             )
+        } else if is_dom_prop(html_attr_name) {
+            format!("(v) => {{ {}.{} = v }}", var_name, html_attr_name)
         } else {
             format!(
                 "(v) => {{ {}.setAttribute(\"{}\", v == null ? \"\" : String(v)) }}",
@@ -3090,15 +3172,9 @@ fn flatten_children<'a>(children: &'a [JSXChild<'a>]) -> Vec<FlatChild<'a>> {
         for child in kids {
             match child {
                 JSXChild::Text(text) => {
-                    let raw = text.value.as_str();
-                    let trimmed: String = raw
-                        .lines()
-                        .map(|l| l.trim())
-                        .collect::<Vec<_>>()
-                        .join("");
-                    let trimmed = trimmed.trim();
-                    if !trimmed.is_empty() {
-                        flat.push(FlatChild::Text(trimmed.to_string()));
+                    let cleaned = clean_jsx_text(text.value.as_str());
+                    if !cleaned.is_empty() {
+                        flat.push(FlatChild::Text(cleaned));
                     }
                 }
                 JSXChild::Element(el) => {

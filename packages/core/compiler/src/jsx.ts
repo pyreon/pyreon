@@ -901,7 +901,13 @@ export function transformJSX_JS(
     }
 
     function emitEventListener(attr: N, attrName: string, varName: string): void {
-      const eventName = (attrName[2] ?? '').toLowerCase() + attrName.slice(3)
+      // Lowercase the entire event name (drop the "on" prefix). DOM events
+      // are all-lowercase ("keydown", "mouseenter") — emitting "keyDown" /
+      // "mouseEnter" produced events the browser never dispatches AND
+      // missed the delegated-event lookup (DELEGATED_EVENTS uses lowercase).
+      // Prior behavior `(attrName[2] ?? '').toLowerCase() + attrName.slice(3)`
+      // only lowered the first letter, breaking every multi-word event.
+      const eventName = attrName.slice(2).toLowerCase()
       if (!attr.value || attr.value.type !== 'JSXExpressionContainer') return
       const expr = attr.value.expression
       if (!expr || expr.type === 'JSXEmptyExpression') return
@@ -952,6 +958,7 @@ export function transformJSX_JS(
     function attrSetter(htmlAttrName: string, varName: string, expr: string): string {
       if (htmlAttrName === 'class') return `${varName}.className = ${expr}`
       if (htmlAttrName === 'style') return `${varName}.style.cssText = ${expr}`
+      if (DOM_PROPS.has(htmlAttrName)) return `${varName}.${htmlAttrName} = ${expr}`
       return `${varName}.setAttribute("${htmlAttrName}", ${expr})`
     }
 
@@ -970,7 +977,9 @@ export function transformJSX_JS(
             ? `(v) => { ${varName}.className = v == null ? "" : String(v) }`
             : htmlAttrName === 'style'
               ? `(v) => { if (typeof v === "string") ${varName}.style.cssText = v; else if (v) Object.assign(${varName}.style, v) }`
-              : `(v) => { ${varName}.setAttribute("${htmlAttrName}", v == null ? "" : String(v)) }`
+              : DOM_PROPS.has(htmlAttrName)
+                ? `(v) => { ${varName}.${htmlAttrName} = v }`
+                : `(v) => { ${varName}.setAttribute("${htmlAttrName}", v == null ? "" : String(v)) }`
         bindLines.push(`const ${d} = _bindDirect(${directRef}, ${updater})`)
         return
       }
@@ -1080,8 +1089,8 @@ export function transformJSX_JS(
     ): void {
       if (child.type === 'JSXText') {
         const raw = child.value ?? child.raw ?? ''
-        const trimmed = raw.replace(/\n\s*/g, '').trim()
-        if (trimmed) out.push({ kind: 'text', text: trimmed })
+        const cleaned = cleanJsxText(raw)
+        if (cleaned) out.push({ kind: 'text', text: cleaned })
         return
       }
       if (child.type === 'JSXElement') {
@@ -1244,6 +1253,16 @@ export function transformJSX_JS(
     if (node.type === 'Identifier' && isActiveSignal(node.name)) {
       const parent = findParent(node)
       if (parent && parent.type === 'MemberExpression' && parent.property === node && !parent.computed) return false
+      // signal.X(...) — operating on the signal object (calling a method).
+      // Mirrors the same narrow skip in findSignalIdents below.
+      if (
+        parent &&
+        parent.type === 'MemberExpression' &&
+        parent.object === node
+      ) {
+        const grand = findParent(parent)
+        if (grand && grand.type === 'CallExpression' && grand.callee === parent) return false
+      }
       if (parent && parent.type === 'CallExpression' && parent.callee === node) return false // already called
       return true
     }
@@ -1269,6 +1288,27 @@ export function transformJSX_JS(
         const parent = findParent(node)
         // Skip property name positions (obj.name)
         if (parent && parent.type === 'MemberExpression' && parent.property === node && !parent.computed) return
+        // Skip when the identifier is the OBJECT of a member access AND
+        // the result is being CALLED (signal.set(...), signal.peek(),
+        // signal.update(...)). The user is invoking a method on the
+        // signal OBJECT — auto-calling would produce `signal().set(...)`
+        // which calls the signal, gets its value (string/number/etc),
+        // then `.set` on the value is undefined → TypeError. Every event
+        // handler that did `signal.set(x)` was silently broken.
+        //
+        // Note: bare `signal.value` (member access NOT followed by call)
+        // STILL auto-calls — keeps the existing convention where
+        // `signal({a:1})` followed by `signal.a` reads the signal's
+        // value's property (see "signal as member expression object IS
+        // auto-called" test).
+        if (
+          parent &&
+          parent.type === 'MemberExpression' &&
+          parent.object === node
+        ) {
+          const grand = findParent(parent)
+          if (grand && grand.type === 'CallExpression' && grand.callee === parent) return
+        }
         // Skip if already being called: signal()
         if (parent && parent.type === 'CallExpression' && parent.callee === node) return
         // Skip declaration positions
@@ -1312,6 +1352,24 @@ const JSX_TO_HTML_ATTR: Record<string, string> = {
   className: 'class',
   htmlFor: 'for',
 }
+
+// DOM properties whose live value diverges from the content attribute.
+// For these, emit property assignment (`el.value = v`) instead of
+// `setAttribute("value", v)`. Otherwise the property and attribute drift
+// apart in user-driven flows: typing in a controlled <input> updates the
+// .value property, but `input.set('')` clearing the signal only resets
+// the attribute — the stale typed text stays visible. Same for `checked`
+// on checkboxes (presence of the attribute means checked regardless of
+// value: `setAttribute("checked", "false")` still checks the box).
+const DOM_PROPS = new Set([
+  'value',
+  'checked',
+  'selected',
+  'disabled',
+  'multiple',
+  'readOnly',
+  'indeterminate',
+])
 
 const STATEFUL_CALLS = new Set([
   'signal', 'computed', 'effect', 'batch',
@@ -1362,6 +1420,33 @@ function escapeHtmlAttr(s: string): string {
 
 function escapeHtmlText(s: string): string {
   return s.replace(/&(?!(?:#\d+|#x[\da-fA-F]+|[a-zA-Z]\w*);)/g, '&amp;').replace(/</g, '&lt;')
+}
+
+// React/Babel JSX whitespace algorithm (cleanJSXElementLiteralChild).
+// Same-line text is preserved verbatim so adjacent expressions keep their
+// spacing (`<p>doubled: {x}</p>` keeps the trailing space). Multi-line text
+// strips leading whitespace from non-first lines and trailing whitespace
+// from non-last lines, drops fully-empty lines, and joins the survivors
+// with a single space — collapsing JSX indentation without losing
+// intentional inline spacing.
+function cleanJsxText(raw: string): string {
+  if (!raw.includes('\n') && !raw.includes('\r')) return raw
+  const lines = raw.split(/\r\n|\n|\r/)
+  let lastNonEmpty = -1
+  for (let i = 0; i < lines.length; i++) {
+    if (/[^ \t]/.test(lines[i] ?? '')) lastNonEmpty = i
+  }
+  let str = ''
+  for (let i = 0; i < lines.length; i++) {
+    let line = (lines[i] ?? '').replace(/\t/g, ' ')
+    if (i !== 0) line = line.replace(/^ +/, '')
+    if (i !== lines.length - 1) line = line.replace(/ +$/, '')
+    if (line) {
+      if (i !== lastNonEmpty) line += ' '
+      str += line
+    }
+  }
+  return str
 }
 
 function isStaticJSXNode(node: N): boolean {
