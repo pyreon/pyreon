@@ -8,7 +8,7 @@ A signal-based UI framework with fine-grained reactivity. No virtual DOM, no com
 - **No dependency arrays.** Signals track their own subscribers automatically.
 - **~6 kB gzip** for core + runtime-dom. Tree-shakeable — only what you use ships to the client.
 - **Full-stack.** SSR streaming, static site generation, island architecture, and client-side SPA — all from one framework.
-- **Fastest on benchmarks.** Create 1,000 rows in 9ms (Solid 10ms, Vue 11ms, React 33ms).
+- **Top-tier performance.** Create 1,000 rows in 9ms — competitive with Solid (10ms), ahead of Vue (11ms), well ahead of React (33ms). Most JS Framework Benchmark rows are tied with Solid within measurement noise.
 - **55+ packages.** Forms, routing, state management, charts, drag & drop, i18n, and more.
 - **Migration paths.** Drop-in compat layers for React, Vue, Solid, and Preact.
 
