@@ -44,7 +44,7 @@
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/typescript": "workspace:^",
     "@vitest/browser-playwright": "^4.1.4",
-    "@vitus-labs/tools-rolldown": "^1.15.3"
+    "@vitus-labs/tools-rolldown": "^2.1.0"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
