@@ -896,7 +896,7 @@ bunx playwright test --project=playground                     # same
 bunx playwright test --project=playground --grep="signal"     # filter
 ```
 
-CI runs the playground + ssr-showcase projects on every PR as a required check (`E2E` job). **55 tests** (43 playground + 12 ssr-showcase) plus 5 fixme'd compiler-bug tests, ~90s. Playwright report uploaded as artifact on failure.
+CI runs the playground + ssr-showcase projects on every PR as a required check (`E2E` job), plus `bun run test:e2e:ui-regression` as a separate step (own config, own webServer boot). **65 tests total** (43 playground + 12 ssr-showcase + 10 ui-showcase regression) plus 5 fixme'd compiler-bug tests, ~3 minutes wall-clock. Playwright report uploaded as artifact on failure.
 
 **Project status** (see [`playwright.config.ts`](playwright.config.ts) header for full detail):
 
@@ -904,9 +904,14 @@ CI runs the playground + ssr-showcase projects on every PR as a required check (
 | --- | --- | --- |
 | `playground` | ✓ active | reactivity, mount, bench, app shape (43 tests covering signal → DOM, mount/unmount, batching, computed, conditional rendering, list reconciliation, perf benchmarks, app routing). 5 fixme'd tests block on Pyreon compiler bugs (signal-method auto-call, JSX text/expression whitespace, event-name casing). |
 | `ssr-showcase` | ✓ active | SSR + hydration + nav + loaders + theme (12 tests). Was disabled until #345 — fixed in tandem by removing zero's dev-SSR `_layout.tsx` auto-load (it was wrapping createApp with a layout that fs-router was already emitting as a parent route, causing double mount). |
+| `ui-showcase` | ✓ active | Real-app regression gate for the rendering/styling layer (rocketstyle, styler, unistyle, elements, runtime-dom). 10 tests in `e2e/ui-showcase-regression.spec.ts`, each mapping to one of the bug-shapes from PRs #197/#200/#336/#349. Lives in [`playwright.ui-regression.config.ts`](playwright.ui-regression.config.ts) — separate config so its webServer boots in isolation (Playwright's `webServer` array starts ALL servers regardless of `--project` selection; lumping all 3 into one config produces resource-contention flakes). |
 | `fundamentals` | ⚠ disabled | fundamentals-package demos; selector mismatch with current example markup |
 | `visual` | ⚠ disabled | visual regressions; needs baseline-image capture pass |
 
 Re-enabling a disabled project: uncomment the project block + matching webServer block in `playwright.config.ts`, run locally to verify, update the CI job's project filter.
 
 **Why this exists** (the gap pre-Phase-2): the e2e suite has been in `e2e/` for some time, but the playwright config pointed port 5173 at `fundamentals-playground` (where most tests don't work) AND the wiring wasn't in CI. Several real bugs the suite would have caught (the `_layout.tsx` double-mount, zero's `port: 3000` plugin override) shipped to users because nothing exercised these tests on PRs.
+
+**ui-showcase regression gate.** The 5 target packages (`runtime-dom`, `styler`, `rocketstyle`, `elements`, `unistyle`) produced 24% of all `fix:` commits — every one came from a real consumer app surfacing a bug that synthetic vitest tests structurally couldn't catch. The ui-showcase gate covers cross-package shapes: rocketstyle's `attrs()` HOC moving props through styler + unistyle + elements + runtime-dom in a real app, with real signal handlers and real hydration. See `.claude/rules/test-environment-parity.md` for the bug-shape catalogue and the recipe for adding new specs when a real-app regression surfaces.
+
+**Known framework bug NOT yet fixed** (tracked but out of scope): `_layout` double-mount in dev SSR. PR #349 partially fixed it by removing zero's vite-plugin auto-load of `_layout.tsx`, but a deeper bug remains — a layout's inner `<RouterView />` re-renders the layout instead of advancing to the next entry in the matched chain. ssr-showcase + ui-showcase + app-showcase all exhibit this shape (2 navs in the DOM post-hydration). The ssr-showcase specs work around it via `.first()` selectors; the ui-showcase regression specs document the gap with `INTENTIONALLY OMITTED` comments where the assertion would correctly fail. Fixing the framework bug unblocks tighter regression coverage. Two assertions are queued: `nav.count() === 1` and theme-derived computed style on Primary buttons.
