@@ -12,8 +12,14 @@
  * throws. Bisect-verified — without the wrappers this test fails with
  * the same `ReferenceError` seen in CI.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFlow } from '../flow'
+
+// elkjs cold-loads on the first `flow.layout()` call. Vitest's default
+// 5s timeout is too tight for fresh CI envs (measured 6.5s on GitHub
+// Actions). Subsequent calls hit elkjs warm in <100ms, so this only
+// matters for whichever test in this file runs first.
+vi.setConfig({ testTimeout: 30_000 })
 
 describe('rAF teardown safety', () => {
   let savedRaf: typeof globalThis.requestAnimationFrame | undefined
