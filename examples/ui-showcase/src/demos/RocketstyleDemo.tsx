@@ -1,10 +1,29 @@
 import { Element } from '@pyreon/elements'
 import { signal } from '@pyreon/reactivity'
 import rocketstyle from '@pyreon/rocketstyle'
+import { makeItResponsive, styles } from '@pyreon/unistyle'
 import { Button, Title, Paragraph } from '@pyreon/ui-components'
 
-// Standalone rocketstyle component (not from ui-components)
-// This demonstrates the raw rocketstyle API directly.
+// Standalone rocketstyle composition — assembled directly on top of
+// `@pyreon/elements`' `Element` with no `el`/`txt`/`list` base from
+// `@pyreon/ui-components`. Demonstrates the minimum a raw rocketstyle
+// component needs to emit CSS:
+//
+//   1. `.theme()` / `.states()` / `.sizes()` — declare the dimension-
+//      tuple → style-slice mapping. Rocketstyle resolves the active
+//      slice and exposes it as `$rocketstyle` on the styled wrapper.
+//   2. `.styles((css) => css`…`)` — read `$rocketstyle` and emit
+//      actual CSS. WITHOUT this chain, rocketstyle's styled wrapper
+//      runs with an empty CSS body and the `.theme()` values never
+//      reach the DOM (the demo silently rendered as a transparent
+//      block before this chain was added). `makeItResponsive` from
+//      `@pyreon/unistyle` does the heavy lifting — kebab-cases keys,
+//      adds unit suffixes, expands responsive arrays/objects.
+//
+// `el` from `@pyreon/ui-components` collapses (1) + (2) for the common
+// case (responsive layout + pseudo-state CSS pre-baked). This demo
+// stays explicit so the lower-level contract is visible.
+
 const RsBadge = rocketstyle()({
   name: 'RsBadge',
   component: Element,
@@ -37,6 +56,14 @@ const RsBadge = rocketstyle()({
     medium: { fontSize: 12, paddingLeft: 12, paddingRight: 12, paddingTop: 4, paddingBottom: 4 },
     large: { fontSize: 14, paddingLeft: 16, paddingRight: 16, paddingTop: 6, paddingBottom: 6 },
   }))
+  .styles(
+    (css) => css`
+      ${({ $rocketstyle }: { $rocketstyle: Record<string, unknown> }) =>
+        css`
+          ${makeItResponsive({ theme: $rocketstyle, styles, css })};
+        `}
+    `,
+  )
 
 const RsButton = rocketstyle()({
   name: 'RsButton',
@@ -72,6 +99,14 @@ const RsButton = rocketstyle()({
     medium: { fontSize: 14, paddingLeft: 16, paddingRight: 16, paddingTop: 8, paddingBottom: 8 },
     large: { fontSize: 16, paddingLeft: 20, paddingRight: 20, paddingTop: 12, paddingBottom: 12 },
   }))
+  .styles(
+    (css) => css`
+      ${({ $rocketstyle }: { $rocketstyle: Record<string, unknown> }) =>
+        css`
+          ${makeItResponsive({ theme: $rocketstyle, styles, css })};
+        `}
+    `,
+  )
 
 export function RocketstyleDemo() {
   const state = signal<'success' | 'warning' | 'danger' | 'info' | undefined>(undefined)
@@ -81,7 +116,7 @@ export function RocketstyleDemo() {
     <div>
       <Title size="h2" style="margin-bottom: 12px">Rocketstyle (raw API)</Title>
       <Paragraph style="margin-bottom: 24px">
-        `@pyreon/rocketstyle` is the multi-dimensional styling engine powering all of `@pyreon/ui-components`. Here are standalone components built directly with `.theme()`, `.states()`, `.sizes()` — no `el`/`txt`/`list` wrappers.
+        `@pyreon/rocketstyle` is the multi-dimensional styling engine powering all of `@pyreon/ui-components`. Here are standalone components built directly with `.theme()`, `.states()`, `.sizes()`, `.styles()` on top of `@pyreon/elements` — no `el`/`txt`/`list` wrappers.
       </Paragraph>
 
       <Title size="h3" style="margin-bottom: 12px">Rocketstyle Badge — all states</Title>
