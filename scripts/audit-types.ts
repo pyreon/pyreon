@@ -48,12 +48,28 @@ interface Exemption {
 }
 
 const EXEMPT_FIELDS: Exemption[] = [
-  // Adapter contract fields are READ BY USER CODE that implements
-  // the Adapter interface, not by zero's runtime — false positive.
-  // Keep these documented but not enforced.
-  // Example template:
-  // { package: '@pyreon/zero', interface: 'AdapterBuildOptions',
-  //   field: 'config', reason: 'consumed by user Adapter implementations' },
+  // `RouteMeta.requiresAuth` is a CONVENTION read by user-defined
+  // navigation guards (the doc-comment literally says "if true, guards
+  // can redirect to login"). The router itself doesn't read it — that's
+  // by design. Cleanest possible "user-side contract" shape; no runtime
+  // gap to close.
+  {
+    package: '@pyreon/router',
+    interface: 'RouteMeta',
+    field: 'requiresAuth',
+    reason: 'user-side convention — read by user-defined NavigationGuards, not the router runtime',
+  },
+  // `NativeItem.__isNative` is a brand marker read by `@pyreon/runtime-dom`
+  // (mount.ts, nodes.ts, hydrate.ts, template.ts). The audit's heuristic
+  // only scans within the defining package (`@pyreon/core`), so a
+  // cross-package brand is structurally invisible to it. Dual-package
+  // brand → exempt.
+  {
+    package: '@pyreon/core',
+    interface: 'NativeItem',
+    field: '__isNative',
+    reason: 'brand marker consumed cross-package by @pyreon/runtime-dom (mount/nodes/hydrate/template)',
+  },
 ]
 
 // File-level exemptions — entire files whose interfaces are

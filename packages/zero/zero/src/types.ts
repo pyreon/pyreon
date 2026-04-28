@@ -1,6 +1,16 @@
 import type { ComponentFn } from '@pyreon/core'
-import type { NavigationGuard } from '@pyreon/router'
+import type { LoaderContext, NavigationGuard } from '@pyreon/router'
 import type { Middleware } from '@pyreon/server'
+
+// Re-export router's `LoaderContext` so consumers importing it from
+// `@pyreon/zero` keep working. The previous duplicate `interface
+// LoaderContext` (with a `request: Request` field that was never
+// populated by the actually-constructed runtime ctx) was a
+// typed-but-unimplemented bug class — caught by `audit-types`. If
+// SSR loaders need access to the request, plumb it through the
+// router-level `LoaderContext` in a follow-up PR; do NOT add fields
+// here that the runtime doesn't populate.
+export type { LoaderContext }
 
 // ─── Route module conventions ────────────────────────────────────────────────
 
@@ -24,14 +34,6 @@ export interface RouteModule {
   meta?: RouteMeta
   /** Rendering mode override for this route. */
   renderMode?: RenderMode
-}
-
-/** Context passed to route loaders. */
-export interface LoaderContext {
-  params: Record<string, string>
-  query: Record<string, string>
-  signal: AbortSignal
-  request: Request
 }
 
 /** Per-route metadata. */
