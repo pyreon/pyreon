@@ -484,3 +484,81 @@ describe('batch — property-based: random cascade graph maintains invariant', (
     }
   })
 })
+
+// ─── Audit bug #19: stale-Set leak on subscriber throw ────────────────────────
+//
+// Pre-fix: `pendingNotifications.clear()` was inside the try block of the
+// flush loop. If a subscriber threw mid-iteration, the for-loop exited and
+// the clear() never ran, leaking the unflushed remainder into the next
+// batch. The next batch's `size > 0` check then re-entered flush mode and
+// REFIRED the stale entries.
+//
+// Effect callbacks wrap their internals in try/catch so the bug rarely
+// surfaces from `effect()`, but raw `signal.subscribe(fn)` callbacks (and
+// any future internal consumer that doesn't pre-wrap) throw straight
+// through. Fix: move `clear()` to the finally block.
+
+describe('batch — subscriber-throw stale-Set leak (audit bug #19)', () => {
+  test('throwing subscriber does not leak stale notifications into next batch', () => {
+    const a = signal(0)
+    const b = signal(0)
+
+    let aFires = 0
+    let bFires = 0
+
+    a.subscribe(() => {
+      aFires++
+      throw new Error('boom')
+    })
+    b.subscribe(() => {
+      bFires++
+    })
+
+    // Batch 1 — A's subscriber throws mid-flush.
+    expect(() => {
+      batch(() => {
+        a.set(1)
+        b.set(1)
+      })
+    }).toThrow('boom')
+
+    // Sanity: a fired once and threw; b may or may not have fired depending
+    // on iteration order. The bug manifests in the SECOND batch — refiring
+    // an already-fired-and-cleared entry.
+    const aFiresAfterFirst = aFires
+    const bFiresAfterFirst = bFires
+
+    // Batch 2 — only b changes. Without the fix, A's stale subscriber
+    // still in pendingNotifications fires AGAIN.
+    try {
+      batch(() => {
+        b.set(2)
+      })
+    } catch {
+      // If A's subscriber refires, the throw escapes here. Catch + assert
+      // below so the test reports the right reason.
+    }
+
+    expect(aFires).toBe(aFiresAfterFirst) // A must NOT refire
+    expect(bFires).toBeGreaterThan(bFiresAfterFirst) // B should fire for its update
+  })
+
+  test('multiple consecutive throws stay isolated to their own batch', () => {
+    const sig = signal(0)
+    let fires = 0
+    sig.subscribe(() => {
+      fires++
+      throw new Error('always')
+    })
+
+    // Three batches, each with a throw — fires count must equal batch count,
+    // not multiply per leak.
+    for (let i = 1; i <= 3; i++) {
+      expect(() => {
+        batch(() => sig.set(i))
+      }).toThrow('always')
+    }
+
+    expect(fires).toBe(3)
+  })
+})

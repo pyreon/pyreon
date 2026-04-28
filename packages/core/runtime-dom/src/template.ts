@@ -125,6 +125,22 @@ export function _bindDirect(
 // ─── Compiler-facing template API ─────────────────────────────────────────────
 
 // Cache parsed <template> elements by HTML string — parse once, clone many.
+//
+// LRU bound (audit bug #5): typical apps emit a small bounded set of unique
+// HTML strings (one per JSX element tree the compiler hoists), so the cache
+// stays in the dozens-to-hundreds in practice. But an app that constructs
+// JSX from user input (or compiles many large dynamic templates) could grow
+// this unbounded — every unique string holds a parsed <template> alive.
+//
+// Map preserves insertion order; on overflow we evict the OLDEST entry (the
+// least-recently-inserted). Common HTML strings hit the cache before
+// eviction; pathological inputs cycle through the cap without leaking.
+//
+// 1024 chosen as a balance: ~1024 unique templates × ~1KB parsed = ~1MB
+// worst case — well within memory budget for any realistic app, and
+// generous enough that no real codebase will hit the cap. Apps that
+// genuinely need a different cap can swap their own _tpl wrapper.
+const TPL_CACHE_MAX = 1024
 const _tplCache = new Map<string, HTMLTemplateElement>()
 
 /**
@@ -156,11 +172,40 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
   if (!tpl) {
     tpl = document.createElement('template')
     tpl.innerHTML = html
+    // LRU eviction — drop the oldest entry once we hit the cap. Map
+    // iteration is insertion-order so the first key is always the
+    // oldest. delete() is O(1).
+    if (_tplCache.size >= TPL_CACHE_MAX) {
+      const oldest = _tplCache.keys().next().value
+      if (oldest !== undefined) _tplCache.delete(oldest)
+    }
+    _tplCache.set(html, tpl)
+  } else {
+    // LRU touch — re-insert moves to most-recent position so frequently
+    // used templates survive eviction.
+    _tplCache.delete(html)
     _tplCache.set(html, tpl)
   }
   const el = tpl.content.firstElementChild?.cloneNode(true) as HTMLElement
   const cleanup = bind(el)
   return { __isNative: true, el, cleanup }
+}
+
+/**
+ * Test-only: clear the template cache. Used by tests that assert on
+ * cache size; never called by runtime code. Not exported from the
+ * package's public index.
+ */
+export function _clearTplCache(): void {
+  _tplCache.clear()
+}
+
+/**
+ * Test-only: read current cache size. Used by tests that assert
+ * eviction. Not exported from the package's public index.
+ */
+export function _tplCacheSize(): number {
+  return _tplCache.size
 }
 
 /**
