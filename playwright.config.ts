@@ -34,10 +34,18 @@ import { defineConfig } from '@playwright/test'
  *                   resource-contention flakes during boot. Two configs
  *                   = two sequential boots = stable.
  *
- *   fundamentals  ⚠ DISABLED — `nav.sidebar` selector mismatch with
- *                   current `examples/fundamentals-playground` markup.
- *                   Tests need to be re-aligned with the example or vice
- *                   versa. Follow-up.
+ *   fundamentals  ✓ wired to CI — boots `examples/fundamentals-playground`
+ *                   on port 5176 and runs three spec files: playground.spec
+ *                   (sidebar / nav / dashboard / no-error sweep across all
+ *                   16 routes), dom-interactions.spec (browser-API surface),
+ *                   storage.spec (localStorage / sessionStorage / cookies +
+ *                   cross-tab storage events). 19 tests; ~7s wall-clock.
+ *
+ *                   Realigned in Phase C2 — the layout had moved to
+ *                   RouterLink-based nav (renders `<a>`) and the legacy
+ *                   tests still selected `nav.sidebar button`. `.first()`
+ *                   selectors mirror the ssr-showcase double-mount
+ *                   workaround.
  *
  *   visual        — REMOVED. The original spec wrote screenshots to a
  *                   gitignored folder for an external diff workflow, not
@@ -102,14 +110,11 @@ export default defineConfig({
     // ui-showcase project lives in `playwright.ui-regression.config.ts`
     // (own config + own webServer to avoid boot-time resource contention).
 
-    // ── DISABLED PROJECTS — gated until follow-ups land ───────────────
-    // Re-enable by uncommenting AND updating the disabled list in
-    // .github/workflows/ci.yml's E2E job.
-    /* {
+    {
       name: 'fundamentals',
       testMatch: /e2e\/fundamentals\/.*\.spec\.ts$/,
       use: { baseURL: 'http://localhost:5176' },
-    }, */
+    },
   ],
   webServer: [
     {
@@ -127,15 +132,14 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
     },
 
-    // ui-showcase webServer lives in `playwright.ui-regression.config.ts`.
-
-    // Disabled servers — uncomment when re-enabling the matching project above.
-    /* {
+    {
       command:
         'bun run --filter=@pyreon/fundamentals-playground dev -- --port 5176 --strictPort',
       port: 5176,
       timeout: 120_000,
       reuseExistingServer: !process.env.CI,
-    }, */
+    },
+
+    // ui-showcase webServer lives in `playwright.ui-regression.config.ts`.
   ],
 })

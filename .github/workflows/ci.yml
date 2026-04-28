@@ -275,7 +275,7 @@ jobs:
           restore-keys: playwright-chromium-${{ runner.os }}-
       - name: Install Playwright Chromium
         run: bunx playwright install --with-deps chromium
-      - name: Run e2e — playground + ssr-showcase
+      - name: Run e2e — playground + ssr-showcase + fundamentals
         run: bun run test:e2e
       - name: Run e2e — ui-showcase regression gate
         # Run as a separate step (own webServer boot) to avoid resource

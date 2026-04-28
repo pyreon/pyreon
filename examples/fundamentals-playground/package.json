@@ -14,6 +14,7 @@
     "@pyreon/core": "workspace:*",
     "@pyreon/document": "workspace:*",
     "@pyreon/form": "workspace:*",
+    "@pyreon/head": "workspace:*",
     "@pyreon/hotkeys": "workspace:*",
     "@pyreon/i18n": "workspace:*",
     "@pyreon/machine": "workspace:*",

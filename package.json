@@ -32,7 +32,7 @@
     "bench:bundle-size": "bun scripts/bench/bundle-size.ts",
     "perf:record": "bun scripts/perf/record.ts",
     "perf:diff": "bun scripts/perf/diff.ts",
-    "test:e2e": "bunx playwright test --project=playground --project=ssr-showcase",
+    "test:e2e": "bunx playwright test --project=playground --project=ssr-showcase --project=fundamentals",
     "test:e2e:ui-regression": "bunx playwright test --config=playwright.ui-regression.config.ts",
     "visual-test:capture": "bunx playwright test --project=visual",
     "visual-test:diff": "bun scripts/visual-test/diff.ts",
