@@ -1979,7 +1979,7 @@ const flexCss = alignContent({ alignX: 'center', alignY: 'start', direction: 'ro
 
 ## @pyreon/lint — Pyreon-specific Linter
 
-Pyreon-specific lint rules powered by `oxc-parser`. Covers reactivity (11), JSX (11), lifecycle (5), performance (4), SSR (3), architecture (7), store (3), form (3), styling (4), hooks (3), accessibility (3), router (4) — 61 rules total. Programmatic API (`lint`, `lintFile`), CLI (`pyreon-lint`), watch mode (fs.watch + 100ms debounce + AstCache), LSP server, and `.pyreonlintrc.json` config with per-rule options via ESLint-style tuple form. Notable rules: `pyreon/no-process-dev-gate` (auto-fixable; replaces dead-in-browser `typeof process` gates with `import.meta.env?.DEV`), `pyreon/require-browser-smoke-test` (locks in T1.1 browser-test durability).
+Pyreon-specific lint rules powered by `oxc-parser`. Covers reactivity (12), JSX (11), lifecycle (5), performance (4), SSR (3), architecture (7), store (3), form (3), styling (4), hooks (3), accessibility (3), router (4) — 62 rules total. Programmatic API (`lint`, `lintFile`), CLI (`pyreon-lint`), watch mode (fs.watch + 100ms debounce + AstCache), LSP server, and `.pyreonlintrc.json` config with per-rule options via ESLint-style tuple form. Notable rules: `pyreon/no-process-dev-gate` (auto-fixable; replaces dead-in-browser `typeof process` gates with `import.meta.env?.DEV`), `pyreon/require-browser-smoke-test` (locks in T1.1 browser-test durability).
 
 ```typescript
 import { lint, lintFile, allRules, getPreset, AstCache } from '@pyreon/lint'
@@ -2007,7 +2007,7 @@ const fileResult = lintFile('app.tsx', source, allRules, config, cache)
 //   pyreon-lint --preset strict --quiet                    # CI mode
 //   pyreon-lint --fix                                      # auto-fix
 //   pyreon-lint --watch src/                               # watch mode
-//   pyreon-lint --list                                     # list all 61 rules
+//   pyreon-lint --list                                     # list all 62 rules
 //   pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/
 ```
 

@@ -873,4 +873,107 @@ describe('useSSE', () => {
 
     unmount()
   })
+
+  // ── Audit bug #3: lastEventId persistence across remount ──────────────
+  //
+  // Pre-fix: a fresh `useSSE()` initialized lastEventId to '' regardless
+  // of any prior session. Browser EventSource only auto-resumes (sends
+  // Last-Event-ID header) within the same instance lifetime; a new
+  // instance — including post-remount or post-explicit-close — starts
+  // fresh. The hook EXPOSED `lastEventId()` but didn't accept a seed,
+  // so consumers couldn't wire `useStorage`-backed persistence.
+  //
+  // Fix: `initialLastEventId` option (string or accessor). Consumers
+  // pair it with the URL function so the server sees the resume point
+  // via query param.
+
+  describe('lastEventId persistence across remount (audit bug #3)', () => {
+    test('initialLastEventId seeds the lastEventId signal at mount', () => {
+      const client = makeClient()
+      let sse: UseSSEResult<string> | null = null
+
+      const cleanup = withProvider(client, () => {
+        sse = useSSE({
+          url: '/api/events',
+          initialLastEventId: 'evt-42',
+        })
+      })
+
+      expect(sse!.lastEventId()).toBe('evt-42')
+      cleanup()
+    })
+
+    test('initialLastEventId accepts an accessor (signal/computed)', () => {
+      const client = makeClient()
+      let sse: UseSSEResult<string> | null = null
+      const seed = signal('evt-99')
+
+      const cleanup = withProvider(client, () => {
+        sse = useSSE({
+          url: '/api/events',
+          initialLastEventId: seed,
+        })
+      })
+
+      // Read at mount; subsequent changes to the accessor are intentionally
+      // ignored (per docstring: "Read once at mount").
+      expect(sse!.lastEventId()).toBe('evt-99')
+
+      seed.set('evt-100')
+      expect(sse!.lastEventId()).toBe('evt-99') // unchanged
+      cleanup()
+    })
+
+    test('lastEventId remains seeded value until first server event arrives', () => {
+      const client = makeClient()
+      let sse: UseSSEResult<string> | null = null
+
+      const cleanup = withProvider(client, () => {
+        sse = useSSE({
+          url: '/api/events',
+          initialLastEventId: 'resume-from-here',
+        })
+      })
+
+      lastMockES()._simulateOpen()
+      expect(sse!.lastEventId()).toBe('resume-from-here')
+
+      // Server pushes a message with a NEW id — overrides the seed (live
+      // tracking takes priority once we're connected).
+      lastMockES()._simulateMessage('payload', 'evt-fresh')
+      expect(sse!.lastEventId()).toBe('evt-fresh')
+
+      cleanup()
+    })
+
+    test('omitting initialLastEventId starts at empty string (backward compat)', () => {
+      const client = makeClient()
+      let sse: UseSSEResult<string> | null = null
+
+      const cleanup = withProvider(client, () => {
+        sse = useSSE({
+          url: '/api/events',
+        })
+      })
+
+      expect(sse!.lastEventId()).toBe('')
+      cleanup()
+    })
+
+    test('reactive URL can read seeded lastEventId for resume query param', () => {
+      const client = makeClient()
+
+      const cleanup = withProvider(client, () => {
+        const lastId = signal('resume-evt-7')
+        useSSE({
+          url: () => `/api/events?lastId=${lastId()}`,
+          initialLastEventId: lastId,
+        })
+      })
+
+      const es = lastMockES()
+      expect(es.url).toContain('lastId=resume-evt-7')
+      cleanup()
+    })
+  })
 })

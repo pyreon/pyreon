@@ -166,6 +166,11 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   const submitError = signal<unknown>(undefined)
   const formDisabled = signal(false)
   const formReadOnly = signal(false)
+  // Declared up-front so per-field auto-revalidation effects (set up in the
+  // loop below) can read it. Each `handleSubmit()` increments it; the
+  // change-mode trigger fires once `submitCount > 0` so users see live
+  // error correction after the first failed submit (audit bug #2).
+  const submitCount = signal(0)
 
   // Track current initial values (mutable for setInitialValues)
   let currentInitials = { ...initialValues }
@@ -232,13 +237,30 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
         }
       : runValidation
 
-    // Auto-validate on change if configured
-    if (validateOn === 'change') {
-      effect(() => {
-        const v = valueSig()
+    // Auto-validate on change. Two trigger conditions, both handled in the
+    // SAME effect so the field's value tracking is unified:
+    //
+    //   1. validateOn === 'change' — always validate on every keystroke
+    //      (intentional opt-in for instant feedback; usually paired with
+    //      `debounceMs` for async validators).
+    //
+    //   2. submitCount > 0 (any validateOn mode) — once the user has
+    //      attempted submit, errors are visible. Without live revalidation,
+    //      the user types to fix a field, the value becomes valid, but
+    //      the error stays on screen until next submit. This is the
+    //      "stale errors after failed submit" UX bug. Industry-standard
+    //      fix used by react-hook-form, Formik, etc.: switch to change
+    //      mode once submit has been attempted.
+    //
+    // Reading `submitCount()` inside the effect tracks it so the effect
+    // re-runs when submitCount changes (e.g. after `reset()` zeros it,
+    // we go back to passive mode).
+    effect(() => {
+      const v = valueSig()
+      if (validateOn === 'change' || submitCount() > 0) {
         validateField(v)
-      })
-    }
+      }
+    })
 
     fields[name] = {
       value: valueSig,
@@ -276,7 +298,6 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   })
 
   const isSubmitting = signal(false)
-  const submitCount = signal(0)
 
   // Form-level computed signals
   const isValid = computed(() => {

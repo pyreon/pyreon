@@ -1877,3 +1877,92 @@ describe('FormProvider / useFormContext', () => {
     el.remove()
   })
 })
+
+// ─── Audit bug #2: stale errors after failed submit ──────────────────────────
+//
+// Pre-fix: with `validateOn: 'submit'` (or `'blur'`), after a failed submit,
+// the user typing to fix a field did not clear the error — `setValue`
+// updated value + dirty but didn't run validators. Errors stayed visible
+// until the next submit, even when the field was now valid.
+//
+// Industry-standard fix (react-hook-form, Formik, Zod-based libs): once
+// `submitCount > 0`, switch all fields to change-mode revalidation so the
+// user gets live feedback while correcting.
+
+describe('useForm — auto-revalidate after first failed submit (audit bug #2)', () => {
+  const requireMin5 = (v: string): string | undefined =>
+    v.length < 5 ? 'Must be at least 5 chars' : undefined
+
+  it("validateOn: 'submit' — typing to fix a field clears the error after first failed submit", async () => {
+    const form = useForm({
+      initialValues: { name: '' },
+      validators: { name: requireMin5 },
+      validateOn: 'submit',
+      onSubmit: () => {},
+    })
+
+    // Pre-submit: typing should NOT validate (validateOn='submit' is opt-out
+    // of live validation BEFORE submit).
+    form.fields.name.setValue('hi')
+    await Promise.resolve()
+    expect(form.fields.name.error()).toBeUndefined()
+
+    // First submit attempt: too short → error appears.
+    await form.handleSubmit()
+    expect(form.fields.name.error()).toBe('Must be at least 5 chars')
+
+    // Now user types to fix — error should clear LIVE (post-submit live mode).
+    form.fields.name.setValue('hello world')
+    await Promise.resolve()
+    expect(form.fields.name.error()).toBeUndefined()
+
+    // And typing back to invalid should re-set the error.
+    form.fields.name.setValue('hi')
+    await Promise.resolve()
+    expect(form.fields.name.error()).toBe('Must be at least 5 chars')
+  })
+
+  it("validateOn: 'blur' — failed submit also enables live revalidation", async () => {
+    const form = useForm({
+      initialValues: { name: '' },
+      validators: { name: requireMin5 },
+      validateOn: 'blur',
+      onSubmit: () => {},
+    })
+
+    // Pre-submit, BEFORE any blur: typing must not validate.
+    form.fields.name.setValue('hi')
+    await Promise.resolve()
+    expect(form.fields.name.error()).toBeUndefined()
+
+    // Submit with invalid value → errors appear.
+    await form.handleSubmit()
+    expect(form.fields.name.error()).toBe('Must be at least 5 chars')
+
+    // Live revalidation on subsequent typing.
+    form.fields.name.setValue('long enough')
+    await Promise.resolve()
+    expect(form.fields.name.error()).toBeUndefined()
+  })
+
+  it('reset() returns the form to passive mode (submitCount = 0)', async () => {
+    const form = useForm({
+      initialValues: { name: '' },
+      validators: { name: requireMin5 },
+      validateOn: 'submit',
+      onSubmit: () => {},
+    })
+
+    await form.handleSubmit()
+    expect(form.fields.name.error()).toBe('Must be at least 5 chars')
+    expect(form.submitCount()).toBe(1)
+
+    form.reset()
+    expect(form.submitCount()).toBe(0)
+
+    // After reset, typing should NOT validate again (back to opt-out mode).
+    form.fields.name.setValue('hi')
+    await Promise.resolve()
+    expect(form.fields.name.error()).toBeUndefined()
+  })
+})

@@ -97,6 +97,26 @@ function cleanupLocalDeps(deps: Set<() => void>[], fn: () => void): void {
 }
 
 export function effect(fn: () => (() => void) | void): Effect {
+  // Dev-mode warning for async effect callbacks (audit bug #1). The
+  // tracking context is the synchronous frame around `fn()`'s top half;
+  // anything after the first `await` runs detached, so signal reads on
+  // the back side aren't tracked and the effect won't re-run when those
+  // signals change. The fix at the call site is either to read all
+  // tracked signals BEFORE the first await, or split the work into two
+  // effects (or use `watch` for async-in-callback). Surfacing the warn
+  // at registration is the cheapest catch we can offer: an
+  // `AsyncFunction.prototype.constructor.name === 'AsyncFunction'`
+  // check is true at function-definition time without invoking anything.
+  if (process.env.NODE_ENV !== 'production') {
+    if (fn.constructor && fn.constructor.name === 'AsyncFunction') {
+      // oxlint-disable-next-line no-console
+      console.warn(
+        '[pyreon] effect() received an async function. Signal reads after the first `await` are NOT tracked — only the synchronous prefix is. ' +
+          'Read every tracked signal BEFORE any await, or split into separate effects, or use `watch(source, asyncCb)` for async-in-callback patterns.',
+      )
+    }
+  }
+
   // Capture the scope at creation time — remains correct during future re-runs
   // even after setCurrentScope(null) has been called post-setup.
   const scope = getCurrentScope()
