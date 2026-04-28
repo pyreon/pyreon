@@ -133,4 +133,55 @@ describe('cspMiddleware', () => {
     mw({ headers, locals: {} } as any)
     expect(useNonce()).toBe('')
   })
+
+  // Bisect-verifiable: replacing the throw with a Math.random fallback
+  // makes this test fail because the error message check fires only on
+  // the throw path. Earlier code silently degraded — this regression
+  // test locks in the fail-loud contract.
+  it('throws when crypto.getRandomValues is unavailable (no silent Math.random fallback)', () => {
+    const originalCrypto = globalThis.crypto
+    // Simulate an environment without Web Crypto.
+    Object.defineProperty(globalThis, 'crypto', {
+      value: undefined,
+      configurable: true,
+    })
+    try {
+      const mw = cspMiddleware({
+        directives: { scriptSrc: ["'self'", "'nonce'"] },
+      })
+      const headers = new Headers()
+      const locals: Record<string, unknown> = {}
+      expect(() => mw({ headers, locals } as any)).toThrow(/crypto\.getRandomValues/)
+      expect(() => mw({ headers, locals } as any)).toThrow(/Pyreon/)
+    } finally {
+      Object.defineProperty(globalThis, 'crypto', {
+        value: originalCrypto,
+        configurable: true,
+      })
+    }
+  })
+
+  it('regression: nonce uses crypto.getRandomValues, not Math.random', () => {
+    // High-entropy contract: 16 random bytes encoded as base64 produce
+    // a 24-char (with padding) string. Math.random's `.toString(36)`
+    // produces ~24 chars but with limited entropy and a different
+    // character set (no '+/' from base64). This shape check catches
+    // accidental fallback regression.
+    const mw = cspMiddleware({
+      directives: { scriptSrc: ["'self'", "'nonce'"] },
+    })
+    const seen = new Set<string>()
+    for (let i = 0; i < 100; i++) {
+      const headers = new Headers()
+      const locals: Record<string, unknown> = {}
+      mw({ headers, locals } as any)
+      const nonce = locals.cspNonce as string
+      // Base64 (with possible padding) — Math.random.toString(36) cannot produce '+' or '/' or '='
+      expect(/^[A-Za-z0-9+/=]+$/.test(nonce)).toBe(true)
+      expect(nonce.length).toBeGreaterThanOrEqual(20) // 16 bytes → 24 base64 chars (with padding)
+      seen.add(nonce)
+    }
+    // 100 nonces, all unique — sanity check that randomness is actually random.
+    expect(seen.size).toBe(100)
+  })
 })

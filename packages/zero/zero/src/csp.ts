@@ -140,21 +140,37 @@ export function buildCspHeader(directives: CspDirectives, nonce?: string): strin
 }
 
 /**
- * Generate a random nonce string (base64, 16 bytes).
+ * Generate a cryptographically-random nonce string (base64, 16 bytes).
+ *
+ * Throws when `crypto.getRandomValues` is unavailable. CSP nonces protect
+ * against XSS by gating inline script execution; a predictable nonce
+ * (`Math.random` ~31 bits of entropy) bypasses CSP entirely. Silent
+ * degradation here was a security anti-pattern — we surface the
+ * misconfiguration loudly instead.
+ *
+ * Realistic deployments always have `crypto.getRandomValues`: Node 18+,
+ * Bun, Deno, browsers, edge workers (Cloudflare/Vercel/Netlify), and
+ * vitest/happy-dom all expose it via `globalThis.crypto`. If you hit
+ * this throw, your environment is unusual — fix the env, don't downgrade
+ * the security primitive.
  */
 function generateNonce(): string {
-  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-    const bytes = new Uint8Array(16)
-    crypto.getRandomValues(bytes)
-    // Convert to base64 using btoa
-    let binary = ''
-    for (const byte of bytes) binary += String.fromCharCode(byte)
-    return typeof btoa === 'function'
-      ? btoa(binary)
-      : Buffer.from(bytes).toString('base64')
+  if (typeof crypto === 'undefined' || !crypto.getRandomValues) {
+    throw new Error(
+      '[Pyreon] CSP nonce generation requires `crypto.getRandomValues` (Web Crypto API). ' +
+        'No secure RNG is available in this environment. CSP nonces must be cryptographically ' +
+        'random — falling back to `Math.random` would silently weaken XSS protection. ' +
+        'Ensure Node 18+, Bun, Deno, an edge runtime, or a browser environment.',
+    )
   }
-  // Fallback for environments without crypto
-  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  // Convert to base64 using btoa
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return typeof btoa === 'function'
+    ? btoa(binary)
+    : Buffer.from(bytes).toString('base64')
 }
 
 /**

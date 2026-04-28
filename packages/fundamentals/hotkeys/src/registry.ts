@@ -5,6 +5,14 @@ import type { HotkeyEntry, HotkeyOptions } from './types'
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
+// Linear array on purpose. Per-keystroke dispatch (line 35) iterates entries
+// in registration order — O(n) where n = registered hotkeys. For real apps
+// (single-digit to low-tens) the cost is sub-microsecond and well under the
+// 16ms frame budget. Switching to a Map<comboKey, entries[]> would help only
+// past ~5,000 hotkeys, which is unrealistic. The array also preserves
+// registration order for the rare case where two hotkeys match the same
+// combo on different scopes — first-registered wins. Don't replace with a
+// Map without confirming a real app actually hits the perf wall.
 const entries: HotkeyEntry[] = []
 const activeScopes = signal<Set<string>>(new Set(['global']))
 let listenerAttached = false
