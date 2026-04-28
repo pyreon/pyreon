@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+
 // ─── VNode ────────────────────────────────────────────────────────────────────
 
 // Reactive getter returning a child — wraps dynamic expressions in `() =>`

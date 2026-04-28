@@ -357,6 +357,13 @@
       "dependencies": {
         "oxc-parser": "^0.123.0",
       },
+      "devDependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
+        "@pyreon/test-utils": "workspace:^",
+        "happy-dom": "^20.8.3",
+      },
       "peerDependencies": {
         "typescript": ">=5.0.0",
       },

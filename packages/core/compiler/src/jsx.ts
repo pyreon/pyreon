@@ -1132,9 +1132,19 @@ export function transformJSX_JS(
 
     function analyzeChildren(flatChildren: FlatChild[]): { useMixed: boolean; useMultiExpr: boolean } {
       const hasElem = flatChildren.some((c) => c.kind === 'element')
-      const hasNonElem = flatChildren.some((c) => c.kind !== 'element')
+      const hasText = flatChildren.some((c) => c.kind === 'text')
       const exprCount = flatChildren.filter((c) => c.kind === 'expression').length
-      return { useMixed: hasElem && hasNonElem, useMultiExpr: exprCount > 1 }
+      // `useMixed` triggers placeholder-based positional mounting (each
+      // dynamic child gets a `<!>` comment slot in the template that
+      // `replaceChild`-replaces at mount). It must fire whenever ≥2 of
+      // {element, text, expression} are interleaved — otherwise dynamic
+      // text nodes added via `appendChild` land after all static
+      // template content, breaking source-order rendering for shapes
+      // like `<p>foo {x()} bar</p>` (rendered "foo  barX" instead of
+      // "foo X bar"). Discovered by Phase B2's whitespace tests.
+      const present =
+        (hasElem ? 1 : 0) + (hasText ? 1 : 0) + (exprCount > 0 ? 1 : 0)
+      return { useMixed: present > 1, useMultiExpr: exprCount > 1 }
     }
 
     function attrIsDynamic(attr: N): boolean {
