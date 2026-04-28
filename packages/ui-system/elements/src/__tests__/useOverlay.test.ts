@@ -34,7 +34,13 @@ vi.mock('@pyreon/reactivity', () => {
     return s
   }
 
-  return { signal }
+  // See sibling Overlay.test.ts mock: `@pyreon/core` imports
+  // `setSnapshotCapture` and calls it at module load to install the
+  // reactive-effect context-snapshot DI hook. The mock provides a no-op
+  // so the `@pyreon/core` import doesn't throw "No 'setSnapshotCapture'
+  // export is defined on the '@pyreon/reactivity' mock."
+  const setSnapshotCapture = () => {}
+  return { signal, setSnapshotCapture }
 })
 
 vi.mock('@pyreon/core', async (importOriginal) => {

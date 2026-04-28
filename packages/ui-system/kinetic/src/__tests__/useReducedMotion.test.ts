@@ -36,7 +36,10 @@ vi.mock('@pyreon/reactivity', () => {
     s.debug = () => ({ name: undefined, value, subscriberCount: 0 })
     return s
   }
-  return { signal }
+  // No-op stub for the DI hook `@pyreon/core/context.ts` calls at module
+  // load. See sibling test mocks for the full rationale.
+  const setSnapshotCapture = () => {}
+  return { signal, setSnapshotCapture }
 })
 
 import { useReducedMotion } from '../useReducedMotion'

@@ -671,40 +671,34 @@ test.describe('ui-showcase — inversed PyreonUI nesting', () => {
 })
 
 test.describe('ui-showcase — runtime mode prop change', () => {
-  // KNOWN GAP — surface symptom of the documented `_layout`
-  // double-mount framework bug (CLAUDE.md, "Known framework bug NOT
-  // yet fixed"). Empirically traced via instance-counter logs:
-  // PyreonUI is invoked dozens of times during dev SSR + hydration
-  // because the layout's inner `<RouterView />` re-renders the
-  // layout each cycle. Each invocation creates a fresh
-  // `modeComputed` and pushes a new ModeContext frame. The
-  // ModeProbe's text-binding subscribes to one of these computeds
-  // during its initial run. When the user clicks "Toggle mode":
+  // Both tests below were previously `test.fixme`'d, blocked on the
+  // `_layout` double-mount framework bug — the layout's inner
+  // `<RouterView />` re-emitted its reactive child accessor on every
+  // route data signal (loader writes, lazy resolves, navigation
+  // counters, param changes), causing `mountReactive` to tear down
+  // and rebuild the entire layout subtree. Empirically: ~9 cascading
+  // remounts per cold-start router.replace() — confirmed by an
+  // instance counter on PyreonUI, which jumped from 3 expected
+  // invocations to 27 actual.
   //
-  //   1. `mode.set('dark')` notifies its subscriber — the
-  //      LATEST swappable PyreonUI's modeComputed.recompute (older
-  //      computeds may not have unsubscribed cleanly).
-  //   2. Recompute notifies its subscribers — including the
-  //      binding that subscribed during ITS initial run.
-  //   3. Binding re-runs `useMode()`, walking the context stack to
-  //      find the latest frame. Resolution returns the cached
-  //      'light' (the new modeComputed isn't dirty yet for THAT
-  //      binding's read path), even though resolveMode does
-  //      eventually run with `dark` for some other reader.
+  // Each remount of the swappable `<PyreonUI mode={mode()}>` created
+  // a fresh `modeComputed` and pushed a new `ModeContext` frame. The
+  // ModeProbe's text-binding subscribed to one of these computeds
+  // during its initial run; later, signal toggles would notify a
+  // DIFFERENT computed than the one the binding read in re-runs, so
+  // `useMode()` returned a cached stale value. PyreonUI's primitive
+  // worked correctly in isolation (covered by unit tests), but the
+  // remount loop poisoned subscription topology end-to-end.
   //
-  // PyreonUI's signal-driven mode reactivity works correctly in
-  // isolation: see `packages/ui-system/ui-core/src/__tests__/PyreonUI.test.tsx`
-  // — "mode reacts when backed by a signal getter (no destructuring)"
-  // and "inversed mode reacts when backed by a signal" pass cleanly.
-  // The framework primitive is sound; the failure mode here is the
-  // layout-remount loop polluting subscription topology.
-  //
-  // These tests stay fixme'd until the layout double-mount fix lands
-  // — at which point they should flip green without changes to
-  // PyreonUI itself. Tracked alongside the ssr-showcase / app-showcase
-  // `.first()` workarounds noted in the same CLAUDE.md section.
+  // The fix landed in `@pyreon/router`'s RouterView: structure (which
+  // RouteRecord is at this depth) and data (params / loader / lazy
+  // wakeup) are now provided by separate `computed(..., { equals: refEq })`
+  // layers. The reactive child re-emits ONLY on real navigation that
+  // changes `matched[depth]` or on a lazy resolution — not on
+  // unrelated route signal churn. Layouts mount once. PyreonUI runs
+  // once per instance. Signal-driven mode toggling propagates cleanly.
 
-  test.fixme('toggling the mode signal updates ModeProbe text reactively', async ({ page }) => {
+  test('toggling the mode signal updates ModeProbe text reactively', async ({ page }) => {
     await page.goto('/test/reactive-providers')
 
     const probe = page.locator('[data-test-mode-probe="swappable"]')
@@ -718,7 +712,7 @@ test.describe('ui-showcase — runtime mode prop change', () => {
     await expect(probe).toHaveText('Mode: light')
   })
 
-  test.fixme('mode prop change patches ModeProbe in place (no remount)', async ({ page }) => {
+  test('mode prop change patches ModeProbe in place (no remount)', async ({ page }) => {
     await page.goto('/test/reactive-providers')
 
     const probe = page.locator('[data-test-mode-probe="swappable"]')

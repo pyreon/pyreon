@@ -5,7 +5,16 @@ export { Cell, cell } from './cell'
 export { type Computed, type ComputedOptions, computed } from './computed'
 export { createSelector } from './createSelector'
 export { inspectSignal, onSignalUpdate, why } from './debug'
-export { _bind, type Effect, effect, onCleanup, renderEffect, setErrorHandler } from './effect'
+export {
+  _bind,
+  type Effect,
+  effect,
+  onCleanup,
+  type ReactiveSnapshotCapture,
+  renderEffect,
+  setErrorHandler,
+  setSnapshotCapture,
+} from './effect'
 export { reconcile } from './reconcile'
 export { createResource, type Resource } from './resource'
 export { EffectScope, effectScope, getCurrentScope, setCurrentScope } from './scope'

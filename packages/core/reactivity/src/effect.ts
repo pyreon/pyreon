@@ -8,6 +8,41 @@ export interface Effect {
   dispose(): void
 }
 
+// ─── Effect-scoped snapshot capture (DI from `@pyreon/core`) ─────────────────
+//
+// Effects re-run reactively in response to signal changes. When that re-run
+// happens AFTER the synchronous mount that set the effect up, the surrounding
+// context stack (from `@pyreon/core`'s provide() calls) may have been
+// destructively truncated by `mountReactive`'s `restoreContextStack` cleanup.
+// Without restoring the captured context, signal-driven re-runs of `_bind` /
+// `renderEffect` / `effect` see a half-empty stack and `useContext()` falls
+// back to the default value — silently breaking provider-backed APIs like
+// `useMode()`, `useTheme()`, `useRouter()`, etc. on every reactive update.
+//
+// `@pyreon/reactivity` is below `@pyreon/core` in the dep order, so it can't
+// import `captureContextStack` / `restoreContextStack` directly. Core
+// registers its capture+restore pair via `setSnapshotCapture` at module load.
+// When unset (raw reactivity-only consumers), effects skip context handling
+// — same behavior as before this hook existed.
+export interface ReactiveSnapshotCapture {
+  capture: () => unknown
+  /** Run `fn` with the previously-captured snapshot active. */
+  restore: <T>(snap: unknown, fn: () => T) => T
+}
+
+let _snapshotCapture: ReactiveSnapshotCapture | null = null
+
+/**
+ * Register a capture/restore pair so reactivity-layer effects (`_bind`,
+ * `renderEffect`, `effect`) can preserve external context (e.g. the core
+ * provide/useContext stack) across signal-driven re-runs. Called by
+ * `@pyreon/core`'s context module at import time. Idempotent — calling again
+ * replaces the previously registered hook.
+ */
+export function setSnapshotCapture(hook: ReactiveSnapshotCapture | null): void {
+  _snapshotCapture = hook
+}
+
 // ─── onCleanup ───────────────────────────────────────────────────────────────
 // Thread-local collector for cleanup functions registered via onCleanup()
 // during effect execution. Pushed/popped around the user callback in effect().
@@ -120,6 +155,12 @@ export function effect(fn: () => (() => void) | void): Effect {
   // Capture the scope at creation time — remains correct during future re-runs
   // even after setCurrentScope(null) has been called post-setup.
   const scope = getCurrentScope()
+  // Capture the external (core-context) snapshot at SETUP time. Reactive
+  // re-runs restore it before invoking fn, so provider lookups stay correct
+  // even when the global context stack has been destructively truncated by
+  // mountReactive's restoreContextStack cleanup. See `_bind` for the full
+  // rationale.
+  const snapshot = _snapshotCapture ? _snapshotCapture.capture() : null
   let disposed = false
   let isFirstRun = true
   let cleanup: (() => void) | undefined
@@ -181,7 +222,16 @@ export function effect(fn: () => (() => void) | void): Effect {
       // Collect onCleanup() registrations during execution
       const collected: (() => void)[] = []
       _cleanupCollector = collected
-      cleanup = withTracking(run, fn) || undefined
+      // First run executes inside the synchronous mount where the context
+      // stack is still intact — call fn directly to avoid pushing the
+      // captured snapshot a redundant second time. Subsequent re-runs
+      // happen AFTER mountReactive's cleanup has truncated the stack, so
+      // they need the snapshot restored to find provider frames.
+      const fnToRun =
+        isFirstRun || snapshot === null || _snapshotCapture === null
+          ? fn
+          : () => (_snapshotCapture as ReactiveSnapshotCapture).restore(snapshot, fn)
+      cleanup = withTracking(run, fnToRun) || undefined
       _cleanupCollector = null
       if (collected.length > 0) cleanups = collected
       setDepsCollector(null)
@@ -251,12 +301,26 @@ export function _bind(fn: () => void): () => void {
   const deps: Set<() => void>[] = []
   let disposed = false
 
+  // Capture external (core-context) snapshot at SETUP time. Re-runs restore
+  // it before invoking fn, so signal-driven re-runs see the same provider
+  // chain that was active when the binding was first set up — even if the
+  // global context stack has been destructively truncated by mountReactive's
+  // restoreContextStack cleanup in the meantime.
+  const snapshot = _snapshotCapture ? _snapshotCapture.capture() : null
+
   const run = () => {
     if (disposed) return
-    fn()
+    if (snapshot !== null && _snapshotCapture) {
+      _snapshotCapture.restore(snapshot, fn)
+    } else {
+      fn()
+    }
   }
 
-  // First run: track deps so we know what to unsubscribe on dispose
+  // First run: track deps so we know what to unsubscribe on dispose. We
+  // intentionally call `fn` directly (not `run`) here — the synchronous
+  // mount stack is already intact at this point, so restoring the captured
+  // snapshot would just push the same frames again redundantly.
   setDepsCollector(deps)
   withTracking(run, fn)
   setDepsCollector(null)
@@ -310,24 +374,33 @@ export function renderEffect(fn: () => void): () => void {
   let disposed = false
   let isFirstRun = true
 
+  // Same rationale as `_bind`: capture the external context snapshot at
+  // SETUP and restore it on signal-driven re-runs so provider lookups stay
+  // correct even after `mountReactive`'s cleanup truncates the global stack.
+  const snapshot = _snapshotCapture ? _snapshotCapture.capture() : null
+
+  const trackedFn =
+    snapshot !== null && _snapshotCapture
+      ? () => (_snapshotCapture as ReactiveSnapshotCapture).restore(snapshot, fn)
+      : fn
+
   const run = () => {
     if (disposed) return
-    // After first run, if deps haven't changed structure, we can skip
-    // the full cleanup+retrack path. However, renderEffect deps CAN
-    // change (unlike _bind), so we always do the full track.
-    // Optimization: skip cleanup on first run (deps are empty).
     if (isFirstRun) {
       isFirstRun = false
       setDepsCollector(deps)
       _setActiveEffect(run)
       try {
+        // First run: stack is still intact (we're inside the synchronous
+        // mount), so call fn directly to avoid pushing the snapshot frames
+        // a second time.
         fn()
       } finally {
         _restoreActiveEffect()
         setDepsCollector(null)
       }
     } else {
-      renderEffectFullTrack(deps, run, fn)
+      renderEffectFullTrack(deps, run, trackedFn)
     }
   }
 

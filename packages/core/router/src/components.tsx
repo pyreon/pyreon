@@ -1,6 +1,6 @@
 import type { ComponentFn, Props, VNodeChild } from '@pyreon/core'
 import { createRef, ErrorBoundary, h, onUnmount, provide, useContext } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { computed, signal } from '@pyreon/reactivity'
 import { LoaderDataContext, prefetchLoaderData } from './loader'
 import { isLazy, RouterContext, setActiveRouter } from './router'
 import type { LazyComponent, ResolvedRoute, RouteRecord, Router, RouterInstance } from './types'
@@ -75,30 +75,108 @@ export const RouterView: ComponentFn<RouterViewProps> = (props) => {
     router._viewDepth--
   })
 
+  // ── Structure / data decoupling ───────────────────────────────────────────
+  //
+  // Pre-fix the reactive child accessor read `_loadingSignal` and the full
+  // `currentRoute` snapshot. The framework's `mountReactive` tears down and
+  // rebuilds the entire subtree on every accessor re-emission, so any
+  // unrelated route signal (loader writes, lazy resolution, navigation
+  // start/end counters, param changes that don't change the matched record)
+  // would tear down the layout, then the page, then everything below it.
+  // For a single page load with one cold-start `router.replace()`, that
+  // produced ~9 cascading remounts of the layout — confirmed empirically
+  // by instance counters.
+  //
+  // The fix decouples STRUCTURE (which RouteRecord is mounted at this depth
+  // + which component to render for it) from DATA (params / query / loader
+  // data flowing into the rendered component). One computed returns BOTH
+  // the record and its resolved component as an atomic pair — re-emits ONLY
+  // when either side changes (reference equality on both fields). Loader
+  // writes / param changes / navigation counters don't re-emit; the rendered
+  // component receives route data through reactive props + the
+  // `LoaderDataProvider` context, which subscribe per-component to the
+  // signals they actually care about, so a param change re-renders just the
+  // page leaf — not the layout chain above it.
+  //
+  // The structure is intentionally a SINGLE computed (not two layered ones):
+  // when `currentRoute` changes, the reactive child accessor must see a
+  // CONSISTENT (rec, comp) pair on its next re-run. With two layered
+  // computeds the child accessor subscribes to both, and the order in which
+  // those two notify the child is unspecified — if the child runs after rec
+  // is notified but before comp re-evaluates, it reads the new rec paired
+  // with the OLD comp. Empirically that produced rec=/button paired with
+  // comp=HomePage, leaving the previous page rendered after navigation.
+  // Combining them into one computed forces atomic emission.
+  interface DepthEntry {
+    rec: RouteRecord | null
+    comp: ComponentFn | null
+    /**
+     * True when lazy resolution exhausted retries and the chunk is in
+     * `_erroredChunks`. Tracked structurally so the entry re-emits when
+     * the error state flips on — otherwise `equals` would block the
+     * { rec, comp: null } → { rec, comp: null, errored: true } transition
+     * (`comp` and `rec` are unchanged) and the error component would
+     * never render.
+     */
+    errored: boolean
+    /**
+     * The full ResolvedRoute reference at the time this entry was emitted.
+     * `currentRoute` is a `computed` keyed on `currentPath` — same path
+     * returns the same memoized reference, different path returns a new
+     * one. Tracking the reference in `equals` makes the depth re-emit on
+     * any real navigation (params change, query change, hash change) even
+     * when the matched record at this depth stays the same — required so
+     * `/user/42 → /user/99` re-renders the User component with new params
+     * — while NOT re-emitting on navigate-flow noise (`_loadingSignal`
+     * start/end ticks, lazy resolution writes that complete without
+     * changing currentPath). One emit per real navigation, not per
+     * within-navigation signal tick.
+     */
+    route: ResolvedRoute
+  }
+  const depthEntry = computed<DepthEntry>(
+    () => {
+      const route = router.currentRoute()
+      const rec = route.matched[depth] ?? null
+      if (!rec) return { rec: null, comp: null, errored: false, route }
+      // Subscribe to `_loadingSignal` so lazy resolution wakes this
+      // computed up — when the cache fills, we re-emit with comp set.
+      router._loadingSignal()
+      const errored = router._erroredChunks.has(rec)
+      if (errored) return { rec, comp: null, errored: true, route }
+      const cached = router._componentCache.get(rec)
+      if (cached) return { rec, comp: cached, errored: false, route }
+      const raw = rec.component
+      if (!isLazy(raw)) {
+        cacheSet(router, rec, raw)
+        return { rec, comp: raw, errored: false, route }
+      }
+      // Lazy and not yet cached — `child()` below renders the lazy
+      // fallback and triggers the load; once the load completes,
+      // `_loadingSignal` ticks and this computed re-emits with `comp` set.
+      return { rec, comp: null, errored: false, route }
+    },
+    {
+      equals: (a, b) =>
+        a.rec === b.rec &&
+        a.comp === b.comp &&
+        a.errored === b.errored &&
+        a.route === b.route,
+    },
+  )
+
   const child = (): VNodeChild => {
-    router._loadingSignal() // reactive — re-renders after lazy load completes
+    const { rec, comp, route } = depthEntry()
+    if (!rec) return null
 
-    const route = router.currentRoute()
-
-    if (route.matched.length === 0) return null
-
-    // Render the matched record at this view's depth level
-    const record = route.matched[depth]
-    if (!record) return null // no component at this nesting level
-
-    const cached = router._componentCache.get(record)
-    if (cached) {
-      return renderWithLoader(router, record, cached, route)
+    if (comp) {
+      return renderWithLoader(router, rec, comp, route)
     }
 
-    const raw = record.component
-
-    if (!isLazy(raw)) {
-      cacheSet(router, record, raw)
-      return renderWithLoader(router, record, raw, route)
-    }
-
-    return renderLazyRoute(router, record, raw)
+    // Component not yet cached — kick off the lazy load. `renderLazyRoute`
+    // mutates `_loadingSignal` and `_componentCache` on completion, which
+    // re-emits `depthEntry` and re-runs this accessor with `comp` set.
+    return renderLazyRoute(router, rec, rec.component as LazyComponent)
   }
 
   return h('div', { 'data-pyreon-router-view': true }, child as unknown as VNodeChild)

@@ -37,7 +37,14 @@ vi.mock('@pyreon/reactivity', () => {
     return s
   }
 
-  return { signal }
+  // No-op: `@pyreon/core/context.ts` calls `setSnapshotCapture(...)` at
+  // module load to install the reactive-effect context-snapshot DI hook.
+  // Mocked tests don't drive real reactive scoping, so accept the call
+  // and discard. Required since `@pyreon/core` imports `setSnapshotCapture`
+  // from `@pyreon/reactivity` — without this stub the mock factory throws
+  // "No 'setSnapshotCapture' export is defined on the '@pyreon/reactivity' mock."
+  const setSnapshotCapture = () => {}
+  return { signal, setSnapshotCapture }
 })
 
 // onMount / onUnmount are no-ops outside a renderer

@@ -32,6 +32,11 @@ vi.mock('@pyreon/reactivity', () => ({
     sig.debug = () => ({ name: undefined, value, subscriberCount: 0 })
     return sig
   },
+  // No-op stub for the DI hook `@pyreon/core/context.ts` calls at module
+  // load to install reactive-effect context-snapshot capture/restore.
+  // Without this, importing `@pyreon/core` throws "No 'setSnapshotCapture'
+  // export is defined on the '@pyreon/reactivity' mock."
+  setSnapshotCapture: () => {},
 }))
 
 import useStableValue from '../useStableValue'
