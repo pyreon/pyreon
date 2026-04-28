@@ -63,20 +63,29 @@ describe('real-manifests — every packages/<cat>/<pkg>/src/manifest.ts conforms
       // Expected state until T2.1 Phase 2 ships the first manifest.
     })
   } else {
-    it.each(manifestPaths)('conforms to PackageManifest: %s', async (manifestPath) => {
-      const mod = (await import(manifestPath)) as { default?: PackageManifest }
-      expect(mod.default).toBeDefined()
-      const m = mod.default!
-      // Load-bearing invariants the type already enforces at compile
-      // time but we re-assert at runtime as a belt-and-suspenders
-      // guard in case someone casts past the type.
-      expect(typeof m.name).toBe('string')
-      expect(m.name.startsWith('@pyreon/')).toBe(true)
-      expect(typeof m.tagline).toBe('string')
-      expect(typeof m.description).toBe('string')
-      expect(['browser', 'server', 'universal']).toContain(m.category)
-      expect(Array.isArray(m.features)).toBe(true)
-      expect(Array.isArray(m.api)).toBe(true)
-    })
+    // Each test does one dynamic import — locally negligible, but on cold
+    // CI runners the FIRST import in the suite pays the bun-side
+    // transform cost for the whole manifest module graph (~50 files
+    // imported transitively). 30s is well clear of the worst-case CI
+    // measurement while still failing fast on a real hang.
+    it.each(manifestPaths)(
+      'conforms to PackageManifest: %s',
+      async (manifestPath) => {
+        const mod = (await import(manifestPath)) as { default?: PackageManifest }
+        expect(mod.default).toBeDefined()
+        const m = mod.default!
+        // Load-bearing invariants the type already enforces at compile
+        // time but we re-assert at runtime as a belt-and-suspenders
+        // guard in case someone casts past the type.
+        expect(typeof m.name).toBe('string')
+        expect(m.name.startsWith('@pyreon/')).toBe(true)
+        expect(typeof m.tagline).toBe('string')
+        expect(typeof m.description).toBe('string')
+        expect(['browser', 'server', 'universal']).toContain(m.category)
+        expect(Array.isArray(m.features)).toBe(true)
+        expect(Array.isArray(m.api)).toBe(true)
+      },
+      30_000,
+    )
   }
 })
