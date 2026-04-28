@@ -27,19 +27,18 @@ describe('compiler-runtime — JSX whitespace', () => {
     unmount()
   })
 
-  // FIXME(compiler): when an expression sits BETWEEN two static text
-  // segments on the same line (text-expr-text shape), the compiler
-  // appends the dynamic text node to the parent's children AFTER all
-  // static text instead of inserting it in the middle. The whitespace
-  // itself is preserved correctly (#352 fix works), but the positioning
-  // is wrong. Compiled output:
-  //   `<p>{x()} remaining</p>` → template `<p> remaining</p>` + appended
-  //   text node → renders as " remaining3" instead of "3 remaining".
-  // Bug discovered while authoring B2 — separate from #352's whitespace
-  // bug (this is positioning, that was stripping). Re-enable both tests
-  // once the compiler emits an `insertBefore` instead of `appendChild`
-  // for dynamic text between static segments.
-  it.skip('preserves leading space after expression on same line', async () => {
+  // Regression: when an expression sits BETWEEN static text segments
+  // on the same line, the compiler used to append the dynamic text
+  // node to the parent's children AFTER all static text via
+  // `appendChild`. Whitespace was preserved correctly (#352), but
+  // positioning was wrong:
+  //   `<p>{x()} remaining</p>` → template `<p> remaining</p>` +
+  //   appended text → renders as " remaining3" instead of "3 remaining".
+  // Fix: extend `analyzeChildren.useMixed` to fire whenever ≥2 of
+  // {element, text, expression} are present (not just element+nonElement).
+  // Then placeholder-based positional mounting puts the dynamic text in
+  // the right slot via `replaceChild`.
+  it('preserves leading space after expression on same line', async () => {
     const x = signal(3)
     const { container, unmount } = compileAndMount(
       `<div><p id="p">{x()} remaining</p></div>`,
@@ -49,7 +48,7 @@ describe('compiler-runtime — JSX whitespace', () => {
     unmount()
   })
 
-  it.skip('preserves spaces on BOTH sides of expression', async () => {
+  it('preserves spaces on BOTH sides of expression', async () => {
     const x = signal('cat')
     const { container, unmount } = compileAndMount(
       `<div><p id="p">a {x()} b</p></div>`,
@@ -76,9 +75,7 @@ describe('compiler-runtime — JSX whitespace', () => {
     unmount()
   })
 
-  // Same FIXME as above — text-expr-text positioning is broken; expression
-  // is appended after all static text. Re-enable once the compiler fix lands.
-  it.skip('reactive text updates without losing surrounding whitespace', async () => {
+  it('reactive text updates without losing surrounding whitespace', async () => {
     const x = signal(0)
     const { container, unmount } = compileAndMount(
       `<div><p id="p">count: {x()} items</p></div>`,
