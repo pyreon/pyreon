@@ -328,4 +328,159 @@ describe('detectPyreonPatterns', () => {
       expect(lines).toEqual([...lines].sort((a, b) => a - b))
     })
   })
+
+  describe('signal-write-as-call', () => {
+    it('flags `sig(value)` when sig was declared as a signal', () => {
+      const code = `
+        import { signal } from '@pyreon/reactivity'
+        const count = signal(0)
+        function inc() { count(count() + 1) }
+      `
+      const diags = detectPyreonPatterns(code)
+      const hits = diags.filter((d) => d.code === 'signal-write-as-call')
+      expect(hits).toHaveLength(1)
+      expect(hits[0]!.message).toContain('signal()')
+      expect(hits[0]!.suggested).toContain('count.set(')
+    })
+
+    it('does NOT flag `sig()` (zero args — that is the read API)', () => {
+      const code = `
+        const count = signal(0)
+        function read() { return count() }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'signal-write-as-call')).toEqual([])
+    })
+
+    it('does NOT flag `sig.set(value)` (the proper write API)', () => {
+      const code = `
+        const count = signal(0)
+        function set(v) { count.set(v) }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'signal-write-as-call')).toEqual([])
+    })
+
+    it('does NOT flag calls on identifiers that are not signal-bound', () => {
+      const code = `
+        const handler = (v) => console.log(v)
+        handler(42)
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'signal-write-as-call')).toEqual([])
+    })
+
+    it('flags `computed(value)` shape too — same misread of the API', () => {
+      const code = `
+        const doubled = computed(() => count() * 2)
+        function bug() { doubled(99) }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'signal-write-as-call')).toHaveLength(1)
+    })
+  })
+
+  describe('static-return-null-conditional', () => {
+    it('flags `if (cond) return null` at the top of a component body', () => {
+      const code = `
+        function TabPanel({ id }) {
+          if (!isActive(id)) return null
+          return <div class="panel">content</div>
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      const hits = diags.filter((d) => d.code === 'static-return-null-conditional')
+      expect(hits).toHaveLength(1)
+      expect(hits[0]!.message).toContain('run ONCE')
+      expect(hits[0]!.suggested).toContain('=> {')
+    })
+
+    it('flags the block-form `if (cond) { return null }` too', () => {
+      const code = `
+        function Modal() {
+          if (!isOpen()) {
+            return null
+          }
+          return <div class="modal">…</div>
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(
+        diags.filter((d) => d.code === 'static-return-null-conditional'),
+      ).toHaveLength(1)
+    })
+
+    it('does NOT flag non-component functions returning null', () => {
+      const code = `
+        function findUser(id) {
+          if (!id) return null
+          return { id }
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'static-return-null-conditional')).toEqual([])
+    })
+
+    it('does NOT flag the recommended reactive-accessor pattern', () => {
+      const code = `
+        function TabPanel() {
+          return (() => {
+            if (!isActive()) return null
+            return <div>content</div>
+          })
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      // The inner arrow contains the if-return-null but is itself a
+      // returned reactive accessor — not the "static-return-null" shape
+      // because the OUTER component's body has no top-level if-return-null.
+      expect(diags.filter((d) => d.code === 'static-return-null-conditional')).toEqual([])
+    })
+
+    it('only flags ONCE per component body even when chained', () => {
+      const code = `
+        function MultiGuard() {
+          if (!a()) return null
+          if (!b()) return null
+          return <div>ok</div>
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(
+        diags.filter((d) => d.code === 'static-return-null-conditional'),
+      ).toHaveLength(1)
+    })
+  })
+
+  describe('as-unknown-as-vnodechild', () => {
+    it('flags `expr as unknown as VNodeChild`', () => {
+      const code = `
+        function Wrapper() {
+          return (<div>hi</div> as unknown as VNodeChild)
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      const hits = diags.filter((d) => d.code === 'as-unknown-as-vnodechild')
+      expect(hits).toHaveLength(1)
+      expect(hits[0]!.message).toContain('JSX.Element')
+    })
+
+    it('does NOT flag a single `as VNodeChild` (no double-cast)', () => {
+      const code = `
+        function Wrapper() {
+          return (something as VNodeChild)
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'as-unknown-as-vnodechild')).toEqual([])
+    })
+
+    it('does NOT flag `as unknown as OtherType`', () => {
+      const code = `
+        const x = (foo as unknown as Whatever)
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'as-unknown-as-vnodechild')).toEqual([])
+    })
+  })
 })
