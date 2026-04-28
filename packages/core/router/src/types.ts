@@ -435,6 +435,13 @@ export interface RouterInstance extends Router {
   _navigationStartTime: number
   /** Key-based loader cache: cacheKey → { data, timestamp } */
   _loaderCache: Map<string, { data: unknown; timestamp: number }>
-  /** In-flight loader dedup: cacheKey → Promise */
-  _loaderInflight: Map<string, Promise<unknown>>
+  /**
+   * In-flight loader dedup: cacheKey → { promise, signal }.
+   * Tracking the signal lets dedup skip an in-flight entry whose signal is
+   * already aborted — otherwise nav-2 would inherit nav-1's aborted promise
+   * (`router.push` aborts the previous nav's controller before starting the
+   * next, so back-to-back nav to the same path could resolve nav-2 against
+   * nav-1's aborted fetch).
+   */
+  _loaderInflight: Map<string, { promise: Promise<unknown>; signal: AbortSignal }>
 }

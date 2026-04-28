@@ -671,9 +671,15 @@ export function createRouter<TNames extends string = string>(
       }
     }
 
-    // 2. Dedup in-flight
+    // 2. Dedup in-flight — but only if the in-flight signal is still live.
+    // Pre-fix: nav-1 starts loader (signal=ac1.signal). User navigates again
+    // to the same path → nav-2's `router.push` first calls `_abortController?.abort()`
+    // (aborting ac1), then calls executeLoader. The Map still holds nav-1's
+    // promise (the .catch hasn't run yet); deduping returns it, but its
+    // signal is already aborted → nav-2 ends up with a rejected promise
+    // even though it has its own fresh ac2.signal. Now we check liveness.
     const inflight = router._loaderInflight.get(key)
-    if (inflight) return inflight
+    if (inflight && !inflight.signal.aborted) return inflight.promise
 
     // 3. Execute
     if (__DEV__) _countSink.__pyreon_count__?.('router.loaderRun')
@@ -681,15 +687,21 @@ export function createRouter<TNames extends string = string>(
       .loader(loaderCtx)
       .then((data) => {
         loaderCacheSet(key, data)
-        router._loaderInflight.delete(key)
+        // Only delete if WE'RE still the registered in-flight (a later nav
+        // may have replaced the entry with a fresh promise).
+        if (router._loaderInflight.get(key)?.promise === promise) {
+          router._loaderInflight.delete(key)
+        }
         return data
       })
       .catch((err) => {
-        router._loaderInflight.delete(key)
+        if (router._loaderInflight.get(key)?.promise === promise) {
+          router._loaderInflight.delete(key)
+        }
         throw err
       })
 
-    router._loaderInflight.set(key, promise)
+    router._loaderInflight.set(key, { promise, signal: loaderCtx.signal })
     return promise
   }
 

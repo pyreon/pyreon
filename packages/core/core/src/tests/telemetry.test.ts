@@ -140,3 +140,64 @@ describe('reportError', () => {
     unsub()
   })
 })
+
+// ─── Regression: reactivity effect errors reach core's registerErrorHandler ──
+//
+// Pre-fix: `@pyreon/reactivity` had its own `setErrorHandler` API that drove
+// effect errors to `console.error`. `@pyreon/core`'s `registerErrorHandler`
+// captured component / mount / render / unmount errors only — effect errors
+// never reached it. Sentry/Datadog wiring missed the entire reactive surface.
+//
+// Post-fix: `registerErrorHandler` installs a `globalThis.__pyreon_report_error__`
+// bridge. Reactivity's effect-error path forwards through that bridge, so
+// effect errors flow into the same `reportError` pipeline as component
+// errors with phase='effect'.
+describe('registerErrorHandler — reactivity bridge (regression)', () => {
+  test('effect() errors forward into registered telemetry handler', async () => {
+    // Use a clean global state. The bridge install is idempotent within one
+    // global; re-importing reactivity here re-uses the same module instance.
+    const { effect, signal } = await import('@pyreon/reactivity')
+
+    const captured: ErrorContext[] = []
+    const unsub = registerErrorHandler((ctx) => captured.push(ctx))
+
+    const trigger = signal(0)
+    effect(() => {
+      if (trigger() > 0) throw new Error('boom in effect')
+    })
+
+    // Trigger the throw
+    trigger.set(1)
+    await new Promise<void>((r) => queueMicrotask(() => r()))
+
+    // Captured exactly once — through the bridge.
+    expect(captured).toHaveLength(1)
+    expect(captured[0]?.phase).toBe('effect')
+    expect(captured[0]?.component).toBe('Effect')
+    expect((captured[0]?.error as Error).message).toBe('boom in effect')
+
+    unsub()
+  })
+
+  test('multiple handlers all receive forwarded effect errors', async () => {
+    const { effect, signal } = await import('@pyreon/reactivity')
+
+    let count1 = 0
+    let count2 = 0
+    const unsub1 = registerErrorHandler(() => count1++)
+    const unsub2 = registerErrorHandler(() => count2++)
+
+    const trigger = signal(0)
+    effect(() => {
+      if (trigger() > 0) throw new Error('boom')
+    })
+    trigger.set(1)
+    await new Promise<void>((r) => queueMicrotask(() => r()))
+
+    expect(count1).toBe(1)
+    expect(count2).toBe(1)
+
+    unsub1()
+    unsub2()
+  })
+})
