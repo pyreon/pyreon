@@ -397,3 +397,42 @@ describe('effect — error handling', () => {
     setErrorHandler((_err) => {})
   })
 })
+
+// ─── Audit bug #1: async effect runtime warning ──────────────────────────────
+//
+// Companion to the `pyreon/no-async-effect` lint rule. The runtime warn
+// catches the case where the lint rule was suppressed or the effect call
+// site was constructed dynamically (e.g. via a higher-order helper that
+// the lint rule's static check doesn't see).
+
+describe('effect — async function warning (audit bug #1)', () => {
+  test('warns when called with an async arrow function', () => {
+    const warns: string[] = []
+    const orig = console.warn
+    console.warn = (...args: unknown[]) => warns.push(args.join(' '))
+    try {
+      // Async effect callbacks are intentionally NOT in `effect()`'s type
+      // signature — that's the point. The test deliberately misuses the
+      // API to verify the runtime warning catches what the type system
+      // would normally reject. Cast through `unknown` to silence TS.
+      const asyncFn = async (): Promise<void> => {}
+      effect(asyncFn as unknown as () => void)
+    } finally {
+      console.warn = orig
+    }
+    expect(warns.some((m) => m.includes('async function'))).toBe(true)
+    expect(warns.some((m) => m.includes('await'))).toBe(true)
+  })
+
+  test('does NOT warn for synchronous effect callbacks', () => {
+    const warns: string[] = []
+    const orig = console.warn
+    console.warn = (...args: unknown[]) => warns.push(args.join(' '))
+    try {
+      effect(() => {})
+    } finally {
+      console.warn = orig
+    }
+    expect(warns.some((m) => m.includes('async function'))).toBe(false)
+  })
+})

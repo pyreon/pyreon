@@ -281,7 +281,7 @@ const mode = useMode()  // "light" | "dark" (reactive signal)
 - @pyreon/url-state — URL-synced state — useUrlState(key, default) or schema mode, auto type coercion, SSR-safe. Type coercion is based on the default value: `useUrlState("page", 1)` coerces `?page=2` to number `2`. `useUrlState("page", "1")` keeps it as string `"1"`. Always provide the right type as default.
 - @pyreon/storybook — Storybook renderer for Pyreon components
 - @pyreon/mcp — Model Context Protocol server — live API lookup, validation, migration, anti-pattern catalog, changelog, test-environment audit. Each `createServer()` instance maintains its own cached context (routes, components, islands). The cache auto-resets when `process.cwd()` changes between tool invocations, so the same server can operate across multiple projects in one session.
-- @pyreon/lint — Pyreon-specific linter — 61 rules across 12 categories, config files, watch mode, AST cache, CLI + LSP
+- @pyreon/lint — Pyreon-specific linter — 62 rules across 12 categories, config files, watch mode, AST cache, CLI + LSP
 
 ## Zero (Full-Stack Framework)
 

@@ -43,6 +43,7 @@ import { noEffectInFor } from './performance/no-effect-in-for'
 import { noLargeForWithoutBy } from './performance/no-large-for-without-by'
 import { preferShowOverDisplay } from './performance/prefer-show-over-display'
 // Reactivity
+import { noAsyncEffect } from './reactivity/no-async-effect'
 import { noBareSignalInJsx } from './reactivity/no-bare-signal-in-jsx'
 import { noContextDestructure } from './reactivity/no-context-destructure'
 import { noEffectAssignment } from './reactivity/no-effect-assignment'
@@ -74,7 +75,8 @@ import { noThemeOutsideProvider } from './styling/no-theme-outside-provider'
 import { preferCx } from './styling/prefer-cx'
 
 export const allRules: Rule[] = [
-  // Reactivity (11)
+  // Reactivity (12)
+  noAsyncEffect,
   noBareSignalInJsx,
   noContextDestructure,
   noSignalInLoop,
@@ -155,6 +157,7 @@ export {
   dialogA11y,
   noAndConditional,
   // Reactivity
+  noAsyncEffect,
   noBareSignalInJsx,
   noContextDestructure,
   noChildrenAccess,

@@ -25,6 +25,26 @@ export interface UseSSEOptions<T = string> {
   maxReconnectAttempts?: number
   /** Whether to send cookies with the request — default: false */
   withCredentials?: boolean
+  /**
+   * Seed for `lastEventId()` — used when resuming an SSE stream across a
+   * component remount (or from `useStorage`-backed persistence). Browser
+   * `EventSource` only auto-resumes within a SINGLE instance lifetime;
+   * a fresh hook starts the ID at `''` unless seeded here. The standard
+   * server-cooperation pattern is to read it from a URL query param:
+   *
+   * ```ts
+   * const lastId = useStorage('chat-last-id', '')
+   * const sse = useSSE({
+   *   url: () => `/api/events?lastId=${lastId() || ''}`,
+   *   initialLastEventId: lastId,
+   *   onMessage: (msg) => lastId.set(msg.id),
+   * })
+   * ```
+   *
+   * Accepts a string or accessor. Read once at mount; subsequent changes
+   * are ignored (use the reactive `url` for runtime overrides).
+   */
+  initialLastEventId?: string | (() => string)
   /** Called when a message is received — use queryClient to invalidate or update cache */
   onMessage?: (data: T, queryClient: QueryClient) => void
   /** Called when the EventSource connection opens */
@@ -80,7 +100,16 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
   const data = signal<T | null>(null)
   const status = signal<SSEStatus>('disconnected')
   const error = signal<Event | null>(null)
-  const lastEventId = signal('')
+  // Seed the lastEventId from `initialLastEventId` so consumers can resume
+  // a stream across remount (audit bug #3). EventSource has no API to set
+  // a Last-Event-ID header on the FIRST connection — server cooperation
+  // (URL query param) is required. The seed makes the value available
+  // immediately so the consumer's `url` function can read it.
+  const initialId =
+    typeof options.initialLastEventId === 'function'
+      ? options.initialLastEventId()
+      : (options.initialLastEventId ?? '')
+  const lastEventId = signal(initialId)
   const readyState = signal<number>(2) // Start as CLOSED until connected
 
   let es: EventSource | null = null

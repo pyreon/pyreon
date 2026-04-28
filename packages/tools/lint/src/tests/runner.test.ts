@@ -53,8 +53,8 @@ function lintWith(ruleId: string, source: string, filePath?: string) {
 // ── Rule Metadata ───────────────────────────────────────────────────────────
 
 describe('Rule metadata', () => {
-  it('should have 61 rules', () => {
-    expect(allRules.length).toBe(61)
+  it('should have 62 rules', () => {
+    expect(allRules.length).toBe(62)
   })
 
   it('should have unique rule IDs', () => {
@@ -94,7 +94,7 @@ describe('Rule metadata', () => {
     for (const rule of allRules) {
       counts[rule.meta.category] = (counts[rule.meta.category] ?? 0) + 1
     }
-    expect(counts.reactivity).toBe(11)
+    expect(counts.reactivity).toBe(12)
     expect(counts.jsx).toBe(11)
     expect(counts.lifecycle).toBe(5)
     expect(counts.performance).toBe(4)
@@ -275,6 +275,37 @@ describe('Reactivity rules', () => {
     const result = lintSource(source)
     const diags = findByRule(result, 'pyreon/no-nested-effect')
     expect(diags.length).toBe(1)
+  })
+
+  // ── Audit bug #1: async-effect catch ────────────────────────────────────
+  it('pyreon/no-async-effect: flags async arrow in effect()', () => {
+    const source = `effect(async () => { const id = userId(); const data = await fetch('/x'); name.set(data) })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-async-effect')
+    expect(diags.length).toBe(1)
+    expect(diags[0]?.message).toContain('async')
+    expect(diags[0]?.message).toContain('await')
+  })
+
+  it('pyreon/no-async-effect: flags async function expression in effect()', () => {
+    const source = `effect(async function () { await x() })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-async-effect')
+    expect(diags.length).toBe(1)
+  })
+
+  it('pyreon/no-async-effect: clean for synchronous effect', () => {
+    const source = `effect(() => { name.set(userId()) })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-async-effect')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-async-effect: does not flag async on non-effect calls', () => {
+    const source = `setTimeout(async () => { await x() }, 100)`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-async-effect')
+    expect(diags.length).toBe(0)
   })
 
   it('pyreon/no-peek-in-tracked: flags .peek() inside effect', () => {
@@ -1900,7 +1931,7 @@ describe('Ignore filter', () => {
 describe('Presets', () => {
   it('recommended should include all rules', () => {
     const config = getPreset('recommended')
-    expect(Object.keys(config.rules).length).toBe(61)
+    expect(Object.keys(config.rules).length).toBe(62)
   })
 
   it('strict should promote all warns to errors', () => {
