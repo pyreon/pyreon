@@ -3,7 +3,16 @@
 export { DELEGATED_EVENTS, delegatedPropName, setupDelegation } from './delegate'
 export type { DevtoolsComponentEntry, PyreonDevtools } from './devtools'
 export { hydrateRoot } from './hydrate'
-export { disableHydrationWarnings, enableHydrationWarnings } from './hydration-debug'
+export type {
+  HydrationMismatchContext,
+  HydrationMismatchHandler,
+  HydrationMismatchType,
+} from './hydration-debug'
+export {
+  disableHydrationWarnings,
+  enableHydrationWarnings,
+  onHydrationMismatch,
+} from './hydration-debug'
 export type { KeepAliveProps } from './keep-alive'
 export { KeepAlive } from './keep-alive'
 export { mountChild } from './mount'

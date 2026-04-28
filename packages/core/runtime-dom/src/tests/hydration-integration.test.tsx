@@ -373,3 +373,136 @@ describe('hydration integration — mismatch recovery', () => {
     cleanup()
   })
 })
+
+// ─── onHydrationMismatch telemetry hook ────────────────────────────────────
+//
+// Pre-fix: runtime-dom emitted hydration mismatches via console.warn ONLY,
+// gated on __DEV__. Production deployments (Sentry, Datadog) had no
+// integration point — mismatches surfaced as silent recovery (text
+// rewritten or DOM remounted) with no telemetry signal. The asymmetry
+// with `@pyreon/core`'s `registerErrorHandler` (which captures component
+// + reactivity errors via the `__pyreon_report_error__` bridge) was the
+// gap.
+//
+// Post-fix: `onHydrationMismatch(handler)` registers a callback fired on
+// EVERY mismatch in dev AND prod, independent of the warn toggle.
+// Mirrors core's `registerErrorHandler` shape.
+describe('hydration integration — onHydrationMismatch telemetry hook', () => {
+  test('handler fires with full mismatch context on tag mismatch', async () => {
+    const { onHydrationMismatch } = await import('../hydration-debug')
+    const captured: Array<{ type: string; expected: unknown; actual: unknown; path: string; timestamp: number }> = []
+    const unsub = onHydrationMismatch((ctx) => {
+      captured.push({
+        type: ctx.type,
+        expected: ctx.expected,
+        actual: ctx.actual,
+        path: ctx.path,
+        timestamp: ctx.timestamp,
+      })
+    })
+
+    const el = container()
+    el.innerHTML = '<div>server content</div>'
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const cleanup = hydrateRoot(el, h('span', null, 'client content'))
+
+    expect(captured.length).toBeGreaterThan(0)
+    const tagMismatch = captured.find((c) => c.type === 'tag')
+    expect(tagMismatch).toBeDefined()
+    expect(tagMismatch?.expected).toBe('span')
+    expect(typeof tagMismatch?.path).toBe('string')
+    expect(typeof tagMismatch?.timestamp).toBe('number')
+
+    cleanup()
+    unsub()
+    warnSpy.mockRestore()
+  })
+
+  test('handler fires for tag mismatch in production-style silence (warn disabled)', () => {
+    const el = container()
+    el.innerHTML = '<div>server content</div>'
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    disableHydrationWarnings() // simulate production: warns silenced
+
+    return import('../hydration-debug').then(({ onHydrationMismatch }) => {
+      const captured: Array<{ type: string }> = []
+      const unsub = onHydrationMismatch((ctx) => {
+        captured.push({ type: ctx.type })
+      })
+
+      const cleanup = hydrateRoot(el, h('span', null, 'client content'))
+
+      // Telemetry hook fired even with warn disabled — independent.
+      expect(captured.length).toBeGreaterThan(0)
+      expect(captured.some((c) => c.type === 'tag')).toBe(true)
+      // console.warn was NOT called (production-style silence).
+      expect(warnSpy).not.toHaveBeenCalled()
+
+      cleanup()
+      unsub()
+      warnSpy.mockRestore()
+      enableHydrationWarnings()
+    })
+  })
+
+  test('multiple handlers all receive forwarded mismatches; unsub stops one cleanly', async () => {
+    const { onHydrationMismatch } = await import('../hydration-debug')
+    let count1 = 0
+    let count2 = 0
+    const unsub1 = onHydrationMismatch(() => count1++)
+    const unsub2 = onHydrationMismatch(() => count2++)
+
+    const el = container()
+    el.innerHTML = '<div>server</div>'
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const cleanup = hydrateRoot(el, h('span', null, 'client'))
+
+    expect(count1).toBeGreaterThan(0)
+    expect(count1).toBe(count2)
+
+    // Unsubscribe one — only the other fires next time.
+    unsub1()
+    const before2 = count2
+    const el2 = container()
+    el2.innerHTML = '<p>foo</p>'
+    const cleanup2 = hydrateRoot(el2, h('article', null, 'bar'))
+
+    expect(count2).toBeGreaterThan(before2)
+
+    cleanup()
+    cleanup2()
+    unsub2()
+    warnSpy.mockRestore()
+  })
+
+  test('handler errors do not propagate into hydration', async () => {
+    const { onHydrationMismatch } = await import('../hydration-debug')
+    let goodHandlerFired = false
+    const unsubBad = onHydrationMismatch(() => {
+      throw new Error('telemetry SDK exploded')
+    })
+    const unsubGood = onHydrationMismatch(() => {
+      goodHandlerFired = true
+    })
+
+    const el = container()
+    el.innerHTML = '<div>server</div>'
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    disableHydrationWarnings()
+
+    // Hydration must complete without throwing despite bad handler.
+    const cleanup = hydrateRoot(el, h('span', null, 'client'))
+    expect(goodHandlerFired).toBe(true)
+    // Client content still rendered — recovery worked.
+    expect(el.textContent).toContain('client')
+
+    cleanup()
+    unsubBad()
+    unsubGood()
+    warnSpy.mockRestore()
+    enableHydrationWarnings()
+  })
+})
