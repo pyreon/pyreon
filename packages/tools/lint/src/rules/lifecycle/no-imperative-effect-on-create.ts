@@ -58,22 +58,64 @@ const IMPERATIVE_BROWSER_OBJECTS = new Set([
 ])
 
 /**
+ * Constructor names whose presence inside an `effect()` body signals
+ * imperative API setup (observers, workers, network sockets) that
+ * should run from `onMount` — not synchronously per-instance at
+ * component setup time. Observer registration and socket allocation
+ * are unambiguously imperative and never tracked as reactive reads.
+ */
+const IMPERATIVE_CONSTRUCTORS = new Set([
+  'IntersectionObserver',
+  'ResizeObserver',
+  'MutationObserver',
+  'PerformanceObserver',
+  'Worker',
+  'SharedWorker',
+  'WebSocket',
+  'EventSource',
+  'BroadcastChannel',
+])
+
+/**
+ * Returns true when `node` is an immediately-invoked function
+ * expression — i.e. a `CallExpression` whose callee is a function
+ * literal: `(() => { ... })()` or `(function () { ... })()`. The body
+ * runs synchronously at the call site, so for our purposes it should
+ * be walked even though it's structurally a "nested function".
+ *
+ * Parenthesized callees (`(arrow)()`) come through as
+ * `ParenthesizedExpression` wrapping the function — unwrap one level.
+ */
+function isIIFE(node: any): boolean {
+  if (!node || node.type !== 'CallExpression') return false
+  let callee = node.callee
+  if (callee?.type === 'ParenthesizedExpression') callee = callee.expression
+  return (
+    callee?.type === 'ArrowFunctionExpression' || callee?.type === 'FunctionExpression'
+  )
+}
+
+/**
  * Walk the effect callback body and look for imperative patterns.
  * Returns the first matching node + a short label describing what was
  * found, or null when the body is pure reactive tracking.
  *
  * Stops at nested function boundaries — code inside a nested function
  * (e.g. an event handler the effect attaches) is deferred-execution
- * and doesn't run synchronously at effect setup.
+ * and doesn't run synchronously at effect setup. The exception is
+ * IIFE callees: those run at the call site, so we descend into them.
  */
-function findImperativePattern(node: any): { node: any; label: string } | null {
+function findImperativePattern(node: any, insideIIFE = false): { node: any; label: string } | null {
   if (!node || typeof node !== 'object') return null
 
-  // Stop descent into nested functions — their bodies run later.
+  // Stop descent into nested functions — their bodies run later — UNLESS
+  // we descended via an IIFE call (the inline-invoked function body
+  // does run synchronously at the call site).
   if (
-    node.type === 'FunctionExpression' ||
-    node.type === 'FunctionDeclaration' ||
-    node.type === 'ArrowFunctionExpression'
+    !insideIIFE &&
+    (node.type === 'FunctionExpression' ||
+      node.type === 'FunctionDeclaration' ||
+      node.type === 'ArrowFunctionExpression')
   ) {
     return null
   }
@@ -81,6 +123,14 @@ function findImperativePattern(node: any): { node: any; label: string } | null {
   // `await` keyword — signals async work in the effect body.
   if (node.type === 'AwaitExpression') {
     return { node, label: '`await` (async work)' }
+  }
+
+  // `new IntersectionObserver(...)` / `new Worker(...)` / etc.
+  if (node.type === 'NewExpression') {
+    const callee = node.callee
+    if (callee?.type === 'Identifier' && IMPERATIVE_CONSTRUCTORS.has(callee.name)) {
+      return { node, label: `\`new ${callee.name}(...)\`` }
+    }
   }
 
   // `fetch(...)` / `setTimeout(...)` / etc.
@@ -106,6 +156,18 @@ function findImperativePattern(node: any): { node: any; label: string } | null {
         return { node, label: `\`${obj.name}.${method}(...)\`` }
       }
     }
+
+    // IIFE — descend into the function body even though it's a nested
+    // function, because it runs synchronously here.
+    if (isIIFE(node)) {
+      let calleeFn = callee
+      if (calleeFn?.type === 'ParenthesizedExpression') calleeFn = calleeFn.expression
+      const body = calleeFn?.body
+      if (body) {
+        const found = findImperativePattern(body, true)
+        if (found) return found
+      }
+    }
   }
 
   // `document.X` / `window.X` member READS that aren't part of a call —
@@ -121,17 +183,21 @@ function findImperativePattern(node: any): { node: any; label: string } | null {
     return { node, label: `\`${node.object.name}.${node.property.name}\`` }
   }
 
-  // Recurse.
+  // Recurse. After we've descended INTO an IIFE body, child nodes
+  // shouldn't keep treating themselves as "inside an IIFE" forever —
+  // we want the next nested function (a real handler) to bail. So
+  // pass `false` to recursive calls: only the immediate IIFE-body
+  // first-level walk gets `true`, then it resets.
   for (const key in node) {
     if (key === 'parent' || key === 'loc' || key === 'range' || key === 'type') continue
     const value = node[key]
     if (Array.isArray(value)) {
       for (const child of value) {
-        const found = findImperativePattern(child)
+        const found = findImperativePattern(child, false)
         if (found) return found
       }
     } else if (value && typeof value === 'object') {
-      const found = findImperativePattern(value)
+      const found = findImperativePattern(value, false)
       if (found) return found
     }
   }

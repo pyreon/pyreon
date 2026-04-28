@@ -643,6 +643,65 @@ describe('Lifecycle rules', () => {
     const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
     expect(diags.length).toBe(1)
   })
+
+  it('pyreon/no-imperative-effect-on-create: flags new IntersectionObserver inside effect', () => {
+    const source = `effect(() => { const io = new IntersectionObserver(() => {}) })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(1)
+    expect(diags[0]?.message).toContain('IntersectionObserver')
+  })
+
+  it('pyreon/no-imperative-effect-on-create: flags new ResizeObserver inside effect', () => {
+    const source = `effect(() => { new ResizeObserver(() => {}).observe(el) })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(1)
+    expect(diags[0]?.message).toContain('ResizeObserver')
+  })
+
+  it('pyreon/no-imperative-effect-on-create: flags new WebSocket inside effect', () => {
+    const source = `effect(() => { const ws = new WebSocket(url()) })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(1)
+    expect(diags[0]?.message).toContain('WebSocket')
+  })
+
+  it('pyreon/no-imperative-effect-on-create: flags fetch inside IIFE inside effect', () => {
+    // IIFE — `(async () => { await fetch() })()` runs synchronously at
+    // the call site, so its body should be walked even though it's
+    // structurally a "nested function".
+    const source = `effect(() => { (async () => { await fetch('/api') })() })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(1)
+  })
+
+  it('pyreon/no-imperative-effect-on-create: flags fetch inside arrow-IIFE expression-body', () => {
+    const source = `effect(() => (() => fetch('/api'))())`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(1)
+  })
+
+  it('pyreon/no-imperative-effect-on-create: clean for empty IIFE', () => {
+    const source = `effect(() => { (() => {})() })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-imperative-effect-on-create: still bails at handler inside IIFE', () => {
+    // `setTimeout(...)` IS flagged, but the inner fetch (inside the
+    // setTimeout callback — a real deferred handler) should NOT
+    // double-fire. Single diagnostic for setTimeout, not two.
+    const source = `effect(() => { (() => { setTimeout(() => fetch('/api')) })() })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(1)
+    expect(diags[0]?.message).toContain('setTimeout')
+  })
 })
 
 // ── Performance Rules ───────────────────────────────────────────────────────

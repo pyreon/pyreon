@@ -71,6 +71,10 @@ export function Toaster(props?: ToasterProps): VNodeChild {
 
   // Promote "entering" toasts to "visible" on next frame.
   // Only runs when there are actually entering toasts (early return guard).
+  // Reason for the suppression below: rAF is scheduling reactive state
+  // updates (entering → visible), not setup work. Singleton Toaster, not
+  // per-instance — accumulation doesn't apply.
+  // pyreon-lint-disable-next-line pyreon/no-imperative-effect-on-create
   effect(() => {
     const toasts = _toasts()
     const hasEntering = toasts.some((t) => t.state === 'entering')
