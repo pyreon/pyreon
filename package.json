@@ -42,6 +42,7 @@
     "test:coverage": "bun scripts/check-coverage.ts",
     "audit-types": "bun scripts/audit-types.ts",
     "verify-modes": "bun scripts/verify-modes.ts",
+    "check-bundle-budgets": "bun scripts/check-bundle-budgets.ts",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "bun run build && bun run scripts/publish.ts"

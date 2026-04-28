@@ -886,6 +886,33 @@ CI runs this on every PR as a required check (`Verify Modes` job in `.github/wor
 
 The matrix today (post-PR introducing the gate): 11 cells covering ssr-showcase, app-showcase, ui-showcase, playground, fundamentals-playground across ssr/ssg/spa modes. Total runtime ~90s. SSG cells include both explicit-paths and autodetect variants (different code paths in `ssg-plugin.ts`).
 
+## Check Bundle Budgets — per-package main-entry size gate
+
+`scripts/check-bundle-budgets.ts` enforces a locked gzipped budget on every published package's main entry. The budgets live in `scripts/bundle-budgets.json` (current size at PR-time + 25% headroom, regenerated when growth is intentional).
+
+```bash
+bun run check-bundle-budgets         # exit non-zero if over budget
+bun run check-bundle-budgets --json  # machine-readable
+bun run check-bundle-budgets --update # regenerate budgets after intentional growth
+```
+
+The gate exists because the audit caught `@pyreon/flow` shipping 6.8MB unpacked (mostly source maps + a correctly-architected lazy chunk) by eyeballing `du -sh`. A locked-budget gate is the structural answer: any PR that grows a main entry past its budget fails until the budget is bumped explicitly. The budget bump itself is the PR signal — "this package legitimately got bigger."
+
+**Measurement details:**
+
+- Bundles each package's `lib/index.js` (the published entry), not `src/`. Bundling from `src/` triggers a Bun resolver edge case where relative imports get treated as external via the package's exports field.
+- Externalizes `@pyreon/*`, `node:*`, `@tanstack/*`, `echarts`, `elkjs`, `codemirror` — the budget reflects bytes UNIQUE to this package, not bytes shared with workspace siblings or peer-installed deps.
+- `splitting: true` keeps dynamic imports as separate chunks. Flow's elkjs, document's PDF/DOCX renderers, and other lazy-loaded heavy deps are EXCLUDED from the main-entry measurement by design — they only load on-demand when the consumer invokes the feature.
+- Gzipped size is the budgeted dimension because that's what consumers actually pay over the wire.
+
+CI runs this as a required `Check Bundle Budgets` job.
+
+## @pyreon/table — public surface drift gate
+
+`packages/fundamentals/table/src/tests/public-surface.test.ts` snapshots the full set of names exported from `@pyreon/table` (50+ entries — most via `export * from '@tanstack/table-core'`, plus the 2 Pyreon adapter symbols). When TanStack adds, renames, or removes an export in a minor bump, the snapshot fails and the diff becomes the deliberate-decision moment that wildcard re-exports otherwise paper over.
+
+The wildcard is intentional — it mirrors the convention used by every official TanStack adapter (`@tanstack/react-table`, `@tanstack/solid-table`, `@tanstack/svelte-table`, `@tanstack/vue-table`). Converting to named exports would diverge from the convention without buying a real migration window (the lockfile + this snapshot give the migration window). When the snapshot fails after a TanStack version bump, run `bunx vitest run --update public-surface` from the table package and review the diff: added/removed names should match the TanStack changelog. If TanStack added a debug or internal API we DON'T want to leak through, narrow `index.ts` from `export *` to a named list (case-by-case decision).
+
 ## E2E — real-Chromium tests against example apps
 
 `bun run test:e2e` runs Playwright against `examples/playground` in real Chromium. Tests live in `e2e/` and exercise framework primitives via `window.__pyreon` (mount/unmount, signal-driven DOM updates, computed values, batching, conditional rendering, list reconciliation, router navigation). Companion to `verify-modes` (build artifacts) — together they cover both the static output AND the runtime behavior.
