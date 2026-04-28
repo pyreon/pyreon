@@ -13,6 +13,7 @@
   },
   "files": [
     "lib",
+    "!lib/**/*.map",
     "src",
     "README.md",
     "LICENSE"

@@ -415,6 +415,40 @@ jobs:
       - name: Verify each package main-entry within budget
         run: bun run check-bundle-budgets
 
+  # ── Check distribution: bundle/distribution hygiene gate ──────────────
+  # Asserts every published @pyreon/* package declares `sideEffects` (so
+  # bundlers can tree-shake) and excludes `!lib/**/*.map` from its `files`
+  # array (so source maps don't ship to npm consumers). Also runs an
+  # `npm pack --dry-run` probe against @pyreon/reactivity to prove the
+  # tarball is actually clean at publish time, not just on paper. The
+  # probe relies on lib/ being built — restored from the bootstrap
+  # cache rather than rebuilt, so the job runs in seconds, not minutes.
+  # See scripts/check-distribution.ts.
+  check-distribution:
+    name: Check Distribution
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            node_modules
+            packages/*/*/node_modules
+            examples/*/node_modules
+            docs/node_modules
+          key: ${{ env.NM_KEY }}
+      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: packages/*/*/lib
+          key: ${{ env.BOOTSTRAP_KEY }}
+      - name: Check sideEffects + source-map exclusion
+        run: bun run check-distribution
+
   # ── Verify modes: real-app build matrix ────────────────────────────────
   # Builds every example × mode cell defined in scripts/verify-modes.ts and
   # asserts the dist/ has actual rendered content. This is the structural
