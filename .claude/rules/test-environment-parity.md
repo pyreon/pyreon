@@ -148,7 +148,7 @@ The audit (PR #351) found that 5 packages — `runtime-dom`, `styler`, `rocketst
 - **PR #197** — silent metadata drop. Mock-vnode test passed; real `h()` flow broke (rocketstyle attrs HOC moved `_documentProps`).
 - **PR #200** — `typeof process` dev-gate dead in real Vite browser bundles; vitest had `process` defined and missed it.
 - **PR #336** — 4 production regressions on a real consumer app (Show/Match crash on signal accessor, void-tag children leak, styler malformed-CSS silent, zero SSG typed-but-unimplemented).
-- **PR #349** — `_layout` double-mount in SSR, plus 5 compiler bugs only visible when real JSX runs through the compiler.
+- **PR #349** — `_layout` double-mount in SSR (partial fix; full fix landed in the structure/data-decoupling RouterView refactor on top of #402, which dropped per-page-load PyreonUI invocations from 27 → 4 in the ui-showcase mount probe), plus 5 compiler bugs only visible when real JSX runs through the compiler.
 
 The gate that catches this shape: `e2e/ui-showcase-regression.spec.ts` runs against `examples/ui-showcase` in real Chromium via `bun run test:e2e:ui-regression` (own [`playwright.ui-regression.config.ts`](../../playwright.ui-regression.config.ts), separate webServer boot to avoid resource contention with the existing `test:e2e` boot). Each spec maps to one of the bug-shapes above:
 

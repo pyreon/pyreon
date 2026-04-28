@@ -5,6 +5,7 @@
  * The renderer maintains the context stack as it walks the VNode tree.
  */
 
+import { setSnapshotCapture } from '@pyreon/reactivity'
 import { onUnmount } from './lifecycle'
 
 export interface Context<T> {
@@ -148,13 +149,22 @@ export function captureContextStack(): ContextSnapshot {
 
 /**
  * Execute `fn()` with a previously captured context stack active.
- * Restores the original stack after `fn()` completes (even on throw).
+ *
+ * After `fn()` returns, removes ONLY the snapshot frames this call pushed
+ * — anything `fn()` itself pushed (typically provider frames from
+ * `provide()` calls during component mount) stays on the stack so
+ * subsequent reactive re-runs (e.g. `_bind` text bindings,
+ * `renderEffect` callbacks) can still find ancestor providers via
+ * `useContext`. Pre-fix this method was `stack.length = savedLength`,
+ * which destructively truncated provider frames pushed during mount —
+ * silently breaking `useMode()` / `useTheme()` / `useRouter()` etc. on
+ * every signal-driven update under a `mountReactive` boundary.
  */
 export function restoreContextStack<T>(snapshot: ContextSnapshot, fn: () => T): T {
   const stack = getStack()
-  const savedLength = stack.length
+  const insertIndex = stack.length
 
-  // Push all captured frames onto the current stack
+  // Push captured snapshot frames at the END of the current stack.
   for (const frame of snapshot) {
     stack.push(frame)
   }
@@ -162,7 +172,29 @@ export function restoreContextStack<T>(snapshot: ContextSnapshot, fn: () => T): 
   try {
     return fn()
   } finally {
-    // Remove only the frames we pushed (preserve anything added by fn)
-    stack.length = savedLength
+    // Splice out exactly the snapshot frames we pushed (they sit at
+    // [insertIndex, insertIndex + snapshot.length)). Any frames `fn()`
+    // pushed AFTER our snapshot (provider frames) get shifted down by
+    // `snapshot.length` positions but remain on the stack. Their owning
+    // components' `onUnmount(popContext)` handlers will pop them in
+    // LIFO order on subtree teardown — splice preserves that ordering
+    // because it doesn't touch frames at indices >= insertIndex +
+    // snapshot.length until the splice operation itself.
+    stack.splice(insertIndex, snapshot.length)
   }
 }
+
+// ─── Reactivity-layer DI: install context capture/restore for effects ────────
+//
+// `_bind` / `renderEffect` / `effect` (in `@pyreon/reactivity`) capture this
+// snapshot at setup and restore it on every subsequent re-run. Without this,
+// signal-driven re-runs after the synchronous mount see whatever the GLOBAL
+// context stack looks like at that moment — which may be missing provider
+// frames for any number of reasons (sibling subtree mounts/unmounts mutating
+// the stack, async re-render cycles, etc.). Defense-in-depth alongside the
+// `restoreContextStack` splice fix above.
+setSnapshotCapture({
+  capture: () => captureContextStack(),
+  restore: <T>(snap: unknown, fn: () => T): T =>
+    restoreContextStack(snap as ContextSnapshot, fn),
+})
