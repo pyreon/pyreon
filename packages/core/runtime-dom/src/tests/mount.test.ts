@@ -7,12 +7,14 @@ import {
   For,
   Fragment,
   h,
+  lazy,
   Match,
   onMount,
   onUnmount,
   onUpdate,
   Portal,
   Show,
+  Suspense as _Suspense,
   Switch,
 } from '@pyreon/core'
 import { cell, signal } from '@pyreon/reactivity'
@@ -36,6 +38,7 @@ const Transition = _Transition as unknown as ComponentFn<Record<string, unknown>
 const TransitionGroup = _TransitionGroup as unknown as ComponentFn<Record<string, unknown>>
 const ErrorBoundary = _ErrorBoundary as unknown as ComponentFn<Record<string, unknown>>
 const KeepAlive = _KeepAlive as unknown as ComponentFn<Record<string, unknown>>
+const Suspense = _Suspense as unknown as ComponentFn<Record<string, unknown>>
 
 function container(): HTMLElement {
   const el = document.createElement('div')
@@ -772,6 +775,94 @@ describe('ErrorBoundary', () => {
     expect(el.querySelector('#fix')).not.toBeNull()
     ;(el.querySelector('#fix') as HTMLButtonElement).click()
     expect(el.querySelector('#signal-ok')?.textContent).toBe('fixed')
+  })
+
+  // ── lazy() + Suspense + ErrorBoundary integration ──
+  //
+  // The `lazy(loader)` wrapper throws synchronously when its loader's
+  // promise rejects (`error()` returns truthy → `throw err`).
+  //
+  // Pyreon components run ONCE — reactivity comes from reading signals
+  // inside reactive scopes. `lazy()`'s wrapper reads its `error` /
+  // `loaded` signals inline, so the surrounding context must be a
+  // reactive scope for signal changes to trigger re-render.
+  //
+  // `Suspense` wraps its children in `h(Fragment, null, () => ...)` —
+  // an explicit reactive accessor that calls `__loading()`. THAT
+  // accessor's reactive scope is what tracks lazy's signals: when the
+  // loader rejects, the accessor re-runs, the lazy child re-mounts,
+  // the wrapper throws, mountComponent catches, dispatches to the
+  // nearest `<ErrorBoundary>` on the boundary stack.
+  //
+  // Without Suspense, lazy()'s post-mount errors don't surface (no
+  // reactive scope to drive re-render). This is consistent with the
+  // framework's component-runs-once contract — but worth pinning
+  // down with explicit tests.
+
+  test('lazy() loader rejection surfaces to ErrorBoundary via Suspense', async () => {
+    const el = container()
+    const Comp = lazy<Record<string, never>>(() =>
+      Promise.reject(new Error('module load failed')),
+    )
+
+    mount(
+      h(ErrorBoundary, {
+        fallback: (err: unknown) =>
+          h('p', { id: 'lazy-fb' }, `Caught: ${(err as Error).message}`),
+        children: h(
+          Suspense,
+          { fallback: h('p', { id: 'spinner' }, 'loading...') },
+          h(Comp, {}),
+        ),
+      }),
+      el,
+    )
+
+    // Initial render: lazy is still loading → Suspense shows spinner,
+    // boundary fallback NOT triggered yet.
+    expect(el.querySelector('#spinner')).not.toBeNull()
+    expect(el.querySelector('#lazy-fb')).toBeNull()
+
+    // Wait for promise rejection to flush.
+    await new Promise((r) => setTimeout(r, 0))
+    // Reactive flush.
+    await Promise.resolve()
+
+    // After load fails: Suspense's reactive accessor re-runs → child
+    // wrapper throws → caught by mountComponent → dispatched to
+    // ErrorBoundary → fallback rendered.
+    expect(el.querySelector('#lazy-fb')?.textContent).toContain('module load failed')
+    expect(el.querySelector('#spinner')).toBeNull()
+  })
+
+  test('lazy() resolves successfully renders content without firing fallback', async () => {
+    const el = container()
+    const Inner: ComponentFn<Record<string, never>> = () =>
+      h('p', { id: 'loaded' }, 'content')
+    const Comp = lazy<Record<string, never>>(() => Promise.resolve({ default: Inner }))
+
+    let fallbackInvocations = 0
+    mount(
+      h(ErrorBoundary, {
+        fallback: () => {
+          fallbackInvocations++
+          return h('p', { id: 'should-not-appear' }, 'error')
+        },
+        children: h(
+          Suspense,
+          { fallback: h('p', { id: 'spinner' }, 'loading...') },
+          h(Comp, {}),
+        ),
+      }),
+      el,
+    )
+
+    await new Promise((r) => setTimeout(r, 0))
+    await Promise.resolve()
+
+    expect(el.querySelector('#loaded')?.textContent).toBe('content')
+    expect(el.querySelector('#should-not-appear')).toBeNull()
+    expect(fallbackInvocations).toBe(0)
   })
 })
 

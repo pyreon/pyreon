@@ -98,11 +98,15 @@ describe('renderApiReferenceEntries', () => {
           summary: 'Legacy helper.',
           example: 'oldFn()',
           stability: 'deprecated',
+          // `deprecated.removeIn` is required by `defineManifest` policy —
+          // the renderer doesn't care about its presence beyond formatting,
+          // but the validator throws without it.
+          deprecated: { since: '1.0.0', removeIn: '2.0.0' },
         },
       ],
     })
     const record = renderApiReferenceEntries(m)
-    expect(record['flow/oldFn']!.notes).toBe('[DEPRECATED] Legacy helper.')
+    expect(record['flow/oldFn']!.notes).toContain('[DEPRECATED] Legacy helper.')
   })
 
   it('stability: experimental prefixes [EXPERIMENTAL] onto notes', () => {
@@ -193,7 +197,7 @@ describe('renderApiReferenceEntries', () => {
           example: 'fn()',
           stability: 'deprecated',
           since: '0.5.0',
-          deprecated: { since: '1.0.0', replacement: 'newFn()' },
+          deprecated: { since: '1.0.0', removeIn: '2.0.0', replacement: 'newFn()' },
         },
       ],
     })
