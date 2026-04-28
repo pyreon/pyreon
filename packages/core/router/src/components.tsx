@@ -1,6 +1,6 @@
 import type { ComponentFn, Props, VNodeChild } from '@pyreon/core'
 import { createRef, ErrorBoundary, h, onUnmount, provide, useContext } from '@pyreon/core'
-import { computed, signal, untrack } from '@pyreon/reactivity'
+import { computed, signal } from '@pyreon/reactivity'
 import { LoaderDataContext, prefetchLoaderData } from './loader'
 import { isLazy, RouterContext, setActiveRouter } from './router'
 import type { LazyComponent, ResolvedRoute, RouteRecord, Router, RouterInstance } from './types'
@@ -119,46 +119,57 @@ export const RouterView: ComponentFn<RouterViewProps> = (props) => {
      * never render.
      */
     errored: boolean
+    /**
+     * The full ResolvedRoute reference at the time this entry was emitted.
+     * `currentRoute` is a `computed` keyed on `currentPath` — same path
+     * returns the same memoized reference, different path returns a new
+     * one. Tracking the reference in `equals` makes the depth re-emit on
+     * any real navigation (params change, query change, hash change) even
+     * when the matched record at this depth stays the same — required so
+     * `/user/42 → /user/99` re-renders the User component with new params
+     * — while NOT re-emitting on navigate-flow noise (`_loadingSignal`
+     * start/end ticks, lazy resolution writes that complete without
+     * changing currentPath). One emit per real navigation, not per
+     * within-navigation signal tick.
+     */
+    route: ResolvedRoute
   }
   const depthEntry = computed<DepthEntry>(
     () => {
-      const rec = router.currentRoute().matched[depth] ?? null
-      if (!rec) return { rec: null, comp: null, errored: false }
+      const route = router.currentRoute()
+      const rec = route.matched[depth] ?? null
+      if (!rec) return { rec: null, comp: null, errored: false, route }
       // Subscribe to `_loadingSignal` so lazy resolution wakes this
       // computed up — when the cache fills, we re-emit with comp set.
       router._loadingSignal()
       const errored = router._erroredChunks.has(rec)
-      if (errored) return { rec, comp: null, errored: true }
+      if (errored) return { rec, comp: null, errored: true, route }
       const cached = router._componentCache.get(rec)
-      if (cached) return { rec, comp: cached, errored: false }
+      if (cached) return { rec, comp: cached, errored: false, route }
       const raw = rec.component
       if (!isLazy(raw)) {
         cacheSet(router, rec, raw)
-        return { rec, comp: raw, errored: false }
+        return { rec, comp: raw, errored: false, route }
       }
       // Lazy and not yet cached — `child()` below renders the lazy
       // fallback and triggers the load; once the load completes,
       // `_loadingSignal` ticks and this computed re-emits with `comp` set.
-      return { rec, comp: null, errored: false }
+      return { rec, comp: null, errored: false, route }
     },
     {
-      equals: (a, b) => a.rec === b.rec && a.comp === b.comp && a.errored === b.errored,
+      equals: (a, b) =>
+        a.rec === b.rec &&
+        a.comp === b.comp &&
+        a.errored === b.errored &&
+        a.route === b.route,
     },
   )
 
   const child = (): VNodeChild => {
-    const { rec, comp } = depthEntry()
+    const { rec, comp, route } = depthEntry()
     if (!rec) return null
 
     if (comp) {
-      // Untrack the route snapshot read — the rendered component receives
-      // `params` / `query` / `meta` as reactive props (the compiler wraps
-      // signal-bearing JSX expressions on its end), and loader data flows
-      // through `LoaderDataProvider` which has its own reactive bridge.
-      // Reading `currentRoute()` reactively here would re-subscribe the
-      // structural accessor to every route-data field, defeating the
-      // decoupling.
-      const route = untrack(() => router.currentRoute())
       return renderWithLoader(router, rec, comp, route)
     }
 
