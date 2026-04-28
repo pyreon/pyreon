@@ -103,13 +103,32 @@ test.describe('ui-showcase — rocketstyle Button interaction', () => {
     await expect(page.getByRole('button', { name: /Clicked: 0/ })).toBeVisible()
   })
 
-  // FOLLOW-UP (separate bug): an assertion that Primary buttons have
-  // theme-derived computed styles (e.g. non-zero border-radius). Locally
-  // verified that the rocketstyle layer rule body for state="primary" is
-  // empty — no background/padding/border-radius merged from the dimension
-  // theme. This is a separate rocketstyle bug, not a layout double-mount
-  // regression. Track + fix in a follow-up PR; once that lands, add the
-  // assertion here.
+  test('Primary button has theme-derived computed styles (non-zero border-radius + background)', async ({
+    page,
+  }) => {
+    await page.goto('/button')
+    const primary = page.getByRole('button', { name: /^Primary$/ })
+    await expect(primary).toBeVisible()
+    // Locks in the post-fix contract: the rocketstyle dimension theme must
+    // merge into the rendered DOM. Pre-fix (PR #283 \`_fragments\` reuse bug),
+    // each Element render's 5+ \`makeItResponsive\` calls clobbered the
+    // previous CSSResult's data via a shared module-level array — every
+    // Button rendered with the same empty \`pyr-186j8ah\` rule body and
+    // user-agent default styles. See unistyle/styles.test.ts regression
+    // tests for the unit-level shape.
+    const computed = await primary.evaluate((el) => {
+      const cs = getComputedStyle(el)
+      return {
+        radius: Number.parseFloat(cs.borderTopLeftRadius),
+        bg: cs.backgroundColor,
+      }
+    })
+    expect(computed.radius).toBeGreaterThan(0)
+    // Theme primary background is a blue-ish rgb. User-agent default is
+    // rgb(239, 239, 239). Anything other than the default light gray means
+    // the theme reached the DOM.
+    expect(computed.bg).not.toBe('rgb(239, 239, 239)')
+  })
 })
 
 // ─── HOC contract walk-through ─────────────────────────────────────────────

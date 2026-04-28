@@ -48,16 +48,24 @@ for (let i = 0; i < propertyMap.length; i++) {
     if (Array.isArray(d.keys)) {
       for (const k of d.keys) addKey(k)
     } else {
-      for (const k of Object.values(d.keys as Record<string, string>)) addKey(k)
+      for (const inner of Object.values(d.keys as Record<string, string>)) {
+        addKey(inner)
+      }
     }
   }
 }
 
 /**
- * Data-driven style processor. Uses the pre-built key→index lookup to
- * iterate ONLY the descriptors whose theme keys are present in the
- * incoming theme object. Falls back to full scan only if the lookup
- * produces zero matches (defensive — shouldn't happen in practice).
+ * Convert a normalized theme object (Record<key, value>) into a CSS template
+ * by walking the property map. Each entry in propertyMap describes a single
+ * CSS property — its kind (simple / convert / convert_fallback / edge /
+ * border_radius), the input theme key(s) to read, and the output CSS name.
+ *
+ * Returns a `css` tagged template literal so makeItResponsive can embed the
+ * result inside the responsive breakpoint structure. Each call returns a
+ * FRESH array — the result CSSResult holds onto that array by reference,
+ * and reusing one module-level array across calls would clobber an earlier
+ * CSSResult's data when the next styles() call clears the shared array.
  *
  * IMPORTANT: the return MUST be wrapped in `css\`...\`` — NOT a plain
  * string join. makeItResponsive embeds this result in another template
@@ -65,10 +73,11 @@ for (let i = 0; i < propertyMap.length; i++) {
  * result (not a raw string) for correct nesting of media queries,
  * pseudo-selectors, and @layer wrapping.
  */
-// Module-level reusable containers — cleared before each synchronous styles() call.
-// Eliminates per-call Set + array allocations (~160 allocations per 80-component page).
+// Module-level reusable Set — cleared before each synchronous styles() call.
+// The fragments array CANNOT be module-level because the returned CSSResult
+// captures it by reference; the next styles() call would clear-out the
+// previous result before its consumer ever resolved it.
 const _seen = new Set<number>()
-const _fragments: unknown[] = []
 
 const styles: Styles = ({ theme: t, css, rootSize }) => {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('unistyle.styles')
@@ -77,9 +86,13 @@ const styles: Styles = ({ theme: t, css, rootSize }) => {
   const shorthand = edge(rootSize)
   const borderRadiusFn = borderRadius(rootSize)
 
-  // Reuse module-level containers — safe because styles() runs synchronously.
+  // Per-call fragments array — owned by the returned CSSResult.
+  const fragments: unknown[] = []
+
+  // Reuse module-level Set — safe because the Set is fully consumed before
+  // styles() returns. The fragments array is the one we MUST allocate fresh
+  // (see top-of-function comment) — its lifetime extends past this call.
   _seen.clear()
-  _fragments.length = 0
 
   // Fast path: iterate only descriptors whose keys are present in theme
   for (const key of Object.keys(t)) {
@@ -90,30 +103,25 @@ const styles: Styles = ({ theme: t, css, rootSize }) => {
       _seen.add(idx)
       if (process.env.NODE_ENV !== 'production')
         _countSink.__pyreon_count__?.('unistyle.descriptor')
-      _fragments.push(processDescriptor(propertyMap[idx]!, t, css, calc, shorthand, borderRadiusFn))
+      fragments.push(processDescriptor(propertyMap[idx]!, t, css, calc, shorthand, borderRadiusFn))
     }
   }
 
   // Fallback: if lookup produced nothing, full scan (handles edge cases
   // where theme uses non-standard keys that aren't in propertyMap)
-  if (_fragments.length === 0 && Object.keys(t).length > 0) {
+  if (fragments.length === 0 && Object.keys(t).length > 0) {
     if (process.env.NODE_ENV !== 'production')
       _countSink.__pyreon_count__?.('unistyle.descriptor.fallback-scan')
     for (const d of propertyMap) {
       if (process.env.NODE_ENV !== 'production')
         _countSink.__pyreon_count__?.('unistyle.descriptor')
-      _fragments.push(processDescriptor(d, t, css, calc, shorthand, borderRadiusFn))
+      fragments.push(processDescriptor(d, t, css, calc, shorthand, borderRadiusFn))
     }
   }
 
-  const result = css`
-    ${_fragments}
+  return css`
+    ${fragments}
   `
-
-  // Release references so GC can collect processDescriptor results
-  _fragments.length = 0
-
-  return result
 }
 
 export default styles
