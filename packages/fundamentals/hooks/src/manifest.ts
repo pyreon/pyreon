@@ -1,7 +1,7 @@
 import { defineManifest } from '@pyreon/manifest'
 
 /**
- * Fourth migration to the T2.1 pipeline. @pyreon/hooks ships 35
+ * Fourth migration to the T2.1 pipeline. @pyreon/hooks ships 34
  * signal-based hooks across six categories — too many to enumerate
  * one-by-one in api[]. Strategy: documented categories in `features`
  * + the highest-leverage hooks (those used by other Pyreon packages
@@ -14,9 +14,9 @@ export default defineManifest({
   name: '@pyreon/hooks',
   title: 'Signal-Based Hooks',
   tagline:
-    '35 signal-based hooks: state (useToggle/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useElementSize/useWindowResize/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useReducedMotion/useThemeValue/useSpacing/useRootSize), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useClipboard/useDialog/useKeyboard/useOnline), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
+    '34 signal-based hooks: state (useToggle/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useElementSize/useWindowResize/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useReducedMotion/useThemeValue/useSpacing/useRootSize), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useClipboard/useDialog/useKeyboard/useOnline), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
   description:
-    'Signal-based hooks for Pyreon — 35 reactive primitives covering state, DOM, responsive, timing, interaction, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
+    'Signal-based hooks for Pyreon — 34 reactive primitives covering state, DOM, responsive, timing, interaction, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
   category: 'universal',
   longExample: `import {
   // State

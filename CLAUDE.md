@@ -175,7 +175,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/feature`     | Schema-driven CRUD primitives — auto-generated queries, forms, tables, stores                                                                         |
 | `@pyreon/charts`      | Reactive ECharts bridge with lazy loading, auto-detection, typed options                                                                              |
 | `@pyreon/storage`     | Reactive client-side storage — localStorage, sessionStorage, cookies, IndexedDB                                                                       |
-| `@pyreon/hooks`       | 33+ signal-based hooks (useHover, useFocus, useBreakpoint, useClipboard, useDialog, useTimeAgo, useOnline, useEventListener, useInfiniteScroll, etc.) |
+| `@pyreon/hooks`       | 34 signal-based hooks (useHover, useFocus, useBreakpoint, useClipboard, useDialog, useTimeAgo, useOnline, useEventListener, useInfiniteScroll, etc.)  |
 | `@pyreon/hotkeys`     | Keyboard shortcut management — scope-aware, modifier keys, conflict detection                                                                         |
 | `@pyreon/permissions` | Reactive permissions — RBAC, ABAC, feature flags, subscription tiers                                                                                  |
 | `@pyreon/machine`     | Reactive state machines — constrained signals with type-safe transitions                                                                              |
@@ -471,7 +471,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 
 ### @pyreon/hooks
 
-- 35 signal-based hooks across 6 categories. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: returns `Signal<T>` / `Computed<T>` / accessor objects, never plain values
+- 34 signal-based hooks across 6 categories. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: returns `Signal<T>` / `Computed<T>` / accessor objects, never plain values
 - **State**: `useToggle`, `usePrevious`, `useLatest`, `useControllableState`
 - **DOM**: `useEventListener`, `useClickOutside`, `useFocus`, `useHover`, `useFocusTrap`, `useElementSize`, `useWindowResize`, `useScrollLock`, `useIntersection`, `useInfiniteScroll`
 - **Responsive**: `useBreakpoint` (theme-driven), `useMediaQuery` (raw escape hatch), `useColorScheme`, `useReducedMotion`, `useThemeValue`, `useSpacing`, `useRootSize`
@@ -720,7 +720,7 @@ One source of truth per package — `packages/<category>/<pkg>/src/manifest.ts` 
 
 ## Docs Website
 
-VitePress documentation site at `docs/` — part of the monorepo workspace. 58 doc pages covering all packages. Interactive `<Playground>` component embeds live code editors with sandboxed preview on 10+ pages (reactivity, core, runtime-dom, store, rx, form, machine, hooks, permissions, i18n, toast, storage, url-state). Code runs via ESM CDN imports in a sandboxed iframe with dark mode support.
+VitePress documentation site at `docs/` — part of the monorepo workspace. 73 doc pages covering all packages. Interactive `<Playground>` component embeds live code editors with sandboxed preview on 10+ pages (reactivity, core, runtime-dom, store, rx, form, machine, hooks, permissions, i18n, toast, storage, url-state). Code runs via ESM CDN imports in a sandboxed iframe with dark mode support.
 
 ```bash
 cd docs && bun run dev       # local dev server
@@ -928,6 +928,22 @@ bun run check-distribution --json  # machine-readable
 CI runs this on every PR as a required `Check Distribution` job. The gate ALSO simulates `npm pack --dry-run` against `@pyreon/reactivity` and asserts the would-be-published tarball lists zero `.map` files — catching the case where the `files` field is technically right but npm's interpretation diverges. Bisect-verified: removing `sideEffects` fails with `missing-sideEffects`; removing `!lib/**/*.map` fails with both `missing-map-exclusion` (config) AND `tarball-contains-map` (live pack proof).
 
 Adding a new published package: declare `sideEffects` (`false` for pure libraries, an array for entry-point side effects) and include `"!lib/**/*.map"` in `files` right after `"lib"`. The gate refuses to merge without both.
+
+## Check Doc Claims — numeric drift gate
+
+`scripts/check-doc-claims.ts` asserts every numeric claim in human-written docs matches the underlying source of truth. The gate catches the recurring drift mode where a count is hand-quoted in 3-5 places ("34 signal-based hooks…") and only one gets bumped when the code changes — the audit caught the hooks README claiming 16 vs actual 34, drift that lasted long enough to ship to users.
+
+Today the gate covers two source-of-truth counters:
+
+- **Hook export count** in `packages/fundamentals/hooks/src/index.ts`. Claim sites: hooks README, `hooks/src/manifest.ts` (tagline + description), `CLAUDE.md` (package overview row + architecture section), `docs/docs/index.md`.
+- **Doc page count** in `docs/**/*.md`. Claim site: `CLAUDE.md`.
+
+```bash
+bun run check-doc-claims         # exit non-zero if drift
+bun run check-doc-claims --json  # machine-readable
+```
+
+CI runs this on every PR as a required `Check Doc Claims` job (~2s). The gate ALSO rejects hedged forms like "33+ hooks" — write the exact number so the source-of-truth comparison stays strict. Adding a new claim with a known canonical source means adding a new entry to the `checks[]` array; arbitrary numeric prose is not in scope.
 
 ## E2E — real-Chromium tests against example apps
 

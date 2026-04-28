@@ -1,6 +1,6 @@
 # @pyreon/hooks
 
-16 signal-based reactive utilities for Pyreon UI interactions, DOM observation, accessibility, and theming.
+34 signal-based reactive utilities for Pyreon UI interactions, DOM observation, accessibility, theming, timing, and composition. The full list of exports lives in [src/index.ts](src/index.ts); a curated subset is documented in detail below.
 
 All hooks use `signal()` for internal state and return reactive getters. Components are plain functions that run once — no `useCallback`/`useMemo` needed.
 
