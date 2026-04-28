@@ -43,6 +43,7 @@
     "audit-types": "bun scripts/audit-types.ts",
     "verify-modes": "bun scripts/verify-modes.ts",
     "check-bundle-budgets": "bun scripts/check-bundle-budgets.ts",
+    "check-distribution": "bun scripts/check-distribution.ts",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "bun run build && bun run scripts/publish.ts"

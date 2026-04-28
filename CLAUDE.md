@@ -913,6 +913,22 @@ CI runs this as a required `Check Bundle Budgets` job.
 
 The wildcard is intentional — it mirrors the convention used by every official TanStack adapter (`@tanstack/react-table`, `@tanstack/solid-table`, `@tanstack/svelte-table`, `@tanstack/vue-table`). Converting to named exports would diverge from the convention without buying a real migration window (the lockfile + this snapshot give the migration window). When the snapshot fails after a TanStack version bump, run `bunx vitest run --update public-surface` from the table package and review the diff: added/removed names should match the TanStack changelog. If TanStack added a debug or internal API we DON'T want to leak through, narrow `index.ts` from `export *` to a named list (case-by-case decision).
 
+## Check Distribution — bundle/distribution hygiene gate
+
+`scripts/check-distribution.ts` enforces two static invariants on every published `@pyreon/*` package:
+
+1. **`sideEffects` field declared** — required for bundlers (Vite, Webpack, Rollup, esbuild) to tree-shake unused exports. A missing field forces the bundler to assume every imported module has side effects, defeating tree-shaking even for pure library code.
+2. **Source maps excluded from the published tarball** — the package's `files` array must include `"!lib/**/*.map"`, which excludes both `.js.map` and `.d.ts.map`. Source maps are useful for in-repo development but ship as ~19MB of pure overhead across the monorepo otherwise.
+
+```bash
+bun run check-distribution         # exit non-zero if violations
+bun run check-distribution --json  # machine-readable
+```
+
+CI runs this on every PR as a required `Check Distribution` job. The gate ALSO simulates `npm pack --dry-run` against `@pyreon/reactivity` and asserts the would-be-published tarball lists zero `.map` files — catching the case where the `files` field is technically right but npm's interpretation diverges. Bisect-verified: removing `sideEffects` fails with `missing-sideEffects`; removing `!lib/**/*.map` fails with both `missing-map-exclusion` (config) AND `tarball-contains-map` (live pack proof).
+
+Adding a new published package: declare `sideEffects` (`false` for pure libraries, an array for entry-point side effects) and include `"!lib/**/*.map"` in `files` right after `"lib"`. The gate refuses to merge without both.
+
 ## E2E — real-Chromium tests against example apps
 
 `bun run test:e2e` runs Playwright against `examples/playground` in real Chromium. Tests live in `e2e/` and exercise framework primitives via `window.__pyreon` (mount/unmount, signal-driven DOM updates, computed values, batching, conditional rendering, list reconciliation, router navigation). Companion to `verify-modes` (build artifacts) — together they cover both the static output AND the runtime behavior.

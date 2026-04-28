@@ -15,6 +15,7 @@
   "files": [
     "bin",
     "lib",
+    "!lib/**/*.map",
     "!lib/analysis",
     "templates",
     "LICENSE",
@@ -29,5 +30,6 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.2.0"
-  }
+  },
+  "sideEffects": false
 }
