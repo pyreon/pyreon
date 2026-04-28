@@ -1,6 +1,6 @@
 import { useHead } from "@pyreon/head"
 import { Link } from "@pyreon/zero/link"
-import { useParams } from "@pyreon/router"
+import { useRoute } from "@pyreon/router"
 import { postBySlug, postSlugs } from "../../lib/posts"
 
 /**
@@ -10,8 +10,9 @@ import { postBySlug, postSlugs } from "../../lib/posts"
 export const ssgPaths = () => postSlugs().map((slug) => `/blog/${slug}`)
 
 export default function PostPage() {
-  const params = useParams<{ slug: string }>()
-  const slug = params.slug
+  // useRoute() returns an accessor — call it to read the resolved route.
+  const route = useRoute()
+  const slug = route().params.slug
   const post = postBySlug(slug)
 
   if (!post) {

@@ -324,7 +324,7 @@ function rowToInvoice(row: any): Invoice {
 
 function emailLib(): string {
   return `import { Resend } from 'resend'
-import { extractDocNode } from '@pyreon/connector-document'
+import { extractDocNode } from '@pyreon/document-primitives'
 import { render } from '@pyreon/document'
 import type { ComponentFn } from '@pyreon/core'
 
@@ -387,7 +387,7 @@ export default function WelcomeEmail(props: WelcomeEmailProps) {
     <DocDocument title="Welcome" subject="Welcome to your new account">
       <DocPage>
         <DocSection>
-          <DocHeading level={1}>Welcome, {props.name}.</DocHeading>
+          <DocHeading level="h1">Welcome, {props.name}.</DocHeading>
         </DocSection>
 
         <DocSpacer />

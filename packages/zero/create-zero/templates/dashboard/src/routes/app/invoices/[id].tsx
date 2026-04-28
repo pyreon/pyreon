@@ -1,5 +1,6 @@
 import { useHead } from "@pyreon/head"
-import { Link, useParams } from "@pyreon/router"
+import { useRoute } from "@pyreon/router"
+import { Link } from "@pyreon/zero/link"
 import {
   DocDocument,
   DocPage,
@@ -9,8 +10,8 @@ import {
   DocTable,
   DocSpacer,
   DocDivider,
+  extractDocNode,
 } from "@pyreon/document-primitives"
-import { extractDocNode } from "@pyreon/connector-document"
 import { render } from "@pyreon/document"
 import { invoiceById, invoiceTotal, type Invoice } from "../../../lib/db"
 
@@ -32,14 +33,14 @@ function InvoiceTemplate(inv: Invoice) {
     >
       <DocPage>
         <DocSection>
-          <DocHeading level={1}>Invoice {inv.number}</DocHeading>
+          <DocHeading level="h1">Invoice {inv.number}</DocHeading>
           <DocText>Issued {inv.issuedAt.toLocaleDateString()}</DocText>
         </DocSection>
 
         <DocSpacer />
 
         <DocSection>
-          <DocHeading level={3}>Bill to</DocHeading>
+          <DocHeading level="h3">Bill to</DocHeading>
           <DocText>{inv.customer.name}</DocText>
           <DocText>{inv.customer.email}</DocText>
           <DocText>{inv.customer.address}</DocText>
@@ -62,7 +63,7 @@ function InvoiceTemplate(inv: Invoice) {
         <DocSpacer />
 
         <DocSection>
-          <DocHeading level={3}>Total: ${invoiceTotal(inv).toLocaleString()}</DocHeading>
+          <DocHeading level="h3">Total: ${invoiceTotal(inv).toLocaleString()}</DocHeading>
         </DocSection>
       </DocPage>
     </DocDocument>
@@ -70,8 +71,8 @@ function InvoiceTemplate(inv: Invoice) {
 }
 
 export default function InvoiceDetail() {
-  const params = useParams<{ id: string }>()
-  const inv = invoiceById(params.id)
+  const route = useRoute()
+  const inv = invoiceById(route().params.id)
 
   if (!inv) {
     return (
