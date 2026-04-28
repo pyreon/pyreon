@@ -411,7 +411,12 @@ describe('effect — async function warning (audit bug #1)', () => {
     const orig = console.warn
     console.warn = (...args: unknown[]) => warns.push(args.join(' '))
     try {
-      effect(async () => {})
+      // Async effect callbacks are intentionally NOT in `effect()`'s type
+      // signature — that's the point. The test deliberately misuses the
+      // API to verify the runtime warning catches what the type system
+      // would normally reject. Cast through `unknown` to silence TS.
+      const asyncFn = async (): Promise<void> => {}
+      effect(asyncFn as unknown as () => void)
     } finally {
       console.warn = orig
     }
