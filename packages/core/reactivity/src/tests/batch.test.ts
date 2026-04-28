@@ -144,3 +144,96 @@ describe('batch', () => {
     expect(seen).toBe(42)
   })
 })
+
+// ─── Regression: cascade-depth-asymmetry double-fire ─────────────────────────
+//
+// Pre-fix: batch flush used two pre-allocated Sets (setA, setB) swapped on
+// each round. Cascade notifications enqueued during round 1 went to setB and
+// were processed in round 2. When a single subscriber had BOTH a 0-hop signal
+// dependency AND a 1-hop indirection (computed, createSelector predicate,
+// derived signal) and BOTH paths were triggered in the same batch, the
+// subscriber was queued in DIFFERENT rounds — once via the direct enqueue
+// (round 1) and once via the cascade (round 2). Cross-round Set-dedup didn't
+// work because each round used a fresh Set; the subscriber fired twice.
+//
+// In real usage: list rendering with N items each tracking `isSelected(item.id)`
+// plus a shared signal — every batched selection change scaled to O(N)
+// wasted re-runs.
+//
+// Post-fix: single-Set iteration with cascade-during-iteration. Set-dedup
+// handles ALL cases (diamond, multi-dep selector, self-modifying effect)
+// uniformly — adding an entry already in the Set is a no-op; adding a new
+// entry during iteration is visited exactly once.
+describe('batch — cascade-depth-asymmetry dedup (regression)', () => {
+  test('subscriber with 0-hop + 1-hop deps both written in batch fires once', async () => {
+    const { computed } = await import('../computed')
+    const source = signal(1)
+    const other = signal(0)
+    // 1-hop indirection via a computed (mirrors createSelector's predicate shape)
+    const isTarget = computed(() => Object.is(source(), 2), { equals: (a, b) => a === b })
+
+    let runs = 0
+    effect(() => {
+      isTarget()
+      other()
+      runs++
+    })
+    runs = 0
+
+    batch(() => {
+      source.set(2)
+      other.set(1)
+    })
+
+    expect(runs).toBe(1)
+  })
+
+  test('diamond cascade still dedupes correctly (a → b, c → d → effect)', async () => {
+    const { computed } = await import('../computed')
+    const a = signal(0)
+    const b = computed(() => a() * 2)
+    const c = computed(() => a() + 1)
+    const d = computed(() => b() + c())
+
+    let runs = 0
+    effect(() => {
+      d()
+      runs++
+    })
+    runs = 0
+
+    a.set(5)
+    expect(runs).toBe(1)
+  })
+
+  // Scale-up of Test 1: 50 list items each tracking the SAME 1-hop indirection
+  // (`isTarget` memo) + the same shared signal. This is the real-world list-
+  // rendering shape that motivated the fix. Pre-fix: each effect fired 2× →
+  // 100 total runs per click. Post-fix: 50 (one per item).
+  test('many list-item subscribers all sharing one indirection + shared signal — all fire once', async () => {
+    const { computed } = await import('../computed')
+    const selectedId = signal(1)
+    const other = signal(0)
+    const isTarget = computed(() => Object.is(selectedId(), 2), { equals: (a, b) => a === b })
+
+    const counts: number[] = []
+    for (let i = 0; i < 50; i++) {
+      const idx = i
+      counts.push(0)
+      effect(() => {
+        isTarget()
+        other()
+        counts[idx]!++
+      })
+    }
+    counts.fill(0)
+
+    batch(() => {
+      selectedId.set(2)
+      other.set(1)
+    })
+
+    const totalRuns = counts.reduce((a, b) => a + b, 0)
+    expect(totalRuns).toBe(50)
+  })
+})
