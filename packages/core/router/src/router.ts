@@ -633,6 +633,25 @@ export function createRouter<TNames extends string = string>(
   }
 
   /**
+   * Bounded set into `_loaderCache`: evicts the oldest entry (insertion-order
+   * FIFO) when the cap is exceeded. The `gcTime` TTL handles staleness, but
+   * without a size cap a long-running SPA navigating across many distinct
+   * loader keys (e.g. `/posts/:id` with hundreds of unique IDs) would
+   * accumulate cache entries indefinitely until manual `invalidateLoader()`
+   * — `_maxCacheSize` was wired through from `RouterOptions.maxCacheSize`
+   * (default 100) but the loader cache write paths never read it. Mirrors
+   * the same pattern used for `_componentCache` in `components.tsx`.
+   */
+  function loaderCacheSet(key: string, data: unknown): void {
+    router._loaderCache.set(key, { data, timestamp: Date.now() })
+    if (router._loaderCache.size > router._maxCacheSize) {
+      // Map iterates in insertion order — first key is oldest
+      const oldest = router._loaderCache.keys().next().value as string | undefined
+      if (oldest !== undefined) router._loaderCache.delete(oldest)
+    }
+  }
+
+  /**
    * Execute a loader with cache + dedup:
    * 1. Cache hit + fresh → return cached data (skip loader entirely)
    * 2. In-flight for same key → dedup (return existing promise)
@@ -661,7 +680,7 @@ export function createRouter<TNames extends string = string>(
     const promise = record
       .loader(loaderCtx)
       .then((data) => {
-        router._loaderCache.set(key, { data, timestamp: Date.now() })
+        loaderCacheSet(key, data)
         router._loaderInflight.delete(key)
         return data
       })
@@ -704,7 +723,7 @@ export function createRouter<TNames extends string = string>(
             router._loaderData.set(r, data)
             // Update cache with fresh data
             const key = getCacheKey(r, loaderCtx)
-            router._loaderCache.set(key, { data, timestamp: Date.now() })
+            loaderCacheSet(key, data)
             // Bump loadingSignal to trigger reactive re-render with fresh data
             loadingSignal.update((n) => n + 1)
             loadingSignal.update((n) => n - 1)
