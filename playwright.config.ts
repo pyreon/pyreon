@@ -39,9 +39,17 @@ import { defineConfig } from '@playwright/test'
  *                   Tests need to be re-aligned with the example or vice
  *                   versa. Follow-up.
  *
- *   visual        ⚠ DISABLED — visual-regression baselines not
- *                   committed. Needs baseline-capture pass before
- *                   wiring.
+ *   visual        — REMOVED. The original spec wrote screenshots to a
+ *                   gitignored folder for an external diff workflow, not
+ *                   a real Playwright snapshot regression. It also assumed
+ *                   a tab-based UI (Components / Hooks / Dark / Open
+ *                   modal buttons) that no longer exists in `ui-showcase`
+ *                   (route-based, 60 routes today). Re-enabling needs a
+ *                   complete rewrite using `toHaveScreenshot()` plus a
+ *                   matched-Docker baseline-capture pipeline (capturing
+ *                   on macOS and asserting on Linux CI without fuzz
+ *                   thresholds is structurally flaky). Tracked as a
+ *                   separate scoped follow-up; not blocking the C2 close.
  *
  * ## Adding a project
  *
@@ -101,14 +109,6 @@ export default defineConfig({
       name: 'fundamentals',
       testMatch: /e2e\/fundamentals\/.*\.spec\.ts$/,
       use: { baseURL: 'http://localhost:5176' },
-    }, */
-    /* {
-      name: 'visual',
-      testMatch: /visual-regression\.spec\.ts$/,
-      use: {
-        baseURL: 'http://localhost:5174',
-        viewport: { width: 1280, height: 720 },
-      },
     }, */
   ],
   webServer: [
