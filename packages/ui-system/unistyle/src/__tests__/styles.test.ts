@@ -212,3 +212,62 @@ describe('Tier 1: performance characteristics', () => {
     // the indexed path should always find matches.
   })
 })
+
+  // Regression test for PR #283's `_fragments` reuse — the module-level array
+  // was captured by reference inside the returned CSSResult's values, so the
+  // next styles() call would clear the previous result's data before its
+  // consumer ever resolved it.
+  //
+  // Pre-fix: r1.values[0] (the fragments array) was the SAME reference as the
+  // module-level array; the second styles() call ran `_fragments.length = 0`
+  // and wiped r1's fragments to []. Post-fix: each call gets its own array.
+  //
+  // Real-app symptom this caused: rocketstyle dimension themes (state="primary"
+  // → blue background) produced empty CSS because element.ts calls
+  // makeItResponsive 5 times (base/hover/focus/active/disabled), each calling
+  // styles() under the hood. Only the LAST one kept its data; the rest
+  // resolved empty. See `packages/ui/components/src/bases/element.ts`.
+  describe('regression: CSSResult ownership of fragments array (PR #283 follow-up)', () => {
+    // Lazy-capturing mock: stores strings + values without resolving, mimicking
+    // the real CSSResult contract where consumers resolve later.
+    const lazyCss = (strings: TemplateStringsArray, ...values: unknown[]) => ({
+      strings,
+      values,
+    })
+
+    it('first result retains its fragments after a second styles() call', () => {
+      const r1 = styles({
+        theme: { color: 'red', fontSize: 14 },
+        css: lazyCss as never,
+        rootSize: 16,
+      })
+      const r1Fragments = (r1 as { values: unknown[] }).values[0]
+      const r1LenBefore = Array.isArray(r1Fragments) ? r1Fragments.length : -1
+      expect(r1LenBefore).toBeGreaterThan(0)
+
+      // Second call — pre-fix this cleared r1's array via shared module-level
+      // reference. Post-fix: each call owns its array.
+      styles({
+        theme: { backgroundColor: 'blue', padding: 8 },
+        css: lazyCss as never,
+        rootSize: 16,
+      })
+
+      const r1FragmentsAfter = (r1 as { values: unknown[] }).values[0]
+      const r1LenAfter = Array.isArray(r1FragmentsAfter) ? r1FragmentsAfter.length : -1
+      expect(r1LenAfter).toBe(r1LenBefore)
+    })
+
+    it('two results from sequential calls have INDEPENDENT fragments arrays', () => {
+      const r1 = styles({ theme: { color: 'red' }, css: lazyCss as never, rootSize: 16 })
+      const r2 = styles({ theme: { backgroundColor: 'blue' }, css: lazyCss as never, rootSize: 16 })
+
+      const r1Fragments = (r1 as { values: unknown[] }).values[0]
+      const r2Fragments = (r2 as { values: unknown[] }).values[0]
+      // Different array identities — r1 is not r2.
+      expect(r1Fragments).not.toBe(r2Fragments)
+      // Both populated.
+      expect(Array.isArray(r1Fragments) && r1Fragments.length).toBeGreaterThan(0)
+      expect(Array.isArray(r2Fragments) && r2Fragments.length).toBeGreaterThan(0)
+    })
+  })

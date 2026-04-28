@@ -103,18 +103,32 @@ test.describe('ui-showcase — rocketstyle Button interaction', () => {
     await expect(page.getByRole('button', { name: /Clicked: 0/ })).toBeVisible()
   })
 
-  // INTENTIONALLY OMITTED: an assertion that Primary buttons have
-  // theme-derived computed styles (e.g. non-zero border-radius). Currently
-  // the rocketstyle theme rules don't apply to the rendered DOM in
-  // ui-showcase — PRs #345/#349 noted "_layout double-mount" as a known
-  // issue and fixed one source (the vite-plugin dev-SSR auto-load), but
-  // a deeper framework bug remains: a layout's inner `<RouterView />`
-  // re-renders the layout instead of advancing to the next chain entry.
-  // ssr-showcase exhibits the same shape (2 navs post-hydration) — its
-  // existing e2e specs work around it via `.first()` selectors. Adding
-  // the assertion here would correctly fail on a real framework bug, but
-  // fixing that bug is out of scope for this PR. Follow-up tracking the
-  // root cause + its impact on theme application: see PR description.
+  test('Primary button has theme-derived computed styles (non-zero border-radius + background)', async ({
+    page,
+  }) => {
+    await page.goto('/button')
+    const primary = page.getByRole('button', { name: /^Primary$/ })
+    await expect(primary).toBeVisible()
+    // Locks in the post-fix contract: the rocketstyle dimension theme must
+    // merge into the rendered DOM. Pre-fix (PR #283 \`_fragments\` reuse bug),
+    // each Element render's 5+ \`makeItResponsive\` calls clobbered the
+    // previous CSSResult's data via a shared module-level array — every
+    // Button rendered with the same empty \`pyr-186j8ah\` rule body and
+    // user-agent default styles. See unistyle/styles.test.ts regression
+    // tests for the unit-level shape.
+    const computed = await primary.evaluate((el) => {
+      const cs = getComputedStyle(el)
+      return {
+        radius: Number.parseFloat(cs.borderTopLeftRadius),
+        bg: cs.backgroundColor,
+      }
+    })
+    expect(computed.radius).toBeGreaterThan(0)
+    // Theme primary background is a blue-ish rgb. User-agent default is
+    // rgb(239, 239, 239). Anything other than the default light gray means
+    // the theme reached the DOM.
+    expect(computed.bg).not.toBe('rgb(239, 239, 239)')
+  })
 })
 
 // ─── HOC contract walk-through ─────────────────────────────────────────────
@@ -174,13 +188,17 @@ test.describe('ui-showcase — Element composition', () => {
 // DOM nodes, post-hydration handler bugs.
 
 test.describe('ui-showcase — SSR + hydration', () => {
-  // INTENTIONALLY OMITTED: a "no doubled layout" assertion. The bug
-  // PR #349 partially fixed (vite-plugin auto-load) is one of TWO
-  // contributors to layout double-mount in dev SSR. The deeper one —
-  // a layout's inner `<RouterView />` re-rendering the layout instead
-  // of advancing the matched chain — still ships in main. Asserting
-  // `nav.count() === 1` here would correctly fail; fixing the framework
-  // bug is out of scope for this PR. Once that lands, add the assertion.
+  test('layout mounts exactly once — no doubled <nav> after hydration', async ({ page }) => {
+    await page.goto('/button')
+    // The layout has exactly one <nav>. Pre-#349 this rendered twice in
+    // dev SSR (vite-plugin auto-loaded `_layout.tsx` AND fs-router emitted
+    // it as a parent route). Locks in the post-#349 contract.
+    await expect(page.locator('nav')).toHaveCount(1)
+    // Same shape via the framework's own RouterView marker: outer view
+    // rendering the layout (matched[0]) + layout's inner view rendering
+    // the page (matched[1]) = exactly 2.
+    await expect(page.locator('[data-pyreon-router-view]')).toHaveCount(2)
+  })
 
   test('hydration completes — interactive Button works after page load', async ({ page }) => {
     await page.goto('/button')

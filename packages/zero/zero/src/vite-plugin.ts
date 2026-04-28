@@ -428,7 +428,6 @@ async function renderSsr(
 	// still pass it via `startClient({ layout })` — but the file should
 	// NOT live under `src/routes/_layout.{ts,tsx,…}` (which fs-router
 	// always treats as a parent route).
-	const userLayout: unknown = undefined
 
 	// Use zero's own `createApp` rather than reassembling the tree by hand —
 	// guarantees server and client agree on every wrapper component (any
@@ -442,14 +441,10 @@ async function renderSsr(
 	const appMod = (await server.ssrLoadModule(
 		"@pyreon/zero/server",
 	)) as typeof import("./server")
-	type CreateAppLayout = NonNullable<
-		Parameters<typeof appMod.createApp>[0]["layout"]
-	>
 	const { App, router: routerInst } = appMod.createApp({
 		routes: routes as import("@pyreon/router").RouteRecord[],
 		routerMode: "history",
 		url: pathname,
-		...(userLayout ? { layout: userLayout as CreateAppLayout } : {}),
 	})
 
 	// `preload` loads lazy route components AND runs loaders for `pathname` so
