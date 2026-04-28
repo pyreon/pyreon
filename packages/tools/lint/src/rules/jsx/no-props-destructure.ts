@@ -1,5 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isDestructuring } from '../../utils/ast'
+import { isPathExempt } from '../../utils/exempt-paths'
 
 function containsJSXReturn(node: any): boolean {
   if (!node) return false
@@ -31,6 +32,40 @@ function getDestructuredNames(pattern: any): string[] {
   return names
 }
 
+/**
+ * Names of HOC / factory call expressions whose first-argument render
+ * function takes Pyreon component props. Destructuring inside these IS
+ * a real reactivity bug — same as destructuring at the component
+ * signature directly. Do NOT add this exemption for these.
+ *
+ * The `callArgFns` exemption is intentionally narrow: it only fires for
+ * generic call arguments where the parent call is NOT one of these
+ * known component-shaped factories.
+ */
+const COMPONENT_FACTORY_NAMES = new Set([
+  'createComponent',
+  'defineComponent',
+  'lazy',
+  'memo',
+  'observer',
+  'forwardRef',
+  'rocketstyle',
+  'styled',
+  'attrs',
+  'kinetic',
+])
+
+function isComponentFactoryCall(call: any): boolean {
+  if (!call || call.type !== 'CallExpression') return false
+  const callee = call.callee
+  if (!callee) return false
+  if (callee.type === 'Identifier' && COMPONENT_FACTORY_NAMES.has(callee.name)) return true
+  // `styled.div\`...\`` template tag falls back to a CallExpression on
+  // styled members in some compilers — be conservative and don't try to
+  // detect template literal forms here.
+  return false
+}
+
 export const noPropsDestructure: Rule = {
   meta: {
     id: 'pyreon/no-props-destructure',
@@ -39,13 +74,18 @@ export const noPropsDestructure: Rule = {
       'Disallow destructuring props in component functions — breaks reactive prop tracking. Use props.x or splitProps().',
     severity: 'error',
     fixable: false,
+    schema: { exemptPaths: 'string[]' },
   },
   create(context) {
+    if (isPathExempt(context)) return {}
+
     let functionDepth = 0
     // oxc visitor doesn't pass `parent` to callbacks — previous
     // `parent?.type === 'CallExpression'` check was silently inert. Pre-mark
     // function nodes that appear as CallExpression arguments on the way in.
-    const callArgFns = new WeakSet<any>()
+    // Track BOTH the function and its parent call so we can later refuse
+    // the exemption when the parent is a known component factory.
+    const callArgFns = new WeakMap<any, any>()
 
     const callbacks: VisitorCallbacks = {
       CallExpression(node: any) {
@@ -55,7 +95,7 @@ export const noPropsDestructure: Rule = {
             arg?.type === 'FunctionExpression' ||
             arg?.type === 'FunctionDeclaration'
           ) {
-            callArgFns.add(arg)
+            callArgFns.set(arg, node)
           }
         }
       },
@@ -85,19 +125,29 @@ export const noPropsDestructure: Rule = {
   },
 }
 
-function checkFunction(node: any, context: any, depth: number, callArgFns: WeakSet<any>) {
+function checkFunction(node: any, context: any, depth: number, callArgFns: WeakMap<any, any>) {
   const params = node.params
   if (!params || params.length === 0) return
 
   const firstParam = params[0]
   if (!isDestructuring(firstParam)) return
 
-  // Skip HOC inner functions (depth > 1)
+  // Skip nested functions (depth > 1). This protects render-prop
+  // callbacks whose first param is NOT a Pyreon component prop bag —
+  // e.g. `<For>{(item) => <li>{item}</li>}</For>` passes raw array
+  // items, so destructuring is a non-issue there. The tradeoff is that
+  // genuinely-nested component declarations slip past this rule;
+  // they're rare enough in practice that the false-negative is
+  // acceptable.
   if (depth > 1) return
 
-  // Skip functions passed as arguments to HOC factories
-  // e.g. createLink(({ href, ...rest }) => <a {...rest} />)
-  if (callArgFns.has(node)) return
+  // Skip functions passed as call arguments (HOC / render-prop
+  // pattern), UNLESS the parent call is a known component factory.
+  // Component factories receive Pyreon props via the inner function,
+  // so destructuring there breaks reactivity exactly like it does at
+  // the component signature.
+  const parentCall = callArgFns.get(node)
+  if (parentCall && !isComponentFactoryCall(parentCall)) return
 
   const body = node.body
   if (!body) return

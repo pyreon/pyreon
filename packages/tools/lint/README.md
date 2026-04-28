@@ -79,6 +79,7 @@ const fileResult = lintFile('app.tsx', source, allRules, getPreset('recommended'
 | `pyreon/prefer-computed`       | warn     | No      | Suggests computed() for effect with single .set() |
 | `pyreon/no-effect-assignment`  | warn     | No      | Flags effect with single .update()                |
 | `pyreon/no-signal-leak`        | warn     | No      | Reports unused signal declarations                |
+| `pyreon/no-signal-call-write`  | error    | No      | Flags `sig(value)` write attempts on signals      |
 
 ### JSX (11)
 

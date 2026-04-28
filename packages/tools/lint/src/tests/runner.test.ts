@@ -53,8 +53,8 @@ function lintWith(ruleId: string, source: string, filePath?: string) {
 // ── Rule Metadata ───────────────────────────────────────────────────────────
 
 describe('Rule metadata', () => {
-  it('should have 59 rules', () => {
-    expect(allRules.length).toBe(59)
+  it('should have 60 rules', () => {
+    expect(allRules.length).toBe(60)
   })
 
   it('should have unique rule IDs', () => {
@@ -94,7 +94,7 @@ describe('Rule metadata', () => {
     for (const rule of allRules) {
       counts[rule.meta.category] = (counts[rule.meta.category] ?? 0) + 1
     }
-    expect(counts.reactivity).toBe(10)
+    expect(counts.reactivity).toBe(11)
     expect(counts.jsx).toBe(11)
     expect(counts.lifecycle).toBe(4)
     expect(counts.performance).toBe(4)
@@ -327,6 +327,50 @@ describe('Reactivity rules', () => {
     const diags = findByRule(result, 'pyreon/no-signal-leak')
     expect(diags.length).toBe(0)
   })
+
+  it('pyreon/no-signal-call-write: flags `sig(value)` write attempt', () => {
+    const source = `const count = signal(0)\nfunction inc() { count(5) }`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-signal-call-write')
+    expect(diags.length).toBe(1)
+    expect(diags[0]?.message).toContain('count.set(value)')
+  })
+
+  it('pyreon/no-signal-call-write: clean for zero-arg read', () => {
+    const source = `const count = signal(0)\nfunction read() { return count() }`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-signal-call-write')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-signal-call-write: clean for `.set()` member call', () => {
+    const source = `const count = signal(0)\nfunction inc() { count.set(5) }`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-signal-call-write')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-signal-call-write: also covers computed bindings', () => {
+    const source = `const total = computed(() => 0)\nfunction wrong() { total(5) }`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-signal-call-write')
+    expect(diags.length).toBe(1)
+  })
+
+  it('pyreon/no-signal-call-write: ignores non-const signal-like declarations', () => {
+    // `let` may be reassigned to a non-signal — too risky to flag.
+    const source = `let count = signal(0)\nfunction inc() { count(5) }`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-signal-call-write')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-signal-call-write: clean when name does not bind to a signal', () => {
+    const source = `function increment(x) { return x + 1 }\nincrement(5)`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-signal-call-write')
+    expect(diags.length).toBe(0)
+  })
 })
 
 // ── JSX Rules ───────────────────────────────────────────────────────────────
@@ -416,6 +460,40 @@ describe('JSX rules', () => {
     const result = lintSource(source)
     const diags = findByRule(result, 'pyreon/no-props-destructure')
     expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-props-destructure: clean for render-prop callbacks', () => {
+    // <For>{(item) => <li>...</li>}</For> — array element, not Pyreon props.
+    // The `depth > 1` exemption covers this.
+    const source = `const App = () => <For each={items}>{({id}) => <li>{id}</li>}</For>`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-props-destructure')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-props-destructure: flags inside known component-factory call', () => {
+    // `lazy(({foo}) => <div>{foo}</div>)` — foo IS a Pyreon prop, so
+    // destructuring loses reactivity.
+    const source = `const Wrapped = lazy(({ foo }) => <div>{foo}</div>)`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-props-destructure')
+    expect(diags.length).toBe(1)
+  })
+
+  it('pyreon/no-props-destructure: respects exemptPaths option', () => {
+    const config = configWithExemptPaths('pyreon/no-props-destructure', [
+      'examples/legacy/',
+    ])
+    const source = `const App = ({ name }) => <div>{name}</div>`
+    const exempted = lintFile(
+      'examples/legacy/old.tsx',
+      source,
+      allRules,
+      config,
+    )
+    expect(findByRule(exempted, 'pyreon/no-props-destructure').length).toBe(0)
+    const checked = lintFile('src/App.tsx', source, allRules, config)
+    expect(findByRule(checked, 'pyreon/no-props-destructure').length).toBe(1)
   })
 
   it('pyreon/no-index-as-by: flags by={(_, i) => i}', () => {
@@ -1526,7 +1604,7 @@ describe('Ignore filter', () => {
 describe('Presets', () => {
   it('recommended should include all rules', () => {
     const config = getPreset('recommended')
-    expect(Object.keys(config.rules).length).toBe(59)
+    expect(Object.keys(config.rules).length).toBe(60)
   })
 
   it('strict should promote all warns to errors', () => {
