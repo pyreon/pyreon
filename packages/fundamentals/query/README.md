@@ -198,7 +198,7 @@ const sub = useSubscription({
 
 ### `useSSE(options)`
 
-Reactive Server-Sent Events hook — same pattern as `useSubscription` but read-only. `parse` deserializes each event; `events` filters named event types. Honours the SSE `id` field via `lastEventId()` for resumable reconnects.
+Reactive Server-Sent Events hook — same pattern as `useSubscription` but read-only. `parse` deserializes each event; `events` filters named event types. Updates `lastEventId()` on every incoming `id` field so consumers can persist + resume across remount.
 
 **Returns:** `UseSSEResult<T>` with `data` (signal of last parsed message), `status` (signal), `error` (signal), `lastEventId()`, `readyState()`, `close()`, `reconnect()`.
 
@@ -213,6 +213,20 @@ const sse = useSSE({
   },
 })
 ```
+
+**Resuming across remount.** Browser `EventSource` only auto-resumes (sends the `Last-Event-ID` header) within a single instance lifetime. A new instance — including a fresh hook call after navigation — starts from scratch. To persist the resume point, pair `useStorage` with the `initialLastEventId` option and put the ID in the URL so the server reads it as a query param:
+
+```ts
+const lastId = useStorage('chat-last-id', '')
+
+const sse = useSSE({
+  url: () => `/api/events?lastId=${lastId() || ''}`,
+  initialLastEventId: lastId,
+  onMessage: (msg) => lastId.set(msg.id),
+})
+```
+
+`initialLastEventId` is read **once at mount**. Subsequent changes to the seed accessor are intentionally ignored — use the reactive `url` (or call `reconnect()`) for runtime overrides.
 
 ### `useIsFetching(filters?)` / `useIsMutating(filters?)`
 

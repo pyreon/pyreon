@@ -316,4 +316,36 @@ describe('computed', () => {
       expect(dRuns).toBe(3)
     })
   })
+
+  // ─── Audit bug #1 (extension): async computed warning ─────────────────
+  describe('async function warning', () => {
+    test('warns when called with an async arrow function', () => {
+      const warns: string[] = []
+      const orig = console.warn
+      console.warn = (...args: unknown[]) => warns.push(args.join(' '))
+      try {
+        const asyncFn = async (): Promise<number> => 42
+        // Cast through `unknown` because async is intentionally NOT in
+        // computed()'s type signature — that's the point. The runtime
+        // warn catches what the type system would normally reject.
+        computed(asyncFn as unknown as () => number)
+      } finally {
+        console.warn = orig
+      }
+      expect(warns.some((m) => m.includes('computed'))).toBe(true)
+      expect(warns.some((m) => m.includes('createResource'))).toBe(true)
+    })
+
+    test('does NOT warn for synchronous computed callbacks', () => {
+      const warns: string[] = []
+      const orig = console.warn
+      console.warn = (...args: unknown[]) => warns.push(args.join(' '))
+      try {
+        computed(() => 42)
+      } finally {
+        console.warn = orig
+      }
+      expect(warns.some((m) => m.includes('async function'))).toBe(false)
+    })
+  })
 })

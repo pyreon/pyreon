@@ -51,6 +51,21 @@ function trackWithLocalDeps<T>(deps: Set<() => void>[], effect: () => void, fn: 
 }
 
 export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed<T> {
+  // Dev warning for async computed callbacks (audit bug #1 — extension).
+  // `computed(async () => …)` returns `Computed<Promise<T>>`, which silently
+  // breaks every consumer that expects `Computed<T>`. There's no scenario
+  // where async makes sense here — the recompute fires synchronously and
+  // tracks signals only in the synchronous prefix. For async-derived
+  // state, use `createResource` or a `signal<T>` updated from an effect.
+  if (process.env.NODE_ENV !== 'production') {
+    if (fn.constructor && fn.constructor.name === 'AsyncFunction') {
+      // oxlint-disable-next-line no-console
+      console.warn(
+        '[pyreon] computed() received an async function. The result type becomes `Computed<Promise<T>>`, and signal reads after the first `await` are NOT tracked. ' +
+          'Use `createResource` for async-derived state, or compute synchronously over a signal that holds the awaited value.',
+      )
+    }
+  }
   return options?.equals ? computedWithEquals(fn, options.equals) : computedLazy(fn)
 }
 
