@@ -2,6 +2,11 @@
 // Uses a Set so the same subscriber is never flushed more than once per batch,
 // even if multiple signals it depends on change within the same batch.
 
+// Dev-mode invariant gate: see https://github.com/pyreon/pyreon/blob/main/packages/core/reactivity/src/tests/batch.test.ts
+// for the property-based test that fuzzes random cascade graphs against this
+// invariant. The build-time gate folds to dead code in production bundles.
+const __DEV__ = process.env.NODE_ENV !== 'production'
+
 let batchDepth = 0
 
 // Single Set, drained in-place during flush. JS Set iteration visits entries
@@ -41,8 +46,28 @@ export function batch(fn: () => void): void {
       // by flushing subscribers enqueue into the same Set (dedup against
       // already-queued entries) instead of firing inline.
       batchDepth = 1
+      // Dev-mode invariant: each notify fires AT MOST ONCE per flush. Set
+      // iteration semantics + Set.add idempotency are SUPPOSED to guarantee
+      // this, but a future change that — for instance — clears+re-adds
+      // entries during iteration would silently violate it. The guard
+      // catches that early. WeakSet so it tracks identity without pinning
+      // notify references in memory across batches.
+      const seenThisFlush = __DEV__ ? new WeakSet<() => void>() : undefined
       try {
-        for (const notify of pendingNotifications) notify()
+        for (const notify of pendingNotifications) {
+          if (seenThisFlush?.has(notify)) {
+            // Don't break the flush — log + skip the redundant call so the
+            // app stays responsive while surfacing the regression.
+            // oxlint-disable-next-line no-console
+            console.warn(
+              '[pyreon] batch flush invariant violated: a notification was visited more than once in a single flush. ' +
+                'See packages/core/reactivity/src/batch.ts for the dedup contract.',
+            )
+            continue
+          }
+          seenThisFlush?.add(notify)
+          notify()
+        }
         pendingNotifications.clear()
       } finally {
         batchDepth = 0
