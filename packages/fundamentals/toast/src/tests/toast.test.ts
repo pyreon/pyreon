@@ -612,3 +612,50 @@ describe('Toaster SSR safety', () => {
     expect(result).toBeNull()
   })
 })
+
+// ─── Regression: queue cap at MAX_TOASTS ──────────────────────────────────
+//
+// Pre-fix: `_toasts.set([..._toasts(), t])` had NO cap. A runaway loop
+// (effect/onmessage emitting toasts) accumulated indefinitely. At 20k+
+// the per-add O(N) spread becomes user-visible (>500ms blocked).
+//
+// Post-fix: bounded at MAX_TOASTS=50, oldest dropped first. Evicted
+// entries get their timer cleared + onDismiss fired (matches dismiss path).
+describe('toast — queue cap (regression for unbounded growth)', () => {
+  beforeEach(() => _reset())
+
+  it('queue size never exceeds MAX_TOASTS even under burst', async () => {
+    const { MAX_TOASTS } = await import('../toast')
+    for (let i = 0; i < MAX_TOASTS * 4; i++) toast(`m${i}`)
+    expect(_toasts().length).toBe(MAX_TOASTS)
+  })
+
+  it('drops oldest first (FIFO) when over cap', async () => {
+    const { MAX_TOASTS } = await import('../toast')
+    for (let i = 0; i < MAX_TOASTS + 5; i++) toast(`m${i}`)
+    // First 5 dropped → oldest survivor is m5
+    expect(_toasts().at(0)?.message).toBe(`m5`)
+    expect(_toasts().at(-1)?.message).toBe(`m${MAX_TOASTS + 4}`)
+  })
+
+  it('cancels evicted toasts\' timers + fires onDismiss', async () => {
+    vi.useFakeTimers()
+    const { MAX_TOASTS } = await import('../toast')
+    const dismissCalls: string[] = []
+
+    // Fill to cap with onDismiss-tracking toasts.
+    for (let i = 0; i < MAX_TOASTS; i++) {
+      toast(`pinned-${i}`, { onDismiss: () => dismissCalls.push(`pinned-${i}`) })
+    }
+    expect(dismissCalls.length).toBe(0)
+
+    // One more push → forces oldest to evict.
+    toast('newest', { onDismiss: () => dismissCalls.push('newest') })
+
+    // Evicted toast's onDismiss fired exactly once.
+    expect(dismissCalls).toEqual(['pinned-0'])
+    expect(_toasts().length).toBe(MAX_TOASTS)
+    expect(_toasts().at(-1)?.message).toBe('newest')
+    vi.useRealTimers()
+  })
+})

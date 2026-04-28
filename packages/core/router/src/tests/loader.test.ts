@@ -666,3 +666,67 @@ describe('router — _loaderCache LRU cap', () => {
     expect(router._loaderCache.has('posts:104')).toBe(true)
   })
 })
+
+// ─── Regression: dedup must not return aborted in-flight promise ───────────
+//
+// Pre-fix: `router.push` aborts `_abortController` BEFORE starting the next
+// nav. If two pushes to the same path happen back-to-back, the in-flight
+// Map still holds nav-1's promise (its `.catch` hasn't run yet). The dedup
+// returned that promise to nav-2 — but its bound signal is already aborted,
+// so nav-2's data path is broken even though it has its own fresh signal.
+//
+// Post-fix: `_loaderInflight` stores `{ promise, signal }`. Dedup is gated
+// on `!signal.aborted`. Aborted entries fall through to a fresh execute
+// using nav-2's signal.
+describe('router — _loaderInflight aborted-signal dedup', () => {
+  test('back-to-back navigation re-executes loader with fresh signal when previous was aborted', async () => {
+    let invocations = 0
+    let resolveLoader1: ((data: unknown) => void) | null = null
+
+    const Page = () => null
+    const routes: RouteRecord[] = [
+      { path: '/', component: Page },
+      {
+        path: '/data',
+        component: Page,
+        loader: async ({ signal }) => {
+          invocations++
+          const myInvocation = invocations
+          // Wire signal-abort → reject so the nav actually fails on abort.
+          // The first invocation hangs until manually resolved; later
+          // invocations resolve immediately.
+          if (myInvocation === 1) {
+            return new Promise((_resolve, reject) => {
+              signal?.addEventListener('abort', () => reject(new Error('aborted')))
+              resolveLoader1 = _resolve
+            })
+          }
+          return `data-${myInvocation}`
+        },
+      },
+    ]
+    const router = createRouter({ routes, url: '/' }) as RouterInstance
+
+    // Nav 1 → /data. Loader invocation #1 starts, hangs.
+    const nav1 = router.push('/data').catch(() => {})
+    await new Promise<void>((r) => queueMicrotask(() => r()))
+
+    // Nav 2 → /data. router.push aborts ac1 first, then calls executeLoader.
+    // Pre-fix: dedup returns nav-1's promise (whose signal is now aborted).
+    // Post-fix: dedup skipped (signal.aborted=true), fresh loader runs.
+    const nav2 = router.push('/data')
+
+    // Resolve nav-1's hung promise (won't actually deliver — already aborted)
+    const r1 = resolveLoader1 as ((d: unknown) => void) | null
+    if (r1) r1('data-1')
+
+    await nav2
+    await nav1
+
+    // Post-fix: 2 invocations (nav-1 aborted, nav-2 ran fresh).
+    // Pre-fix: 1 invocation (nav-2 deduped to nav-1's aborted promise).
+    expect(invocations).toBe(2)
+    expect(router.currentRoute().path).toBe('/data')
+  })
+
+})

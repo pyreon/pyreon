@@ -44,12 +44,45 @@ let _innerEffectCollector: Effect[] | null = null
 
 // Global error handler — called for unhandled errors thrown inside effects.
 // Defaults to console.error so silent failures are never swallowed.
-export let _errorHandler: (err: unknown) => void = (err) => {
+//
+// Two-layer model:
+//   1. The user-overridable single handler set via `setErrorHandler` (legacy
+//      direct API).
+//   2. A globalThis bridge `__pyreon_report_error__` that `@pyreon/core`
+//      installs in `registerErrorHandler` to forward effect errors into the
+//      same telemetry pipeline as component / mount / render errors.
+//      Pre-fix the two surfaces were disconnected — Sentry/Datadog wiring via
+//      core's `registerErrorHandler` silently missed effect-thrown errors.
+//      Globalthis-based to avoid an upward import (core depends on
+//      reactivity, not the reverse). Same shape as the perf-harness counter
+//      sink — zero cost when no consumer is installed.
+//
+// Both surfaces fire on every effect error. The legacy handler stays for
+// backward compat; new consumers should prefer `@pyreon/core`'s
+// `registerErrorHandler`.
+
+interface PyreonErrorBridge {
+  __pyreon_report_error__?: (err: unknown, phase: 'effect') => void
+}
+const _errorBridge = globalThis as PyreonErrorBridge
+
+function _defaultErrorHandler(err: unknown): void {
   console.error('[pyreon] Unhandled effect error:', err)
 }
 
+let _userErrorHandler: ((err: unknown) => void) | undefined
+
+export const _errorHandler: (err: unknown) => void = (err) => {
+  // 1. User-set or default direct handler.
+  ;(_userErrorHandler ?? _defaultErrorHandler)(err)
+  // 2. Global telemetry bridge (installed by @pyreon/core's
+  //    registerErrorHandler). Forwards effect errors into reportError so
+  //    Sentry/Datadog wiring captures them alongside component errors.
+  _errorBridge.__pyreon_report_error__?.(err, 'effect')
+}
+
 export function setErrorHandler(fn: (err: unknown) => void): void {
-  _errorHandler = fn
+  _userErrorHandler = fn
 }
 
 /** Remove an effect from all dependency subscriber sets (local deps array). */

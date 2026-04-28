@@ -8,6 +8,18 @@ let _idCounter = 0
 const DEFAULT_DURATION = 4000
 
 /**
+ * Hard cap on the queue. Without this, runaway loops (e.g. a toast call from
+ * inside an effect that re-fires on every store mutation, or a WebSocket
+ * `onmessage` that surfaces every event as a toast) accumulate forever and
+ * each `_toasts.set([..._toasts(), t])` write becomes O(N) — the queue's
+ * memory + per-write spread cost grow unboundedly. Beyond ~20 visible toasts
+ * the user can't read them anyway, so newest-wins (drop oldest) is the right
+ * policy. 50 is generous headroom for legitimate burst patterns (form
+ * validation surfacing many errors at once, batch import results).
+ */
+export const MAX_TOASTS = 50
+
+/**
  * Module-level signal holding the active toast stack.
  * Consumed by the `Toaster` component.
  */
@@ -43,7 +55,21 @@ function addToast(message: string | VNodeChild, options: ToastOptions = {}): str
   }
 
   startTimer(t)
-  _toasts.set([..._toasts(), t])
+
+  // Append + cap at MAX_TOASTS, evicting oldest. Cancel the dropped entry's
+  // timer + onDismiss so it doesn't fire after eviction (mirrors the dismiss
+  // path's cleanup).
+  const current = _toasts()
+  if (current.length >= MAX_TOASTS) {
+    const dropped = current[0]
+    if (dropped) {
+      if (dropped.timer !== undefined) clearTimeout(dropped.timer)
+      dropped.onDismiss?.()
+    }
+    _toasts.set([...current.slice(1), t])
+  } else {
+    _toasts.set([...current, t])
+  }
 
   return id
 }
