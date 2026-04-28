@@ -132,6 +132,8 @@ export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
   // Events — typed currentTarget via generic E
   onClick?: ((e: TargetedEvent<E, MouseEvent>) => void) | undefined
   onDblClick?: ((e: TargetedEvent<E, MouseEvent>) => void) | undefined
+  // React-compat alias for onDblClick — compiler maps to `dblclick` DOM event.
+  onDoubleClick?: ((e: TargetedEvent<E, MouseEvent>) => void) | undefined
   onMouseDown?: ((e: TargetedEvent<E, MouseEvent>) => void) | undefined
   onMouseUp?: ((e: TargetedEvent<E, MouseEvent>) => void) | undefined
   onMouseEnter?: ((e: TargetedEvent<E, MouseEvent>) => void) | undefined
