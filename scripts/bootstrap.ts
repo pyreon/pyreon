@@ -233,3 +233,23 @@ try {
     "[bootstrap] Build failed. Run `bun run --filter='./packages/*/*' build` manually to fix.",
   )
 }
+
+// Phase E1: install git hooks via `core.hooksPath`. Idempotent, no-op
+// outside a git checkout (tarball / fresh extract), respects any
+// existing user-set hooksPath. Lives in its own script so the same
+// install can be re-run manually after a `git config --unset
+// core.hooksPath`. Hook itself lives at `.githooks/pre-push`.
+try {
+  execSync('bun scripts/install-git-hooks.ts', {
+    cwd: ROOT,
+    stdio: 'inherit',
+    timeout: 5_000,
+  })
+} catch {
+  // Same rationale as the build above — never abort `bun install`. The
+  // hook is purely a local-feedback nicety; CI is the authoritative gate.
+  // oxlint-disable-next-line no-console
+  console.warn(
+    '[bootstrap] git-hooks install skipped (not a git checkout, or git config write failed).',
+  )
+}

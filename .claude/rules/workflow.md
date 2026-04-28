@@ -50,6 +50,35 @@
 - Descriptive commit messages focused on "why"
 - Stage specific files, not `git add .`
 
+## Pre-push hook (Phase E1)
+
+The local-fast subset of the validation checklist runs automatically on
+`git push` via a native `core.hooksPath` hook at `.githooks/pre-push`:
+
+1. `bun run lint` — whole repo (oxlint, ~3-15s)
+2. `bun run --filter=<affected> typecheck` — affected packages only
+3. `bun run --filter=<affected> test` — affected packages only;
+   gracefully no-ops when the affected set has no test scripts (most
+   examples)
+
+Total runtime target: 30-60s for a typical PR. Catches the cheap-to-
+detect failures locally instead of waiting 5 min for CI to bounce them.
+
+**Bypass:**
+
+- `PYREON_SKIP_PRE_PUSH=1 git push` — env-var bypass for one-off
+  pushes (clearly named so it can't be mistaken for a permanent flag).
+- `git push --no-verify` — git's native bypass.
+- `git config --unset core.hooksPath` — disable repo-wide, keeps the
+  hook script committed for whoever does want it.
+
+**Re-enable after disabling:** `bun scripts/install-git-hooks.ts`.
+
+**Why `core.hooksPath` instead of husky:** no new dev dependency, hook
+is version-controlled (`.githooks/pre-push`), idempotent install,
+respects an existing user-set hooksPath (won't clobber husky/lefthook
+in a clone where someone has them wired up).
+
 ## Validation Checklist — Before EVERY Push
 
 1. `bun run lint` — zero errors
