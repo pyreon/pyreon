@@ -449,6 +449,26 @@ jobs:
       - name: Check sideEffects + source-map exclusion
         run: bun run check-distribution
 
+  # ── Check doc claims: numeric drift gate ──────────────────────────────
+  # Asserts every numeric claim in human-written docs (hooks count in
+  # README/manifest/CLAUDE.md, docs page count in CLAUDE.md) matches the
+  # underlying source of truth (export count, file count). The audit
+  # caught the hooks README claiming 16 vs actual 34 — drift that lasted
+  # long enough to ship to users. This gate prevents recurrence.
+  # See scripts/check-doc-claims.ts.
+  check-doc-claims:
+    name: Check Doc Claims
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - name: Verify doc-claim numbers match source of truth
+        run: bun run check-doc-claims
+
   # ── Verify modes: real-app build matrix ────────────────────────────────
   # Builds every example × mode cell defined in scripts/verify-modes.ts and
   # asserts the dist/ has actual rendered content. This is the structural

@@ -100,7 +100,7 @@ Styling, theming, components, hooks, and animations.
 | [@pyreon/ui-core](/docs/ui-core)                         | Core initialization, CSS engine connector, and shared utilities     |
 | [@pyreon/styler](/docs/styler)                           | CSS-in-JS engine with theme support                                 |
 | [@pyreon/unistyle](/docs/unistyle)                       | Responsive breakpoints and media query utilities                    |
-| [@pyreon/hooks](/docs/hooks)                             | 16 signal-based hooks for common UI patterns                        |
+| [@pyreon/hooks](/docs/hooks)                             | 34 signal-based hooks for common UI patterns                        |
 | [@pyreon/elements](/docs/elements)                       | Foundational components — Element, List, Overlay, Portal, Text      |
 | [@pyreon/attrs](/docs/attrs)                             | Chainable component factory for composing default props             |
 | [@pyreon/rocketstyle](/docs/rocketstyle)                 | Multi-dimensional style composition — themes, sizes, variants       |
