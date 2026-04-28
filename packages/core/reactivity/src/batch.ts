@@ -68,8 +68,15 @@ export function batch(fn: () => void): void {
           seenThisFlush?.add(notify)
           notify()
         }
-        pendingNotifications.clear()
       } finally {
+        // Clear ALWAYS — even if a notify threw mid-iteration. Without this,
+        // the unflushed remainder leaks into the next batch and refires
+        // (audit bug #19). Effects wrap their callbacks in try/catch
+        // internally so this is rarely reachable in practice, but raw
+        // signal subscribers (signal.subscribe) and lower-level consumers
+        // can throw straight through, and a future refactor that swallows
+        // less aggressively would silently regress without this guard.
+        pendingNotifications.clear()
         batchDepth = 0
       }
     }
