@@ -652,3 +652,61 @@ describeNative('Native vs JS equivalence — knownSignals cross-module', () => {
     ['theme'],
   ))
 })
+
+// PR #352 added a `DOM_PROPS` set so `<input value={x()} />` inside a
+// template-emitting context compiles to `el.value = x()` (property
+// assignment) instead of `el.setAttribute("value", x())` (content
+// attribute). The two diverge for IDL properties whose live state
+// differs from the content attribute (`value`, `checked`, etc.). The
+// Rust native backend reimplements this list separately. A typo in
+// either side's list would silently produce wrong output for one
+// DOM_PROP without breaking any other test. This block enumerates
+// every DOM_PROP under template context (the only context where
+// DOM_PROPS actually fires — root-level standalone JSX uses the
+// `h()` path, not `_tpl() + _bind()`) and asserts JS↔Rust agreement,
+// so a drift between the two lists fails one specific test.
+//
+// Reference: packages/core/compiler/src/jsx.ts:1389 — DOM_PROPS Set.
+describeNative('Native vs JS equivalence — DOM properties', () => {
+  const DOM_PROPS = [
+    'value',
+    'checked',
+    'selected',
+    'disabled',
+    'multiple',
+    'readOnly',
+    'indeterminate',
+  ] as const
+
+  for (const prop of DOM_PROPS) {
+    test(`DOM_PROP in template: <div><input ${prop}={x()} /></div> (reactive)`, () => {
+      compare(`<div><input ${prop}={x()} /></div>`)
+    })
+
+    test(`DOM_PROP in template: <div><input ${prop}={() => x()} /></div> (accessor)`, () => {
+      compare(`<div><input ${prop}={() => x()} /></div>`)
+    })
+
+    test(`DOM_PROP in template: <div><input ${prop}={true} /></div> (literal)`, () => {
+      compare(`<div><input ${prop}={true} /></div>`)
+    })
+  }
+
+  test('regression: all DOM_PROPS together in one template', () => {
+    // Sentinel — if a future PR adds a new DOM property to either
+    // backend without adding it to the other, the loop above won't
+    // notice unless that prop is in the test list. This single test
+    // compiles JSX with ALL known DOM_PROPS together and verifies
+    // both backends agree on the combined output.
+    const allProps = DOM_PROPS.map((p) => `${p}={x()}`).join(' ')
+    compare(`<div><input ${allProps} /></div>`)
+  })
+
+  test('non-DOM-prop control: title in template uses setAttribute, not assignment', () => {
+    // Negative control — `title` is NOT a DOM_PROP, so it should
+    // compile through setAttribute. If this test starts failing,
+    // someone added `title` to DOM_PROPS — verify intent before
+    // updating.
+    compare('<div><input title={x()} /></div>')
+  })
+})

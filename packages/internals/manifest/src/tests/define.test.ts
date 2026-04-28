@@ -80,4 +80,129 @@ describe('defineManifest', () => {
     // But the type-level narrowing on category is preserved.
     expectTypeOf(m.category).toEqualTypeOf<'universal'>()
   })
+
+  // ── Deprecation policy validation ──────────────────────────────────────
+
+  it('throws when stability: deprecated has no `deprecated` metadata', () => {
+    expect(() =>
+      defineManifest({
+        name: '@pyreon/x',
+        tagline: 't',
+        description: 'd',
+        category: 'universal',
+        features: [],
+        api: [
+          {
+            name: 'oldFn',
+            kind: 'function',
+            signature: '() => void',
+            summary: 's',
+            example: 'e',
+            stability: 'deprecated',
+          },
+        ],
+      }),
+    ).toThrow(/no `deprecated` metadata/)
+  })
+
+  it('throws when deprecated entry has no `removeIn` planned removal', () => {
+    expect(() =>
+      defineManifest({
+        name: '@pyreon/x',
+        tagline: 't',
+        description: 'd',
+        category: 'universal',
+        features: [],
+        api: [
+          {
+            name: 'oldFn',
+            kind: 'function',
+            signature: '() => void',
+            summary: 's',
+            example: 'e',
+            stability: 'deprecated',
+            deprecated: { since: '0.10.0' },
+          },
+        ],
+      }),
+    ).toThrow(/no `deprecated\.removeIn`/)
+  })
+
+  it('accepts a fully-specified deprecated entry', () => {
+    expect(() =>
+      defineManifest({
+        name: '@pyreon/x',
+        tagline: 't',
+        description: 'd',
+        category: 'universal',
+        features: [],
+        api: [
+          {
+            name: 'oldFn',
+            kind: 'function',
+            signature: '() => void',
+            summary: 's',
+            example: 'e',
+            stability: 'deprecated',
+            deprecated: {
+              since: '0.10.0',
+              removeIn: '1.0.0',
+              replacement: 'newFn',
+            },
+          },
+        ],
+      }),
+    ).not.toThrow()
+  })
+
+  it('lets non-deprecated entries skip the metadata fields', () => {
+    expect(() =>
+      defineManifest({
+        name: '@pyreon/x',
+        tagline: 't',
+        description: 'd',
+        category: 'universal',
+        features: [],
+        api: [
+          {
+            name: 'fn',
+            kind: 'function',
+            signature: '() => void',
+            summary: 's',
+            example: 'e',
+          },
+          {
+            name: 'expFn',
+            kind: 'function',
+            signature: '() => void',
+            summary: 's',
+            example: 'e',
+            stability: 'experimental',
+          },
+        ],
+      }),
+    ).not.toThrow()
+  })
+
+  it('error message names the package + API for actionable reporting', () => {
+    expect(() =>
+      defineManifest({
+        name: '@pyreon/widget',
+        tagline: 't',
+        description: 'd',
+        category: 'browser',
+        features: [],
+        api: [
+          {
+            name: 'oldThing',
+            kind: 'function',
+            signature: '() => void',
+            summary: 's',
+            example: 'e',
+            stability: 'deprecated',
+          },
+        ],
+      }),
+    ).toThrow(/'@pyreon\/widget'.*'oldThing'/)
+  })
 })

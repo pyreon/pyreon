@@ -186,7 +186,14 @@ for (const pkg of packages) {
   }
 }
 
-if (dirty.length === 0) {
+// `PYREON_BOOTSTRAP_FORCE_FAIL=1` is a test-only injection point. The
+// build-failure catch path is hard to exercise end-to-end without
+// corrupting real packages — this env var jumps straight to it so the
+// exit-code behaviour can be subprocess-tested. Only honoured when
+// explicitly opted in; otherwise the script behaves normally.
+const forceFail = process.env.PYREON_BOOTSTRAP_FORCE_FAIL === '1'
+
+if (dirty.length === 0 && !forceFail) {
   // All lib/ dirs exist AND are fresh — instant no-op.
   process.exit(0)
 }
@@ -210,7 +217,19 @@ for (const pkg of dirty) {
   console.log(`  - ${pkg.name} (${pkg.path}) [${pkg.reason}]`)
 }
 
+// Distinguish postinstall (bun install hook) from manual / CI invocation.
+// `bun install` sets `npm_lifecycle_event=postinstall`; manual `bun
+// scripts/bootstrap.ts` does not. The two paths want different failure
+// behaviour: aborting `bun install` over a stale lib is worse than
+// continuing (the user gets a real error on the next build), but a
+// manual / CI invocation that swallows failure is misleading silence.
+const isPostinstall = process.env.npm_lifecycle_event === 'postinstall'
+
 try {
+  if (forceFail) {
+    // Test-only injection — see PYREON_BOOTSTRAP_FORCE_FAIL above.
+    throw new Error('forced-fail (test only)')
+  }
   // Build packages only (not examples) — examples are never imported by
   // other packages and their build is substantially slower (Vite full
   // production build with tree-shaking, asset optimization, etc.).
@@ -224,14 +243,15 @@ try {
   // oxlint-disable-next-line no-console
   console.log('[bootstrap] Build complete.')
 } catch {
-  // Don't exit with error — a failed postinstall aborts `bun install`
-  // entirely, which is worse than continuing with missing lib/ dirs.
-  // The user will get a clear error on their next `bun run build` of
-  // an example, which is more actionable than a cryptic install failure.
   // oxlint-disable-next-line no-console
   console.error(
     "[bootstrap] Build failed. Run `bun run --filter='./packages/*/*' build` manually to fix.",
   )
+  // Manual / CI invocations exit non-zero so the failure surfaces to the
+  // shell or CI gate. Postinstall path swallows — aborting `bun install`
+  // over stale-lib is worse than continuing (subsequent `bun run build`
+  // will surface the real error with actionable context).
+  if (!isPostinstall) process.exit(1)
 }
 
 // Phase E1: install git hooks via `core.hooksPath`. Idempotent, no-op
