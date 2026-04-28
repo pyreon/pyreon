@@ -294,6 +294,18 @@ function renderEffectFullTrack(deps: Set<() => void>[], run: () => void, fn: () 
 }
 
 export function renderEffect(fn: () => void): () => void {
+  // Same dev warning as `effect()` — signal reads after the first
+  // await aren't tracked. See effect()'s docstring for full reasoning.
+  if (process.env.NODE_ENV !== 'production') {
+    if (fn.constructor && fn.constructor.name === 'AsyncFunction') {
+      // oxlint-disable-next-line no-console
+      console.warn(
+        '[pyreon] renderEffect() received an async function. Signal reads after the first `await` are NOT tracked — only the synchronous prefix is. ' +
+          'Read every tracked signal BEFORE any await, or split into separate effects, or use `watch(source, asyncCb)` for async-in-callback patterns.',
+      )
+    }
+  }
+
   const deps: Set<() => void>[] = []
   let disposed = false
   let isFirstRun = true

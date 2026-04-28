@@ -294,8 +294,32 @@ describe('Reactivity rules', () => {
     expect(diags.length).toBe(1)
   })
 
+  it('pyreon/no-async-effect: flags async in renderEffect()', () => {
+    const source = `renderEffect(async () => { await fetch('/x') })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-async-effect')
+    expect(diags.length).toBe(1)
+    expect(diags[0]?.message).toContain('renderEffect')
+  })
+
+  it('pyreon/no-async-effect: flags async in computed()', () => {
+    const source = `computed(async () => { return await fetch('/x') })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-async-effect')
+    expect(diags.length).toBe(1)
+    expect(diags[0]?.message).toContain('computed')
+    expect(diags[0]?.message).toContain('createResource')
+  })
+
   it('pyreon/no-async-effect: clean for synchronous effect', () => {
     const source = `effect(() => { name.set(userId()) })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-async-effect')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-async-effect: clean for synchronous computed', () => {
+    const source = `computed(() => userId() + ':' + name())`
     const result = lintSource(source)
     const diags = findByRule(result, 'pyreon/no-async-effect')
     expect(diags.length).toBe(0)

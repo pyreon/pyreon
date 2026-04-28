@@ -1965,4 +1965,62 @@ describe('useForm — auto-revalidate after first failed submit (audit bug #2)',
     await Promise.resolve()
     expect(form.fields.name.error()).toBeUndefined()
   })
+
+  // Audit follow-up: integration coverage for the validateOn × debounce ×
+  // async-validator interaction. The unit tests above exercise the fix
+  // (the change-mode trigger after submitCount > 0); this one verifies
+  // the full pipeline composes correctly: failed submit → debounced async
+  // validator runs on every typed keystroke → version-tracking discards
+  // stale results → live error state matches the latest valid value.
+  it("integrates with debounced async validators after first failed submit", async () => {
+    let validatorCalls = 0
+    const asyncValidator = async (v: string): Promise<string | undefined> => {
+      validatorCalls++
+      // Simulate a network round-trip
+      await new Promise((r) => setTimeout(r, 10))
+      return v.length < 5 ? 'Must be at least 5 chars' : undefined
+    }
+
+    const form = useForm({
+      initialValues: { name: '' },
+      validators: { name: asyncValidator },
+      validateOn: 'submit',
+      debounceMs: 30,
+      onSubmit: () => {},
+    })
+
+    // Failed submit → error appears (submit path bypasses debounce).
+    await form.handleSubmit()
+    expect(form.fields.name.error()).toBe('Must be at least 5 chars')
+    const callsAfterSubmit = validatorCalls
+
+    // Now in "live revalidation" mode. User types fast — each keystroke
+    // re-arms the debounce timer. After the debounce window elapses,
+    // exactly ONE async validator should run with the latest value.
+    form.fields.name.setValue('h')
+    form.fields.name.setValue('he')
+    form.fields.name.setValue('hel')
+    form.fields.name.setValue('hello world')
+
+    // Poll for the validator to run + resolve. Generous timeout for CI
+    // runners (debounce 30ms + async 10ms + scheduling slack); polls in
+    // 5ms increments so we don't sleep longer than necessary.
+    const deadline = Date.now() + 1000
+    while (Date.now() < deadline && form.fields.name.error() !== undefined) {
+      await new Promise((r) => setTimeout(r, 5))
+    }
+
+    // Exactly one new validator call (debounce coalesced the keystrokes).
+    expect(validatorCalls).toBe(callsAfterSubmit + 1)
+    // Final value is valid → error cleared
+    expect(form.fields.name.error()).toBeUndefined()
+
+    // Type back to invalid — debounce, then run, then error returns.
+    form.fields.name.setValue('hi')
+    const errDeadline = Date.now() + 1000
+    while (Date.now() < errDeadline && form.fields.name.error() === undefined) {
+      await new Promise((r) => setTimeout(r, 5))
+    }
+    expect(form.fields.name.error()).toBe('Must be at least 5 chars')
+  })
 })

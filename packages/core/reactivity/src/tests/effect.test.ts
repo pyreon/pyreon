@@ -435,4 +435,30 @@ describe('effect — async function warning (audit bug #1)', () => {
     }
     expect(warns.some((m) => m.includes('async function'))).toBe(false)
   })
+
+  test('renderEffect warns when called with an async arrow function', () => {
+    const warns: string[] = []
+    const orig = console.warn
+    console.warn = (...args: unknown[]) => warns.push(args.join(' '))
+    try {
+      const asyncFn = async (): Promise<void> => {}
+      renderEffect(asyncFn as unknown as () => void)
+    } finally {
+      console.warn = orig
+    }
+    expect(warns.some((m) => m.includes('renderEffect'))).toBe(true)
+    expect(warns.some((m) => m.includes('async function'))).toBe(true)
+  })
+
+  test('renderEffect does NOT warn for synchronous callbacks', () => {
+    const warns: string[] = []
+    const orig = console.warn
+    console.warn = (...args: unknown[]) => warns.push(args.join(' '))
+    try {
+      renderEffect(() => {})
+    } finally {
+      console.warn = orig
+    }
+    expect(warns.some((m) => m.includes('async function'))).toBe(false)
+  })
 })
