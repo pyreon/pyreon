@@ -95,6 +95,19 @@ test.describe("Counter", () => {
     await expect(page.locator(".value")).toHaveText("-1")
     await expect(page.locator(".doubled")).toContainText("-2")
   })
+
+  // Regression test for the React→DOM event-name mapping bug surfaced by
+  // Phase B2's compiler-runtime tests. JSX `onDoubleClick` must compile
+  // down to a listener on the `dblclick` DOM event (NOT `doubleclick`,
+  // which the compiler's naive lowercasing produced before the React-
+  // name mapping fix). Playwright's `dblclick()` dispatches a real
+  // `dblclick` event in real Chromium — if the listener is on the wrong
+  // event name, this test fails.
+  test("dbl-click button increments by 10 (onDoubleClick → dblclick)", async ({ page }) => {
+    await expect(page.locator(".value")).toHaveText("0")
+    await page.locator("button.jump").dblclick()
+    await expect(page.locator(".value")).toHaveText("10")
+  })
 })
 
 test.describe("TodoList", () => {

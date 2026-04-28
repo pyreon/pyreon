@@ -7,6 +7,12 @@ export function Counter() {
   const increment = () => count.update((n) => n + 1)
   const decrement = () => count.update((n) => n - 1)
   const reset = () => count.set(0)
+  // Double-click jumps by 10 — used by `e2e/app.spec.ts` to regression-test
+  // the React→DOM event-name mapping. `onDoubleClick` must compile down to
+  // a listener on the `dblclick` DOM event (NOT `doubleclick`, which the
+  // compiler's naive lowercasing produced before the React-name mapping
+  // landed).
+  const jumpByTen = () => count.update((n) => n + 10)
 
   return (
     <div class="card">
@@ -22,6 +28,9 @@ export function Counter() {
         </button>
         <button type="button" onClick={increment}>
           +
+        </button>
+        <button type="button" class="jump" onDoubleClick={jumpByTen}>
+          jump 10
         </button>
       </div>
     </div>

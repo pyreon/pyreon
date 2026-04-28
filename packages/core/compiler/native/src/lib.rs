@@ -2923,17 +2923,25 @@ fn emit_event_listener(
     tb: &mut TemplateBuilder,
     ctx: &mut Ctx,
 ) {
-    // Lowercase the entire event name (drop the "on" prefix). DOM events
-    // are all-lowercase ("keydown", "mouseenter") — emitting "keyDown" /
-    // "mouseEnter" produced events the browser never dispatches AND
-    // missed the delegated-event lookup (DELEGATED_EVENTS uses lowercase).
-    // Prior behavior only lowercased the first char after "on", breaking
-    // every multi-word event.
-    let event_name = if attr_name.len() > 2 {
+    // Translate the JSX-style React attribute name (e.g. `onKeyDown`,
+    // `onDoubleClick`) to the canonical DOM event name (`keydown`,
+    // `dblclick`).
+    //
+    // Default rule: drop the `on` prefix and lowercase. Covers
+    // `onKeyDown` → `keydown`, `onMouseEnter` → `mouseenter`, etc.
+    //
+    // Exception: `onDoubleClick` → `dblclick` (NOT `doubleclick`, which
+    // the naive lowercase produced). React→DOM event-name mismatch.
+    // Discovered by Phase B2's compiler-runtime tests + proven in real
+    // Chromium via `e2e/app.spec.ts`. Mirrors the JS-side fix in jsx.ts.
+    let mut event_name = if attr_name.len() > 2 {
         attr_name[2..].to_ascii_lowercase()
     } else {
         return;
     };
+    if event_name == "doubleclick" {
+        event_name = "dblclick".to_string();
+    }
     let expr = match &attr.value {
         Some(JSXAttributeValue::ExpressionContainer(c)) => {
             match jsx_expr_as_expression(&c.expression) {

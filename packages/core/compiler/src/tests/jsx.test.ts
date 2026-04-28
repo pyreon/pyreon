@@ -1159,6 +1159,18 @@ describe('JSX transform — template emission edge cases', () => {
     expect(result).not.toContain('__ev_')
   })
 
+  // Regression: `onDoubleClick` is the one React→DOM event-name where
+  // the simple-lowercase rule is wrong. The DOM event is `dblclick`,
+  // NOT `doubleclick`. Pre-fix the compiler emitted `doubleclick`,
+  // attaching a listener the browser never fires. Proven broken in
+  // real Chromium via `e2e/app.spec.ts:dbl-click button increments by 10`.
+  test('onDoubleClick maps to dblclick (not doubleclick)', () => {
+    const result = t('<div onDoubleClick={handler}><span /></div>')
+    expect(result).toContain('_tpl(')
+    expect(result).toContain('__ev_dblclick = handler')
+    expect(result).not.toContain('doubleclick')
+  })
+
   test('template with both dynamic attribute AND dynamic child text', () => {
     const result = t('<div title={getTitle()}>{count()}</div>')
     expect(result).toContain('_tpl(')

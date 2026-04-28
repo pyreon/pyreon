@@ -901,13 +901,28 @@ export function transformJSX_JS(
     }
 
     function emitEventListener(attr: N, attrName: string, varName: string): void {
-      // Lowercase the entire event name (drop the "on" prefix). DOM events
-      // are all-lowercase ("keydown", "mouseenter") — emitting "keyDown" /
-      // "mouseEnter" produced events the browser never dispatches AND
-      // missed the delegated-event lookup (DELEGATED_EVENTS uses lowercase).
-      // Prior behavior `(attrName[2] ?? '').toLowerCase() + attrName.slice(3)`
-      // only lowered the first letter, breaking every multi-word event.
-      const eventName = attrName.slice(2).toLowerCase()
+      // Translate the JSX-style React attribute name (e.g. `onKeyDown`,
+      // `onDoubleClick`) to the canonical DOM event name (`keydown`,
+      // `dblclick`).
+      //
+      // The default rule is "drop the `on` prefix and lowercase" —
+      // covers `onKeyDown` → `keydown`, `onMouseEnter` → `mouseenter`,
+      // `onPointerLeave` → `pointerleave`, `onAnimationStart` →
+      // `animationstart`, etc. Most React event names follow this rule
+      // because the underlying DOM event name is also the lowercased
+      // multi-word form.
+      //
+      // The exception list below covers React names whose canonical
+      // DOM event name is NOT the simple lowercase. Today only one:
+      //   `onDoubleClick` → `dblclick` (NOT `doubleclick`)
+      // (`onContextMenu` lowercase happens to match the DOM
+      // `contextmenu` event; same for animation/transition events.)
+      // The previous naive lowercase emitted `doubleclick`, attached a
+      // listener the browser never fires, and silently dropped every
+      // double-click handler. Discovered by Phase B2's compiler-runtime
+      // tests + proven in real Chromium via `e2e/app.spec.ts`.
+      let eventName = attrName.slice(2).toLowerCase()
+      if (eventName === 'doubleclick') eventName = 'dblclick'
       if (!attr.value || attr.value.type !== 'JSXExpressionContainer') return
       const expr = attr.value.expression
       if (!expr || expr.type === 'JSXEmptyExpression') return
