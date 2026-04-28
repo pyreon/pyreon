@@ -186,7 +186,14 @@ for (const pkg of packages) {
   }
 }
 
-if (dirty.length === 0) {
+// `PYREON_BOOTSTRAP_FORCE_FAIL=1` is a test-only injection point. The
+// build-failure catch path is hard to exercise end-to-end without
+// corrupting real packages — this env var jumps straight to it so the
+// exit-code behaviour can be subprocess-tested. Only honoured when
+// explicitly opted in; otherwise the script behaves normally.
+const forceFail = process.env.PYREON_BOOTSTRAP_FORCE_FAIL === '1'
+
+if (dirty.length === 0 && !forceFail) {
   // All lib/ dirs exist AND are fresh — instant no-op.
   process.exit(0)
 }
@@ -219,6 +226,10 @@ for (const pkg of dirty) {
 const isPostinstall = process.env.npm_lifecycle_event === 'postinstall'
 
 try {
+  if (forceFail) {
+    // Test-only injection — see PYREON_BOOTSTRAP_FORCE_FAIL above.
+    throw new Error('forced-fail (test only)')
+  }
   // Build packages only (not examples) — examples are never imported by
   // other packages and their build is substantially slower (Vite full
   // production build with tree-shaking, asset optimization, etc.).
