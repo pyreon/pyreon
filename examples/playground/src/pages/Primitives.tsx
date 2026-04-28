@@ -169,16 +169,14 @@ function DynamicDemo() {
           the VNode-swap on signal change. The signal is read into a local
           before the JSX so the compiler emits a static prop value rather
           than the reactive-prop wrapper that Dynamic's destructure can't
-          unwrap on first render.
-          NOTE: not using children inside <Dynamic>...</Dynamic> here.
-          A bug in Dynamic (separate follow-up) leaks `children` as an
-          HTML attribute when the resolved component is a string tag —
-          the destructured `rest` carries `children` into `h(string, rest)`
-          which forwards it as `setAttribute('children', ...)`. Until
-          that's fixed, leave the swapped element empty. */}
+          unwrap on first render. */}
       {() => {
         const t = tag()
-        return <Dynamic component={t} id="dynamic-target" />
+        return (
+          <Dynamic component={t} id="dynamic-target">
+            tag content
+          </Dynamic>
+        )
       }}
     </div>
   )
