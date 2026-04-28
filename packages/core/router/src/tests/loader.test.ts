@@ -581,3 +581,88 @@ describe('router.preload', () => {
     expect(router._componentCache.get(routes[1] as RouteRecord)).toBe(Lazy)
   })
 })
+
+// ─── _loaderCache LRU cap (regression for missing _maxCacheSize wiring) ────
+describe('router — _loaderCache LRU cap', () => {
+  // Pre-fix: `_maxCacheSize` was wired through from `RouterOptions.maxCacheSize`
+  // (default 100) but the loader cache write paths in router.ts never read it
+  // — only `_componentCache` enforced the cap. Long-running SPAs navigating
+  // dynamic-param routes (`/posts/:id` with hundreds of unique IDs) would
+  // accumulate `_loaderCache` entries until manual `invalidateLoader()`.
+  // Post-fix: the helper `loaderCacheSet` evicts oldest (insertion-order FIFO)
+  // when over the cap, mirroring `_componentCache`.
+  test('caps _loaderCache at maxCacheSize, evicts oldest first', async () => {
+    const Page = () => null
+    const routes: RouteRecord[] = [
+      {
+        path: '/posts/:id',
+        component: Page,
+        loader: async ({ params }) => `post-${params.id}`,
+        loaderKey: ({ params }) => `posts:${params.id}`,
+      },
+    ]
+    const router = createRouter({ routes, maxCacheSize: 3, url: '/' }) as RouterInstance
+
+    // Drive the loader through 4 distinct keys
+    await router.push('/posts/1')
+    await router.push('/posts/2')
+    await router.push('/posts/3')
+    await router.push('/posts/4')
+
+    // Cache must be capped at 3 (not 4).
+    expect(router._loaderCache.size).toBe(3)
+
+    // FIFO: the OLDEST insertion (posts:1) must have been evicted.
+    expect(router._loaderCache.has('posts:1')).toBe(false)
+    expect(router._loaderCache.has('posts:2')).toBe(true)
+    expect(router._loaderCache.has('posts:3')).toBe(true)
+    expect(router._loaderCache.has('posts:4')).toBe(true)
+  })
+
+  test('does not evict when cap is not exceeded', async () => {
+    const Page = () => null
+    const routes: RouteRecord[] = [
+      {
+        path: '/posts/:id',
+        component: Page,
+        loader: async ({ params }) => `post-${params.id}`,
+        loaderKey: ({ params }) => `posts:${params.id}`,
+      },
+    ]
+    const router = createRouter({ routes, maxCacheSize: 100, url: '/' }) as RouterInstance
+
+    await router.push('/posts/1')
+    await router.push('/posts/2')
+    await router.push('/posts/3')
+
+    expect(router._loaderCache.size).toBe(3)
+    expect(router._loaderCache.has('posts:1')).toBe(true)
+    expect(router._loaderCache.has('posts:2')).toBe(true)
+    expect(router._loaderCache.has('posts:3')).toBe(true)
+  })
+
+  test('default maxCacheSize (100) caps cache after 100 unique keys', async () => {
+    const Page = () => null
+    const routes: RouteRecord[] = [
+      {
+        path: '/posts/:id',
+        component: Page,
+        loader: async ({ params }) => `post-${params.id}`,
+        loaderKey: ({ params }) => `posts:${params.id}`,
+      },
+    ]
+    // No explicit maxCacheSize — uses default 100
+    const router = createRouter({ routes, url: '/' }) as RouterInstance
+
+    for (let i = 0; i < 105; i++) {
+      await router.push(`/posts/${i}`)
+    }
+
+    expect(router._loaderCache.size).toBe(100)
+    // Earliest 5 keys (0-4) evicted.
+    expect(router._loaderCache.has('posts:0')).toBe(false)
+    expect(router._loaderCache.has('posts:4')).toBe(false)
+    expect(router._loaderCache.has('posts:5')).toBe(true)
+    expect(router._loaderCache.has('posts:104')).toBe(true)
+  })
+})
