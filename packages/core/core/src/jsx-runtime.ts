@@ -1,9 +1,17 @@
+/// <reference lib="dom" />
 /**
  * JSX automatic runtime.
  *
  * When tsconfig has `"jsxImportSource": "@pyreon/core"`, the TS/bundler compiler
  * rewrites JSX to imports from this file automatically:
  *   <div class="x" />  →  jsx("div", { class: "x" })
+ *
+ * The triple-slash reference above makes this file self-declare its DOM-lib
+ * dependency. Without it, any consumer whose tsconfig has `lib: ["ESNext"]`
+ * (no DOM) — e.g. backend-only packages like @pyreon/cli — fails to typecheck
+ * once `@pyreon/core` becomes resolvable from their dependency graph (e.g. via
+ * a transitive devDep), because tsc auto-resolves jsxImportSource and pulls
+ * jsx-runtime.ts into the consumer's compilation unit.
  */
 import { Fragment, h } from './h'
 import type { RefProp } from './ref'
