@@ -39,7 +39,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/react-compat`   | useState, useEffect, useMemo, lazy, Suspense shims                                                                                                      |
 | `@pyreon/storybook`      | Storybook renderer — mount, render, and interact with Pyreon components                                                                                 |
 | `@pyreon/typescript`     | TypeScript config presets: base, app (noEmit), lib (declarations)                                                                                       |
-| `@pyreon/lint`           | Pyreon-specific linter — 60 rules, 12 categories, config files, watch mode, AST cache, LSP server                                                       |
+| `@pyreon/lint`           | Pyreon-specific linter — 61 rules, 12 categories, config files, watch mode, AST cache, LSP server                                                       |
 | `@pyreon/test-utils`     | Testing utilities — initTestConfig, withThemeContext, getComputedTheme, renderProps, resolveRocketstyle, mountReactive, mountAndExpectOnce              |
 | `@pyreon/manifest`       | Private: type + `defineManifest` helper for per-package manifests that feed the doc + MCP generators (T2.1)                                             |
 | `@pyreon/perf-harness`   | Private: dev-time counter registry + snapshot/diff/record API. Framework packages emit via `globalThis.__pyreon_count__?.(name)` — zero import coupling |
@@ -423,14 +423,14 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 
 - `lint(options?)` — programmatic API: lint files, returns `LintResult` with counts
 - `lintFile(filePath, sourceText, rules, config)` — lint a single file
-- `listRules()` — returns metadata for all 60 rules
+- `listRules()` — returns metadata for all 61 rules
 - `applyFixes(sourceText, diagnostics)` — apply auto-fixes
 - `loadConfig(cwd)` — load `.pyreonlintrc.json` / `package.json` `"pyreonlint"` field
 - `createIgnoreFilter(cwd)` — load `.pyreonlintignore` + `.gitignore` patterns
 - `AstCache` — FNV-1a hash-keyed AST cache for repeat runs
 - `watchAndLint(options)` — file watcher with 100ms debounce, re-lints changed files
 - CLI: `pyreon-lint [--preset recommended|strict|app|lib] [--fix] [--format text|json|compact] [--quiet] [--list] [--watch] [--config path] [--ignore path] [--rule id=severity] [path...]`
-- 60 rules across 12 categories: reactivity (11), jsx (11), lifecycle (4), performance (4), ssr (3), architecture (7), store (3), form (3), styling (4), hooks (3), accessibility (3), router (4)
+- 61 rules across 12 categories: reactivity (11), jsx (11), lifecycle (5), performance (4), ssr (3), architecture (7), store (3), form (3), styling (4), hooks (3), accessibility (3), router (4)
 - New in 2026-Q2: `pyreon/no-process-dev-gate` (architecture, error, auto-fixable) — flags bundler-coupled dev gates: `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'` (dead in Vite browser bundles) AND `import.meta.env.DEV` / `(import.meta as ViteMeta).env?.DEV === true` (Vite/Rolldown-only — undefined and silent in Webpack/Next.js, esbuild, Rollup, Parcel, Bun). Auto-fixes both to bundler-agnostic `process.env.NODE_ENV !== 'production'`, the universal library convention used by React, Vue, Preact, Solid. The companion `pyreon/dev-guard-warnings` recognises `if (process.env.NODE_ENV === 'production') return` as a valid early-return guard.
 - New in T1.1 Phase 4: `pyreon/require-browser-smoke-test` (architecture, error, in `recommended`/`strict`/`lib`, off in `app`) — every browser-categorized package must ship at least one `*.browser.test.{ts,tsx}` file under `src/`. Locks in the T1.1 smoke harness so new browser packages can't quietly ship without coverage. `additionalPackages` option opts new packages in, `exemptPaths` opts out.
 - 4 presets: `recommended`, `strict` (warns→errors), `app` (lib rules off), `lib` (strict + architecture)

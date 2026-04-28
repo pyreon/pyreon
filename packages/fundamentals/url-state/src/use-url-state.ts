@@ -161,6 +161,11 @@ function createUrlSignal<T>(
       options?.onChange?.(value)
     }
 
+    // FIXME: should be `onMount`, not `effect()` — the listener registration
+    // tracks no signals and the wrapping effect is an artefact, not a
+    // reactive subscription. Suppressed pending refactor (no behaviour
+    // change in this PR).
+    // pyreon-lint-disable-next-line pyreon/no-imperative-effect-on-create
     effect(() => {
       window.addEventListener('popstate', onPopState)
       onCleanup(() => {

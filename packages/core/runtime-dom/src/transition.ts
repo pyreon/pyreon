@@ -188,6 +188,11 @@ export function Transition(props: TransitionProps): VNodeChild {
     applyLeave(el)
   }
 
+  // queueMicrotask defers the appear-animation to after the DOM has
+  // committed the initial mount — that scheduling IS the reactive
+  // subscription's job here (it tracks `props.show()` and `props.appear`
+  // and schedules the visual transition). Not setup work.
+  // pyreon-lint-disable-next-line pyreon/no-imperative-effect-on-create
   effect(() => {
     const visible = props.show()
     if (!initialized) {

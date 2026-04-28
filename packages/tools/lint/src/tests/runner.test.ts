@@ -53,8 +53,8 @@ function lintWith(ruleId: string, source: string, filePath?: string) {
 // ── Rule Metadata ───────────────────────────────────────────────────────────
 
 describe('Rule metadata', () => {
-  it('should have 60 rules', () => {
-    expect(allRules.length).toBe(60)
+  it('should have 61 rules', () => {
+    expect(allRules.length).toBe(61)
   })
 
   it('should have unique rule IDs', () => {
@@ -96,7 +96,7 @@ describe('Rule metadata', () => {
     }
     expect(counts.reactivity).toBe(11)
     expect(counts.jsx).toBe(11)
-    expect(counts.lifecycle).toBe(4)
+    expect(counts.lifecycle).toBe(5)
     expect(counts.performance).toBe(4)
     expect(counts.ssr).toBe(3)
     expect(counts.architecture).toBe(7)
@@ -565,6 +565,302 @@ describe('Lifecycle rules', () => {
     const result = lintSource(source)
     const diags = findByRule(result, 'pyreon/no-dom-in-setup')
     expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-imperative-effect-on-create: flags fetch() inside effect', () => {
+    const source = `const App = () => { effect(() => fetch('/api')) }`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(1)
+    expect(diags[0]?.message).toContain('fetch')
+  })
+
+  it('pyreon/no-imperative-effect-on-create: flags addEventListener inside effect', () => {
+    const source = `const App = () => { effect(() => { document.addEventListener('click', () => {}) }) }`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(1)
+    expect(diags[0]?.message).toContain('addEventListener')
+  })
+
+  it('pyreon/no-imperative-effect-on-create: flags setTimeout inside effect', () => {
+    const source = `effect(() => setTimeout(() => doStuff(), 100))`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(1)
+    expect(diags[0]?.message).toContain('setTimeout')
+  })
+
+  it('pyreon/no-imperative-effect-on-create: flags await inside async effect', () => {
+    const source = `effect(async () => { await loadData() })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(1)
+    expect(diags[0]?.message).toContain('await')
+  })
+
+  it('pyreon/no-imperative-effect-on-create: flags document/window member access', () => {
+    const source = `effect(() => { const w = window.innerWidth })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(1)
+  })
+
+  it('pyreon/no-imperative-effect-on-create: clean for pure reactive tracking', () => {
+    // The idiomatic pattern — effect tracks signals, no imperative work.
+    const source = `effect(() => { sum.set(a() + b()) })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-imperative-effect-on-create: clean for console.log debug effect', () => {
+    const source = `effect(() => console.log('count:', count()))`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-imperative-effect-on-create: clean when wrapped in onMount', () => {
+    const source = `onMount(() => { effect(() => fetch('/api')) })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-imperative-effect-on-create: clean for nested function (not run synchronously)', () => {
+    // The fetch is inside a function the effect attaches as a handler —
+    // it runs later, not at effect setup, so the bug class doesn't apply.
+    const source = `effect(() => { const handler = () => fetch('/api'); attach(handler) })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-imperative-effect-on-create: flags localStorage.setItem inside effect', () => {
+    const source = `effect(() => { localStorage.setItem('k', count()) })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(1)
+  })
+
+  it('pyreon/no-imperative-effect-on-create: flags new IntersectionObserver inside effect', () => {
+    const source = `effect(() => { const io = new IntersectionObserver(() => {}) })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(1)
+    expect(diags[0]?.message).toContain('IntersectionObserver')
+  })
+
+  it('pyreon/no-imperative-effect-on-create: flags new ResizeObserver inside effect', () => {
+    const source = `effect(() => { new ResizeObserver(() => {}).observe(el) })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(1)
+    expect(diags[0]?.message).toContain('ResizeObserver')
+  })
+
+  it('pyreon/no-imperative-effect-on-create: flags new WebSocket inside effect', () => {
+    const source = `effect(() => { const ws = new WebSocket(url()) })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(1)
+    expect(diags[0]?.message).toContain('WebSocket')
+  })
+
+  it('pyreon/no-imperative-effect-on-create: flags fetch inside IIFE inside effect', () => {
+    // IIFE — `(async () => { await fetch() })()` runs synchronously at
+    // the call site, so its body should be walked even though it's
+    // structurally a "nested function".
+    const source = `effect(() => { (async () => { await fetch('/api') })() })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(1)
+  })
+
+  it('pyreon/no-imperative-effect-on-create: flags fetch inside arrow-IIFE expression-body', () => {
+    const source = `effect(() => (() => fetch('/api'))())`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(1)
+  })
+
+  it('pyreon/no-imperative-effect-on-create: clean for empty IIFE', () => {
+    const source = `effect(() => { (() => {})() })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-imperative-effect-on-create: still bails at handler inside IIFE', () => {
+    // `setTimeout(...)` IS flagged, but the inner fetch (inside the
+    // setTimeout callback — a real deferred handler) should NOT
+    // double-fire. Single diagnostic for setTimeout, not two.
+    const source = `effect(() => { (() => { setTimeout(() => fetch('/api')) })() })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(1)
+    expect(diags[0]?.message).toContain('setTimeout')
+  })
+
+  // ── Coverage: every entry in each IMPERATIVE_* set must fire ──
+  //
+  // Set-lookup typos in the rule source would slip through happy-path
+  // tests because the happy paths only cover a few entries from each
+  // set. These table-driven tests exercise EVERY entry — a typo that
+  // breaks lookup of any single name fails one of these.
+
+  describe('pyreon/no-imperative-effect-on-create: coverage', () => {
+    const globalCalls = [
+      'fetch',
+      'setTimeout',
+      'setInterval',
+      'requestAnimationFrame',
+      'requestIdleCallback',
+      'queueMicrotask',
+    ]
+    for (const name of globalCalls) {
+      it(`flags global call: ${name}(...)`, () => {
+        const source = `effect(() => { ${name}(() => {}) })`
+        const result = lintSource(source)
+        const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+        expect(diags.length).toBe(1)
+        expect(diags[0]?.message).toContain(name)
+      })
+    }
+
+    const memberMethods = [
+      'addEventListener',
+      'removeEventListener',
+      'querySelector',
+      'querySelectorAll',
+      'getElementById',
+      'getElementsByClassName',
+      'getElementsByTagName',
+      'getBoundingClientRect',
+      'getComputedStyle',
+      'focus',
+      'blur',
+      'scrollIntoView',
+      'scrollTo',
+      'scrollBy',
+      'requestFullscreen',
+      'play',
+      'pause',
+    ]
+    for (const method of memberMethods) {
+      it(`flags member method: el.${method}(...)`, () => {
+        const source = `effect(() => { el.${method}() })`
+        const result = lintSource(source)
+        const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+        expect(diags.length).toBe(1)
+        expect(diags[0]?.message).toContain(method)
+      })
+    }
+
+    const constructors = [
+      'IntersectionObserver',
+      'ResizeObserver',
+      'MutationObserver',
+      'PerformanceObserver',
+      'Worker',
+      'SharedWorker',
+      'WebSocket',
+      'EventSource',
+      'BroadcastChannel',
+    ]
+    for (const ctor of constructors) {
+      it(`flags constructor: new ${ctor}(...)`, () => {
+        const source = `effect(() => { new ${ctor}('arg') })`
+        const result = lintSource(source)
+        const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+        expect(diags.length).toBe(1)
+        expect(diags[0]?.message).toContain(ctor)
+      })
+    }
+
+    const browserObjects = [
+      'document',
+      'window',
+      'navigator',
+      'localStorage',
+      'sessionStorage',
+    ]
+    for (const obj of browserObjects) {
+      it(`flags browser-object member read: ${obj}.X`, () => {
+        const source = `effect(() => { const x = ${obj}.something })`
+        const result = lintSource(source)
+        const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+        expect(diags.length).toBe(1)
+        expect(diags[0]?.message).toContain(obj)
+      })
+    }
+
+    const promiseMethods = ['then', 'catch', 'finally']
+    for (const method of promiseMethods) {
+      it(`flags promise method: p.${method}(...)`, () => {
+        const source = `effect(() => { p.${method}(() => {}) })`
+        const result = lintSource(source)
+        const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+        expect(diags.length).toBe(1)
+        expect(diags[0]?.message).toContain(method)
+      })
+    }
+  })
+
+  // ── Edge cases ──
+
+  it('pyreon/no-imperative-effect-on-create: function-expression IIFE form', () => {
+    // `(function () { await fetch() })()` — the function-keyword IIFE
+    // shape, less common than arrow IIFEs but still valid.
+    const source = `effect(() => { (async function () { await fetch('/api') })() })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(1)
+  })
+
+  it('pyreon/no-imperative-effect-on-create: clean when effect callback is a fn reference', () => {
+    // `effect(handler)` — no inline body to walk. Rule must not crash
+    // and must not false-fire on the handler reference itself.
+    const source = `function track() { fetch('/api') }; effect(track)`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-imperative-effect-on-create: clean inside renderEffect wrapper', () => {
+    const source = `renderEffect(() => { effect(() => fetch('/api')) })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-imperative-effect-on-create: clean inside onCleanup wrapper', () => {
+    const source = `onCleanup(() => { effect(() => setTimeout(() => {}, 100)) })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-imperative-effect-on-create: known limitation — bracket access not detected', () => {
+    // The rule only matches dotted member access. `el['addEventListener']`
+    // bypasses detection — documented limitation. If a future enhancement
+    // adds bracket-access support, this test should be flipped to assert 1.
+    const source = `effect(() => { el['addEventListener']('click', fn) })`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-imperative-effect-on-create: known limitation — non-DOM identifier with matching method', () => {
+    // `myObj.focus()` flags even when `myObj` isn't a DOM element. The
+    // rule has no type info; method-name matching is the heuristic. This
+    // is an acceptable false-positive trade-off — the alternative (full
+    // type checking) is out of scope for an AST walker.
+    const source = `const myObj = { focus: () => null }; effect(() => myObj.focus())`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-imperative-effect-on-create')
+    expect(diags.length).toBe(1)
   })
 })
 
@@ -1604,7 +1900,7 @@ describe('Ignore filter', () => {
 describe('Presets', () => {
   it('recommended should include all rules', () => {
     const config = getPreset('recommended')
-    expect(Object.keys(config.rules).length).toBe(60)
+    expect(Object.keys(config.rules).length).toBe(61)
   })
 
   it('strict should promote all warns to errors', () => {

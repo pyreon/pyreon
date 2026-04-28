@@ -349,7 +349,10 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
       }
     })
 
-    // Sync language changes
+    // Sync language changes — async language loading is the framework's
+    // documented pattern for code editors; the .then() dispatches to a
+    // CodeMirror view captured per-editor, not per-component-instance.
+    // pyreon-lint-disable-next-line pyreon/no-imperative-effect-on-create
     effect(() => {
       const lang = language()
       // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
