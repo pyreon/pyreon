@@ -17,17 +17,28 @@ import {
 const SELF = fileURLToPath(import.meta.url)
 const REPO_ROOT = resolve(dirname(SELF), '../../../../..')
 
+// `findManifests(REPO_ROOT)` dynamically imports every manifest.ts in the
+// monorepo (~50 files). On cold CI runners with no transform cache the
+// per-import bun-side compilation cost adds up — locally these tests run
+// in ~250ms but CI consistently hit the 5s default ceiling. 30s gives
+// plenty of headroom while still failing fast on a genuine hang.
+const FIND_MANIFESTS_TIMEOUT = 30_000
+
 describe('gen-docs — end-to-end', () => {
-  it('regenerating from all real manifests yields the checked-in llms.txt byte-for-byte', async () => {
-    const manifests = await findManifests(REPO_ROOT)
-    const llmsTxtPath = join(REPO_ROOT, 'llms.txt')
-    const current = readFileSync(llmsTxtPath, 'utf8')
-    const { contents, missingEntries } = regenerateLlmsTxt(current, manifests)
-    // If this fails, the generator and the checked-in file disagree.
-    // Fix: `bun run gen-docs` and commit the result.
-    expect(missingEntries).toEqual([])
-    expect(contents).toBe(current)
-  })
+  it(
+    'regenerating from all real manifests yields the checked-in llms.txt byte-for-byte',
+    async () => {
+      const manifests = await findManifests(REPO_ROOT)
+      const llmsTxtPath = join(REPO_ROOT, 'llms.txt')
+      const current = readFileSync(llmsTxtPath, 'utf8')
+      const { contents, missingEntries } = regenerateLlmsTxt(current, manifests)
+      // If this fails, the generator and the checked-in file disagree.
+      // Fix: `bun run gen-docs` and commit the result.
+      expect(missingEntries).toEqual([])
+      expect(contents).toBe(current)
+    },
+    FIND_MANIFESTS_TIMEOUT,
+  )
 
   it('flow manifest produces a bullet that appears verbatim in llms.txt', async () => {
     const llmsTxtPath = join(REPO_ROOT, 'llms.txt')
@@ -39,14 +50,18 @@ describe('gen-docs — end-to-end', () => {
     expect(current).toContain(`- ${flowManifest.name} — ${flowManifest.tagline}`)
   })
 
-  it('regenerating from all real manifests yields the checked-in llms-full.txt byte-for-byte', async () => {
-    const manifests = await findManifests(REPO_ROOT)
-    const llmsFullPath = join(REPO_ROOT, 'llms-full.txt')
-    const current = readFileSync(llmsFullPath, 'utf8')
-    const { contents, missingEntries } = regenerateLlmsFullTxt(current, manifests)
-    expect(missingEntries).toEqual([])
-    expect(contents).toBe(current)
-  })
+  it(
+    'regenerating from all real manifests yields the checked-in llms-full.txt byte-for-byte',
+    async () => {
+      const manifests = await findManifests(REPO_ROOT)
+      const llmsFullPath = join(REPO_ROOT, 'llms-full.txt')
+      const current = readFileSync(llmsFullPath, 'utf8')
+      const { contents, missingEntries } = regenerateLlmsFullTxt(current, manifests)
+      expect(missingEntries).toEqual([])
+      expect(contents).toBe(current)
+    },
+    FIND_MANIFESTS_TIMEOUT,
+  )
 })
 
 describe('gen-docs-core — no shebang', () => {
