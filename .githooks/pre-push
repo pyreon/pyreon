@@ -1,0 +1,85 @@
+#!/usr/bin/env sh
+#
+# Pyreon pre-push hook — Phase E1 of the production-readiness plan.
+#
+# Runs the local-fast subset of CI before letting a push leave the laptop:
+#   1. lint (oxlint, ~3s for the whole repo)
+#   2. typecheck on affected packages
+#   3. test on affected packages — gracefully no-ops when the affected
+#      set has no packages with a `test` script (most examples)
+#
+# Total runtime target: 30-60s for a typical PR. The point is to catch
+# the cheap-to-detect failures locally instead of waiting 5 min for CI
+# to bounce them.
+#
+# Opt-out:
+#   PYREON_SKIP_PRE_PUSH=1 git push   # one-off bypass for emergencies
+#   git push --no-verify              # git's native bypass (also works)
+#
+# Disable entirely:
+#   git config --unset core.hooksPath
+#
+# Re-enable:
+#   bun scripts/install-git-hooks.ts
+
+if [ "$PYREON_SKIP_PRE_PUSH" = "1" ]; then
+  echo "[pyreon pre-push] PYREON_SKIP_PRE_PUSH=1 — skipping validation"
+  exit 0
+fi
+
+# Resolve repo root regardless of where the user invoked git push from.
+REPO_ROOT=$(git rev-parse --show-toplevel)
+cd "$REPO_ROOT" || exit 1
+
+echo "[pyreon pre-push] running local validation (lint + typecheck + tests)"
+echo "[pyreon pre-push] bypass with PYREON_SKIP_PRE_PUSH=1 or git push --no-verify"
+echo
+
+# ── 1. Lint ──────────────────────────────────────────────────────────
+# Whole-repo lint — oxlint is Rust-powered, ~3-15s. No filter needed.
+echo "[1/3] lint"
+if ! bun run lint; then
+  echo
+  echo "[pyreon pre-push] ❌ lint failed — fix the errors above and retry."
+  exit 1
+fi
+echo
+
+# ── 2. Affected filter ───────────────────────────────────────────────
+# Compute the affected-packages filter the same way CI does. If we
+# fail to compute it (e.g. detached HEAD, no upstream), fall back to
+# the full repo for safety — slower but never wrong.
+FILTER=$(bun run scripts/affected.ts --base=origin/main 2>/dev/null || echo "")
+if [ -z "$FILTER" ]; then
+  echo "[pyreon pre-push] no affected packages computed — running full repo"
+  FILTER="--filter='*'"
+fi
+
+# ── 3. Typecheck (affected) ──────────────────────────────────────────
+echo "[2/3] typecheck (affected)"
+if ! eval "bun run $FILTER typecheck"; then
+  echo
+  echo "[pyreon pre-push] ❌ typecheck failed — fix the errors above and retry."
+  exit 1
+fi
+echo
+
+# ── 4. Tests (affected) ──────────────────────────────────────────────
+# bun's filter errors when no package in the filtered set has a `test`
+# script (most examples). That is NOT a failure for us — treat it as
+# "nothing to run".
+echo "[3/3] tests (affected)"
+TEST_OUTPUT=$(eval "bun run $FILTER test" 2>&1)
+TEST_EXIT=$?
+echo "$TEST_OUTPUT"
+if [ $TEST_EXIT -ne 0 ]; then
+  if echo "$TEST_OUTPUT" | grep -q "No packages matched the filter"; then
+    echo "[pyreon pre-push] (no test scripts in affected packages — ok)"
+  else
+    echo
+    echo "[pyreon pre-push] ❌ tests failed — fix the failures above and retry."
+    exit 1
+  fi
+fi
+echo
+echo "[pyreon pre-push] ✓ all checks passed — pushing"
