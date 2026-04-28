@@ -65,7 +65,13 @@ test.describe('Playground', () => {
     page.on('pageerror', (err) => errors.push(err.message))
 
     for (const path of TAB_PATHS) {
-      await page.goto(path)
+      // `waitUntil: 'domcontentloaded'` instead of the default `load`:
+      // some routes (`/code`, `/charts`, `/document`) lazy-load heavy
+      // bundles (CodeMirror, ECharts, document renderers) whose `load`
+      // event can exceed Playwright's default 30s under cold CI load.
+      // We only need the route to mount and not throw; we don't need
+      // every async chunk to settle.
+      await page.goto(path, { waitUntil: 'domcontentloaded', timeout: 60_000 })
       // Wait for SPA navigation + initial mount.
       await page.locator('nav.sidebar').first().waitFor()
       await page.waitForTimeout(150)
