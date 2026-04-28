@@ -283,6 +283,12 @@ jobs:
         # time. Locally and in CI the combined run produces flaky
         # failures; sequential boots are stable.
         run: bun run test:e2e:ui-regression
+      - name: Run e2e — compat layers (react/preact/vue/solid)
+        # Same separate-config rationale as ui-regression. Spawns 4 dev
+        # servers (ports 5177-5180), one per compat-layer example app.
+        # Proves each compat shim works in real-app shape, not just at
+        # the vitest-browser smoke-test surface.
+        run: bun run test:e2e:compat
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
