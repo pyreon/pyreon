@@ -13,6 +13,7 @@ export function layout(_props: Props) {
             <RouterLink to="/">Home</RouterLink>
             <RouterLink to="/showcase">Showcase</RouterLink>
             <RouterLink to="/advanced">Advanced</RouterLink>
+            <RouterLink to="/primitives">Primitives</RouterLink>
             <RouterLink to="/about">About</RouterLink>
           </nav>
         </header>
