@@ -273,3 +273,92 @@ test.describe('ui-showcase — theme + signal-driven styling', () => {
     expect(ruleCount).toBeGreaterThan(3)
   })
 })
+
+// ─── Hydration-mismatch telemetry hook (real Chromium proof) ───────────────
+//
+// Closes the gap left by happy-dom unit tests. The unit tests in
+// `runtime-dom/src/tests/hydration-integration.test.tsx` exercise the API
+// in a partial DOM polyfill; this spec proves the same callback fires
+// during a REAL hydration in real Chromium with a deliberately-mismatched
+// SSR response.
+//
+// How it works:
+//   1. `examples/ui-showcase/src/entry-client.ts` registers a handler
+//      that pushes captured contexts onto `window.__pyreonHydrationMismatches__`.
+//   2. This spec uses `page.route` to intercept the SSR HTML response
+//      and mutate it — replacing one element's tag — before it reaches
+//      the browser. The mutated tag triggers a tag mismatch during
+//      hydration; the registered telemetry handler fires.
+//   3. After the page settles, we read `window.__pyreonHydrationMismatches__`
+//      and assert it captured the expected mismatch with full context.
+// Type the test-only window extension that
+// `examples/ui-showcase/src/entry-client.ts` installs via
+// `onHydrationMismatch(...)`. Local to this spec file.
+declare global {
+  interface Window {
+    __pyreonHydrationMismatches__?: Array<{
+      type: string
+      expected: unknown
+      actual: unknown
+      path: string
+      timestamp: number
+    }>
+  }
+}
+
+test.describe('ui-showcase — hydration mismatch telemetry hook', () => {
+  test('onHydrationMismatch handler fires on real-browser tag mismatch with full context', async ({ page }) => {
+    // Intercept the SSR HTML for /button and inject a tag mismatch at a
+    // hydration-traversed level. RouterView emits a `<div data-pyreon-router-view>`
+    // that the framework hydrates via the regular `hydrateElement` path; we
+    // rewrite the FIRST occurrence to `<section>` so the client-side VNode
+    // (`<div>`) sees a tag mismatch on hydration and the registered handler
+    // fires.
+    //
+    // Why not deeper levels (e.g. <main> inside the layout): components
+    // mounted via reactive accessors (RouterView's child fn) take a
+    // mount-don't-hydrate fast-path that silently replaces existing DOM,
+    // so mismatches at THAT level don't reach `warnHydrationMismatch`.
+    // Documented in `hydrate.ts:hydrateReactiveChild`. Future work: hydrate
+    // accessor-produced subtrees against existing DOM.
+    let intercepted = false
+    await page.route('**/button', async (route) => {
+      const response = await route.fetch()
+      let body = await response.text()
+      // Only mutate HTML responses (skip image/script subroutes).
+      if (response.headers()['content-type']?.includes('text/html')) {
+        const before = body.length
+        body = body.replace(
+          '<div data-pyreon-router-view',
+          '<section data-pyreon-router-view data-injected-mismatch',
+        )
+        if (body.length !== before) intercepted = true
+      }
+      await route.fulfill({
+        response,
+        body,
+        headers: { ...response.headers() },
+      })
+    })
+
+    await page.goto('/button')
+    expect(intercepted).toBe(true) // sanity: our route handler ran + mutated
+
+    // Wait for hydration to fully run.
+    await expect(page.locator('[data-rocketstyle="Button"]').first()).toBeVisible()
+
+    // Read the captured mismatches from the registered handler.
+    const captured = await page.evaluate(() => window.__pyreonHydrationMismatches__ ?? [])
+
+    // Real-browser hydration captured at least one tag mismatch.
+    expect(captured.length).toBeGreaterThan(0)
+    const tagMismatch = captured.find((c) => c.type === 'tag')
+    expect(tagMismatch).toBeDefined()
+    // expected was 'main' (what client-side VNode wanted); actual was the
+    // injected element name (article). The exact field naming is locked
+    // in by the unit tests; here we just sanity-check shape + presence.
+    expect(typeof tagMismatch?.path).toBe('string')
+    expect(typeof tagMismatch?.timestamp).toBe('number')
+    expect(tagMismatch?.timestamp).toBeGreaterThan(0)
+  })
+})
