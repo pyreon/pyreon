@@ -906,7 +906,6 @@ CI runs the playground + ssr-showcase projects on every PR as a required check (
 | `ssr-showcase` | ✓ active | SSR + hydration + nav + loaders + theme (12 tests). Was disabled until #345 — fixed in tandem by removing zero's dev-SSR `_layout.tsx` auto-load (it was wrapping createApp with a layout that fs-router was already emitting as a parent route, causing double mount). |
 | `ui-showcase` | ✓ active | Real-app regression gate for the rendering/styling layer (rocketstyle, styler, unistyle, elements, runtime-dom). 10 tests in `e2e/ui-showcase-regression.spec.ts`, each mapping to one of the bug-shapes from PRs #197/#200/#336/#349. Lives in [`playwright.ui-regression.config.ts`](playwright.ui-regression.config.ts) — separate config so its webServer boots in isolation (Playwright's `webServer` array starts ALL servers regardless of `--project` selection; lumping all 3 into one config produces resource-contention flakes). |
 | `fundamentals` | ⚠ disabled | fundamentals-package demos; selector mismatch with current example markup |
-| `visual` | ⚠ disabled | visual regressions; needs baseline-image capture pass |
 
 Re-enabling a disabled project: uncomment the project block + matching webServer block in `playwright.config.ts`, run locally to verify, update the CI job's project filter.
 
