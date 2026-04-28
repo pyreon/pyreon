@@ -80,14 +80,20 @@ test.describe('Reactive primitives e2e', () => {
   })
 
   test('<Dynamic> swaps the rendered tag based on signal', async ({ page }) => {
-    // Element is empty (zero height) so don't assert visibility — assert
-    // the tag identity changes via JS property on each cycle.
+    // Initial: <h3> with text content "tag content".
     await expect(page.locator('#dynamic-target')).toHaveCount(1)
     await expect(page.locator('#dynamic-target')).toHaveJSProperty('tagName', 'H3')
+    await expect(page.locator('#dynamic-target')).toHaveText('tag content')
+    // Regression: children must NOT leak as the `children` HTML attribute.
+    // Before Bug C's fix, `<Dynamic component="h3">x</Dynamic>` rendered
+    // `<h3 children="...">` because the destructured `rest` carried
+    // `children` into `h(string, rest)`.
+    await expect(page.locator('#dynamic-target')).not.toHaveAttribute('children', /.*/)
 
     // cycle → p
     await page.locator('#dynamic-cycle').click()
     await expect(page.locator('#dynamic-target')).toHaveJSProperty('tagName', 'P')
+    await expect(page.locator('#dynamic-target')).toHaveText('tag content')
 
     // cycle → em
     await page.locator('#dynamic-cycle').click()

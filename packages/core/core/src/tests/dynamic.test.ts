@@ -1,6 +1,6 @@
 import { Dynamic } from '../dynamic'
 import { h } from '../h'
-import type { ComponentFn, VNode } from '../types'
+import type { ComponentFn, VNode, VNodeChild } from '../types'
 
 describe('Dynamic', () => {
   test('renders component function', () => {
@@ -51,5 +51,37 @@ describe('Dynamic', () => {
     const result = Dynamic({ component: 'br' })
     expect(result).not.toBeNull()
     expect((result as VNode).type).toBe('br')
+  })
+
+  test('does not leak children as a prop on string-tag mount', () => {
+    // Regression: for string `component`, runtime-dom forwards every prop
+    // key to setAttribute. If `children` stayed in props it crashed at
+    // mount with `setAttribute('children', ...)`. The fix re-emits them
+    // as h() rest args, landing them in vnode.children.
+    const result = Dynamic({ component: 'h3', children: 'hello' })
+    expect((result as VNode).type).toBe('h3')
+    expect((result as VNode).props.children).toBeUndefined()
+    expect((result as VNode).children).toEqual(['hello'])
+  })
+
+  test('flattens array children to vnode.children', () => {
+    const a = h('span', null, 'a')
+    const b = h('span', null, 'b')
+    const result = Dynamic({ component: 'div', children: [a, b] })
+    expect((result as VNode).props.children).toBeUndefined()
+    expect((result as VNode).children).toHaveLength(2)
+  })
+
+  test('component children still reach props.children at mount', () => {
+    // For component (not string), the merge happens at mount via
+    // mergeChildrenIntoProps — verified end-to-end by mount tests in
+    // runtime-dom. Here we just confirm the vnode shape is correct so the
+    // merge will fire (children must be on vnode.children, not props).
+    const Comp: ComponentFn = (props) =>
+      h('div', null, (props as { children?: VNodeChild }).children ?? null)
+    const result = Dynamic({ component: Comp, children: 'hi' })
+    expect((result as VNode).type).toBe(Comp)
+    expect((result as VNode).props.children).toBeUndefined()
+    expect((result as VNode).children).toEqual(['hi'])
   })
 })
