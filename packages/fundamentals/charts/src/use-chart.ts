@@ -41,11 +41,16 @@ export function useChart<TOption extends EChartsOption = EChartsOption>(
   let observer: ResizeObserver | null = null
   let initialized = false
 
-  // Initialize chart when container is bound. The async chunk-loading
-  // chain (`ensureModules(opts).then(...).catch(...)`) runs once per
-  // chart instance via the `initialized` flag — refactoring to onMount
-  // would require restructuring the container-binding flow. Tracked for
-  // a follow-up cleanup.
+  // Why effect() and not onMount() — the consumer pattern binds the
+  // container AFTER mount via `chart.ref(el)` (see test fixture
+  // `chart.test.tsx`: `chart.ref(el)` is called post-mount). The
+  // effect's reactivity to `container()` is what defers chart init
+  // until the container is available; `onMount` runs at mount time
+  // when `container()` is still null and would never re-fire when
+  // `ref()` is invoked later. The `initialized` flag turns the effect
+  // into a one-shot init AFTER the container becomes non-null —
+  // exactly the contract the API needs. The static lint rule flags
+  // this site by name; the suppression is load-bearing.
   // pyreon-lint-disable-next-line pyreon/no-imperative-effect-on-create
   effect(() => {
     const el = container()

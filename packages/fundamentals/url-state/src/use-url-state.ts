@@ -161,10 +161,18 @@ function createUrlSignal<T>(
       options?.onChange?.(value)
     }
 
-    // FIXME: should be `onMount`, not `effect()` — the listener registration
-    // tracks no signals and the wrapping effect is an artefact, not a
-    // reactive subscription. Suppressed pending refactor (no behaviour
-    // change in this PR).
+    // Why effect() and not onMount() — `useUrlState` is intentionally
+    // callable OUTSIDE a component-mount context (modules, stores,
+    // route loaders, and tests). `onMount` would silently no-op there,
+    // so the popstate listener would never register. `effect()` runs
+    // in any context and `onCleanup` ties teardown to whatever
+    // effect-scope owns it (component scope when called from a
+    // component, root scope otherwise). The static lint rule flags
+    // this site by name — the suppression is load-bearing.
+    //
+    // Bisect-verified: replacing this with `onMount(() => { ...; return cleanup })`
+    // breaks 11 url-state tests because they call `useUrlState` directly
+    // without a mount tree.
     // pyreon-lint-disable-next-line pyreon/no-imperative-effect-on-create
     effect(() => {
       window.addEventListener('popstate', onPopState)
