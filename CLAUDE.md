@@ -846,13 +846,13 @@ bun run audit-types --all --strict     # exit non-zero if any HIGH findings (CI 
 bun run audit-types --json             # machine-readable output
 ```
 
-CI runs `audit-types --all` informationally as a separate `Audit Types` job — reports findings, doesn't fail the build yet. The current baseline is 3 HIGH findings:
+CI runs `audit-types --all --strict` as a required `Audit Types` job — any HIGH finding (typed-but-unimplemented field, zero non-type refs in the owning package) FAILS the build. The original 3-finding baseline was triaged in Phase E2:
 
-- `@pyreon/zero LoaderContext.query` — duplicate type definition (router has its own LoaderContext that's the actually-constructed one; zero's version adds a `request` field that the runtime doesn't populate)
-- `@pyreon/router RouteMeta.requiresAuth` — typed as `if true, guards can redirect to login` but no built-in guard reads it
-- `@pyreon/core NativeItem.__isNative` — likely a brand marker (false positive); needs an `EXEMPT_FIELDS` entry or rename
+- `@pyreon/zero LoaderContext` — was a duplicate type with a `request: Request` field that the actually-constructed runtime context never populated. Dropped the duplicate; zero now re-exports `LoaderContext` from `@pyreon/router`. If SSR loaders need access to the request in the future, plumb it through the router-level `LoaderContext` in a follow-up PR — do NOT add fields to a type the runtime doesn't populate.
+- `@pyreon/router RouteMeta.requiresAuth` — exempt (`EXEMPT_FIELDS` entry). User-side convention read by user-defined `NavigationGuards`, not the router runtime.
+- `@pyreon/core NativeItem.__isNative` — exempt (`EXEMPT_FIELDS` entry). Brand marker consumed cross-package by `@pyreon/runtime-dom` (`mount.ts`, `nodes.ts`, `hydrate.ts`, `template.ts`); the audit's heuristic only scans within the defining package.
 
-Once these are triaged (real bug → fix; false positive → add to `EXEMPT_FIELDS`), the CI job flips to `--strict` and fails any PR introducing a new HIGH finding.
+New HIGH findings now block merge. Triage path is the same: real bug → fix the runtime to populate the field (or remove the type); false positive (cross-package brand, user-side convention, etc.) → add to `EXEMPT_FIELDS` with a one-line rationale.
 
 **Heuristic**: counts whole-word `\bfieldName\b` occurrences across the package's src (excluding tests, .d.ts, jsx-runtime catalogs). Subtracts 1 for the declaration itself. Permissive — matches member access, destructuring, bracket access, and object literals all at once. Trade-off: same-named locals get counted (false negatives where a real bug is hidden), but the bug class we're catching (zero references anywhere in the package) survives the noise.
 

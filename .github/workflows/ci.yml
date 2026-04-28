@@ -348,13 +348,17 @@ jobs:
       - run: bun run coverage
 
   # ── Audit Types: typed-but-unimplemented detector ─────────────────────
-  # Runs `audit-types --all` against the high-risk packages (zero,
-  # router, core, server, runtime-server, vite-plugin) and reports
-  # fields with zero non-type references. Currently informational —
-  # ships with 3 known HIGH findings to triage in follow-up PRs. Once
-  # the baseline reaches 0, flip this job to `--strict` to fail CI on
-  # any new typed-but-unimplemented surface. See scripts/audit-types.ts
-  # for the heuristic + EXEMPT_FIELDS / EXEMPT_FILES escape hatches.
+  # Runs `audit-types --all --strict` against the high-risk packages
+  # (zero, router, core, server, runtime-server, vite-plugin) and FAILS
+  # CI if any field is typed-but-unimplemented (zero non-type refs in
+  # the owning package). Phase E2 triaged the original 3-finding
+  # baseline: zero's duplicate `LoaderContext` was deleted (re-exports
+  # router's), `RouteMeta.requiresAuth` and `NativeItem.__isNative` are
+  # in `EXEMPT_FIELDS` with rationale (user-side convention + cross-
+  # package brand respectively). New HIGH findings now block merge.
+  # See scripts/audit-types.ts for the heuristic + EXEMPT_FIELDS /
+  # EXEMPT_FILES escape hatches when a field genuinely doesn't fit the
+  # in-package-by-name read pattern.
   audit-types:
     name: Audit Types
     needs: install
@@ -373,14 +377,8 @@ jobs:
             examples/*/node_modules
             docs/node_modules
           key: ${{ env.NM_KEY }}
-      # Note: not `--strict` yet. Job is informational while the
-      # current baseline (3 HIGH findings) is triaged in follow-up PRs.
-      - name: Audit typed-but-unimplemented surfaces
-        run: bun run audit-types --all
-      - name: Summary
-        if: always()
-        run: |
-          echo "::notice::audit-types ran in informational mode. Once baseline HIGH count reaches 0, flip this job to --strict in .github/workflows/ci.yml."
+      - name: Audit typed-but-unimplemented surfaces (strict)
+        run: bun run audit-types --all --strict
 
   # ── Verify modes: real-app build matrix ────────────────────────────────
   # Builds every example × mode cell defined in scripts/verify-modes.ts and
