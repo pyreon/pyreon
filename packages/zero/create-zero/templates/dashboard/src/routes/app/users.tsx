@@ -1,12 +1,18 @@
+import { signal } from "@pyreon/reactivity"
+import { onMount } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
-import { listUsers } from "../../lib/db"
+import { listUsers, type User } from "../../lib/db"
 
 export const meta = { title: "Users" }
 
 export default function Users() {
   useHead({ title: meta.title })
 
-  const users = listUsers()
+  const users = signal<User[]>([])
+
+  onMount(() => {
+    void listUsers().then((u) => users.set(u))
+  })
 
   return (
     <>
@@ -25,16 +31,18 @@ export default function Users() {
           </tr>
         </thead>
         <tbody>
-          {users.map((u) => (
-            <tr>
-              <td>{u.name}</td>
-              <td>{u.email}</td>
-              <td>
-                <span class="pill">{u.role}</span>
-              </td>
-              <td>{u.createdAt.toLocaleDateString()}</td>
-            </tr>
-          ))}
+          {() =>
+            users().map((u) => (
+              <tr>
+                <td>{u.name}</td>
+                <td>{u.email}</td>
+                <td>
+                  <span class="pill">{u.role}</span>
+                </td>
+                <td>{u.createdAt.toLocaleDateString()}</td>
+              </tr>
+            ))
+          }
         </tbody>
       </table>
     </>

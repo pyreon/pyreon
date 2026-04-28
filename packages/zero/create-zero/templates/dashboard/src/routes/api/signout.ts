@@ -1,9 +1,9 @@
 import { signOut } from "../../lib/auth"
 
-export function GET(request: Request) {
+export async function GET(request: Request) {
   const cookie = request.headers.get("cookie") ?? ""
   const sid = /(?:^|;\s*)sid=([^;]+)/.exec(cookie)?.[1]
-  if (sid) signOut(sid)
+  if (sid) await signOut(sid)
 
   return new Response(null, {
     status: 302,

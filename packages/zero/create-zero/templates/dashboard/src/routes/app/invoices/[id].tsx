@@ -1,3 +1,5 @@
+import { signal } from "@pyreon/reactivity"
+import { onMount } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { useRoute } from "@pyreon/router"
 import { Link } from "@pyreon/zero/link"
@@ -13,7 +15,7 @@ import {
   extractDocNode,
 } from "@pyreon/document-primitives"
 import { render } from "@pyreon/document"
-import { invoiceById, invoiceTotal, type Invoice } from "../../../lib/db"
+import { type Invoice, invoiceById, invoiceTotal } from "../../../lib/db"
 
 export const meta = { title: "Invoice" }
 
@@ -72,98 +74,124 @@ function InvoiceTemplate(inv: Invoice) {
 
 export default function InvoiceDetail() {
   const route = useRoute()
-  const inv = invoiceById(route().params.id)
+  const inv = signal<Invoice | null>(null)
+  const notFound = signal(false)
 
-  if (!inv) {
-    return (
-      <>
-        <h1>Invoice not found</h1>
-        <p>
-          <Link href="/app/invoices">← Back to invoices</Link>
-        </p>
-      </>
-    )
-  }
+  onMount(() => {
+    const id = route().params.id
+    void invoiceById(id).then((found) => {
+      if (!found) notFound.set(true)
+      else inv.set(found)
+    })
+  })
 
-  useHead({ title: `${inv.number} — ${inv.customer.name}` })
+  useHead({ title: meta.title })
 
   async function exportPdf() {
-    const node = extractDocNode(InvoiceTemplate(inv))
+    const found = inv()
+    if (!found) return
+    const node = extractDocNode(InvoiceTemplate(found))
     const result = await render(node, "pdf")
-    // Result is a Blob/Uint8Array depending on environment — trigger download.
     if (typeof window === "undefined") return
     const blob = result instanceof Blob ? result : new Blob([result as BlobPart], { type: "application/pdf" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `${inv.number}.pdf`
+    a.download = `${found.number}.pdf`
     a.click()
     URL.revokeObjectURL(url)
   }
 
-  async function sendEmail() {
+  function sendEmail() {
     // Real impl: POST the rendered email HTML to /api/email and let
-    // @pyreon/email-resend handle the SMTP transport. The point of the demo
-    // is that the SAME `InvoiceTemplate` renders both the PDF above and the
-    // email body — no re-authoring per channel.
+    // the email scaffold (lib/email.ts + emails/welcome.tsx) handle the
+    // SMTP transport via Resend. The point of the demo is that the SAME
+    // `InvoiceTemplate` renders both the PDF above and the email body —
+    // no re-authoring per channel.
     alert(
-      "Email send is wired up via @pyreon/email-resend (Phase 3). The same template renders to email HTML — try the PDF export above to see the document-primitives output."
+      "Email send is wired up via Resend (lib/email.ts). The same template renders to email HTML — try the PDF export above to see the document-primitives output.",
     )
   }
 
-  return (
-    <>
-      <div class="app-page-header">
-        <h1>{inv.number}</h1>
-        <span class={`pill ${inv.status}`}>{inv.status}</span>
-      </div>
+  return () => {
+    if (notFound()) {
+      return (
+        <>
+          <h1>Invoice not found</h1>
+          <p>
+            <Link href="/app/invoices">← Back to invoices</Link>
+          </p>
+        </>
+      )
+    }
 
-      <div class="invoice-detail">
-        <div class="invoice-preview">
-          <h2>Invoice {inv.number}</h2>
-          <p>Issued {inv.issuedAt.toLocaleDateString()}</p>
-          <p style="margin-top: 1.5rem;"><strong>Bill to</strong></p>
-          <p>{inv.customer.name}</p>
-          <p>{inv.customer.email}</p>
-          <p>{inv.customer.address}</p>
-          <table>
-            <thead>
-              <tr>
-                <th>Description</th>
-                <th>Qty</th>
-                <th>Unit price</th>
-                <th>Line total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {inv.items.map((it) => (
-                <tr>
-                  <td>{it.description}</td>
-                  <td>{it.qty}</td>
-                  <td>${it.unitPrice.toLocaleString()}</td>
-                  <td>${(it.qty * it.unitPrice).toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div class="total">Total: ${invoiceTotal(inv).toLocaleString()}</div>
+    const found = inv()
+    if (!found) {
+      return (
+        <>
+          <div class="app-page-header">
+            <h1>Loading…</h1>
+          </div>
+        </>
+      )
+    }
+
+    return (
+      <>
+        <div class="app-page-header">
+          <h1>{found.number}</h1>
+          <span class={`pill ${found.status}`}>{found.status}</span>
         </div>
 
-        <aside class="invoice-actions">
-          <strong>Actions</strong>
-          <button class="btn btn-primary" onClick={exportPdf}>
-            Export to PDF
-          </button>
-          <button class="btn btn-secondary" onClick={sendEmail}>
-            Send by email
-          </button>
-          <p style="font-size: 0.8125rem; color: var(--c-text-muted); margin-top: 1rem;">
-            The preview above and the PDF export are rendered from the SAME{" "}
-            <code>InvoiceTemplate</code> component tree. That's what{" "}
-            <code>@pyreon/document-primitives</code> buys you.
-          </p>
-        </aside>
-      </div>
-    </>
-  )
+        <div class="invoice-detail">
+          <div class="invoice-preview">
+            <h2>Invoice {found.number}</h2>
+            <p>Issued {found.issuedAt.toLocaleDateString()}</p>
+            <p style="margin-top: 1.5rem;">
+              <strong>Bill to</strong>
+            </p>
+            <p>{found.customer.name}</p>
+            <p>{found.customer.email}</p>
+            <p>{found.customer.address}</p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Description</th>
+                  <th>Qty</th>
+                  <th>Unit price</th>
+                  <th>Line total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {found.items.map((it) => (
+                  <tr>
+                    <td>{it.description}</td>
+                    <td>{it.qty}</td>
+                    <td>${it.unitPrice.toLocaleString()}</td>
+                    <td>${(it.qty * it.unitPrice).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div class="total">Total: ${invoiceTotal(found).toLocaleString()}</div>
+          </div>
+
+          <aside class="invoice-actions">
+            <strong>Actions</strong>
+            <button class="btn btn-primary" onClick={exportPdf}>
+              Export to PDF
+            </button>
+            <button class="btn btn-secondary" onClick={sendEmail}>
+              Send by email
+            </button>
+            <p style="font-size: 0.8125rem; color: var(--c-text-muted); margin-top: 1rem;">
+              The preview above and the PDF export are rendered from the SAME{" "}
+              <code>InvoiceTemplate</code> component tree. That's what{" "}
+              <code>@pyreon/document-primitives</code> buys you.
+            </p>
+          </aside>
+        </div>
+      </>
+    )
+  }
 }

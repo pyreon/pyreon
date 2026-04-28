@@ -1,13 +1,19 @@
+import { signal } from "@pyreon/reactivity"
+import { onMount } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { Link } from "@pyreon/zero/link"
-import { listInvoices, invoiceTotal } from "../../../lib/db"
+import { type Invoice, invoiceTotal, listInvoices } from "../../../lib/db"
 
 export const meta = { title: "Invoices" }
 
 export default function Invoices() {
   useHead({ title: meta.title })
 
-  const invoices = listInvoices()
+  const invoices = signal<Invoice[]>([])
+
+  onMount(() => {
+    void listInvoices().then((i) => invoices.set(i))
+  })
 
   return (
     <>
@@ -28,24 +34,26 @@ export default function Invoices() {
           </tr>
         </thead>
         <tbody>
-          {invoices.map((inv) => (
-            <tr>
-              <td>
-                <Link href={`/app/invoices/${inv.id}`}>{inv.number}</Link>
-              </td>
-              <td>{inv.customer.name}</td>
-              <td>${invoiceTotal(inv).toLocaleString()}</td>
-              <td>
-                <span class={`pill ${inv.status}`}>{inv.status}</span>
-              </td>
-              <td>{inv.issuedAt.toLocaleDateString()}</td>
-              <td>
-                <Link href={`/app/invoices/${inv.id}`} class="btn btn-secondary">
-                  Open →
-                </Link>
-              </td>
-            </tr>
-          ))}
+          {() =>
+            invoices().map((inv) => (
+              <tr>
+                <td>
+                  <Link href={`/app/invoices/${inv.id}`}>{inv.number}</Link>
+                </td>
+                <td>{inv.customer.name}</td>
+                <td>${invoiceTotal(inv).toLocaleString()}</td>
+                <td>
+                  <span class={`pill ${inv.status}`}>{inv.status}</span>
+                </td>
+                <td>{inv.issuedAt.toLocaleDateString()}</td>
+                <td>
+                  <Link href={`/app/invoices/${inv.id}`} class="btn btn-secondary">
+                    Open →
+                  </Link>
+                </td>
+              </tr>
+            ))
+          }
         </tbody>
       </table>
     </>

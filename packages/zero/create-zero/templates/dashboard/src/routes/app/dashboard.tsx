@@ -1,19 +1,33 @@
+import { computed, signal } from "@pyreon/reactivity"
+import { onMount } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
-import { listInvoices, listUsers, invoiceTotal } from "../../lib/db"
+import { type Invoice, invoiceTotal, listInvoices, listUsers, type User } from "../../lib/db"
 
 export const meta = { title: "Overview" }
 
 export default function Dashboard() {
   useHead({ title: meta.title })
 
-  const users = listUsers()
-  const invoices = listInvoices()
-  const revenue = invoices
-    .filter((i) => i.status === "paid")
-    .reduce((sum, i) => sum + invoiceTotal(i), 0)
-  const outstanding = invoices
-    .filter((i) => i.status === "pending")
-    .reduce((sum, i) => sum + invoiceTotal(i), 0)
+  const users = signal<User[]>([])
+  const invoices = signal<Invoice[]>([])
+
+  onMount(() => {
+    void Promise.all([listUsers(), listInvoices()]).then(([u, i]) => {
+      users.set(u)
+      invoices.set(i)
+    })
+  })
+
+  const revenue = computed(() =>
+    invoices()
+      .filter((i) => i.status === "paid")
+      .reduce((sum, i) => sum + invoiceTotal(i), 0),
+  )
+  const outstanding = computed(() =>
+    invoices()
+      .filter((i) => i.status === "pending")
+      .reduce((sum, i) => sum + invoiceTotal(i), 0),
+  )
 
   return (
     <>
@@ -24,24 +38,24 @@ export default function Dashboard() {
       <div class="stats-grid">
         <div class="stat-card">
           <div class="label">Users</div>
-          <div class="value">{users.length}</div>
+          <div class="value">{() => users().length}</div>
           <div class="delta">+2 this month</div>
         </div>
         <div class="stat-card">
           <div class="label">Invoices</div>
-          <div class="value">{invoices.length}</div>
-          <div class="delta">{invoices.filter((i) => i.status === "paid").length} paid</div>
+          <div class="value">{() => invoices().length}</div>
+          <div class="delta">{() => invoices().filter((i) => i.status === "paid").length} paid</div>
         </div>
         <div class="stat-card">
           <div class="label">Revenue</div>
-          <div class="value">${revenue.toLocaleString()}</div>
+          <div class="value">{() => `$${revenue().toLocaleString()}`}</div>
           <div class="delta">YTD</div>
         </div>
         <div class="stat-card">
           <div class="label">Outstanding</div>
-          <div class="value">${outstanding.toLocaleString()}</div>
+          <div class="value">{() => `$${outstanding().toLocaleString()}`}</div>
           <div class="delta" style="color: var(--c-warning);">
-            {invoices.filter((i) => i.status === "pending").length} pending
+            {() => invoices().filter((i) => i.status === "pending").length} pending
           </div>
         </div>
       </div>
@@ -57,16 +71,20 @@ export default function Dashboard() {
           </tr>
         </thead>
         <tbody>
-          {invoices.slice(0, 5).map((inv) => (
-            <tr>
-              <td>{inv.number}</td>
-              <td>{inv.customer.name}</td>
-              <td>${invoiceTotal(inv).toLocaleString()}</td>
-              <td>
-                <span class={`pill ${inv.status}`}>{inv.status}</span>
-              </td>
-            </tr>
-          ))}
+          {() =>
+            invoices()
+              .slice(0, 5)
+              .map((inv) => (
+                <tr>
+                  <td>{inv.number}</td>
+                  <td>{inv.customer.name}</td>
+                  <td>${invoiceTotal(inv).toLocaleString()}</td>
+                  <td>
+                    <span class={`pill ${inv.status}`}>{inv.status}</span>
+                  </td>
+                </tr>
+              ))
+          }
         </tbody>
       </table>
     </>

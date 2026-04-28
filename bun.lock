@@ -1296,6 +1296,7 @@
       "name": "@pyreon/create-zero",
       "version": "0.14.0",
       "bin": {
+        "create-pyreon-app": "./bin/create-pyreon-app.js",
         "create-zero": "./bin/create-zero.js",
       },
       "dependencies": {

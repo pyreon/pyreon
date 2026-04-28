@@ -1,6 +1,11 @@
 node_modules
 dist
 lib
+# Template src/lib/ directories are real source content (scaffolded into
+# user projects), not package build output. Keep them tracked even though
+# the bare `lib` rule above would otherwise match.
+!packages/zero/create-zero/templates/*/src/lib
+!packages/zero/create-zero/templates/*/src/lib/**
 analysis
 .turbo
 *.tsbuildinfo

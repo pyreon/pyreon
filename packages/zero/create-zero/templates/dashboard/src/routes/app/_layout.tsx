@@ -1,25 +1,38 @@
+import { signal } from "@pyreon/reactivity"
+import { onMount } from "@pyreon/core"
+import { useRouter } from "@pyreon/router"
 import { Link } from "@pyreon/zero/link"
 import { ThemeToggle } from "@pyreon/zero/theme"
-import { redirect } from "@pyreon/router"
 import { getSession, type SessionInfo } from "../../lib/auth"
 
 /**
- * Auth-gated route group. Every `/app/*` route runs through this loader, which
- * redirects to `/login` if no valid session exists. Replace `getSession` with
- * the production resolver from `@pyreon/auth-lucia` — the route guard pattern
- * stays the same.
+ * Auth-gated route group. Every `/app/*` route runs through this layout,
+ * which checks the session client-side on mount and redirects to `/login`
+ * if missing. Pyreon doesn't ship a loader-side `throw redirect()` pattern
+ * (unlike Remix / React Router), so the gate runs after first paint —
+ * brief flash of the layout shell is acceptable since unauthorized users
+ * see no real data (the data-fetching helpers in `lib/db.ts` should
+ * additionally enforce authorization on the server).
+ *
+ * For SSR-side enforcement, set the session cookie on the server-rendered
+ * response and add a route middleware that 302s anonymous requests at the
+ * adapter layer (vercel.json rewrites, Cloudflare Pages function, etc.).
  */
-export async function loader({ request }: { request: Request }) {
-  const cookie = request.headers.get("cookie") ?? ""
-  const sid = /(?:^|;\s*)sid=([^;]+)/.exec(cookie)?.[1]
+export function layout(props: { children: any }) {
+  const session = signal<SessionInfo | null>(null)
+  const router = useRouter()
 
-  const session = getSession(sid)
-  if (!session) throw redirect("/login")
+  onMount(() => {
+    const sid = readSessionCookie()
+    void getSession(sid).then((info) => {
+      if (!info) {
+        void router.push("/login")
+        return
+      }
+      session.set(info)
+    })
+  })
 
-  return { session }
-}
-
-export function layout(props: { children: any; data: { session: SessionInfo } }) {
   return (
     <div class="app-shell">
       <aside class="app-sidebar">
@@ -38,7 +51,10 @@ export function layout(props: { children: any; data: { session: SessionInfo } })
         </Link>
 
         <div class="app-sidebar-footer">
-          <div>{props.data.session.email}</div>
+          {() => {
+            const s = session()
+            return s ? <div>{s.email}</div> : <div>Loading…</div>
+          }}
           <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem; align-items: center;">
             <a href="/api/signout">Sign out</a>
             <ThemeToggle />
@@ -49,4 +65,10 @@ export function layout(props: { children: any; data: { session: SessionInfo } })
       <main class="app-content">{props.children}</main>
     </div>
   )
+}
+
+function readSessionCookie(): string | undefined {
+  if (typeof document === "undefined") return undefined
+  const m = /(?:^|;\s*)sid=([^;]+)/.exec(document.cookie)
+  return m?.[1]
 }

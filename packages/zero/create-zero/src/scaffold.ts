@@ -61,9 +61,19 @@ export async function scaffold(config: ProjectConfig) {
   // set of files; only the `app` template has post/feature/store demos that
   // need conditional removal based on the user's feature multiselect.
   if (config.template === 'app') {
-    if (!config.features.includes('feature') && !config.features.includes('forms')) {
-      await removeIfExists(join(config.targetDir, 'src/routes/posts/new.tsx'))
+    // src/features/ is the @pyreon/feature defineFeature demo. Only kept
+    // when `feature` is selected — `forms` is a different package and
+    // doesn't satisfy the import.
+    if (!config.features.includes('feature')) {
       await removeIfExists(join(config.targetDir, 'src/features'))
+    }
+
+    // posts/new.tsx is the form-creation demo — it imports BOTH @pyreon/form
+    // (for the form) AND `../../features/posts` (for the schema). Removing
+    // either dep means posts/new.tsx must go too, otherwise its remaining
+    // imports fail at build time.
+    if (!config.features.includes('feature') || !config.features.includes('forms')) {
+      await removeIfExists(join(config.targetDir, 'src/routes/posts/new.tsx'))
     }
 
     if (!config.features.includes('store')) {
@@ -110,50 +120,45 @@ function generatePackageJson(config: ProjectConfig): string {
     '@pyreon/zero': pyreonVersion('@pyreon/zero'),
   }
 
+  // Templates may import @pyreon/<feature> packages directly (e.g. the
+  // app template's _layout.tsx imports @pyreon/query for QueryClient).
+  // Those imports require the dep to be present REGARDLESS of strategy —
+  // @pyreon/meta re-exports them but the import path uses the specific
+  // package name. So we always include per-feature deps from the catalog;
+  // @pyreon/meta is added as an additional convenience when meta strategy
+  // is chosen.
+  const allFeatureDeps = new Set<string>()
+  for (const key of config.features) {
+    const feature = FEATURES[key as FeatureKey]
+    if (feature) {
+      for (const dep of feature.deps) allFeatureDeps.add(dep)
+    }
+  }
+  // App template hard requirements — _layout.tsx hardcodes @pyreon/query +
+  // useAppStore-via-@pyreon/store regardless of feature selection. These are
+  // always needed when the user keeps the layout, which they always do.
+  if (config.template === 'app') {
+    allFeatureDeps.add('@pyreon/query')
+    allFeatureDeps.add('@tanstack/query-core')
+    allFeatureDeps.add('@pyreon/store')
+  }
+  for (const dep of allFeatureDeps) {
+    if (dep.startsWith('@pyreon/')) {
+      deps[dep] = pyreonVersion(dep)
+    } else if (dep.startsWith('@tanstack/')) {
+      deps[dep] = dep.includes('query')
+        ? '^5.90.0'
+        : dep.includes('table')
+          ? '^8.21.0'
+          : '^3.13.0'
+    } else if (dep === 'zod') {
+      deps[dep] = '^4.0.0'
+    }
+  }
   if (config.packageStrategy === 'meta') {
-    // Single barrel — includes all fundamentals + UI system
+    // @pyreon/meta is the single-barrel re-export — included as a convenience
+    // alongside the per-feature deps so consumers can choose either import path.
     deps['@pyreon/meta'] = pyreonVersion('@pyreon/meta')
-    // Still need non-pyreon deps for selected features
-    for (const key of config.features) {
-      const feature = FEATURES[key as FeatureKey]
-      if (feature) {
-        for (const dep of feature.deps) {
-          if (!dep.startsWith('@pyreon/')) {
-            if (dep.startsWith('@tanstack/')) {
-              deps[dep] = dep.includes('query')
-                ? '^5.90.0'
-                : dep.includes('table')
-                  ? '^8.21.0'
-                  : '^3.13.0'
-            } else if (dep === 'zod') {
-              deps[dep] = '^4.0.0'
-            }
-          }
-        }
-      }
-    }
-  } else {
-    // Individual packages — only install what's selected
-    const allDeps = new Set<string>()
-    for (const key of config.features) {
-      const feature = FEATURES[key as FeatureKey]
-      if (feature) {
-        for (const dep of feature.deps) allDeps.add(dep)
-      }
-    }
-    for (const dep of allDeps) {
-      if (dep.startsWith('@pyreon/')) {
-        deps[dep] = pyreonVersion(dep)
-      } else if (dep.startsWith('@tanstack/')) {
-        deps[dep] = dep.includes('query')
-          ? '^5.90.0'
-          : dep.includes('table')
-            ? '^8.21.0'
-            : '^3.13.0'
-      } else if (dep === 'zod') {
-        deps[dep] = '^4.0.0'
-      }
-    }
   }
 
   const devDeps: Record<string, string> = {
