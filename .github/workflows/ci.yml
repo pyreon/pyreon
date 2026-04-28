@@ -189,7 +189,21 @@ jobs:
             exit 0
           fi
           set -f
-          bun run $FILTER test
+          # Some affected packages (most examples — playground, ssr-showcase,
+          # benchmark, etc.) genuinely have no `test` script. When the affected
+          # filter is *only* such packages, bun errors with "No packages matched
+          # the filter" and exits 1. Tolerate that case — fail on real test
+          # failures only.
+          set +e
+          OUTPUT=$(bun run $FILTER test 2>&1)
+          EXIT=$?
+          set -e
+          echo "$OUTPUT"
+          if [ $EXIT -ne 0 ] && echo "$OUTPUT" | grep -q "No packages matched the filter"; then
+            echo "(no matching packages have a 'test' script — treating as no-op)"
+            exit 0
+          fi
+          exit $EXIT
 
   test-browser:
     name: Test (browser)

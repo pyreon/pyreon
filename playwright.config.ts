@@ -81,7 +81,7 @@ export default defineConfig({
     // to this regex and verifying locally.
     {
       name: 'playground',
-      testMatch: /e2e\/(reactivity|mount|bench|app)\.spec\.ts$/,
+      testMatch: /e2e\/(reactivity|mount|bench|app|primitives)\.spec\.ts$/,
       use: { baseURL: 'http://localhost:5173' },
     },
 
