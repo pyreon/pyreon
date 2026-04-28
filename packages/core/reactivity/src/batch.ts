@@ -2,14 +2,38 @@
 // Uses a Set so the same subscriber is never flushed more than once per batch,
 // even if multiple signals it depends on change within the same batch.
 
+// Dev-mode invariant gate: see https://github.com/pyreon/pyreon/blob/main/packages/core/reactivity/src/tests/batch.test.ts
+// for the property-based test that fuzzes random cascade graphs against this
+// invariant. The build-time gate folds to dead code in production bundles.
+const __DEV__ = process.env.NODE_ENV !== 'production'
+
 let batchDepth = 0
 
-// Two pre-allocated Sets swapped on each flush — avoids allocating a new Set()
-// on every batch exit. The "active" set collects enqueued notifications; on flush
-// we swap to the other set and iterate the captured one, then clear it for reuse.
-const setA = new Set<() => void>()
-const setB = new Set<() => void>()
-let pendingNotifications = setA
+// Single Set, drained in-place during flush. JS Set iteration visits entries
+// added during iteration (insertion-order), so cascade notifications enqueued
+// while flushing land in the same iteration and dedupe via Set semantics.
+//
+// An earlier design swapped between two pre-allocated Sets, treating each swap
+// as a discrete "cascade round." That created an architectural asymmetry: when
+// a subscriber depended on both a 0-hop signal AND a 1-hop indirection (e.g.
+// a `createSelector` predicate or a `computed`), batched writes to BOTH would
+// queue the subscriber in DIFFERENT rounds — round 1 from the direct path,
+// round 2 from the cascade path. Cross-round dedup didn't work because each
+// round used a fresh Set; the subscriber fired twice per batched change.
+// In list rendering with N items each tracking `isSelected(item.id)` plus a
+// shared signal, this scaled to O(N) wasted re-runs per batched selection.
+//
+// Single-Set iteration handles every case the swap was meant to handle:
+//
+//   - Diamond (a → b, c → d → effect): notifying `d` twice (from b's and c's
+//     recompute) Set-dedupes to one entry; `effect` likewise queued once.
+//   - Selector + multi-dep: subscriber's direct enqueue and indirect enqueue
+//     hit the same Set in the same iteration — Set.add is a no-op for an
+//     already-queued entry.
+//   - Self-modifying effect (effect writes a signal it tracks): subscriber
+//     already iterated; re-add is a no-op (entry not re-visited within the
+//     same flush). Avoids infinite loops without explicit cycle tracking.
+const pendingNotifications = new Set<() => void>()
 
 export function batch(fn: () => void): void {
   batchDepth++
@@ -19,31 +43,32 @@ export function batch(fn: () => void): void {
     batchDepth--
     if (batchDepth === 0 && pendingNotifications.size > 0) {
       // Keep batching active during flush so cascade-notifications emitted
-      // by flushing subscribers enqueue into the pending Set (and dedupe
-      // against what's already queued) instead of firing inline. The
-      // while-loop drains any cascade rounds until the graph is stable.
-      //
-      // Without this, a diamond dependency (a → b, c → d → effect) re-fires
-      // the apex effect TWICE per signal write: the first notification path
-      // through `b` reaches `effect`, whose read clears `d`'s dirty flag;
-      // then when `c` is notified (still in the first flush round), it
-      // re-dirties `d`, which re-notifies `effect`. Keeping batchDepth at 1
-      // during flush routes those cascade-notifications through the Set,
-      // which dedupes on `d`'s recompute and on `effect`'s run.
-      //
-      // See `packages/internals/perf-harness/src/tests/diamond-probe.test.ts`
-      // for the empirical probe that caught this.
+      // by flushing subscribers enqueue into the same Set (dedup against
+      // already-queued entries) instead of firing inline.
       batchDepth = 1
+      // Dev-mode invariant: each notify fires AT MOST ONCE per flush. Set
+      // iteration semantics + Set.add idempotency are SUPPOSED to guarantee
+      // this, but a future change that — for instance — clears+re-adds
+      // entries during iteration would silently violate it. The guard
+      // catches that early. WeakSet so it tracks identity without pinning
+      // notify references in memory across batches.
+      const seenThisFlush = __DEV__ ? new WeakSet<() => void>() : undefined
       try {
-        while (pendingNotifications.size > 0) {
-          // Swap to the other pre-allocated Set before flushing so new
-          // enqueues during notification land in the alternate Set, not
-          // mixed into the current iteration.
-          const flush = pendingNotifications
-          pendingNotifications = flush === setA ? setB : setA
-          for (const notify of flush) notify()
-          flush.clear()
+        for (const notify of pendingNotifications) {
+          if (seenThisFlush?.has(notify)) {
+            // Don't break the flush — log + skip the redundant call so the
+            // app stays responsive while surfacing the regression.
+            // oxlint-disable-next-line no-console
+            console.warn(
+              '[pyreon] batch flush invariant violated: a notification was visited more than once in a single flush. ' +
+                'See packages/core/reactivity/src/batch.ts for the dedup contract.',
+            )
+            continue
+          }
+          seenThisFlush?.add(notify)
+          notify()
         }
+        pendingNotifications.clear()
       } finally {
         batchDepth = 0
       }
