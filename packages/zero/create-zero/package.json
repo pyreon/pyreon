@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/create-zero",
   "version": "0.14.0",
-  "description": "Create a new Pyreon Zero project",
+  "description": "Create a new Pyreon project — invoke as `create-pyreon-app` (canonical) or `create-zero` (alias)",
   "license": "MIT",
   "author": "Vit Bokisch",
   "repository": {
@@ -10,6 +10,7 @@
     "directory": "packages/zero/create-zero"
   },
   "bin": {
+    "create-pyreon-app": "./bin/create-pyreon-app.js",
     "create-zero": "./bin/create-zero.js"
   },
   "files": [
