@@ -79,6 +79,7 @@ const fileResult = lintFile('app.tsx', source, allRules, getPreset('recommended'
 | `pyreon/prefer-computed`       | warn     | No      | Suggests computed() for effect with single .set() |
 | `pyreon/no-effect-assignment`  | warn     | No      | Flags effect with single .update()                |
 | `pyreon/no-signal-leak`        | warn     | No      | Reports unused signal declarations                |
+| `pyreon/no-signal-call-write`  | error    | No      | Flags `sig(value)` write attempts on signals      |
 
 ### JSX (11)
 
@@ -96,14 +97,15 @@ const fileResult = lintFile('app.tsx', source, allRules, getPreset('recommended'
 | `pyreon/no-props-destructure`   | error    | No      | Don't destructure component props          |
 | `pyreon/no-children-access`     | info     | No      | Direct props.children access in renderers  |
 
-### Lifecycle (4)
+### Lifecycle (5)
 
-| Rule                        | Severity | Fixable | Description                              |
-| --------------------------- | -------- | ------- | ---------------------------------------- |
-| `pyreon/no-missing-cleanup` | warn     | No      | onMount with timers needs cleanup return |
-| `pyreon/no-mount-in-effect` | warn     | No      | Don't call onMount inside effect         |
-| `pyreon/no-effect-in-mount` | info     | No      | effect() inside onMount is unusual       |
-| `pyreon/no-dom-in-setup`    | warn     | No      | DOM queries outside onMount/effect       |
+| Rule                                    | Severity | Fixable | Description                              |
+| --------------------------------------- | -------- | ------- | ---------------------------------------- |
+| `pyreon/no-missing-cleanup`             | warn     | No      | onMount with timers needs cleanup return |
+| `pyreon/no-mount-in-effect`             | warn     | No      | Don't call onMount inside effect         |
+| `pyreon/no-effect-in-mount`             | info     | No      | effect() inside onMount is unusual       |
+| `pyreon/no-dom-in-setup`                | warn     | No      | DOM queries outside onMount/effect       |
+| `pyreon/no-imperative-effect-on-create` | warn     | No      | Imperative work in effect() at setup     |
 
 ### Performance (4)
 

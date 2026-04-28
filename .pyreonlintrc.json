@@ -32,6 +32,17 @@
         ]
       }
     ],
+    "pyreon/no-imperative-effect-on-create": [
+      "warn",
+      {
+        "exemptPaths": [
+          "packages/fundamentals/hooks/",
+          "packages/fundamentals/rx/",
+          "__tests__/",
+          ".test."
+        ]
+      }
+    ],
     "pyreon/no-process-dev-gate": [
       "error",
       {

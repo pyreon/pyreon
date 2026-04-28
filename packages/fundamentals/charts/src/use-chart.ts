@@ -41,7 +41,12 @@ export function useChart<TOption extends EChartsOption = EChartsOption>(
   let observer: ResizeObserver | null = null
   let initialized = false
 
-  // Initialize chart when container is bound
+  // Initialize chart when container is bound. The async chunk-loading
+  // chain (`ensureModules(opts).then(...).catch(...)`) runs once per
+  // chart instance via the `initialized` flag — refactoring to onMount
+  // would require restructuring the container-binding flow. Tracked for
+  // a follow-up cleanup.
+  // pyreon-lint-disable-next-line pyreon/no-imperative-effect-on-create
   effect(() => {
     const el = container()
     if (!el || initialized) return

@@ -33,6 +33,7 @@ import { noTernaryConditional } from './jsx/no-ternary-conditional'
 import { useByNotKey } from './jsx/use-by-not-key'
 import { noDomInSetup } from './lifecycle/no-dom-in-setup'
 import { noEffectInMount } from './lifecycle/no-effect-in-mount'
+import { noImperativeEffectOnCreate } from './lifecycle/no-imperative-effect-on-create'
 // Lifecycle
 import { noMissingCleanup } from './lifecycle/no-missing-cleanup'
 import { noMountInEffect } from './lifecycle/no-mount-in-effect'
@@ -47,6 +48,7 @@ import { noContextDestructure } from './reactivity/no-context-destructure'
 import { noEffectAssignment } from './reactivity/no-effect-assignment'
 import { noNestedEffect } from './reactivity/no-nested-effect'
 import { noPeekInTracked } from './reactivity/no-peek-in-tracked'
+import { noSignalCallWrite } from './reactivity/no-signal-call-write'
 import { noSignalInLoop } from './reactivity/no-signal-in-loop'
 import { noSignalInProps } from './reactivity/no-signal-in-props'
 import { noSignalLeak } from './reactivity/no-signal-leak'
@@ -72,7 +74,7 @@ import { noThemeOutsideProvider } from './styling/no-theme-outside-provider'
 import { preferCx } from './styling/prefer-cx'
 
 export const allRules: Rule[] = [
-  // Reactivity (10)
+  // Reactivity (11)
   noBareSignalInJsx,
   noContextDestructure,
   noSignalInLoop,
@@ -83,6 +85,7 @@ export const allRules: Rule[] = [
   preferComputed,
   noEffectAssignment,
   noSignalLeak,
+  noSignalCallWrite,
   // JSX (11)
   noMapInJsx,
   useByNotKey,
@@ -95,11 +98,12 @@ export const allRules: Rule[] = [
   noMissingForBy,
   noPropsDestructure,
   noChildrenAccess,
-  // Lifecycle (4)
+  // Lifecycle (5)
   noMissingCleanup,
   noMountInEffect,
   noEffectInMount,
   noDomInSetup,
+  noImperativeEffectOnCreate,
   // Performance (4)
   noLargeForWithoutBy,
   noEffectInFor,
@@ -169,6 +173,7 @@ export {
   noErrorWithoutPrefix,
   noHrefNavigation,
   noHtmlFor,
+  noImperativeEffectOnCreate,
   noImperativeNavigateInRender,
   noIndexAsBy,
   // Styling
@@ -189,6 +194,7 @@ export {
   noPeekInTracked,
   noProcessDevGate,
   noPropsDestructure,
+  noSignalCallWrite,
   requireBrowserSmokeTest,
   // Hooks
   noRawAddEventListener,
