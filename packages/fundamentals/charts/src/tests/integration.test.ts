@@ -242,7 +242,11 @@ describe('module caching', () => {
     await ensureModules({ series: [{ type: 'bar', data: [2] }] })
     const duration = performance.now() - start
 
-    expect(duration).toBeLessThan(50)
+    // 50ms was too tight for shared CI runners — observed 63ms on a
+    // GitHub-hosted runner under contention, blocking unrelated PRs.
+    // The cold path takes seconds (multiple dynamic imports), so 250ms
+    // still proves the cache works while tolerating slow CI.
+    expect(duration).toBeLessThan(250)
   })
 
   it('_resetLoader clears cached state', async () => {
