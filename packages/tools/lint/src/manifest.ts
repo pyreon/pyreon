@@ -4,12 +4,12 @@ export default defineManifest({
   name: '@pyreon/lint',
   title: 'Pyreon-specific Linter',
   tagline:
-    'Pyreon-specific linter — 60 rules across 12 categories, config files, watch mode, AST cache, CLI + LSP',
+    'Pyreon-specific linter — 61 rules across 12 categories, config files, watch mode, AST cache, CLI + LSP',
   description:
-    'Pyreon-specific lint rules powered by `oxc-parser`. Covers reactivity (11), JSX (11), lifecycle (4), performance (4), SSR (3), architecture (7), store (3), form (3), styling (4), hooks (3), accessibility (3), router (4) — 60 rules total. Programmatic API (`lint`, `lintFile`), CLI (`pyreon-lint`), watch mode (fs.watch + 100ms debounce + AstCache), LSP server, and `.pyreonlintrc.json` config with per-rule options via ESLint-style tuple form. Notable rules: `pyreon/no-process-dev-gate` (auto-fixable; replaces dead-in-browser `typeof process` gates with `import.meta.env?.DEV`), `pyreon/require-browser-smoke-test` (locks in T1.1 browser-test durability).',
+    'Pyreon-specific lint rules powered by `oxc-parser`. Covers reactivity (11), JSX (11), lifecycle (5), performance (4), SSR (3), architecture (7), store (3), form (3), styling (4), hooks (3), accessibility (3), router (4) — 61 rules total. Programmatic API (`lint`, `lintFile`), CLI (`pyreon-lint`), watch mode (fs.watch + 100ms debounce + AstCache), LSP server, and `.pyreonlintrc.json` config with per-rule options via ESLint-style tuple form. Notable rules: `pyreon/no-process-dev-gate` (auto-fixable; replaces dead-in-browser `typeof process` gates with `import.meta.env?.DEV`), `pyreon/require-browser-smoke-test` (locks in T1.1 browser-test durability).',
   category: 'server',
   features: [
-    '60 rules across 12 categories',
+    '61 rules across 12 categories',
     'lint(options) programmatic API + lintFile() low-level entry',
     'CLI: pyreon-lint with --preset / --fix / --watch / --format / --rule-options',
     '4 presets: recommended, strict, app, lib',
@@ -43,7 +43,7 @@ const fileResult = lintFile('app.tsx', source, allRules, config, cache)
 //   pyreon-lint --preset strict --quiet                    # CI mode
 //   pyreon-lint --fix                                      # auto-fix
 //   pyreon-lint --watch src/                               # watch mode
-//   pyreon-lint --list                                     # list all 60 rules
+//   pyreon-lint --list                                     # list all 61 rules
 //   pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/`,
   api: [
     {
@@ -51,7 +51,7 @@ const fileResult = lintFile('app.tsx', source, allRules, config, cache)
       kind: 'function',
       signature: 'lint(options?: LintOptions): LintResult',
       summary:
-        '60 rules across 12 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. Wrong-typed options surface on `result.configDiagnostics`. Uses `oxc-parser` with AST caching.',
+        '61 rules across 12 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. Wrong-typed options surface on `result.configDiagnostics`. Uses `oxc-parser` with AST caching.',
       example: `import { lint } from "@pyreon/lint"
 
 const result = lint({ paths: ["src/"], preset: "recommended" })
@@ -94,7 +94,7 @@ const result = lintFile("app.tsx", source, allRules, config, cache, configSink)`
       example: `pyreon-lint --preset strict --quiet    # CI mode
 pyreon-lint --fix                       # auto-fix
 pyreon-lint --watch src/                # watch mode
-pyreon-lint --list                      # list all 60 rules
+pyreon-lint --list                      # list all 61 rules
 pyreon-lint --format json               # machine-readable
 pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/`,
       seeAlso: ['lint'],

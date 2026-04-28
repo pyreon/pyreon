@@ -33,6 +33,7 @@ import { noTernaryConditional } from './jsx/no-ternary-conditional'
 import { useByNotKey } from './jsx/use-by-not-key'
 import { noDomInSetup } from './lifecycle/no-dom-in-setup'
 import { noEffectInMount } from './lifecycle/no-effect-in-mount'
+import { noImperativeEffectOnCreate } from './lifecycle/no-imperative-effect-on-create'
 // Lifecycle
 import { noMissingCleanup } from './lifecycle/no-missing-cleanup'
 import { noMountInEffect } from './lifecycle/no-mount-in-effect'
@@ -97,11 +98,12 @@ export const allRules: Rule[] = [
   noMissingForBy,
   noPropsDestructure,
   noChildrenAccess,
-  // Lifecycle (4)
+  // Lifecycle (5)
   noMissingCleanup,
   noMountInEffect,
   noEffectInMount,
   noDomInSetup,
+  noImperativeEffectOnCreate,
   // Performance (4)
   noLargeForWithoutBy,
   noEffectInFor,
@@ -171,6 +173,7 @@ export {
   noErrorWithoutPrefix,
   noHrefNavigation,
   noHtmlFor,
+  noImperativeEffectOnCreate,
   noImperativeNavigateInRender,
   noIndexAsBy,
   // Styling
