@@ -2002,8 +2002,13 @@ describe('useForm — auto-revalidate after first failed submit (audit bug #2)',
     form.fields.name.setValue('hel')
     form.fields.name.setValue('hello world')
 
-    // Wait for debounce + async resolution
-    await new Promise((r) => setTimeout(r, 60))
+    // Poll for the validator to run + resolve. Generous timeout for CI
+    // runners (debounce 30ms + async 10ms + scheduling slack); polls in
+    // 5ms increments so we don't sleep longer than necessary.
+    const deadline = Date.now() + 1000
+    while (Date.now() < deadline && form.fields.name.error() !== undefined) {
+      await new Promise((r) => setTimeout(r, 5))
+    }
 
     // Exactly one new validator call (debounce coalesced the keystrokes).
     expect(validatorCalls).toBe(callsAfterSubmit + 1)
@@ -2012,7 +2017,10 @@ describe('useForm — auto-revalidate after first failed submit (audit bug #2)',
 
     // Type back to invalid — debounce, then run, then error returns.
     form.fields.name.setValue('hi')
-    await new Promise((r) => setTimeout(r, 60))
+    const errDeadline = Date.now() + 1000
+    while (Date.now() < errDeadline && form.fields.name.error() === undefined) {
+      await new Promise((r) => setTimeout(r, 5))
+    }
     expect(form.fields.name.error()).toBe('Must be at least 5 chars')
   })
 })
