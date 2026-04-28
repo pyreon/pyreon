@@ -32,6 +32,9 @@ const KNOWN_CODES = [
   'raw-remove-event-listener',
   'date-math-random-id',
   'on-click-undefined',
+  'signal-write-as-call',
+  'static-return-null-conditional',
+  'as-unknown-as-vnodechild',
 ] as const
 type KnownCode = (typeof KNOWN_CODES)[number]
 

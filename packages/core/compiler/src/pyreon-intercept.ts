@@ -29,6 +29,18 @@
  *                       monotonic counter.
  *  - `on-click-undefined` — `onClick={undefined}` explicitly; the runtime
  *                       used to crash on this pattern. Omit the prop.
+ *  - `signal-write-as-call` — `sig(value)` is a no-op read that ignores
+ *                       its argument; the runtime warns in dev. Static
+ *                       detector spots it pre-runtime when `sig` was
+ *                       declared as `const sig = signal(...)` /
+ *                       `computed(...)` and called with ≥1 argument.
+ *  - `static-return-null-conditional` — `if (cond) return null` at the
+ *                       top of a component body runs ONCE; signal changes
+ *                       in `cond` never re-evaluate the early-return.
+ *                       Wrap in a returned reactive accessor.
+ *  - `as-unknown-as-vnodechild` — defensive `as unknown as VNodeChild`
+ *                       cast on JSX returns is unnecessary (`JSX.Element`
+ *                       is already assignable to `VNodeChild`).
  *
  * Two-mode surface mirrors `react-intercept.ts`:
  *  - `detectPyreonPatterns(code)` — diagnostics only
@@ -66,6 +78,9 @@ export type PyreonDiagnosticCode =
   | 'raw-remove-event-listener'
   | 'date-math-random-id'
   | 'on-click-undefined'
+  | 'signal-write-as-call'
+  | 'static-return-null-conditional'
+  | 'as-unknown-as-vnodechild'
 
 export interface PyreonDiagnostic {
   /** Machine-readable code for filtering + programmatic handling */
@@ -92,6 +107,13 @@ interface DetectContext {
   sf: ts.SourceFile
   code: string
   diagnostics: PyreonDiagnostic[]
+  /**
+   * Identifiers bound to `signal(...)` or `computed(...)` calls anywhere in
+   * the file. Populated by `collectSignalBindings()` before the main
+   * detection walk. Used by `detectSignalWriteAsCall` to flag `sig(value)`
+   * patterns that should be `sig.set(value)`.
+   */
+  signalBindings: Set<string>
 }
 
 function getNodeText(ctx: DetectContext, node: ts.Node): string {
@@ -440,6 +462,192 @@ function detectOnClickUndefined(ctx: DetectContext, node: ts.JsxAttribute): void
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Pattern: signal-write-as-call (sig(value) instead of sig.set(value))
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Walks the file and collects every identifier bound to a `signal(...)` or
+ * `computed(...)` call. Only `const` declarations are tracked — `let`/`var`
+ * may be reassigned to non-signal values, so a use-site call wouldn't be a
+ * reliable signal-write.
+ *
+ * The collection is intentionally scope-blind: a name shadowed in a nested
+ * scope (`const x = signal(0); function f() { const x = 5; x(7) }`) would
+ * produce a false positive on `x(7)`. That tradeoff is acceptable because
+ * (1) shadowing a signal name with a non-signal is itself unusual and
+ * (2) the detector message points at exactly the wrong-shape call so a
+ * human reviewer can dismiss the rare false positive in seconds.
+ */
+function collectSignalBindings(sf: ts.SourceFile): Set<string> {
+  const names = new Set<string>()
+  function isSignalFactoryCall(init: ts.Expression | undefined): boolean {
+    if (!init || !ts.isCallExpression(init)) return false
+    const callee = init.expression
+    if (!ts.isIdentifier(callee)) return false
+    return callee.text === 'signal' || callee.text === 'computed'
+  }
+  function walk(node: ts.Node): void {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+      // Only `const` — find the parent VariableDeclarationList to check.
+      const list = node.parent
+      if (
+        ts.isVariableDeclarationList(list) &&
+        (list.flags & ts.NodeFlags.Const) !== 0 &&
+        isSignalFactoryCall(node.initializer)
+      ) {
+        names.add(node.name.text)
+      }
+    }
+    ts.forEachChild(node, walk)
+  }
+  walk(sf)
+  return names
+}
+
+function detectSignalWriteAsCall(ctx: DetectContext, node: ts.CallExpression): void {
+  if (ctx.signalBindings.size === 0) return
+  const callee = node.expression
+  if (!ts.isIdentifier(callee)) return
+  if (!ctx.signalBindings.has(callee.text)) return
+  // `sig()` (zero args) is a READ — that's the intended Pyreon API.
+  if (node.arguments.length === 0) return
+  // `sig.set(x)` / `sig.update(fn)` / `sig.peek()` — the proper write/read
+  // surface — go through PropertyAccess, not direct CallExpression on the
+  // identifier. So if we got here, the call is `sig(value)` or
+  // `sig(value, ..)` which is the buggy shape.
+  pushDiag(
+    ctx,
+    node,
+    'signal-write-as-call',
+    `\`${callee.text}(value)\` does NOT write the signal — \`signal()\` is the read-only callable surface and ignores its arguments. Use \`${callee.text}.set(value)\` to assign or \`${callee.text}.update((prev) => …)\` to derive from the previous value. Pyreon's runtime warns about this pattern in dev, but the warning fires AFTER the silent no-op.`,
+    getNodeText(ctx, node),
+    `${callee.text}.set(${node.arguments.map((a) => getNodeText(ctx, a)).join(', ')})`,
+    false,
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Pattern: static-return-null-conditional in component bodies
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * `if (cond) return null` at the top of a component body runs ONCE — Pyreon
+ * components mount and never re-execute their function bodies. A signal
+ * change inside `cond` therefore never re-evaluates the condition; the
+ * component is permanently stuck on whichever branch the first run picked.
+ *
+ * The fix is to wrap the conditional in a returned reactive accessor:
+ *   return (() => { if (!cond()) return null; return <div /> })
+ *
+ * Detection:
+ *  - The function contains JSX (i.e. it's a component)
+ *  - The function body has an `IfStatement` whose `thenStatement` is
+ *    `return null` (either bare `return null` or `{ return null }`)
+ *  - The `if` is at the function body's top level, NOT inside a returned
+ *    arrow / IIFE (those are reactive scopes — flagging them would be a
+ *    false positive)
+ */
+function returnsNullStatement(stmt: ts.Statement): boolean {
+  if (ts.isReturnStatement(stmt)) {
+    const expr = stmt.expression
+    return !!expr && expr.kind === ts.SyntaxKind.NullKeyword
+  }
+  if (ts.isBlock(stmt)) {
+    return stmt.statements.length === 1 && returnsNullStatement(stmt.statements[0]!)
+  }
+  return false
+}
+
+/**
+ * Returns true if the function looks like a top-level component:
+ *  - `function PascalName(...) { ... }` (FunctionDeclaration with PascalCase id), OR
+ *  - `const PascalName = (...) => { ... }` (arrow inside a VariableDeclaration whose name is PascalCase).
+ *
+ * Anonymous nested arrows — most importantly the reactive accessor
+ * `return (() => { if (!cond()) return null; return <div /> })` — are
+ * NOT considered components here, even when they contain JSX. Without
+ * this filter the detector would fire on the very pattern the
+ * diagnostic recommends as the fix.
+ */
+function isComponentShapedFunction(
+  node: ts.ArrowFunction | ts.FunctionDeclaration | ts.FunctionExpression,
+): boolean {
+  if (ts.isFunctionDeclaration(node)) {
+    return !!node.name && /^[A-Z]/.test(node.name.text)
+  }
+  // Arrow / FunctionExpression: check VariableDeclaration parent.
+  const parent = node.parent
+  if (parent && ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) {
+    return /^[A-Z]/.test(parent.name.text)
+  }
+  return false
+}
+
+function detectStaticReturnNullConditional(
+  ctx: DetectContext,
+  node: ts.ArrowFunction | ts.FunctionDeclaration | ts.FunctionExpression,
+): void {
+  // Only component-shaped functions (must render JSX AND be named with
+  // PascalCase) — see isComponentShapedFunction for why the name check
+  // matters: it filters out the reactive-accessor-as-fix pattern.
+  if (!isComponentShapedFunction(node)) return
+  if (!containsJsx(node)) return
+  const body = node.body
+  if (!body || !ts.isBlock(body)) return
+
+  for (const stmt of body.statements) {
+    if (!ts.isIfStatement(stmt)) continue
+    if (!returnsNullStatement(stmt.thenStatement)) continue
+    // Found `if (cond) return null` at top-level component body scope.
+    pushDiag(
+      ctx,
+      stmt,
+      'static-return-null-conditional',
+      'Pyreon components run ONCE — `if (cond) return null` at the top of a component body is evaluated exactly once at mount. Reading a signal inside `cond` will NOT re-trigger the early return when the signal changes; the component is stuck on whichever branch the first run picked. Wrap the conditional in a returned reactive accessor: `return (() => { if (!cond()) return null; return <div /> })` — the accessor re-runs whenever its tracked signals change.',
+      getNodeText(ctx, stmt),
+      'return (() => { if (!cond()) return null; return <JSX /> })',
+      false,
+    )
+    // Only flag the FIRST occurrence per component to avoid noise on
+    // chained early-returns (often a single mistake, not three).
+    return
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Pattern: `expr as unknown as VNodeChild`
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * `JSX.Element` (which is what JSX evaluates to) is already assignable to
+ * `VNodeChild`. The `as unknown as VNodeChild` double-cast is unnecessary
+ * — it's been showing up in `@pyreon/ui-primitives` as a defensive habit
+ * carried over from earlier framework versions. The cast is never load-
+ * bearing today; removing it never changes runtime behavior. Pure cosmetic
+ * but a useful proxy for non-idiomatic Pyreon code in primitives.
+ */
+function detectAsUnknownAsVNodeChild(ctx: DetectContext, node: ts.AsExpression): void {
+  // Outer cast: `... as VNodeChild`
+  const outerType = node.type
+  if (!ts.isTypeReferenceNode(outerType)) return
+  if (!ts.isIdentifier(outerType.typeName) || outerType.typeName.text !== 'VNodeChild') return
+  // Inner: `<expr> as unknown`
+  const inner = node.expression
+  if (!ts.isAsExpression(inner)) return
+  if (inner.type.kind !== ts.SyntaxKind.UnknownKeyword) return
+
+  pushDiag(
+    ctx,
+    node,
+    'as-unknown-as-vnodechild',
+    '`as unknown as VNodeChild` is unnecessary — `JSX.Element` (the type produced by JSX) is already assignable to `VNodeChild`. Remove the double cast; it is pure noise that hides genuine type issues if they ever appear at this site.',
+    getNodeText(ctx, node),
+    getNodeText(ctx, inner.expression),
+    false,
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Visitor
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -453,6 +661,7 @@ function visitNode(ctx: DetectContext, node: ts.Node): void {
     ts.isFunctionExpression(node)
   ) {
     detectPropsDestructured(ctx, node)
+    detectStaticReturnNullConditional(ctx, node)
   }
   if (ts.isBinaryExpression(node)) {
     detectProcessDevGate(ctx, node)
@@ -464,9 +673,13 @@ function visitNode(ctx: DetectContext, node: ts.Node): void {
   if (ts.isCallExpression(node)) {
     detectEmptyTheme(ctx, node)
     detectRawEventListener(ctx, node)
+    detectSignalWriteAsCall(ctx, node)
   }
   if (ts.isJsxAttribute(node)) {
     detectOnClickUndefined(ctx, node)
+  }
+  if (ts.isAsExpression(node)) {
+    detectAsUnknownAsVNodeChild(ctx, node)
   }
 }
 
@@ -483,7 +696,12 @@ function visit(ctx: DetectContext, node: ts.Node): void {
 
 export function detectPyreonPatterns(code: string, filename = 'input.tsx'): PyreonDiagnostic[] {
   const sf = ts.createSourceFile(filename, code, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TSX)
-  const ctx: DetectContext = { sf, code, diagnostics: [] }
+  const ctx: DetectContext = {
+    sf,
+    code,
+    diagnostics: [],
+    signalBindings: collectSignalBindings(sf),
+  }
   visit(ctx, sf)
   // Sort by (line, column) for stable ordering when multiple patterns fire.
   ctx.diagnostics.sort((a, b) => a.line - b.line || a.column - b.column)
@@ -499,6 +717,12 @@ export function hasPyreonPatterns(code: string): boolean {
     /\b(?:add|remove)EventListener\s*\(/.test(code) ||
     (/\bDate\.now\s*\(/.test(code) && /\bMath\.random\s*\(/.test(code)) ||
     /on[A-Z]\w*\s*=\s*\{\s*undefined\s*\}/.test(code) ||
-    /=\s*\(\s*\{[^}]+\}\s*[:)]/.test(code)
+    /=\s*\(\s*\{[^}]+\}\s*[:)]/.test(code) ||
+    // signal-write-as-call: `const X = signal(` declaration anywhere
+    /\b(?:signal|computed)\s*[<(]/.test(code) ||
+    // static-return-null-conditional: `if (...) return null` anywhere
+    /\bif\s*\([^)]+\)\s*\{?\s*return\s+null\b/.test(code) ||
+    // as-unknown-as-vnodechild
+    /\bas\s+unknown\s+as\s+VNodeChild\b/.test(code)
   )
 }
