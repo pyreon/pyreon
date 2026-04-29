@@ -1,16 +1,14 @@
 node_modules
 dist
 lib
-# Template + example src/lib/ directories are real source content
-# (scaffolded into user projects, or committed as runtime test fixtures),
-# NOT package build output. Keep them tracked even though the bare `lib`
-# rule above would otherwise match. The `examples/*/src/lib` negation
-# specifically un-ignores the create-pyreon-app Playwright fixtures
-# (`examples/cpa-pw-*/src/lib/{auth,db,posts}.ts`).
-!packages/zero/create-zero/templates/*/src/lib
-!packages/zero/create-zero/templates/*/src/lib/**
-!examples/*/src/lib
-!examples/*/src/lib/**
+# `src/lib/` is always source code (template content, fixture content,
+# app code), never package build output (which lives at `<pkg>/lib/`).
+# Un-ignore universally so the bare `lib` rule above can't silently eat
+# committed source files. This has bitten twice — PR #404 (template src/
+# lib) and PR #411 (fixture src/lib) — collapsing all the per-path
+# negations into one general rule.
+!**/src/lib
+!**/src/lib/**
 analysis
 .turbo
 *.tsbuildinfo
