@@ -18,6 +18,7 @@ import {
   ErrorBoundary,
   For,
   Match,
+  nativeCompat,
   createContext as pyreonCreateContext,
   onMount as pyreonOnMount,
   onUnmount as pyreonOnUnmount,
@@ -535,9 +536,6 @@ export interface SolidContext<T> {
 
 const SOLID_CTX_BRAND: typeof SOLID_CTX = SOLID_CTX
 
-// Tag the Provider so wrapCompatComponent in jsx-runtime skips it
-const NATIVE_COMPONENT = Symbol.for('pyreon:native-compat')
-
 /**
  * Solid-compatible `createContext` — creates a context with a `.Provider`
  * component. Uses Pyreon's native context stack for tree-scoped nesting.
@@ -552,7 +550,7 @@ export function createContext<T>(defaultValue?: T): SolidContext<T> {
     pyreonProvide(pyreonCtx, value)
     return children ?? null
   }
-  ;(Provider as unknown as Record<symbol, boolean>)[NATIVE_COMPONENT] = true
+  nativeCompat(Provider)
 
   const ctx: SolidContext<T> = {
     [SOLID_CTX_BRAND]: true as const,

@@ -10,7 +10,7 @@
  */
 
 import type { ComponentFn, Props, VNode, VNodeChild } from '@pyreon/core'
-import { Fragment, h, onUnmount } from '@pyreon/core'
+import { Fragment, h, isNativeCompat, onUnmount } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import type { Component } from './index'
 
@@ -79,10 +79,6 @@ function scheduleEffects(ctx: RenderContext, entries: EffectEntry[]): void {
     }
   })
 }
-
-// ─── Native component marker ────────────────────────────────────────────────
-
-const NATIVE_COMPONENT = Symbol.for('pyreon:native-compat')
 
 // ─── Class component detection ──────────────────────────────────────────────
 
@@ -241,8 +237,10 @@ export function jsx(
 
   if (typeof type === 'function') {
     const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey
-    // Native Pyreon components (e.g. context Provider) skip compat wrapping
-    if ((type as unknown as Record<symbol, boolean>)[NATIVE_COMPONENT]) {
+    // Native Pyreon components (context Provider, RouterView, QueryClientProvider,
+    // etc.) skip compat wrapping — see `@pyreon/core`'s `nativeCompat()` for the
+    // full contract.
+    if (isNativeCompat(type)) {
       return h(type as ComponentFn, componentProps)
     }
     // Wrap Preact-style component for re-render support
