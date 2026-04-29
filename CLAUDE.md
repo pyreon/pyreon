@@ -957,7 +957,7 @@ bunx playwright test --project=playground                     # same
 bunx playwright test --project=playground --grep="signal"     # filter
 ```
 
-CI runs the playground + ssr-showcase + fundamentals projects on every PR as a required check (`E2E` job), plus `bun run test:e2e:ui-regression`, `bun run test:e2e:compat`, and `bun run test:e2e:app-showcase` as separate steps (own configs, own webServer boots). **86 tests total** (43 playground + 12 ssr-showcase + 10 ui-showcase regression + 12 compat layer + 4 app-showcase flow + 4 app-showcase dnd + 1 app-showcase charts) plus 5 fixme'd compiler-bug tests, ~4 minutes wall-clock. Playwright report uploaded as artifact on failure.
+CI runs the playground + ssr-showcase + fundamentals projects on every PR as a required check (`E2E` job), plus `bun run test:e2e:ui-regression`, `bun run test:e2e:compat`, and `bun run test:e2e:app-showcase` as separate steps (own configs, own webServer boots). **87 tests total** (43 playground + 12 ssr-showcase + 10 ui-showcase regression + 12 compat layer + 4 app-showcase flow + 4 app-showcase dnd + 1 app-showcase charts + 1 fundamentals multi-route SWEEP) plus 5 fixme'd compiler-bug tests, ~4 minutes wall-clock. Playwright report uploaded as artifact on failure.
 
 **Project status** (see [`playwright.config.ts`](playwright.config.ts) header for full detail):
 
