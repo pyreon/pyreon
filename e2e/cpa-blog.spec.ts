@@ -65,4 +65,26 @@ test.describe('cpa-blog — runtime', () => {
     const body = await response.text()
     expect(body).toContain('<rss version="2.0">')
   })
+
+  test('/api/echo/:path* — catch-all + streaming response', async ({ request }) => {
+    // Two-pronged regression canary for the dev API dispatcher (paired with
+    // `examples/cpa-pw-blog/src/routes/api/echo/[...path].ts`):
+    //
+    //   1. Catch-all matching: a `[...path].ts` route compiles to URL pattern
+    //      `:path*`. The dispatcher's pre-check must accept multi-segment
+    //      paths the pattern legitimately captures. Pre-fix the inline
+    //      matcher demanded equal segment counts and silently rejected
+    //      catch-alls > 1 deep — `/api/echo/a/b/c` 404'd in dev only.
+    //   2. Streaming response: the handler emits chunks across ticks. The
+    //      dispatcher pipes the Web ReadableStream to the Node response
+    //      instead of buffering — required for SSE, large downloads, and
+    //      any handler that returns a streamed `Response`.
+    const response = await request.get('/api/echo/foo/bar/baz')
+    expect(response.status()).toBe(200)
+    expect(response.headers()['content-type'] ?? '').toContain('text/plain')
+    const body = await response.text()
+    expect(body).toContain('segments: foo/bar/baz')
+    expect(body).toContain('chunk-2')
+    expect(body).toContain('chunk-3')
+  })
 })

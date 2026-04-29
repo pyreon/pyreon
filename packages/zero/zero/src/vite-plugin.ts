@@ -1,10 +1,15 @@
 import { readFile } from 'node:fs/promises'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { Readable } from 'node:stream'
 import type { Plugin, ViteDevServer } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ApiRouteEntry } from './api-routes'
-import { createApiMiddleware, generateApiRouteModule } from './api-routes'
+import {
+  createApiMiddleware,
+  generateApiRouteModule,
+  matchApiRoute,
+} from './api-routes'
 import { resolveConfig } from './config'
 
 /**
@@ -380,19 +385,19 @@ async function dispatchApiRoute(
 	const pathname = url.pathname;
 
 	// Quick gate: only build the Web Request when the path actually matches
-	// an api route. Avoids per-request body buffering for SSR/static traffic.
-	const anyMatch = apiRoutes.some((r) => {
-		const parts = r.pattern.split("/").filter(Boolean);
-		const pathParts = pathname.split("/").filter(Boolean);
-		if (parts.length !== pathParts.length) return false;
-		return parts.every(
-			(p, i) => p.startsWith(":") || p === pathParts[i],
-		);
-	});
+	// an api route. Reuses the same `matchApiRoute` that `createApiMiddleware`
+	// uses internally — including catch-all `:param*` patterns from
+	// `[...slug].ts` API routes — so the gate and the dispatcher agree on
+	// what counts as a match. Avoids per-request body buffering for SSR /
+	// static traffic that doesn't target an API route.
+	const anyMatch = apiRoutes.some((r) => matchApiRoute(r.pattern, pathname) !== null);
 	if (!anyMatch) return false;
 
-	// Convert Node IncomingMessage → Web Request.
-	// GET/HEAD: no body. POST/PUT/PATCH/DELETE: stream the request body.
+	// Convert Node IncomingMessage → Web Request. Stream the request body
+	// for non-GET/HEAD via `Readable.toWeb` instead of buffering — large
+	// uploads (multipart, file POSTs) don't have to fit in memory before
+	// the handler sees them. `duplex: 'half'` is required by the WHATWG
+	// fetch spec when `body` is a `ReadableStream`.
 	const method = (req.method ?? "GET").toUpperCase();
 	const headers = new Headers();
 	for (const [key, value] of Object.entries(req.headers)) {
@@ -400,22 +405,12 @@ async function dispatchApiRoute(
 			headers.set(key, Array.isArray(value) ? value.join(", ") : String(value));
 		}
 	}
-	let body: ArrayBuffer | undefined;
+	const requestInit: RequestInit & { duplex?: "half" } = { method, headers };
 	if (method !== "GET" && method !== "HEAD") {
-		const chunks: Buffer[] = [];
-		await new Promise<void>((resolve, reject) => {
-			req.on("data", (chunk: Buffer) => chunks.push(chunk));
-			req.on("end", () => resolve());
-			req.on("error", reject);
-		});
-		const buf = Buffer.concat(chunks);
-		body = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+		requestInit.body = Readable.toWeb(req) as ReadableStream<Uint8Array>;
+		requestInit.duplex = "half";
 	}
-	const webReq = new Request(url.href, {
-		method,
-		headers,
-		...(body !== undefined ? { body } : {}),
-	});
+	const webReq = new Request(url.href, requestInit);
 
 	const middleware = createApiMiddleware(apiRoutes);
 	const response = await middleware({
@@ -428,12 +423,25 @@ async function dispatchApiRoute(
 
 	if (!response) return false;
 
+	// Pipe the Web Response body directly to the Node response stream
+	// instead of buffering with `arrayBuffer()`. Critical for SSE, large
+	// downloads, and any handler that returns a `Response` constructed
+	// from a streaming source — buffering would defeat the streaming
+	// contract and OOM on large payloads.
 	res.statusCode = response.status;
 	response.headers.forEach((v, k) => {
 		res.setHeader(k, v);
 	});
-	const respBody = Buffer.from(await response.arrayBuffer());
-	res.end(respBody);
+	if (response.body) {
+		// `pipe(res)` ends `res` automatically on stream completion and
+		// auto-cancels the upstream Web ReadableStream if the client
+		// disconnects (Node ≥18). We don't await — once the headers and
+		// pipe are wired, the function's job is done. The connect chain
+		// doesn't call `next()` because we resolved with `true`.
+		Readable.fromWeb(response.body as import("node:stream/web").ReadableStream).pipe(res);
+	} else {
+		res.end();
+	}
 	return true;
 }
 
