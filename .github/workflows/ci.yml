@@ -289,6 +289,12 @@ jobs:
         # Proves each compat shim works in real-app shape, not just at
         # the vitest-browser smoke-test surface.
         run: bun run test:e2e:compat
+      - name: Run e2e — app-showcase (flow + dnd)
+        # Same separate-config rationale. Boots app-showcase on port 5181
+        # and exercises @pyreon/flow's pointer-driven drag + selection +
+        # wheel-zoom in a real-app shape. dnd specs queued once a
+        # consumer demo lands (Task 4 in the e2e expansion plan).
+        run: bun run test:e2e:app-showcase
       - name: Run e2e — create-pyreon-app runtime (app/blog/dash fixtures)
         # Boots 3 pre-scaffolded fixture apps under examples/cpa-pw-* on
         # ports 5191-5193. Catches runtime regressions in scaffolded

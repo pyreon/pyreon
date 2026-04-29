@@ -34,6 +34,11 @@
       "bun": "./src/manual.ts",
       "import": "./lib/manual.js",
       "types": "./lib/types/manual.d.ts"
+    },
+    "./vite": {
+      "bun": "./src/vite.ts",
+      "import": "./lib/vite.js",
+      "types": "./lib/types/vite.d.ts"
     }
   },
   "publishConfig": {

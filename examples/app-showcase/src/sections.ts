@@ -121,6 +121,14 @@ export const sections: Section[] = [
     available: true,
     group: 'visual',
   },
+  {
+    path: '/dnd',
+    label: 'Drag & Drop',
+    tagline: 'Three drag-and-drop scenarios — sortable list, draggable card → drop zone, file drop with type filtering',
+    features: ['dnd'],
+    available: true,
+    group: 'visual',
+  },
 ]
 
 export const groupLabels: Record<Section['group'], string> = {
