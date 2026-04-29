@@ -98,7 +98,6 @@ test.describe('app-showcase /dnd', () => {
   })
 
   test('useDraggable + useDroppable card moves via drag events', async ({ page }) => {
-    const card = page.locator('[data-testid="card"]')
     const zone = page.locator('[data-testid="zone"]')
 
     // Pre-drop: zone is in initial state.
