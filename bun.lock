@@ -224,36 +224,6 @@
         "vite": "^8.0.3",
       },
     },
-    "examples/cpa-smoke-app-preact-compat": {
-      "name": "cpa-smoke-app-preact-compat",
-      "version": "0.0.1",
-      "dependencies": {
-        "@pyreon/core": "^0.14.0",
-        "@pyreon/form": "^0.14.0",
-        "@pyreon/head": "^0.14.0",
-        "@pyreon/meta": "^0.14.0",
-        "@pyreon/preact-compat": "^0.14.0",
-        "@pyreon/query": "^0.14.0",
-        "@pyreon/reactivity": "^0.14.0",
-        "@pyreon/router": "^0.14.0",
-        "@pyreon/runtime-dom": "^0.14.0",
-        "@pyreon/runtime-server": "^0.14.0",
-        "@pyreon/server": "^0.14.0",
-        "@pyreon/store": "^0.14.0",
-        "@pyreon/validation": "^0.14.0",
-        "@pyreon/zero": "^0.14.0",
-        "@tanstack/query-core": "^5.90.0",
-        "zod": "^4.0.0",
-      },
-      "devDependencies": {
-        "@pyreon/lint": "^0.14.0",
-        "@pyreon/mcp": "^0.14.0",
-        "@pyreon/vite-plugin": "^0.14.0",
-        "@pyreon/zero-cli": "^0.14.0",
-        "typescript": "^6.0.2",
-        "vite": "^8.0.3",
-      },
-    },
     "examples/experiments": {
       "name": "@pyreon/experiments",
       "version": "0.1.0",
@@ -2710,8 +2680,6 @@
     "cpa-pw-blog": ["cpa-pw-blog@workspace:examples/cpa-pw-blog"],
 
     "cpa-pw-dash": ["cpa-pw-dash@workspace:examples/cpa-pw-dash"],
-
-    "cpa-smoke-app-preact-compat": ["cpa-smoke-app-preact-compat@workspace:examples/cpa-smoke-app-preact-compat"],
 
     "crc-32": ["crc-32@1.2.2", "", { "bin": { "crc32": "bin/crc32.njs" } }, "sha512-ROmzCKrTnOwybPcJApAA6WBWij23HVfGVNKqqrZpuyZOHqK2CwHSvpGuyt/UNNvaIjEd8X5IFGp4Mh+Ie1IHJQ=="],
 
