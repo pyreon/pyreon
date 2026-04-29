@@ -54,10 +54,14 @@ test.describe('Playground', () => {
   test('dashboard renders content at /', async ({ page }) => {
     // Layout double-mount lock-in (matches the sidebar assertion above).
     await expect(page.locator('main.content')).toHaveCount(1)
-    // Dashboard demo at `/` is content-rich; the canary that the route
-    // mounted and the demo's signals/computeds executed without throwing.
+    // Wait for the inner demo to actually mount before measuring content.
+    // `beforeEach` only waits for `nav.sidebar` (part of the layout) — on
+    // cold CI runners the layout hydrates before the inner `RouterView`
+    // child does, so a bare `textContent` read can race and see 0 chars
+    // even though the route is in flight. The h2 lives inside DashboardDemo
+    // and is the canary that the inner route component rendered.
     const main = page.locator('main.content')
-    await expect(main).toBeVisible()
+    await expect(main.locator('h2', { hasText: 'Integrated Dashboard' })).toBeVisible()
     expect((await main.textContent())?.length ?? 0).toBeGreaterThan(100)
   })
 
