@@ -445,6 +445,35 @@ return <input ref={inputRef} />`,
     notes: 'Execute a function reading signals WITHOUT subscribing to them. Alias for `runUntracked` from `@pyreon/reactivity`. Use inside effects when you need a one-shot snapshot of a signal value without the effect re-running when that signal changes. See also: @pyreon/reactivity.',
   },
 
+  'core/nativeCompat': {
+    signature: '<T>(fn: T) => T',
+    example: `// In a framework package:
+export const RouterView = nativeCompat(function RouterView(props) {
+  provide(RouterContext, ...)
+  return <div>{children}</div>
+})`,
+    notes: `Mark a Pyreon framework component as "self-managing" so compat layers (\`@pyreon/{react,preact,vue,solid}-compat\`) skip their wrapping and route the component through Pyreon's mount path. Use on every \`@pyreon/*\` JSX component whose setup body uses \`provide()\` / lifecycle hooks / signal subscriptions — wrapping breaks those by running the body inside the compat layer's render context instead of Pyreon's. Idempotent; non-function inputs pass through unchanged. The marker is a registry symbol (\`Symbol.for("pyreon:native-compat")\`), so framework and compat sides share it without an import dependency between them. See also: isNativeCompat, NATIVE_COMPAT_MARKER.`,
+    mistakes: `- Forgetting to mark a new framework JSX export — under compat mode, the component's \`provide()\` / \`onMount()\` calls fail with "called outside component setup" warnings and the rendered DOM silently breaks.
+- Marking user-app components — only \`@pyreon/*\` framework components that already manage their own reactivity should be marked. User components in compat mode are SUPPOSED to be wrapped (that's how they get re-render-on-state-change semantics).`,
+  },
+
+  'core/isNativeCompat': {
+    signature: '(fn: unknown) => boolean',
+    example: `// In a compat layer's jsx-runtime:
+if (isNativeCompat(type)) return h(type, props)
+return wrapCompatComponent(type)(props)`,
+    notes: 'Compat-layer-side: read whether a function has been marked as a Pyreon native framework component via `nativeCompat()`. Compat `jsx()` calls this to decide whether to skip the React/Vue/Solid/Preact-style wrapping. Always returns `false` for non-function inputs. See also: nativeCompat, NATIVE_COMPAT_MARKER.',
+  },
+
+  'core/NATIVE_COMPAT_MARKER': {
+    signature: 'symbol',
+    example: `import { NATIVE_COMPAT_MARKER } from '@pyreon/core'
+
+// Equivalent to nativeCompat(MyComponent):
+;(MyComponent as Record<symbol, boolean>)[NATIVE_COMPAT_MARKER] = true`,
+    notes: 'The well-known registry symbol (`Symbol.for("pyreon:native-compat")`) used to mark a component as a Pyreon native framework component. Most callers should use `nativeCompat()` / `isNativeCompat()` instead of touching the symbol directly; exported for advanced cases (e.g., a compat layer that wants to inspect the property without going through the helper). See also: nativeCompat, isNativeCompat.',
+  },
+
   'core/ExtractProps': {
     signature: 'type ExtractProps<T> = T extends ComponentFn<infer P> ? P : T',
     example: `const Greet: ComponentFn<{ name: string }> = ({ name }) => <h1>{name}</h1>
