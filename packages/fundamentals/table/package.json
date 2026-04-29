@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/table",
-  "version": "0.14.0",
+  "version": "1.0.0",
   "description": "Pyreon adapter for TanStack Table",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/table#readme",
   "bugs": {

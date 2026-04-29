@@ -1,5 +1,28 @@
 # @pyreon/zero
 
+## 1.0.0
+
+### Minor Changes
+
+- [#336](https://github.com/pyreon/pyreon/pull/336) [`b8819ac`](https://github.com/pyreon/pyreon/commit/b8819ace413b377739e9208d19a72afbc0eea0c4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Implement static site generation for `mode: "ssg"`. Before this PR, `mode: "ssg"` and `ssg.paths` were typed in `types.ts` but had no runtime — the plugin had zero Rollup build hooks, so apps configured for SSG silently shipped a SPA shell with no per-route HTML. The new `ssgPlugin()` (auto-wired into `zeroPlugin()` when `mode === 'ssg'`) hooks `closeBundle`, runs a programmatic Vite SSR sub-build of a synthetic entry that imports `virtual:zero/routes` + zero's `createServer`, loads the resulting handler, and renders each path to `dist/<path>/index.html`.
+
+  `ssg.paths` accepts `string[]`, `() => string[]`, or `() => Promise<string[]>`. If neither is set, the plugin auto-detects static paths from the file-system route tree (anything without `:param` or `*` segments) and falls back to `/` if no static routes exist. Dynamic routes are skipped — Pyreon doesn't yet ship a `getStaticPaths`-style API to enumerate concrete values; pass them explicitly via `ssg.paths`.
+
+  **Internal API change**: `zeroPlugin()` now returns `Plugin[]` instead of `Plugin` — `[mainPlugin]` for non-SSG modes, `[mainPlugin, ssgPlugin]` for SSG. Vite's plugins array natively accepts nested arrays, so the user-facing `plugins: [pyreon(), zero()]` keeps working — but downstream code that assumed `zeroPlugin()` returned a single Plugin needs `.[0]` or array-aware access.
+
+### Patch Changes
+
+- Updated dependencies [[`b8819ac`](https://github.com/pyreon/pyreon/commit/b8819ace413b377739e9208d19a72afbc0eea0c4)]:
+  - @pyreon/core@1.0.0
+  - @pyreon/meta@1.0.0
+  - @pyreon/head@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/runtime-server@1.0.0
+  - @pyreon/server@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/vite-plugin@1.0.0
+
 ## 0.14.0
 
 ### Patch Changes

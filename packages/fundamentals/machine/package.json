@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/machine",
-  "version": "0.14.0",
+  "version": "1.0.0",
   "description": "Reactive state machines for Pyreon — constrained signals with type-safe transitions",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/machine#readme",
   "bugs": {

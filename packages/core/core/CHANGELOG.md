@@ -1,5 +1,16 @@
 # @pyreon/core
 
+## 1.0.0
+
+### Minor Changes
+
+- [#336](https://github.com/pyreon/pyreon/pull/336) [`b8819ac`](https://github.com/pyreon/pyreon/commit/b8819ace413b377739e9208d19a72afbc0eea0c4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `Show` and `Match` now accept either an accessor or a value for the `when` prop. Previously, `<Show when={signal}>` (bare signal reference) compiled to `<Show when={signal()}>` via the compiler's signal auto-call, which passed a boolean — and `Show` then crashed with `TypeError: props.when is not a function`. The fix adds defensive normalization (`typeof === 'function'` check), so both shapes work. Reactive cases still need the accessor form (`when={() => signal()}`) for true re-evaluation on signal change; the value form covers static booleans and the auto-call edge case. The `ShowProps['when']` type widens from `() => unknown` to `unknown | (() => unknown)`.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/reactivity@1.0.0
+
 ## 0.14.0
 
 ### Patch Changes

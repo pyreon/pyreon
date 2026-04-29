@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/experiments",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Architectural experiments parent — see README.md and the plan at .claude/plans/architectural-experiments-2026-q2.md.",
   "type": "module",

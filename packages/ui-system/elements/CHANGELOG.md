@@ -1,5 +1,17 @@
 # @pyreon/elements
 
+## 1.0.0
+
+### Patch Changes
+
+- [#336](https://github.com/pyreon/pyreon/pull/336) [`b8819ac`](https://github.com/pyreon/pyreon/commit/b8819ace413b377739e9208d19a72afbc0eea0c4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix `<Element tag="hr" />` (and other void HTML elements: `input`, `img`, `br`, `link`, `area`, `base`, `col`, `embed`, `source`, `track`, `wbr`) tripping runtime-dom's "void element cannot have children" warning. Wrapper used to always render `<Styled>{own.children}</Styled>` regardless of tag — even when `own.children` was `undefined`, the JSX slot serialized as `vnode.children = [undefined]` which is non-empty. Wrapper now branches on `getShouldBeEmpty(own.tag)` and drops the slot entirely for void tags.
+
+- Updated dependencies [[`b8819ac`](https://github.com/pyreon/pyreon/commit/b8819ace413b377739e9208d19a72afbc0eea0c4)]:
+  - @pyreon/core@1.0.0
+  - @pyreon/ui-core@1.0.0
+  - @pyreon/unistyle@1.0.0
+  - @pyreon/reactivity@1.0.0
+
 ## 0.14.0
 
 ### Patch Changes

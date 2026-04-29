@@ -1,5 +1,15 @@
 # @pyreon/styler
 
+## 1.0.0
+
+### Patch Changes
+
+- [#336](https://github.com/pyreon/pyreon/pull/336) [`b8819ac`](https://github.com/pyreon/pyreon/commit/b8819ace413b377739e9208d19a72afbc0eea0c4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix dev-mode warnings being silently dropped in production browser bundles. Six files across three packages used `process.env.NODE_ENV !== 'production'` as a dev gate, which is dead code in real Vite browser bundles (Vite does not polyfill `process`). The most user-visible consequence: `@pyreon/styler` swallowed every `insertRule` failure with no console output — malformed CSS produced an empty `<style>` tag, classes assigned to elements, and zero diagnostic. Replaced with `import.meta.env?.DEV === true` via a local `__DEV__` const. The styler also gains a tree-shake regression test (`dev-gate-treeshake.test.ts`) that mirrors `runtime-dom`'s, bundling `sheet.ts` through Vite production and asserting the warn strings are eliminated.
+
+- Updated dependencies [[`b8819ac`](https://github.com/pyreon/pyreon/commit/b8819ace413b377739e9208d19a72afbc0eea0c4)]:
+  - @pyreon/core@1.0.0
+  - @pyreon/reactivity@1.0.0
+
 ## 0.14.0
 
 ### Patch Changes

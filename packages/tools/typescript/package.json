@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/typescript",
-  "version": "0.14.0",
+  "version": "1.0.0",
   "description": "TypeScript configuration presets for Pyreon projects",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/typescript#readme",
   "bugs": {
@@ -34,7 +34,7 @@
     "typecheck": "echo 'nothing to typecheck'"
   },
   "peerDependencies": {
-    "@pyreon/core": ">=0.13.0",
+    "@pyreon/core": ">=1.0.0",
     "typescript": ">=5.9.0"
   },
   "sideEffects": false
