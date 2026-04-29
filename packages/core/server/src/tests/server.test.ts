@@ -140,6 +140,82 @@ describe('createHandler', () => {
     expect(await res.text()).toBe('Internal Server Error')
   })
 
+  test('redirect() from a loader returns a 307 with Location header (no HTML body)', async () => {
+    const Home: ComponentFn = () => h('h1', null, 'home')
+    const Protected: ComponentFn = () => h('h1', null, 'protected')
+    const { redirect } = await import('@pyreon/router')
+    const protectedRoutes = [
+      { path: '/', component: Home },
+      {
+        path: '/app',
+        component: Protected,
+        loader: () => {
+          redirect('/login')
+        },
+      },
+    ]
+    const handler = createHandler({ App: Home, routes: protectedRoutes })
+    const res = await handler(new Request('http://localhost/app'))
+    expect(res.status).toBe(307)
+    expect(res.headers.get('Location')).toBe('/login')
+    // No body — clients only need the Location header
+    expect(await res.text()).toBe('')
+  })
+
+  test('redirect() preserves a custom status', async () => {
+    const Home: ComponentFn = () => h('h1', null, 'home')
+    const { redirect } = await import('@pyreon/router')
+    const permRoutes = [
+      { path: '/', component: Home },
+      {
+        path: '/old',
+        component: Home,
+        loader: () => {
+          redirect('/new', 308)
+        },
+      },
+    ]
+    const handler = createHandler({ App: Home, routes: permRoutes })
+    const res = await handler(new Request('http://localhost/old'))
+    expect(res.status).toBe(308)
+    expect(res.headers.get('Location')).toBe('/new')
+  })
+
+  test('loader can read cookies from ctx.request and redirect when missing', async () => {
+    const Home: ComponentFn = () => h('h1', null, 'home')
+    const Login: ComponentFn = () => h('h1', null, 'login')
+    const Protected: ComponentFn = () => h('h1', null, 'protected')
+    const { redirect } = await import('@pyreon/router')
+    const authRoutes = [
+      { path: '/', component: Home },
+      { path: '/login', component: Login },
+      {
+        path: '/app',
+        component: Protected,
+        loader: async (ctx: { request?: Request }) => {
+          const cookieHeader = ctx.request?.headers.get('cookie') ?? ''
+          const sid = /(?:^|;\s*)sid=([^;]+)/.exec(cookieHeader)?.[1]
+          if (!sid) redirect('/login')
+          return { sid }
+        },
+      },
+    ]
+    const handler = createHandler({ App: Home, routes: authRoutes })
+
+    // No cookie → redirect
+    const noCookie = await handler(new Request('http://localhost/app'))
+    expect(noCookie.status).toBe(307)
+    expect(noCookie.headers.get('Location')).toBe('/login')
+
+    // Has cookie → renders (no redirect). Status 200 is the contract; the
+    // body is whatever `App` renders (this test's App is `Home`, no RouterView).
+    const withCookie = await handler(
+      new Request('http://localhost/app', { headers: { cookie: 'sid=abc123' } }),
+    )
+    expect(withCookie.status).toBe(200)
+    expect(withCookie.headers.get('Location')).toBeNull()
+  })
+
   test('handles URL with query string', async () => {
     const handler = createHandler({ App: Home, routes })
     const res = await handler(new Request('http://localhost/?foo=bar&baz=1'))

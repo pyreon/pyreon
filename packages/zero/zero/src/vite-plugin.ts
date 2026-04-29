@@ -11,6 +11,9 @@ import {
   matchApiRoute,
 } from './api-routes'
 import { resolveConfig } from './config'
+// Used in the dev-mode SSR catch handler to convert loader-thrown
+// `redirect()` errors into real HTTP redirects (302/307/308).
+import { getRedirectInfo } from '@pyreon/router'
 
 /**
  * Scan node_modules/@pyreon/ to discover all installed Pyreon packages.
@@ -178,7 +181,26 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 						return next();
 					if (/\.\w+$/.test(pathname)) return next();
 
-					renderSsr(server, root, req.originalUrl ?? pathname, pathname).then(
+					// Build a Web Request from the Node IncomingMessage so loaders
+					// can read cookies / auth headers via `ctx.request` and call
+					// `redirect()` from a server-side context.
+					const reqHost = req.headers.host ?? "localhost";
+					const reqUrl = new URL(req.url ?? "/", `http://${reqHost}`);
+					const reqHeaders = new Headers();
+					for (const [key, value] of Object.entries(req.headers)) {
+						if (value !== undefined) {
+							reqHeaders.set(
+								key,
+								Array.isArray(value) ? value.join(", ") : String(value),
+							);
+						}
+					}
+					const webReq = new Request(reqUrl.href, {
+						method: req.method ?? "GET",
+						headers: reqHeaders,
+					});
+
+					renderSsr(server, root, req.originalUrl ?? pathname, pathname, webReq).then(
 						(result) => {
 							if (result === null) return next();
 							res.statusCode = 200;
@@ -187,6 +209,16 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 							res.end(result);
 						},
 						(err: unknown) => {
+							// Loader-thrown `redirect()` — convert to a real HTTP redirect
+							// (302/307/308) BEFORE the layout renders. This is the dev-mode
+							// equivalent of the production handler's redirect catch.
+							const info = getRedirectInfo(err);
+							if (info) {
+								res.statusCode = info.status;
+								res.setHeader("Location", info.url);
+								res.end();
+								return;
+							}
 							const error = err instanceof Error ? err : new Error(String(err));
 							server.ssrFixStacktrace(error);
 							const html = renderErrorOverlay(error);
@@ -508,6 +540,7 @@ async function renderSsr(
 	root: string,
 	originalUrl: string,
 	pathname: string,
+	req?: Request,
 ): Promise<string | null> {
 	// Pattern check FIRST — otherwise SSR would try (and likely crash) on
 	// asset paths that happened to accept text/html (e.g. curl-style).
@@ -587,7 +620,7 @@ async function renderSsr(
 	// `preload` loads lazy route components AND runs loaders for `pathname` so
 	// the synchronous render pass produces final HTML — no loading fallbacks,
 	// no `useLoaderData() === undefined`.
-	await routerInst.preload(pathname);
+	await routerInst.preload(pathname, req);
 
 	return runtimeServer.runWithRequestContext(async () => {
 		const app = core.h(App as Parameters<typeof core.h>[0], null);

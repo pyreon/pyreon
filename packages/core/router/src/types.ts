@@ -166,6 +166,21 @@ export interface LoaderContext {
   query: Record<string, string>
   /** Aborted when a newer navigation supersedes this one */
   signal: AbortSignal
+  /**
+   * The incoming HTTP `Request` — populated only when the loader runs during
+   * SSR (via `prefetchLoaderData`); `undefined` on every CSR navigation.
+   * Lets server-side loaders read cookies / auth headers and decide whether
+   * to `throw redirect('/login')` BEFORE the layout renders.
+   *
+   * @example
+   * loader: ({ request }) => {
+   *   const cookie = request?.headers.get('cookie') ?? ''
+   *   const sid = cookie.match(/sid=([^;]+)/)?.[1]
+   *   if (!sid) redirect('/login')
+   *   return { sid }
+   * }
+   */
+  request?: Request
 }
 
 export type RouteLoaderFn = (ctx: LoaderContext) => Promise<unknown>
@@ -383,7 +398,7 @@ export interface Router<TNames extends string = string> {
    * separately when creating the router (`createRouter({ url, ... })`) or
    * call this for the same `url` you initialised the router with.
    */
-  preload(path: string): Promise<void>
+  preload(path: string, request?: Request): Promise<void>
   /**
    * Invalidate cached loader data. Forces loaders to re-run on next navigation.
    * - No args: invalidate ALL cached loader data

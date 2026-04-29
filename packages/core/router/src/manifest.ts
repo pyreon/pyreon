@@ -255,6 +255,69 @@ const User = () => {
       seeAlso: ['useMiddlewareData', 'useRoute'],
     },
     {
+      name: 'redirect',
+      kind: 'helper',
+      signature: 'redirect(url: string, status?: 301 | 302 | 303 | 307 | 308): never',
+      summary:
+        "Throw inside a route loader to redirect the navigation BEFORE the layout renders. On SSR (initial nav), the thrown error is converted by `@pyreon/server`'s handler into a real HTTP `302`/`307` `Location:` response — no layout HTML leaves the server. On CSR (subsequent nav), the redirect propagates through the navigate flow and triggers `router.replace()` before any matched route's component mounts. Replaces the fragile `onMount + router.push()` workaround for auth-gates under nested-layout dev SSR + hydration. Default status is `307` (Temporary Redirect, method-preserving).",
+      example: `// src/routes/app/_layout.tsx
+import { redirect, type LoaderContext } from "@pyreon/router"
+
+export async function loader(ctx: LoaderContext) {
+  // SSR: read from request headers; CSR: read from document.cookie
+  const cookie = ctx.request?.headers.get("cookie")
+    ?? (typeof document !== "undefined" ? document.cookie : "")
+  const sid = /(?:^|;\\s*)sid=([^;]+)/.exec(cookie)?.[1]
+  if (!sid) redirect("/login")
+  const session = await getSession(sid)
+  if (!session) redirect("/login")
+  return { session }
+}`,
+      mistakes: [
+        'Calling `redirect()` outside a loader (in a component body, an event handler, etc.) — the helper expects to be caught by the loader-runner. For imperative redirects from event handlers, use `router.replace(target)` instead.',
+        "Forgetting to make `LoaderContext.request` access optional. It's populated only on SSR; CSR loaders see `request: undefined`. Read both: `ctx.request?.headers.get('cookie') ?? document.cookie`.",
+        'Using `redirect()` for control-flow that should be a `<Match>` / `<Show>` conditional — the helper is for redirecting the URL, not for branching the rendered output.',
+        'Returning `redirect()` instead of throwing it. The helper has return type `never` and throws — `return redirect(...)` is misleading and may suppress the throw under TS strict-null checks.',
+        'Picking the wrong status. Default `307` preserves the request method (POST stays POST after redirect). Use `302`/`303` to force GET on the target. Use `301`/`308` for PERMANENT moves (browsers cache them aggressively).',
+        'Assuming `redirect()` cancels every loader in a sibling chain. The first loader to throw wins; later loaders in the same `Promise.allSettled` batch may have already started executing before the redirect short-circuits. Treat them as best-effort.',
+      ],
+      seeAlso: ['notFound', 'useLoaderData', 'isRedirectError'],
+    },
+    {
+      name: 'isRedirectError',
+      kind: 'helper',
+      signature: 'isRedirectError(err: unknown): boolean',
+      summary:
+        'Type guard for errors thrown by `redirect()`. Used internally by the router (CSR) and `@pyreon/server` (SSR) to distinguish redirect-control-flow errors from real failures. Useful in custom error boundaries that should let redirects pass through to the framework instead of catching them.',
+      example: `import { ErrorBoundary } from "@pyreon/core"
+import { isRedirectError } from "@pyreon/router"
+
+<ErrorBoundary fallback={(err, reset) => {
+  if (isRedirectError(err)) throw err  // let the framework handle it
+  return <ErrorPage error={err} onReset={reset} />
+}}>
+  <App />
+</ErrorBoundary>`,
+      seeAlso: ['redirect', 'isNotFoundError', 'getRedirectInfo'],
+    },
+    {
+      name: 'getRedirectInfo',
+      kind: 'helper',
+      signature: 'getRedirectInfo(err: unknown): { url: string; status: 301 | 302 | 303 | 307 | 308 } | null',
+      summary:
+        "Extract the redirect URL and status from a thrown RedirectError. Returns `null` for non-redirect errors. Used by `@pyreon/server`'s SSR handler to convert the thrown error into a 302/307 `Response`.",
+      example: `import { getRedirectInfo } from "@pyreon/router"
+
+try {
+  await prefetchLoaderData(router, path, request)
+} catch (err) {
+  const info = getRedirectInfo(err)
+  if (info) return new Response(null, { status: info.status, headers: { Location: info.url } })
+  throw err
+}`,
+      seeAlso: ['redirect', 'isRedirectError'],
+    },
+    {
       name: 'useSearchParams',
       kind: 'hook',
       signature:
