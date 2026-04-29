@@ -1,4 +1,4 @@
-import { h } from '@pyreon/core'
+import { h, onMount } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
@@ -437,6 +437,73 @@ describe('router in real browser', () => {
     // replace(), this assertion fails.
     expect(container.querySelector('#about')?.textContent).toBe('About Page')
     expect(container.querySelector('#home')).toBeNull()
+    unmount()
+  })
+
+  // ── Lock-in for the layout-remount loop fix (PR #406) ──────────────────────
+  //
+  // Pre-fix `RouterView`'s reactive child accessor read `_loadingSignal()` and
+  // the full `currentRoute` snapshot directly. Each navigation flow writes
+  // `_loadingSignal` at least twice (start tick + end tick) and writes
+  // `currentPath` once via `commitNavigation`. Any of those writes re-emitted
+  // the reactive child, and `mountReactive`'s teardown-then-mount cleanup
+  // remounted the entire matched-component subtree on each emission. So a
+  // single `router.push()` produced 2-3+ mounts of the destination component
+  // (instead of 1) — the "layout double/triple mount" loop.
+  //
+  // The fix routes the structural decision through a single
+  // `computed<DepthEntry>` keyed on `(rec, comp, errored, route)` reference
+  // equality. Within-navigation `_loadingSignal` ticks don't change
+  // `currentRoute` (it's `computed` memoized on `currentPath`), so the
+  // structural emission stays at exactly one per navigation.
+  //
+  // This test instruments a counter inside the destination component's
+  // `onMount` — an inflated count after a single `await router.push()` would
+  // mean the loop is back. Bisect-verifies against the structural decoupling
+  // commit: reverting that commit pushes the count to ≥ 2 and this assertion
+  // fails.
+  it('a single router.push() mounts the destination component exactly once (loop-prevention regression)', async () => {
+    let aboutMountCount = 0
+    const InstrumentedAbout = () => {
+      onMount(() => {
+        aboutMountCount++
+      })
+      return h('div', { id: 'about-instrumented' }, 'About Page')
+    }
+    const localRoutes = [
+      { path: '/', component: Home },
+      { path: '/about', component: InstrumentedAbout },
+    ]
+    const router = createRouter({ routes: localRoutes, mode: 'hash' })
+    const { container, unmount } = mountInBrowser(
+      h(RouterProvider, { router }, h(RouterView, {})),
+    )
+
+    // Sanity: starting at /, About is not yet mounted.
+    expect(aboutMountCount).toBe(0)
+    expect(container.querySelector('#about-instrumented')).toBeNull()
+
+    await router.push('/about')
+    await flush()
+
+    // The structural decoupling fix means a single navigation produces a
+    // single emission at this depth. If `RouterView` ever reverts to reading
+    // `_loadingSignal` reactively, every loadingSignal tick during the
+    // navigate flow will remount the destination subtree and this count
+    // jumps to 2 or 3.
+    expect(container.querySelector('#about-instrumented')?.textContent).toBe('About Page')
+    expect(aboutMountCount).toBe(1)
+
+    // And navigating BACK to / + forward again to /about produces exactly
+    // one more mount — covers the case where stale subscribers from a prior
+    // mount could double-fire across navigations.
+    await router.push('/')
+    await flush()
+    await router.push('/about')
+    await flush()
+    expect(aboutMountCount).toBe(2)
+
+    expect(unhandledRejections).toEqual([])
     unmount()
   })
 })

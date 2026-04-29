@@ -5,9 +5,12 @@ import { expect, test } from '@playwright/test'
  *
  * After the multi-route refactor, the layout uses `<RouterLink>` (renders
  * `<a>`) inside `nav.sidebar`, not `<button>`. Realigned to the current
- * markup. `.first()` selectors mirror the ssr-showcase workaround for the
- * known `_layout` double-mount bug (same shape — see CLAUDE.md "Known
- * framework bug NOT yet fixed").
+ * markup. The previous `.first()` workarounds (added to scope past a
+ * duplicate `nav.sidebar` from the layout double-mount loop) are gone —
+ * the loop is fixed (PR #406's RouterView structure/data decoupling). The
+ * specs below now explicitly assert `nav.sidebar` and `main.content` each
+ * appear EXACTLY once on the page, locking the post-fix shape against
+ * any future regression that would silently re-introduce duplicates.
  */
 
 const TAB_PATHS = [
@@ -32,21 +35,28 @@ const TAB_PATHS = [
 test.describe('Playground', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
-    await page.locator('nav.sidebar').first().waitFor()
+    await page.locator('nav.sidebar').waitFor()
   })
 
   test('renders sidebar with all demo links', async ({ page }) => {
-    await expect(page.locator('nav.sidebar h1').first()).toContainText('Pyreon Fundamentals')
-    // Use .first() to scope into one nav copy — _layout double-mount
-    // produces a duplicate. 16 routes today; assert ≥12 to leave headroom.
-    const links = page.locator('nav.sidebar').first().locator('a')
+    // Layout double-mount lock-in: `nav.sidebar` must appear exactly
+    // once. Pre-#406 this rendered twice (the layout's reactive
+    // `<RouterView />` re-emitted on every `_loadingSignal` tick during
+    // a navigate flow). A regression to the loop would silently mount
+    // duplicate sidebars; this assertion fails loudly.
+    await expect(page.locator('nav.sidebar')).toHaveCount(1)
+    await expect(page.locator('nav.sidebar h1')).toContainText('Pyreon Fundamentals')
+    // 16 routes today; assert ≥12 to leave headroom for future renames.
+    const links = page.locator('nav.sidebar a')
     expect(await links.count()).toBeGreaterThanOrEqual(12)
   })
 
   test('dashboard renders content at /', async ({ page }) => {
+    // Layout double-mount lock-in (matches the sidebar assertion above).
+    await expect(page.locator('main.content')).toHaveCount(1)
     // Dashboard demo at `/` is content-rich; the canary that the route
     // mounted and the demo's signals/computeds executed without throwing.
-    const main = page.locator('main.content').first()
+    const main = page.locator('main.content')
     await expect(main).toBeVisible()
     expect((await main.textContent())?.length ?? 0).toBeGreaterThan(100)
   })
@@ -55,7 +65,7 @@ test.describe('Playground', () => {
     const errors: string[] = []
     page.on('pageerror', (err) => errors.push(err.message))
     await page.goto('/')
-    await page.locator('nav.sidebar').first().waitFor()
+    await page.locator('nav.sidebar').waitFor()
     await page.waitForTimeout(1000)
     expect(errors, errors.join('\n')).toHaveLength(0)
   })
@@ -83,7 +93,7 @@ test.describe('Playground', () => {
       // every async chunk to settle.
       await page.goto(path, { waitUntil: 'domcontentloaded', timeout: 60_000 })
       // Wait for SPA navigation + initial mount.
-      await page.locator('nav.sidebar').first().waitFor()
+      await page.locator('nav.sidebar').waitFor()
       await page.waitForTimeout(150)
     }
 
