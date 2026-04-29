@@ -142,6 +142,17 @@ function generatePackageJson(config: ProjectConfig): string {
     allFeatureDeps.add('@tanstack/query-core')
     allFeatureDeps.add('@pyreon/store')
   }
+  // Dashboard template hard requirements — invoices/[id].tsx hardcodes the
+  // document-primitives + document + connector-document trio for the
+  // headline PDF-export demo, regardless of which integrations the user
+  // picks. These would otherwise only land via the optional `email`
+  // integration scaffolder, leaving `--integrations supabase` (no email)
+  // builds broken on a missing-import for the invoice page.
+  if (config.template === 'dashboard') {
+    allFeatureDeps.add('@pyreon/document-primitives')
+    allFeatureDeps.add('@pyreon/document')
+    allFeatureDeps.add('@pyreon/connector-document')
+  }
   for (const dep of allFeatureDeps) {
     if (dep.startsWith('@pyreon/')) {
       deps[dep] = pyreonVersion(dep)
