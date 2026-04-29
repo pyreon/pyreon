@@ -16,6 +16,7 @@
     "@pyreon/connector-document": "workspace:*",
     "@pyreon/coolgrid": "workspace:*",
     "@pyreon/core": "workspace:*",
+    "@pyreon/dnd": "workspace:*",
     "@pyreon/document": "workspace:*",
     "@pyreon/document-primitives": "workspace:*",
     "@pyreon/elements": "workspace:*",

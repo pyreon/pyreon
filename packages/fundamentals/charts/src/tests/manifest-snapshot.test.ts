@@ -7,7 +7,7 @@ import manifest from '../manifest'
 
 describe('gen-docs — charts snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/charts — Reactive ECharts bridge with lazy loading, auto-detection, typed options. ECharts imports \`tslib\` whose ESM entry is broken under esbuild. Browser tests and Vite apps need \`resolve.alias: { tslib: "tslib/tslib.es6.js" }\`. The shared \`tslibBrowserAlias(import.meta.url)\` helper from \`@pyreon/test-utils\` resolves the correct path across install layouts. Tracking upstream: microsoft/tslib#189."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/charts — Reactive ECharts bridge with lazy loading, auto-detection, typed options. ECharts imports \`tslib\` whose ESM \`./modules/index.js\` entry destructures named helpers from a \`__toESM(require_tslib())\` default — the helpers live as top-level vars on the CJS factory, so the destructure reads \`undefined\` and the page throws \`TypeError: Cannot destructure property "__extends"\` the moment ECharts loads. Use \`chartsViteAlias()\` from \`@pyreon/charts/vite\` in your \`vite.config.ts\` (\`resolve: { alias: { ...chartsViteAlias() } }\`); it resolves \`tslib\` to the flat-ESM \`tslib.es6.js\` across install layouts. Browser tests use \`tslibBrowserAlias()\` from the shared test config. Tracking upstream: microsoft/tslib#189."`)
   })
 
   it('renders to llms-full.txt section', () => {
@@ -66,7 +66,7 @@ describe('gen-docs — charts snapshot', () => {
       // — you register ECharts components yourself
       \`\`\`
 
-      > **tslib browser alias**: ECharts imports \`tslib\` whose ESM entry is broken under esbuild. Browser tests and Vite apps need \`resolve.alias: { tslib: "tslib/tslib.es6.js" }\`. The shared \`tslibBrowserAlias(import.meta.url)\` helper from \`@pyreon/test-utils\` resolves the correct path across install layouts. Tracking upstream: microsoft/tslib#189.
+      > **tslib Vite alias**: ECharts imports \`tslib\` whose ESM \`./modules/index.js\` entry destructures named helpers from a \`__toESM(require_tslib())\` default — the helpers live as top-level vars on the CJS factory, so the destructure reads \`undefined\` and the page throws \`TypeError: Cannot destructure property "__extends"\` the moment ECharts loads. Use \`chartsViteAlias()\` from \`@pyreon/charts/vite\` in your \`vite.config.ts\` (\`resolve: { alias: { ...chartsViteAlias() } }\`); it resolves \`tslib\` to the flat-ESM \`tslib.es6.js\` across install layouts. Browser tests use \`tslibBrowserAlias()\` from the shared test config. Tracking upstream: microsoft/tslib#189.
       >
       > **Note**: Options must be a FUNCTION \`() => EChartsOption\`, not a plain object. Signal reads inside the function are tracked — changing any tracked signal reactively updates the chart.
       >

@@ -1,5 +1,5 @@
 import type { EditorLanguage } from '@pyreon/code'
-import { createEditor, getAvailableLanguages } from '@pyreon/code'
+import { CodeEditor, createEditor, getAvailableLanguages } from '@pyreon/code'
 import { computed, signal } from '@pyreon/reactivity'
 
 const sampleFiles: Record<string, { language: EditorLanguage; value: string }> = {
@@ -148,14 +148,9 @@ export function CodeDemo() {
           ))}
         </div>
 
-        {/* Editor mount point — CodeEditor component would go here */}
-        <div
-          ref={(el: HTMLElement) => {
-            const view = editor.view.peek()
-            if (!view) return
-            el.appendChild(view.dom)
-          }}
-          style="border: 1px solid #333; border-radius: 8px; overflow: hidden; min-height: 250px"
+        <CodeEditor
+          instance={editor}
+          style="border: 1px solid #333; border-radius: 8px; min-height: 250px"
         />
 
         {/* Status bar */}

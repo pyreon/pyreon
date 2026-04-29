@@ -63,7 +63,7 @@ import { defineConfig } from '@playwright/test'
  *
  *   1. Create / use an example in `examples/<name>/`
  *   2. Add a project entry below with `testMatch` and a unique `baseURL`
- *      port (5173-5180 reserved for e2e)
+ *      port (5173-5181 reserved for e2e)
  *   3. Add a webServer entry that starts that example on the same port
  *      with `--strictPort` (so a stale process fails fast instead of
  *      silently picking a different port — exactly the broken state

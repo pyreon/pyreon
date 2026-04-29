@@ -136,3 +136,39 @@ test.describe('Playground — RouterLink reactive `to` + active class', () => {
     await expect(activeLink).toHaveAttribute('href', /\/store$/)
   })
 })
+
+// Locks in CodeDemo's CodeEditor mount post-fix. The fundamentals
+// `/code` route is `test.fixme()`d in the multi-route SWEEP above
+// because direct SSR navigation to `/code` was historically aborting
+// on cold CI runners (#383). Path B from the e2e expansion plan
+// (`.claude/plans/jaunty-herding-kazoo.md`) sidesteps that by visiting
+// a lightweight route first then client-side navigating to `/code` —
+// no SSR cold-start under load. Combined with the post-fix demo
+// (using `<CodeEditor instance={editor}>` instead of a one-shot ref),
+// CodeMirror mounts deterministically and `.cm-editor` becomes visible.
+//
+// Bisect-shape: revert
+// `examples/fundamentals-playground/src/demos/CodeDemo.tsx` to the
+// pre-fix `<div ref={(el) => { editor.view.peek() ... }}>` form →
+// `.cm-editor` never mounts → spec times out.
+test.describe('Playground — /code editor mount', () => {
+  test('CodeMirror mounts via client-side nav from /', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    await page.locator('nav.sidebar').first().waitFor()
+
+    // Client-side navigate via the sidebar link — no SSR cold-start.
+    await page.locator('nav.sidebar a[href="/code"]').first().click()
+
+    // CodeMirror's lazy-load chunk + `<CodeEditor>`'s async `_mount(el)`
+    // can take a beat under cold CI. Generous timeout; the spec is
+    // proving "mounts at all", not "mounts fast".
+    await page.locator('.cm-editor').waitFor({ timeout: 10_000 })
+
+    // Initial value visible in the rendered content. The seed file
+    // is `main.ts` from `CodeDemo.tsx`'s `sampleFiles`, whose first
+    // line imports from `@pyreon/reactivity`. Asserting on a stable
+    // text fragment from the seed is more robust than counting lines.
+    const cmContent = page.locator('.cm-content')
+    await expect(cmContent).toContainText('@pyreon/reactivity')
+  })
+})

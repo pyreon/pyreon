@@ -35,6 +35,7 @@
     "test:e2e": "bunx playwright test --project=playground --project=ssr-showcase --project=fundamentals",
     "test:e2e:ui-regression": "bunx playwright test --config=playwright.ui-regression.config.ts",
     "test:e2e:compat": "bunx playwright test --config=playwright.compat-layers.config.ts",
+    "test:e2e:app-showcase": "bunx playwright test --config=playwright.app-showcase.config.ts",
     "test:e2e:cpa": "bunx playwright test --config=playwright.cpa.config.ts",
     "visual-test:capture": "bunx playwright test --project=visual",
     "visual-test:diff": "bun scripts/visual-test/diff.ts",
