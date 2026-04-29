@@ -53,6 +53,28 @@ const FIXTURES: Fixture[] = [
     // that's Bucket C scope (separate PR).
     args: ['--template', 'dashboard', '--adapter', 'vercel', '--integrations', '', '--yes'],
   },
+  // Compat-mode runtime fixtures — boot the scaffolded `app` template with
+  // `pyreon({ compat: <x> })` and assert the framework still mounts +
+  // renders + reacts in a real browser. Without these, the build-shape
+  // smoke (`scripts/scaffold-smoke.ts`) only proves the build doesn't
+  // crash — runtime correctness in compat mode is otherwise unverified.
+  // Caught a workspace-dev OXC importSource bug whose fix is in the same PR.
+  {
+    name: 'cpa-pw-app-react',
+    args: ['--template', 'app', '--adapter', 'vercel', '--compat', 'react', '--yes'],
+  },
+  {
+    name: 'cpa-pw-app-vue',
+    args: ['--template', 'app', '--adapter', 'vercel', '--compat', 'vue', '--yes'],
+  },
+  {
+    name: 'cpa-pw-app-solid',
+    args: ['--template', 'app', '--adapter', 'vercel', '--compat', 'solid', '--yes'],
+  },
+  {
+    name: 'cpa-pw-app-preact',
+    args: ['--template', 'app', '--adapter', 'vercel', '--compat', 'preact', '--yes'],
+  },
 ]
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
