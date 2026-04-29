@@ -248,7 +248,13 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         console.warn(`[zero:ssg] SSR build did not produce ${handlerPath} — skipping prerender`)
         return
       }
-      const handlerMod = (await import(pathToFileURL(handlerPath).href)) as {
+      // The path is computed at runtime from a freshly-built SSR artifact
+      // — Vite's `dynamic-import-vars` plugin can't statically analyze the
+      // import. Without the `@vite-ignore` hint, Vite emits a console
+      // warning on every consumer's dev server boot ("The above dynamic
+      // import cannot be analyzed by Vite"), which looks alarming but is
+      // expected here. Suppress per Vite's own recommendation.
+      const handlerMod = (await import(/* @vite-ignore */ pathToFileURL(handlerPath).href)) as {
         default: (path: string) => Promise<{ appHtml: string; head: string; loaderScript: string }>
       }
       const renderPath = handlerMod.default
