@@ -1,8 +1,15 @@
 import { readFile } from 'node:fs/promises'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { Readable } from 'node:stream'
 import type { Plugin, ViteDevServer } from 'vite'
-import { generateApiRouteModule } from './api-routes'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { ApiRouteEntry } from './api-routes'
+import {
+  createApiMiddleware,
+  generateApiRouteModule,
+  matchApiRoute,
+} from './api-routes'
 import { resolveConfig } from './config'
 
 /**
@@ -128,6 +135,35 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 		},
 
 		configureServer(server) {
+			// Dev-mode API-route middleware — production wires `createApiMiddleware`
+			// via `createServer`, but dev had no equivalent. API requests fell
+			// through to Vite's default 404. This middleware loads the
+			// `virtual:zero/api-routes` module and dispatches matching requests to
+			// the route's `GET()` / `POST()` / etc. handler. Mirrors the production
+			// flow in `entry-server.ts` minus the ergonomic helpers (auth, cors,
+			// etc. — those plug in via user-defined Pyreon middleware which dev
+			// doesn't currently load; not in scope here).
+			//
+			// Registered FIRST so API requests don't get SSR'd or 404'd.
+			server.middlewares.use((req, res, next) => {
+				const pathname = req.url?.split("?")[0] ?? "/";
+				if (pathname.startsWith("/@") || pathname.startsWith("/__"))
+					return next();
+				// Skip files (extension-bearing) — let Vite's static pipeline serve.
+				if (/\.\w+$/.test(pathname)) return next();
+
+				dispatchApiRoute(server, req, res).then(
+					(handled) => {
+						if (!handled) next();
+					},
+					(err: unknown) => {
+						// oxlint-disable-next-line no-console
+						console.error("[Pyreon] Error in dev API dispatcher:", err);
+						next();
+					},
+				);
+			});
+
 			// Dev-mode SSR middleware — for mode: "ssr", actually render each
 			// matched route server-side instead of serving the SPA shell.
 			// Runs BEFORE the 404 handler so matched routes are SSR'd and
@@ -319,6 +355,107 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 }
 
 /**
+ * Dev-mode API-route dispatcher. Loads the `virtual:zero/api-routes` virtual
+ * module, builds a Web `Request` from the Node `IncomingMessage`, and invokes
+ * the matching route's HTTP-method handler.
+ *
+ * Returns `true` if the API middleware handled the request (response written).
+ * Returns `false` if no route matched (caller falls through to next middleware).
+ *
+ * Mirrors what `createServer` wires up in production via `createApiMiddleware`,
+ * but adapted for Vite's connect-style middleware stack — needs a Node→Web
+ * request adapter.
+ */
+async function dispatchApiRoute(
+	server: ViteDevServer,
+	req: IncomingMessage,
+	res: ServerResponse,
+): Promise<boolean> {
+	let apiRoutes: ApiRouteEntry[];
+	try {
+		const mod = await server.ssrLoadModule(VIRTUAL_API_ROUTES_ID);
+		apiRoutes = (mod.apiRoutes ?? []) as ApiRouteEntry[];
+	} catch {
+		return false;
+	}
+	if (apiRoutes.length === 0) return false;
+
+	const host = req.headers.host ?? "localhost";
+	const url = new URL(req.url ?? "/", `http://${host}`);
+	const pathname = url.pathname;
+
+	// Quick gate: only build the Web Request when the path actually matches
+	// an api route. Reuses the same `matchApiRoute` that `createApiMiddleware`
+	// uses internally — including catch-all `:param*` patterns from
+	// `[...slug].ts` API routes — so the gate and the dispatcher agree on
+	// what counts as a match. Avoids per-request body buffering for SSR /
+	// static traffic that doesn't target an API route.
+	const anyMatch = apiRoutes.some((r) => matchApiRoute(r.pattern, pathname) !== null);
+	if (!anyMatch) return false;
+
+	// Convert Node IncomingMessage → Web Request. Stream the request body
+	// for non-GET/HEAD via `Readable.toWeb` instead of buffering — large
+	// uploads (multipart, file POSTs) don't have to fit in memory before
+	// the handler sees them. `duplex: 'half'` is required by the WHATWG
+	// fetch spec when `body` is a `ReadableStream`.
+	const method = (req.method ?? "GET").toUpperCase();
+	const headers = new Headers();
+	for (const [key, value] of Object.entries(req.headers)) {
+		if (value !== undefined) {
+			headers.set(key, Array.isArray(value) ? value.join(", ") : String(value));
+		}
+	}
+	const requestInit: RequestInit & { duplex?: "half" } = { method, headers };
+	if (method !== "GET" && method !== "HEAD") {
+		// `Readable.toWeb` returns Node's `node:stream/web` `ReadableStream`;
+		// `RequestInit.body` expects the DOM `ReadableStream`. They're
+		// structurally identical at runtime but TS keeps them as separate
+		// types — `as unknown as` is the standard bridge per TS's own
+		// "convert to unknown first" suggestion.
+		requestInit.body = Readable.toWeb(req) as unknown as ReadableStream<Uint8Array>;
+		requestInit.duplex = "half";
+	}
+	const webReq = new Request(url.href, requestInit);
+
+	const middleware = createApiMiddleware(apiRoutes);
+	const response = await middleware({
+		req: webReq,
+		url,
+		path: pathname + url.search,
+		headers: new Headers(),
+		locals: {},
+	});
+
+	if (!response) return false;
+
+	// Pipe the Web Response body directly to the Node response stream
+	// instead of buffering with `arrayBuffer()`. Critical for SSE, large
+	// downloads, and any handler that returns a `Response` constructed
+	// from a streaming source — buffering would defeat the streaming
+	// contract and OOM on large payloads.
+	res.statusCode = response.status;
+	response.headers.forEach((v, k) => {
+		res.setHeader(k, v);
+	});
+	if (response.body) {
+		// `pipe(res)` ends `res` automatically on stream completion and
+		// auto-cancels the upstream Web ReadableStream if the client
+		// disconnects (Node ≥18). We don't await — once the headers and
+		// pipe are wired, the function's job is done. The connect chain
+		// doesn't call `next()` because we resolved with `true`.
+		// `response.body` is a DOM `ReadableStream`; `Readable.fromWeb`
+		// expects `node:stream/web`'s `ReadableStream`. Cross-realm types
+		// don't unify in TS — bridge via `unknown` per TS's own guidance.
+		Readable.fromWeb(
+			response.body as unknown as import("node:stream/web").ReadableStream,
+		).pipe(res);
+	} else {
+		res.end();
+	}
+	return true;
+}
+
+/**
  * Check if the requested path matches any route. If not, render a 404 page.
  * Returns true if the 404 was handled (response sent), false otherwise.
  *
@@ -471,22 +608,30 @@ async function renderSsr(
 	});
 }
 
-/** Extract all URL patterns from a nested route tree. */
+/**
+ * Extract all URL patterns from a nested route tree.
+ *
+ * The fs-router emits ABSOLUTE paths for every route, including grandchildren —
+ * `{ path: "/app/dashboard" }` not `{ path: "dashboard" }`. The matcher reads
+ * each route's `path` as-is; no prefix accumulation. Pre-fix, this function
+ * concatenated `${prefix}${route.path}` which produced patterns like
+ * `///app/app/dashboard` (prefix `'/app'` + path `'/app/dashboard'`). After
+ * `path.split('/').filter(Boolean)` those became `['app', 'app', 'dashboard']`
+ * — which can't match a real `/app/dashboard` request — so dev-server returned
+ * 404 for every nested-layout route. Re-enables PR #411 specs that rely on
+ * `/app/*` routing.
+ */
 function flattenRoutePatterns(
 	routes: Array<{ path?: string; children?: unknown[] }>,
-	prefix = "",
 ): string[] {
 	const patterns: string[] = [];
 	for (const route of routes) {
 		if (!route.path) continue;
-		const fullPath =
-			route.path === "/" && prefix ? prefix : `${prefix}${route.path}`;
-		patterns.push(fullPath);
+		patterns.push(route.path);
 		if (route.children) {
 			patterns.push(
 				...flattenRoutePatterns(
 					route.children as Array<{ path?: string; children?: unknown[] }>,
-					fullPath,
 				),
 			);
 		}

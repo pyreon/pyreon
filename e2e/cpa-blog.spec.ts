@@ -54,19 +54,37 @@ test.describe('cpa-blog — runtime', () => {
     await expect(page.locator('article').first()).not.toBeEmpty()
   })
 
-  test.skip('/api/rss serves valid RSS XML', async ({ request }) => {
-    // BLOCKED: Pyreon's dev-server registers API routes in its route list
-    // (visible at boot — `API /api/rss`) but the actual request handler
-    // returns 404 for every API route in dev. The bug affects ALL
-    // templates / adapters — even the existing app template's
-    // `/api/health` 404s in dev. The RSS endpoint code itself is correct
-    // (the file exports `GET()` returning a `Response`); only the dev
-    // server's API-route dispatcher is broken. Re-enable once the
-    // framework's dev-server API-route handling is fixed.
+  test('/api/rss serves valid RSS XML', async ({ request }) => {
+    // Locks in the dev-server API-route dispatcher fix. Pre-fix, the
+    // virtual `apiRoutes` module was generated but no Vite middleware
+    // consumed it — every API request 404'd. Fix wires `createApiMiddleware`
+    // into `configureServer` ahead of the SSR + 404 middlewares.
     const response = await request.get('/api/rss')
     expect(response.status()).toBe(200)
     expect(response.headers()['content-type'] ?? '').toContain('application/rss+xml')
     const body = await response.text()
     expect(body).toContain('<rss version="2.0">')
+  })
+
+  test('/api/echo/:path* — catch-all + streaming response', async ({ request }) => {
+    // Two-pronged regression canary for the dev API dispatcher (paired with
+    // `examples/cpa-pw-blog/src/routes/api/echo/[...path].ts`):
+    //
+    //   1. Catch-all matching: a `[...path].ts` route compiles to URL pattern
+    //      `:path*`. The dispatcher's pre-check must accept multi-segment
+    //      paths the pattern legitimately captures. Pre-fix the inline
+    //      matcher demanded equal segment counts and silently rejected
+    //      catch-alls > 1 deep — `/api/echo/a/b/c` 404'd in dev only.
+    //   2. Streaming response: the handler emits chunks across ticks. The
+    //      dispatcher pipes the Web ReadableStream to the Node response
+    //      instead of buffering — required for SSE, large downloads, and
+    //      any handler that returns a streamed `Response`.
+    const response = await request.get('/api/echo/foo/bar/baz')
+    expect(response.status()).toBe(200)
+    expect(response.headers()['content-type'] ?? '').toContain('text/plain')
+    const body = await response.text()
+    expect(body).toContain('segments: foo/bar/baz')
+    expect(body).toContain('chunk-2')
+    expect(body).toContain('chunk-3')
   })
 })
