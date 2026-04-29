@@ -325,12 +325,19 @@ describe('plugin config', () => {
     expect(config.oxc.jsx.importSource).toBe('@pyreon/core')
   })
 
-  it('sets JSX import source to compat package in compat mode', async () => {
+  it('keeps JSX import source as @pyreon/core in compat mode', async () => {
+    // OXC's `importSource` is project-wide (one setting for the whole build),
+    // so pointing it at the compat package would force the compat runtime
+    // on `@pyreon/*` framework files too — which they cannot handle. Instead
+    // the plugin keeps OXC at `@pyreon/core` and redirects the resulting
+    // `@pyreon/core/jsx-runtime` import to the compat package via `resolveId`,
+    // gated on the importer (user code only). See `compat-resolve.test.ts`
+    // "framework-importer carve-out". Caught by `cpa-smoke-app-*-compat`.
     const plugin = pyreonPlugin({ compat: 'react' })
     const config = getConfigHook(plugin)({}, { command: 'serve' }) as {
       oxc: { jsx: { importSource: string } }
     }
-    expect(config.oxc.jsx.importSource).toBe('@pyreon/react-compat')
+    expect(config.oxc.jsx.importSource).toBe('@pyreon/core')
   })
 
   it('excludes compat packages from optimizeDeps', async () => {

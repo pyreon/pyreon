@@ -5,6 +5,7 @@
  * resolveId hook + the JSX-runtime aliasing branch.
  */
 
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import pyreonPlugin, { type PyreonPluginOptions } from '../index'
 
@@ -36,6 +37,7 @@ async function callResolveId(
   plugin: ReturnType<typeof pyreonPlugin>,
   id: string,
   resolveMap: Record<string, string> = {},
+  importer?: string,
 ): Promise<string | undefined> {
   const hook = plugin.resolveId as ResolveIdHook
   return hook.call(
@@ -46,6 +48,7 @@ async function callResolveId(
       },
     },
     id,
+    importer,
   )
 }
 
@@ -156,6 +159,85 @@ describe('compat-mode resolveId — solid', () => {
       '@pyreon/solid-compat/jsx-runtime': '/abs/solid-compat/jsx-runtime.ts',
     })
     expect(resolved).toBe('/abs/solid-compat/jsx-runtime.ts')
+  })
+})
+
+describe('compat-mode resolveId — framework-importer carve-out', () => {
+  // Regression: in compat mode, `@pyreon/core/jsx-runtime` must NOT be
+  // redirected to the compat package when the importer is itself a
+  // `@pyreon/*` workspace-package source file (zero, router, runtime-dom,
+  // etc.). Pre-fix, OXC's project-wide importSource was set to the compat
+  // package, so framework-internal JSX got rewritten to import a runtime
+  // shape it doesn't speak. The fix sets OXC to `@pyreon/core` always and
+  // redirects in `resolveId` only for non-framework importers. Caught by
+  // `cpa-smoke-app-*-compat` cells in `scripts/scaffold-smoke.ts`.
+  // Bisect-verified: dropping the `isPyreonWorkspaceFile(importer)` guard
+  // makes these tests fail with the redirected jsx-runtime path.
+
+  const repoRoot = resolve(import.meta.dirname, '../../../../..')
+  const frameworkImporter = `${repoRoot}/packages/zero/zero/src/link.tsx`
+  const userImporter = `${repoRoot}/examples/some-user-app/src/foo.tsx`
+  // The 4 existing compat-layer example apps under `examples/` have
+  // package.json names like `@pyreon/example-react-compat`. The carve-out
+  // helper must NOT treat their source files as framework files — doing so
+  // skips the JSX-runtime redirect and breaks the compat layer end-to-end.
+  // Bisect-verified: when the helper checked `name.startsWith('@pyreon/')`
+  // alone (without the `/examples/` exclusion), all 4 compat-layer e2e
+  // suites failed in CI with `section.demo` never rendering.
+  const exampleAppImporter = `${repoRoot}/examples/react-compat/src/Foo.tsx`
+
+  it('does NOT redirect @pyreon/core/jsx-runtime when imported FROM @pyreon/zero workspace source (react)', async () => {
+    const plugin = bootstrap({ compat: 'react' })
+    const resolved = await callResolveId(
+      plugin,
+      '@pyreon/core/jsx-runtime',
+      { '@pyreon/react-compat/jsx-runtime': '/abs/react-compat/jsx-runtime.ts' },
+      frameworkImporter,
+    )
+    expect(resolved).toBeUndefined() // pass through to Vite's resolver
+  })
+
+  it('does NOT redirect @pyreon/core/jsx-dev-runtime when imported FROM framework source (preact)', async () => {
+    const plugin = bootstrap({ compat: 'preact' })
+    const resolved = await callResolveId(
+      plugin,
+      '@pyreon/core/jsx-dev-runtime',
+      { '@pyreon/preact-compat/jsx-runtime': '/abs/preact-compat/jsx-runtime.ts' },
+      frameworkImporter,
+    )
+    expect(resolved).toBeUndefined()
+  })
+
+  it('STILL redirects @pyreon/core/jsx-runtime when imported FROM user code (react)', async () => {
+    const plugin = bootstrap({ compat: 'react' })
+    const resolved = await callResolveId(
+      plugin,
+      '@pyreon/core/jsx-runtime',
+      { '@pyreon/react-compat/jsx-runtime': '/abs/react-compat/jsx-runtime.ts' },
+      userImporter,
+    )
+    expect(resolved).toBe('/abs/react-compat/jsx-runtime.ts')
+  })
+
+  it('STILL redirects @pyreon/core/jsx-runtime when no importer (entry point)', async () => {
+    const plugin = bootstrap({ compat: 'react' })
+    const resolved = await callResolveId(
+      plugin,
+      '@pyreon/core/jsx-runtime',
+      { '@pyreon/react-compat/jsx-runtime': '/abs/react-compat/jsx-runtime.ts' },
+    )
+    expect(resolved).toBe('/abs/react-compat/jsx-runtime.ts')
+  })
+
+  it('STILL redirects @pyreon/core/jsx-runtime when imported FROM an example app under examples/ (e.g. @pyreon/example-react-compat)', async () => {
+    const plugin = bootstrap({ compat: 'react' })
+    const resolved = await callResolveId(
+      plugin,
+      '@pyreon/core/jsx-runtime',
+      { '@pyreon/react-compat/jsx-runtime': '/abs/react-compat/jsx-runtime.ts' },
+      exampleAppImporter,
+    )
+    expect(resolved).toBe('/abs/react-compat/jsx-runtime.ts')
   })
 })
 
