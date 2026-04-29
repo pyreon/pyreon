@@ -256,7 +256,7 @@ const User = () => {
     },
     {
       name: 'redirect',
-      kind: 'helper',
+      kind: 'function',
       signature: 'redirect(url: string, status?: 301 | 302 | 303 | 307 | 308): never',
       summary:
         "Throw inside a route loader to redirect the navigation BEFORE the layout renders. On SSR (initial nav), the thrown error is converted by `@pyreon/server`'s handler into a real HTTP `302`/`307` `Location:` response — no layout HTML leaves the server. On CSR (subsequent nav), the redirect propagates through the navigate flow and triggers `router.replace()` before any matched route's component mounts. Replaces the fragile `onMount + router.push()` workaround for auth-gates under nested-layout dev SSR + hydration. Default status is `307` (Temporary Redirect, method-preserving).",
@@ -285,7 +285,7 @@ export async function loader(ctx: LoaderContext) {
     },
     {
       name: 'isRedirectError',
-      kind: 'helper',
+      kind: 'function',
       signature: 'isRedirectError(err: unknown): boolean',
       summary:
         'Type guard for errors thrown by `redirect()`. Used internally by the router (CSR) and `@pyreon/server` (SSR) to distinguish redirect-control-flow errors from real failures. Useful in custom error boundaries that should let redirects pass through to the framework instead of catching them.',
@@ -302,7 +302,7 @@ import { isRedirectError } from "@pyreon/router"
     },
     {
       name: 'getRedirectInfo',
-      kind: 'helper',
+      kind: 'function',
       signature: 'getRedirectInfo(err: unknown): { url: string; status: 301 | 302 | 303 | 307 | 308 } | null',
       summary:
         "Extract the redirect URL and status from a thrown RedirectError. Returns `null` for non-redirect errors. Used by `@pyreon/server`'s SSR handler to convert the thrown error into a 302/307 `Response`.",

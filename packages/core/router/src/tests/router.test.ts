@@ -5274,7 +5274,7 @@ describe('redirect() from loader', () => {
       {
         path: '/app',
         component: Protected,
-        loader: () => {
+        loader: async () => {
           // No session — redirect to /login
           redirect('/login')
         },
@@ -5298,7 +5298,7 @@ describe('redirect() from loader', () => {
       {
         path: '/app',
         component: Protected,
-        loader: () => {
+        loader: async () => {
           loaderRan = true
           return { user: 'me' }
         },
@@ -5325,7 +5325,7 @@ describe('redirect() from loader', () => {
       {
         path: '/app',
         component: Layout,
-        loader: () => {
+        loader: async () => {
           redirect('/login')
         },
         children: [
@@ -5335,7 +5335,7 @@ describe('redirect() from loader', () => {
             // are identical via `resolveRoute`.
             path: 'dashboard',
             component: Page,
-            loader: () => ({ data: 'page-data' }),
+            loader: async () => ({ data: 'page-data' }),
           },
         ],
       },
@@ -5362,7 +5362,7 @@ describe('redirect() from loader', () => {
       {
         path: '/old',
         component: Home,
-        loader: () => {
+        loader: async () => {
           redirect('/login', 308)
         },
       },
@@ -5383,7 +5383,7 @@ describe('redirect() from loader', () => {
       {
         path: '/app',
         component: Protected,
-        loader: () => {
+        loader: async () => {
           redirect('/login')
         },
       },
