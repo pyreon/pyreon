@@ -277,9 +277,17 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
   const ctx = _streamCtxAls.getStore()
   const { fallback, children } = vnode.props as { fallback: VNodeChild; children?: VNodeChild }
 
-  // No streaming context (e.g. called from renderToString) — render children inline
+  // No streaming context (e.g. called from renderToString) — render children inline.
+  // Route through `makeReactiveProps` for the same reason `mergeChildrenIntoProps`
+  // does: `<Suspense fallback={signalRead()}>` compiles to `_rp(() => signalRead())`
+  // and reading `props.fallback` without the getter would stringify the function
+  // source as the rendered slot. Mirrors the canonical pattern used by mount.ts /
+  // hydrate.ts / mergeChildrenIntoProps so every component-render path is uniform.
   if (!ctx) {
-    const { vnode: output } = runWithHooks(Suspense as ComponentFn, vnode.props)
+    const { vnode: output } = runWithHooks(
+      Suspense as ComponentFn,
+      makeReactiveProps(vnode.props as Record<string, unknown>),
+    )
     if (output !== null) await streamNode(output, enqueue)
     return
   }

@@ -1,4 +1,4 @@
-import { _rp, h } from '@pyreon/core'
+import { _rp, h, Suspense } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
 import { renderToString } from '..'
 
@@ -36,6 +36,35 @@ describe('SSR — _rp-wrapped component props are resolved (makeReactiveProps wi
       h(Outer, { path: _rp(() => '/store') as unknown as string }),
     )
     expect(html).toBe('<a href="/store">x</a>')
+  })
+
+  it('Suspense (renderToString / no-streaming-context branch) routes its props through `makeReactiveProps`', async () => {
+    // Contract test, not a behavior regression. PR #410 wired `makeReactiveProps`
+    // through the streaming `mergeChildrenIntoProps` path; `streamSuspenseBoundary`'s
+    // no-streaming-context branch (called from renderToString) was the one
+    // remaining call site that bypassed it. In practice Suspense's body has its
+    // own defensive `typeof === 'function'` checks for `props.fallback` and
+    // `props.children`, so the bug never surfaced as wrong-rendered HTML — but
+    // the structural inconsistency would bite the next contributor who copies
+    // this shape into a new component-render path without the same defensive
+    // dance. This test asserts the canonical pattern is in place.
+    //
+    // The assertion is shape-level: passing `_rp`-wrapped fallback / child
+    // does not crash, does not leak `=>` source, and a child component
+    // reading its own `props.x` resolves it correctly.
+    const Child = (props: { id: string }) => h('span', { id: props.id }, () => props.id)
+    const html = await renderToString(
+      h(
+        Suspense,
+        {
+          fallback: h('div', null, 'fb'),
+          children: h(Child, { id: _rp(() => 'resolved') as unknown as string }),
+        },
+      ),
+    )
+    expect(html).toContain('id="resolved"')
+    expect(html).toContain('>resolved</span>')
+    expect(html).not.toContain('=>')
   })
 
   it('non-`_rp` function props (user-written accessors) still pass through to elements', async () => {
