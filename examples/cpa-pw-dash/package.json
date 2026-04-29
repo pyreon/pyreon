@@ -1,0 +1,45 @@
+{
+  "name": "cpa-pw-dash",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "zero dev",
+    "build": "zero build",
+    "preview": "zero preview",
+    "doctor": "zero doctor",
+    "doctor:fix": "zero doctor --fix",
+    "doctor:ci": "zero doctor --ci",
+    "lint": "pyreon-lint ."
+  },
+  "dependencies": {
+    "@pyreon/connector-document": "^0.14.0",
+    "@pyreon/core": "^0.14.0",
+    "@pyreon/document": "^0.14.0",
+    "@pyreon/document-primitives": "^0.14.0",
+    "@pyreon/form": "^0.14.0",
+    "@pyreon/head": "^0.14.0",
+    "@pyreon/meta": "^0.14.0",
+    "@pyreon/query": "^0.14.0",
+    "@pyreon/reactivity": "^0.14.0",
+    "@pyreon/router": "^0.14.0",
+    "@pyreon/runtime-dom": "^0.14.0",
+    "@pyreon/runtime-server": "^0.14.0",
+    "@pyreon/server": "^0.14.0",
+    "@pyreon/store": "^0.14.0",
+    "@pyreon/table": "^0.14.0",
+    "@pyreon/validation": "^0.14.0",
+    "@pyreon/zero": "^0.14.0",
+    "@tanstack/query-core": "^5.90.0",
+    "@tanstack/table-core": "^8.21.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@pyreon/lint": "^0.14.0",
+    "@pyreon/mcp": "^0.14.0",
+    "@pyreon/vite-plugin": "^0.14.0",
+    "@pyreon/zero-cli": "^0.14.0",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.3"
+  }
+}
