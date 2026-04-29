@@ -5,7 +5,7 @@
  * hydrate on client, verify signals work and DOM is reused.
  */
 import type { VNodeChild } from '@pyreon/core'
-import { For, Fragment, h, Show } from '@pyreon/core'
+import { _rp, For, Fragment, h, Show } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { disableHydrationWarnings, enableHydrationWarnings, hydrateRoot } from '../index'
@@ -504,5 +504,37 @@ describe('hydration integration — onHydrationMismatch telemetry hook', () => {
     unsubGood()
     warnSpy.mockRestore()
     enableHydrationWarnings()
+  })
+})
+
+// ─── _rp prop forwarding through SSR -> hydrate ─────────────────────────────
+
+describe('hydration integration — `_rp`-wrapped component props (regression)', () => {
+  // Pre-fix, hydrate.ts skipped `makeReactiveProps` on the way into a
+  // component, so `props.x` returned the raw `_rp` function instead of the
+  // resolved value. mount.ts already did the right thing, so the failure mode
+  // surfaced only on cold-start SSR/hydrate (the fundamentals NavItem layout
+  // shape — see e2e/fundamentals/playground.spec.ts). Lock in BOTH the SSR
+  // emit and the post-hydration value.
+  test('SSR emits resolved string from `_rp` prop, hydration preserves it', async () => {
+    const Link = (props: { to: string }) =>
+      h('a', { href: `#${props.to}`, id: 'lnk' }, () => props.to)
+
+    const html = await renderToString(
+      h(Link, { to: _rp(() => '/about') as unknown as string }),
+    )
+    expect(html).toBe('<a href="#/about" id="lnk">/about</a>')
+    expect(html).not.toContain('=>')
+
+    const el = container()
+    el.innerHTML = html
+    const cleanup = hydrateRoot(
+      el,
+      h(Link, { to: _rp(() => '/about') as unknown as string }),
+    )
+    const link = el.querySelector<HTMLAnchorElement>('#lnk')!
+    expect(link.getAttribute('href')).toBe('#/about')
+    expect(link.textContent).toBe('/about')
+    cleanup()
   })
 })

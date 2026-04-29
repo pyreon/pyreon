@@ -1,5 +1,5 @@
-import type { ComponentFn, Props, VNodeChild } from '@pyreon/core'
-import { createRef, ErrorBoundary, h, onUnmount, provide, useContext } from '@pyreon/core'
+import type { ClassValue, ComponentFn, Props, VNodeChild } from '@pyreon/core'
+import { createRef, cx, ErrorBoundary, h, onUnmount, provide, useContext } from '@pyreon/core'
 import { computed, signal } from '@pyreon/reactivity'
 import { LoaderDataContext, prefetchLoaderData } from './loader'
 import { isLazy, RouterContext, setActiveRouter } from './router'
@@ -233,7 +233,14 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
   }
 
   const inst = router as RouterInstance | null
-  const href = inst?.mode === 'history' ? `${inst._base}${props.to}` : `#${props.to}`
+  // `href` MUST be an accessor, not a string captured at setup. `props.to`
+  // is a getter when the parent passes a reactive expression (the JSX
+  // compiler wraps `<RouterLink to={someExpr}>` as `_rp(() => someExpr)`).
+  // Capturing into a string at setup time freezes the URL — passing the
+  // accessor lets `applyProp` wrap it in `renderEffect` so href tracks the
+  // underlying signal.
+  const href = (): string =>
+    inst?.mode === 'history' ? `${inst._base}${props.to}` : `#${props.to}`
 
   const isExactMatch = (): boolean => {
     if (!router) return false
@@ -277,12 +284,44 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
     onUnmount(() => observer.disconnect())
   }
 
-  // Forward all non-RouterLink props (style, class, id, data-*, etc.) to the <a>.
-  const { to: _to, replace: _replace, activeClass: _ac, exactActiveClass: _eac, exact: _exact, prefetch: _prefetch, children, ...rest } = props
+  // Forward all non-RouterLink props (style, id, data-*, etc.) to the <a>.
+  // `class` is pulled out separately so it can be MERGED with the internal
+  // active-class accessor — overriding the user's class silently dropped any
+  // conditional class the consumer wanted (e.g. `class={() => cond ? 'on' : ''}`).
+  const {
+    to: _to,
+    replace: _replace,
+    activeClass: _ac,
+    exactActiveClass: _eac,
+    exact: _exact,
+    prefetch: _prefetch,
+    class: userClass,
+    children,
+    ...rest
+  } = props as RouterLinkProps & { class?: ClassValue | (() => ClassValue) }
+
+  // Compose the user-provided `class` (string / array / object / function) with
+  // the internal `activeClass` accessor. Returning a function lets `applyProp`
+  // wrap it in `renderEffect` once — so navigation re-evaluates BOTH sides on
+  // every route change without rebuilding the link.
+  const mergedClass = (): string => {
+    const userResolved =
+      typeof userClass === 'function' ? (userClass as () => ClassValue)() : userClass
+    return cx([userResolved, activeClass()] as ClassValue)
+  }
 
   return h(
     'a',
-    { ...rest, ref, href, class: activeClass, 'aria-current': ariaCurrent, onClick: handleClick, onMouseEnter: handleMouseEnter, onFocus: handleFocus },
+    {
+      ...rest,
+      ref,
+      href,
+      class: mergedClass,
+      'aria-current': ariaCurrent,
+      onClick: handleClick,
+      onMouseEnter: handleMouseEnter,
+      onFocus: handleFocus,
+    },
     children ?? props.to,
   )
 }
