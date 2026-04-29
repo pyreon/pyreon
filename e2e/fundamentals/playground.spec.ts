@@ -74,17 +74,46 @@ test.describe('Playground', () => {
     expect(errors, errors.join('\n')).toHaveLength(0)
   })
 
-  // FIXME: `/code` route consistently aborts navigation on CI with
-  // `net::ERR_ABORTED` even with `waitUntil: 'domcontentloaded'` +
-  // a 60s timeout (#383's fix). Local: passes. CI: fails 100% on
-  // cold runners. Likely SSR error in zero's dev pipeline when
-  // CodeMirror's lazy chunk first loads under CI's CPU/memory
-  // pressure — a server-side error returns a 500 that the browser
-  // surfaces as ERR_ABORTED. Tracking a separate fix PR; restore
-  // `test()` once the dev-SSR `/code` path is hardened (likely
-  // needs a pre-warm of CodeMirror's chunk OR a redirect away from
-  // the heavy route as the first navigation in the sweep).
-  test.fixme('navigates through every tab without errors', async ({ page }) => {
+  // Multi-route SWEEP — visit every demo route via direct goto and
+  // verify no JS pageerrors. Was previously `test.fixme()`'d due to
+  // `net::ERR_ABORTED` on heavy lazy-loading routes (`/code`,
+  // `/document`, `/charts`) under cold-cache navigation in CI.
+  //
+  // Diagnosis (PR closing this fixme): the abort is NOT a server-side
+  // 500 — Vite's dev server returns 200 in <100ms for every route in
+  // local cold-cache repro. The abort is a CHROME-LEVEL navigation
+  // race: when `page.goto(B)` fires while the prior page (`A`) is
+  // still loading its client JS modules under Vite's on-demand
+  // bundling, Chrome's in-flight resource fetches for A get cancelled,
+  // and the navigation to B can be aborted as part of the cleanup.
+  // Cold-cache only because Vite bundles modules on first request;
+  // warm-cache repro never reproduces.
+  //
+  // Fix: retry on `ERR_ABORTED` once after a short backoff. The retry
+  // succeeds because the prior page's modules are now fully cached,
+  // so the next navigation doesn't race with bundling. This is the
+  // same shape Playwright recommends for transient navigation aborts.
+  // Cap retries at 1 — a real failure (e.g. SSR error returning 500)
+  // would still surface deterministically.
+  async function gotoWithRetry(page: import('@playwright/test').Page, path: string) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        await page.goto(path, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+        return
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        // Only retry on the cold-cache race signature. Any other error
+        // bubbles up to the test as a real failure.
+        if (attempt === 0 && /ERR_ABORTED/.test(msg)) {
+          await page.waitForTimeout(500)
+          continue
+        }
+        throw err
+      }
+    }
+  }
+
+  test('navigates through every tab without errors', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (err) => errors.push(err.message))
 
@@ -95,7 +124,7 @@ test.describe('Playground', () => {
       // event can exceed Playwright's default 30s under cold CI load.
       // We only need the route to mount and not throw; we don't need
       // every async chunk to settle.
-      await page.goto(path, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+      await gotoWithRetry(page, path)
       // Wait for SPA navigation + initial mount.
       await page.locator('nav.sidebar').waitFor()
       await page.waitForTimeout(150)
