@@ -1,7 +1,7 @@
 import { createContext, onUnmount, useContext } from '@pyreon/core'
 import { computed, signal } from '@pyreon/reactivity'
 import { buildNameIndex, buildPath, resolveRoute, stringifyQuery } from './match'
-import { getRedirectInfo, isRedirectError } from './redirect'
+import { getRedirectInfo } from './redirect'
 import { ScrollManager } from './scroll'
 import {
   type AfterEachHook,
