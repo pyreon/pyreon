@@ -407,7 +407,12 @@ async function dispatchApiRoute(
 	}
 	const requestInit: RequestInit & { duplex?: "half" } = { method, headers };
 	if (method !== "GET" && method !== "HEAD") {
-		requestInit.body = Readable.toWeb(req) as ReadableStream<Uint8Array>;
+		// `Readable.toWeb` returns Node's `node:stream/web` `ReadableStream`;
+		// `RequestInit.body` expects the DOM `ReadableStream`. They're
+		// structurally identical at runtime but TS keeps them as separate
+		// types — `as unknown as` is the standard bridge per TS's own
+		// "convert to unknown first" suggestion.
+		requestInit.body = Readable.toWeb(req) as unknown as ReadableStream<Uint8Array>;
 		requestInit.duplex = "half";
 	}
 	const webReq = new Request(url.href, requestInit);
@@ -438,7 +443,12 @@ async function dispatchApiRoute(
 		// disconnects (Node ≥18). We don't await — once the headers and
 		// pipe are wired, the function's job is done. The connect chain
 		// doesn't call `next()` because we resolved with `true`.
-		Readable.fromWeb(response.body as import("node:stream/web").ReadableStream).pipe(res);
+		// `response.body` is a DOM `ReadableStream`; `Readable.fromWeb`
+		// expects `node:stream/web`'s `ReadableStream`. Cross-realm types
+		// don't unify in TS — bridge via `unknown` per TS's own guidance.
+		Readable.fromWeb(
+			response.body as unknown as import("node:stream/web").ReadableStream,
+		).pipe(res);
 	} else {
 		res.end();
 	}
