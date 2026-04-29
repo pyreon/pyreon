@@ -21,6 +21,7 @@ import {
   dispatchToErrorBoundary,
   ForSymbol,
   Fragment,
+  makeReactiveProps,
   PortalSymbol,
   reportError,
   runWithHooks,
@@ -349,7 +350,7 @@ function hydrateComponent(
 
   // Function.name is always a string per spec; || handles empty string, avoids uncoverable ?? branch
   const componentName = ((vnode.type as ComponentFn).name || 'Anonymous') as string
-  const mergedProps =
+  const rawProps =
     (vnode.children ?? []).length > 0 &&
     (vnode.props as Record<string, unknown>).children === undefined
       ? {
@@ -359,7 +360,13 @@ function hydrateComponent(
               ? (vnode.children ?? [])[0]
               : (vnode.children ?? []),
         }
-      : vnode.props
+      : (vnode.props as Record<string, unknown>)
+  // Convert compiler-emitted `_rp(() => expr)` wrappers into getter properties —
+  // mirrors mount.ts so component code can read `props.x` and get the resolved
+  // value (not the raw `_rp` function). Without this, hydration set up reactive
+  // bindings against the wrong values and any signal-driven re-render would
+  // diverge from the SSR HTML.
+  const mergedProps = makeReactiveProps(rawProps as Record<string, unknown>)
 
   let result: ReturnType<typeof runWithHooks>
   try {

@@ -100,14 +100,35 @@ test.describe('Playground', () => {
     expect(errors, errors.join('\n')).toHaveLength(0)
   })
 
-  // INTENTIONALLY OMITTED: useIsActive `active` class assertion.
-  //
-  // The fundamentals layout passes `<RouterLink to={props.path}>`. The
-  // compiler's reactive-prop wrapper (`_rp(() => props.path)`) flows into
-  // RouterLink's destructured `to`, which currently stringifies the
-  // accessor and assigns it to `href` literally — `<a href="() => props.path">`.
-  // useIsActive can't compare against a malformed href, so no link gets
-  // the `active` class regardless of route. Tracking as a separate
-  // RouterLink-vs-reactive-prop framework bug; re-add this assertion
-  // alongside that fix.
+})
+
+// Locks in two fixes that combined to break the layout's `<RouterLink
+// to={props.path} class={() => isActive() ? 'active' : ''}>`:
+//   1. SSR + hydrate.ts skipped `makeReactiveProps` on the way into a
+//      component, so `props.to` (a compiler-emitted `_rp(() => ...)`
+//      function) was the raw function instead of a getter — `${props.to}`
+//      stringified the function source as the `href`.
+//   2. RouterLink hard-overrode the user's `class` prop with its internal
+//      `activeClass` accessor instead of merging — silently dropping
+//      `class={() => isActive() ? 'active' : ''}`.
+// Pre-fix the rendered DOM was `<a class="active" href="() => props.path">`
+// — the systemic SSR fix is what actually produces a routable href.
+// The earlier INTENTIONALLY OMITTED comment misdiagnosed the root cause
+// as a single bug; both layers needed fixing.
+//
+// Lives outside the main `Playground` describe block so its `beforeEach`
+// (which uses a strict `nav.sidebar` waitFor that fails when there are
+// duplicate navs) doesn't gate this test. `.first()` selectors here guard
+// against an unrelated pre-existing duplicate-nav issue in the fundamentals
+// fixture; the assertion below still proves the active-class flow works.
+test.describe('Playground — RouterLink reactive `to` + active class', () => {
+  test('useIsActive applies user-provided `active` class to current-route link', async ({ page }) => {
+    await page.goto('/store', { waitUntil: 'domcontentloaded', timeout: 60_000 })
+    await page.locator('nav.sidebar').first().waitFor()
+    await page.waitForTimeout(150)
+
+    const activeLink = page.locator('nav.sidebar').first().locator('a.active')
+    await expect(activeLink).toHaveCount(1)
+    await expect(activeLink).toHaveAttribute('href', /\/store$/)
+  })
 })

@@ -19,6 +19,7 @@ import {
   cx,
   ForSymbol,
   Fragment,
+  makeReactiveProps,
   normalizeStyleValue,
   runWithHooks,
   Suspense,
@@ -621,19 +622,26 @@ function escapeHtml(str: string): string {
 }
 
 /**
- * Merge vnode.children into props.children for component rendering.
- * Matches the behavior of mount.ts and hydrate.ts so components can
- * access children passed via h(Comp, props, child1, child2).
+ * Merge vnode.children into props.children for component rendering, AND
+ * convert compiler-emitted `_rp(() => expr)` reactive-prop wrappers into
+ * getter properties via `makeReactiveProps`.
+ *
+ * mount.ts (CSR) does the same dance — without it, components reading
+ * `props.x` get the raw `_rp` function instead of the resolved value.
+ * Pre-fix, SSR (and hydrate.ts — same bug, fixed alongside) skipped the
+ * `makeReactiveProps` step, so any `<Comp prop={signal()}>` shape rendered
+ * the function source as the attribute value (e.g. `<a href="() => …">`).
+ * Visible end-to-end through the fundamentals NavItem layout — see
+ * `e2e/fundamentals/playground.spec.ts`.
  */
 function mergeChildrenIntoProps(vnode: VNode): Record<string, unknown> {
-  if (
+  const raw =
     vnode.children.length > 0 &&
     (vnode.props as Record<string, unknown>).children === undefined
-  ) {
-    return {
-      ...vnode.props,
-      children: vnode.children.length === 1 ? vnode.children[0] : vnode.children,
-    }
-  }
-  return vnode.props as Record<string, unknown>
+      ? {
+          ...vnode.props,
+          children: vnode.children.length === 1 ? vnode.children[0] : vnode.children,
+        }
+      : (vnode.props as Record<string, unknown>)
+  return makeReactiveProps(raw)
 }
