@@ -81,18 +81,33 @@ test.describe('cpa-dash — runtime', () => {
     expect(page.url()).toMatch(/inv_1001/)
   })
 
-  // CSR-side redirect propagation is unit-tested in
-  // `packages/core/router/src/tests/router.test.ts` (5 tests covering
-  // the runLoaders → GuardOutcome → router.replace flow). A Playwright-
-  // level "click a link, expect redirect" spec would require either
-  // (a) a fixture loader with always-redirect semantics + a sidebar link
-  //     to it, polluting the dashboard demo, or
-  // (b) a per-loader `loaderKey` that incorporates cookie identity so
-  //     that clearing cookies invalidates the cache and forces the
-  //     loader to re-run, which is the right pattern for production
-  //     auth gates but is a fixture-design choice beyond this PR.
-  // The unit-test coverage of the navigate flow's redirect handling
-  // is the load-bearing assertion; this comment documents the gap.
+  test('CSR-side redirect: cleared cookies mid-session redirects on next nav', async ({ page }) => {
+    // The SSR-redirect spec above covers initial navigation. This spec
+    // covers the CSR loader-runner half of the contract: client-side
+    // navigation through `RouterLink` after the session is invalidated
+    // mid-session. The `/app/_layout` loader exports a cookie-derived
+    // `loaderKey`, so clearing cookies invalidates the cache; the next
+    // navigation re-runs the loader → `getSession(undefined)` → null →
+    // `redirect('/login')` → CSR navigate flow → `router.replace()`.
+    await page.context().clearCookies()
+    await page.goto('/login')
+    await page.locator('input[type="email"]').first().fill('demo@example.com')
+    await page.locator('input[type="password"]').first().fill('demo1234')
+    await page.locator('button[type="submit"]').first().click()
+    await page.waitForURL(/\/app\/dashboard$/, { timeout: 10_000 })
+
+    // Mid-session: clear cookies (simulates server-side session
+    // invalidation / cookie expiry / explicit logout). The next CSR
+    // navigation should redirect to /login because the cookie-derived
+    // loaderKey flips, the cache misses, and the loader re-runs.
+    await page.context().clearCookies()
+
+    // Click a sidebar link → CSR navigation. The /app/_layout loader's
+    // cache key changes (no `sid=` cookie now), the cache misses, the
+    // loader re-runs CLIENT-side, sees no session, throws redirect.
+    await page.locator('a[href="/app/users"]').first().click()
+    await page.waitForURL(/\/login$/, { timeout: 10_000 })
+  })
 
   test('redirect(url, 308) preserves the custom permanent-redirect status', async ({ request }) => {
     // Locks in the SSR handler's `info.status` plumbing — the helper

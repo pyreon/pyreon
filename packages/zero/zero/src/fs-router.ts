@@ -40,6 +40,8 @@ const ROUTE_EXPORT_NAMES = [
   'renderMode',
   'error',
   'middleware',
+  'loaderKey',
+  'gcTime',
 ] as const
 
 type RouteExportName = (typeof ROUTE_EXPORT_NAMES)[number]
@@ -114,6 +116,8 @@ export function detectRouteExports(source: string): RouteFileExports {
     hasRenderMode: found.has('renderMode'),
     hasError: found.has('error'),
     hasMiddleware: found.has('middleware'),
+    hasLoaderKey: found.has('loaderKey'),
+    hasGcTime: found.has('gcTime'),
     ...(metaLiteral !== undefined ? { metaLiteral } : {}),
     ...(renderModeLiteral !== undefined ? { renderModeLiteral } : {}),
   }
@@ -745,6 +749,8 @@ const EMPTY_EXPORTS: RouteFileExports = {
   hasRenderMode: false,
   hasError: false,
   hasMiddleware: false,
+  hasLoaderKey: false,
+  hasGcTime: false,
 }
 
 /**
@@ -759,7 +765,9 @@ export function hasAnyMetaExport(exports: RouteFileExports): boolean {
     exports.hasMeta ||
     exports.hasRenderMode ||
     exports.hasError ||
-    exports.hasMiddleware
+    exports.hasMiddleware ||
+    exports.hasLoaderKey ||
+    exports.hasGcTime
   )
 }
 
@@ -1085,6 +1093,8 @@ export function generateRouteModuleFromRoutes(
         props.push(`${indent}  component: ${mod}.default`)
         if (exp.hasLoader) props.push(`${indent}  loader: ${mod}.loader`)
         if (exp.hasGuard) props.push(`${indent}  beforeEnter: ${mod}.guard`)
+        if (exp.hasLoaderKey) props.push(`${indent}  loaderKey: ${mod}.loaderKey`)
+        if (exp.hasGcTime) props.push(`${indent}  gcTime: ${mod}.gcTime`)
         if (exp.hasMeta || exp.hasRenderMode) {
           const metaParts: string[] = []
           if (exp.hasMeta) metaParts.push(`...${mod}.meta`)
@@ -1152,6 +1162,18 @@ export function generateRouteModuleFromRoutes(
             `${indent}  beforeEnter: (to, from) => import("${fullPath}").then((m) => m.guard(to, from))`,
           )
         }
+        if (exp.hasLoaderKey) {
+          // loaderKey runs SYNCHRONOUSLY during the cache-key check; can't be
+          // routed through a dynamic import. Inline a `mod.loaderKey` lookup
+          // via the same namespace-import pattern as the metadata path. Rolldown
+          // will share the chunk with the lazy() component thunk.
+          const mod = nextModuleImport(page.filePath)
+          props.push(`${indent}  loaderKey: ${mod}.loaderKey`)
+        }
+        if (exp.hasGcTime) {
+          const mod = nextModuleImport(page.filePath)
+          props.push(`${indent}  gcTime: ${mod}.gcTime`)
+        }
         emitInlineMeta(exp, props, indent)
         if (errorName) {
           // For error components we can't easily await — pass the lazy
@@ -1171,6 +1193,8 @@ export function generateRouteModuleFromRoutes(
         props.push(`${indent}  component: ${mod}.default`)
         if (exp.hasLoader) props.push(`${indent}  loader: ${mod}.loader`)
         if (exp.hasGuard) props.push(`${indent}  beforeEnter: ${mod}.guard`)
+        if (exp.hasLoaderKey) props.push(`${indent}  loaderKey: ${mod}.loaderKey`)
+        if (exp.hasGcTime) props.push(`${indent}  gcTime: ${mod}.gcTime`)
         if (exp.hasMeta || exp.hasRenderMode) {
           const metaParts: string[] = []
           if (exp.hasMeta) metaParts.push(`...${mod}.meta`)
@@ -1231,6 +1255,8 @@ export function generateRouteModuleFromRoutes(
     if (layoutMod !== undefined) {
       if (exp.hasLoader) props.push(`${indent}loader: ${layoutMod}.loader`)
       if (exp.hasGuard) props.push(`${indent}beforeEnter: ${layoutMod}.guard`)
+      if (exp.hasLoaderKey) props.push(`${indent}loaderKey: ${layoutMod}.loaderKey`)
+      if (exp.hasGcTime) props.push(`${indent}gcTime: ${layoutMod}.gcTime`)
       if (exp.hasMeta || exp.hasRenderMode) {
         const metaParts: string[] = []
         if (exp.hasMeta) metaParts.push(`...${layoutMod}.meta`)

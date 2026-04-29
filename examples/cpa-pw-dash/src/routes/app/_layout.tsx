@@ -27,6 +27,27 @@ export async function loader(ctx: LoaderContext): Promise<{ session: SessionInfo
   return { session }
 }
 
+/**
+ * Auth-gate loaders are cached per `_loaderCache` like any other loader,
+ * but the default cache key (`path + params`) doesn't see cookie changes —
+ * so a session invalidation mid-CSR-session wouldn't re-fire the loader on
+ * the next navigation. The user would stay on auth-gated pages with the
+ * stale `{ session }` data.
+ *
+ * This `loaderKey` derives from the session cookie so any cookie change
+ * (signout, expiry, manual clear) flips the cache key, forces a cache miss
+ * on the next nav, and the loader re-runs — at which point `getSession`
+ * returns null and `redirect('/login')` fires.
+ *
+ * On SSR `document` is undefined; the per-request router has a fresh cache
+ * anyway so the loader always runs. Falls back to `'anon'` on SSR.
+ */
+export function loaderKey(): string {
+  if (typeof document === "undefined") return "auth-gate|ssr"
+  const sid = /(?:^|;\s*)sid=([^;]+)/.exec(document.cookie)?.[1] ?? "anon"
+  return `auth-gate|${sid}`
+}
+
 export function layout() {
   // The loader's return value is available here; it's typed as the loader's
   // resolved type. By the time `layout()` runs, the redirect has already

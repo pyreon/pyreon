@@ -119,6 +119,23 @@ export interface RouteFileExports {
   /** Has `export const middleware` */
   hasMiddleware: boolean
   /**
+   * Has `export const loaderKey` or `export function loaderKey`. When present,
+   * the route generator wires it as the `loaderKey` field on the route record,
+   * which controls cache identity for `_loaderCache`. Useful for auth-gate
+   * loaders that should invalidate when the session cookie changes — read
+   * `document.cookie` (CSR) or `ctx.request.headers.get('cookie')` (SSR) and
+   * derive a key from session identity. Default cache key is `path + params`,
+   * which doesn't see cookie changes.
+   */
+  hasLoaderKey: boolean
+  /**
+   * Has `export const gcTime` (number, in ms). When present, the route generator
+   * inlines it on the route record. `gcTime: 0` disables caching entirely —
+   * the loader runs on every navigation. Useful for auth-gate loaders that
+   * must validate session on every navigation rather than serve stale data.
+   */
+  hasGcTime: boolean
+  /**
    * Raw text of the `export const meta = …` initializer, captured as a
    * literal expression. When present, the route generator inlines this
    * value directly into the generated routes module instead of importing
