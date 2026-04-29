@@ -80,4 +80,75 @@ test.describe('cpa-dash — runtime', () => {
     await page.goto('/app/invoices/inv_1001')
     expect(page.url()).toMatch(/inv_1001/)
   })
+
+  // CSR-side redirect propagation is unit-tested in
+  // `packages/core/router/src/tests/router.test.ts` (5 tests covering
+  // the runLoaders → GuardOutcome → router.replace flow). A Playwright-
+  // level "click a link, expect redirect" spec would require either
+  // (a) a fixture loader with always-redirect semantics + a sidebar link
+  //     to it, polluting the dashboard demo, or
+  // (b) a per-loader `loaderKey` that incorporates cookie identity so
+  //     that clearing cookies invalidates the cache and forces the
+  //     loader to re-run, which is the right pattern for production
+  //     auth gates but is a fixture-design choice beyond this PR.
+  // The unit-test coverage of the navigate flow's redirect handling
+  // is the load-bearing assertion; this comment documents the gap.
+
+  test('redirect(url, 308) preserves the custom permanent-redirect status', async ({ request }) => {
+    // Locks in the SSR handler's `info.status` plumbing — the helper
+    // carries the user-supplied status all the way to the wire. Default
+    // is 307; this fixture (`/redirect-fixtures/permanent`) uses 308
+    // (Permanent Redirect, method-preserving). Browsers cache 308s
+    // aggressively, so the framework returning the right status is
+    // load-bearing for production correctness. Unit tests assert the
+    // helper captures the status; this spec asserts the SSR pipeline
+    // doesn't collapse it back to the default.
+    //
+    // `maxRedirects: 0` so we can inspect the redirect itself, not the
+    // followed target. Otherwise playwright would land on /login and we'd
+    // never see the 308.
+    const response = await request.get('/redirect-fixtures/permanent', {
+      maxRedirects: 0,
+    })
+    expect(response.status()).toBe(308)
+    expect(response.headers()['location']).toBe('/login')
+    // Empty body — clients only need the Location header. Asserts the SSR
+    // handler didn't accidentally render layout HTML before the redirect.
+    expect(await response.text()).toBe('')
+  })
+
+  test('redirect chain (A → B → /login) follows to the final target', async ({ page }) => {
+    // Locks in the navigate flow's redirect-depth counter via SSR. Each
+    // hop's loader throws redirect() and the SSR pipeline returns 307 +
+    // Location for each. The browser follows the chain (or an HTTP client
+    // does, up to its redirect cap) and lands on the final target.
+    //
+    // Uses `page.goto` (not `request.get`) so the BROWSER follows the
+    // chain — same as a real user navigating from a link. The intermediate
+    // hops never paint; only /login HTML hits the screen.
+    await page.context().clearCookies()
+    await page.goto('/redirect-fixtures/chain-a')
+    await expect(page).toHaveURL(/\/login$/)
+    await expect(page.getByRole('heading', { level: 1 }).first()).toContainText('Sign in')
+  })
+
+  test('POST to a 308 redirect returns the same status (HTTP method-preservation contract)', async ({ request }) => {
+    // The framework's job is to return the right STATUS — actual method
+    // preservation across the redirect is the browser's HTTP-spec
+    // responsibility (302/303 force GET; 307/308 keep the original
+    // method). This spec verifies the framework doesn't accidentally
+    // collapse a POST to a different status code than a GET would get
+    // for the same redirect, which would silently break method-preserving
+    // semantics in production.
+    const getResponse = await request.get('/redirect-fixtures/permanent', {
+      maxRedirects: 0,
+    })
+    const postResponse = await request.post('/redirect-fixtures/permanent', {
+      maxRedirects: 0,
+      data: 'x=1',
+    })
+    expect(postResponse.status()).toBe(getResponse.status())
+    expect(postResponse.status()).toBe(308)
+    expect(postResponse.headers()['location']).toBe('/login')
+  })
 })

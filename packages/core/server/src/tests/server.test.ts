@@ -149,7 +149,7 @@ describe('createHandler', () => {
       {
         path: '/app',
         component: Protected,
-        loader: () => {
+        loader: async () => {
           redirect('/login')
         },
       },
@@ -170,7 +170,7 @@ describe('createHandler', () => {
       {
         path: '/old',
         component: Home,
-        loader: () => {
+        loader: async () => {
           redirect('/new', 308)
         },
       },
