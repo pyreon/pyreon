@@ -289,6 +289,14 @@ jobs:
         # Proves each compat shim works in real-app shape, not just at
         # the vitest-browser smoke-test surface.
         run: bun run test:e2e:compat
+      - name: Run e2e — create-pyreon-app runtime (app/blog/dash fixtures)
+        # Boots 3 pre-scaffolded fixture apps under examples/cpa-pw-* on
+        # ports 5191-5193. Catches runtime regressions in scaffolded
+        # output that scaffold-smoke (build-only) can't see — empty
+        # `<main>` from misuse of layout patterns, broken hydration,
+        # navigation regressions. 4 specs are skipped pending framework
+        # fixes (nested-layout 404, dev-server API-routes 404).
+        run: bun run test:e2e:cpa
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

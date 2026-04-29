@@ -1,28 +1,25 @@
 import { useHead } from "@pyreon/head"
 import { Link } from "@pyreon/zero/link"
-import { posts } from "../lib/posts"
+import { posts } from "../../lib/posts"
 
 export const meta = {
-  title: "Blog",
-  description: "A statically-rendered Pyreon Zero blog.",
+  title: "All posts",
+  description: "Every post on this blog, newest first.",
 }
 
-export default function Home() {
+export default function BlogIndex() {
   useHead({
     title: meta.title,
     meta: [{ name: "description", content: meta.description }],
   })
 
-  // Show the 5 most recent posts on the homepage
-  const recent = posts.slice(0, 5)
-
   return (
     <>
-      <h1>Blog</h1>
-      <p>Recent writing, statically rendered. Subscribe via <a href="/api/rss">RSS</a>.</p>
+      <h1>All posts</h1>
+      <p>{posts.length} posts in total.</p>
 
       <ul class="post-list">
-        {recent.map((post) => (
+        {posts.map((post) => (
           <li>
             <h2 class="post-title">
               <Link href={`/blog/${post.slug}`} prefetch="hover">
@@ -41,12 +38,6 @@ export default function Home() {
           </li>
         ))}
       </ul>
-
-      {posts.length > recent.length ? (
-        <p>
-          <Link href="/blog">View all {posts.length} posts →</Link>
-        </p>
-      ) : null}
     </>
   )
 }
