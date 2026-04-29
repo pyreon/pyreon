@@ -139,56 +139,39 @@ test.describe('app-showcase /dnd', () => {
     await expect(zone).toContainText('Move me')
   })
 
-  // FIXME: passes on macOS Chromium, fails on Linux Chromium (CI). Root
-  // cause is platform-specific `DataTransfer.items.add(file)` semantics:
-  // pragmatic-drag-and-drop's external adapter binds a `dragenter`
-  // listener at the window level and filters via
-  // `getAvailableTypes(event.dataTransfer)` — which iterates
-  // `transfer.types`. After `items.add(file)`, macOS Chromium populates
-  // `types` with `["Files"]` synchronously; Linux Chromium under
-  // `--headless=new` populates it later (or differently) such that the
-  // filter rejects the synthetic event before it ever reaches the
-  // dropTarget's `onDrop`. The unit-test surface in
-  // `packages/fundamentals/dnd/src/tests/dnd.test.ts` covers `useFileDrop`'s
-  // signal surface; what's missing is a real-app-shape end-to-end with a
-  // real OS-level file drag — which Playwright can't synthesize. Restore
-  // `test()` once we have an Android-style file-input fallback path the
-  // demo can drive deterministically.
-  test.fixme('useFileDrop accepts an image file via synthetic DataTransfer', async ({ page }) => {
+  test('useFileDrop accepts an image file via synthetic DataTransfer', async ({ page }) => {
     const zone = page.locator('[data-testid="file-zone"]')
     await expect(zone).toHaveAttribute('data-files', '0')
 
-    // Build a fake image File and walk pragmatic-drag-and-drop's
-    // external/file path: `dragenter` and `drop` with `dataTransfer.files`
-    // populated. The hook's `onDrop` reads the files list and writes back
-    // to the `droppedFiles` signal.
+    // Drive pragmatic-drag-and-drop's external/file adapter with the
+    // EXACT pattern from pdnd's own Playwright suite at
+    // `packages/core/__tests__/playwright/external-files.spec.ts`:
+    //
+    //   1. `dragenter` on `window` — this is what "activates" the
+    //      external adapter; bubbling a zone-targeted dragenter doesn't
+    //      reach the activation path reliably under headless Chromium
+    //      (macOS works, Linux silently rejects via `getAvailableTypes`).
+    //   2. `dragover` and `drop` on the actual drop target — same
+    //      DataTransfer shared across all three events so the file is
+    //      preserved.
+    //
+    // The same DataTransfer instance MUST be used across all three
+    // dispatches; pdnd reads the file list from the event's transfer at
+    // drop time, and a fresh DataTransfer per event would lose the file.
     await page.evaluate(() => {
       const zone = document.querySelector('[data-testid="file-zone"]') as HTMLElement | null
       if (!zone) throw new Error('file-zone missing')
 
       const file = new File(['<bytes>'], 'avatar.png', { type: 'image/png' })
-      const dt = new DataTransfer()
-      dt.items.add(file)
+      const dataTransfer = new DataTransfer()
+      dataTransfer.items.add(file)
 
-      const rect = zone.getBoundingClientRect()
-      const x = rect.left + rect.width / 2
-      const y = rect.top + rect.height / 2
+      // 1. Activate the external file adapter via window dragenter.
+      window.dispatchEvent(new DragEvent('dragenter', { dataTransfer }))
 
-      const fire = (type: string) => {
-        zone.dispatchEvent(
-          new DragEvent(type, {
-            bubbles: true,
-            cancelable: true,
-            dataTransfer: dt,
-            clientX: x,
-            clientY: y,
-          }),
-        )
-      }
-
-      fire('dragenter')
-      fire('dragover')
-      fire('drop')
+      // 2. Dispatch dragover + drop on the zone with the same transfer.
+      zone.dispatchEvent(new DragEvent('dragover', { dataTransfer }))
+      zone.dispatchEvent(new DragEvent('drop', { dataTransfer }))
     })
 
     // The hook filters by `image/*` accept and writes the surviving files
