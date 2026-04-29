@@ -24,6 +24,17 @@ test.describe('app-showcase /dnd', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(DND_URL, { waitUntil: 'domcontentloaded' })
     await page.locator('[data-testid="sortable"]').waitFor()
+    // Wait for `useSortable` to actually attach pragmatic-drag-and-drop's
+    // listeners. The hook sets `aria-roledescription="sortable item"` in
+    // the SAME synchronous code path as the `draggable()` call (see
+    // `packages/fundamentals/dnd/src/use-sortable.ts`), so its presence
+    // is a reliable proxy for "drop handlers are wired". Without this
+    // wait the test races hydration on slower CI runners — drag events
+    // dispatched before the listener attaches are silently no-ops.
+    await page
+      .locator('[data-testid="sortable-list"] li[aria-roledescription="sortable item"]')
+      .first()
+      .waitFor()
   })
 
   test('renders all three drag-and-drop scenarios', async ({ page }) => {
