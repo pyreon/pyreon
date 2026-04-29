@@ -2,7 +2,9 @@ import { readFile } from 'node:fs/promises'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Plugin, ViteDevServer } from 'vite'
-import { generateApiRouteModule } from './api-routes'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { ApiRouteEntry } from './api-routes'
+import { createApiMiddleware, generateApiRouteModule } from './api-routes'
 import { resolveConfig } from './config'
 
 /**
@@ -128,6 +130,35 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 		},
 
 		configureServer(server) {
+			// Dev-mode API-route middleware — production wires `createApiMiddleware`
+			// via `createServer`, but dev had no equivalent. API requests fell
+			// through to Vite's default 404. This middleware loads the
+			// `virtual:zero/api-routes` module and dispatches matching requests to
+			// the route's `GET()` / `POST()` / etc. handler. Mirrors the production
+			// flow in `entry-server.ts` minus the ergonomic helpers (auth, cors,
+			// etc. — those plug in via user-defined Pyreon middleware which dev
+			// doesn't currently load; not in scope here).
+			//
+			// Registered FIRST so API requests don't get SSR'd or 404'd.
+			server.middlewares.use((req, res, next) => {
+				const pathname = req.url?.split("?")[0] ?? "/";
+				if (pathname.startsWith("/@") || pathname.startsWith("/__"))
+					return next();
+				// Skip files (extension-bearing) — let Vite's static pipeline serve.
+				if (/\.\w+$/.test(pathname)) return next();
+
+				dispatchApiRoute(server, req, res).then(
+					(handled) => {
+						if (!handled) next();
+					},
+					(err: unknown) => {
+						// oxlint-disable-next-line no-console
+						console.error("[Pyreon] Error in dev API dispatcher:", err);
+						next();
+					},
+				);
+			});
+
 			// Dev-mode SSR middleware — for mode: "ssr", actually render each
 			// matched route server-side instead of serving the SPA shell.
 			// Runs BEFORE the 404 handler so matched routes are SSR'd and
@@ -319,6 +350,94 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 }
 
 /**
+ * Dev-mode API-route dispatcher. Loads the `virtual:zero/api-routes` virtual
+ * module, builds a Web `Request` from the Node `IncomingMessage`, and invokes
+ * the matching route's HTTP-method handler.
+ *
+ * Returns `true` if the API middleware handled the request (response written).
+ * Returns `false` if no route matched (caller falls through to next middleware).
+ *
+ * Mirrors what `createServer` wires up in production via `createApiMiddleware`,
+ * but adapted for Vite's connect-style middleware stack — needs a Node→Web
+ * request adapter.
+ */
+async function dispatchApiRoute(
+	server: ViteDevServer,
+	req: IncomingMessage,
+	res: ServerResponse,
+): Promise<boolean> {
+	let apiRoutes: ApiRouteEntry[];
+	try {
+		const mod = await server.ssrLoadModule(VIRTUAL_API_ROUTES_ID);
+		apiRoutes = (mod.apiRoutes ?? []) as ApiRouteEntry[];
+	} catch {
+		return false;
+	}
+	if (apiRoutes.length === 0) return false;
+
+	const host = req.headers.host ?? "localhost";
+	const url = new URL(req.url ?? "/", `http://${host}`);
+	const pathname = url.pathname;
+
+	// Quick gate: only build the Web Request when the path actually matches
+	// an api route. Avoids per-request body buffering for SSR/static traffic.
+	const anyMatch = apiRoutes.some((r) => {
+		const parts = r.pattern.split("/").filter(Boolean);
+		const pathParts = pathname.split("/").filter(Boolean);
+		if (parts.length !== pathParts.length) return false;
+		return parts.every(
+			(p, i) => p.startsWith(":") || p === pathParts[i],
+		);
+	});
+	if (!anyMatch) return false;
+
+	// Convert Node IncomingMessage → Web Request.
+	// GET/HEAD: no body. POST/PUT/PATCH/DELETE: stream the request body.
+	const method = (req.method ?? "GET").toUpperCase();
+	const headers = new Headers();
+	for (const [key, value] of Object.entries(req.headers)) {
+		if (value !== undefined) {
+			headers.set(key, Array.isArray(value) ? value.join(", ") : String(value));
+		}
+	}
+	let body: ArrayBuffer | undefined;
+	if (method !== "GET" && method !== "HEAD") {
+		const chunks: Buffer[] = [];
+		await new Promise<void>((resolve, reject) => {
+			req.on("data", (chunk: Buffer) => chunks.push(chunk));
+			req.on("end", () => resolve());
+			req.on("error", reject);
+		});
+		const buf = Buffer.concat(chunks);
+		body = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+	}
+	const webReq = new Request(url.href, {
+		method,
+		headers,
+		...(body !== undefined ? { body } : {}),
+	});
+
+	const middleware = createApiMiddleware(apiRoutes);
+	const response = await middleware({
+		req: webReq,
+		url,
+		path: pathname + url.search,
+		headers: new Headers(),
+		locals: {},
+	});
+
+	if (!response) return false;
+
+	res.statusCode = response.status;
+	response.headers.forEach((v, k) => {
+		res.setHeader(k, v);
+	});
+	const respBody = Buffer.from(await response.arrayBuffer());
+	res.end(respBody);
+	return true;
+}
+
+/**
  * Check if the requested path matches any route. If not, render a 404 page.
  * Returns true if the 404 was handled (response sent), false otherwise.
  *
@@ -471,22 +590,30 @@ async function renderSsr(
 	});
 }
 
-/** Extract all URL patterns from a nested route tree. */
+/**
+ * Extract all URL patterns from a nested route tree.
+ *
+ * The fs-router emits ABSOLUTE paths for every route, including grandchildren —
+ * `{ path: "/app/dashboard" }` not `{ path: "dashboard" }`. The matcher reads
+ * each route's `path` as-is; no prefix accumulation. Pre-fix, this function
+ * concatenated `${prefix}${route.path}` which produced patterns like
+ * `///app/app/dashboard` (prefix `'/app'` + path `'/app/dashboard'`). After
+ * `path.split('/').filter(Boolean)` those became `['app', 'app', 'dashboard']`
+ * — which can't match a real `/app/dashboard` request — so dev-server returned
+ * 404 for every nested-layout route. Re-enables PR #411 specs that rely on
+ * `/app/*` routing.
+ */
 function flattenRoutePatterns(
 	routes: Array<{ path?: string; children?: unknown[] }>,
-	prefix = "",
 ): string[] {
 	const patterns: string[] = [];
 	for (const route of routes) {
 		if (!route.path) continue;
-		const fullPath =
-			route.path === "/" && prefix ? prefix : `${prefix}${route.path}`;
-		patterns.push(fullPath);
+		patterns.push(route.path);
 		if (route.children) {
 			patterns.push(
 				...flattenRoutePatterns(
 					route.children as Array<{ path?: string; children?: unknown[] }>,
-					fullPath,
 				),
 			);
 		}

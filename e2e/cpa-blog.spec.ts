@@ -54,15 +54,11 @@ test.describe('cpa-blog — runtime', () => {
     await expect(page.locator('article').first()).not.toBeEmpty()
   })
 
-  test.skip('/api/rss serves valid RSS XML', async ({ request }) => {
-    // BLOCKED: Pyreon's dev-server registers API routes in its route list
-    // (visible at boot — `API /api/rss`) but the actual request handler
-    // returns 404 for every API route in dev. The bug affects ALL
-    // templates / adapters — even the existing app template's
-    // `/api/health` 404s in dev. The RSS endpoint code itself is correct
-    // (the file exports `GET()` returning a `Response`); only the dev
-    // server's API-route dispatcher is broken. Re-enable once the
-    // framework's dev-server API-route handling is fixed.
+  test('/api/rss serves valid RSS XML', async ({ request }) => {
+    // Locks in the dev-server API-route dispatcher fix. Pre-fix, the
+    // virtual `apiRoutes` module was generated but no Vite middleware
+    // consumed it — every API request 404'd. Fix wires `createApiMiddleware`
+    // into `configureServer` ahead of the SSR + 404 middlewares.
     const response = await request.get('/api/rss')
     expect(response.status()).toBe(200)
     expect(response.headers()['content-type'] ?? '').toContain('application/rss+xml')
