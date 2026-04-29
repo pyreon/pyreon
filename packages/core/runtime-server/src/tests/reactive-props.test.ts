@@ -1,4 +1,5 @@
-import { _rp, h } from '@pyreon/core'
+import type { ComponentFn, Props } from '@pyreon/core'
+import { _rp, For, h } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
 import { renderToString } from '..'
 
@@ -36,6 +37,48 @@ describe('SSR — _rp-wrapped component props are resolved (makeReactiveProps wi
       h(Outer, { path: _rp(() => '/store') as unknown as string }),
     )
     expect(html).toBe('<a href="/store">x</a>')
+  })
+
+  it('`<For each={items()}>` from a component renders correctly under SSR', async () => {
+    // Regression: PR #410's `makeReactiveProps` in `mergeChildrenIntoProps`
+    // converts `_rp(() => arr)` props to getters that RESOLVE the array. The
+    // `<For>` function is a component (its body returns a ForSymbol vnode),
+    // so it goes through that path. Result: the re-emitted ForSymbol vnode
+    // has `props.each` as the resolved array, not the function. SSR's For
+    // handler used to call `each()` unconditionally → TypeError. Defensive
+    // normalization (typeof === 'function' ? each() : each) fixes both shapes.
+    type Item = { id: number; name: string }
+    const Page = () => {
+      const items = () => [
+        { id: 1, name: 'a' },
+        { id: 2, name: 'b' },
+      ] as Item[]
+      const forProps = {
+        each: _rp(items) as unknown as () => Item[],
+        by: (r: Item) => r.id,
+        children: (r: Item) => h('span', null, r.name),
+      }
+      return h(For as unknown as ComponentFn, forProps as unknown as Props)
+    }
+    const html = await renderToString(h(Page, null))
+    expect(html).toContain('a')
+    expect(html).toContain('b')
+    expect(html).not.toContain('SSR Error')
+  })
+
+  it('`<For each={arr}>` (already-array form) still renders correctly under SSR', async () => {
+    // When `each` is a plain array (not a function), the defensive shape must
+    // still iterate. `<For each={[1,2,3]}>` is the typical hand-coded form.
+    type Item = { id: number; name: string }
+    const forProps = {
+      each: [{ id: 1, name: 'plain' }] as unknown as () => Item[],
+      by: (r: Item) => r.id,
+      children: (r: Item) => h('span', null, r.name),
+    }
+    const html = await renderToString(
+      h(For as unknown as ComponentFn, forProps as unknown as Props),
+    )
+    expect(html).toContain('plain')
   })
 
   it('non-`_rp` function props (user-written accessors) still pass through to elements', async () => {
