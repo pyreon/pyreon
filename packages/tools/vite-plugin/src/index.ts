@@ -113,32 +113,45 @@ const COMPAT_ALIASES: Record<CompatFramework, Record<string, string>> = {
 }
 
 /**
- * Detect whether a file id resolves to a `@pyreon/*` workspace-package source
+ * Detect whether a file id resolves to a `@pyreon/*` framework-package source
  * (i.e. a published Pyreon package whose .tsx is being pulled in via the
- * `bun` condition workspace-link, NOT user code).
+ * `bun` condition workspace-link, NOT user code, NOT an example app).
  *
  * Why this exists: in compat mode, OXC's per-project `importSource` is set
- * to the compat package — so EVERY .tsx file in the build has its JSX
- * rewritten to `import { jsx } from "@pyreon/<x>-compat/jsx-runtime"`. That
- * is correct for user code (the whole point of compat mode) but wrong for
- * framework-internal sources like `@pyreon/zero/src/link.tsx`, which need
- * the real `@pyreon/core` runtime. The fix runs Pyreon's reactive JSX
- * transform on `@pyreon/*` workspace files BEFORE OXC sees them — the
- * output is plain JS with no JSX left to rewrite, so OXC's compat
- * importSource doesn't apply. Result: published-package consumers (where
- * `@pyreon/zero` resolves to its pre-built `lib/`) and workspace-dev
- * consumers (where it resolves to source) both get correct JSX runtime
- * resolution.
+ * to `@pyreon/core` and the resolveId hook redirects `@pyreon/core/jsx-runtime`
+ * to the compat package. That's correct for user code (the whole point of
+ * compat mode) but WRONG for framework-internal sources like
+ * `@pyreon/zero/src/link.tsx`, which need the real `@pyreon/core` runtime.
+ * The fix skips the redirect when the importer is a `@pyreon/*` framework
+ * file. Result: published-package consumers (where `@pyreon/zero` resolves
+ * to its pre-built `lib/`) and workspace-dev consumers (where it resolves
+ * to source) both get correct JSX runtime resolution.
  *
- * Walks from the file's directory up to the nearest `package.json`. Returns
- * true iff that package.json's `name` starts with `@pyreon/`. Result cached
- * per directory.
+ * Detection heuristic: walk to nearest `package.json`, require BOTH:
+ *   1. `name` starts with `@pyreon/` (workspace member of the @pyreon scope)
+ *   2. file path contains `/packages/` AND NOT `/examples/`
+ *
+ * Step 2 excludes the existing `@pyreon/example-{react,vue,solid,preact}-compat`
+ * apps under `examples/`. Without it, user code in those apps would skip the
+ * compat-mode JSX-runtime redirect and import `@pyreon/core/jsx-runtime`
+ * directly — breaking the React/Vue/Solid/Preact compat layer's contract.
+ *
+ * Result cached per directory. The `/packages/` + `/examples/` check is a
+ * structural property of the monorepo (workspace layout), not the package
+ * name — so it's robust against renames.
  */
 function isPyreonWorkspaceFile(id: string, cache: Map<string, boolean>): boolean {
   // Strip query strings (e.g. `?vue&type=script`) to get the bare path.
   const queryIdx = id.indexOf('?')
   const filePath = queryIdx === -1 ? id : id.slice(0, queryIdx)
   if (!filePath || filePath[0] === '\0') return false
+
+  // Path-based filter first (cheap): file must live under `<root>/packages/`
+  // and not under `<root>/examples/`. This excludes example apps even when
+  // they have `@pyreon/example-*` names.
+  if (!filePath.includes('/packages/') || filePath.includes('/examples/')) {
+    return false
+  }
 
   let dir = dirname(filePath)
   // Walk up at most ~12 levels — enough for any realistic monorepo depth.

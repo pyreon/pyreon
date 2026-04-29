@@ -177,6 +177,14 @@ describe('compat-mode resolveId — framework-importer carve-out', () => {
   const repoRoot = resolve(import.meta.dirname, '../../../../..')
   const frameworkImporter = `${repoRoot}/packages/zero/zero/src/link.tsx`
   const userImporter = `${repoRoot}/examples/some-user-app/src/foo.tsx`
+  // The 4 existing compat-layer example apps under `examples/` have
+  // package.json names like `@pyreon/example-react-compat`. The carve-out
+  // helper must NOT treat their source files as framework files — doing so
+  // skips the JSX-runtime redirect and breaks the compat layer end-to-end.
+  // Bisect-verified: when the helper checked `name.startsWith('@pyreon/')`
+  // alone (without the `/examples/` exclusion), all 4 compat-layer e2e
+  // suites failed in CI with `section.demo` never rendering.
+  const exampleAppImporter = `${repoRoot}/examples/react-compat/src/Foo.tsx`
 
   it('does NOT redirect @pyreon/core/jsx-runtime when imported FROM @pyreon/zero workspace source (react)', async () => {
     const plugin = bootstrap({ compat: 'react' })
@@ -217,6 +225,17 @@ describe('compat-mode resolveId — framework-importer carve-out', () => {
       plugin,
       '@pyreon/core/jsx-runtime',
       { '@pyreon/react-compat/jsx-runtime': '/abs/react-compat/jsx-runtime.ts' },
+    )
+    expect(resolved).toBe('/abs/react-compat/jsx-runtime.ts')
+  })
+
+  it('STILL redirects @pyreon/core/jsx-runtime when imported FROM an example app under examples/ (e.g. @pyreon/example-react-compat)', async () => {
+    const plugin = bootstrap({ compat: 'react' })
+    const resolved = await callResolveId(
+      plugin,
+      '@pyreon/core/jsx-runtime',
+      { '@pyreon/react-compat/jsx-runtime': '/abs/react-compat/jsx-runtime.ts' },
+      exampleAppImporter,
     )
     expect(resolved).toBe('/abs/react-compat/jsx-runtime.ts')
   })
