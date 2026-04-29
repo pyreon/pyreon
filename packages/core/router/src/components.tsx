@@ -209,19 +209,36 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
   const router = useContext(RouterContext)
   const prefetchMode = props.prefetch ?? 'intent'
 
+  // Resolve `props.to` to a real string value, calling it if Pyreon's
+  // compiler wrapped the prop expression as a reactive accessor.
+  // Reactive-prop wrapping kicks in when the consumer's prop expression
+  // references other props or signals — e.g.
+  // `<RouterLink to={props.path}>` compiles to a `to: () => props.path`
+  // accessor at the JSX call site. Without this resolver, downstream
+  // template-string coercion (`#${props.to}`) stringified the function
+  // literally to `"#() => props.path"` instead of the URL path. The
+  // bug was visible as `<a href="() => props.path">` on every link in
+  // any consumer using prop-derived `to` (CLAUDE.md INTENTIONALLY
+  // OMITTED note in fundamentals/playground.spec.ts referenced this).
+  const toString = (): string => {
+    const v = props.to
+    return (typeof v === 'function' ? (v as () => unknown)() : v) as string
+  }
+
   const handleClick = (e: MouseEvent) => {
     e.preventDefault()
     if (!router) return
+    const target = toString()
     if (props.replace) {
-      router.replace(props.to)
+      router.replace(target)
     } else {
-      router.push(props.to)
+      router.push(target)
     }
   }
 
   const triggerPrefetch = () => {
     if (!router) return
-    prefetchRoute(router as RouterInstance, props.to)
+    prefetchRoute(router as RouterInstance, toString())
   }
 
   const handleMouseEnter = () => {
@@ -233,20 +250,25 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
   }
 
   const inst = router as RouterInstance | null
-  const href = inst?.mode === 'history' ? `${inst._base}${props.to}` : `#${props.to}`
+  // Compute the href reactively so consumers passing an accessor `to`
+  // get correct hrefs even when the underlying value changes (loaders
+  // resolving, params updating). Returning a function makes the runtime
+  // treat this as a reactive prop and re-bind.
+  const href = (): string => {
+    const target = toString()
+    return inst?.mode === 'history' ? `${inst._base}${target}` : `#${target}`
+  }
 
   const isExactMatch = (): boolean => {
     if (!router) return false
-    const target = props.to
-    if (typeof target !== 'string') return false
+    const target = toString()
     return router.currentRoute().path === target
   }
 
   const activeClass = (): string => {
     if (!router) return ''
     const current = router.currentRoute().path
-    const target = props.to
-    if (typeof target !== 'string') return ''
+    const target = toString()
     const isExact = current === target
     const isActive = isExact || (!props.exact && isSegmentPrefix(current, target))
 
@@ -264,7 +286,7 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
     const observer = new IntersectionObserver((entries) => {
       for (const entry of entries) {
         if (entry.isIntersecting) {
-          prefetchRoute(router as RouterInstance, props.to)
+          prefetchRoute(router as RouterInstance, toString())
           observer.disconnect()
           break
         }
@@ -283,7 +305,9 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
   return h(
     'a',
     { ...rest, ref, href, class: activeClass, 'aria-current': ariaCurrent, onClick: handleClick, onMouseEnter: handleMouseEnter, onFocus: handleFocus },
-    children ?? props.to,
+    // Default content is the target path. Use the resolver so an
+    // accessor `to` doesn't stringify to its function source.
+    children ?? toString(),
   )
 }
 

@@ -1563,6 +1563,83 @@ describe('RouterLink', () => {
     await prefetchLoaderData(router, '/data')
     expect(loaderCallCount).toBe(1)
   })
+
+  // ── Accessor `to` prop resolution (router-blocker debug) ──────────────
+  // Pyreon's compiler wraps prop expressions that reference other props
+  // or signals as reactive accessors — `<RouterLink to={props.path}>`
+  // compiles to `to: () => props.path` at the JSX call site. Pre-fix,
+  // RouterLink read `props.to` directly; template-string coercion
+  // (`#${props.to}`) stringified the function source literally to
+  // `"#() => props.path"`, breaking every link in any consumer using
+  // a prop-derived `to`. Visible as `<a href="() => props.path">` on
+  // every nav link in fundamentals-playground sidebars.
+
+  test('accessor to prop — href resolves to value (hash mode)', () => {
+    const el = container()
+    const router = createRouter({ routes, url: '/' })
+    const toAccessor = (): string => '/about'
+    mount(
+      h(RouterProvider, { router }, h(RouterLink, { to: toAccessor as unknown as string }, 'About')),
+      el,
+    )
+    const anchor = el.querySelector('a')
+    expect(anchor?.getAttribute('href')).toBe('#/about')
+  })
+
+  test('accessor to prop — href resolves to value (history mode)', () => {
+    const el = container()
+    const router = createRouter({ routes, mode: 'history', url: '/' })
+    const toAccessor = (): string => '/about'
+    mount(
+      h(RouterProvider, { router }, h(RouterLink, { to: toAccessor as unknown as string }, 'About')),
+      el,
+    )
+    const anchor = el.querySelector('a')
+    expect(anchor?.getAttribute('href')).toBe('/about')
+  })
+
+  test('accessor to prop — click triggers push to resolved value', async () => {
+    const el = container()
+    const router = createRouter({ routes, url: '/' })
+    const toAccessor = (): string => '/about'
+    mount(
+      h(RouterProvider, { router }, h(RouterLink, { to: toAccessor as unknown as string }, 'About')),
+      el,
+    )
+    const anchor = el.querySelector('a')!
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true })
+    anchor.dispatchEvent(event)
+    // Wait for async navigation (matches the literal-to click test
+    // pattern above — push() resolves on a setTimeout boundary).
+    await new Promise<void>((r) => setTimeout(r, 10))
+    expect(router.currentRoute().path).toBe('/about')
+  })
+
+  test('accessor to prop — default children resolves to string, not function source', () => {
+    const el = container()
+    const router = createRouter({ routes, url: '/' })
+    const toAccessor = (): string => '/about'
+    mount(
+      h(RouterProvider, { router }, h(RouterLink, { to: toAccessor as unknown as string })),
+      el,
+    )
+    const anchor = el.querySelector('a')
+    expect(anchor?.textContent).toBe('/about')
+    expect(anchor?.textContent ?? '').not.toContain('=>')
+  })
+
+  test('accessor to prop — active class matches resolved value', () => {
+    const el = container()
+    const router = createRouter({ routes, url: '/about' })
+    const toAccessor = (): string => '/about'
+    mount(
+      h(RouterProvider, { router }, h(RouterLink, { to: toAccessor as unknown as string }, 'About')),
+      el,
+    )
+    const anchor = el.querySelector('a')
+    const cls = anchor?.getAttribute('class') ?? ''
+    expect(cls).toContain('router-link-active')
+  })
 })
 
 // ─── ScrollManager (DOM tests) ──────────────────────────────────────────────

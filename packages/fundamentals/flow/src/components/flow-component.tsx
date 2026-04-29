@@ -522,7 +522,19 @@ export interface FlowComponentProps {
  */
 export function Flow(props: FlowComponentProps): VNodeChild {
   const { instance, children, edgeTypes } = props
-  const nodeTypes: NodeTypeMap = {
+  // `let` (not `const`) is critical here — Pyreon's compiler inlines
+  // `const` props-derived values at JSX use sites as reactive accessors
+  // (see CLAUDE.md "Reactive props inlining"). `nodeTypes` looks
+  // props-derived because it spreads `props.nodeTypes`, so a `const`
+  // would compile to `nodeTypes={() => ({...spread})}` at the
+  // `<NodeRenderer nodeTypes={...} />` call site. NodeRenderer
+  // destructures the prop expecting an object; with `const` it gets
+  // a function literal, `Object.keys` returns `[]`, and every node
+  // resolves to undefined NodeComponent → `<undefined>` vnode →
+  // SSR crash in `runtime-server`'s `isVoidElement`. `let` opts out
+  // of the inlining heuristic; the value is captured statically.
+  // eslint-disable-next-line prefer-const
+  let nodeTypes: NodeTypeMap = {
     default: DefaultNode,
     input: DefaultNode,
     output: DefaultNode,

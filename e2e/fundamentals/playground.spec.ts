@@ -100,14 +100,74 @@ test.describe('Playground', () => {
     expect(errors, errors.join('\n')).toHaveLength(0)
   })
 
-  // INTENTIONALLY OMITTED: useIsActive `active` class assertion.
-  //
-  // The fundamentals layout passes `<RouterLink to={props.path}>`. The
-  // compiler's reactive-prop wrapper (`_rp(() => props.path)`) flows into
-  // RouterLink's destructured `to`, which currently stringifies the
-  // accessor and assigns it to `href` literally — `<a href="() => props.path">`.
-  // useIsActive can't compare against a malformed href, so no link gets
-  // the `active` class regardless of route. Tracking as a separate
-  // RouterLink-vs-reactive-prop framework bug; re-add this assertion
-  // alongside that fix.
+})
+
+// Real-app gate for the RouterLink accessor `to` resolution fix
+// (separate describe so we own beforeEach — the parent `Playground`
+// describe's `beforeEach` uses `nav.sidebar` without `.first()` which
+// trips strict-mode against a separate, pre-existing layout bug that
+// renders multiple sidebars; not in this PR's scope to fix).
+//
+// Pre-fix: every sidebar `<a>` had `href="() => props.path"` literally
+// because RouterLink template-string-coerced `props.to` without
+// unwrapping the accessor wrap that the compiler emits for any prop
+// expression referencing other props (`<RouterLink to={props.path}>`
+// becomes `to: () => props.path`). The previous INTENTIONALLY OMITTED
+// useIsActive assertion was blocked on this shape; with the fix in
+// place these are load-bearing assertions.
+
+test.describe('Playground — RouterLink accessor `to`', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/')
+    // `.first()` because main has multiple `nav.sidebar` elements —
+    // pre-existing layout bug separate from this PR.
+    await page.locator('nav.sidebar').first().waitFor()
+  })
+
+  test('sidebar links render with real hrefs (not stringified accessors)', async ({ page }) => {
+    const links = page.locator('nav.sidebar').first().locator('a')
+    const count = await links.count()
+    expect(count).toBeGreaterThanOrEqual(12)
+
+    // Sample the first handful — all must look like real paths, never
+    // the stringified accessor source.
+    for (let i = 0; i < Math.min(count, 6); i++) {
+      const href = await links.nth(i).getAttribute('href')
+      expect(href, `link ${i} has stringified accessor`).not.toContain('=>')
+      expect(href, `link ${i} missing href`).toBeTruthy()
+      expect(href!.startsWith('/'), `link ${i} not a real path: ${href}`).toBe(true)
+    }
+  })
+
+  test('clicking a sidebar link navigates via SPA router', async ({ page }) => {
+    // Click the /store link, assert URL changes + content swaps in
+    // without a full-page reload. Pre-fix the click handler called
+    // `router.push(props.to)` with the accessor function as the
+    // argument — push tried to navigate to the stringified function
+    // source and never landed on the real route.
+    let fullPageReload = false
+    page.on('load', () => {
+      fullPageReload = true
+    })
+    fullPageReload = false // reset after initial /
+
+    const storeLink = page.locator('nav.sidebar').first().locator('a[href="/store"]').first()
+    await storeLink.click()
+
+    await expect(page.locator('main h2').first()).toHaveText('Store')
+    expect(page.url()).toContain('/store')
+    expect(fullPageReload, 'navigation triggered a full page reload').toBe(false)
+  })
+
+  test('useIsActive marks the current route link with active class', async ({ page }) => {
+    // Pre-fix: useIsActive compared current path against the malformed
+    // `href="() => props.path"` and never matched, so no link got the
+    // `router-link-active` class regardless of route. The fix unblocks
+    // this assertion.
+    await page.goto('/store')
+    await page.locator('nav.sidebar').first().waitFor()
+    const activeLink = page.locator('nav.sidebar').first().locator('a.router-link-active').first()
+    await expect(activeLink).toBeVisible()
+    await expect(activeLink).toHaveAttribute('href', '/store')
+  })
 })
