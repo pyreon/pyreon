@@ -1,37 +1,58 @@
-import { signal } from "@pyreon/reactivity"
-import { onMount } from "@pyreon/core"
-import { RouterView, useRouter } from "@pyreon/router"
+import { redirect, RouterView, useLoaderData } from "@pyreon/router"
+import type { LoaderContext } from "@pyreon/router"
 import { Link } from "@pyreon/zero/link"
 import { ThemeToggle } from "@pyreon/zero/theme"
 import { getSession, type SessionInfo } from "../../lib/auth"
 
 /**
- * Auth-gated route group. Every `/app/*` route runs through this layout,
- * which checks the session client-side on mount and redirects to `/login`
- * if missing. Pyreon doesn't ship a loader-side `throw redirect()` pattern
- * (unlike Remix / React Router), so the gate runs after first paint —
- * brief flash of the layout shell is acceptable since unauthorized users
- * see no real data (the data-fetching helpers in `lib/db.ts` should
- * additionally enforce authorization on the server).
+ * Auth-gated route group. Every `/app/*` route runs through this layout's
+ * loader, which checks the session and `throw redirect('/login')` if missing.
  *
- * For SSR-side enforcement, set the session cookie on the server-rendered
- * response and add a route middleware that 302s anonymous requests at the
- * adapter layer (vercel.json rewrites, Cloudflare Pages function, etc.).
+ * The loader runs BEFORE the layout's component is invoked, so:
+ * - On SSR (initial nav): the redirect is converted to a 302 `Location:` by
+ *   the SSR handler — no layout HTML ever leaves the server. Clients hit
+ *   `/login` directly.
+ * - On CSR (subsequent nav): the redirect propagates through the navigate
+ *   flow; `router.replace('/login')` runs before any layout / page mounts.
+ *
+ * This replaces the older `onMount + router.push('/login')` workaround which
+ * was unreliable under nested-layout dev SSR + hydration (the inner layout's
+ * `onMount` was skipped after hydration, leaving authenticated UI exposed
+ * to unauthenticated users for the duration of the session-fetch round-trip).
  */
-export function layout() {
-  const session = signal<SessionInfo | null>(null)
-  const router = useRouter()
+export async function loader(ctx: LoaderContext): Promise<{ session: SessionInfo }> {
+  const sid = readSessionCookie(ctx)
+  const session = await getSession(sid)
+  if (!session) redirect("/login")
+  return { session }
+}
 
-  onMount(() => {
-    const sid = readSessionCookie()
-    void getSession(sid).then((info) => {
-      if (!info) {
-        void router.push("/login")
-        return
-      }
-      session.set(info)
-    })
-  })
+/**
+ * Auth-gate loaders are cached per `_loaderCache` like any other loader,
+ * but the default cache key (`path + params`) doesn't see cookie changes —
+ * so a session invalidation mid-CSR-session wouldn't re-fire the loader on
+ * the next navigation. The user would stay on auth-gated pages with the
+ * stale `{ session }` data.
+ *
+ * This `loaderKey` derives from the session cookie so any cookie change
+ * (signout, expiry, manual clear) flips the cache key, forces a cache miss
+ * on the next nav, and the loader re-runs — at which point `getSession`
+ * returns null and `redirect('/login')` fires.
+ *
+ * On SSR `document` is undefined; the per-request router has a fresh cache
+ * anyway so the loader always runs. Falls back to `'anon'` on SSR.
+ */
+export function loaderKey(): string {
+  if (typeof document === "undefined") return "auth-gate|ssr"
+  const sid = /(?:^|;\s*)sid=([^;]+)/.exec(document.cookie)?.[1] ?? "anon"
+  return `auth-gate|${sid}`
+}
+
+export function layout() {
+  // The loader's return value is available here; it's typed as the loader's
+  // resolved type. By the time `layout()` runs, the redirect has already
+  // happened — `session` is guaranteed non-null.
+  const { session } = useLoaderData<{ session: SessionInfo }>()
 
   return (
     <div class="app-shell">
@@ -51,10 +72,7 @@ export function layout() {
         </Link>
 
         <div class="app-sidebar-footer">
-          {() => {
-            const s = session()
-            return s ? <div>{s.email}</div> : <div>Loading…</div>
-          }}
+          <div>{session.email}</div>
           <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem; align-items: center;">
             <a href="/api/signout">Sign out</a>
             <ThemeToggle />
@@ -69,8 +87,15 @@ export function layout() {
   )
 }
 
-function readSessionCookie(): string | undefined {
-  if (typeof document === "undefined") return undefined
-  const m = /(?:^|;\s*)sid=([^;]+)/.exec(document.cookie)
+/**
+ * Read the `sid` cookie from either the SSR request (initial navigation) or
+ * `document.cookie` (subsequent CSR navigation). The loader runs in both
+ * environments — `ctx.request` is populated only on SSR.
+ */
+function readSessionCookie(ctx: LoaderContext): string | undefined {
+  const cookieHeader =
+    ctx.request?.headers.get("cookie") ??
+    (typeof document !== "undefined" ? document.cookie : "")
+  const m = /(?:^|;\s*)sid=([^;]+)/.exec(cookieHeader)
   return m?.[1]
 }

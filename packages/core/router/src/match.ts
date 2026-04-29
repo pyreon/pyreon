@@ -293,7 +293,18 @@ function flattenOne(
     return
   }
 
-  const joined = [...parentSegments, ...c.segments]
+  // fs-router emits absolute paths for nested children (e.g. parent
+  // `/app` with child `/app/dashboard`, NOT child `dashboard`). Concating
+  // parent segments with the child's already-absolute segments would
+  // produce `/app/app/dashboard` — the staticMap then lookups the wrong
+  // key and resolveRoute returns `matched: []` for any such request.
+  // Detect "child path is absolute" (`path` starts with `/`) and skip the
+  // parent-segment prefix in that case — the child's own segments ARE
+  // the full intended path. Relative children (`dashboard`, `:id`)
+  // continue to inherit the parent's segments via concatenation.
+  const childPath = c.route.path
+  const isAbsoluteChild = typeof childPath === 'string' && childPath.startsWith('/')
+  const joined = isAbsoluteChild ? c.segments : [...parentSegments, ...c.segments]
   if (c.children && c.children.length > 0) {
     flattenWalk(result, c.children, joined, chain, meta)
   }

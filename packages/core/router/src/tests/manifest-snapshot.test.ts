@@ -87,8 +87,12 @@ describe('gen-docs — router snapshot', () => {
 
   it('renders @pyreon/router to MCP api-reference entries — one per api[] item', () => {
     const record = renderApiReferenceEntries(routerManifest)
-    expect(Object.keys(record).length).toBe(15)
+    expect(Object.keys(record).length).toBe(18)
     expect(Object.keys(record)).toContain('router/createRouter')
+    // PR-B added redirect/isRedirectError/getRedirectInfo entries.
+    expect(Object.keys(record)).toContain('router/redirect')
+    expect(Object.keys(record)).toContain('router/isRedirectError')
+    expect(Object.keys(record)).toContain('router/getRedirectInfo')
     // Spot-check the flagship API — createRouter is the factory
     const createRouter = record['router/createRouter']!
     expect(createRouter.notes).toContain('routes')

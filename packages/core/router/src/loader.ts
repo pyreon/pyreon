@@ -32,12 +32,22 @@ export function useLoaderData<T = unknown>(): T {
  * SSR helper: pre-run all loaders for the given path before rendering.
  * Call this before `renderToString` so route components can read data via `useLoaderData()`.
  *
+ * The optional `request` is forwarded to each loader's `LoaderContext.request`,
+ * letting server-side loaders read cookies / auth headers and `throw redirect()`
+ * before the layout renders. A loader that throws `redirect()` propagates the
+ * thrown error here — the SSR handler's `catch` converts it into a 302/307
+ * `Location:` Response.
+ *
  * @example
  * const router = createRouter({ routes, url: req.url })
- * await prefetchLoaderData(router, req.url)
+ * await prefetchLoaderData(router, req.url, request)
  * const html = await renderToString(h(App, { router }))
  */
-export async function prefetchLoaderData(router: RouterInstance, path: string): Promise<void> {
+export async function prefetchLoaderData(
+  router: RouterInstance,
+  path: string,
+  request?: Request,
+): Promise<void> {
   if (__DEV__) _countSink.__pyreon_count__?.('router.prefetch')
   const route = router._resolve(path)
   // Use a local AbortController — prefetch is best-effort and must NOT
@@ -53,6 +63,7 @@ export async function prefetchLoaderData(router: RouterInstance, path: string): 
           params: route.params,
           query: route.query,
           signal: ac.signal,
+          ...(request ? { request } : {}),
         })
         router._loaderData.set(r, data)
       }),

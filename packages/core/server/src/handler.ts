@@ -29,6 +29,7 @@ import { h } from '@pyreon/core'
 import { renderWithHead } from '@pyreon/head/ssr'
 import {
   createRouter,
+  getRedirectInfo,
   prefetchLoaderData,
   type RouteRecord,
   RouterProvider,
@@ -132,8 +133,12 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
         // can access per-request data (CSP nonce, auth user, etc.)
         provideRequestLocals(ctx.locals)
 
-        // Pre-run loaders so data is available during render
-        await prefetchLoaderData(router as never, path)
+        // Pre-run loaders so data is available during render. Forward the
+        // incoming request so loaders can read cookies / auth headers and
+        // `throw redirect('/login')` BEFORE the layout renders. A thrown
+        // redirect propagates here and is converted to a 302/307 in the
+        // catch below.
+        await prefetchLoaderData(router as never, path, req)
 
         // Build the VNode tree
         const app = h(RouterProvider, { router }, h(App, null))
@@ -157,6 +162,16 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
 
         return new Response(fullHtml, { status: 200, headers: ctx.headers })
       } catch (err) {
+        // `redirect()` thrown from a loader — convert to a real HTTP redirect
+        // before the SSR error path runs. Done inside the runWithRequestContext
+        // try so per-request locals (CSP nonce, auth state) flush correctly.
+        const info = getRedirectInfo(err)
+        if (info) {
+          return new Response(null, {
+            status: info.status,
+            headers: { Location: info.url },
+          })
+        }
         if (__DEV__) {
           console.error('[Pyreon Server] SSR render failed:', err)
         }

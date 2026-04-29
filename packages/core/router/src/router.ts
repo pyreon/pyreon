@@ -1,6 +1,7 @@
 import { createContext, onUnmount, useContext } from '@pyreon/core'
 import { computed, signal } from '@pyreon/reactivity'
 import { buildNameIndex, buildPath, resolveRoute, stringifyQuery } from './match'
+import { getRedirectInfo } from './redirect'
 import { ScrollManager } from './scroll'
 import {
   type AfterEachHook,
@@ -568,18 +569,24 @@ export function createRouter<TNames extends string = string>(
     record: RouteRecord,
     ac: AbortController,
     to: ResolvedRoute,
-  ): boolean {
+  ): GuardOutcome {
     if (result.status === 'fulfilled') {
       router._loaderData.set(record, result.value)
-      return true
+      return { action: 'continue' }
     }
-    if (ac.signal.aborted) return true
+    if (ac.signal.aborted) return { action: 'continue' }
+    // `redirect()` from a loader: propagate as a router-level redirect so the
+    // navigate flow re-runs against the target path BEFORE the matched route's
+    // layout / page mounts. Bypasses the user-supplied `_onError` hook — a
+    // redirect is intentional flow control, not an error.
+    const info = getRedirectInfo(result.reason)
+    if (info) return { action: 'redirect', target: info.url }
     if (router._onError) {
       const cancel = router._onError(result.reason, to)
-      if (cancel === false) return false
+      if (cancel === false) return { action: 'cancel' }
     }
     router._loaderData.set(record, undefined)
-    return true
+    return { action: 'continue' }
   }
 
   function syncBrowserUrl(path: string, replace: boolean): void {
@@ -681,10 +688,14 @@ export function createRouter<TNames extends string = string>(
     const inflight = router._loaderInflight.get(key)
     if (inflight && !inflight.signal.aborted) return inflight.promise
 
-    // 3. Execute
+    // 3. Execute. Wrap with `Promise.resolve().then(...)` so a SYNCHRONOUS
+    // throw from the loader (`redirect('/login')` / `notFound()` / a plain
+    // `throw new Error(...)`) becomes a rejected promise the `.catch` can
+    // handle — instead of escaping past the promise chain and surfacing as
+    // an unhandled exception in `runBlockingLoaders`'s `Promise.allSettled`.
     if (__DEV__) _countSink.__pyreon_count__?.('router.loaderRun')
-    const promise = record
-      .loader(loaderCtx)
+    const promise = Promise.resolve()
+      .then(() => record.loader!(loaderCtx))
       .then((data) => {
         loaderCacheSet(key, data)
         // Only delete if WE'RE still the registered in-flight (a later nav
@@ -710,17 +721,20 @@ export function createRouter<TNames extends string = string>(
     to: ResolvedRoute,
     gen: number,
     ac: AbortController,
-  ): Promise<boolean> {
+  ): Promise<GuardOutcome> {
     const loaderCtx: LoaderContext = { params: to.params, query: to.query, signal: ac.signal }
     const results = await Promise.allSettled(records.map((r) => executeLoader(r, loaderCtx)))
-    if (gen !== _navGen) return false
+    if (gen !== _navGen) return { action: 'cancel' }
     for (let i = 0; i < records.length; i++) {
       const result = results[i]
       const record = records[i]
       if (!result || !record) continue
-      if (!processLoaderResult(result, record, ac, to)) return false
+      const outcome = processLoaderResult(result, record, ac, to)
+      // Short-circuit on first redirect or cancel — later loaders' results
+      // are irrelevant once we know the navigation isn't committing here.
+      if (outcome.action !== 'continue') return outcome
     }
-    return true
+    return { action: 'continue' }
   }
 
   /** Fire-and-forget background revalidation for stale-while-revalidate routes. */
@@ -747,9 +761,13 @@ export function createRouter<TNames extends string = string>(
     }
   }
 
-  async function runLoaders(to: ResolvedRoute, gen: number, ac: AbortController): Promise<boolean> {
+  async function runLoaders(
+    to: ResolvedRoute,
+    gen: number,
+    ac: AbortController,
+  ): Promise<GuardOutcome> {
     const loadableRecords = to.matched.filter((r) => r.loader)
-    if (loadableRecords.length === 0) return true
+    if (loadableRecords.length === 0) return { action: 'continue' }
 
     const blocking: RouteRecord[] = []
     const swr: RouteRecord[] = []
@@ -762,11 +780,11 @@ export function createRouter<TNames extends string = string>(
     }
 
     if (blocking.length > 0) {
-      const ok = await runBlockingLoaders(blocking, to, gen, ac)
-      if (!ok) return false
+      const outcome = await runBlockingLoaders(blocking, to, gen, ac)
+      if (outcome.action !== 'continue') return outcome
     }
     if (swr.length > 0) revalidateSwrLoaders(swr, to, ac)
-    return true
+    return { action: 'continue' }
   }
 
   async function commitNavigation(
@@ -962,9 +980,12 @@ export function createRouter<TNames extends string = string>(
     const ac = new AbortController()
     router._abortController = ac
 
-    const loadersOk = await runLoaders(to, gen, ac)
-    if (!loadersOk) {
+    const loaderOutcome = await runLoaders(to, gen, ac)
+    if (loaderOutcome.action !== 'continue') {
       loadingSignal.update((n) => n - 1)
+      if (loaderOutcome.action === 'redirect') {
+        return navigate(sanitizePath(loaderOutcome.target), replace, redirectDepth + 1)
+      }
       return
     }
 
@@ -1076,7 +1097,7 @@ export function createRouter<TNames extends string = string>(
       return router._readyPromise
     },
 
-    async preload(path: string) {
+    async preload(path: string, request?: Request) {
       const resolved = resolveRoute(path, routes)
       // Load lazy components in parallel and populate the component cache so
       // the synchronous render pass finds ready components instead of kicking
@@ -1106,11 +1127,20 @@ export function createRouter<TNames extends string = string>(
         resolved.matched
           .filter((r) => r.loader)
           .map(async (r) => {
-            const data = await r.loader?.({
-              params: resolved.params,
-              query: resolved.query,
-              signal: ac.signal,
-            })
+            // Wrap with `Promise.resolve().then(...)` so a SYNCHRONOUS
+            // throw — `redirect('/login')` from a sync loader, `notFound()`,
+            // a plain `throw new Error(...)` — becomes a rejected promise
+            // the surrounding Promise.all surfaces. Bare `await r.loader(...)`
+            // would let synchronous throws escape past the `await` and
+            // surface as an uncaught exception in the Vite dev SSR pipeline.
+            const data = await Promise.resolve().then(() =>
+              r.loader!({
+                params: resolved.params,
+                query: resolved.query,
+                signal: ac.signal,
+                ...(request ? { request } : {}),
+              }),
+            )
             router._loaderData.set(r, data)
           }),
       )

@@ -24,6 +24,17 @@ test.describe('app-showcase /dnd', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(DND_URL, { waitUntil: 'domcontentloaded' })
     await page.locator('[data-testid="sortable"]').waitFor()
+    // Wait for `useSortable` to actually attach pragmatic-drag-and-drop's
+    // listeners. The hook sets `aria-roledescription="sortable item"` in
+    // the SAME synchronous code path as the `draggable()` call (see
+    // `packages/fundamentals/dnd/src/use-sortable.ts`), so its presence
+    // is a reliable proxy for "drop handlers are wired". Without this
+    // wait the test races hydration on slower CI runners — drag events
+    // dispatched before the listener attaches are silently no-ops.
+    await page
+      .locator('[data-testid="sortable-list"] li[aria-roledescription="sortable item"]')
+      .first()
+      .waitFor()
   })
 
   test('renders all three drag-and-drop scenarios', async ({ page }) => {
@@ -51,15 +62,15 @@ test.describe('app-showcase /dnd', () => {
     // drag-and-drop listens for dragstart/over/drop on element targets;
     // Playwright can't synthesize this end-to-end via mouse, hence the
     // direct dispatch.
-    const reordered = await page.evaluate(() => {
+    await page.evaluate(() => {
       const list = document.querySelector(
         '[data-testid="sortable-list"]',
       ) as HTMLElement | null
-      if (!list) return null
+      if (!list) return
       const items = list.querySelectorAll<HTMLElement>('li[data-itemid]')
       const item1 = items[0]
       const item3 = items[2]
-      if (!item1 || !item3) return null
+      if (!item1 || !item3) return
 
       const dataTransfer = new DataTransfer()
       const fire = (target: Element, type: string, related?: { x: number; y: number }) => {
@@ -84,17 +95,19 @@ test.describe('app-showcase /dnd', () => {
       fire(item3, 'dragover', { x: r3.left + r3.width / 2, y: r3.bottom - 4 })
       fire(list, 'drop')
       fire(item1, 'dragend')
-
-      const orderEl = document.querySelector('[data-testid="sortable-order"]')
-      return orderEl?.textContent ?? null
     })
 
-    // pragmatic-drag-and-drop integrates the drag through native events.
-    // The drop should reorder; whether item-1 ends up at position 2 or 3
-    // depends on closest-edge math (top/bottom). Either way the order
-    // string MUST be different from the seed `1, 2, 3, 4`.
-    expect(reordered).toBeTruthy()
-    expect(reordered).not.toBe('order: 1, 2, 3, 4')
+    // pragmatic-drag-and-drop processes drops asynchronously (microtask /
+    // rAF), so reading `textContent` synchronously right after dispatch
+    // races the reorder on slower CI runners. Use a polling assertion
+    // that waits for the order to change off the seed instead — passes
+    // deterministically once the reorder commits, fails fast (default
+    // 5s timeout) if it never does. Whether item-1 ends up at position
+    // 2 or 3 depends on closest-edge math (top/bottom); either is fine,
+    // the test just asserts the seed `1, 2, 3, 4` was disturbed.
+    await expect(page.locator('[data-testid="sortable-order"]')).not.toHaveText(
+      'order: 1, 2, 3, 4',
+    )
   })
 
   test('useDraggable + useDroppable card moves via drag events', async ({ page }) => {

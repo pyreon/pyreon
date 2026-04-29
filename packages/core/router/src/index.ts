@@ -46,6 +46,8 @@ export type { RouterLinkProps, RouterProviderProps, RouterViewProps } from './co
 export { RouterLink, RouterProvider, RouterView } from './components'
 export type { NotFoundBoundaryProps } from './not-found'
 export { isNotFoundError, NotFoundBoundary, notFound } from './not-found'
+export type { RedirectStatus } from './redirect'
+export { getRedirectInfo, isRedirectError, redirect } from './redirect'
 export { hydrateLoaderData, prefetchLoaderData, serializeLoaderData, useLoaderData } from './loader'
 // Match utilities (useful for SSR route pre-fetching)
 export {
