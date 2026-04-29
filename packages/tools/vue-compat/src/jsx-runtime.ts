@@ -15,7 +15,7 @@
  */
 
 import type { ComponentFn, Props, VNode, VNodeChild } from '@pyreon/core'
-import { Fragment, h, onUnmount } from '@pyreon/core'
+import { Fragment, h, isNativeCompat, onUnmount } from '@pyreon/core'
 import { runUntracked, signal } from '@pyreon/reactivity'
 
 export { Fragment }
@@ -159,9 +159,18 @@ export function jsx(
   const propsWithKey = (key != null ? { ...rest, key } : rest) as Props
 
   if (typeof type === 'function') {
+    const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey
+    // Native Pyreon framework components (context Provider, RouterView,
+    // QueryClientProvider, etc.) skip compat wrapping — they manage their
+    // own reactivity via signals + Pyreon's lifecycle, and wrapping them
+    // would run their setup body inside the compat layer's render context
+    // instead of Pyreon's, breaking `provide()` / `onMount()` / `onUnmount()`.
+    // See `@pyreon/core`'s `nativeCompat()` for the contract.
+    if (isNativeCompat(type)) {
+      return h(type as ComponentFn, componentProps)
+    }
     // Wrap Vue-style component for re-render support
     const wrapped = wrapCompatComponent(type)
-    const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey
     return h(wrapped, componentProps)
   }
 

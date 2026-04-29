@@ -20,6 +20,7 @@ import {
   createContext as pyreonCreateContext,
   ErrorBoundary,
   h,
+  nativeCompat,
   Portal,
   provide as pyreonProvide,
   Suspense,
@@ -257,9 +258,6 @@ export interface CompatContext<T> {
 
 const COMPAT_CTX_BRAND: typeof COMPAT_CTX = COMPAT_CTX
 
-// Tag the Provider so wrapCompatComponent skips it (it's already a native component)
-const NATIVE_COMPONENT = Symbol.for('pyreon:native-compat')
-
 /**
  * React-compatible `createContext` — creates a context with a Provider that
  * supports nested Providers (inner overrides outer for its subtree) and
@@ -296,7 +294,7 @@ export function createContext<T>(defaultValue: T): CompatContext<T> {
     }
   }
   // Mark as native so jsx() doesn't wrap it with wrapCompatComponent
-  ;(Provider as unknown as Record<symbol, boolean>)[NATIVE_COMPONENT] = true
+  nativeCompat(Provider)
 
   const ctx: CompatContext<T> = {
     [COMPAT_CTX_BRAND]: true as const,

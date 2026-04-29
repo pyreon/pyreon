@@ -18,6 +18,7 @@ import {
   ErrorBoundary,
   Fragment,
   lazy,
+  nativeCompat,
   Portal,
   provide,
   Suspense,
@@ -64,9 +65,6 @@ export interface PreactContext<T> {
   Provider: ComponentFn<{ value: T; children?: VNodeChild }>
 }
 
-// Tag the Provider so wrapCompatComponent skips it (it's already a native component)
-const NATIVE_COMPONENT = Symbol.for('pyreon:native-compat')
-
 /**
  * Preact-compatible createContext — returns a context with a `.Provider` component.
  */
@@ -77,7 +75,7 @@ export function createContext<T>(defaultValue: T): PreactContext<T> {
     return props.children
   }) as ComponentFn<{ value: T; children?: VNodeChild }>
   // Mark as native so jsx() doesn't wrap it with wrapCompatComponent
-  ;(Provider as unknown as Record<symbol, boolean>)[NATIVE_COMPONENT] = true
+  nativeCompat(Provider)
   return { ...ctx, Provider }
 }
 

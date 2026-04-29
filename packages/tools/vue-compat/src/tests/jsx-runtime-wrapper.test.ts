@@ -1,3 +1,4 @@
+import { nativeCompat } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { onMounted, onUnmounted } from '../index'
@@ -83,5 +84,24 @@ describe('vue-compat — wrapCompatComponent (jsx-runtime)', () => {
     const c = container()
     mount(jsx(Comp, {}), c)
     expect(c.textContent).toContain('noprops')
+  })
+
+  it('skips wrapping for components marked via nativeCompat() (Vue-side parity with React/Preact/Solid compat)', () => {
+    // Pre-PR-2 vue-compat's jsx() had no NATIVE marker check — even marked
+    // components got wrapCompatComponent applied, which broke Pyreon framework
+    // components composed inside Vue-style code (their `provide()` /
+    // `onMount()` calls fired outside Pyreon's setup frame). PR 2 added the
+    // missing check at the same site as react/preact/solid compat.
+    //
+    // Bisect-verified: removing the `if (isNativeCompat(type))` branch from
+    // jsx-runtime.ts puts vue-compat back in the broken state — this test
+    // fails because the wrapped component's identity no longer matches the
+    // native source fn.
+    const Native = () => jsx('div', { children: 'native' })
+    nativeCompat(Native)
+    const vnode = jsx(Native, {})
+    // Marker hit: jsx() routes through h() directly with the SOURCE fn,
+    // never through wrapCompatComponent. So vnode.type === Native.
+    expect(vnode.type).toBe(Native)
   })
 })

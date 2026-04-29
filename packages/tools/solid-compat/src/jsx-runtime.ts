@@ -32,6 +32,7 @@ import {
   For,
   Fragment,
   h,
+  isNativeCompat,
   Match,
   onUnmount,
   Show,
@@ -260,9 +261,6 @@ function resolveChildInstance(): ChildInstance | undefined {
 
 // ─── JSX functions ───────────────────────────────────────────────────────────
 
-// Tag used by compat context Providers to skip compat wrapping
-const _NATIVE_COMPAT = Symbol.for('pyreon:native-compat')
-
 export function jsx(
   type: string | ComponentFn | symbol,
   props: Props & { children?: VNodeChild | VNodeChild[] },
@@ -272,13 +270,20 @@ export function jsx(
   const propsWithKey = (key != null ? { ...rest, key } : rest) as Props
 
   if (typeof type === 'function') {
+    // Defense-in-depth: hardcoded set of Pyreon core control-flow primitives
+    // that are always native (kept even after the marker convergence — these
+    // are imported into solid-compat directly, so guarding their identity
+    // doesn't cost a property lookup and ensures the marker is never lost
+    // through any tree-shaking edge case).
     if (_nativeComponents.has(type)) {
       const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey
       return h(type as ComponentFn, componentProps)
     }
 
-    // Native compat components (e.g. context Providers) skip compat wrapping
-    if ((type as unknown as Record<symbol, boolean>)[_NATIVE_COMPAT]) {
+    // Native Pyreon framework components (context Providers, RouterView, etc.)
+    // skip compat wrapping — see `@pyreon/core`'s `nativeCompat()` for the
+    // full contract.
+    if (isNativeCompat(type)) {
       const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey
       return h(type as ComponentFn, componentProps)
     }

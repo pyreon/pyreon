@@ -11,7 +11,7 @@
  */
 
 import type { ComponentFn, Props, VNode, VNodeChild } from '@pyreon/core'
-import { Fragment, h, onUnmount } from '@pyreon/core'
+import { Fragment, h, isNativeCompat, onUnmount } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 
 export { Fragment }
@@ -195,9 +195,12 @@ export function jsx(
 
   if (typeof type === 'function') {
     const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey
-    // Native Pyreon components (e.g. context Provider) skip compat wrapping
-    const NATIVE = Symbol.for('pyreon:native-compat')
-    if ((type as unknown as Record<symbol, boolean>)[NATIVE]) {
+    // Native Pyreon components (context Provider, RouterView, QueryClientProvider,
+    // etc.) skip compat wrapping — they manage their own reactivity via signals
+    // and Pyreon's lifecycle, and wrapping them would run their setup body inside
+    // the compat layer's render context instead of Pyreon's, breaking `provide()`,
+    // `onMount()`, and `onUnmount()`.
+    if (isNativeCompat(type)) {
       return h(type as ComponentFn, componentProps)
     }
     // Wrap React-style component for re-render support
