@@ -1,11 +1,16 @@
 node_modules
 dist
 lib
-# Template src/lib/ directories are real source content (scaffolded into
-# user projects), not package build output. Keep them tracked even though
-# the bare `lib` rule above would otherwise match.
+# Template + example src/lib/ directories are real source content
+# (scaffolded into user projects, or committed as runtime test fixtures),
+# NOT package build output. Keep them tracked even though the bare `lib`
+# rule above would otherwise match. The `examples/*/src/lib` negation
+# specifically un-ignores the create-pyreon-app Playwright fixtures
+# (`examples/cpa-pw-*/src/lib/{auth,db,posts}.ts`).
 !packages/zero/create-zero/templates/*/src/lib
 !packages/zero/create-zero/templates/*/src/lib/**
+!examples/*/src/lib
+!examples/*/src/lib/**
 analysis
 .turbo
 *.tsbuildinfo
