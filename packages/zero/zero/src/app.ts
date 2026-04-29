@@ -36,7 +36,27 @@ export function createApp(options: CreateAppOptions) {
     scrollBehavior: 'top',
   })
 
-  const Layout = options.layout ?? DefaultLayout
+  // Detect the "double layout" footgun. fs-router emits `_layout.tsx` as a
+  // parent route record (the canonical Pyreon way to register a layout via
+  // file-system routing). If the user ALSO passes `options.layout` referring
+  // to the same component, the layout mounts twice — once via App's wrapper
+  // and once via the matched route chain. Result on hydration mismatch:
+  // 3× `nav.sidebar` + 3× `main.content`.
+  //
+  // Defense: when `options.layout` references the same component as ANY
+  // top-level route's `component`, drop the explicit option (the route-chain
+  // path is canonical) and warn in dev. Anyone who genuinely wants two
+  // layout wrappers can compose them inside a single component themselves.
+  const hasLayoutInRoutes =
+    options.layout !== undefined &&
+    options.routes.some((r) => r.component === options.layout)
+  if (hasLayoutInRoutes && process.env.NODE_ENV !== 'production') {
+    // oxlint-disable-next-line no-console
+    console.warn(
+      '[Pyreon] `createApp({ layout })` was passed a component that is ALSO a parent route in the matched chain (likely an fs-router `_layout.tsx`). The explicit `layout` option is being ignored to prevent double-mount. Remove the `layout` argument from `createApp`/`startClient` — the fs-router-emitted route handles it.',
+    )
+  }
+  const Layout = hasLayoutInRoutes ? DefaultLayout : (options.layout ?? DefaultLayout)
 
   function App() {
     return h(
