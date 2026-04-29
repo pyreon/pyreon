@@ -158,7 +158,12 @@ async function streamVNode(vnode: VNode, enqueue: (s: string) => void): Promise<
   if (vnode.type === (ForSymbol as unknown as string)) {
     const { each, children, by } = vnode.props as unknown as ForProps<unknown>
     enqueue('<!--pyreon-for-->')
-    for (const item of each()) {
+    // Defensive: `each` is normally `_rp(() => arr)` (a function). PR #410's
+    // `makeReactiveProps` in `mergeChildrenIntoProps` invokes `_rp` getters
+    // when the For COMPONENT runs, which flips `props.each` to the resolved
+    // array on the re-emitted ForSymbol vnode. Accept both forms.
+    const items = typeof each === 'function' ? each() : (each as Iterable<unknown>)
+    for (const item of items) {
       const key = by(item)
       if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.for.keyMarker')
       enqueue(`<!--k:${safeKeyForMarker(key)}-->`)
@@ -373,7 +378,12 @@ async function renderNode(node: VNodeChild | (() => VNodeChild)): Promise<string
   if (vnode.type === (ForSymbol as unknown as string)) {
     const { each, children, by } = vnode.props as unknown as ForProps<unknown>
     let forHtml = '<!--pyreon-for-->'
-    for (const item of each()) {
+    // Defensive: `each` is normally `_rp(() => arr)` (a function). PR #410's
+    // `makeReactiveProps` in `mergeChildrenIntoProps` invokes `_rp` getters
+    // when the For COMPONENT runs, which flips `props.each` to the resolved
+    // array on the re-emitted ForSymbol vnode. Accept both forms.
+    const items = typeof each === 'function' ? each() : (each as Iterable<unknown>)
+    for (const item of items) {
       const key = by(item)
       if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.for.keyMarker')
       forHtml += `<!--k:${safeKeyForMarker(key)}-->`
