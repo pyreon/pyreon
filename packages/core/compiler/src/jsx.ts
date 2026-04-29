@@ -1244,7 +1244,31 @@ export function transformJSX_JS(
       return `_tpl("${escaped}", () => null)`
     }
 
-    let body = bindLines.map((l) => `  ${l}`).join('\n')
+    // Append `;` to every bind line so ASI can't merge consecutive
+    // statements when the next line starts with `(`, `[`, etc.
+    // Concrete bug shape (pre-fix): a child element with `hasDynamic=true`
+    // emits `const __e0 = __root.children[N]` followed by a ref-callback
+    // line `((el) => { x = el })(__e0)`. JS does NOT insert ASI here
+    // because `__root.children[N]((el) => ...)` is a valid expression,
+    // so the parser merges them into a single function call:
+    //   `const __e0 = __root.children[N]((el) => ...)(__e0)`
+    // — calling `children[N]` as a function with the arrow as argument,
+    // and self-referencing `__e0` before assignment. Adding the `;`
+    // terminates each statement deterministically. Trailing `;` after
+    // a `{...}` block is a harmless empty statement.
+    // Append `;` to every bind line so ASI can't merge consecutive
+    // statements when the next line starts with `(`, `[`, etc.
+    // Concrete bug shape (pre-fix): a child element with `hasDynamic=true`
+    // emits `const __e0 = __root.children[N]` followed by a ref-callback
+    // line `((el) => { x = el })(__e0)`. JS does NOT insert ASI here
+    // because `__root.children[N]((el) => ...)` is a valid expression,
+    // so the parser merges them into a single function call:
+    //   `const __e0 = __root.children[N]((el) => ...)(__e0)`
+    // — calling `children[N]` as a function with the arrow as argument,
+    // and self-referencing `__e0` before assignment. Adding the `;`
+    // terminates each statement deterministically. Trailing `;` after
+    // a `{...}` block is a harmless empty statement.
+    let body = bindLines.map((l) => `  ${l};`).join('\n')
     if (disposerNames.length > 0) {
       body += `\n  return () => { ${disposerNames.map((d) => `${d}()`).join('; ')} }`
     } else {

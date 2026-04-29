@@ -812,6 +812,55 @@ describe('JSX transform — template emission', () => {
     expect(result).toContain('((el) => { myEl = el })(__root)')
   })
 
+  test('block-arrow ref on a child element with adjacent reactive props compiles cleanly', () => {
+    // Regression: a child element (NOT __root) with `hasDynamic=true`
+    // used to emit `const __e0 = __root.children[N]` followed by an
+    // unterminated ref-call `((el) => { x = el })(__e0)`. Without a
+    // trailing `;` on the const line, ASI did NOT insert one (because
+    // `__root.children[N]((el) => ...)` is a valid function call), and
+    // the two lines parsed as ONE expression:
+    //   `const __e0 = __root.children[N]((el) => ...)(__e0)`
+    // — calling `children[N]` as a function with the arrow as arg, and
+    // self-referencing `__e0` before assignment. Surfaced when the
+    // app-showcase /dnd demo used `ref={(el) => { letVar = el }}` next
+    // to `data-X={signal()}` reactive props on the same element. Fix:
+    // append `;` to every bind line (`bindLines.map(l => `  ${l};`)`).
+    //
+    // This test asserts the OUTPUT is well-formed: the const line ends
+    // in `;` and the ref call IIFE follows on its own line.
+    const result = t(
+      '<div><span ref={(el) => { x = el }} data-state={cls()} /></div>',
+    )
+    // Const declaration must terminate before the ref IIFE.
+    expect(result).toMatch(/const __e0 = __root\.children\[0\];\s*\n/)
+    // The ref IIFE is its own statement, calling __e0 (not chained).
+    expect(result).toContain('((el) => { x = el })(__e0)')
+    // And the chained-call shape MUST NOT appear (the bug pattern).
+    expect(result).not.toMatch(/__root\.children\[0\]\(\(/)
+  })
+
+  test('compiled output parses cleanly for block-arrow ref + reactive prop', () => {
+    // Functional regression: prove the compiled module is well-formed JS.
+    // Pre-fix the AST-level shape was malformed and execution threw
+    // "TypeError: __root.children[N] is not a function" at mount time
+    // because the const declaration chained into the ref IIFE.
+    //
+    // Strip imports, stub framework calls, and parse the body via the
+    // Function constructor. If the const line lacks its terminator, the
+    // ref-call IIFE would silently turn the RHS into a function call —
+    // valid JS, wrong runtime behavior. So we BOTH parse-check AND
+    // string-shape-check: parse to catch syntax errors, regex to catch
+    // the silent-merge case (which parses fine but means the wrong thing).
+    const result = t(
+      '<div><span ref={(el) => { x = el }} data-state={cls()} /></div>',
+    )
+    const codeOnly = result.replace(/^\s*import\b[^;]+;?\s*/gm, '')
+    const wrapped = `let x;\nconst _tpl = () => {}; const _bind = () => {}; const _bindDirect = () => {}; const cls = () => "v";\nreturn ${codeOnly};`
+    expect(() => new Function(wrapped)).not.toThrow()
+    // And the buggy chained-call shape MUST NOT appear.
+    expect(result).not.toMatch(/children\[0\]\(\(/)
+  })
+
   test('handles non-void self-closing element as closing tag', () => {
     const result = t('<div><span></span></div>')
     expect(result).toContain('_tpl(')

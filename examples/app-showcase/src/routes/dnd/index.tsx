@@ -47,20 +47,8 @@ export default function DndRoute() {
   }
 
   // ─── Draggable card → drop zone ───────────────────────────────────────
-  // Ref setters are named consts — NOT inline `ref={(el) => { cardEl = el }}`.
-  // The inline arrow + block-body + `let`-assignment combo is currently
-  // miscompiled by @pyreon/compiler when followed by other reactive props
-  // on the same element (emits `const __e0 = X((el) => ...)(__e0)`, calling
-  // X as a function and self-referencing __e0 before assignment). Named
-  // const callbacks compile correctly. See CLAUDE.md `app-showcase` row.
   let cardEl: HTMLElement | null = null
   let zoneEl: HTMLElement | null = null
-  const setCardEl = (el: HTMLElement | null) => {
-    cardEl = el
-  }
-  const setZoneEl = (el: HTMLElement | null) => {
-    zoneEl = el
-  }
   const droppedPayload = signal<string | null>(null)
 
   const { isDragging } = useDraggable<{ kind: 'card'; id: string; label: string }>({
@@ -76,9 +64,6 @@ export default function DndRoute() {
 
   // ─── File drop ────────────────────────────────────────────────────────
   let fileZoneEl: HTMLElement | null = null
-  const setFileZoneEl = (el: HTMLElement | null) => {
-    fileZoneEl = el
-  }
   const droppedFiles = signal<File[]>([])
 
   const { isOver: isFileOver, isDraggingFiles } = useFileDrop({
@@ -143,7 +128,9 @@ export default function DndRoute() {
         </p>
         <div style="display: flex; gap: 24px; align-items: stretch">
           <div
-            ref={setCardEl}
+            ref={(el) => {
+              cardEl = el
+            }}
             data-testid="card"
             data-dragging={isDragging() ? 'true' : 'false'}
             style="flex: 0 0 160px; padding: 16px; background: #6366f1; color: white; border-radius: 10px; cursor: grab; user-select: none; display: flex; align-items: center; justify-content: center; font-weight: 500"
@@ -151,7 +138,9 @@ export default function DndRoute() {
             Move me
           </div>
           <div
-            ref={setZoneEl}
+            ref={(el) => {
+              zoneEl = el
+            }}
             data-testid="zone"
             data-over={isCardOver() ? 'true' : 'false'}
             data-dropped={droppedPayload() != null ? 'true' : 'false'}
@@ -170,7 +159,9 @@ export default function DndRoute() {
           <code>accept</code>; non-matching files are ignored.
         </p>
         <div
-          ref={setFileZoneEl}
+          ref={(el) => {
+            fileZoneEl = el
+          }}
           data-testid="file-zone"
           data-over={isFileOver() ? 'true' : 'false'}
           data-dragging={isDraggingFiles() ? 'true' : 'false'}
