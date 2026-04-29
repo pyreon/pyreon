@@ -33,7 +33,7 @@
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { join as pathJoin } from 'node:path'
+import { dirname, join as pathJoin } from 'node:path'
 import { generateContext, transformJSX } from '@pyreon/compiler'
 import type { Plugin, ViteDevServer } from 'vite'
 
@@ -113,6 +113,60 @@ const COMPAT_ALIASES: Record<CompatFramework, Record<string, string>> = {
 }
 
 /**
+ * Detect whether a file id resolves to a `@pyreon/*` workspace-package source
+ * (i.e. a published Pyreon package whose .tsx is being pulled in via the
+ * `bun` condition workspace-link, NOT user code).
+ *
+ * Why this exists: in compat mode, OXC's per-project `importSource` is set
+ * to the compat package — so EVERY .tsx file in the build has its JSX
+ * rewritten to `import { jsx } from "@pyreon/<x>-compat/jsx-runtime"`. That
+ * is correct for user code (the whole point of compat mode) but wrong for
+ * framework-internal sources like `@pyreon/zero/src/link.tsx`, which need
+ * the real `@pyreon/core` runtime. The fix runs Pyreon's reactive JSX
+ * transform on `@pyreon/*` workspace files BEFORE OXC sees them — the
+ * output is plain JS with no JSX left to rewrite, so OXC's compat
+ * importSource doesn't apply. Result: published-package consumers (where
+ * `@pyreon/zero` resolves to its pre-built `lib/`) and workspace-dev
+ * consumers (where it resolves to source) both get correct JSX runtime
+ * resolution.
+ *
+ * Walks from the file's directory up to the nearest `package.json`. Returns
+ * true iff that package.json's `name` starts with `@pyreon/`. Result cached
+ * per directory.
+ */
+function isPyreonWorkspaceFile(id: string, cache: Map<string, boolean>): boolean {
+  // Strip query strings (e.g. `?vue&type=script`) to get the bare path.
+  const queryIdx = id.indexOf('?')
+  const filePath = queryIdx === -1 ? id : id.slice(0, queryIdx)
+  if (!filePath || filePath[0] === '\0') return false
+
+  let dir = dirname(filePath)
+  // Walk up at most ~12 levels — enough for any realistic monorepo depth.
+  for (let i = 0; i < 12; i++) {
+    const cached = cache.get(dir)
+    if (cached !== undefined) return cached
+
+    const pkgPath = pathJoin(dir, 'package.json')
+    if (existsSync(pkgPath)) {
+      let isPyreon = false
+      try {
+        const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { name?: string }
+        isPyreon = typeof pkg.name === 'string' && pkg.name.startsWith('@pyreon/')
+      } catch {
+        // Malformed package.json — treat as not-pyreon.
+      }
+      cache.set(dir, isPyreon)
+      return isPyreon
+    }
+
+    const parent = dirname(dir)
+    if (parent === dir) break // reached filesystem root
+    dir = parent
+  }
+  return false
+}
+
+/**
  * Return the Pyreon compat target for an import specifier, or undefined if
  * the import should not be redirected.
  */
@@ -144,6 +198,9 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
   const signalExportRegistry = new Map<string, Set<string>>()
   // Cache resolved import specifiers to avoid redundant resolution calls
   const resolveCache = new Map<string, string | null>()
+  // Cache `isPyreonWorkspaceFile` lookups by directory — package.json reads
+  // happen at most once per containing directory across the build.
+  const pyreonWorkspaceDirCache = new Map<string, boolean>()
 
   return {
     name: 'pyreon',
@@ -158,7 +215,13 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       // they resolve to workspace packages via our resolveId hook, not node_modules.
       const optimizeDepsExclude = compat ? Object.keys(COMPAT_ALIASES[compat]) : []
 
-      const jsxSource = compat ? COMPAT_JSX_SOURCE[compat] : '@pyreon/core'
+      // Always set OXC's JSX importSource to `@pyreon/core`. In compat mode,
+      // we redirect `@pyreon/core/jsx-runtime` imports to the compat package
+      // VIA `resolveId` — but ONLY for user code, never for `@pyreon/*`
+      // workspace-package files (zero, router, runtime-dom, etc.). Setting
+      // OXC's importSource directly to the compat package would force the
+      // compat runtime on framework internals too, which they cannot handle.
+      const jsxSource = '@pyreon/core'
 
       return {
         // Use "bun" condition for workspace resolution — source .ts/.tsx files
@@ -200,6 +263,22 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
     // ── Virtual module + compat alias resolution ─────────────────────────────
     async resolveId(id, importer) {
       if (id === HMR_RUNTIME_IMPORT) return HMR_RUNTIME_ID
+
+      // `@pyreon/core/jsx-runtime` resolves to the compat package only for
+      // user code — never for `@pyreon/*` framework files (zero, router,
+      // runtime-dom, etc.). Without this importer guard, every JSX file in
+      // the build (including framework internals resolved via the `bun`
+      // workspace condition) would get redirected to a compat runtime that
+      // doesn't match the framework's JSX shape. Caught by `cpa-smoke-app-*-compat`.
+      if (
+        compat &&
+        (id === '@pyreon/core/jsx-runtime' || id === '@pyreon/core/jsx-dev-runtime') &&
+        importer &&
+        isPyreonWorkspaceFile(importer, pyreonWorkspaceDirCache)
+      ) {
+        return // let Vite resolve to the real `@pyreon/core/jsx-runtime`
+      }
+
       const target = getCompatTarget(compat, id)
       if (!target) return
 

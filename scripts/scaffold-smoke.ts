@@ -38,6 +38,7 @@ interface Cell {
   template: 'app' | 'blog' | 'dashboard'
   adapter: 'vercel' | 'cloudflare' | 'netlify' | 'node' | 'bun' | 'static'
   integrations?: ('supabase' | 'email')[]
+  compat?: 'react' | 'vue' | 'solid' | 'preact'
   /** Smoke assertion — receives absolute path to the scaffolded project dir. */
   smoke: (projectDir: string) => void
 }
@@ -74,6 +75,21 @@ function assertFileContains(path: string, needle: string): void {
   if (!content.includes(needle)) {
     const preview = content.length > 400 ? `${content.slice(0, 400)}…` : content
     throw new Error(`expected ${path} to contain "${needle}". Got:\n${preview}`)
+  }
+}
+
+function assertPackageDep(projectDir: string, depName: string): void {
+  const pkgPath = join(projectDir, 'package.json')
+  assertFileExists(pkgPath)
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as {
+    dependencies?: Record<string, string>
+    devDependencies?: Record<string, string>
+  }
+  const all = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) }
+  if (!(depName in all)) {
+    throw new Error(
+      `expected ${pkgPath} to declare dependency "${depName}". Got: ${Object.keys(all).join(', ')}`,
+    )
   }
 }
 
@@ -167,6 +183,30 @@ const MATRIX: Cell[] = [
       assertFileContains(join(dir, 'vite.config.ts'), 'nodeAdapter')
     },
   },
+
+  // app + vercel × {react,vue,solid,preact} — compat-mode build smokes.
+  // Closes the "compat package shim ABI changed and broke scaffolded apps"
+  // gap. The 4 compat layers (react/vue/solid/preact) each ship as
+  // @pyreon/<x>-compat — apps configured with `--compat=<x>` get the
+  // matching dep wired into package.json AND `pyreon({ compat: <x> })` in
+  // vite.config.ts. The browser-test gate in each compat package covers
+  // the in-repo unit shape; this gate covers the install-and-build flow
+  // a real scaffolded user hits (a divergent ABI surface there shows up
+  // here as a build error, not as a passing in-repo test).
+  ...(['react', 'vue', 'solid', 'preact'] as const).map(
+    (compat): Cell => ({
+      name: `cpa-smoke-app-${compat}-compat`,
+      template: 'app',
+      adapter: 'vercel',
+      compat,
+      smoke: (dir) => {
+        assertDirNonEmpty(join(dir, 'dist'))
+        assertJsonValid(join(dir, 'vercel.json'))
+        assertFileContains(join(dir, 'vite.config.ts'), `compat: '${compat}'`)
+        assertPackageDep(dir, `@pyreon/${compat}-compat`)
+      },
+    }),
+  ),
 ]
 
 // ─── Per-cell harness ───────────────────────────────────────────────────────
@@ -186,6 +226,9 @@ function runScaffolder(cell: Cell, cwd: string): void {
   ]
   if (cell.integrations && cell.integrations.length > 0) {
     args.push('--integrations', cell.integrations.join(','))
+  }
+  if (cell.compat) {
+    args.push('--compat', cell.compat)
   }
 
   const result = spawnSync('bun', args, { cwd, stdio: 'inherit' })
