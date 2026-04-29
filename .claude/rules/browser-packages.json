@@ -9,6 +9,7 @@
     "@pyreon/charts",
     "@pyreon/document-primitives",
     "@pyreon/connector-document",
+    "@pyreon/dnd",
     "@pyreon/elements",
     "@pyreon/styler",
     "@pyreon/unistyle",

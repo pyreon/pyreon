@@ -70,10 +70,19 @@ export interface UseSortableOptions<T> {
 }
 
 export interface UseSortableResult {
-  /** Attach to the scroll container. */
-  containerRef: (el: HTMLElement) => void
-  /** Attach to each sortable item. Call with the item's key. */
-  itemRef: (key: string | number) => (el: HTMLElement) => void
+  /**
+   * Attach to the scroll container. Pyreon's runtime invokes refs with
+   * `T | null` (called with `null` on unmount), so the parameter widens
+   * accordingly. The hook ignores `null` calls — they're a no-op
+   * because the underlying pdnd cleanup is registered via `onCleanup`.
+   */
+  containerRef: (el: HTMLElement | null) => void
+  /**
+   * Attach to each sortable item. Call with the item's key — the
+   * returned callback accepts `T | null` for the same Pyreon `RefProp`
+   * compatibility reason as `containerRef` above.
+   */
+  itemRef: (key: string | number) => (el: HTMLElement | null) => void
   /** The key of the currently dragging item. */
   activeId: () => string | number | null
   /** The key of the item being hovered over. */

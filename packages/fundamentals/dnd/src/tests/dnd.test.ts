@@ -158,6 +158,32 @@ describe('useSortable', () => {
     expect(el.dataset.pyreonSortKey).toBe('1')
   })
 
+  it('containerRef and itemRef accept null without throwing (Pyreon RefProp contract)', async () => {
+    // Regression: Pyreon's runtime invokes ref callbacks with `el | null`
+    // — `null` on unmount. Previously the exported types were
+    // `(el: HTMLElement) => void` (non-null), forcing every consumer to
+    // wrap with adapter callbacks. The hook now accepts `null` and
+    // no-ops — pdnd's per-element cleanups are registered via
+    // `onCleanup`, so the unmount path is already covered.
+    const { useSortable } = await import('../use-sortable')
+    const items = signal([{ id: '1' }, { id: '2' }])
+
+    const { containerRef, itemRef } = useSortable({
+      items,
+      by: (item) => item.id,
+      onReorder: () => {},
+    })
+
+    expect(() => containerRef(null)).not.toThrow()
+    expect(() => itemRef('1')(null)).not.toThrow()
+
+    // Sanity: a real element still wires up the ARIA attributes after a
+    // prior null call (idempotent — the null path didn't poison state).
+    const el = document.createElement('div')
+    itemRef('1')(el)
+    expect(el.getAttribute('role')).toBe('listitem')
+  })
+
   it('does not override existing tabindex', async () => {
     const { useSortable } = await import('../use-sortable')
     const items = signal([{ id: '1' }])

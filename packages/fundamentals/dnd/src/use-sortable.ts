@@ -55,10 +55,10 @@ let _sortableCounter = 0
  */
 export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResult {
   if (typeof document === 'undefined') {
-    const noop = () => {}
+    const noop = (_el: HTMLElement | null) => {}
     return {
-      containerRef: noop as (el: HTMLElement) => void,
-      itemRef: () => noop as (el: HTMLElement) => void,
+      containerRef: noop,
+      itemRef: () => noop,
       activeId: () => null,
       overId: () => null,
       overEdge: () => null,
@@ -104,7 +104,11 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
     options.onReorder(reordered)
   }
 
-  function containerRef(el: HTMLElement) {
+  function containerRef(el: HTMLElement | null) {
+    // Pyreon's runtime calls refs with `null` on unmount; the per-element
+    // pdnd cleanups are already registered via `onCleanup` below, so we
+    // can no-op the unmount-time call.
+    if (!el) return
     // Auto-scroll when dragging near container edges
     cleanups.push(
       autoScrollForElements({
@@ -173,8 +177,10 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
     cleanups.push(() => el.removeEventListener('keydown', keyHandler))
   }
 
-  function itemRef(key: string | number): (el: HTMLElement) => void {
-    return (el: HTMLElement) => {
+  function itemRef(key: string | number): (el: HTMLElement | null) => void {
+    return (el: HTMLElement | null) => {
+      // Pyreon ref-on-unmount: see containerRef comment.
+      if (!el) return
       el.dataset.pyreonSortKey = String(key)
       if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0')
       el.setAttribute('role', 'listitem')

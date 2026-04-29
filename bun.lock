@@ -747,7 +747,9 @@
         "@atlaskit/pragmatic-drag-and-drop-hitbox": "^1.0.0",
       },
       "devDependencies": {
+        "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
