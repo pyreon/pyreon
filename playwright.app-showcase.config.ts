@@ -44,7 +44,7 @@ export default defineConfig({
   projects: [
     {
       name: 'app-showcase',
-      testMatch: /\/app-showcase-(flow|dnd)\.spec\.ts$/,
+      testMatch: /\/app-showcase-(flow|dnd|charts)\.spec\.ts$/,
       use: { baseURL: 'http://localhost:5181' },
     },
   ],
