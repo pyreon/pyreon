@@ -1,6 +1,7 @@
 // @pyreon/core — component model, VNode types, lifecycle hooks
 
 export { defineComponent, dispatchToErrorBoundary, propagateError, runWithHooks } from './component'
+export { isNativeCompat, NATIVE_COMPAT_MARKER, nativeCompat } from './compat-marker'
 export type { Context, ContextSnapshot, ReactiveContext } from './context'
 export {
   captureContextStack,

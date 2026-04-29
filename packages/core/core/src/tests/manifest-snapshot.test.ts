@@ -85,8 +85,13 @@ describe('gen-docs — core snapshot', () => {
 
   it('renders @pyreon/core to MCP api-reference entries — one per api[] item', () => {
     const record = renderApiReferenceEntries(coreManifest)
-    expect(Object.keys(record).length).toBe(28)
+    expect(Object.keys(record).length).toBe(31)
     expect(Object.keys(record)).toContain('core/h')
+    // Compat-mode native marker — added so framework JSX components opt out
+    // of `@pyreon/{react,preact,vue,solid}-compat` wrapping.
+    expect(Object.keys(record)).toContain('core/nativeCompat')
+    expect(Object.keys(record)).toContain('core/isNativeCompat')
+    expect(Object.keys(record)).toContain('core/NATIVE_COMPAT_MARKER')
     // Spot-check the flagship API — h() is the hyperscript function
     const h = record['core/h']!
     expect(h.notes).toContain('JSX')
