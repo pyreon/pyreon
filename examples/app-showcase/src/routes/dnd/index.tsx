@@ -35,16 +35,6 @@ export default function DndRoute() {
     by: (it) => it.id,
     onReorder: (next) => items.set(next),
   })
-  // @pyreon/dnd's exported `containerRef` / `itemRef` types are
-  // `(el: HTMLElement) => void` (non-null), but Pyreon's `RefProp` widens
-  // the callback to accept `T | null` (called with null on unmount).
-  // Adapt at the call site so the demo type-checks under strict mode.
-  const containerRefAdapter = (el: HTMLElement | null) => {
-    if (el) sortable.containerRef(el)
-  }
-  const itemRefAdapter = (id: string) => (el: HTMLElement | null) => {
-    if (el) sortable.itemRef(id)(el)
-  }
 
   // ─── Draggable card → drop zone ───────────────────────────────────────
   let cardEl: HTMLElement | null = null
@@ -90,14 +80,14 @@ export default function DndRoute() {
           order back to the signal via <code>onReorder</code>.
         </p>
         <ul
-          ref={containerRefAdapter}
+          ref={sortable.containerRef}
           style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px"
           data-testid="sortable-list"
         >
           {() =>
             items().map((item) => (
               <li
-                ref={itemRefAdapter(item.id)}
+                ref={sortable.itemRef(item.id)}
                 key={item.id}
                 data-itemid={item.id}
                 data-active={sortable.activeId() === item.id ? 'true' : 'false'}
