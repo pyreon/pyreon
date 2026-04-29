@@ -43,6 +43,7 @@
     "test:coverage": "bun scripts/check-coverage.ts",
     "audit-types": "bun scripts/audit-types.ts",
     "verify-modes": "bun scripts/verify-modes.ts",
+    "scaffold-smoke": "bun scripts/scaffold-smoke.ts",
     "check-bundle-budgets": "bun scripts/check-bundle-budgets.ts",
     "check-distribution": "bun scripts/check-distribution.ts",
     "check-doc-claims": "bun scripts/check-doc-claims.ts",
