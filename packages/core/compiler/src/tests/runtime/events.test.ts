@@ -188,15 +188,12 @@ describe('compiler-runtime — events', () => {
     unmount()
   })
 
-  // FIXME(compiler): `onDoubleClick` is a real Pyreon bug discovered while
-  // authoring B2. The compiler lowercases `onDoubleClick` → `doubleclick`,
-  // but the DOM event name is `dblclick`. React handles this via a
-  // hard-coded special-case mapping; Pyreon currently doesn't. Tracked
-  // separately — re-enable this test once the compiler maps
-  // `onDoubleClick` → `dblclick` (and any other React→DOM event-name
-  // mismatches like `onContextMenu` → `contextmenu`, but that one happens
-  // to lowercase correctly).
-  it.skip('onDoubleClick fires (multi-word + delegated)', () => {
+  // Locks in the React→DOM event-name mapping for `onDoubleClick` →
+  // `dblclick`. The mapping lives in BOTH compiler backends:
+  //   - JS fallback: packages/core/compiler/src/jsx.ts (doubleclick → dblclick)
+  //   - Rust native: packages/core/compiler/native/src/lib.rs (same shape)
+  // `onContextMenu` lowercases correctly (contextmenu) — no remap needed.
+  it('onDoubleClick fires (multi-word + delegated)', () => {
     let dbl = 0
     const handler = () => {
       dbl++
@@ -209,6 +206,22 @@ describe('compiler-runtime — events', () => {
       .querySelector<HTMLButtonElement>('#b')!
       .dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
     expect(dbl).toBe(1)
+    unmount()
+  })
+
+  it('onContextMenu fires (multi-word, lowercases to contextmenu)', () => {
+    let menu = 0
+    const handler = () => {
+      menu++
+    }
+    const { container, unmount } = compileAndMount(
+      `<div><button id="b" onContextMenu={handler}>x</button></div>`,
+      { handler },
+    )
+    container
+      .querySelector<HTMLButtonElement>('#b')!
+      .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }))
+    expect(menu).toBe(1)
     unmount()
   })
 })
