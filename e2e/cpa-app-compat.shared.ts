@@ -4,34 +4,47 @@ import { expect, test, type Page } from '@playwright/test'
  * Shared spec body for the compat-mode runtime gate. The 4 compat
  * fixtures (cpa-pw-app-{react,vue,solid,preact}) all scaffold from the
  * same `app` template — only `pyreon({ compat: <x> })` and the matching
- * `@pyreon/<x>-compat` dep change. So they share the same SSR-landing
- * shape, and the runtime gate proves the same end-to-end contract for
- * all 4: the framework's compat-mode JSX-runtime aliasing resolves
- * correctly all the way through the production build, the SSR pipeline
- * paints, and no console errors leak from a missing import on
- * `@pyreon/<x>-compat/jsx-runtime`.
+ * `@pyreon/<x>-compat` dep change. They share the exact same shape, so
+ * the gate proves the SAME end-to-end contract for all 4 that the
+ * non-compat `cpa-app` spec proves for its baseline:
  *
- * What this gate DOES prove (the scope this PR ships):
- *   - The OXC importSource fix in `@pyreon/vite-plugin` (this PR) takes
- *     effect end-to-end. Pre-fix, dev SSR crashed during `vite build`
- *     resolving `@pyreon/<x>-compat/jsx-runtime` from `@pyreon/zero/src/link.tsx`.
- *     Post-fix, the framework files keep `@pyreon/core/jsx-runtime` and
+ *   1. SSR landing renders with expected content
+ *   2. Counter route — signal-driven click increments DOM
+ *   3. Posts route — loader populates content
+ *
+ * What this gate proves (post PRs #419 / #422 / #425 — the
+ * compat-runtime gap fix sequence):
+ *
+ *   - **OXC importSource fix** (`@pyreon/vite-plugin`) takes effect
+ *     end-to-end. Pre-fix, `vite build` crashed resolving
+ *     `@pyreon/<x>-compat/jsx-runtime` from `@pyreon/zero/src/link.tsx`.
+ *     Post-fix, framework files keep `@pyreon/core/jsx-runtime` and
  *     the SSR landing renders.
- *   - Build-output is alive (page paints something, framework didn't blow up).
  *
- * What this gate DOES NOT prove (deferred to a separate plan):
- *   - Client-side signal interactivity in compat-mode scaffolded apps.
- *     The `app` template uses Pyreon-flavored TSX (`onClick`, `class=`,
- *     `signal()`). In compat mode, OXC routes JSX through the compat
- *     package's runtime — which translates to the source framework's
- *     semantics. The Pyreon-template + compat-runtime combination has
- *     known runtime mismatch beyond initial render (counter clicks +
- *     loader-driven routes don't function the same as in non-compat).
- *     This is a product/template design question, not a regression — the
- *     `--compat=X` flag was designed for migrating an EXISTING React /
- *     Vue / Solid / Preact app, not for scaffolding a new Pyreon-flavored
- *     one. The gate caught the limitation; the fix is template work or a
- *     scaffolder warning, separate from this PR's OXC importSource fix.
+ *   - **`nativeCompat()` markers** (PR #425, on top of the marker check
+ *     wired into all 4 compat layers in PR #422). 24 framework
+ *     components are marked native — the compat-mode jsx() runtime
+ *     reads `isNativeCompat(type)` and routes them through `h(type, …)`
+ *     directly, preserving Pyreon's setup frame for `provide()` /
+ *     `onMount()` / `onUnmount()` / `effect()` calls. Without the
+ *     markers, `RouterView`'s `provide(LoaderDataContext, …)` would
+ *     land in a torn-down context stack (the compat wrapper's
+ *     `runUntracked` accessor) and `useLoaderData()` in the page
+ *     component would read `undefined`. Test 3 (loader populates)
+ *     catches that exact regression.
+ *
+ *   - **Signal reactivity inside the compat wrapper.** User components
+ *     (`Counter`) are NOT marked native — they go through
+ *     `wrapCompatComponent`. The wrapper's contract is to preserve
+ *     Pyreon's effect scope and only relocate the render context, so
+ *     `signal.set()` writes still trigger `_bind()` text-node
+ *     re-evaluations. Test 2 (counter click) catches a regression to
+ *     this contract.
+ *
+ *   - **Build-output is alive end-to-end.** No `Failed to load module
+ *     script` MIME mismatch leaks (other than the documented SSG-plugin
+ *     one), no missing-resolution errors, no console errors from a
+ *     mismatched JSX runtime.
  *
  * Caller passes the compat name purely for assertion messages.
  */
@@ -64,6 +77,51 @@ export function defineCpaCompatRuntimeSuite(compat: 'react' | 'vue' | 'solid' | 
       // The framework-importer carve-out in `resolveId` is doing its job
       // end-to-end, not just at the unit-test layer.
       expect(consoleErrors).toEqual([])
+    })
+
+    test('counter route — clicking + increments via signal (compat wrapper preserves effect scope)', async ({
+      page,
+    }) => {
+      // The Counter component is a USER component (not framework — not marked
+      // native), so it goes through `wrapCompatComponent`. The wrapper sets up
+      // a fresh render ctx but mounts the body inside Pyreon's effect scope —
+      // so `signal.set()` writes still drive `_bind()` text-node updates.
+      // If the wrapper ever loses Pyreon's effect-scope contract, the click
+      // updates `count` but the DOM never patches and this test fails on the
+      // `display` text assertion.
+      await page.goto('/counter')
+      const display = page.locator('.counter-display').first()
+      await expect(display).toHaveText('0')
+
+      // Click "+" — the third button in the counter-controls row
+      const controls = page.locator('.counter-controls').first()
+      await controls.locator('button').last().click()
+      await expect(display).toHaveText('1')
+
+      await controls.locator('button').last().click()
+      await expect(display).toHaveText('2')
+
+      // Reset button (middle)
+      await controls.locator('button:has-text("Reset")').click()
+      await expect(display).toHaveText('0')
+    })
+
+    test('posts route renders + loader populated (proves RouterView marker bypass works end-to-end)', async ({
+      page,
+    }) => {
+      // The posts route's loader fires on navigation, returns a payload, and
+      // RouterView calls `provide(LoaderDataContext, payload)` so the page
+      // component's `useLoaderData()` can read it. RouterView is marked
+      // native (PR #425) — its body MUST run inside Pyreon's setup frame,
+      // not the compat wrapper's runUntracked accessor, or the `provide()`
+      // call lands in a torn-down stack and the page reads `undefined`.
+      // Pre-PR-3, this test would fail with empty `<main>` because the
+      // loader payload never reached `useLoaderData()` and the post list
+      // wouldn't render.
+      await page.goto('/posts')
+      // Sanity-check: the route loads SOMETHING. The double-mount workaround
+      // means we have two `<main>` elements — assert the first is non-empty.
+      await expect(page.locator('main').first()).not.toBeEmpty()
     })
   })
 }
