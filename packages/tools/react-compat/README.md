@@ -147,3 +147,23 @@ function Dashboard() {
 - **`useErrorBoundary`** -- alias for `onErrorCaptured`.
 - **`createSelector`** -- O(1) equality selector from `@pyreon/reactivity`.
 - **`createElement` / `h`**, **`Fragment`** -- JSX runtime.
+
+## Composing Pyreon framework components inside react-compat
+
+Pyreon's framework components (`RouterView`, `PyreonUI`, `FormProvider`, `QueryClientProvider`, …) ship marked with `nativeCompat()` from `@pyreon/core` — react-compat's JSX runtime detects the marker and routes them through Pyreon's setup frame instead of the compat wrapper. **You don't need to do anything** for the 24 components shipped marked.
+
+If you write your **own** Pyreon-flavored helper that uses `provide()` / `onMount()` / `onUnmount()` / `effect()` at component-body scope and use it in a react-compat app, mark it explicitly:
+
+```tsx
+import { nativeCompat, provide, createContext } from '@pyreon/core'
+
+const MyCtx = createContext<string>('default')
+
+function MyProvider(props: { value: string; children?: unknown }) {
+  provide(MyCtx, props.value)
+  return props.children as never
+}
+nativeCompat(MyProvider) // ← required for compat-mode apps
+```
+
+Without the marker, the wrapper relocates the body's render context and `provide()` lands in a torn-down context stack — descendants read the default. See [`packages/core/core/src/compat-marker.ts`](../../core/core/src/compat-marker.ts) for details.

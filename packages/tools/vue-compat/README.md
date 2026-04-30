@@ -163,3 +163,23 @@ app.mount('#app')
 
 - **`h` / `Fragment`** -- JSX runtime.
 - **`batch(fn)`** -- coalesce multiple signal writes.
+
+## Composing Pyreon framework components inside vue-compat
+
+Pyreon's framework components (`RouterView`, `PyreonUI`, `FormProvider`, `QueryClientProvider`, …) ship marked with `nativeCompat()` from `@pyreon/core` — vue-compat's JSX runtime detects the marker and routes them through Pyreon's setup frame instead of the compat wrapper. **You don't need to do anything** for the 24 components shipped marked.
+
+If you write your **own** Pyreon-flavored helper that uses `provide()` / `onMount()` / `onUnmount()` / `effect()` at component-body scope and use it in a vue-compat app, mark it explicitly:
+
+```tsx
+import { nativeCompat, provide, createContext } from '@pyreon/core'
+
+const MyCtx = createContext<string>('default')
+
+function MyProvider(props: { value: string; children?: unknown }) {
+  provide(MyCtx, props.value)
+  return props.children as never
+}
+nativeCompat(MyProvider) // ← required for compat-mode apps
+```
+
+Without the marker, the wrapper relocates the body's render context and `provide()` lands in a torn-down context stack — descendants read the default. See [`packages/core/core/src/compat-marker.ts`](../../core/core/src/compat-marker.ts) for details.

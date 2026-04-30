@@ -165,6 +165,22 @@ CI runs `bun run test:e2e:ui-regression` as a separate step in the `E2E` job, af
 
 **What this gate doesn't catch.** Bugs in packages OUTSIDE the 5 target ones (router, query, form, etc. — those have their own browser-test stories). Visual regressions (separate `visual` project, currently disabled). Performance regressions (covered by `@pyreon/perf-harness`). Bug shapes nobody wrote a spec for — gate is reactive, not predictive.
 
+## Multi-render-cycle bugs need e2e coverage, not just unit tests
+
+Some framework contracts are invisible in synchronous-mount unit tests but break end-to-end under signal-driven re-execution. Reference case: the compat-mode `nativeCompat()` marker contract (PRs #419/#422/#425/#427/#429).
+
+The marker tells `@pyreon/{react,preact,vue,solid}-compat`'s `jsx()` runtime to route framework components through `h(type, props)` directly instead of through `wrapCompatComponent`. Without the marker, the component body runs inside the wrapper's accessor instead of Pyreon's setup frame — `provide()` calls end up in a torn-down context stack, `effect()` re-runs lose live-signal access.
+
+**The unit test layer can prove the JSX-runtime bypass fires** (`vnode.type === Native` for marked, `vnode.type === wrapper` for unmarked — see each compat package's `native-marker-bypass.test.tsx`). It CANNOT prove the contract holds across multiple render cycles, because synchronous mount preserves `provide()` context even WITH the wrapper (provide() pushes onto the global context stack regardless). A unit test that mounts a marked Provider + Consumer once and reads the value will pass even if you remove the marker.
+
+**The e2e test layer is required to catch the genuine bug shape.** PR #427's `e2e/cpa-app-compat.shared.ts` runs against the cpa-app-compat fixtures with real router state — when a navigation re-fires `RouterView`'s effect inside the wrapper, the loader's `provide(LoaderDataContext, ...)` lands in a stale context stack and `useLoaderData()` reads `undefined`. Bisect-verified by removing `nativeCompat(RouterView)` from `packages/core/router/src/components.tsx`: the cpa-app posts test fails with `<main>` empty.
+
+**Pattern for any contract that depends on Pyreon's setup frame surviving across re-runs**:
+- **Unit layer**: prove the structural / identity contract (function identity, prop shape, marker presence). Fast, focused per-package.
+- **E2E layer**: prove the runtime contract under real-app reactivity (signal click, loader-populated route, signal-driven re-render). Slower, cross-package, real-shape.
+
+Both layers are required. Comments in `*-compat/src/tests/native-marker-bypass.test.tsx` explicitly document which assertions are bisect-load-bearing (the structural ones) and which are smoke (the mount + provide() integration check) so a future contributor doesn't mistake the smoke test for a regression guard it isn't.
+
 ## Bisect-verify regression tests
 
 When you add a regression test, you must bisect-verify it before the PR is ready:
