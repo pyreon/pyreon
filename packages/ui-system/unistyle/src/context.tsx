@@ -1,5 +1,5 @@
 import type { VNode } from '@pyreon/core'
-import { provide } from '@pyreon/core'
+import { nativeCompat, provide } from '@pyreon/core'
 import { ThemeContext } from '@pyreon/styler'
 import { Provider as CoreProvider, context } from '@pyreon/ui-core'
 import type { PyreonTheme } from './enrichTheme'
@@ -34,6 +34,10 @@ function Provider(props: TProvider): VNode | null {
 
   return CoreProvider({ theme: enrichedTheme, children }) as VNode | null
 }
+
+// Mark as native — invoked by PyreonUI internally; needs Pyreon's setup
+// frame for provide(ThemeContext, ...) to reach descendants.
+nativeCompat(Provider)
 
 export { context }
 

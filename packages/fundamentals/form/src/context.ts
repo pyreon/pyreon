@@ -1,5 +1,5 @@
 import type { Props, VNode, VNodeChild } from '@pyreon/core'
-import { createContext, provide, useContext } from '@pyreon/core'
+import { createContext, nativeCompat, provide, useContext } from '@pyreon/core'
 import type { FormState } from './types'
 
 const FormContext = createContext<FormState<Record<string, unknown>> | null>(null)
@@ -29,6 +29,10 @@ export function FormProvider<TValues extends Record<string, unknown>>(
   const ch = props.children
   return (typeof ch === 'function' ? (ch as () => VNodeChild)() : ch) as VNode
 }
+
+// Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
+// provide(FormContext, ...) runs inside Pyreon's setup frame.
+nativeCompat(FormProvider)
 
 /**
  * Access the form instance from the nearest `FormProvider`.

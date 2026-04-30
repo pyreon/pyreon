@@ -1,5 +1,5 @@
 import type { Props, VNode, VNodeChild } from '@pyreon/core'
-import { createRef, h, onMount, onUnmount } from '@pyreon/core'
+import { createRef, h, nativeCompat, onMount, onUnmount } from '@pyreon/core'
 import { effect, runUntracked, signal } from '@pyreon/reactivity'
 import { mountChild } from './mount'
 
@@ -333,3 +333,8 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
 
   return h(tag, { ref: containerRef })
 }
+
+// Mark as native so compat-mode jsx() runtimes skip wrapCompatComponent —
+// TransitionGroup uses signal/effect/onMount/onUnmount + mountChild that
+// need Pyreon's setup frame.
+nativeCompat(TransitionGroup)

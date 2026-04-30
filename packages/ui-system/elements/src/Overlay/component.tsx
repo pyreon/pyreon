@@ -7,7 +7,7 @@
  */
 
 import type { VNodeChild } from '@pyreon/core'
-import { onMount, Portal, splitProps } from '@pyreon/core'
+import { nativeCompat, onMount, Portal, splitProps } from '@pyreon/core'
 import { render } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
 import type { Content, PyreonComponent } from '../types'
@@ -131,5 +131,10 @@ const name = `${PKG_NAME}/Overlay` as const
 Component.displayName = name
 Component.pkgName = PKG_NAME
 Component.PYREON__COMPONENT = name
+
+// Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
+// Overlay's onMount + Portal + useOverlay hook setup run inside Pyreon's
+// setup frame.
+nativeCompat(Component)
 
 export default Component

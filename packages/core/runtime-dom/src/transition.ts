@@ -1,5 +1,5 @@
 import type { Props, VNode, VNodeChild } from '@pyreon/core'
-import { createRef, Fragment, h, onUnmount } from '@pyreon/core'
+import { createRef, Fragment, h, nativeCompat, onUnmount } from '@pyreon/core'
 import { effect, runUntracked, signal } from '@pyreon/reactivity'
 
 // Dev-mode gate: `import.meta.env.DEV` is the Vite/Rolldown standard,
@@ -239,3 +239,7 @@ export function Transition(props: TransitionProps): VNodeChild {
     return { ...vnode, props: { ...vnode.props, ref } as Props }
   }) as unknown as VNode
 }
+
+// Mark as native so compat-mode jsx() runtimes skip wrapCompatComponent —
+// Transition uses signal/effect/onUnmount that need Pyreon's setup frame.
+nativeCompat(Transition)

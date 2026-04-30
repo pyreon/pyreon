@@ -1,5 +1,5 @@
 import type { Props, VNode, VNodeChild } from '@pyreon/core'
-import { createContext, provide, useContext } from '@pyreon/core'
+import { createContext, nativeCompat, provide, useContext } from '@pyreon/core'
 import type { I18nInstance } from './types'
 
 export const I18nContext = createContext<I18nInstance | null>(null)
@@ -26,6 +26,10 @@ export function I18nProvider(props: I18nProviderProps): VNode {
   const ch = props.children
   return (typeof ch === 'function' ? (ch as () => VNodeChild)() : ch) as VNode
 }
+
+// Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
+// provide(I18nContext, ...) runs inside Pyreon's setup frame.
+nativeCompat(I18nProvider)
 
 /**
  * Access the i18n instance from the nearest I18nProvider.

@@ -1,5 +1,5 @@
 import type { VNodeChild } from '@pyreon/core'
-import { For, Portal } from '@pyreon/core'
+import { For, nativeCompat, Portal } from '@pyreon/core'
 import { computed, effect, onCleanup } from '@pyreon/reactivity'
 import { toastStyles } from './styles'
 import { _pauseAll, _resumeAll, _toasts, toast } from './toast'
@@ -158,3 +158,9 @@ function ToastItem(props: { toast: Toast }): VNodeChild {
     </div>
   )
 }
+
+// Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
+// Toaster's effect()/onCleanup-based style injection + Portal mounting run
+// inside Pyreon's setup frame (compat wrapping breaks the Portal's reactive
+// re-render path).
+nativeCompat(Toaster)

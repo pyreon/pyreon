@@ -1,5 +1,5 @@
 import type { VNodeChild } from '@pyreon/core'
-import { createContext, provide, useContext } from '@pyreon/core'
+import { createContext, nativeCompat, provide, useContext } from '@pyreon/core'
 import type { Permissions } from './types'
 
 const PermissionsContext = createContext<Permissions | null>(null)
@@ -25,6 +25,10 @@ export function PermissionsProvider(props: {
 
   return props.children ?? null
 }
+
+// Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
+// provide(PermissionsContext, ...) runs inside Pyreon's setup frame.
+nativeCompat(PermissionsProvider)
 
 /**
  * Access the nearest permissions instance from context.

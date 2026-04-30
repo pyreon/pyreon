@@ -1,6 +1,6 @@
 /** @jsxImportSource @pyreon/core */
 import type { ComponentFn, Props, VNodeChild } from '@pyreon/core'
-import { h } from '@pyreon/core'
+import { h, nativeCompat } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { FormProvider, useFormContext } from './context'
 import type { FormState } from './types'
@@ -94,3 +94,10 @@ export const Submit: ComponentFn<SubmitProps> = (props) => {
     props.children ?? 'Submit',
   )
 }
+
+// Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
+// Form's effect()-based prop sync runs once at setup (not per-render via the
+// compat wrapper) AND the inner FormProvider is invoked through h() so its
+// provide() reaches Pyreon's setup frame.
+nativeCompat(Form)
+nativeCompat(Submit)

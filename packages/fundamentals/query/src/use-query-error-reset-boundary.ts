@@ -1,5 +1,5 @@
 import type { Props, VNode, VNodeChild } from '@pyreon/core'
-import { createContext, provide, useContext } from '@pyreon/core'
+import { createContext, nativeCompat, provide, useContext } from '@pyreon/core'
 import { useQueryClient } from './query-client'
 
 // ─── Context ────────────────────────────────────────────────────────────────
@@ -52,6 +52,10 @@ export function QueryErrorResetBoundary(props: QueryErrorResetBoundaryProps): VN
   const ch = props.children
   return (typeof ch === 'function' ? (ch as () => VNodeChild)() : ch) as VNode
 }
+
+// Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
+// the provide() call runs inside Pyreon's setup frame.
+nativeCompat(QueryErrorResetBoundary)
 
 // ─── useQueryErrorResetBoundary ──────────────────────────────────────────────
 

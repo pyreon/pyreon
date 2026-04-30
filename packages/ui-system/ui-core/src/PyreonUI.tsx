@@ -1,5 +1,5 @@
 import type { VNodeChild } from '@pyreon/core'
-import { createReactiveContext, provide, useContext } from '@pyreon/core'
+import { createReactiveContext, nativeCompat, provide, useContext } from '@pyreon/core'
 import { computed, signal } from '@pyreon/reactivity'
 import { ThemeContext } from '@pyreon/styler'
 import type { PyreonTheme } from '@pyreon/unistyle'
@@ -164,3 +164,10 @@ export function PyreonUI(props: PyreonUIProps): VNodeChild {
 
   return props.children ?? null
 }
+
+// Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
+// PyreonUI's three provide() calls + useContext(ModeContext) read run inside
+// Pyreon's setup frame. Critical for compat-mode apps that wrap their tree
+// with <PyreonUI> at the top level — without the marker, theme/mode never
+// propagate to descendants.
+nativeCompat(PyreonUI)

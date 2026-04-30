@@ -1,5 +1,14 @@
 import type { ClassValue, ComponentFn, Props, VNodeChild } from '@pyreon/core'
-import { createRef, cx, ErrorBoundary, h, onUnmount, provide, useContext } from '@pyreon/core'
+import {
+  createRef,
+  cx,
+  ErrorBoundary,
+  h,
+  nativeCompat,
+  onUnmount,
+  provide,
+  useContext,
+} from '@pyreon/core'
 import { computed, signal } from '@pyreon/reactivity'
 import { LoaderDataContext, prefetchLoaderData } from './loader'
 import { isLazy, RouterContext, setActiveRouter } from './router'
@@ -572,3 +581,12 @@ function isStaleChunk(err: unknown): boolean {
   if (err instanceof SyntaxError) return true
   return false
 }
+
+// Mark router framework components as native — compat-mode jsx() runtimes
+// (react/preact/vue/solid-compat) skip wrapCompatComponent for these so their
+// provide() / useContext() / onUnmount() / effect() / IntersectionObserver
+// setup runs inside Pyreon's lifecycle frame instead of the compat wrapper's
+// runUntracked accessor.
+nativeCompat(RouterProvider)
+nativeCompat(RouterView)
+nativeCompat(RouterLink)

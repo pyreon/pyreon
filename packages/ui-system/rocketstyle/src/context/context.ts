@@ -1,5 +1,5 @@
 import type { VNodeChild } from '@pyreon/core'
-import { useContext } from '@pyreon/core'
+import { nativeCompat, useContext } from '@pyreon/core'
 import { Provider as CoreProvider, context } from '@pyreon/ui-core'
 import { MODE_DEFAULT, THEME_MODES_INVERSED } from '../constants'
 
@@ -48,6 +48,10 @@ const Provider = ({ provider = CoreProvider, inversed, ...props }: TProvider): V
 
   return result ?? null
 }
+
+// Mark as native — reads useContext() and delegates to CoreProvider, both
+// of which need Pyreon's setup frame.
+nativeCompat(Provider)
 
 export { context }
 

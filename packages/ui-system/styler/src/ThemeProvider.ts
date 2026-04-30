@@ -12,7 +12,7 @@
  *   }
  */
 import type { VNode, VNodeChild } from '@pyreon/core'
-import { createReactiveContext, provide, useContext } from '@pyreon/core'
+import { createReactiveContext, nativeCompat, provide, useContext } from '@pyreon/core'
 
 export interface DefaultTheme {}
 
@@ -59,3 +59,7 @@ export function ThemeProvider({
   provide(ThemeContext, () => theme)
   return (children ?? null) as VNode | null
 }
+
+// Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
+// provide(ThemeContext, ...) reaches Pyreon's setup frame.
+nativeCompat(ThemeProvider)
