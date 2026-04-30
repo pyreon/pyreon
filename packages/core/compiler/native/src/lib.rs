@@ -2727,10 +2727,22 @@ fn build_template_call(el: &JSXElement, ctx: &mut Ctx) -> Option<String> {
         return Some(format!("_tpl(\"{}\", () => null)", escaped));
     }
 
+    // Append `;` to every bind line so ASI can't merge consecutive
+    // statements when the next line starts with `(`, `[`, etc. Mirror of
+    // the JS-fallback fix in `src/jsx.ts`. Concrete bug shape pre-fix:
+    // a child element with `has_dynamic=true` emits
+    // `const __e0 = __root.children[N]` followed by a ref-callback line
+    // `((el) => { x = el })(__e0)`. JS does NOT insert ASI here because
+    // `__root.children[N]((el) => ...)` is a valid expression, so the
+    // parser merges them into one function call:
+    //   `const __e0 = __root.children[N]((el) => ...)(__e0)`
+    // — calling `children[N]` as a function with the arrow as argument,
+    // and self-referencing `__e0` before assignment. Adding the `;`
+    // terminates each statement deterministically.
     let mut body = tb
         .bind_lines
         .iter()
-        .map(|l| format!("  {}", l))
+        .map(|l| format!("  {};", l))
         .collect::<Vec<_>>()
         .join("\n");
 

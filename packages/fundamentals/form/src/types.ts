@@ -46,15 +46,29 @@ export interface FieldState<T = unknown> {
   reset: () => void
 }
 
-/** Props returned by `register()` for binding an input element. */
+/** Props returned by `register(field)` for binding a text / number input. */
 export interface FieldRegisterProps<T> {
   value: Signal<T>
   onInput: (e: Event) => void
   onBlur: () => void
-  checked?: Accessor<boolean>
   /** Reactive disabled state — true when form OR field is disabled. */
   disabled?: Accessor<boolean>
   /** Reactive readOnly state — true when form OR field is read-only. */
+  readOnly?: Accessor<boolean>
+}
+
+/**
+ * Props returned by `register(field, { type: 'checkbox' })`. Omits `value`
+ * — for checkboxes the form value is `checked` (boolean), and HTML's
+ * `<input type="checkbox" value=...>` carries arbitrary metadata, not
+ * the form-level value. Spread cleanly onto `<input type="checkbox">`
+ * without losing reactivity or needing a cast.
+ */
+export interface FieldRegisterCheckboxProps {
+  checked: Accessor<boolean>
+  onInput: (e: Event) => void
+  onBlur: () => void
+  disabled?: Accessor<boolean>
   readOnly?: Accessor<boolean>
 }
 
@@ -90,13 +104,21 @@ export interface FormState<TValues extends Record<string, unknown>> {
   /**
    * Returns props for binding an input element to a field.
    * For text/select: includes `value` signal, `onInput`, and `onBlur`.
-   * For checkboxes: pass `{ type: 'checkbox' }` to also get a `checked` signal.
+   * For checkboxes: pass `{ type: 'checkbox' }` to get `checked` signal
+   *   instead of `value` (HTML's checkbox `value` attribute carries
+   *   arbitrary metadata, not the form-level value).
    * For numbers: pass `{ type: 'number' }` to use `valueAsNumber` on input.
    */
-  register: <K extends keyof TValues & string>(
-    field: K,
-    options?: { type?: 'checkbox' | 'number' },
-  ) => FieldRegisterProps<TValues[K]>
+  register: {
+    <K extends keyof TValues & string>(
+      field: K,
+      options: { type: 'checkbox' },
+    ): FieldRegisterCheckboxProps
+    <K extends keyof TValues & string>(
+      field: K,
+      options?: { type?: 'number' },
+    ): FieldRegisterProps<TValues[K]>
+  }
   /**
    * Submit handler — runs validation, then calls onSubmit if valid.
    * Can be called directly or as a form event handler (calls preventDefault).

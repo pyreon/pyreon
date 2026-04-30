@@ -4,6 +4,7 @@ import { computed, effect, signal } from '@pyreon/reactivity'
 import type { FieldDefinition, InferFieldValues } from './field'
 import { isFieldDefinition } from './field'
 import type {
+  FieldRegisterCheckboxProps,
   FieldRegisterProps,
   FieldState,
   FormState,
@@ -469,44 +470,74 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     }
   }
 
-  // Memoized register props per field+type combo
-  const registerCache = new Map<string, FieldRegisterProps<unknown>>()
+  // Memoized register props per field+type combo. Cache value type is
+  // the union of both shapes since checkbox returns `FieldRegisterCheckboxProps`
+  // and the rest return `FieldRegisterProps<unknown>`.
+  const registerCache = new Map<
+    string,
+    FieldRegisterProps<unknown> | FieldRegisterCheckboxProps
+  >()
 
-  const register = <K extends keyof TValues & string>(
+  function register<K extends keyof TValues & string>(
+    field: K,
+    options: { type: 'checkbox' },
+  ): FieldRegisterCheckboxProps
+  function register<K extends keyof TValues & string>(
+    field: K,
+    options?: { type?: 'number' },
+  ): FieldRegisterProps<TValues[K]>
+  function register<K extends keyof TValues & string>(
     field: K,
     opts?: { type?: 'checkbox' | 'number' },
-  ): FieldRegisterProps<TValues[K]> => {
+  ): FieldRegisterProps<TValues[K]> | FieldRegisterCheckboxProps {
     const cacheKey = `${field}:${opts?.type ?? 'text'}`
     const cached = registerCache.get(cacheKey)
-    if (cached) return cached as FieldRegisterProps<TValues[K]>
+    if (cached) {
+      return cached as FieldRegisterProps<TValues[K]> | FieldRegisterCheckboxProps
+    }
 
     const fieldState = fields[field]
-    const props: FieldRegisterProps<TValues[K]> = {
-      value: fieldState.value,
-      onInput: (e: Event) => {
-        const target = e.target as HTMLInputElement
-        if (opts?.type === 'checkbox') {
-          fieldState.setValue(target.checked as TValues[K])
-        } else if (opts?.type === 'number') {
-          const num = target.valueAsNumber
-          fieldState.setValue((Number.isNaN(num) ? target.value : num) as TValues[K])
-        } else {
-          fieldState.setValue(target.value as TValues[K])
-        }
-      },
-      onBlur: () => {
-        fieldState.setTouched()
-      },
+    const onInput = (e: Event) => {
+      const target = e.target as HTMLInputElement
+      if (opts?.type === 'checkbox') {
+        fieldState.setValue(target.checked as TValues[K])
+      } else if (opts?.type === 'number') {
+        const num = target.valueAsNumber
+        fieldState.setValue((Number.isNaN(num) ? target.value : num) as TValues[K])
+      } else {
+        fieldState.setValue(target.value as TValues[K])
+      }
     }
+    const onBlur = () => {
+      fieldState.setTouched()
+    }
+    // Form-level takes priority, field-level is the fallback
+    const disabled = computed(() => formDisabled() || fieldState.disabled())
+    const readOnly = computed(() => formReadOnly() || fieldState.readOnly())
 
     if (opts?.type === 'checkbox') {
-      props.checked = computed(() => Boolean(fieldState.value()))
+      // Omit `value` for checkbox — HTML's checkbox `value` attribute is
+      // arbitrary metadata, not the form-level value. The `<input
+      // type="checkbox" {...register(field, { type: 'checkbox' })}>` spread
+      // type-checks cleanly without a cast because `value` is gone.
+      const checkboxProps: FieldRegisterCheckboxProps = {
+        checked: computed(() => Boolean(fieldState.value())),
+        onInput,
+        onBlur,
+        disabled,
+        readOnly,
+      }
+      registerCache.set(cacheKey, checkboxProps)
+      return checkboxProps
     }
 
-    // Form-level takes priority, field-level is the fallback
-    props.disabled = computed(() => formDisabled() || fieldState.disabled())
-    props.readOnly = computed(() => formReadOnly() || fieldState.readOnly())
-
+    const props: FieldRegisterProps<TValues[K]> = {
+      value: fieldState.value,
+      onInput,
+      onBlur,
+      disabled,
+      readOnly,
+    }
     registerCache.set(cacheKey, props as FieldRegisterProps<unknown>)
     return props
   }

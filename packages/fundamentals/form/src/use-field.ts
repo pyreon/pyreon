@@ -1,7 +1,13 @@
 import type { Computed, Signal } from '@pyreon/reactivity'
 import { computed } from '@pyreon/reactivity'
 import { useFormContext } from './context'
-import type { FieldRegisterProps, FieldState, FormState, ValidationError } from './types'
+import type {
+  FieldRegisterCheckboxProps,
+  FieldRegisterProps,
+  FieldState,
+  FormState,
+  ValidationError,
+} from './types'
 
 export interface UseFieldResult<T> {
   /** Current field value (reactive signal). */
@@ -22,8 +28,16 @@ export interface UseFieldResult<T> {
   setTouched: () => void
   /** Reset the field to its initial value. */
   reset: () => void
-  /** Register props for input binding (includes disabled/readOnly). */
-  register: (opts?: { type?: 'checkbox' | 'number' }) => FieldRegisterProps<T>
+  /**
+   * Register props for input binding (includes disabled/readOnly).
+   * For checkbox-typed fields use the `{ type: 'checkbox' }` overload —
+   * returns `FieldRegisterCheckboxProps` (omits `value`, includes
+   * `checked`) so the spread type-checks cleanly onto a checkbox input.
+   */
+  register: {
+    (options: { type: 'checkbox' }): FieldRegisterCheckboxProps
+    (options?: { type?: 'number' }): FieldRegisterProps<T>
+  }
   /** Whether the field has an error (computed). */
   hasError: Computed<boolean>
   /** Whether the field should show its error (touched + has error). */
@@ -100,7 +114,13 @@ export function useField(
     setValue: fieldState.setValue,
     setTouched: fieldState.setTouched,
     reset: fieldState.reset,
-    register: (opts?) => form.register(name, opts),
+    // Delegate the runtime to `form.register(name, ...)` and let the
+    // typed wrapper pick the right overload. The narrow `unknown` cast
+    // is needed because TS can't prove the union narrowing through a
+    // function-typed delegation otherwise.
+    register: ((opts?: { type?: 'checkbox' | 'number' }) =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      (form.register as (f: string, o?: unknown) => unknown)(name, opts)) as UseFieldResult<unknown>['register'],
     hasError,
     showError,
   }

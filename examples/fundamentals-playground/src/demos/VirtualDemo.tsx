@@ -41,7 +41,7 @@ export function VirtualDemo() {
         </p>
 
         <div
-          ref={(el: HTMLElement) => parentRef.set(el)}
+          ref={(el: HTMLElement | null) => parentRef.set(el)}
           style="height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px"
         >
           <div style={`height: ${totalSize()}px; width: 100%; position: relative`}>
@@ -50,7 +50,11 @@ export function VirtualDemo() {
                 const item = items[vRow.index]!
                 return (
                   <div
-                    key={vRow.key}
+                    // TanStack Virtual returns `Key = string | number | bigint`;
+                    // Pyreon's JSX `key` prop accepts `string | number`. Coerce
+                    // to string so the bigint case is well-defined (Pyreon's
+                    // reconciler keys on identity, so any stable string works).
+                    key={String(vRow.key)}
                     style={`
                       position: absolute;
                       top: 0;

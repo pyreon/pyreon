@@ -122,6 +122,25 @@ describeNative('Native vs JS equivalence — template emission', () => {
   test('void element', () => compare('<div><br /><span>text</span></div>'))
   test('ref in template (object)', () => compare('<div ref={myRef}><span /></div>'))
   test('ref in template (arrow)', () => compare('<div ref={(el) => { myEl = el }}><span /></div>'))
+
+  // Regression: a child element with a block-arrow ref AND adjacent
+  // reactive props used to emit `const __e0 = __root.children[N]`
+  // followed by `((el) => { ... })(__e0)` with NO `;` between, so JS's
+  // ASI merged them into one expression `const __e0 = X((el) => ...)(__e0)`
+  // (calling X as fn, self-referencing __e0). Both backends now append
+  // `;` to every bind line. This test asserts both emit the SAME `;`-
+  // terminated output and the chained-call shape never appears.
+  test('block-arrow ref on child element with adjacent reactive prop', () => {
+    const input = '<div><span ref={(el) => { x = el }} data-state={cls()} /></div>'
+    compare(input)
+    // Tighter assertion: neither backend may emit the silent-merge shape.
+    const js = transformJSX_JS(input, 'test.tsx')
+    expect(js.code).not.toMatch(/children\[0\]\(\(/)
+    expect(js.code).toMatch(/const __e0 = __root\.children\[0\];/)
+    const rs = nativeTransform!(input, 'test.tsx', false, null)
+    expect(rs.code).not.toMatch(/children\[0\]\(\(/)
+    expect(rs.code).toMatch(/const __e0 = __root\.children\[0\];/)
+  })
   test('non-delegated event', () => compare('<div onMouseEnter={handler}><span /></div>'))
   test('style object in template', () => compare('<div style={{ overflow: "hidden" }}>text</div>'))
   test('style string in template', () => compare('<div style="color: red">text</div>'))
