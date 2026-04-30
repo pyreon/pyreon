@@ -615,6 +615,36 @@ const ModeCtx = createReactiveContext<'light' | 'dark'>('light')
 
 `onMount(fn: () => CleanupFn | void)` — callbacks can return nothing or a cleanup function.
 
+### Compat-mode native marker contract
+
+`@pyreon/{react,preact,vue,solid}-compat` ship a JSX runtime that wraps every user component in a `wrapCompatComponent` HOC — the wrapper relocates the render context so React/Preact/Vue/Solid-style component bodies (which expect a fresh render frame on every state change) work inside Pyreon's mount pipeline. **This wrapping is a problem for Pyreon framework components** that use `provide()` / `onMount()` / `onUnmount()` / `effect()` at component-body scope: their setup code lands inside the wrapper's accessor, not inside Pyreon's setup frame, so `provide()` writes land in a torn-down context stack and `effect()` re-runs lose access to live signals.
+
+**Solution: `nativeCompat(Component)` from `@pyreon/core`.** Marks a component so the four compat jsx() runtimes route it through `h(type, props)` directly — no wrapper, body runs in Pyreon's setup frame. The marker is a `Symbol.for('pyreon:native-compat')` property on the function (registry symbol → cross-package identity without import direction). 24 framework components ship marked today across 13 packages:
+
+- **`@pyreon/core`**: `ErrorBoundary`
+- **`@pyreon/runtime-dom`**: `Transition`, `TransitionGroup`, `KeepAlive`
+- **`@pyreon/router`**: `RouterProvider`, `RouterView`, `RouterLink`
+- **`@pyreon/head`**: `HeadProvider`
+- **`@pyreon/query`**: `QueryClientProvider`, `QueryErrorResetBoundary`
+- **`@pyreon/i18n`**: `I18nProvider`
+- **`@pyreon/form`**: `FormProvider`, `Form`, `Submit`
+- **`@pyreon/permissions`**: `PermissionsProvider`
+- **`@pyreon/toast`**: `Toaster`
+- **`@pyreon/ui-core`**: `PyreonUI`, `CoreProvider`
+- **`@pyreon/unistyle`**: `UnistyleProvider`
+- **`@pyreon/styler`**: `ThemeProvider`
+- **`@pyreon/rocketstyle`**: `Provider`
+- **`@pyreon/coolgrid`**: `Container`, `Row`
+- **`@pyreon/elements`**: `Overlay`, `OverlayContextProvider`
+
+The marker is internal infrastructure for framework components — user code in compat-mode apps doesn't normally need to call it. **Exception**: if you write your own Pyreon-flavored helper component using `provide()` / `onMount()` and use it in a compat-mode app, mark it: `nativeCompat(MyHelper)`. See `.claude/rules/anti-patterns.md` for the foot-gun catalog.
+
+**Internal Provider components are also marked** even when they're `@internal` / `@deprecated` (CoreProvider, UnistyleProvider, RocketstyleProvider, OverlayContextProvider). Reason: PyreonUI's JSX body still routes through the active jsx() runtime in compat-mode apps — any unmarked Provider rendered inside PyreonUI gets wrapped, which swallows its `provide()` call before reaching descendants.
+
+Test layering: per-compat marker-bypass unit tests in each `*-compat/src/tests/native-marker-bypass.test.tsx` (bisect-verified by removing the `if (isNativeCompat(type))` branch from each compat's `jsx-runtime.ts`), plus the cpa-app-compat e2e gate in `e2e/cpa-app-compat.shared.ts` (3 tests × 4 compat scaffolds — proves real-app shape including loader-driven routes work end-to-end). The unit tests catch jsx-runtime regressions; the e2e tests catch multi-render-cycle regressions (signal change re-fires the wrapper's accessor → `provide()` in re-run lands in stale stack — only visible against real router state).
+
+Reference implementation: `packages/core/core/src/compat-marker.ts`.
+
 ### Code Splitting & Dynamic Components
 
 - `lazy(loader)` — wraps dynamic import with Suspense `__loading` integration
