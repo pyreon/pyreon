@@ -65,18 +65,27 @@ test.describe('cpa-dash — runtime', () => {
     await page.waitForURL(/\/app\/dashboard$/, { timeout: 10_000 })
   })
 
-  test.skip('invoice page renders for known id', async ({ page }) => {
-    // BLOCKED on a fixture-level concern, NOT on the framework. With the
-    // redirect-helper landing, the `/app/_layout` loader 307s anonymous
-    // requests SSR-side BEFORE the page renders — correct behavior. To
-    // hit `/app/invoices/inv_1001`, the test needs an authenticated SSR
-    // request. The cpa-pw-dash auth fixture's `sessions` Map lives in
-    // module state and diverges between SSR and CSR module instances
-    // under Vite dev (signIn runs client-side, server-side sessions Map
-    // is empty). Restoring the test requires a fixture refactor: a real
-    // server-side `/api/signin` endpoint that responds with `Set-Cookie`
-    // and populates the server-side sessions map. Tracked as a follow-up
-    // separate from this PR's redirect-helper landing.
+  test('invoice page renders for known id (after server-side signin)', async ({ page }) => {
+    // Locks in the SSR auth-gate end-to-end: sign in via the server-side
+    // `/api/signin` endpoint (sets `Set-Cookie: sid=...`), then navigate
+    // directly to a deeply-nested auth-gated page. The browser carries the
+    // cookie on the next request, the SSR `_layout.tsx` loader reads it,
+    // `getSession(sid)` hits the SAME server-side `sessions` Map that
+    // `signIn` populated, and the layout renders the page WITHOUT
+    // redirecting. Pre-fix the login.tsx form called `signIn()` directly
+    // in browser scope — populating only the CSR module's Map — and
+    // `page.goto('/app/invoices/inv_1001')` was a fresh SSR request that
+    // saw no session and 307'd to /login.
+    await page.context().clearCookies()
+    await page.goto('/login')
+    await page.locator('input[type="email"]').first().fill('demo@example.com')
+    await page.locator('input[type="password"]').first().fill('demo1234')
+    await page.locator('button[type="submit"]').first().click()
+    await page.waitForURL(/\/app\/dashboard$/, { timeout: 10_000 })
+
+    // Direct navigation to a nested auth-gated route — full SSR request,
+    // not CSR. The `Set-Cookie` from `/api/signin` carries the session
+    // SSR-side, so the layout renders the page instead of redirecting.
     await page.goto('/app/invoices/inv_1001')
     expect(page.url()).toMatch(/inv_1001/)
   })
