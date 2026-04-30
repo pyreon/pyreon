@@ -1,5 +1,5 @@
 import type { VNodeChild } from '@pyreon/core'
-import { createReactiveContext, provide } from '@pyreon/core'
+import { createReactiveContext, nativeCompat, provide } from '@pyreon/core'
 import isEmpty from './isEmpty'
 import type { Breakpoints } from './types'
 
@@ -67,6 +67,13 @@ function Provider({ theme, children, ...props }: ProviderType): VNodeChild {
 
   return children ?? null
 }
+
+// Mark as native — even though @internal, PyreonUI invokes this internally
+// AND the JSX inside PyreonUI's body still routes through the active jsx()
+// runtime (which is the compat one in compat-mode apps). Without the marker,
+// CoreProvider's body runs inside the compat wrapper's runUntracked and its
+// provide() call is swallowed.
+nativeCompat(Provider)
 
 export { context }
 

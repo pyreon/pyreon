@@ -1,4 +1,4 @@
-import { provide, splitProps } from '@pyreon/core'
+import { nativeCompat, provide, splitProps } from '@pyreon/core'
 import { __DEV__, PKG_NAME } from '../constants'
 import ContainerContext from '../context/ContainerContext'
 import type { ElementType } from '../types'
@@ -72,5 +72,9 @@ const name = `${PKG_NAME}/Container`
 Component.displayName = name
 Component.pkgName = PKG_NAME
 Component.PYREON__COMPONENT = name
+
+// Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
+// Container's provide(ContainerContext, ...) reaches descendant Row/Col.
+nativeCompat(Component)
 
 export default Component

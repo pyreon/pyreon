@@ -1,5 +1,5 @@
 import type { Props, VNode, VNodeChild } from '@pyreon/core'
-import { createContext, onMount, provide, useContext } from '@pyreon/core'
+import { createContext, nativeCompat, onMount, provide, useContext } from '@pyreon/core'
 import type { QueryClient } from '@tanstack/query-core'
 
 export interface QueryClientProviderProps extends Props {
@@ -30,6 +30,11 @@ export function QueryClientProvider(props: QueryClientProviderProps): VNode {
   const ch = props.children
   return (typeof ch === 'function' ? (ch as () => VNodeChild)() : ch) as VNode
 }
+
+// Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
+// QueryClientProvider's provide() + onMount() (focusManager / onlineManager
+// activation) run inside Pyreon's setup frame.
+nativeCompat(QueryClientProvider)
 
 /**
  * Returns the nearest QueryClient provided by <QueryClientProvider>.

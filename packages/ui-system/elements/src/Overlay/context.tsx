@@ -5,7 +5,7 @@
  */
 
 import type { VNodeChild } from '@pyreon/core'
-import { createContext, provide, useContext } from '@pyreon/core'
+import { createContext, nativeCompat, provide, useContext } from '@pyreon/core'
 
 export interface OverlayContext {
   blocked: boolean | (() => boolean)
@@ -28,5 +28,9 @@ const Component = (props: OverlayContext & { children: VNodeChild }) => {
 
   return <>{props.children}</>
 }
+
+// Mark as native — invoked by Overlay internally; needs Pyreon's setup
+// frame for provide(context, ...) to reach descendant overlays.
+nativeCompat(Component)
 
 export default Component

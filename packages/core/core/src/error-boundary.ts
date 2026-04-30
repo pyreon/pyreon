@@ -1,4 +1,5 @@
 import { signal } from '@pyreon/reactivity'
+import { nativeCompat } from './compat-marker'
 import { popErrorBoundary, pushErrorBoundary } from './component'
 import { onUnmount } from './lifecycle'
 import { reportError } from './telemetry'
@@ -68,3 +69,8 @@ export function ErrorBoundary(props: {
     return (typeof ch === 'function' ? ch() : ch) as VNodeChildAtom
   }
 }
+
+// Mark as native so compat-mode jsx() runtimes (react/preact/vue/solid-compat)
+// skip wrapCompatComponent — ErrorBoundary uses pushErrorBoundary/onUnmount,
+// which need Pyreon's setup frame (compat wrapping breaks dispatchToErrorBoundary).
+nativeCompat(ErrorBoundary)

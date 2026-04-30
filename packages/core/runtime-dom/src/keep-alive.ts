@@ -1,5 +1,5 @@
 import type { Props, VNodeChild } from '@pyreon/core'
-import { createRef, h, onMount } from '@pyreon/core'
+import { createRef, h, nativeCompat, onMount } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { mountChild } from './mount'
 
@@ -70,3 +70,7 @@ export function KeepAlive(props: KeepAliveProps): VNodeChild {
   // (children appear as if directly in the parent flow)
   return h('div', { ref: containerRef, style: 'display: contents' })
 }
+
+// Mark as native so compat-mode jsx() runtimes skip wrapCompatComponent —
+// KeepAlive uses onMount + effect + mountChild that need Pyreon's setup frame.
+nativeCompat(KeepAlive)

@@ -1,5 +1,5 @@
 import type { ComponentFn, Props, VNodeChild } from '@pyreon/core'
-import { provide } from '@pyreon/core'
+import { nativeCompat, provide } from '@pyreon/core'
 import type { HeadContextValue } from './context'
 import { createHeadContext, HeadContext } from './context'
 
@@ -29,3 +29,8 @@ export const HeadProvider: ComponentFn<HeadProviderProps> = (props) => {
   const ch = props.children
   return typeof ch === 'function' ? (ch as () => VNodeChild)() : ch
 }
+
+// Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
+// HeadProvider's provide(HeadContext, ...) call runs inside Pyreon's setup
+// frame, not the compat wrapper's runUntracked accessor.
+nativeCompat(HeadProvider)
