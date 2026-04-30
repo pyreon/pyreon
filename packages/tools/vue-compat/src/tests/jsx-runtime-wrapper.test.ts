@@ -1,4 +1,5 @@
-import { nativeCompat } from '@pyreon/core'
+import type { ComponentFn } from '@pyreon/core'
+import { createContext, h, nativeCompat, provide, useContext } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { onMounted, onUnmounted } from '../index'
@@ -103,5 +104,55 @@ describe('vue-compat — wrapCompatComponent (jsx-runtime)', () => {
     // Marker hit: jsx() routes through h() directly with the SOURCE fn,
     // never through wrapCompatComponent. So vnode.type === Native.
     expect(vnode.type).toBe(Native)
+  })
+
+  it('jsx() wraps UNMARKED components (control — bypass is selective)', () => {
+    // Sibling assertion to "skips wrapping for marked components": proves the
+    // marker check is selective (only marked components bypass), not blanket.
+    // Without this, a regression that accidentally wraps EVERYTHING would
+    // still pass the "marked component" test as a coincidence.
+    const Unmarked = () => jsx('div', { children: 'wrapped' })
+    const vnode = jsx(Unmarked, {})
+    // Wrapper: vnode.type is the cached wrapCompatComponent, NOT the source fn.
+    expect(vnode.type).not.toBe(Unmarked)
+    expect(typeof vnode.type).toBe('function')
+  })
+
+  it('marked Provider mounts cleanly through compat-mode jsx() — provide() reaches descendants', () => {
+    // PR 5 mount-integration smoke (parity with react/preact/solid-compat
+    // suites). Sanity check that a marked Provider mounts cleanly through
+    // compat-mode jsx() and its `provide()` reaches the descendant Consumer.
+    //
+    // Note: this assertion is NOT bisect-load-bearing for the marker check
+    // itself. Synchronous mount preserves provide() context even WITH the
+    // wrapper (provide() pushes onto the global context stack regardless),
+    // so removing `nativeCompat(Provider)` here won't fail this test. The
+    // genuine multi-render-cycle bug PR #425 prevents (signal change re-fires
+    // the wrapper's accessor → provide() in re-run lands in stale stack) is
+    // covered by PR #427's e2e gate against real router state.
+    //
+    // The bisect-load-bearing assertion is the bypass-identity test above
+    // (`vnode.type === Native`) — that one fails when the marker check is
+    // removed from `jsx-runtime.ts`.
+    const Ctx = createContext<string>('default')
+
+    const Provider: ComponentFn = (props) => {
+      provide(Ctx, props.value as string)
+      return props.children as never
+    }
+    nativeCompat(Provider)
+
+    const Consumer: ComponentFn = () => {
+      const value = useContext(Ctx)
+      return h('span', { 'data-value': value }, value)
+    }
+    nativeCompat(Consumer)
+
+    const el = container()
+    mount(jsx(Provider, { value: 'native', children: jsx(Consumer, {}) }), el)
+
+    const span = el.querySelector('span')
+    expect(span?.getAttribute('data-value')).toBe('native')
+    expect(span?.textContent).toBe('native')
   })
 })
