@@ -1420,7 +1420,7 @@ describe('DOCX renderer', () => {
     // DOCX files are ZIP archives — first two bytes are PK (0x50, 0x4B)
     expect((result as Uint8Array)[0]).toBe(0x50)
     expect((result as Uint8Array)[1]).toBe(0x4b)
-  }, 15000)
+  }, 30000)
 
   it('embeds base64 images via ImageRun', async () => {
     // 1x1 red pixel PNG as base64
@@ -1436,7 +1436,7 @@ describe('DOCX renderer', () => {
     const result = await render(doc, 'docx')
     expect(result).toBeInstanceOf(Uint8Array)
     expect((result as Uint8Array).length).toBeGreaterThan(0)
-  }, 15000)
+  }, 30000)
 
   it('renders external URL images as placeholders', async () => {
     const doc = Document({
@@ -1450,7 +1450,7 @@ describe('DOCX renderer', () => {
     const result = await render(doc, 'docx')
     expect(result).toBeInstanceOf(Uint8Array)
     expect((result as Uint8Array).length).toBeGreaterThan(0)
-  }, 15000)
+  }, 30000)
 
   it('renders page with header and footer', async () => {
     const doc = Document({
@@ -1464,7 +1464,7 @@ describe('DOCX renderer', () => {
     const result = await render(doc, 'docx')
     expect(result).toBeInstanceOf(Uint8Array)
     expect((result as Uint8Array).length).toBeGreaterThan(0)
-  }, 15000)
+  }, 30000)
 
   it('renders table with bordered option and column widths', async () => {
     const doc = Document({
@@ -1481,7 +1481,7 @@ describe('DOCX renderer', () => {
     const result = await render(doc, 'docx')
     expect(result).toBeInstanceOf(Uint8Array)
     expect((result as Uint8Array).length).toBeGreaterThan(0)
-  }, 15000)
+  }, 30000)
 
   it('renders nested lists', async () => {
     const doc = Document({
@@ -1502,7 +1502,7 @@ describe('DOCX renderer', () => {
     const result = await render(doc, 'docx')
     expect(result).toBeInstanceOf(Uint8Array)
     expect((result as Uint8Array).length).toBeGreaterThan(0)
-  }, 15000)
+  }, 30000)
 })
 
 // ─── XLSX Renderer (integration) ────────────────────────────────────────────
@@ -1534,7 +1534,7 @@ describe('XLSX renderer', () => {
     // XLSX files are ZIP archives — first two bytes are PK (0x50, 0x4B)
     expect((result as Uint8Array)[0]).toBe(0x50)
     expect((result as Uint8Array)[1]).toBe(0x4b)
-  }, 15000)
+  }, 30000)
 
   it('parses currency values as numbers', async () => {
     const doc = Document({
@@ -1547,7 +1547,7 @@ describe('XLSX renderer', () => {
     const result = await render(doc, 'xlsx')
     expect(result).toBeInstanceOf(Uint8Array)
     expect((result as Uint8Array).length).toBeGreaterThan(0)
-  }, 15000)
+  }, 30000)
 
   it('parses percentage values', async () => {
     const doc = Document({
@@ -1560,7 +1560,7 @@ describe('XLSX renderer', () => {
     const result = await render(doc, 'xlsx')
     expect(result).toBeInstanceOf(Uint8Array)
     expect((result as Uint8Array).length).toBeGreaterThan(0)
-  }, 15000)
+  }, 30000)
 
   it('renders multiple tables on the same sheet with spacing', async () => {
     const doc = Document({
@@ -1585,7 +1585,7 @@ describe('XLSX renderer', () => {
     const result = await render(doc, 'xlsx')
     expect(result).toBeInstanceOf(Uint8Array)
     expect((result as Uint8Array).length).toBeGreaterThan(0)
-  }, 15000)
+  }, 30000)
 
   it('renders bordered tables', async () => {
     const doc = Document({
@@ -1599,7 +1599,7 @@ describe('XLSX renderer', () => {
     const result = await render(doc, 'xlsx')
     expect(result).toBeInstanceOf(Uint8Array)
     expect((result as Uint8Array).length).toBeGreaterThan(0)
-  }, 15000)
+  }, 30000)
 
   it('renders empty document with default sheet', async () => {
     const doc = Document({ children: Text({ children: 'no tables' }) })
@@ -1607,7 +1607,7 @@ describe('XLSX renderer', () => {
     const result = await render(doc, 'xlsx')
     expect(result).toBeInstanceOf(Uint8Array)
     expect((result as Uint8Array).length).toBeGreaterThan(0)
-  }, 15000)
+  }, 30000)
 })
 
 // ─── PDF Renderer (integration) ─────────────────────────────────────────────
@@ -1653,7 +1653,7 @@ describe('PDF renderer', () => {
     // PDF files start with %PDF
     const header = String.fromCharCode(...(result as Uint8Array).slice(0, 5))
     expect(header).toBe('%PDF-')
-  }, 15000)
+  }, 30000)
 
   it('renders images with HTTP URLs as placeholder text', async () => {
     const doc = Document({
@@ -1669,7 +1669,7 @@ describe('PDF renderer', () => {
     const result = await render(doc, 'pdf')
     expect(result).toBeInstanceOf(Uint8Array)
     expect((result as Uint8Array).length).toBeGreaterThan(0)
-  }, 15000)
+  }, 30000)
 
   it('renders page with header and footer', async () => {
     const doc = Document({
@@ -1684,7 +1684,7 @@ describe('PDF renderer', () => {
     const result = await render(doc, 'pdf')
     expect(result).toBeInstanceOf(Uint8Array)
     expect((result as Uint8Array).length).toBeGreaterThan(0)
-  }, 15000)
+  }, 30000)
 })
 
 // ─── PPTX Renderer (integration) ────────────────────────────────────────────
@@ -1727,7 +1727,7 @@ describe('PPTX renderer', () => {
     // PPTX files are ZIP archives — first two bytes are PK (0x50, 0x4B)
     expect((result as Uint8Array)[0]).toBe(0x50)
     expect((result as Uint8Array)[1]).toBe(0x4b)
-  }, 15000)
+  }, 30000)
 
   it('renders a document without explicit pages as a single slide', async () => {
     const doc = Document({
@@ -1741,7 +1741,7 @@ describe('PPTX renderer', () => {
     const result = await render(doc, 'pptx')
     expect(result).toBeInstanceOf(Uint8Array)
     expect((result as Uint8Array).length).toBeGreaterThan(0)
-  }, 15000)
+  }, 30000)
 
   it('renders all node types without errors', async () => {
     // 1x1 red pixel PNG as base64
@@ -1769,7 +1769,7 @@ describe('PPTX renderer', () => {
     const result = await render(doc, 'pptx')
     expect(result).toBeInstanceOf(Uint8Array)
     expect((result as Uint8Array).length).toBeGreaterThan(0)
-  }, 15000)
+  }, 30000)
 })
 
 // ─── Slack Renderer ─────────────────────────────────────────────────────────

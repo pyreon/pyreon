@@ -190,8 +190,12 @@ describe('loader', { timeout: 15_000 }, () => {
     const start = performance.now()
     await ensureModules({ series: [{ type: 'bar', data: [2] }] })
     const duration = performance.now() - start
-    // Should be near-instant since modules are cached
-    expect(duration).toBeLessThan(50)
+    // 50ms was too tight for shared CI runners — observed 50.13ms on a
+    // GitHub-hosted runner under contention, blocking unrelated PRs.
+    // The cold path takes seconds (multiple dynamic imports), so 250ms
+    // still proves the cache works while tolerating slow CI. Mirrors
+    // the same threshold in `integration.test.ts` (PR #390).
+    expect(duration).toBeLessThan(250)
   })
 
   it('handles series as single object (not array)', async () => {
