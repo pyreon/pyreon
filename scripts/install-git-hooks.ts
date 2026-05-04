@@ -27,7 +27,7 @@
  */
 
 import { execSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const HOOKS_DIR = '.githooks'
@@ -50,6 +50,36 @@ function isGitRepo(): boolean {
 
 function getCurrentHooksPath(): string | null {
   return run('git config --get core.hooksPath', { capture: true })
+}
+
+function canonicalize(path: string): string {
+  // realpathSync resolves symlinks (matters on macOS where /tmp →
+  // /private/tmp, and on systems where the user's git checkout lives
+  // under a symlinked path). Falls back to the original if the path
+  // doesn't exist — comparison still works for stored values.
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
+  }
+}
+
+function getDefaultHooksPaths(repoRoot: string): string[] {
+  // Collect every path that git COULD use as the default hooks
+  // directory. In a main checkout, only one matches: `<git-dir>/hooks`.
+  // In a worktree, `core.hooksPath` is repo-shared and still points at
+  // the main checkout's `<git-common-dir>/hooks`, but the worktree's
+  // own `git rev-parse --git-dir` returns the per-worktree git dir
+  // (`<main-git-dir>/worktrees/<name>`). We have to accept BOTH.
+  // All paths are canonicalized via realpathSync so symlinks
+  // (notably macOS's `/var` → `/private/var`) don't cause false
+  // mismatches.
+  const paths = new Set<string>()
+  const gitDir = run('git rev-parse --git-dir', { capture: true }) ?? '.git'
+  const gitCommonDir = run('git rev-parse --git-common-dir', { capture: true }) ?? gitDir
+  paths.add(canonicalize(resolve(repoRoot, gitDir, 'hooks')))
+  paths.add(canonicalize(resolve(repoRoot, gitCommonDir, 'hooks')))
+  return [...paths]
 }
 
 function main(): void {
@@ -75,10 +105,26 @@ function main(): void {
     return
   }
 
-  if (current && current !== HOOKS_DIR) {
-    // The user has a custom hooks path (husky, lefthook, custom). Don't
-    // clobber it — print a one-line note and exit so they can wire ours
-    // in manually if they want.
+  // Distinguish "real user override" (husky, lefthook, custom path) from
+  // "core.hooksPath happens to point at git's default location". The
+  // default is `<git-dir>/hooks` — an older bootstrap may have set it
+  // explicitly, or the user may have set it without realising it
+  // matches the default. In either case, Pyreon's hook at .githooks/ is
+  // orphaned because git looks at the configured path. Treat the
+  // default-location case as "no real override" and replace with our
+  // hooks directory.
+  //
+  // This is the gap-#1 fix from the structural-cleanup sequence —
+  // pre-fix any non-empty `current` was treated as a user override and
+  // Pyreon's pre-push validation never fired.
+  const defaultHooksPaths = getDefaultHooksPaths(repoRoot)
+  const currentResolved = current ? canonicalize(resolve(repoRoot, current)) : null
+  const isDefaultPath = currentResolved !== null && defaultHooksPaths.includes(currentResolved)
+
+  if (current && !isDefaultPath) {
+    // The user has a real custom hooks path (husky / lefthook / custom).
+    // Don't clobber it — print a one-line note and exit so they can
+    // wire ours in manually if they want.
     console.warn(
       `[pyreon] core.hooksPath is set to "${current}" — leaving as-is.\n` +
         `        Pyreon's hooks live in .githooks/ — chain them in if desired.`,
@@ -86,6 +132,8 @@ function main(): void {
     return
   }
 
+  // Either no config OR config points to git's default `<git-dir>/hooks`
+  // (which means Pyreon's hook isn't running). Install ours.
   run(`git config core.hooksPath ${HOOKS_DIR}`)
   console.log('[pyreon] git hooks installed (.githooks/) — pre-push validation enabled.')
   console.log('[pyreon] bypass with PYREON_SKIP_PRE_PUSH=1 or git push --no-verify.')
