@@ -27,7 +27,7 @@
  */
 
 import { execSync } from 'node:child_process'
-import { existsSync, realpathSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const HOOKS_DIR = '.githooks'
@@ -52,18 +52,6 @@ function getCurrentHooksPath(): string | null {
   return run('git config --get core.hooksPath', { capture: true })
 }
 
-function canonicalize(path: string): string {
-  // realpathSync resolves symlinks (matters on macOS where /tmp →
-  // /private/tmp, and on systems where the user's git checkout lives
-  // under a symlinked path). Falls back to the original if the path
-  // doesn't exist — comparison still works for stored values.
-  try {
-    return realpathSync(path)
-  } catch {
-    return path
-  }
-}
-
 function getDefaultHooksPaths(repoRoot: string): string[] {
   // Collect every path that git COULD use as the default hooks
   // directory. In a main checkout, only one matches: `<git-dir>/hooks`.
@@ -71,14 +59,11 @@ function getDefaultHooksPaths(repoRoot: string): string[] {
   // the main checkout's `<git-common-dir>/hooks`, but the worktree's
   // own `git rev-parse --git-dir` returns the per-worktree git dir
   // (`<main-git-dir>/worktrees/<name>`). We have to accept BOTH.
-  // All paths are canonicalized via realpathSync so symlinks
-  // (notably macOS's `/var` → `/private/var`) don't cause false
-  // mismatches.
   const paths = new Set<string>()
   const gitDir = run('git rev-parse --git-dir', { capture: true }) ?? '.git'
   const gitCommonDir = run('git rev-parse --git-common-dir', { capture: true }) ?? gitDir
-  paths.add(canonicalize(resolve(repoRoot, gitDir, 'hooks')))
-  paths.add(canonicalize(resolve(repoRoot, gitCommonDir, 'hooks')))
+  paths.add(resolve(repoRoot, gitDir, 'hooks'))
+  paths.add(resolve(repoRoot, gitCommonDir, 'hooks'))
   return [...paths]
 }
 
@@ -118,7 +103,7 @@ function main(): void {
   // pre-fix any non-empty `current` was treated as a user override and
   // Pyreon's pre-push validation never fired.
   const defaultHooksPaths = getDefaultHooksPaths(repoRoot)
-  const currentResolved = current ? canonicalize(resolve(repoRoot, current)) : null
+  const currentResolved = current ? resolve(repoRoot, current) : null
   const isDefaultPath = currentResolved !== null && defaultHooksPaths.includes(currentResolved)
 
   if (current && !isDefaultPath) {

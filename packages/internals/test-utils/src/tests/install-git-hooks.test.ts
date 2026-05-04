@@ -1,5 +1,5 @@
 import { execSync, spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -42,7 +42,16 @@ interface RunResult {
 }
 
 function setupTempRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'pyreon-hooks-test-'))
+  // Canonicalize via realpathSync because on macOS `mkdtempSync(tmpdir())`
+  // returns `/var/folders/X` while `git rev-parse --show-toplevel` returns
+  // `/private/var/folders/X` (the same dir, reached through the
+  // `/var → /private/var` symlink). The script does plain string compare
+  // — that's the right behavior for real repo paths, which don't go
+  // through symlinks. The test fixture lives in tmpdir(), which on macOS
+  // does. Canonicalize HERE so the fixture matches what the script will
+  // resolve, rather than adding test-driven canonicalization to the
+  // production script.
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'pyreon-hooks-test-')))
   execSync('git init -q', { cwd: dir })
   execSync('git config user.email test@test.local', { cwd: dir })
   execSync('git config user.name test', { cwd: dir })
@@ -153,7 +162,7 @@ describe('scripts/install-git-hooks.ts', () => {
   })
 
   it('exits silently when not in a git repo', () => {
-    const nonGitDir = mkdtempSync(join(tmpdir(), 'pyreon-no-git-'))
+    const nonGitDir = realpathSync(mkdtempSync(join(tmpdir(), 'pyreon-no-git-')))
     try {
       const result = runInstall(nonGitDir)
       expect(result.status).toBe(0)
