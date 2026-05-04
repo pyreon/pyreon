@@ -32,9 +32,24 @@
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { gzipSync } from 'node:zlib'
+import { parseSync, Visitor } from 'oxc-parser'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
 const BUDGETS_PATH = join(REPO_ROOT, 'scripts', 'bundle-budgets.json')
+
+/**
+ * Override `<REPO_ROOT>/packages` discovery with a custom directory.
+ * Used by the regression test in test-utils to point the script at a
+ * controlled fixture (a fake package with an unresolvable import) and
+ * assert that the `failures[]` field surfaces the bundle failure
+ * instead of silently dropping it. Production runs always use the
+ * real `packages/` directory.
+ */
+function getPackagesRoot(): string {
+  const flag = process.argv.find((arg) => arg.startsWith('--packages-root='))
+  if (flag) return resolve(flag.slice('--packages-root='.length))
+  return join(REPO_ROOT, 'packages')
+}
 
 interface PackageInfo {
   name: string
@@ -45,7 +60,7 @@ interface PackageInfo {
 
 function findPackages(): PackageInfo[] {
   const result: PackageInfo[] = []
-  const packagesRoot = join(REPO_ROOT, 'packages')
+  const packagesRoot = getPackagesRoot()
   for (const cat of readdirSync(packagesRoot)) {
     const catDir = join(packagesRoot, cat)
     for (const pkg of readdirSync(catDir)) {
@@ -95,11 +110,11 @@ function fileExists(path: string): boolean {
 
 /**
  * Walks every `*.js` file under `dir` and extracts non-relative module
- * specifiers from `import` / `require` / `from` statements (and dynamic
- * `import(...)`). Used to externalize every third-party dep this
- * package's built code touches, regardless of whether it's a direct
- * dep, optional dep, or a transitive of one of those that ended up
- * inlined into a chunk.
+ * specifiers from `import` / `export from` / dynamic `import()` /
+ * `require()` syntax via AST analysis. Used to externalize every
+ * third-party dep this package's built code touches, regardless of
+ * whether it's a direct dep, optional dep, or a transitive of one of
+ * those that ended up inlined into a chunk.
  *
  * Why scan source instead of using package.json `dependencies`:
  * `@pyreon/document` declares `pdfmake`/`pptxgenjs`/etc. as
@@ -107,18 +122,88 @@ function fileExists(path: string): boolean {
  * (`jszip`, etc.) get vendored INTO `document/lib/` as split chunks
  * that the consumer never sees declared. We need to externalize the
  * transitive too, or Bun.build fails resolving it.
+ *
+ * Why AST instead of regex (gap #4 closure):
+ * `@pyreon/compiler` vendors its own JS transform output as STRING
+ * LITERALS containing `import ... from "..."` — a regex can't tell
+ * those apart from real import statements without a separate
+ * sanitization pass (`validSpec` allowlist, etc.). The AST walker
+ * sees a `Literal` node inside an `ExpressionStatement`, NOT an
+ * `ImportDeclaration.source`, so it never confuses code-as-string with
+ * actual imports. Reuses the same `parseSync` + `Visitor` pattern as
+ * `@pyreon/lint`'s rule infrastructure.
  */
 function collectBareModuleImports(dir: string): string[] {
   const found = new Set<string>()
-  // Strings + bare imports + dynamic imports + re-exports.
-  const re = /(?:^|[^.\w])(?:import|require|from)\s*\(?\s*['"]([^'"]+)['"]/g
-  // Valid npm package specifier: optional `@scope/`, then a name with
-  // [a-z0-9_-], optional `/subpath`. No whitespace, no template expr,
-  // no quotes. The compiler package vendors JS source code as string
-  // literals — those `from "..."` matches need to be filtered out, or
-  // the regex grabs source-code fragments and Bun.build rejects them
-  // as malformed external specifiers.
-  const validSpec = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9._/-]+)?$/i
+  function record(spec: string | undefined): void {
+    if (!spec) return
+    // Skip relative + absolute paths — those aren't third-party.
+    if (spec.startsWith('.') || spec.startsWith('/')) return
+    // Skip node: builtins (already externalized via 'node:*').
+    if (spec.startsWith('node:')) return
+    // Skip @pyreon/* (already externalized via '@pyreon/*').
+    if (spec.startsWith('@pyreon/')) return
+    found.add(spec)
+    // Also externalize subpath imports of the same package
+    // (e.g. `lodash/fp`) so a partial-match against the package
+    // root still externalizes correctly.
+    const slashIdx = spec.startsWith('@')
+      ? spec.indexOf('/', spec.indexOf('/') + 1)
+      : spec.indexOf('/')
+    if (slashIdx > 0) found.add(spec.slice(0, slashIdx) + '/*')
+  }
+
+  function extractFromFile(filePath: string, src: string): void {
+    let program
+    try {
+      const result = parseSync(filePath, src, { sourceType: 'module', lang: 'js' })
+      program = result.program
+    } catch {
+      // If oxc-parser can't parse the file (corrupt build artifact,
+      // unsupported syntax, etc.), skip it — the bundle build itself
+      // will surface the real error, we don't need to duplicate it.
+      return
+    }
+    const callbacks: Record<string, (node: any) => void> = {
+      // `import x from 'foo'` / `import 'foo'` / `import * as x from 'foo'`
+      ImportDeclaration: (node) => {
+        record(typeof node.source?.value === 'string' ? node.source.value : undefined)
+      },
+      // `export { x } from 'foo'` (re-export — `node.source` is non-null)
+      ExportNamedDeclaration: (node) => {
+        if (node.source) {
+          record(typeof node.source.value === 'string' ? node.source.value : undefined)
+        }
+      },
+      // `export * from 'foo'` / `export * as ns from 'foo'`
+      ExportAllDeclaration: (node) => {
+        record(typeof node.source?.value === 'string' ? node.source.value : undefined)
+      },
+      // Dynamic `import('foo')`. oxc represents this as ImportExpression.
+      ImportExpression: (node) => {
+        if (node.source?.type === 'Literal' && typeof node.source.value === 'string') {
+          record(node.source.value)
+        }
+      },
+      // CommonJS `require('foo')`. Bun's build may emit a chunk that
+      // uses require for some dynamic specifiers — handle conservatively.
+      CallExpression: (node) => {
+        if (node.callee?.type !== 'Identifier' || node.callee.name !== 'require') return
+        const arg = node.arguments?.[0]
+        if (arg?.type === 'Literal' && typeof arg.value === 'string') {
+          record(arg.value)
+        }
+      },
+    }
+    try {
+      const visitor = new Visitor(callbacks)
+      visitor.visit(program)
+    } catch {
+      // Defensive — if visitor throws, the partial collection is
+      // still useful and the bundle build will surface real errors.
+    }
+  }
+
   function walk(d: string): void {
     let entries: string[]
     try {
@@ -143,28 +228,7 @@ function collectBareModuleImports(dir: string): string[] {
         } catch {
           continue
         }
-        for (const m of src.matchAll(re)) {
-          const spec = m[1]
-          if (!spec) continue
-          // Skip relative + absolute paths — those aren't third-party.
-          if (spec.startsWith('.') || spec.startsWith('/')) continue
-          // Skip node: builtins (already externalized via 'node:*').
-          if (spec.startsWith('node:')) continue
-          // Skip @pyreon/* (already externalized via '@pyreon/*').
-          if (spec.startsWith('@pyreon/')) continue
-          // Skip anything that doesn't look like a real npm specifier
-          // — protects against the regex matching `from "..."` inside
-          // a string literal containing JS source code.
-          if (!validSpec.test(spec)) continue
-          found.add(spec)
-          // Also externalize subpath imports of the same package
-          // (e.g. `lodash/fp`) so a partial-match against the package
-          // root still externalizes correctly.
-          const slashIdx = spec.startsWith('@')
-            ? spec.indexOf('/', spec.indexOf('/') + 1)
-            : spec.indexOf('/')
-          if (slashIdx > 0) found.add(spec.slice(0, slashIdx) + '/*')
-        }
+        extractFromFile(p, src)
       }
     }
   }
