@@ -4852,7 +4852,7 @@ describe('RouterLink prefetch="intent"', () => {
 // ─── NotFoundBoundary e2e ────────────────────────────────────────────────────
 
 describe('NotFoundBoundary e2e', () => {
-  test('notFound() in component triggers NotFoundBoundary fallback', () => {
+  test('notFound() in component triggers NotFoundBoundary fallback', async () => {
     const ThrowNotFound = () => {
       notFound('User not found')
       return null // unreachable
@@ -4872,6 +4872,11 @@ describe('NotFoundBoundary e2e', () => {
       ),
       ctr,
     )
+    // NotFoundBoundary uses ErrorBoundary internally — the handler defers
+    // its error.set to a microtask (see error-boundary.ts). Await the flush
+    // so the boundary's accessor re-runs with the notFound error and mounts
+    // the fallback subtree.
+    await new Promise<void>((resolve) => queueMicrotask(resolve))
 
     expect(ctr.querySelector('#not-found')?.textContent).toBe('404 Not Found')
     errorSpy.mockRestore()

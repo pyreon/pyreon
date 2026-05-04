@@ -55,16 +55,16 @@ test.describe('Reactive primitives e2e', () => {
     await expect(page.locator('#lazy-content')).toHaveText('hello from lazy()')
   })
 
-  // FIXME: regression in main since one of #381 / #382 / #380 — the
-  // boundary-fallback element is never visible after the click in CI
-  // (passes intermittently locally). The Exploder() throw inside the
-  // accessor `{() => (boom() ? <Exploder /> : ...)}` is supposed to be
-  // caught by `<ErrorBoundary>` and swap to the fallback subtree, but
-  // the swap doesn't happen on CI's slower runner. Likely cause: signal
-  // flush ordering interaction with the error-handler bridge added in
-  // #380, or the batch fix in #381 changed when the throw propagates.
-  // Tracking a separate fix PR — restore `test()` once root-caused.
-  test.fixme('<ErrorBoundary> catches child throw and renders fallback', async ({ page }) => {
+  // Locks in the post-#381 batch flush + ErrorBoundary handler interaction.
+  // The handler defers `error.set(err)` to a microtask so the signal write
+  // doesn't fall under the batch flush's same-effect dedup. Without the
+  // microtask defer, the inline `error.set(err)` would enqueue the boundary
+  // effect's run for re-fire — but that run is the SAME notify the flush is
+  // currently iterating, and Set.add for an already-iterated entry is a
+  // no-op. The notification was silently dropped, the fallback never
+  // mounted, both `#boundary-ok` AND `#boundary-fallback` were absent from
+  // the DOM. See `packages/core/core/src/error-boundary.ts` for the fix.
+  test('<ErrorBoundary> catches child throw and renders fallback', async ({ page }) => {
     // Pre-throw: child renders normally
     await expect(page.locator('#boundary-ok')).toBeVisible()
     await expect(page.locator('#boundary-fallback')).toHaveCount(0)

@@ -675,7 +675,13 @@ describe('mount — Portal', () => {
 // ─── ErrorBoundary ────────────────────────────────────────────────────────────
 
 describe('ErrorBoundary', () => {
-  test('renders fallback when child throws', () => {
+  // ErrorBoundary defers `error.set` to a microtask so the signal write
+  // doesn't fall under the batch flush's same-effect dedup. Tests reading
+  // the DOM post-throw must await the microtask flush. See
+  // packages/core/core/src/error-boundary.ts:handler for the rationale.
+  const flushMicrotasks = () => new Promise<void>((resolve) => queueMicrotask(resolve))
+
+  test('renders fallback when child throws', async () => {
     const el = container()
     function Broken(): never {
       throw new Error('boom')
@@ -687,6 +693,7 @@ describe('ErrorBoundary', () => {
       }),
       el,
     )
+    await flushMicrotasks()
     expect(el.querySelector('#fb')?.textContent).toContain('boom')
   })
 
@@ -705,7 +712,7 @@ describe('ErrorBoundary', () => {
     expect(el.querySelector('#ok')?.textContent).toBe('works')
   })
 
-  test('reset() clears error and re-renders children', () => {
+  test('reset() clears error and re-renders children', async () => {
     const el = container()
     let shouldThrow = true
 
@@ -732,6 +739,7 @@ describe('ErrorBoundary', () => {
       }),
       el,
     )
+    await flushMicrotasks()
 
     // Fallback rendered
     expect(el.querySelector('#retry')).not.toBeNull()
@@ -744,7 +752,7 @@ describe('ErrorBoundary', () => {
     expect(el.querySelector('#retry')).toBeNull()
   })
 
-  test('reset() with signal-driven children', () => {
+  test('reset() with signal-driven children', async () => {
     const el = container()
     const broken = signal(true)
 
@@ -771,6 +779,7 @@ describe('ErrorBoundary', () => {
       }),
       el,
     )
+    await flushMicrotasks()
 
     expect(el.querySelector('#fix')).not.toBeNull()
     ;(el.querySelector('#fix') as HTMLButtonElement).click()
