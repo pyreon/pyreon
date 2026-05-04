@@ -936,11 +936,13 @@ The gate exists because the audit caught `@pyreon/flow` shipping 6.8MB unpacked 
 **Measurement details:**
 
 - Bundles each package's `lib/index.js` (the published entry), not `src/`. Bundling from `src/` triggers a Bun resolver edge case where relative imports get treated as external via the package's exports field.
-- Externalizes `@pyreon/*`, `node:*`, `@tanstack/*`, `echarts`, `elkjs`, `codemirror` — the budget reflects bytes UNIQUE to this package, not bytes shared with workspace siblings or peer-installed deps.
+- Externalizes `@pyreon/*`, `node:*`, AND every bare-module specifier auto-collected by walking each package's `lib/**/*.js` for `import` / `require` / `from` references. Collected specifiers go through a strict `validSpec` regex so JS source code embedded inside string literals (e.g. `@pyreon/compiler` vendoring its own transform output) doesn't leak as a malformed external. The auto-collection replaces a previous hardcoded `[@tanstack/*, echarts, elkjs, codemirror]` allowlist that drifted out of sync with the real dep tree — pre-fix `@pyreon/document` failed to bundle because the regex missed `jszip` (transitive via the vendored `pptxgenjs` chunk), and the script silently filtered the failure out of its output. The budget reflects bytes UNIQUE to this package's own code, not bytes from any third-party (workspace, peer-installed, or transitively vendored).
+- `target: 'bun'` (not `'browser'`). `'bun'` auto-externalizes Node builtins (`module`, `child_process`, `fs`, etc.) which CLI / server packages need (`@pyreon/zero-cli`, `@pyreon/cli`, `@pyreon/mcp`, `@pyreon/lint`, `@pyreon/compiler`). For pure-browser packages with no Node imports the byte output is identical, so this is the universal choice. Pre-fix the script used `'browser'` and silently failed on every server-side package.
 - `splitting: true` keeps dynamic imports as separate chunks. Flow's elkjs, document's PDF/DOCX renderers, and other lazy-loaded heavy deps are EXCLUDED from the main-entry measurement by design — they only load on-demand when the consumer invokes the feature.
 - Gzipped size is the budgeted dimension because that's what consumers actually pay over the wire.
+- **Failures are surfaced, not swallowed.** Pre-fix the script filtered failed builds out of `results` and reported "All N within budget" with N undercounting the real eligible-package set — silent gate erosion. The current shape includes a `failures: [{name, error}]` field in JSON output, prints failures to stderr, and exits non-zero if any package fails to bundle. CI now catches the case where a package starts failing to bundle for any reason (new unresolved transitive dep, build-output shape change) instead of silently dropping it from the budget gate.
 
-CI runs this as a required `Check Bundle Budgets` job.
+CI runs this as a required `Check Bundle Budgets` job. The gate covers all 54 published `@pyreon/*` packages today (vs 49 pre-fix that silently excluded `compiler`, `document`, `lint`, `mcp`, `zero-cli`).
 
 ## @pyreon/table — public surface drift gate
 
