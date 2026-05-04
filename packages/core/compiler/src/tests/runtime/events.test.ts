@@ -224,4 +224,78 @@ describe('compiler-runtime — events', () => {
     expect(menu).toBe(1)
     unmount()
   })
+
+  // Audit: every multi-word React event-prop in the official component-prop
+  // list either (a) has an entry in REACT_EVENT_REMAP, OR (b) lowercases
+  // correctly to the DOM event name. This sweep exercises the most common
+  // multi-word events from across the family categories (mouse, pointer,
+  // keyboard, drag, touch, animation, transition, media, composition, form)
+  // to lock in that lowercasing alone is the right rule for all of them.
+  // If a new React event-prop is added in a future release with a non-trivial
+  // mismatch, this sweep won't catch it — but the runtime test for the
+  // specific event will. Keep this sweep as the structural audit.
+  const lowercaseSweep: ReadonlyArray<{ prop: string; event: string }> = [
+    { prop: 'onKeyDown', event: 'keydown' },
+    { prop: 'onKeyUp', event: 'keyup' },
+    { prop: 'onMouseDown', event: 'mousedown' },
+    { prop: 'onMouseUp', event: 'mouseup' },
+    { prop: 'onMouseEnter', event: 'mouseenter' },
+    { prop: 'onMouseLeave', event: 'mouseleave' },
+    { prop: 'onMouseMove', event: 'mousemove' },
+    { prop: 'onMouseOut', event: 'mouseout' },
+    { prop: 'onMouseOver', event: 'mouseover' },
+    { prop: 'onPointerDown', event: 'pointerdown' },
+    { prop: 'onPointerMove', event: 'pointermove' },
+    { prop: 'onPointerUp', event: 'pointerup' },
+    { prop: 'onPointerCancel', event: 'pointercancel' },
+    { prop: 'onPointerEnter', event: 'pointerenter' },
+    { prop: 'onPointerLeave', event: 'pointerleave' },
+    { prop: 'onPointerOver', event: 'pointerover' },
+    { prop: 'onPointerOut', event: 'pointerout' },
+    { prop: 'onGotPointerCapture', event: 'gotpointercapture' },
+    { prop: 'onLostPointerCapture', event: 'lostpointercapture' },
+    { prop: 'onDragStart', event: 'dragstart' },
+    { prop: 'onDragEnd', event: 'dragend' },
+    { prop: 'onDragEnter', event: 'dragenter' },
+    { prop: 'onDragLeave', event: 'dragleave' },
+    { prop: 'onDragOver', event: 'dragover' },
+    { prop: 'onTouchStart', event: 'touchstart' },
+    { prop: 'onTouchEnd', event: 'touchend' },
+    { prop: 'onTouchMove', event: 'touchmove' },
+    { prop: 'onTouchCancel', event: 'touchcancel' },
+    { prop: 'onAnimationStart', event: 'animationstart' },
+    { prop: 'onAnimationEnd', event: 'animationend' },
+    { prop: 'onAnimationIteration', event: 'animationiteration' },
+    { prop: 'onTransitionEnd', event: 'transitionend' },
+    { prop: 'onCompositionStart', event: 'compositionstart' },
+    { prop: 'onCompositionEnd', event: 'compositionend' },
+    { prop: 'onCompositionUpdate', event: 'compositionupdate' },
+    { prop: 'onContextMenu', event: 'contextmenu' },
+    { prop: 'onBeforeInput', event: 'beforeinput' },
+    { prop: 'onTimeUpdate', event: 'timeupdate' },
+    { prop: 'onVolumeChange', event: 'volumechange' },
+    { prop: 'onCanPlayThrough', event: 'canplaythrough' },
+    { prop: 'onLoadedData', event: 'loadeddata' },
+    { prop: 'onLoadedMetadata', event: 'loadedmetadata' },
+    { prop: 'onLoadStart', event: 'loadstart' },
+    { prop: 'onRateChange', event: 'ratechange' },
+    { prop: 'onDurationChange', event: 'durationchange' },
+  ]
+  for (const { prop, event } of lowercaseSweep) {
+    it(`${prop} → ${event} (lowercase, no remap)`, () => {
+      let fired = 0
+      const handler = () => {
+        fired++
+      }
+      const { container, unmount } = compileAndMount(
+        `<div><button id="b" ${prop}={handler}>x</button></div>`,
+        { handler },
+      )
+      container
+        .querySelector<HTMLButtonElement>('#b')!
+        .dispatchEvent(new Event(event, { bubbles: true }))
+      expect(fired).toBe(1)
+      unmount()
+    })
+  }
 })

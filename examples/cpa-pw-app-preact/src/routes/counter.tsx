@@ -57,7 +57,7 @@ export default function Counter() {
             doubled → <strong>{doubled}</strong>
           </div>
           <div>
-            isEven → <strong>{isEven ? "true" : "false"}</strong>
+            isEven → <strong>{isEven() ? "true" : "false"}</strong>
           </div>
         </div>
       </div>

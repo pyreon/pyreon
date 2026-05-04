@@ -32,6 +32,7 @@ import { parseSync } from 'oxc-parser'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { REACT_EVENT_REMAP } from './event-names'
 
 // ─── Native binary auto-detection ────────────────────────────────────────────
 // Try to load the Rust napi-rs binary for 3.7-8.2x faster transforms.
@@ -912,17 +913,15 @@ export function transformJSX_JS(
       // because the underlying DOM event name is also the lowercased
       // multi-word form.
       //
-      // The exception list below covers React names whose canonical
-      // DOM event name is NOT the simple lowercase. Today only one:
-      //   `onDoubleClick` → `dblclick` (NOT `doubleclick`)
-      // (`onContextMenu` lowercase happens to match the DOM
-      // `contextmenu` event; same for animation/transition events.)
-      // The previous naive lowercase emitted `doubleclick`, attached a
-      // listener the browser never fires, and silently dropped every
-      // double-click handler. Discovered by Phase B2's compiler-runtime
-      // tests + proven in real Chromium via `e2e/app.spec.ts`.
-      let eventName = attrName.slice(2).toLowerCase()
-      if (eventName === 'doubleclick') eventName = 'dblclick'
+      // The exception list lives in `REACT_EVENT_REMAP` (event-names.ts).
+      // Every React event-prop in the official component-prop list was
+      // audited against canonical DOM event names — see the JSDoc on
+      // REACT_EVENT_REMAP for the audit. Today exactly one entry:
+      //   `onDoubleClick` → `dblclick`
+      // The Rust native backend (`native/src/lib.rs:emit_event_listener`)
+      // mirrors the same table — keep them in sync if a new entry is added.
+      const lowered = attrName.slice(2).toLowerCase()
+      const eventName = REACT_EVENT_REMAP[lowered] ?? lowered
       if (!attr.value || attr.value.type !== 'JSXExpressionContainer') return
       const expr = attr.value.expression
       if (!expr || expr.type === 'JSXEmptyExpression') return

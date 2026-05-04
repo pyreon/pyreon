@@ -1114,10 +1114,6 @@ describe('setContextStackProvider', () => {
 // ─── ErrorBoundary advanced ──────────────────────────────────────────────────
 
 describe('ErrorBoundary — advanced', () => {
-  // ErrorBoundary defers `error.set` to a microtask — see error-boundary.ts.
-  // Tests reading the getter post-dispatch must await the microtask flush.
-  const flushMicrotasks = () => new Promise<void>((resolve) => queueMicrotask(resolve))
-
   test('handler returns false when already in error state (double error)', async () => {
     let result: VNodeChild = null
 
@@ -1132,11 +1128,9 @@ describe('ErrorBoundary — advanced', () => {
     const getter = result as unknown as () => VNodeChild
     expect(getter()).toBe('child')
 
-    // First error should be handled — handler returns true synchronously
-    // even though the signal write is deferred.
+    // First error should be handled
     const handled1 = dispatchToErrorBoundary(new Error('first'))
     expect(handled1).toBe(true)
-    await flushMicrotasks()
     expect(getter()).toBe('Error: Error: first')
 
     // Second error while already in error state should NOT be handled
@@ -1168,7 +1162,6 @@ describe('ErrorBoundary — advanced', () => {
 
     // Trigger error
     dispatchToErrorBoundary(new Error('test error'))
-    await flushMicrotasks()
     expect(getter()).toBe('Error: Error: test error')
     expect(capturedReset).toBeDefined()
 
