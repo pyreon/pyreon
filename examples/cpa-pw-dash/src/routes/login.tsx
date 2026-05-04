@@ -2,7 +2,6 @@ import { signal } from "@pyreon/reactivity"
 import { useHead } from "@pyreon/head"
 import { Link } from "@pyreon/zero/link"
 import { useRouter } from "@pyreon/router"
-import { signIn } from "../lib/auth"
 
 export const meta = { title: "Sign in" }
 
@@ -21,19 +20,34 @@ export default function Login() {
     error.set(null)
     submitting.set(true)
 
-    const result = signIn(email(), password())
-    submitting.set(false)
-
-    if ("error" in result) {
-      error.set(result.error)
+    // Route the sign-in through the server endpoint so the SSR-side
+    // `sessions` Map is populated. Calling `signIn(email, password)` directly
+    // here would only populate the BROWSER module's Map — the server has its
+    // own under Vite dev's split-realm module instances, and SSR loaders
+    // (e.g. `/app/_layout.tsx`'s auth gate) would still see no session on
+    // the next full-page navigation. The endpoint sets `Set-Cookie: sid=...`
+    // on success; the browser stores it automatically.
+    let res: Response
+    try {
+      res = await fetch("/api/signin", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: email(), password: password() }),
+      })
+    } catch {
+      submitting.set(false)
+      error.set("Network error — please try again")
       return
     }
 
-    // Persist the stub session id client-side. Real impl uses an HttpOnly cookie
-    // set by the auth handler. See @pyreon/auth-lucia for the production path.
-    if (typeof document !== "undefined") {
-      document.cookie = `sid=${result.sessionId}; path=/; max-age=${7 * 24 * 60 * 60}`
+    submitting.set(false)
+
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string }
+      error.set(body.error ?? "Sign in failed")
+      return
     }
+
     await router.push("/app/dashboard")
   }
 

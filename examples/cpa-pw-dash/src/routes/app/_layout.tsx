@@ -21,10 +21,32 @@ import { getSession, type SessionInfo } from "../../lib/auth"
  * to unauthenticated users for the duration of the session-fetch round-trip).
  */
 export async function loader(ctx: LoaderContext): Promise<{ session: SessionInfo }> {
-  const sid = readSessionCookie(ctx)
-  const session = await getSession(sid)
+  const session = await resolveSession(ctx)
   if (!session) redirect("/login")
   return { session }
+}
+
+/**
+ * SSR-side: read the cookie from the request and call `getSession` against
+ * the SSR-side `sessions` Map directly.
+ *
+ * CSR-side: fetch `/api/session` so the lookup hits the SAME server-side
+ * Map (Vite dev runs SSR and CSR in separate JS realms with their own
+ * `sessions` Map module state — calling `getSession` directly here would
+ * read the empty CSR-side Map even though the user just signed in via
+ * `/api/signin`). The endpoint reads the `sid` cookie from the browser
+ * request automatically.
+ */
+async function resolveSession(ctx: LoaderContext): Promise<SessionInfo | null> {
+  if (ctx.request) {
+    const cookie = ctx.request.headers.get("cookie") ?? ""
+    const sid = /(?:^|;\s*)sid=([^;]+)/.exec(cookie)?.[1]
+    return getSession(sid)
+  }
+  const res = await fetch("/api/session", { credentials: "same-origin" })
+  if (!res.ok) return null
+  const body = (await res.json()) as { session: SessionInfo | null }
+  return body.session
 }
 
 /**
@@ -87,15 +109,3 @@ export function layout() {
   )
 }
 
-/**
- * Read the `sid` cookie from either the SSR request (initial navigation) or
- * `document.cookie` (subsequent CSR navigation). The loader runs in both
- * environments — `ctx.request` is populated only on SSR.
- */
-function readSessionCookie(ctx: LoaderContext): string | undefined {
-  const cookieHeader =
-    ctx.request?.headers.get("cookie") ??
-    (typeof document !== "undefined" ? document.cookie : "")
-  const m = /(?:^|;\s*)sid=([^;]+)/.exec(cookieHeader)
-  return m?.[1]
-}
