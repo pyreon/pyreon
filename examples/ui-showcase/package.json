@@ -36,7 +36,7 @@
     "@pyreon/compiler": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@types/bun": "^1.3.11",
-    "@vitus-labs/tools-vitest": "^1.15.5",
+    "@vitus-labs/tools-vitest": "^2.3.0",
     "happy-dom": "^20.8.9",
     "typescript": "~6.0.2",
     "vite": "^8.0.3",
