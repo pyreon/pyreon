@@ -2939,21 +2939,27 @@ fn emit_event_listener(
     // `onDoubleClick`) to the canonical DOM event name (`keydown`,
     // `dblclick`).
     //
-    // Default rule: drop the `on` prefix and lowercase. Covers
-    // `onKeyDown` → `keydown`, `onMouseEnter` → `mouseenter`, etc.
+    // Default rule: drop the `on` prefix and lowercase. Covers most
+    // React event-prop conventions because the underlying DOM event name
+    // is the lowercased multi-word form (`onKeyDown` → `keydown`,
+    // `onMouseEnter` → `mouseenter`, `onPointerLeave` → `pointerleave`,
+    // `onAnimationStart` → `animationstart`, etc.).
     //
-    // Exception: `onDoubleClick` → `dblclick` (NOT `doubleclick`, which
-    // the naive lowercase produced). React→DOM event-name mismatch.
-    // Discovered by Phase B2's compiler-runtime tests + proven in real
-    // Chromium via `e2e/app.spec.ts`. Mirrors the JS-side fix in jsx.ts.
-    let mut event_name = if attr_name.len() > 2 {
+    // Exceptions live in REACT_EVENT_REMAP — same table as the JS-side
+    // fallback in `src/event-names.ts`. When adding a new exception,
+    // update BOTH this table AND `event-names.ts:REACT_EVENT_REMAP`.
+    //
+    // Today exactly one: `onDoubleClick` → `dblclick`. See the JSDoc on
+    // `REACT_EVENT_REMAP` in `src/event-names.ts` for the full audit.
+    let lowered = if attr_name.len() > 2 {
         attr_name[2..].to_ascii_lowercase()
     } else {
         return;
     };
-    if event_name == "doubleclick" {
-        event_name = "dblclick".to_string();
-    }
+    let event_name = match lowered.as_str() {
+        "doubleclick" => "dblclick".to_string(),
+        _ => lowered,
+    };
     let expr = match &attr.value {
         Some(JSXAttributeValue::ExpressionContainer(c)) => {
             match jsx_expr_as_expression(&c.expression) {

@@ -1,3 +1,4 @@
+import { _markRecompute } from './batch'
 import { _errorHandler } from './effect'
 import { getCurrentScope } from './scope'
 import {
@@ -94,6 +95,7 @@ function computedLazy<T>(fn: () => T): Computed<T> {
     if (host._s) notifySubscribers(host._s)
     if (directFns) for (const f of directFns) f?.()
   }
+  _markRecompute(recompute)
 
   const read = (): T => {
     trackSubscriber(host)
@@ -181,6 +183,7 @@ function computedWithEquals<T>(fn: () => T, equals: (prev: T, next: T) => boolea
     if (host._s) notifySubscribers(host._s)
     if (directFns) for (const f of directFns) f?.()
   }
+  _markRecompute(recompute)
 
   const read = (): T => {
     trackSubscriber(host)
