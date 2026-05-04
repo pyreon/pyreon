@@ -29,7 +29,7 @@
  *                                         # (use AFTER intentional growth)
  */
 
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { gzipSync } from 'node:zlib'
 
@@ -40,6 +40,7 @@ interface PackageInfo {
   name: string
   dir: string
   entry: string
+  externals: string[]
 }
 
 function findPackages(): PackageInfo[] {
@@ -65,7 +66,16 @@ function findPackages(): PackageInfo[] {
         // transforms.
         const entry = join(pkgDir, 'lib', 'index.js')
         if (!fileExists(entry)) continue
-        result.push({ name: pj.name, dir: pkgDir, entry })
+        // Collect every bare-module specifier referenced anywhere in
+        // lib/ (the ENTIRE built tree, not just the entry). Some
+        // packages vendor third-party renderers into split chunks that
+        // re-import other third-parties (e.g. document's pptxgenjs
+        // chunk imports `jszip`). Without this, Bun.build follows the
+        // import graph through the chunk and fails on the unresolved
+        // transitive — silently dropped from the measurement before
+        // this fix landed. See gap #2 investigation in fix PR.
+        const externals = collectBareModuleImports(join(pkgDir, 'lib'))
+        result.push({ name: pj.name, dir: pkgDir, entry, externals })
       } catch {
         // Skip — no package.json or unreadable
       }
@@ -83,6 +93,85 @@ function fileExists(path: string): boolean {
   }
 }
 
+/**
+ * Walks every `*.js` file under `dir` and extracts non-relative module
+ * specifiers from `import` / `require` / `from` statements (and dynamic
+ * `import(...)`). Used to externalize every third-party dep this
+ * package's built code touches, regardless of whether it's a direct
+ * dep, optional dep, or a transitive of one of those that ended up
+ * inlined into a chunk.
+ *
+ * Why scan source instead of using package.json `dependencies`:
+ * `@pyreon/document` declares `pdfmake`/`pptxgenjs`/etc. as
+ * `optionalDependencies`, but those packages' own internals
+ * (`jszip`, etc.) get vendored INTO `document/lib/` as split chunks
+ * that the consumer never sees declared. We need to externalize the
+ * transitive too, or Bun.build fails resolving it.
+ */
+function collectBareModuleImports(dir: string): string[] {
+  const found = new Set<string>()
+  // Strings + bare imports + dynamic imports + re-exports.
+  const re = /(?:^|[^.\w])(?:import|require|from)\s*\(?\s*['"]([^'"]+)['"]/g
+  // Valid npm package specifier: optional `@scope/`, then a name with
+  // [a-z0-9_-], optional `/subpath`. No whitespace, no template expr,
+  // no quotes. The compiler package vendors JS source code as string
+  // literals — those `from "..."` matches need to be filtered out, or
+  // the regex grabs source-code fragments and Bun.build rejects them
+  // as malformed external specifiers.
+  const validSpec = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9._/-]+)?$/i
+  function walk(d: string): void {
+    let entries: string[]
+    try {
+      entries = readdirSync(d)
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      const p = join(d, e)
+      let stat
+      try {
+        stat = statSync(p)
+      } catch {
+        continue
+      }
+      if (stat.isDirectory()) {
+        walk(p)
+      } else if (e.endsWith('.js')) {
+        let src: string
+        try {
+          src = readFileSync(p, 'utf8')
+        } catch {
+          continue
+        }
+        for (const m of src.matchAll(re)) {
+          const spec = m[1]
+          if (!spec) continue
+          // Skip relative + absolute paths — those aren't third-party.
+          if (spec.startsWith('.') || spec.startsWith('/')) continue
+          // Skip node: builtins (already externalized via 'node:*').
+          if (spec.startsWith('node:')) continue
+          // Skip @pyreon/* (already externalized via '@pyreon/*').
+          if (spec.startsWith('@pyreon/')) continue
+          // Skip anything that doesn't look like a real npm specifier
+          // — protects against the regex matching `from "..."` inside
+          // a string literal containing JS source code.
+          if (!validSpec.test(spec)) continue
+          found.add(spec)
+          // Also externalize subpath imports of the same package
+          // (e.g. `lodash/fp`) so a partial-match against the package
+          // root still externalizes correctly.
+          const slashIdx = spec.startsWith('@')
+            ? spec.indexOf('/', spec.indexOf('/') + 1)
+            : spec.indexOf('/')
+          if (slashIdx > 0) found.add(spec.slice(0, slashIdx) + '/*')
+        }
+      }
+    }
+  }
+  walk(dir)
+  return [...found]
+}
+
 interface BundleResult {
   name: string
   raw: number
@@ -96,7 +185,14 @@ async function measurePackage(pkg: PackageInfo): Promise<BundleResult> {
     const result = await Bun.build({
       entrypoints: [pkg.entry],
       minify: true,
-      target: 'browser',
+      // target: 'bun' auto-externalizes Node builtins (`module`,
+      // `child_process`, `fs`, etc.) which is what server-side
+      // packages (cli, mcp, lint, compiler, zero-cli) need. For pure-
+      // browser packages with no Node imports the byte output is
+      // identical to target: 'browser', so this is the universal
+      // choice. Pre-fix the script used 'browser' and silently failed
+      // on every server-side package.
+      target: 'bun',
       // splitting: true keeps dynamic imports as separate chunks so we
       // can measure ONLY the main entry-point cost — flow's elkjs and
       // document's PDF/DOCX renderers are dynamic imports that load
@@ -114,16 +210,13 @@ async function measurePackage(pkg: PackageInfo): Promise<BundleResult> {
         // unique bytes, not bytes from cross-package deps.
         '@pyreon/*',
         // Externalize Node built-ins so server-only packages still
-        // measure the right user-bundle weight (none in the case of
-        // server packages — but the externalization is harmless).
+        // measure the right user-bundle weight (target: 'bun' already
+        // handles most of these but the explicit list is harmless).
         'node:*',
-        // Externalize popular peer deps that bundle separately
-        '@tanstack/*',
-        'echarts',
-        'echarts/*',
-        'elkjs',
-        'codemirror',
-        '@codemirror/*',
+        // Every bare-module specifier the package's built code
+        // imports — auto-collected from `lib/**/*.js` so the gate
+        // doesn't need a hardcoded allowlist that drifts.
+        ...pkg.externals,
       ],
     })
     if (!result.success) {
@@ -170,11 +263,30 @@ async function main(): Promise<void> {
   const measured = results
     .filter((r) => !r.failed)
     .sort((a, b) => a.name.localeCompare(b.name))
+  const failures = results
+    .filter((r) => r.failed)
+    .map((r) => ({ name: r.name, error: r.error ?? 'unknown' }))
+    .sort((a, b) => a.name.localeCompare(b.name))
 
   // ── Update mode: write fresh budgets and exit ─────────────────────
   if (updateMode) {
+    if (failures.length > 0) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `✗ Cannot regenerate budgets — ${failures.length} package(s) failed to bundle:`,
+      )
+      for (const f of failures) {
+        // eslint-disable-next-line no-console
+        console.error(`  ${f.name}: ${f.error.split('\n')[0]}`)
+      }
+      // eslint-disable-next-line no-console
+      console.error(
+        `\nFix the bundle errors first (likely an unresolved third-party dep that needs to be added to the package's package.json so the auto-external scan picks it up), then re-run --update.`,
+      )
+      process.exit(1)
+    }
     const budgets: Record<string, unknown> = {
-      _doc: 'Per-package main-entry budgets in BYTES (minified + gzipped). Externalizes @pyreon/*, node:*, @tanstack/*, echarts, elkjs, codemirror — this is the unique code each package adds to a consumer bundle. Set at 25% headroom over current size at PR-time. When a package legitimately needs to grow past its budget, bump the value in the same PR for explicit review.',
+      _doc: 'Per-package main-entry budgets in BYTES (minified + gzipped). Externalizes @pyreon/*, node:*, and every bare-module import auto-collected from each package\'s lib/ tree — this is the unique code each package adds to a consumer bundle. Set at 25% headroom over current size at PR-time. When a package legitimately needs to grow past its budget, bump the value in the same PR for explicit review.',
       _units: 'bytes (gzipped)',
     }
     for (const r of measured) {
@@ -237,8 +349,8 @@ async function main(): Promise<void> {
 
   if (jsonMode) {
     // eslint-disable-next-line no-console
-    console.log(JSON.stringify({ violations, missing, measured }, null, 2))
-  } else if (violations.length === 0 && missing.length === 0) {
+    console.log(JSON.stringify({ violations, missing, failures, measured }, null, 2))
+  } else if (violations.length === 0 && missing.length === 0 && failures.length === 0) {
     // eslint-disable-next-line no-console
     console.log(`✓ All ${measured.length} package(s) within budget.`)
   } else {
@@ -268,9 +380,21 @@ async function main(): Promise<void> {
         `\nNew package? Run \`bun run check-bundle-budgets --update\` to add it. Review the value in the diff.`,
       )
     }
+    if (failures.length > 0) {
+      // eslint-disable-next-line no-console
+      console.error(`\n✗ ${failures.length} package(s) failed to bundle:\n`)
+      for (const f of failures) {
+        // eslint-disable-next-line no-console
+        console.error(`  ${f.name}: ${f.error.split('\n')[0]}`)
+      }
+      // eslint-disable-next-line no-console
+      console.error(
+        `\nThese packages are not contributing to the budget gate — likely an unresolved third-party dep. The auto-external scan walks each package's lib/ tree for bare-module imports, but it can miss specifiers buried in dynamic strings or vendored chunks. Either declare the dep in the package's package.json or add it explicitly.`,
+      )
+    }
   }
 
-  if (violations.length > 0 || missing.length > 0) {
+  if (violations.length > 0 || missing.length > 0 || failures.length > 0) {
     process.exit(1)
   }
 }
