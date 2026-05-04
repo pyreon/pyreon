@@ -10,7 +10,8 @@
     "doctor": "zero doctor",
     "doctor:fix": "zero doctor --fix",
     "doctor:ci": "zero doctor --ci",
-    "lint": "pyreon-lint ."
+    "lint": "pyreon-lint .",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@pyreon/connector-document": "^0.14.0",
