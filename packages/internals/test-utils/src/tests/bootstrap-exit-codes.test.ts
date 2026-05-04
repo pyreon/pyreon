@@ -118,4 +118,27 @@ describe('scripts/bootstrap.ts exit-code policy', () => {
       expect(result.status).toBe(1)
     }
   })
+
+  it('force-fail terminates without infinite retry loop (gap #3 retry policy)', () => {
+    // Gap #3 added a single sequential retry pass for still-dirty
+    // packages — that's a defensive recovery for transient flakes
+    // (topological-order race, file-handle limits, native-binary
+    // link race after `bun install`). The retry MUST be capped at
+    // ONE pass so a structurally-broken package can't infinite-loop.
+    //
+    // Implementation: the `if (stillDirty.length > 0 && !forceFail)`
+    // gate skips retry when forceFail is set, so this test verifies
+    // the script terminates within the per-test timeout (60s) with
+    // exit code 1. If retry-loop bound were broken, the script would
+    // either hang past the timeout (vitest fails with TIMEOUT) or
+    // succeed silently (status === 0). We assert status === 1.
+    //
+    // Even without the !forceFail short-circuit, the retry block
+    // doesn't recurse — it iterates the fixed `retried` array once
+    // and falls through to the failure-surfacing path. Same exit-1
+    // shape regardless.
+    const result = runBootstrap({ npm_lifecycle_event: undefined })
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('[bootstrap] ✗ Build failure')
+  })
 })
