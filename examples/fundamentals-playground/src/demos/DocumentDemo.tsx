@@ -34,18 +34,16 @@ export function DocumentDemo() {
       .divider()
       .heading('Team Overview')
       .table({
+        // `TableColumn` only carries `header` / `width` / `align` — column
+        // identity comes from position, not a `key`. Rows are arrays of
+        // `string | number`, indexed by the same column order.
         columns: [
-          { header: 'Name', key: 'name' },
-          { header: 'Department', key: 'dept' },
-          { header: 'Salary', key: 'salary' },
-          { header: 'Rating', key: 'rating' },
+          { header: 'Name' },
+          { header: 'Department' },
+          { header: 'Salary' },
+          { header: 'Rating' },
         ],
-        rows: teamData().map((r) => ({
-          name: r[0]!,
-          dept: r[1]!,
-          salary: r[2]!,
-          rating: r[3]!,
-        })),
+        rows: teamData(),
       })
       .text(`Total team members: ${teamData().length}`)
       .divider()
@@ -87,28 +85,31 @@ export function DocumentDemo() {
   async function renderJsxDoc() {
     rendering.set(true)
     try {
-      const doc = Document(
-        { title: 'Invoice #1042' },
-        Page(
-          {},
-          Heading({ level: 1 }, 'Invoice #1042'),
-          Text({}, 'Billed to: Acme Corp.'),
-          Text({}, 'Date: 2026-03-24'),
-          Table({
-            columns: [
-              { header: 'Item', key: 'item' },
-              { header: 'Qty', key: 'qty' },
-              { header: 'Price', key: 'price' },
-            ],
-            rows: [
-              { item: 'Widget A', qty: '10', price: '$50' },
-              { item: 'Widget B', qty: '5', price: '$75' },
-              { item: 'Service Fee', qty: '1', price: '$25' },
-            ],
-          }),
-          Text({ bold: true }, 'Total: $600'),
-        ),
-      )
+      // Doc primitives are factory functions returning `DocNode` — NOT
+      // Pyreon JSX components (which return `VNode`). Each primitive takes
+      // a single props object with `children` inside; the earlier shape
+      // `Heading({ level: 1 }, 'text')` (children-as-2nd-arg) was wrong.
+      // See `packages/fundamentals/document/src/tests/utils-coverage.test.ts`
+      // for the canonical `{ children: ... }` form.
+      const doc = Document({
+        title: 'Invoice #1042',
+        children: Page({
+          children: [
+            Heading({ level: 1, children: 'Invoice #1042' }),
+            Text({ children: 'Billed to: Acme Corp.' }),
+            Text({ children: 'Date: 2026-03-24' }),
+            Table({
+              columns: [{ header: 'Item' }, { header: 'Qty' }, { header: 'Price' }],
+              rows: [
+                ['Widget A', '10', '$50'],
+                ['Widget B', '5', '$75'],
+                ['Service Fee', '1', '$25'],
+              ],
+            }),
+            Text({ bold: true, children: 'Total: $600' }),
+          ],
+        }),
+      })
       const rendered = await render(doc, jsxFormat())
       if (typeof rendered === 'string') {
         jsxOutput.set(rendered)

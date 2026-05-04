@@ -12,7 +12,7 @@ const TodoList = model({
   }),
   actions: (self) => ({
     setTitle: (title: string) => self.title.set(title),
-    bumpId: () => self.nextId.update((n) => n + 1),
+    bumpId: () => self.nextId.update((n: number) => n + 1),
   }),
 })
 

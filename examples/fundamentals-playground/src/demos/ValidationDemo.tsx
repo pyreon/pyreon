@@ -18,7 +18,7 @@ export function ValidationDemo() {
 
   const form = useForm({
     initialValues: { username: '', email: '', age: '' as unknown as number },
-    schema: zodSchema(schema as any),
+    schema: zodSchema(schema),
     validateOn: 'blur',
     onSubmit: async (values) => {
       await new Promise((r) => setTimeout(r, 300))

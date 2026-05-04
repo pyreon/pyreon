@@ -207,7 +207,11 @@ export interface InputAttributes extends PyreonHTMLAttributes<HTMLInputElement> 
   defaultChecked?: boolean | undefined
   placeholder?: string | (() => string) | undefined
   disabled?: boolean | (() => boolean) | undefined
-  readOnly?: boolean | undefined
+  // `readOnly` is paired with `disabled` semantically — both accept a
+  // reactive callable so consumers can spread `useForm.register()`'s
+  // return value (which produces `readOnly: Accessor<boolean>`) directly
+  // onto `<input>` / `<textarea>` without losing reactivity.
+  readOnly?: boolean | (() => boolean) | undefined
   required?: boolean | (() => boolean) | undefined
   min?: string | number | undefined
   max?: string | number | undefined
@@ -259,7 +263,11 @@ export interface TextareaAttributes extends PyreonHTMLAttributes<HTMLTextAreaEle
   defaultValue?: string | undefined
   placeholder?: string | (() => string) | undefined
   disabled?: boolean | (() => boolean) | undefined
-  readOnly?: boolean | undefined
+  // `readOnly` is paired with `disabled` semantically — both accept a
+  // reactive callable so consumers can spread `useForm.register()`'s
+  // return value (which produces `readOnly: Accessor<boolean>`) directly
+  // onto `<input>` / `<textarea>` without losing reactivity.
+  readOnly?: boolean | (() => boolean) | undefined
   required?: boolean | (() => boolean) | undefined
   rows?: number | undefined
   cols?: number | undefined
