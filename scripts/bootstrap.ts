@@ -164,16 +164,36 @@ function maxFileMtime(dir: string): number {
 
 const packages = findBuildablePackages()
 
-// Two failure modes both require a rebuild:
+// Three failure modes that require a rebuild:
 // (1) Package has no `lib/` at all (fresh clone / fresh worktree)
 // (2) Package has `lib/` but its newest file is older than the newest src/
 //     file — i.e. someone changed source without rebuilding (post-pull,
 //     post-checkout-between-branches, or just developer iteration).
+// (3) Package has `lib/index.js` but it's truncated / empty — gap #6
+//     defensive against a prior bootstrap run that crashed mid-write,
+//     wrote a 0-byte file, or left structurally-broken output. The same
+//     50-byte floor as the postcondition: real Pyreon `lib/index.js`
+//     entries are hundreds-to-thousands of bytes; <50 bytes is broken.
+const MIN_LIB_INDEX_BYTES = 50
 const dirty: MissingPackage[] = []
 for (const pkg of packages) {
   if (!pkg.hasLib) {
     dirty.push({ name: pkg.name, path: relative(ROOT, pkg.path), reason: 'missing' })
     continue
+  }
+  // Content sanity (gap #6): catch broken lib from a prior crashed
+  // bootstrap. If lib/index.js exists and is < 50 bytes, treat as stale.
+  const libIndex = join(pkg.path, 'lib', 'index.js')
+  if (existsSync(libIndex)) {
+    try {
+      const size = statSync(libIndex).size
+      if (size < MIN_LIB_INDEX_BYTES) {
+        dirty.push({ name: pkg.name, path: relative(ROOT, pkg.path), reason: 'stale' })
+        continue
+      }
+    } catch {
+      // Defensive — fall through to mtime check
+    }
   }
   const srcDir = join(pkg.path, 'src')
   const libDir = join(pkg.path, 'lib')
@@ -265,13 +285,31 @@ try {
 // failure while the rest succeeded. The original `try { } catch {}`
 // shape treated both as binary success/failure with no per-package
 // detail. Postcondition check restores the resolution.
-const stillDirty: MissingPackage[] = []
-for (const pkg of dirty) {
+//
+// Content check (gap #6): the original postcondition only verified
+// `lib/` directory existed and src/lib mtime ordering. If a build
+// emitted an empty / corrupt `lib/index.js` (e.g. crashed mid-write,
+// produced 0-byte output, transient resource issue), the file's
+// presence and recent mtime BOTH look fine — but consumers would hit
+// `MISSING_EXPORT` errors at example-build time. Pre-fix this slipped
+// through. Same 50-byte floor as the dirty-detection content check.
+function checkPostcondition(pkg: MissingPackage): MissingPackage | null {
   const pkgPath = join(ROOT, pkg.path)
   const libDir = join(pkgPath, 'lib')
   if (!existsSync(libDir)) {
-    stillDirty.push({ ...pkg, reason: 'missing' })
-    continue
+    return { ...pkg, reason: 'missing' }
+  }
+  // Content sanity: lib/index.js must be non-trivially-sized.
+  const libIndex = join(libDir, 'index.js')
+  if (existsSync(libIndex)) {
+    try {
+      const size = statSync(libIndex).size
+      if (size < MIN_LIB_INDEX_BYTES) {
+        return { ...pkg, reason: 'stale' }
+      }
+    } catch {
+      return { ...pkg, reason: 'missing' }
+    }
   }
   // Stale postcondition: src is still newer than lib/ (build didn't
   // refresh lib/). Note we keep the same 2s tolerance from the dirty
@@ -279,7 +317,72 @@ for (const pkg of dirty) {
   const srcM = maxFileMtime(join(pkgPath, 'src'))
   const libM = maxFileMtime(libDir)
   if (srcM > 0 && libM > 0 && srcM > libM + 2_000) {
-    stillDirty.push({ ...pkg, reason: 'stale' })
+    return { ...pkg, reason: 'stale' }
+  }
+  return null
+}
+
+let stillDirty: MissingPackage[] = []
+for (const pkg of dirty) {
+  const result = checkPostcondition(pkg)
+  if (result) stillDirty.push(result)
+}
+
+// Single retry pass (gap #3): the original "meta builds before its
+// deps" symptom was hypothesized as a topological-order race in the
+// bun-filter build. PR #435 couldn't reliably reproduce it, but the
+// underlying class — "transient flake on first build, succeeds on
+// retry" — is real for several reasons:
+//
+//   1. Topological-order races where a dependent package starts
+//      building before its dep finishes (rare but observed).
+//   2. Resource contention (file handle limits, OOM during heavy
+//      parallel builds, network blips on remote-cached deps).
+//   3. Flaky native binaries (the Rust compiler in `@pyreon/compiler`
+//      occasionally fails to find `@oxc-parser/binding-wasm32-wasi`
+//      on the first run after `bun install` if the package isn't
+//      fully linked yet).
+//
+// Strategy: if any packages are still dirty after the first build,
+// retry ONLY those packages, one at a time. Sequential per-package
+// retry avoids the parallel-load issues that may have caused the
+// first failure, and gives clean per-package error output for the
+// few that still fail. Capped at one retry — never recurse, never
+// infinite-loop. The forceFail injection is honored on retry too,
+// so the test harness can verify retry doesn't loop forever.
+const firstPassDirtyCount = stillDirty.length
+let retryFixedCount = 0
+if (stillDirty.length > 0 && !forceFail) {
+  // oxlint-disable-next-line no-console
+  console.log(
+    `\n[bootstrap] Retrying ${stillDirty.length} still-dirty package(s) sequentially…`,
+  )
+  const retried = [...stillDirty]
+  stillDirty = []
+  for (const pkg of retried) {
+    try {
+      execSync(`bun run --filter='${pkg.name}' build`, {
+        cwd: ROOT,
+        stdio: 'inherit',
+        timeout: 120_000, // 2 min per package on retry
+      })
+    } catch {
+      // Per-package retry failure is expected for genuinely-broken
+      // packages — fall through to postcondition check, which will
+      // re-flag them as still-dirty.
+    }
+    const result = checkPostcondition(pkg)
+    if (result) {
+      stillDirty.push(result)
+    } else {
+      retryFixedCount++
+    }
+  }
+  if (retryFixedCount > 0) {
+    // oxlint-disable-next-line no-console
+    console.log(
+      `[bootstrap] Retry recovered ${retryFixedCount} package(s) (first-pass-failed: ${firstPassDirtyCount}, retry-fixed: ${retryFixedCount}, still-dirty: ${stillDirty.length}).`,
+    )
   }
 }
 
