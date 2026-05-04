@@ -753,7 +753,7 @@ One source of truth per package — `packages/<category>/<pkg>/src/manifest.ts` 
 
 ## Docs Website
 
-VitePress documentation site at `docs/` — part of the monorepo workspace. 73 doc pages covering all packages. Interactive `<Playground>` component embeds live code editors with sandboxed preview on 10+ pages (reactivity, core, runtime-dom, store, rx, form, machine, hooks, permissions, i18n, toast, storage, url-state). Code runs via ESM CDN imports in a sandboxed iframe with dark mode support.
+VitePress documentation site at `docs/` — part of the monorepo workspace. 74 doc pages covering all packages. Interactive `<Playground>` component embeds live code editors with sandboxed preview on 10+ pages (reactivity, core, runtime-dom, store, rx, form, machine, hooks, permissions, i18n, toast, storage, url-state). Code runs via ESM CDN imports in a sandboxed iframe with dark mode support.
 
 ```bash
 cd docs && bun run dev       # local dev server

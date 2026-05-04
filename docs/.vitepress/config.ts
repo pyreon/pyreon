@@ -96,6 +96,7 @@ export default defineConfig({
           text: 'Compatibility Layers',
           collapsed: false,
           items: [
+            { text: 'Native marker contract', link: '/docs/native-compat' },
             { text: 'React Compat', link: '/docs/react-compat' },
             { text: 'Preact Compat', link: '/docs/preact-compat' },
             { text: 'Solid Compat', link: '/docs/solid-compat' },
