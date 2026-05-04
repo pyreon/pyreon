@@ -92,7 +92,13 @@ describe('ErrorBoundary', () => {
     warnSpy.mockRestore()
   })
 
-  test('dispatched error triggers fallback rendering', () => {
+  // Helper: flush a queued microtask so the deferred `error.set` lands. The
+  // boundary's handler defers the signal write via queueMicrotask — see the
+  // queueMicrotask comment in `error-boundary.ts` for the rationale. Tests
+  // that read the getter after dispatch need to await the microtask first.
+  const flushMicrotasks = () => new Promise<void>((resolve) => queueMicrotask(resolve))
+
+  test('dispatched error triggers fallback rendering', async () => {
     let result: VNodeChild = null
     runWithHooks(() => {
       result = ErrorBoundary({
@@ -105,10 +111,11 @@ describe('ErrorBoundary', () => {
     expect(getter()).toBe('normal')
 
     dispatchToErrorBoundary(new Error('boom'))
+    await flushMicrotasks()
     expect(getter()).toBe('Caught: Error: boom')
   })
 
-  test('fallback receives reset function that clears error', () => {
+  test('fallback receives reset function that clears error', async () => {
     let result: VNodeChild = null
     let capturedReset: (() => void) | undefined
     runWithHooks(() => {
@@ -125,6 +132,7 @@ describe('ErrorBoundary', () => {
     expect(getter()).toBe('child')
 
     dispatchToErrorBoundary('test-error')
+    await flushMicrotasks()
     expect(getter()).toBe('error-ui')
     expect(capturedReset).toBeDefined()
 
@@ -141,19 +149,19 @@ describe('ErrorBoundary', () => {
       })
       return null
     }, {})
-    const getter = result as unknown as () => VNodeChild
 
-    // First error handled
+    // First error handled — handler returns true synchronously even though
+    // the signal write is deferred. The synchronous `handling` flag is what
+    // gates the second-dispatch shortcut.
     expect(dispatchToErrorBoundary('first')).toBe(true)
-    expect(getter()).toBe('Error: first')
 
-    // Second error not handled (already in error state)
+    // Second error not handled (already handling) — flag is set
+    // synchronously from the first dispatch, so this is short-circuited
+    // BEFORE the first dispatch's microtask flushes.
     expect(dispatchToErrorBoundary('second')).toBe(false)
-    // Still showing first error
-    expect(getter()).toBe('Error: first')
   })
 
-  test('after reset, new error can be caught again', () => {
+  test('after reset, new error can be caught again', async () => {
     let result: VNodeChild = null
     let capturedReset: (() => void) | undefined
     runWithHooks(() => {
@@ -169,6 +177,7 @@ describe('ErrorBoundary', () => {
     const getter = result as unknown as () => VNodeChild
 
     dispatchToErrorBoundary('first-error')
+    await flushMicrotasks()
     expect(getter()).toBe('Error: first-error')
 
     capturedReset?.()
@@ -176,6 +185,42 @@ describe('ErrorBoundary', () => {
 
     // Can catch new error after reset
     expect(dispatchToErrorBoundary('second-error')).toBe(true)
+    await flushMicrotasks()
     expect(getter()).toBe('Error: second-error')
+  })
+
+  // Regression: the handler must defer `error.set(err)` to a microtask, not
+  // call it inline. The inline path was silently dropped by the batch flush's
+  // same-effect dedup when the boundary's mountReactive run was the only
+  // subscriber currently being iterated — Set.add for an already-visited
+  // entry is a no-op, so the notification was lost and the fallback never
+  // mounted. After the fix, the boundary's getter still returns 'child'
+  // synchronously after dispatch (the signal hasn't been written yet), and
+  // returns the error UI on the next microtask tick. This test exercises
+  // the deferral contract directly without spinning up mountReactive +
+  // happy-dom, mirroring the real-Chromium e2e in `e2e/primitives.spec.ts`.
+  test('handler defers error.set to a microtask (avoids batch flush dedup drop)', async () => {
+    let result: VNodeChild = null
+    runWithHooks(() => {
+      result = ErrorBoundary({
+        fallback: (err) => `Error: ${err}`,
+        children: 'child',
+      })
+      return null
+    }, {})
+    const getter = result as unknown as () => VNodeChild
+
+    expect(getter()).toBe('child')
+
+    // Synchronously dispatching does NOT immediately update the boundary's
+    // signal — the write is queued via queueMicrotask. The getter returns
+    // the un-errored state until the microtask flushes.
+    expect(dispatchToErrorBoundary('boom')).toBe(true)
+    expect(getter()).toBe('child')
+
+    // After a microtask flush, the deferred signal write has landed and the
+    // boundary returns the fallback.
+    await flushMicrotasks()
+    expect(getter()).toBe('Error: boom')
   })
 })

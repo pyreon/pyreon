@@ -49,11 +49,38 @@ export function ErrorBoundary(props: {
   }
 
   const error = signal<unknown>(null)
-  const reset = () => error.set(null)
+  // Synchronous "already handling" flag, separate from the deferred
+  // `error` signal write. This lets `handler` correctly short-circuit on
+  // a second error dispatched within the same flush — even though the
+  // signal hasn't been written yet — while still deferring the actual
+  // signal write to a microtask (see queueMicrotask comment below).
+  let handling = false
+  const reset = () => {
+    handling = false
+    error.set(null)
+  }
 
   const handler = (err: unknown): boolean => {
-    if (error.peek() !== null) return false // already in error state — let outer boundary catch it
-    error.set(err)
+    if (handling) return false // already handling — let outer boundary catch nested error
+    handling = true
+    // Defer the signal write to a microtask. The handler fires from inside
+    // mountComponent's catch, which is itself inside the boundary's own
+    // mountReactive effect run (the run that mounted the throwing child).
+    // Calling error.set(err) inline would notify the boundary effect — but
+    // the batch flush is currently iterating subscribers, and the boundary
+    // effect is the SAME run that's already been visited this flush. Set
+    // iteration semantics + Set.add idempotency mean re-enqueueing the
+    // already-visited run is a no-op (intentional dedup to avoid infinite
+    // loops on self-modifying effects — see batch.ts comment). Result: the
+    // notification is silently dropped, the fallback never mounts.
+    //
+    // Deferring to a microtask runs error.set AFTER the current run + batch
+    // flush complete. By then the boundary effect is no longer "in flight"
+    // and a fresh notify queues a clean re-run that swaps to the fallback.
+    queueMicrotask(() => {
+      if (!handling) return // reset() raced ahead of us — drop the stale write
+      error.set(err)
+    })
     reportError({ component: 'ErrorBoundary', phase: 'render', error: err, timestamp: Date.now() })
     return true
   }
