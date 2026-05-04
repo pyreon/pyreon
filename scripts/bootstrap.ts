@@ -219,12 +219,18 @@ for (const pkg of dirty) {
 
 // Distinguish postinstall (bun install hook) from manual / CI invocation.
 // `bun install` sets `npm_lifecycle_event=postinstall`; manual `bun
-// scripts/bootstrap.ts` does not. The two paths want different failure
-// behaviour: aborting `bun install` over a stale lib is worse than
-// continuing (the user gets a real error on the next build), but a
-// manual / CI invocation that swallows failure is misleading silence.
+// scripts/bootstrap.ts` does not. PR #398 made manual / CI invocations
+// exit nonzero on build failure (the postinstall path still swallowed
+// to avoid aborting `bun install` over a transient lib build). Gap #3
+// closed the remaining hole: even the postinstall path now exits
+// nonzero when the POSTCONDITION CHECK shows partial / missing builds —
+// silent partial state is worse than aborting install, because the user
+// might run `bun run dev` (which uses the bun condition → src/, never
+// touches lib/) and never notice the missing lib/ until production
+// build days later, far from the cause.
 const isPostinstall = process.env.npm_lifecycle_event === 'postinstall'
 
+let buildThrew = false
 try {
   if (forceFail) {
     // Test-only injection — see PYREON_BOOTSTRAP_FORCE_FAIL above.
@@ -243,15 +249,60 @@ try {
   // oxlint-disable-next-line no-console
   console.log('[bootstrap] Build complete.')
 } catch {
+  buildThrew = true
+}
+
+// Postcondition verification: re-run the dirty detection against each
+// package that was originally dirty. If any are STILL dirty (lib/ still
+// missing or still stale), the build either failed silently for that
+// package or its build script doesn't actually produce lib/. Either way
+// it's a partial-state bug the bootstrap should surface, not hide.
+//
+// Why this exists: pre-fix, `bun run --filter='./packages/*/*' build`
+// could exit zero even when individual package builds emitted errors
+// (depending on bun-filter's failure-propagation semantics across the
+// dependency graph), or could exit nonzero from a single-package
+// failure while the rest succeeded. The original `try { } catch {}`
+// shape treated both as binary success/failure with no per-package
+// detail. Postcondition check restores the resolution.
+const stillDirty: MissingPackage[] = []
+for (const pkg of dirty) {
+  const pkgPath = join(ROOT, pkg.path)
+  const libDir = join(pkgPath, 'lib')
+  if (!existsSync(libDir)) {
+    stillDirty.push({ ...pkg, reason: 'missing' })
+    continue
+  }
+  // Stale postcondition: src is still newer than lib/ (build didn't
+  // refresh lib/). Note we keep the same 2s tolerance from the dirty
+  // detection — anything tighter trips on filesystem mtime quirks.
+  const srcM = maxFileMtime(join(pkgPath, 'src'))
+  const libM = maxFileMtime(libDir)
+  if (srcM > 0 && libM > 0 && srcM > libM + 2_000) {
+    stillDirty.push({ ...pkg, reason: 'stale' })
+  }
+}
+
+if (buildThrew || stillDirty.length > 0) {
   // oxlint-disable-next-line no-console
   console.error(
-    "[bootstrap] Build failed. Run `bun run --filter='./packages/*/*' build` manually to fix.",
+    `\n[bootstrap] ✗ Build failure — ${stillDirty.length}/${dirty.length} package(s) still need rebuild after the build subprocess${buildThrew ? ' (which exited nonzero)' : ''}:`,
   )
-  // Manual / CI invocations exit non-zero so the failure surfaces to the
-  // shell or CI gate. Postinstall path swallows — aborting `bun install`
-  // over stale-lib is worse than continuing (subsequent `bun run build`
-  // will surface the real error with actionable context).
-  if (!isPostinstall) process.exit(1)
+  for (const pkg of stillDirty) {
+    // oxlint-disable-next-line no-console
+    console.error(`  - ${pkg.name} (${pkg.path}) [${pkg.reason}]`)
+  }
+  // oxlint-disable-next-line no-console
+  console.error(
+    `\n[bootstrap] To investigate: run \`bun run --filter='./packages/<category>/<pkg>' build\` for the failing package and read the per-package output. To retry from scratch: \`bun scripts/bootstrap.ts\`.`,
+  )
+  if (isPostinstall) {
+    // oxlint-disable-next-line no-console
+    console.error(
+      `[bootstrap] \`bun install\` will exit nonzero. Set PYREON_BOOTSTRAP_SOFT=1 to bypass (the install completes but lib/ remains incomplete — example builds will fail with confusing errors until you re-run bootstrap manually).`,
+    )
+  }
+  if (process.env.PYREON_BOOTSTRAP_SOFT !== '1') process.exit(1)
 }
 
 // Phase E1: install git hooks via `core.hooksPath`. Idempotent, no-op
