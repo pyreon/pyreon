@@ -28,7 +28,7 @@
 - Check CLAUDE.md for documented patterns and conventions
 - Check if the pattern exists in another package (don't reinvent)
 - For complex changes, outline approach and get alignment first
-- **Read the active improvement plan** at `.claude/plans/ecosystem-improvements-2026-q2.md` — your task may already be addressed there or may conflict with the planned approach
+- **Check the improvement plan** at `.claude/plans/ecosystem-improvements-2026-q2.md` — most tiers are shipped (see CLAUDE.md), but the open Tier 4 items and the migration recipes there may still apply to your task
 - **Ask: symptom or cause?** When picking up a catalog item, ask whether the item is fixing a symptom or addressing the underlying cause. "F3: doc note" turned into 3 PRs because the right deliverable was "make the silent footgun impossible to hit" — not "add a doc note." If a tactical fix exists alongside a strategic one, decide which level to operate at and surface the trade-off explicitly. Don't silently expand scope and don't silently leave the cause unfixed.
 
 ## Code Changes
@@ -138,7 +138,7 @@ Document the bisect result in the PR description: "Bisect-verified: reverted fix
    3. Run `bun run gen-docs` — the region flips to generated.
    4. Add `renderApiReferenceEntries(manifest)` assertions to the package's `manifest-snapshot.test.ts` (see the flow reference — spot-checks entry count + key fields rather than a full-body inline snapshot, since MCP text is prose-dense and inline snapshots rot fast).
 
-   Reference implementation: `@pyreon/flow` (PR landed T2.5.1). Four migrated packages today (`flow`, `query`, `form`, `hooks`) have manifests; only `flow` is flipped to the MCP pipeline in the T2.5.1 ship — `query`/`form`/`hooks` get flipped in follow-up PRs as their `api[]` entries are enriched to MCP density.
+   Reference implementation: `@pyreon/flow` (PR landed T2.5.1). Per PR #319 every published Pyreon package now has a manifest and is on the MCP pipeline; quality varies by package — `flow` / `query` / `form` / `hooks` are at MCP density (dense `summary`, 6+ `mistakes` per flagship API), more recently migrated packages start with verbatim ports of the prior hand-written entries.
 5. No breaking changes without discussion
 6. Honest quality assessment
 
