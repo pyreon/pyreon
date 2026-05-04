@@ -11,11 +11,33 @@
  *   (b) NODE_ENV=development, no sink — counters pass gate, hit optional-chain
  *   (c) NODE_ENV=development, sink installed — counters fully fire
  *
- * Bound is wall-clock ratio: dev overhead should be < 2× prod. Anything
- * higher means the gate + optional-chain is too expensive to keep hot.
+ * **Why no ratio assertion any more.** Earlier versions of this test asserted
+ * `dev / prod < 2.5` (then 5× after widening) on wall-clock time. That
+ * assertion was structurally broken under vitest's concurrent worker pool:
+ * when `bun run --filter='*'` runs 30+ test suites in parallel, prod (which
+ * runs first) wins the scheduler race and finishes in ~2 ms; by the time
+ * dev(no-sink) runs the CPU is fully saturated by sibling workers and a
+ * single 1k-row render takes 100+ ms. The resulting 50× ratio has nothing
+ * to do with the gate cost — it's measuring scheduling fairness. Widening
+ * the bound just deferred the flake. The pre-push hook (PR #437) tripped
+ * on this assertion every push, defeating the gate's purpose.
  *
- * Not a tight perf gate (timing in vitest is noisy). Just an upper-bound
- * regression guard.
+ * The test now keeps the timing log (useful for human inspection on
+ * `bun run --filter='@pyreon/perf-harness' test`) and asserts only that
+ * each render produces a positive finite measurement — i.e. the gate
+ * doesn't throw and the renders complete. That's the actual bug class
+ * a unit test in this layer can catch.
+ *
+ * Real-perf regression coverage lives in `@pyreon/perf-harness`'s
+ * `bun run perf:record` pipeline (Playwright + median-of-N runs +
+ * baseline comparison in a controlled, single-worker environment) —
+ * that's where wall-clock comparisons belong.
+ *
+ * **Per-test timeout: 60s.** vitest's default 5s timeout is far too tight for
+ * this shape — three 1k-row SSR renders × (2 warmups + 5 measured iterations)
+ * × 3 mode setups (each with `vi.resetModules()` + fresh imports of @pyreon/core
+ * + @pyreon/runtime-server) = ~500ms in isolation but balloons to 30+ seconds
+ * under heavy concurrent load.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -75,7 +97,7 @@ describe('runtime-server counter overhead', () => {
     vi.resetModules()
   })
 
-  it('dev-mode (no sink) is within 2× of production wall-clock', async () => {
+  it('renders 1k rows in all three gate modes without throwing', { timeout: 60_000 }, async () => {
     // Setup (a): production, no sink
     const prodMs = await measure(async () => {
       process.env.NODE_ENV = 'production'
@@ -104,12 +126,14 @@ describe('runtime-server counter overhead', () => {
       `[ssr-overhead] 1k rows — prod=${prodMs.toFixed(2)}ms, dev(no-sink)=${devNoSinkMs.toFixed(2)}ms, dev(sink)=${devWithSinkMs.toFixed(2)}ms`,
     )
 
-    // Dev-mode overhead bound. Loose — timing is noisy in vitest but we
-    // want a ceiling that fails loud on 10× regressions, not on 2-3%
-    // measurement drift.
-    const devNoSinkRatio = devNoSinkMs / Math.max(prodMs, 0.1)
-    const devWithSinkRatio = devWithSinkMs / Math.max(prodMs, 0.1)
-    expect(devNoSinkRatio).toBeLessThan(2.5)
-    expect(devWithSinkRatio).toBeLessThan(3)
+    // Smoke check: each mode produced a positive finite measurement.
+    // No wall-clock comparison — see file header for why ratio assertions
+    // are structurally broken under vitest's concurrent worker pool.
+    expect(prodMs).toBeGreaterThan(0)
+    expect(prodMs).toBeLessThan(60_000)
+    expect(devNoSinkMs).toBeGreaterThan(0)
+    expect(devNoSinkMs).toBeLessThan(60_000)
+    expect(devWithSinkMs).toBeGreaterThan(0)
+    expect(devWithSinkMs).toBeLessThan(60_000)
   })
 })
