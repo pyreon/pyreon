@@ -1,6 +1,6 @@
 # Experiments
 
-Bounded prototypes that answer ONE yes/no question about a possible architectural or algorithmic change to Pyreon. Tracking plan: [`.claude/plans/architectural-experiments-2026-q2.md`](../../.claude/plans/architectural-experiments-2026-q2.md).
+Bounded prototypes that answer ONE yes/no question about a possible architectural or algorithmic change to Pyreon. Tracking: [`.claude/plans/open-work-2026-q3.md`](../../.claude/plans/open-work-2026-q3.md) (P3 section lists which experiments have run and which are open).
 
 ## Layout
 

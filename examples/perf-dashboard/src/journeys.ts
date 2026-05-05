@@ -61,7 +61,7 @@ export const journeys: Record<string, (page: PageLike) => Promise<void>> = {
     await page.click('[data-testid="close-modal"]')
   },
 
-  // ─── Canonical journeys (architectural-experiments-2026-q2 plan) ───────────
+  // ─── Canonical journeys (perf-record / perf-diff baselines) ───────────
   //
   // Three real-app-shape workloads — wins/regressions show up the way they
   // would in production, not just on synthetic microbenchmarks. Every
