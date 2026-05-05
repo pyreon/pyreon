@@ -4,7 +4,7 @@
 
 - **oxlint** for general JS/TS linting (400+ rules, Rust-powered)
 - **oxfmt** for formatting (Rust-powered, Prettier-compatible)
-- **@pyreon/lint** for Pyreon-specific rules (58 rules, 12 categories)
+- **@pyreon/lint** for Pyreon-specific rules (62 rules, 12 categories)
 - Config files: `.oxlintrc.json` (linting), `.oxfmtrc.json` (formatting), `.pyreonlintrc.json` (Pyreon-specific rules)
 - Run lint: `bun run lint` (runs `oxlint .` from root)
 - Run format: `bun run format` (runs `oxfmt --write .`)
