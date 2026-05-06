@@ -1,5 +1,24 @@
 # @pyreon/core
 
+## 1.0.0
+
+### Minor Changes
+
+- [#336](https://github.com/pyreon/pyreon/pull/336) [`b8819ac`](https://github.com/pyreon/pyreon/commit/b8819ace413b377739e9208d19a72afbc0eea0c4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `Show` and `Match` now accept either an accessor or a value for the `when` prop. Previously, `<Show when={signal}>` (bare signal reference) compiled to `<Show when={signal()}>` via the compiler's signal auto-call, which passed a boolean — and `Show` then crashed with `TypeError: props.when is not a function`. The fix adds defensive normalization (`typeof === 'function'` check), so both shapes work. Reactive cases still need the accessor form (`when={() => signal()}`) for true re-evaluation on signal change; the value form covers static booleans and the auto-call edge case. The `ShowProps['when']` type widens from `() => unknown` to `unknown | (() => unknown)`.
+
+### Patch Changes
+
+- [#428](https://github.com/pyreon/pyreon/pull/428) [`c3b924a`](https://github.com/pyreon/pyreon/commit/c3b924ab03dbf3187acc2ec3d85521f1a4e57a56) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `useForm.register(field, { type: 'checkbox' })` and `useField.register({ type: 'checkbox' })` now return `FieldRegisterCheckboxProps` (a new exported type) instead of `FieldRegisterProps<T>`. The checkbox shape OMITS `value` and includes `checked` as a required field — `<input type="checkbox" {...register(field, { type: 'checkbox' })}>` now type-checks cleanly without a cast.
+
+  Pre-fix, register's return type included `value: Signal<boolean>` for checkbox fields. JSX's `<input value={...}>` only accepts `string | number | (() => string | number)`, so the spread caused a TS2322 error and consumers had to wrap with `as unknown as InputAttributes`. Runtime behavior is unchanged — checkboxes have always read `checked` for their form value, and HTML's `<input type="checkbox" value=...>` carries arbitrary metadata, not the form-level boolean.
+
+  The `register` field in `FormState['register']` and `UseFieldResult['register']` is now a typed overload — pass `{ type: 'checkbox' }` for checkbox shape, omit or pass `{ type?: 'number' }` for the standard `FieldRegisterProps<T>` shape.
+
+  Companion fix in `@pyreon/core`'s `InputAttributes` and `TextareaAttributes`: widened `readOnly` from `boolean | undefined` to `boolean | (() => boolean) | undefined`, mirroring `disabled`. Both props are reactive in the runtime; the asymmetric type was a bug — `register()` always emitted `readOnly: Accessor<boolean>` (a callable), which couldn't satisfy the narrower type. No runtime change.
+
+- Updated dependencies []:
+  - @pyreon/reactivity@1.0.0
+
 ## 0.14.0
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # @pyreon/vite-plugin
 
+## 1.0.0
+
+### Patch Changes
+
+- Updated dependencies [[`c3b924a`](https://github.com/pyreon/pyreon/commit/c3b924ab03dbf3187acc2ec3d85521f1a4e57a56)]:
+  - @pyreon/compiler@1.0.0
+
 ## 0.14.0
 
 ### Minor Changes

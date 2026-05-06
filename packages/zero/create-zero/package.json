@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/create-zero",
-  "version": "0.14.0",
+  "version": "1.0.0",
   "description": "Create a new Pyreon project — invoke as `create-pyreon-app` (canonical) or `create-zero` (alias)",
   "license": "MIT",
   "author": "Vit Bokisch",
