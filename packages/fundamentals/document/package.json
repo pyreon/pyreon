@@ -47,7 +47,7 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/reactivity": "workspace:^",
     "@types/pdfmake": "^0.3.2",
-    "@vitus-labs/tools-lint": "^1.15.5",
+    "@vitus-labs/tools-lint": "^2.3.0",
     "docx": "^9.6.0",
     "exceljs": "^4.4.0",
     "pdfmake": "^0.3.7",

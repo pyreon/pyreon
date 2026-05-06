@@ -46,7 +46,7 @@
     "@pyreon/core": "workspace:^",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/reactivity": "workspace:^",
-    "@vitus-labs/tools-lint": "^1.15.5"
+    "@vitus-labs/tools-lint": "^2.3.0"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",

@@ -53,7 +53,7 @@
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@vitest/browser-playwright": "^4.1.4",
-    "@vitus-labs/tools-lint": "^1.15.5"
+    "@vitus-labs/tools-lint": "^2.3.0"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
