@@ -5,7 +5,7 @@
 Full-stack UI framework with fine-grained reactivity (signals). SSR, SSG, islands, SPA.
 All packages under `@pyreon/*` scope.
 
-**Improvement plan reference**: `.claude/plans/ecosystem-improvements-2026-q2.md` — addresses six recurring failure modes surfaced by PRs #197/#200. Tiers 0-3 are largely shipped (T1.1 browser smoke harness + lint enforcement, T1.2 mock-vnode audit, T2.1/T2.5.1 manifest-driven docs, T2.5.2-2.5.8 MCP tools, T3.1 rocketstyle attrs hoisting). Tier 4 (strategic direction) remains open. Read the plan before starting any new catalog work — your task may already be addressed there.
+**Open work**: `.claude/plans/open-work-2026-q3.md` — single source of truth for what's still open and prioritized. P0 = compiler-pass rocketstyle collapse (4-6 weeks, 44× perf win validated). P1 = MCP overhaul tail. P3 = architectural experiments backlog. P4 = strategic positioning (needs user input). Read this before starting any new catalog work.
 
 ## Benchmark Results (Chromium via Playwright)
 
@@ -19,7 +19,7 @@ Pyreon (compiled) is in the top performance tier on the JS Framework Benchmark �
 | Select row | 5ms | 5ms | 5ms | 8ms | tied with Solid |
 | Create 10,000 rows | 103ms | 104ms | 131ms | 540ms | tied with Solid |
 
-**What this means in practice:** competitive with Solid on the synthetic JS Framework Benchmark, meaningfully ahead of React. The "fastest" framing was overstated — fix is in this PR. Earning legitimate "fastest" claims requires either (a) the compiler-pass landed in `compiler-pass-rocketstyle-collapse.md` (no other framework has Pyreon's multi-dimensional theme system to compile away) or (b) real-app head-to-head measurements that we haven't run yet.
+**What this means in practice:** competitive with Solid on the synthetic JS Framework Benchmark, meaningfully ahead of React. The "fastest" framing was overstated — fix is in this PR. Earning legitimate "fastest" claims requires either (a) the compiler-pass collapse for rocketstyle (P0 in `.claude/plans/open-work-2026-q3.md` — no other framework has Pyreon's multi-dimensional theme system to compile away) or (b) real-app head-to-head measurements that we haven't run yet.
 
 Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextNode.data`, zero-alloc mount pipeline (lazy hooks, lazy EffectScope, devtools gated on `__DEV__`, per-definition WeakMap caches in rocketstyle, dimension-prop memo at the rocketstyle wrapper, `$element` bundle interning + styler classCache extension)
 

@@ -28,7 +28,7 @@
 - Check CLAUDE.md for documented patterns and conventions
 - Check if the pattern exists in another package (don't reinvent)
 - For complex changes, outline approach and get alignment first
-- **Check the improvement plan** at `.claude/plans/ecosystem-improvements-2026-q2.md` — most tiers are shipped (see CLAUDE.md), but the open Tier 4 items and the migration recipes there may still apply to your task
+- **Check the open-work doc** at `.claude/plans/open-work-2026-q3.md` — single source of truth for what's still open and prioritized; your task may already be tracked there
 - **Ask: symptom or cause?** When picking up a catalog item, ask whether the item is fixing a symptom or addressing the underlying cause. "F3: doc note" turned into 3 PRs because the right deliverable was "make the silent footgun impossible to hit" — not "add a doc note." If a tactical fix exists alongside a strategic one, decide which level to operate at and surface the trade-off explicitly. Don't silently expand scope and don't silently leave the cause unfixed.
 
 ## Code Changes

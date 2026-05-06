@@ -10,7 +10,7 @@ Pyreon PRs today synchronize up to 9 documentation surfaces by hand: `CLAUDE.md`
 
 The manifest approach collapses structured fields (API signatures, examples, common mistakes) to **one source** per package. Free-form prose (guides, conceptual overviews, in-code JSDoc for TSDoc directives like `@deprecated`/`@internal`) stays hand-maintained.
 
-See `.claude/plans/ecosystem-improvements-2026-q2.md` → T2.1 for the broader context and T2.5.x for the MCP tools that will consume these manifests.
+The manifest pipeline (T2.1) and the MCP tools that consume these manifests (T2.5.1-T2.5.8) shipped — see `CLAUDE.md` "Manifest-driven docs pipeline" section for the current state.
 
 ## Usage
 

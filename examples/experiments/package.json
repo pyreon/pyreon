@@ -2,7 +2,7 @@
   "name": "@pyreon/experiments",
   "version": "0.1.0",
   "private": true,
-  "description": "Architectural experiments parent — see README.md and the plan at .claude/plans/architectural-experiments-2026-q2.md.",
+  "description": "Architectural experiments parent — see README.md and the open-work tracker at .claude/plans/open-work-2026-q3.md.",
   "type": "module",
   "scripts": {
     "lint": "oxlint .",
