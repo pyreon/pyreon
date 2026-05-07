@@ -121,6 +121,48 @@ export interface ZeroConfig {
      *   308 all collapse to "client-side refresh".
      */
     redirectsAsHtml?: 'none' | 'meta-refresh'
+    /**
+     * Callback invoked when a path's render throws (loader-throw that
+     * isn't a `redirect()`, render exception, anything that lands in the
+     * `errors[]` collection). Returns either:
+     * - `string` → written as the path's HTML in place of the failed
+     *   render. Use this to emit a per-path fallback page (e.g. a generic
+     *   "this content is temporarily unavailable" template) so static
+     *   hosts have something to serve at that URL instead of 404'ing.
+     * - `null` → skip; the path produces no HTML output. The error
+     *   stays in `errors[]` for the post-build summary.
+     *
+     * The callback runs ONCE per failed path. Async callbacks are
+     * awaited. If the callback itself throws, the throw is captured as
+     * a separate error entry and the path is skipped (no fallback HTML).
+     * Default: `undefined` — failed paths just land in `errors[]`.
+     *
+     * @example
+     * ssg: {
+     *   onPathError: async (path, error) => {
+     *     console.error(\`SSG render failed for \${path}:\`, error)
+     *     return \`<!DOCTYPE html><html><body><h1>Page unavailable</h1></body></html>\`
+     *   },
+     * }
+     */
+    onPathError?: (
+      path: string,
+      error: unknown,
+    ) => string | null | Promise<string | null>
+    /**
+     * When `'json'` (default), write `dist/_pyreon-ssg-errors.json` after
+     * the render loop summarising every error encountered (path traversal,
+     * timeout, render exception, getStaticPaths throw, fallback callback
+     * throw). Each entry has `{ path, message, name, stack }`. The file
+     * is ONLY written when `errors.length > 0` — successful builds don't
+     * leak an empty manifest. Reading it lets CI gate on render failures
+     * without parsing console output (e.g.
+     * `cat dist/_pyreon-ssg-errors.json | jq '.errors | length' | grep -q 0`).
+     *
+     * Set to `'none'` to opt out entirely — errors stay in console-only,
+     * matching pre-PR-G behaviour.
+     */
+    errorArtifact?: 'json' | 'none'
   }
 
   /** ISR config — only used when mode is "isr". */

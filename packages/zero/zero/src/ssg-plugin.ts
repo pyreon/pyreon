@@ -428,6 +428,29 @@ function renderMetaRefreshHtml(target: string): string {
 }
 
 /**
+ * Serialize the captured render-loop errors as a stable JSON artifact.
+ * Each entry has `{ path, message, name, stack }`. Errors that aren't
+ * `Error` instances (e.g. a loader that threw a string) are coerced via
+ * `String()` for `message`; `name` falls back to `'Error'`; `stack` is
+ * `undefined` (omitted from JSON output).
+ *
+ * Wrapped in `{ errors: [...] }` rather than emitted as a bare array so
+ * future fields (timing, build metadata) can be added without breaking
+ * existing CI consumers. Pretty-printed with 2-space indent — the file
+ * is meant to be read both by tooling AND humans diagnosing a failed
+ * build, so byte-density is not the priority.
+ */
+function renderErrorArtifact(entries: { path: string; error: unknown }[]): string {
+  const errors = entries.map(({ path, error }) => ({
+    path,
+    message: error instanceof Error ? error.message : String(error),
+    name: error instanceof Error ? error.name : 'Error',
+    stack: error instanceof Error ? error.stack : undefined,
+  }))
+  return `${JSON.stringify({ errors }, null, 2)}\n`
+}
+
+/**
  * Inject a rendered SSR result into the index.html template. Prefers
  * Pyreon's `<!--pyreon-head-->` / `<!--pyreon-app-->` /
  * `<!--pyreon-scripts-->` placeholders; falls back to inserting before
@@ -699,6 +722,31 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           writtenPaths.push(p)
         } catch (error) {
           errors.push({ path: p, error })
+          // PR G — onPathError fallback hook. The user-supplied callback
+          // can return HTML to write at the path's URL, OR null to skip.
+          // The error is ALREADY recorded in `errors[]` before this call
+          // so the post-build summary catches it regardless of what the
+          // callback does. The callback's own throws are caught + recorded
+          // as a separate entry — a buggy callback shouldn't take down
+          // the whole build, AND we surface the bug instead of swallowing.
+          if (config.ssg?.onPathError) {
+            try {
+              const fallbackHtml = await config.ssg.onPathError(p, error)
+              if (typeof fallbackHtml === 'string') {
+                const filePath = resolveOutputPath(distDir, p)
+                const resolvedOut = resolve(distDir)
+                if (!resolve(filePath).startsWith(resolvedOut)) {
+                  errors.push({ path: p, error: new Error(`Path traversal detected: "${p}"`) })
+                  continue
+                }
+                await mkdir(dirname(filePath), { recursive: true })
+                await writeFile(filePath, fallbackHtml, 'utf-8')
+                pages++
+              }
+            } catch (callbackError) {
+              errors.push({ path: `${p} (onPathError)`, error: callbackError })
+            }
+          }
         }
       }
 
@@ -780,6 +828,23 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         )
       }
 
+      // PR G — emit `dist/_pyreon-ssg-errors.json` summarising every error
+      // captured during the render loop (path traversal, render exception,
+      // getStaticPaths throw, onPathError throw, 404 render fail). The file
+      // is ONLY written when `errors.length > 0` — successful builds don't
+      // leak an empty manifest. Reading it lets CI gate on render failures
+      // without parsing console output.
+      //
+      // Default: 'json' (write the artifact). Set `errorArtifact: 'none'`
+      // to opt out — errors stay console-only, matching pre-PR-G behaviour.
+      if (errors.length > 0 && config.ssg?.errorArtifact !== 'none') {
+        await writeFile(
+          join(distDir, '_pyreon-ssg-errors.json'),
+          renderErrorArtifact(errors),
+          'utf-8',
+        )
+      }
+
       // Cleanup the SSR build artifacts — they're an implementation detail
       // and shouldn't ship to the static host.
       await rm(ssrOutDir, { recursive: true, force: true })
@@ -812,6 +877,7 @@ export const _internal = {
   renderNetlifyRedirects,
   renderVercelRedirectsJson,
   renderMetaRefreshHtml,
+  renderErrorArtifact,
   SSR_ENTRY_SOURCE,
   SSR_ENTRY_FILENAME,
 }
