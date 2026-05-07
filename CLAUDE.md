@@ -939,7 +939,11 @@ CI runs this on every PR as a required check (`Verify Modes` job in `.github/wor
 2. Define the per-mode dist/ shape in the smoke assertion (what files should exist, what content should they contain)
 3. Add at least one cell exercising the new mode against an existing example
 
-The matrix today (post-PR introducing the gate): 11 cells covering ssr-showcase, app-showcase, ui-showcase, playground, fundamentals-playground across ssr/ssg/spa modes. Total runtime ~90s. SSG cells include both explicit-paths and autodetect variants (different code paths in `ssg-plugin.ts`).
+The matrix today: 12 cells covering ssr-showcase, app-showcase, ui-showcase, playground, fundamentals-playground, **islands-showcase** across ssr/ssg/spa modes. Total runtime ~90s. SSG cells include both explicit-paths and autodetect variants (different code paths in `ssg-plugin.ts`).
+
+**Bundle-graph assertions** (`assertChunkGraph` helper): the `islands-showcase × ssr` cell goes beyond the file-content checks the other cells use — it asserts the *chunk graph* (per-island dynamic-import chunks exist with named filenames + content fingerprints; never-strategy islands are absent from the bundle). This is the structural gate against silent regressions in code-splitting: every browser smoke + e2e test would still pass if all island chunks were inlined into the entry, but the cell would fail with `expected chunk for "Counter" in dist/assets/`. Bisect-verified against (a) registry leak (StaticBadge added to `hydrateIslands({ ... })` → fails with `chunk "StaticBadge-*.js" exists but should NOT`) and (b) static-import leak (a hydrated island statically imports + uses StaticBadge → fails with `string "static-badge" found in chunk Counter-*.js`).
+
+**Cell shape**: `Cell.useExampleConfig?: boolean` runs `vite build` against the example's existing `vite.config.ts` unchanged (no auto-generated zero-driven verify config). Used for examples that don't go through `@pyreon/zero` — e.g. islands-showcase uses bare `@pyreon/vite-plugin` with `ssr: { entry }`.
 
 ## Check Bundle Budgets — per-package main-entry size gate
 
