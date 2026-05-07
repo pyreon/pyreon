@@ -48,51 +48,60 @@ export interface UseQueryResult<TData, TError = DefaultError> {
 export function useQuery<TData = unknown, TError = DefaultError, TKey extends QueryKey = QueryKey>(
   options: () => QueryObserverOptions<TData, TError, TData, TData, TKey>,
 ): UseQueryResult<TData, TError> {
-  // Mount-N baseline. One emit per hook call; observer + 9 signal allocations
-  // + subscribe + setOptions effect follow.
+  // Mount-N baseline. Per-hook overhead is now: 1 observer alloc + 1 subscribe
+  // + 1 setOptions effect — signals are lazy-allocated on first property
+  // access (see slots below), so most consumers pay 1-2 signal allocs instead
+  // of 9. The wasted-allocation scaling that showed up as 20070 signalWrite
+  // in queryNotify-10k goes away — the subscribe callback only writes to
+  // materialized slots.
   if (__DEV__) _countSink.__pyreon_count__?.('query.useQuery')
 
   const client = useQueryClient()
   const observer = new QueryObserver<TData, TError, TData, TData, TKey>(client, options())
-  const initial = observer.getCurrentResult()
 
-  // Fine-grained signals: each field is independent so only effects that read
-  // e.g. `query.data()` re-run when data changes, not when isFetching flips.
-  const resultSig = signal<QueryObserverResult<TData, TError>>(initial)
-  const dataSig = signal<TData | undefined>(initial.data)
-  const errorSig = signal<TError | null>(initial.error ?? null)
-  const statusSig = signal<'pending' | 'error' | 'success'>(initial.status)
-  const isPending = signal(initial.isPending)
-  const isLoading = signal(initial.isLoading)
-  const isFetching = signal(initial.isFetching)
-  const isError = signal(initial.isError)
-  const isSuccess = signal(initial.isSuccess)
+  // Lazy-allocated fine-grained signals. Each field starts as `undefined`;
+  // first property access materializes the signal seeded with the observer's
+  // current value. The subscribe callback below only writes to materialized
+  // slots, so apps that read `query.data` + `query.isPending` pay 2 signal
+  // sets per cache update — not 9.
+  //
+  // Trade-off: each property access is a getter call, so we make sure to
+  // return the SAME signal instance on every access. Reading `query.data`
+  // twice gives the same `Signal<T>` reference — required for effect
+  // tracking to work (signals identify subscriptions by identity).
+  const slots: {
+    result?: Signal<QueryObserverResult<TData, TError>>
+    data?: Signal<TData | undefined>
+    error?: Signal<TError | null>
+    status?: Signal<'pending' | 'error' | 'success'>
+    isPending?: Signal<boolean>
+    isLoading?: Signal<boolean>
+    isFetching?: Signal<boolean>
+    isError?: Signal<boolean>
+    isSuccess?: Signal<boolean>
+  } = {}
 
   // Subscribe synchronously — data flows before mount (correct for SSR pre-population).
-  // batch() coalesces all signal updates into one notification flush.
   const unsub = observer.subscribe((r) => {
-    // Per upstream cache-update fan-out. Pair with `query.useQuery` for the
-    // notify-per-mount ratio: high notify/mount = subscriber over-fan-out.
     if (__DEV__) _countSink.__pyreon_count__?.('query.observerNotify')
+    // Only write to materialized slots. Apps that don't read a field never
+    // materialize its signal, so its branch here is a `null`-check no-op.
+    // batch() coalesces the writes that DO happen into one notification flush.
     batch(() => {
-      resultSig.set(r)
-      dataSig.set(r.data)
-      errorSig.set(r.error ?? null)
-      statusSig.set(r.status)
-      isPending.set(r.isPending)
-      isLoading.set(r.isLoading)
-      isFetching.set(r.isFetching)
-      isError.set(r.isError)
-      isSuccess.set(r.isSuccess)
+      if (slots.result) slots.result.set(r)
+      if (slots.data) slots.data.set(r.data)
+      if (slots.error) slots.error.set(r.error ?? null)
+      if (slots.status) slots.status.set(r.status)
+      if (slots.isPending) slots.isPending.set(r.isPending)
+      if (slots.isLoading) slots.isLoading.set(r.isLoading)
+      if (slots.isFetching) slots.isFetching.set(r.isFetching)
+      if (slots.isError) slots.isError.set(r.isError)
+      if (slots.isSuccess) slots.isSuccess.set(r.isSuccess)
     })
   })
 
   // Track reactive options: when signals inside options() change, update the observer.
-  // effect() is auto-registered in the component's EffectScope → auto-disposed on unmount.
   effect(() => {
-    // Per re-run of the options-builder effect. Reactive query keys (signal
-    // reads inside options()) drive this counter — high value vs mount count
-    // means upstream signals churn the options builder.
     if (__DEV__) _countSink.__pyreon_count__?.('query.setOptions')
     observer.setOptions(options())
   })
@@ -101,15 +110,35 @@ export function useQuery<TData = unknown, TError = DefaultError, TKey extends Qu
   onUnmount(() => unsub())
 
   return {
-    result: resultSig,
-    data: dataSig,
-    error: errorSig,
-    status: statusSig,
-    isPending,
-    isLoading,
-    isFetching,
-    isError,
-    isSuccess,
+    get result() {
+      return (slots.result ??= signal<QueryObserverResult<TData, TError>>(observer.getCurrentResult()))
+    },
+    get data() {
+      return (slots.data ??= signal<TData | undefined>(observer.getCurrentResult().data))
+    },
+    get error() {
+      return (slots.error ??= signal<TError | null>(observer.getCurrentResult().error ?? null))
+    },
+    get status() {
+      return (slots.status ??= signal<'pending' | 'error' | 'success'>(
+        observer.getCurrentResult().status,
+      ))
+    },
+    get isPending() {
+      return (slots.isPending ??= signal(observer.getCurrentResult().isPending))
+    },
+    get isLoading() {
+      return (slots.isLoading ??= signal(observer.getCurrentResult().isLoading))
+    },
+    get isFetching() {
+      return (slots.isFetching ??= signal(observer.getCurrentResult().isFetching))
+    },
+    get isError() {
+      return (slots.isError ??= signal(observer.getCurrentResult().isError))
+    },
+    get isSuccess() {
+      return (slots.isSuccess ??= signal(observer.getCurrentResult().isSuccess))
+    },
     refetch: () => observer.refetch(),
   }
 }

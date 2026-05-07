@@ -109,44 +109,66 @@ export function useMutation<
   }
 
   const observer = new MutationObserver<TData, TError, TVariables, TContext>(client, finalOptions)
-  const initial = observer.getCurrentResult()
 
-  // Fine-grained signals: each field is independent so only effects that read
-  // e.g. `mutation.isPending()` re-run when isPending changes, not on every update.
-  const resultSig = signal<MutationObserverResult<TData, TError, TVariables, TContext>>(initial)
-  const dataSig = signal<TData | undefined>(initial.data)
-  const errorSig = signal<TError | null>(initial.error ?? null)
-  const statusSig = signal<'idle' | 'pending' | 'success' | 'error'>(initial.status)
-  const isPending = signal(initial.isPending)
-  const isSuccess = signal(initial.isSuccess)
-  const isError = signal(initial.isError)
-  const isIdle = signal(initial.isIdle)
+  // Lazy signal slots — see use-query.ts for the pattern. useMutation observers
+  // fire their subscribe callback on each mutate() lifecycle transition (pending
+  // → success/error), so the wasted-write scaling is mutationCount × N states ×
+  // 8. Lazy allocation drops it to 1-2 in real apps that read just `isPending`
+  // and `data`.
+  type Result = MutationObserverResult<TData, TError, TVariables, TContext>
+  const slots: {
+    result?: Signal<Result>
+    data?: Signal<TData | undefined>
+    error?: Signal<TError | null>
+    status?: Signal<'idle' | 'pending' | 'success' | 'error'>
+    isPending?: Signal<boolean>
+    isSuccess?: Signal<boolean>
+    isError?: Signal<boolean>
+    isIdle?: Signal<boolean>
+  } = {}
 
-  // batch() coalesces all signal updates into one notification flush.
   const unsub = observer.subscribe((r) => {
     batch(() => {
-      resultSig.set(r)
-      dataSig.set(r.data)
-      errorSig.set(r.error ?? null)
-      statusSig.set(r.status)
-      isPending.set(r.isPending)
-      isSuccess.set(r.isSuccess)
-      isError.set(r.isError)
-      isIdle.set(r.isIdle)
+      if (slots.result) slots.result.set(r)
+      if (slots.data) slots.data.set(r.data)
+      if (slots.error) slots.error.set(r.error ?? null)
+      if (slots.status) slots.status.set(r.status)
+      if (slots.isPending) slots.isPending.set(r.isPending)
+      if (slots.isSuccess) slots.isSuccess.set(r.isSuccess)
+      if (slots.isError) slots.isError.set(r.isError)
+      if (slots.isIdle) slots.isIdle.set(r.isIdle)
     })
   })
 
   onUnmount(() => unsub())
 
   return {
-    result: resultSig,
-    data: dataSig,
-    error: errorSig,
-    status: statusSig,
-    isPending,
-    isSuccess,
-    isError,
-    isIdle,
+    get result() {
+      return (slots.result ??= signal<Result>(observer.getCurrentResult()))
+    },
+    get data() {
+      return (slots.data ??= signal<TData | undefined>(observer.getCurrentResult().data))
+    },
+    get error() {
+      return (slots.error ??= signal<TError | null>(observer.getCurrentResult().error ?? null))
+    },
+    get status() {
+      return (slots.status ??= signal<'idle' | 'pending' | 'success' | 'error'>(
+        observer.getCurrentResult().status,
+      ))
+    },
+    get isPending() {
+      return (slots.isPending ??= signal(observer.getCurrentResult().isPending))
+    },
+    get isSuccess() {
+      return (slots.isSuccess ??= signal(observer.getCurrentResult().isSuccess))
+    },
+    get isError() {
+      return (slots.isError ??= signal(observer.getCurrentResult().isError))
+    },
+    get isIdle() {
+      return (slots.isIdle ??= signal(observer.getCurrentResult().isIdle))
+    },
     mutate: (vars, callbackOptions) => {
       observer.mutate(vars, callbackOptions).catch(() => {
         // Error is already captured in the error signal via the observer subscription.

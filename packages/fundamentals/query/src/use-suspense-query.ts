@@ -149,28 +149,30 @@ export function useSuspenseQuery<
 
   const client = useQueryClient()
   const observer = new QueryObserver<TData, TError, TData, TData, TKey>(client, options())
-  const initial = observer.getCurrentResult()
 
-  const resultSig = signal<QueryObserverResult<TData, TError>>(initial)
-  const dataSig = signal<TData>(initial.data as TData)
-  const errorSig = signal<TError | null>(initial.error ?? null)
-  const statusSig = signal<'pending' | 'error' | 'success'>(initial.status)
-  const isPending = signal(initial.isPending)
-  const isFetching = signal(initial.isFetching)
-  const isError = signal(initial.isError)
-  const isSuccess = signal(initial.isSuccess)
+  // Lazy signal slots — see use-query.ts for the pattern.
+  const slots: {
+    result?: Signal<QueryObserverResult<TData, TError>>
+    data?: Signal<TData>
+    error?: Signal<TError | null>
+    status?: Signal<'pending' | 'error' | 'success'>
+    isPending?: Signal<boolean>
+    isFetching?: Signal<boolean>
+    isError?: Signal<boolean>
+    isSuccess?: Signal<boolean>
+  } = {}
 
   const unsub = observer.subscribe((r) => {
     if (__DEV__) _countSink.__pyreon_count__?.('query.observerNotify')
     batch(() => {
-      resultSig.set(r)
-      if (r.data !== undefined) dataSig.set(r.data as TData)
-      errorSig.set(r.error ?? null)
-      statusSig.set(r.status)
-      isPending.set(r.isPending)
-      isFetching.set(r.isFetching)
-      isError.set(r.isError)
-      isSuccess.set(r.isSuccess)
+      if (slots.result) slots.result.set(r)
+      if (slots.data && r.data !== undefined) slots.data.set(r.data as TData)
+      if (slots.error) slots.error.set(r.error ?? null)
+      if (slots.status) slots.status.set(r.status)
+      if (slots.isPending) slots.isPending.set(r.isPending)
+      if (slots.isFetching) slots.isFetching.set(r.isFetching)
+      if (slots.isError) slots.isError.set(r.isError)
+      if (slots.isSuccess) slots.isSuccess.set(r.isSuccess)
     })
   })
 
@@ -181,14 +183,34 @@ export function useSuspenseQuery<
   onUnmount(() => unsub())
 
   return {
-    result: resultSig,
-    data: dataSig,
-    error: errorSig,
-    status: statusSig,
-    isPending,
-    isFetching,
-    isError,
-    isSuccess,
+    get result() {
+      return (slots.result ??= signal<QueryObserverResult<TData, TError>>(
+        observer.getCurrentResult(),
+      ))
+    },
+    get data() {
+      return (slots.data ??= signal<TData>(observer.getCurrentResult().data as TData))
+    },
+    get error() {
+      return (slots.error ??= signal<TError | null>(observer.getCurrentResult().error ?? null))
+    },
+    get status() {
+      return (slots.status ??= signal<'pending' | 'error' | 'success'>(
+        observer.getCurrentResult().status,
+      ))
+    },
+    get isPending() {
+      return (slots.isPending ??= signal(observer.getCurrentResult().isPending))
+    },
+    get isFetching() {
+      return (slots.isFetching ??= signal(observer.getCurrentResult().isFetching))
+    },
+    get isError() {
+      return (slots.isError ??= signal(observer.getCurrentResult().isError))
+    },
+    get isSuccess() {
+      return (slots.isSuccess ??= signal(observer.getCurrentResult().isSuccess))
+    },
     refetch: () => observer.refetch(),
   }
 }
@@ -223,34 +245,37 @@ export function useSuspenseInfiniteQuery<
     TQueryKey,
     TPageParam
   >(client, options())
-  const initial = observer.getCurrentResult()
 
-  const resultSig = signal(initial)
-  const dataSig = signal(initial.data as InfiniteData<TQueryFnData>)
-  const errorSig = signal<TError | null>(initial.error ?? null)
-  const statusSig = signal(initial.status)
-  const isFetching = signal(initial.isFetching)
-  const isFetchingNextPage = signal(initial.isFetchingNextPage)
-  const isFetchingPreviousPage = signal(initial.isFetchingPreviousPage)
-  const isError = signal(initial.isError)
-  const isSuccess = signal(initial.isSuccess)
-  const hasNextPage = signal(initial.hasNextPage)
-  const hasPreviousPage = signal(initial.hasPreviousPage)
+  // Lazy signal slots — see use-query.ts for the pattern.
+  type Result = InfiniteQueryObserverResult<InfiniteData<TQueryFnData>, TError>
+  const slots: {
+    result?: Signal<Result>
+    data?: Signal<InfiniteData<TQueryFnData>>
+    error?: Signal<TError | null>
+    status?: Signal<'pending' | 'error' | 'success'>
+    isFetching?: Signal<boolean>
+    isFetchingNextPage?: Signal<boolean>
+    isFetchingPreviousPage?: Signal<boolean>
+    isError?: Signal<boolean>
+    isSuccess?: Signal<boolean>
+    hasNextPage?: Signal<boolean>
+    hasPreviousPage?: Signal<boolean>
+  } = {}
 
   const unsub = observer.subscribe((r) => {
     if (__DEV__) _countSink.__pyreon_count__?.('query.observerNotify')
     batch(() => {
-      resultSig.set(r)
-      if (r.data !== undefined) dataSig.set(r.data)
-      errorSig.set(r.error ?? null)
-      statusSig.set(r.status)
-      isFetching.set(r.isFetching)
-      isFetchingNextPage.set(r.isFetchingNextPage)
-      isFetchingPreviousPage.set(r.isFetchingPreviousPage)
-      isError.set(r.isError)
-      isSuccess.set(r.isSuccess)
-      hasNextPage.set(r.hasNextPage)
-      hasPreviousPage.set(r.hasPreviousPage)
+      if (slots.result) slots.result.set(r)
+      if (slots.data && r.data !== undefined) slots.data.set(r.data)
+      if (slots.error) slots.error.set(r.error ?? null)
+      if (slots.status) slots.status.set(r.status)
+      if (slots.isFetching) slots.isFetching.set(r.isFetching)
+      if (slots.isFetchingNextPage) slots.isFetchingNextPage.set(r.isFetchingNextPage)
+      if (slots.isFetchingPreviousPage) slots.isFetchingPreviousPage.set(r.isFetchingPreviousPage)
+      if (slots.isError) slots.isError.set(r.isError)
+      if (slots.isSuccess) slots.isSuccess.set(r.isSuccess)
+      if (slots.hasNextPage) slots.hasNextPage.set(r.hasNextPage)
+      if (slots.hasPreviousPage) slots.hasPreviousPage.set(r.hasPreviousPage)
     })
   })
 
@@ -261,17 +286,45 @@ export function useSuspenseInfiniteQuery<
   onUnmount(() => unsub())
 
   return {
-    result: resultSig,
-    data: dataSig,
-    error: errorSig,
-    status: statusSig,
-    isFetching,
-    isFetchingNextPage,
-    isFetchingPreviousPage,
-    isError,
-    isSuccess,
-    hasNextPage,
-    hasPreviousPage,
+    get result() {
+      return (slots.result ??= signal<Result>(observer.getCurrentResult()))
+    },
+    get data() {
+      return (slots.data ??= signal<InfiniteData<TQueryFnData>>(
+        observer.getCurrentResult().data as InfiniteData<TQueryFnData>,
+      ))
+    },
+    get error() {
+      return (slots.error ??= signal<TError | null>(observer.getCurrentResult().error ?? null))
+    },
+    get status() {
+      return (slots.status ??= signal<'pending' | 'error' | 'success'>(
+        observer.getCurrentResult().status,
+      ))
+    },
+    get isFetching() {
+      return (slots.isFetching ??= signal(observer.getCurrentResult().isFetching))
+    },
+    get isFetchingNextPage() {
+      return (slots.isFetchingNextPage ??= signal(observer.getCurrentResult().isFetchingNextPage))
+    },
+    get isFetchingPreviousPage() {
+      return (slots.isFetchingPreviousPage ??= signal(
+        observer.getCurrentResult().isFetchingPreviousPage,
+      ))
+    },
+    get isError() {
+      return (slots.isError ??= signal(observer.getCurrentResult().isError))
+    },
+    get isSuccess() {
+      return (slots.isSuccess ??= signal(observer.getCurrentResult().isSuccess))
+    },
+    get hasNextPage() {
+      return (slots.hasNextPage ??= signal(observer.getCurrentResult().hasNextPage))
+    },
+    get hasPreviousPage() {
+      return (slots.hasPreviousPage ??= signal(observer.getCurrentResult().hasPreviousPage))
+    },
     fetchNextPage: () => observer.fetchNextPage(),
     fetchPreviousPage: () => observer.fetchPreviousPage(),
     refetch: () => observer.refetch(),
