@@ -297,22 +297,28 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
   const ctx = _streamCtxAls.getStore()
   const { fallback, children } = vnode.props as { fallback: VNodeChild; children?: VNodeChild }
 
-  // No streaming context (e.g. called from renderToString) — render children inline
+  // Defensive: the streaming pipeline only enters this function via
+  // `_streamCtxAls.run(ctx, ...)` (set up in `renderToStream`), so `ctx`
+  // is always defined when `streamSuspenseBoundary` runs. Kept as a safety
+  // net in case a future entry point bypasses the streaming context — the
+  // block performs the same context-stack hygiene as `renderComponent` /
+  // `streamComponentNode` so a Suspense `provide()` wouldn't leak into
+  // siblings if it ever fires. Excluded from coverage because no public-API
+  // path reaches it; including a unit test would either require exporting
+  // `streamSuspenseBoundary` (leaks an internal) or stubbing the ALS (false
+  // signal).
+  /* c8 ignore start */
   if (!ctx) {
     const stackLenBefore = captureContextStack().length
     const { vnode: output } = runWithHooks(Suspense as ComponentFn, vnode.props)
     try {
       if (output !== null) await streamNode(output, enqueue)
     } finally {
-      // `provide()` pushes context frames; pop them after children render so
-      // they don't leak into siblings. See `renderComponent` for the full
-      // architectural rationale (we trim the stack instead of running unmount
-      // hooks because user hooks like `useHead`'s `onUnmount` are still load-
-      // bearing for post-render extraction during SSR).
       trimContextStack(stackLenBefore)
     }
     return
   }
+  /* c8 ignore stop */
 
   const id = ctx.nextId()
   const { mainEnqueue } = ctx
