@@ -99,13 +99,20 @@ const isVisible = entry?.isIntersecting
 
 #### useWindowResize
 
-Tracks viewport dimensions with throttled updates.
+Tracks viewport dimensions with debouncing — fires once after resize stops, with the final dimensions. Returns a getter (signal accessor); read inside reactive scopes (effects, JSX) to subscribe.
 
 ```ts
 import { useWindowResize } from '@pyreon/hooks'
 
-const { width, height } = useWindowResize({ throttleDelay: 300 })
+const size = useWindowResize(200) // debounceMs (default 200)
+// Read inside reactive scope:
+effect(() => {
+  const { width, height } = size()
+  console.log(`viewport ${width}x${height}`)
+})
 ```
+
+> **Note**: signature changed from the vitus-labs API. The previous `useWindowResize({ throttleDelay })` config-object form returning a destructurable `{ width, height }` was replaced by `useWindowResize(debounceMs)` returning a `() => WindowSize` getter. Throttle semantics also changed — Pyreon debounces (fires after activity stops) rather than throttling (fires at most every N ms during activity).
 
 ### Responsive
 

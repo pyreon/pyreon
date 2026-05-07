@@ -7,7 +7,19 @@ import type { NativeItem, Props, VNode } from './types'
 export const ForSymbol: unique symbol = Symbol('pyreon.For')
 
 export interface ForProps<T> {
-  each: () => T[]
+  /**
+   * The list to iterate. Accepts EITHER a function returning the array
+   * (preferred — keeps reactivity intact when the array comes from a
+   * signal accessor) OR the array directly (convenient for static lists
+   * or already-resolved arrays). The runtime in `runtime-dom/src/mount.ts`
+   * normalizes both shapes; this type matches the runtime so users aren't
+   * forced to write `each={() => items}` for a plain array.
+   *
+   * @example
+   * <For each={items}>{r => <li>{r.label}</li>}</For>           // static
+   * <For each={() => store.items()}>{r => <li>...</li>}</For>   // reactive
+   */
+  each: T[] | (() => T[])
   /** Keying function — use `by` not `key` (JSX extracts `key` for VNode reconciliation). */
   by: (item: T) => string | number
   children: (item: T) => VNode | NativeItem

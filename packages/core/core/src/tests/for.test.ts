@@ -91,4 +91,27 @@ describe('For', () => {
     expect((result as VNode).type).toBe('li')
     expect((result as VNode).key).toBe(1)
   })
+
+  // Regression: `ForProps.each` previously typed as `() => T[]` only.
+  // Users writing `<For each={items}>` (with `items: T[]` directly) hit
+  // a confusing TS error: `Type 'T[]' is not assignable to type
+  // '() => T[]'`. The runtime in `runtime-dom/src/mount.ts:144-147`
+  // already accepted both shapes — only the type was forcing the
+  // accessor form. Type now accepts `T[] | (() => T[])` so users with
+  // already-resolved arrays don't need to wrap them in a thunk just to
+  // satisfy the type.
+  test('each accepts T[] directly (not just () => T[])', () => {
+    // TypeScript-level test: this would not compile pre-fix.
+    const items = [1, 2, 3]
+    const childFn = (n: number): VNode => h('li', { key: n }, String(n))
+    const node = For<number>({ each: items, by: (n) => n, children: childFn })
+    expect(node.type).toBe(ForSymbol as unknown as string)
+    // Both shapes still work — function form continues to typecheck.
+    const node2 = For<number>({
+      each: () => items,
+      by: (n) => n,
+      children: childFn,
+    })
+    expect(node2.type).toBe(ForSymbol as unknown as string)
+  })
 })

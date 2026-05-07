@@ -95,6 +95,152 @@ describe('@pyreon/rocketstyle in real browser', () => {
     unmount()
   })
 
+  // Bug 3 audit: derivation chain matching the real bokisch.com bug shape.
+  //
+  // Library defines a base `Text` component with `.styles(({css}) => css\`color:
+  // ${$rocketstyle.color}\`)` — the .styles() callback reads $rocketstyle.color.
+  // Library also defines `.theme({color: 'black'})` as the default.
+  //
+  // Consumer derives a sub-component: `Text.theme((t, m) => ({color: m('red',
+  // 'blue')}))` — adds NEW .theme() but does NOT call .styles() again. The
+  // derivation should INHERIT the base's .styles() and have it consume the
+  // new .theme() values, with mode toggling re-rendering correctly.
+  //
+  // The user's report: components in this chain keep stale colors on
+  // theme toggle. Test verifies whether the derivation chain actually
+  // wires up reactively.
+  it('Bug 3 repro: rocketstyle derivation chain — inherited .styles() + new .theme() reacts to mode', async () => {
+    const modeSig = signal<'light' | 'dark'>('light')
+
+    // Library base — has .styles() that reads $rocketstyle.color.
+    const TextBase: any = rocketstyle()({
+      name: 'TextBase',
+      component: Base,
+    })
+      .styles(
+        (css: any) => css`
+          color: ${({ $rocketstyle }: any) => $rocketstyle.color};
+        `,
+      )
+      .theme({ color: 'rgb(0, 128, 0)' }) // green default
+
+    // Consumer derivation — only adds .theme(), no .styles() override.
+    const Text: any = TextBase
+      .theme((_t: any, m: any) => ({
+        color: m('rgb(255, 0, 0)', 'rgb(0, 0, 255)'),
+      }))
+
+    const { container, unmount } = mountInBrowser(
+      h(PyreonUI, { theme: {}, mode: modeSig }, h(Text, { id: 'derive' })),
+    )
+
+    const el = container.querySelector<HTMLElement>('#derive')!
+    const initialColor = getComputedStyle(el).color
+
+    modeSig.set('dark')
+    await new Promise((r) => setTimeout(r, 0))
+    await new Promise((r) => requestAnimationFrame(() => r(undefined)))
+
+    const darkColor = getComputedStyle(el).color
+
+    // Diagnostic: log both colors for clarity, regardless of pass/fail
+    // (helps triage whether the bug is "no .theme() applied at all" vs
+    // "applied but doesn't react to mode toggle").
+    if (initialColor === 'rgb(255, 0, 0)' && darkColor === 'rgb(0, 0, 255)') {
+      // Works correctly — derivation chain wires up reactively
+      expect(darkColor).toBe('rgb(0, 0, 255)')
+    } else {
+      throw new Error(
+        `[bug-3-repro] derivation chain failed. initial=${initialColor}, dark=${darkColor}. ` +
+          `Expected initial=rgb(255, 0, 0), dark=rgb(0, 0, 255). ` +
+          `Possible causes: (a) .theme() override silently dropped, ` +
+          `(b) .styles() not inherited from base, ` +
+          `(c) mode toggle doesn't propagate.`,
+      )
+    }
+    unmount()
+  })
+
+  // Bug 3 audit (continued): derivation chain WITH dimension props.
+  // Real consumer pattern: `<Text base paragraph centered>` uses
+  // dimension-prop values from .sizes()/.variants(). Tests that mode
+  // toggle still propagates when dimension props are active.
+  it('Bug 3 repro: derivation + dimension props + mode toggle', async () => {
+    const modeSig = signal<'light' | 'dark'>('light')
+
+    const TextBase: any = rocketstyle()({ name: 'TextBaseDim', component: Base })
+      .styles(
+        (css: any) => css`
+          color: ${({ $rocketstyle }: any) => $rocketstyle.color};
+          font-size: ${({ $rocketstyle }: any) => $rocketstyle.fontSize};
+        `,
+      )
+      .theme({ color: 'rgb(0, 0, 0)', fontSize: '14px' })
+      .sizes({
+        small: { fontSize: '12px' },
+        large: { fontSize: '20px' },
+      })
+
+    // Consumer derivation: theme override that depends on mode
+    const Text: any = TextBase.theme((_t: any, m: any) => ({
+      color: m('rgb(255, 0, 0)', 'rgb(0, 0, 255)'),
+    }))
+
+    const { container, unmount } = mountInBrowser(
+      h(PyreonUI, { theme: {}, mode: modeSig },
+        h(Text, { id: 'dim', size: 'large' }),
+      ),
+    )
+    const el = container.querySelector<HTMLElement>('#dim')!
+    expect(getComputedStyle(el).color).toBe('rgb(255, 0, 0)')
+    expect(getComputedStyle(el).fontSize).toBe('20px')
+
+    modeSig.set('dark')
+    await new Promise((r) => setTimeout(r, 0))
+    await new Promise((r) => requestAnimationFrame(() => r(undefined)))
+
+    expect(getComputedStyle(el).color).toBe('rgb(0, 0, 255)')
+    expect(getComputedStyle(el).fontSize).toBe('20px') // dimension unchanged
+    unmount()
+  })
+
+  // Bug 3 audit (continued): DOUBLE derivation — Text → TextStyled → consumer.
+  // Tests whether mode reactivity survives a multi-level chain.
+  it('Bug 3 repro: double-derivation chain still reacts to mode', async () => {
+    const modeSig = signal<'light' | 'dark'>('light')
+
+    const TextBase: any = rocketstyle()({ name: 'DoubleTextBase', component: Base })
+      .styles(
+        (css: any) => css`
+          color: ${({ $rocketstyle }: any) => $rocketstyle.color};
+        `,
+      )
+      .theme({ color: 'rgb(0, 0, 0)' })
+
+    // First derivation — adds states (no theme override yet)
+    const TextStyled: any = TextBase.states({
+      muted: { color: 'rgb(128, 128, 128)' },
+    })
+
+    // Second derivation — mode-aware theme
+    const Text: any = TextStyled.theme((_t: any, m: any) => ({
+      color: m('rgb(255, 0, 0)', 'rgb(0, 0, 255)'),
+    }))
+
+    const { container, unmount } = mountInBrowser(
+      h(PyreonUI, { theme: {}, mode: modeSig }, h(Text, { id: 'dbl' })),
+    )
+    const el = container.querySelector<HTMLElement>('#dbl')!
+    expect(getComputedStyle(el).color).toBe('rgb(255, 0, 0)')
+
+    modeSig.set('dark')
+    await new Promise((r) => setTimeout(r, 0))
+    await new Promise((r) => requestAnimationFrame(() => r(undefined)))
+
+    expect(getComputedStyle(el).color).toBe('rgb(0, 0, 255)')
+    unmount()
+  })
+
   it('the `variant` prop layers on top of state', () => {
     const Box: any = rocketstyle()({ name: 'VariantBox', component: Base })
       .styles(

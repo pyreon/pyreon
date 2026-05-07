@@ -198,6 +198,37 @@ function getCompatTarget(compat: CompatFramework | undefined, id: string): strin
   return undefined
 }
 
+/**
+ * Scan the consumer's package.json for `@pyreon/*` deps. Result is the
+ * list of names to exclude from Vite's deps optimizer (avoids
+ * `.vite/deps/@pyreon_*.js: File does not exist` runtime errors caused
+ * by esbuild trying to pre-bundle TypeScript source files exposed via
+ * the `bun` resolve condition).
+ *
+ * Reads dependencies + devDependencies + peerDependencies. Best-effort:
+ * missing/malformed package.json returns an empty list so a typo in
+ * the consumer's manifest doesn't break the build.
+ */
+function scanPyreonDeps(root: string): string[] {
+  const pkgPath = pathJoin(root, 'package.json')
+  if (!existsSync(pkgPath)) return []
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as {
+      dependencies?: Record<string, string>
+      devDependencies?: Record<string, string>
+      peerDependencies?: Record<string, string>
+    }
+    const all = {
+      ...(pkg.dependencies ?? {}),
+      ...(pkg.devDependencies ?? {}),
+      ...(pkg.peerDependencies ?? {}),
+    }
+    return Object.keys(all).filter((name) => name.startsWith('@pyreon/'))
+  } catch {
+    return []
+  }
+}
+
 export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
   const ssrConfig = options?.ssr
   const compat = options?.compat
@@ -226,7 +257,23 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
 
       // Tell Vite's dep scanner not to pre-bundle the aliased framework imports —
       // they resolve to workspace packages via our resolveId hook, not node_modules.
-      const optimizeDepsExclude = compat ? Object.keys(COMPAT_ALIASES[compat]) : []
+      const compatExclude = compat ? Object.keys(COMPAT_ALIASES[compat]) : []
+      // Auto-detect `@pyreon/*` deps in the consumer's package.json and add
+      // them to optimizeDeps.exclude. Vite's deps optimizer pre-bundles
+      // node_modules deps via esbuild, but the plugin's `bun` resolve
+      // condition redirects every `@pyreon/*` import to source `.ts(x)`
+      // files. Esbuild's pre-bundler can't process raw TS source from a
+      // published package and silently produces broken bundles in
+      // `.vite/deps/`, surfacing as `File does not exist at
+      // .../node_modules/.vite/deps/@pyreon_styler.js` errors at runtime.
+      // Excluding them sidesteps the optimizer entirely — they're resolved
+      // on demand via the plugin's resolveId hook + Vite's normal source
+      // pipeline. Workspace-linked apps in this monorepo aren't affected
+      // because Vite never tries to pre-bundle workspace deps.
+      const pyreonExclude = scanPyreonDeps(projectRoot)
+      const optimizeDepsExclude = Array.from(
+        new Set([...compatExclude, ...pyreonExclude]),
+      )
 
       // Always set OXC's JSX importSource to `@pyreon/core`. In compat mode,
       // we redirect `@pyreon/core/jsx-runtime` imports to the compat package
