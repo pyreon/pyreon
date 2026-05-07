@@ -1,18 +1,17 @@
 {
-  "sha": "7f93a298",
+  "sha": "fd4e4f30",
   "app": "perf-dashboard",
   "journey": "queryNotify-10k",
   "mode": "dev",
   "runs": 5,
-  "timestamp": "2026-05-07T20:28:09.278Z",
-  "medianWallMs": 9,
+  "timestamp": "2026-05-07T20:52:46.451Z",
+  "medianWallMs": 8,
   "medianHeapBytes": 10000000,
   "counters": {
-    "reactivity.signalWrite": 20070,
+    "reactivity.signalWrite": 7,
     "reactivity.effectRun": 14,
     "runtime.mountChild": 6,
     "query.useQuery": 10,
-    "reactivity.signalCreate": 90,
     "query.observerNotify": 10011,
     "query.setOptions": 10,
     "runtime.tpl": 1

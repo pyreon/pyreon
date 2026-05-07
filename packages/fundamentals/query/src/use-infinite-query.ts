@@ -77,38 +77,43 @@ export function useInfiniteQuery<
     TQueryKey,
     TPageParam
   >(client, options())
-  const initial = observer.getCurrentResult()
 
-  const resultSig = signal(initial)
-  const dataSig = signal<InfiniteData<TQueryFnData> | undefined>(initial.data)
-  const errorSig = signal<TError | null>(initial.error ?? null)
-  const statusSig = signal(initial.status)
-  const isPending = signal(initial.isPending)
-  const isLoading = signal(initial.isLoading)
-  const isFetching = signal(initial.isFetching)
-  const isFetchingNextPage = signal(initial.isFetchingNextPage)
-  const isFetchingPreviousPage = signal(initial.isFetchingPreviousPage)
-  const isError = signal(initial.isError)
-  const isSuccess = signal(initial.isSuccess)
-  const hasNextPage = signal(initial.hasNextPage)
-  const hasPreviousPage = signal(initial.hasPreviousPage)
+  // Lazy signal slots — see use-query.ts for the pattern + rationale. Apps
+  // typically read 1-2 of the 13 fields, so 13 eager allocations + 13 writes
+  // per cache update was wasteful.
+  type Result = InfiniteQueryObserverResult<InfiniteData<TQueryFnData>, TError>
+  const slots: {
+    result?: Signal<Result>
+    data?: Signal<InfiniteData<TQueryFnData> | undefined>
+    error?: Signal<TError | null>
+    status?: Signal<'pending' | 'error' | 'success'>
+    isPending?: Signal<boolean>
+    isLoading?: Signal<boolean>
+    isFetching?: Signal<boolean>
+    isFetchingNextPage?: Signal<boolean>
+    isFetchingPreviousPage?: Signal<boolean>
+    isError?: Signal<boolean>
+    isSuccess?: Signal<boolean>
+    hasNextPage?: Signal<boolean>
+    hasPreviousPage?: Signal<boolean>
+  } = {}
 
   const unsub = observer.subscribe((r) => {
     if (__DEV__) _countSink.__pyreon_count__?.('query.observerNotify')
     batch(() => {
-      resultSig.set(r)
-      dataSig.set(r.data)
-      errorSig.set(r.error ?? null)
-      statusSig.set(r.status)
-      isPending.set(r.isPending)
-      isLoading.set(r.isLoading)
-      isFetching.set(r.isFetching)
-      isFetchingNextPage.set(r.isFetchingNextPage)
-      isFetchingPreviousPage.set(r.isFetchingPreviousPage)
-      isError.set(r.isError)
-      isSuccess.set(r.isSuccess)
-      hasNextPage.set(r.hasNextPage)
-      hasPreviousPage.set(r.hasPreviousPage)
+      if (slots.result) slots.result.set(r)
+      if (slots.data) slots.data.set(r.data)
+      if (slots.error) slots.error.set(r.error ?? null)
+      if (slots.status) slots.status.set(r.status)
+      if (slots.isPending) slots.isPending.set(r.isPending)
+      if (slots.isLoading) slots.isLoading.set(r.isLoading)
+      if (slots.isFetching) slots.isFetching.set(r.isFetching)
+      if (slots.isFetchingNextPage) slots.isFetchingNextPage.set(r.isFetchingNextPage)
+      if (slots.isFetchingPreviousPage) slots.isFetchingPreviousPage.set(r.isFetchingPreviousPage)
+      if (slots.isError) slots.isError.set(r.isError)
+      if (slots.isSuccess) slots.isSuccess.set(r.isSuccess)
+      if (slots.hasNextPage) slots.hasNextPage.set(r.hasNextPage)
+      if (slots.hasPreviousPage) slots.hasPreviousPage.set(r.hasPreviousPage)
     })
   })
 
@@ -120,19 +125,51 @@ export function useInfiniteQuery<
   onUnmount(() => unsub())
 
   return {
-    result: resultSig,
-    data: dataSig,
-    error: errorSig,
-    status: statusSig,
-    isPending,
-    isLoading,
-    isFetching,
-    isFetchingNextPage,
-    isFetchingPreviousPage,
-    isError,
-    isSuccess,
-    hasNextPage,
-    hasPreviousPage,
+    get result() {
+      return (slots.result ??= signal<Result>(observer.getCurrentResult()))
+    },
+    get data() {
+      return (slots.data ??= signal<InfiniteData<TQueryFnData> | undefined>(
+        observer.getCurrentResult().data,
+      ))
+    },
+    get error() {
+      return (slots.error ??= signal<TError | null>(observer.getCurrentResult().error ?? null))
+    },
+    get status() {
+      return (slots.status ??= signal<'pending' | 'error' | 'success'>(
+        observer.getCurrentResult().status,
+      ))
+    },
+    get isPending() {
+      return (slots.isPending ??= signal(observer.getCurrentResult().isPending))
+    },
+    get isLoading() {
+      return (slots.isLoading ??= signal(observer.getCurrentResult().isLoading))
+    },
+    get isFetching() {
+      return (slots.isFetching ??= signal(observer.getCurrentResult().isFetching))
+    },
+    get isFetchingNextPage() {
+      return (slots.isFetchingNextPage ??= signal(observer.getCurrentResult().isFetchingNextPage))
+    },
+    get isFetchingPreviousPage() {
+      return (slots.isFetchingPreviousPage ??= signal(
+        observer.getCurrentResult().isFetchingPreviousPage,
+      ))
+    },
+    get isError() {
+      return (slots.isError ??= signal(observer.getCurrentResult().isError))
+    },
+    get isSuccess() {
+      return (slots.isSuccess ??= signal(observer.getCurrentResult().isSuccess))
+    },
+    get hasNextPage() {
+      return (slots.hasNextPage ??= signal(observer.getCurrentResult().hasNextPage))
+    },
+    get hasPreviousPage() {
+      return (slots.hasPreviousPage ??= signal(observer.getCurrentResult().hasPreviousPage))
+    },
     fetchNextPage: () => observer.fetchNextPage(),
     fetchPreviousPage: () => observer.fetchPreviousPage(),
     refetch: () => observer.refetch(),
