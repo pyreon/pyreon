@@ -20,6 +20,7 @@ describe('gen-docs — mcp snapshot', () => {
   it('renders MCP api-reference entries for every api[] item', () => {
     const record = renderApiReferenceEntries(manifest)
     expect(Object.keys(record).sort()).toEqual([
+      'mcp/audit_islands',
       'mcp/audit_test_environment',
       'mcp/diagnose',
       'mcp/get_anti_patterns',

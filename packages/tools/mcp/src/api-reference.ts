@@ -2758,7 +2758,17 @@ get_changelog({ package: '@pyreon/router', since: '0.12.0' })`,
     signature: `tool: audit_test_environment({ minRisk?: 'high' | 'medium' | 'low'; limit?: number }) → AuditReport`,
     example: `audit_test_environment({ minRisk: 'medium', limit: 10 })
 // → grouped report with HIGH / MEDIUM / LOW sections`,
-    notes: `Scan every \`*.test.{ts,tsx}\` under \`packages/\` for the mock-vnode anti-pattern that caused PR #197\'s silent metadata drop. Files are classified HIGH / MEDIUM / LOW based on the balance of mock-vnode literals + helpers + helper-call sites vs real \`h()\` calls + \`@pyreon/core\` import. Three context-aware skips (helper-def vs binding discrimination, type-guard call-arg skip, template-string fixture mask) keep the false-positive rate low. Run before merging a new test file or after a framework change. See also: get_browser_smoke_status.`,
+    notes: `Scan every \`*.test.{ts,tsx}\` under \`packages/\` for the mock-vnode anti-pattern that caused PR #197\'s silent metadata drop. Files are classified HIGH / MEDIUM / LOW based on the balance of mock-vnode literals + helpers + helper-call sites vs real \`h()\` calls + \`@pyreon/core\` import. Three context-aware skips (helper-def vs binding discrimination, type-guard call-arg skip, template-string fixture mask) keep the false-positive rate low. Run before merging a new test file or after a framework change. See also: get_browser_smoke_status, audit_islands.`,
+  },
+
+  'mcp/audit_islands': {
+    signature: 'tool: audit_islands({ json?: boolean }) → IslandAuditReport',
+    example: `audit_islands({})
+// → markdown-grouped report with one section per finding code
+
+audit_islands({ json: true })
+// → machine-readable { root, findings: [...], summary: {...} }`,
+    notes: `Project-wide cross-file islands audit (PR C of the islands DX roadmap). Walks \`packages/\` + \`examples/\` and runs five detectors that auto-registry can\'t reach (manual \`hydrateIslands({...})\` for non-Vite consumers / library authors) AND PR G\'s per-file \`island-never-with-registry-entry\` detector misses (it only catches the same-file shape): \`duplicate-name\`, \`never-with-registry-entry\`, \`registry-mismatch\`, \`nested-island\`, \`dead-island\`. Each finding ships with file path + line/column + actionable fix suggestion. Companion to the \`pyreon doctor --check-islands\` CLI flag (same scanner, same five detectors). Run before merging an island PR; CI gate by piping \`--json\` and grepping \`findings.length > 0\`. See also: audit_test_environment, get_anti_patterns.`,
   },
   // <gen-docs:api-reference:end @pyreon/mcp>
 
