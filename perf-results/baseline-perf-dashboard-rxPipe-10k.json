@@ -1,0 +1,16 @@
+{
+  "sha": "51664b11",
+  "app": "perf-dashboard",
+  "journey": "rxPipe-10k",
+  "mode": "dev",
+  "runs": 5,
+  "timestamp": "2026-05-07T19:14:12.227Z",
+  "medianWallMs": 1,
+  "medianHeapBytes": 10000000,
+  "counters": {
+    "reactivity.signalCreate": 1,
+    "rx.pipe": 1,
+    "reactivity.computedRecompute": 1,
+    "reactivity.signalWrite": 0
+  }
+}

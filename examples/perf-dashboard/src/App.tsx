@@ -40,6 +40,7 @@ import {
   Th,
   Title,
 } from './components/atoms'
+import { RxStressSection } from './components/RxStressSection'
 import { StoreStressSection } from './components/StoreStressSection'
 import { darkTheme, lightTheme, type Theme } from './theme'
 
@@ -631,6 +632,7 @@ export function App() {
       <FormStressSection />
       <ModalSection />
       <StoreStressSection />
+      <RxStressSection />
     </Shell>
   )
 }
