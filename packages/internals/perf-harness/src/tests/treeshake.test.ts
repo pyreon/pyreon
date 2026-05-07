@@ -70,6 +70,18 @@ const FILES_UNDER_TEST: { layer: string; file: string; counterNames: string[] }[
     file: 'packages/core/router/src/router.ts',
     counterNames: ['router.navigate', 'router.loaderRun', 'router.loaderCache.hit'],
   },
+  {
+    layer: 'store',
+    file: 'packages/fundamentals/store/src/index.ts',
+    counterNames: [
+      'store.defineStore',
+      'store.pluginRun',
+      'store.patchKey',
+      'store.subscribeNotify',
+      'store.actionListenerNotify',
+      'store.actionCall',
+    ],
+  },
   // runtime-server is NOT in this list — it's a server package that keeps
   // the `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`
   // compound (server-only packages are exempt from `pyreon/no-process-dev-gate`

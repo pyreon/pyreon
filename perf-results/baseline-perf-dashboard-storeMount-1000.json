@@ -1,0 +1,15 @@
+{
+  "sha": "bc9ab3b8",
+  "app": "perf-dashboard",
+  "journey": "storeMount-1000",
+  "mode": "dev",
+  "runs": 5,
+  "timestamp": "2026-05-07T18:34:28.610Z",
+  "medianWallMs": 4,
+  "medianHeapBytes": 10000000,
+  "counters": {
+    "reactivity.signalWrite": 2,
+    "store.defineStore": 1000,
+    "reactivity.signalCreate": 3000
+  }
+}

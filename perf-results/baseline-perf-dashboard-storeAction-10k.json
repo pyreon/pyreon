@@ -1,0 +1,17 @@
+{
+  "sha": "bc9ab3b8",
+  "app": "perf-dashboard",
+  "journey": "storeAction-10k",
+  "mode": "dev",
+  "runs": 5,
+  "timestamp": "2026-05-07T18:37:06.805Z",
+  "medianWallMs": 65,
+  "medianHeapBytes": 10000000,
+  "counters": {
+    "reactivity.signalWrite": 10003,
+    "store.defineStore": 10,
+    "reactivity.signalCreate": 30,
+    "store.actionCall": 10000,
+    "store.actionListenerNotify": 50000
+  }
+}

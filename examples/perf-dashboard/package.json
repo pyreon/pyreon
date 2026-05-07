@@ -17,6 +17,7 @@
     "@pyreon/perf-harness": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/store": "workspace:*",
     "@pyreon/styler": "workspace:*"
   },
   "devDependencies": {
