@@ -1336,3 +1336,156 @@ describe('hydrateIslands', () => {
     cleanup()
   })
 })
+
+// ─── perf counter emissions ─────────────────────────────────────────────────
+
+/**
+ * Runtime gate for the 7 `island.*` counters. The catalog-drift test in
+ * @pyreon/perf-harness only proves the EMIT STRINGS exist in source; this
+ * suite installs a counter sink and asserts each emit actually FIRES at
+ * the right moment under each strategy. Without this, a typo (`'island.hyrated'`
+ * vs `'island.hydrated'`) that's also typo'd in COUNTERS.md would scan-clean
+ * and ship silently dead.
+ *
+ * Each test bisect-verifies its specific counter — remove the matching
+ * `_countSink.__pyreon_count__?.('X')` line in client.ts and the assertion
+ * here flips from `1` to `0` (or the matching count).
+ */
+describe('island.* counter emissions', () => {
+  let counts: Map<string, number>
+  let savedSink: ((name: string, n?: number) => void) | undefined
+
+  beforeEach(() => {
+    document.body.innerHTML = ''
+    counts = new Map<string, number>()
+    const g = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+    savedSink = g.__pyreon_count__
+    g.__pyreon_count__ = (name: string, n = 1) => {
+      counts.set(name, (counts.get(name) ?? 0) + n)
+    }
+  })
+
+  afterEach(() => {
+    const g = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+    if (savedSink) g.__pyreon_count__ = savedSink
+    else delete g.__pyreon_count__
+  })
+
+  test('island.scheduled fires once per scheduled island', async () => {
+    document.body.innerHTML = [
+      '<pyreon-island data-component="A" data-props="{}"></pyreon-island>',
+      '<pyreon-island data-component="B" data-props="{}"></pyreon-island>',
+    ].join('')
+    const Comp: ComponentFn = () => h('div', null, 'x')
+
+    const cleanup = hydrateIslands({
+      A: () => Promise.resolve({ default: Comp }),
+      B: () => Promise.resolve({ default: Comp }),
+    })
+    await new Promise((r) => setTimeout(r, 50))
+
+    expect(counts.get('island.scheduled')).toBe(2)
+    cleanup()
+  })
+
+  test('island.hydrated fires once per successful hydration', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="C" data-props=\'{"v":1}\'></pyreon-island>'
+    const C: ComponentFn = () => h('button', null, 'c')
+
+    const cleanup = hydrateIslands({
+      C: () => Promise.resolve({ default: C }),
+    })
+    await new Promise((r) => setTimeout(r, 50))
+
+    expect(counts.get('island.hydrated')).toBe(1)
+    cleanup()
+  })
+
+  test('island.skipped.never fires once per never-strategy island', async () => {
+    document.body.innerHTML = [
+      '<pyreon-island data-component="N1" data-hydrate="never" data-props="{}"></pyreon-island>',
+      '<pyreon-island data-component="N2" data-hydrate="never" data-props="{}"></pyreon-island>',
+    ].join('')
+
+    const cleanup = hydrateIslands({})
+    await new Promise((r) => setTimeout(r, 30))
+
+    expect(counts.get('island.skipped.never')).toBe(2)
+    expect(counts.get('island.scheduled') ?? 0).toBe(0) // never-islands never proceed to schedule
+    cleanup()
+  })
+
+  test('island.skipped.no-loader fires for unregistered names', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="Missing" data-props="{}"></pyreon-island>'
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const cleanup = hydrateIslands({})
+    expect(counts.get('island.skipped.no-loader')).toBe(1)
+    warnSpy.mockRestore()
+    cleanup()
+  })
+
+  test('island.error fires for invalid props JSON', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="Bad" data-props="not valid json"></pyreon-island>'
+    const Bad: ComponentFn = () => h('div', null)
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const cleanup = hydrateIslands({
+      Bad: () => Promise.resolve({ default: Bad }),
+    })
+    await new Promise((r) => setTimeout(r, 50))
+
+    expect(counts.get('island.error')).toBe(1)
+    errorSpy.mockRestore()
+    cleanup()
+  })
+
+  test('island.error fires for hydration failure', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="Crash" data-props="{}"></pyreon-island>'
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const cleanup = hydrateIslands({
+      Crash: () => Promise.reject(new Error('boom')),
+    })
+    await new Promise((r) => setTimeout(r, 50))
+
+    expect(counts.get('island.error')).toBe(1)
+    errorSpy.mockRestore()
+    cleanup()
+  })
+
+  test('island.prefetch fires per pre-warm loader call (idle strategy)', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="P" data-hydrate="visible" data-prefetch="idle" data-props="{}"></pyreon-island>'
+    const P: ComponentFn = () => h('div', null, 'p')
+
+    const cleanup = hydrateIslands({
+      P: () => Promise.resolve({ default: P }),
+    })
+    // Wait for requestIdleCallback fallback timer
+    await new Promise((r) => setTimeout(r, 250))
+
+    expect(counts.get('island.prefetch') ?? 0).toBeGreaterThanOrEqual(1)
+    cleanup()
+  })
+
+  test('counters do NOT fire when sink is undefined (graceful no-op)', async () => {
+    const g = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+    delete g.__pyreon_count__ // remove the sink installed in beforeEach
+
+    document.body.innerHTML =
+      '<pyreon-island data-component="Q" data-props="{}"></pyreon-island>'
+    const Q: ComponentFn = () => h('div', null, 'q')
+
+    // Should not throw — the optional-chain short-circuits.
+    const cleanup = hydrateIslands({
+      Q: () => Promise.resolve({ default: Q }),
+    })
+    await new Promise((r) => setTimeout(r, 50))
+    cleanup()
+  })
+})
