@@ -19,6 +19,7 @@
     "README.md"
   ],
   "type": "module",
+  "sideEffects": false,
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
@@ -177,6 +178,9 @@
     "@pyreon/vite-plugin": "workspace:^",
     "vite": "^8.0.0"
   },
+  "devDependencies": {
+    "sharp": "^0.33.0"
+  },
   "peerDependencies": {
     "@pyreon/reactivity": "workspace:^",
     "sharp": "^0.33.0"
@@ -185,9 +189,5 @@
     "sharp": {
       "optional": true
     }
-  },
-  "devDependencies": {
-    "sharp": "^0.33.0"
-  },
-  "sideEffects": false
+  }
 }

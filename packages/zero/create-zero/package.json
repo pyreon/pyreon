@@ -23,6 +23,7 @@
     "README.md"
   ],
   "type": "module",
+  "sideEffects": false,
   "main": "./lib/index.js",
   "scripts": {
     "build": "vl_rolldown_build",
@@ -31,6 +32,5 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.2.0"
-  },
-  "sideEffects": false
+  }
 }

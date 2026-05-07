@@ -43,7 +43,7 @@
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
     "@pyreon/typescript": "workspace:^",
-    "@vitus-labs/tools-rolldown": "^1.15.3"
+    "@vitus-labs/tools-rolldown": "^2.3.0"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
