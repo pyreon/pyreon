@@ -49,13 +49,17 @@ effect(() => {
   features: [
     'signal<T>() — callable function with .set() and .update()',
     'computed<T>() — auto-tracked memoized derivation',
-    'effect() — side-effect that re-runs on dependency change',
-    'batch() — group multiple writes into a single notification pass',
+    'effect() / renderEffect() — side-effects with auto-tracking',
+    'batch() / nextTick() — write-grouping + flush awaiter',
     'onCleanup() — register cleanup inside effects',
     'watch(source, callback) — explicit reactive watcher',
-    'createStore() — deeply reactive proxy-based object',
-    'createResource() — async data with signal-based status',
+    'createSelector() — O(1) equality selector for keyed lists',
+    'cell<T>() — lighter alternative to signal() for direct subscribe()',
+    'createStore() / reconcile() / isStore() — deeply reactive proxy stores + structural diff',
+    'effectScope() / getCurrentScope() — scope-based lifecycle management',
     'untrack() — read without subscribing',
+    'onSignalUpdate() / inspectSignal() / why() — debug instrumentation',
+    'setErrorHandler() — global hook for unhandled effect errors',
     'Standalone — zero DOM, zero JSX, zero framework dependency',
   ],
   api: [
@@ -124,6 +128,26 @@ effect(() => {
       seeAlso: ['onCleanup', 'computed', 'renderEffect'],
     },
     {
+      name: 'renderEffect',
+      kind: 'function',
+      signature: '(fn: () => void) => () => void',
+      summary:
+        'DOM-specific effect with a lighter dependency tracking path — uses a local array for deps instead of the full `EffectScope` integration. Used internally by `_bind` / `_tpl` for compiled-template DOM updates. **Prefer `effect()` for general use**; reach for `renderEffect()` only when you\'re hand-writing DOM update logic and have measured the overhead difference. Returns a dispose function (not an `Effect` object — different shape from `effect()`).',
+      example: `// Inside a custom DOM helper that updates a text node:
+const node = document.createTextNode('')
+const dispose = renderEffect(() => {
+  node.data = String(count())
+})
+// Re-runs only when count() changes; lighter than effect() but no
+// onCleanup support, no scope auto-disposal, no error-handler routing.`,
+      mistakes: [
+        'Calling `onCleanup()` inside `renderEffect()` — not supported; only `effect()` collects cleanups. Use `effect()` if you need cleanup callbacks',
+        'Expecting `renderEffect()` to auto-dispose with the surrounding scope — it does NOT register with `EffectScope`. Component-scoped DOM effects should use `effect()` so they tear down on unmount',
+        'Reaching for `renderEffect()` as the default — `effect()` is the canonical primitive. The performance delta only matters in extreme hot paths (1000+ DOM nodes), never in component-level code',
+      ],
+      seeAlso: ['effect', 'computed'],
+    },
+    {
       name: 'batch',
       kind: 'function',
       signature: '(fn: () => void) => void',
@@ -141,6 +165,23 @@ batch(() => {
         'Forgetting `batch()` when updating 3+ related signals — causes N intermediate re-renders',
       ],
       seeAlso: ['signal', 'effect'],
+    },
+    {
+      name: 'nextTick',
+      kind: 'function',
+      signature: '() => Promise<void>',
+      summary:
+        'Returns a promise that resolves after the next microtask. Use to await pending reactive updates — every signal write that happens before `nextTick()` is fully flushed (effects ran, computeds settled, DOM patched) by the time the promise resolves. Equivalent to Vue\'s `nextTick`. Useful in tests and in code that needs to read the post-update DOM state.',
+      example: `count.set(5)
+// Effects haven't run yet (sync writes are queued)
+await nextTick()
+// Now everything is flushed — DOM reflects count = 5
+expect(node.textContent).toBe('5')`,
+      mistakes: [
+        'Awaiting `nextTick()` inside a `batch()` callback — pointless; the batch flushes when the callback returns, not when the microtask drains. Move the await outside `batch()`',
+        'Using `nextTick()` to defer work — it doesn\'t schedule anything; it just resolves on the next microtask. Use `setTimeout` / `requestAnimationFrame` for actual deferral',
+      ],
+      seeAlso: ['batch'],
     },
     {
       name: 'onCleanup',
@@ -173,6 +214,58 @@ batch(() => {
         'Expecting signals read inside the `callback` to be tracked — only the `source` function establishes tracking; the callback is untracked',
       ],
       seeAlso: ['effect', 'computed'],
+    },
+    {
+      name: 'createSelector',
+      kind: 'function',
+      signature: '<T>(source: () => T) => (value: T) => boolean',
+      summary:
+        'Create an O(1) equality selector — returns a reactive predicate that fires only when the previously-selected and newly-selected values\' subscribers are affected. Unlike a plain `() => source() === value` (which re-evaluates for every row in a list), this only triggers TWO subscribers per source change (deselected + newly selected) regardless of list size. Critical for keyed-list selection patterns.',
+      example: `const selectedId = signal<string | null>(null)
+const isSelected = createSelector(() => selectedId())
+
+// In each row's render — O(1) selection updates regardless of N rows:
+<For each={rows} by={r => r.id}>{row => (
+  <li class={() => (isSelected(row.id) ? 'selected' : '')}>
+    {row.label}
+  </li>
+)}</For>`,
+      mistakes: [
+        'Using a plain `() => source() === value` in lists — every row subscribes to source; selecting a row notifies ALL N rows (O(N))',
+        'Calling `isSelected` outside a reactive scope — returns the current value but doesn\'t subscribe',
+        'Using `createSelector` for non-equality predicates — it\'s purpose-built for `===` matching; for ranges or filters, use `computed()`',
+      ],
+      seeAlso: ['signal', 'computed'],
+    },
+    {
+      name: 'cell',
+      kind: 'function',
+      signature: '<T>(value: T) => Cell<T>',
+      summary:
+        'Lightweight reactive primitive — class-based alternative to `signal()`. **1 object allocation vs `signal()`\'s ~6 closures**, single-listener fast path (no Set allocated when ≤1 subscriber), methods on prototype shared across instances. **NOT callable as a getter** — does not integrate with effect dependency tracking. Use when you need reactive state but plan to subscribe directly via `.subscribe()` / `.listen()`, NOT via `effect()`. Ideal for keyed-list row labels where the subscription lifetime equals the row\'s lifetime.',
+      example: `import { cell } from '@pyreon/reactivity'
+
+// Create a cell:
+const label = cell('Initial')
+
+// Read (no tracking — read inside an effect does NOT subscribe):
+label.peek()             // 'Initial'
+
+// Write:
+label.set('Updated')
+label.update(s => s + '!')
+
+// Subscribe directly (returns disposer):
+const dispose = label.subscribe(() => console.log(label.peek()))
+
+// Fire-and-forget — no disposer (saves 1 closure allocation):
+label.listen(() => console.log('changed'))`,
+      mistakes: [
+        'Using `label()` to read — Cells are NOT callable. Use `label.peek()` to read',
+        'Reading `label.peek()` inside `effect()` and expecting tracked re-runs — Cells don\'t integrate with effect tracking. Use `signal()` if you need automatic dependency tracking',
+        'Using `cell()` for ALL reactive state — only switch from `signal()` when you\'ve measured allocation pressure (1000+ instances) AND you don\'t need effect-based subscriptions',
+      ],
+      seeAlso: ['signal'],
     },
     {
       name: 'createStore',
@@ -224,6 +317,45 @@ user.dispose()           // stop tracking, discard in-flight response`,
       seeAlso: ['signal', 'effect', 'effectScope'],
     },
     {
+      name: 'reconcile',
+      kind: 'function',
+      signature: '<T extends object>(source: T, target: T) => void',
+      summary:
+        'Surgically diff a new value into an existing `createStore` proxy. Walks both trees in parallel and only calls `.set()` on signals whose value actually changed — unchanged subtrees do NOT re-run their effects. Ideal for applying API responses to a long-lived store: only the truly-changed fields trigger updates, even if you receive a fully-replacement payload from the server. Arrays reconcile by index; excess elements are removed.',
+      example: `const state = createStore({ user: { name: 'Alice', age: 30 }, items: [] })
+
+// API response arrives — pure replacement payload:
+reconcile(
+  { user: { name: 'Alice', age: 31 }, items: [{ id: 1 }] },
+  state,
+)
+// → only state.user.age signal fires (name unchanged)
+// → state.items[0] is newly created, length signal fires`,
+      mistakes: [
+        'Passing a non-store as `target` — `reconcile` requires a `createStore` proxy; for plain objects, just assign',
+        'Expecting reconciliation by key for arrays — arrays are reconciled BY INDEX. For keyed list reconciliation, use a Map keyed by id and reconcile each entry by key, OR replace the array reference (which `<For>` reconciles via `by`)',
+        'Using `reconcile` inside an effect — it triggers writes; you\'d cycle. Call it outside reactive scopes (e.g. in a query callback or event handler)',
+      ],
+      seeAlso: ['createStore', 'signal'],
+    },
+    {
+      name: 'isStore',
+      kind: 'function',
+      signature: '(value: unknown) => boolean',
+      summary:
+        'Type guard — returns `true` if the value is a `createStore` proxy (recognized via an internal symbol marker). Use to differentiate reactive stores from plain objects in code that handles both shapes (e.g. helpers that conditionally `reconcile()` vs assign).',
+      example: `const a = createStore({ x: 1 })
+const b = { x: 1 }
+isStore(a)  // true
+isStore(b)  // false
+isStore(null)  // false (null-safe)`,
+      mistakes: [
+        'Using `isStore` to detect ANY proxy — it\'s specific to Pyreon\'s store proxies. Other proxies return `false`',
+        'Calling on `null` / `undefined` and expecting a throw — null-safe; returns `false`',
+      ],
+      seeAlso: ['createStore', 'reconcile'],
+    },
+    {
       name: 'untrack',
       kind: 'function',
       signature: '(fn: () => T) => T',
@@ -237,6 +369,154 @@ user.dispose()           // stop tracking, discard in-flight response`,
         'Using `untrack` as the default — signals should be tracked by default; `untrack` is the escape hatch for specific optimization or loop-prevention cases',
       ],
       seeAlso: ['signal', 'effect'],
+    },
+    {
+      name: 'effectScope',
+      kind: 'function',
+      signature: '() => EffectScope',
+      summary:
+        'Create an `EffectScope` — a container that auto-tracks effects/computeds created inside `scope.runInScope(fn)` and disposes them all at once via `scope.stop()`. `@pyreon/core`\'s `mountReactive` uses this internally for component lifetime management. **Always use a scope for effects created outside a component\'s setup phase** (e.g. in event handlers, route loaders, or async-await chains) — without one, effects leak for the lifetime of the program.',
+      example: `import { effectScope, signal, effect } from '@pyreon/reactivity'
+
+const scope = effectScope()
+const count = signal(0)
+
+scope.runInScope(() => {
+  effect(() => console.log(count()))    // tracked by scope
+})
+
+count.set(5)   // logs 5
+scope.stop()   // tears down all effects in the scope
+count.set(10)  // no log — effect was disposed`,
+      mistakes: [
+        'Forgetting `scope.stop()` — effects leak for the lifetime of the program; same shape as forgetting `dispose()` on a top-level `effect()`',
+        'Creating effects outside `runInScope(fn)` and expecting them to be tracked — effects must run during the synchronous body of `runInScope` to register with the scope',
+        'Stopping a scope that has pending updates — in-flight microtasks may still fire `onUpdate` hooks; design for idempotency or check `isActive` before writes',
+      ],
+      seeAlso: ['effect', 'getCurrentScope'],
+    },
+    {
+      name: 'getCurrentScope',
+      kind: 'function',
+      signature: '() => EffectScope | null',
+      summary:
+        'Returns the currently active `EffectScope` (the one whose `runInScope(fn)` is on the stack), or `null` if no scope is active. Use to register cleanup with the surrounding scope, or to detect "am I inside a component lifetime?" — useful for library code that wants to register an effect with the consumer\'s scope rather than the global one.',
+      example: `import { getCurrentScope } from '@pyreon/reactivity'
+
+function myReactiveResource() {
+  const scope = getCurrentScope()
+  if (scope) {
+    // Inside a component — register cleanup with the component's scope
+    scope.add({ dispose: cleanup })
+  } else {
+    // Top-level / standalone — caller must call dispose() manually
+    console.warn('myReactiveResource: no active scope; remember to dispose')
+  }
+}`,
+      mistakes: [
+        'Calling `getCurrentScope()` outside any scope and expecting a default — returns `null`. Handle the no-scope case explicitly',
+        'Using `getCurrentScope()` as a substitute for `effectScope()` — it returns the AMBIENT scope, not a fresh one',
+      ],
+      seeAlso: ['effectScope', 'setCurrentScope'],
+    },
+    {
+      name: 'setCurrentScope',
+      kind: 'function',
+      signature: '(scope: EffectScope | null) => void',
+      summary:
+        '**Low-level escape hatch** — directly set the ambient `EffectScope`. Use only when implementing scope-aware framework primitives (e.g. `mountReactive`, custom render boundaries). Most code should use `scope.runInScope(fn)` which sets and restores via try/finally. Pairing `setCurrentScope(s)` with a manual `setCurrentScope(prev)` is error-prone — `runInScope` is the safe form.',
+      example: `// Inside a custom render boundary that needs to swap scopes mid-flow:
+const prev = getCurrentScope()
+setCurrentScope(myScope)
+try {
+  doWork()
+} finally {
+  setCurrentScope(prev)
+}
+// Or — preferred:
+myScope.runInScope(() => doWork())`,
+      mistakes: [
+        'Forgetting to restore the previous scope — leaks effects to the wrong owner forever',
+        'Using `setCurrentScope` instead of `runInScope` in user code — the safe API is `runInScope`',
+      ],
+      seeAlso: ['effectScope', 'getCurrentScope'],
+    },
+    {
+      name: 'onSignalUpdate',
+      kind: 'function',
+      signature: '(listener: (event: { signal, name, prev, next, stack, timestamp }) => void) => () => void',
+      summary:
+        'Register a global trace listener that fires on every signal write. Returns a disposer. **Dev/debug only** — every signal write incurs the listener call. Use for time-travel debugging, recording reactive transcripts in tests, or building devtools panels. Multiple listeners are supported (each gets every event).',
+      example: `import { onSignalUpdate, signal } from '@pyreon/reactivity'
+
+const dispose = onSignalUpdate(e => {
+  console.log(\`\${e.name ?? '(anonymous)'}: \${e.prev} → \${e.next}\`)
+})
+const count = signal(0, { name: 'count' })
+count.set(5)   // logs: count: 0 → 5
+dispose()      // remove listener`,
+      mistakes: [
+        'Leaving `onSignalUpdate` registered in production — fires on EVERY signal write, even hot-path internal ones. Always dispose when done',
+        'Throwing inside the listener — corrupts the signal\'s notification flow (the listener fires after `_v` is updated but before subscribers are notified). Wrap your handler in try/catch',
+        'Expecting the event to capture writes that occur via batch flushes — the event fires per `set()` call, regardless of batch state',
+      ],
+      seeAlso: ['inspectSignal', 'why'],
+    },
+    {
+      name: 'inspectSignal',
+      kind: 'function',
+      signature: '<T>(sig: Signal<T>) => SignalDebugInfo<T>',
+      summary:
+        'Inspect a signal — pretty-prints its current value, name, and subscriber count to the console (in a `console.group`) and returns the debug info object. Useful for one-shot inspection while debugging; for continuous tracing use `onSignalUpdate`.',
+      example: `const count = signal(0, { name: 'count' })
+inspectSignal(count)
+// Console group:
+//   🔍 Signal "count"
+//     value: 0
+//     subscribers: 2`,
+      mistakes: [
+        'Calling `inspectSignal` in production — produces console noise. Gate calls behind `if (import.meta.env.DEV)` or `__DEV__`',
+      ],
+      seeAlso: ['onSignalUpdate', 'why'],
+    },
+    {
+      name: 'why',
+      kind: 'function',
+      signature: '() => void',
+      summary:
+        'Toggle a global "why-did-it-update?" tracer that logs every signal write between consecutive calls. Calling once arms the tracer; calling again disarms it and dumps the captured transcript. **Dev/debug only.** Useful for hunting "why did this effect just re-run?" — wrap a suspicious operation, call `why()` before and after, see exactly which signals changed.',
+      example: `why()         // arm tracer
+clickButton()  // any signal writes here are captured
+why()         // disarm + dump transcript:
+//   [pyreon:why] "filter": "all" → "active" (12 subscribers)
+//   [pyreon:why] "scrollY": 0 → 240 (1 subscriber)`,
+      mistakes: [
+        'Calling `why()` once and forgetting to call it again — keeps tracing forever, leaks the listener, prints nothing until disarmed',
+        'Using `why()` in production — pure dev tool',
+      ],
+      seeAlso: ['onSignalUpdate', 'inspectSignal'],
+    },
+    {
+      name: 'setErrorHandler',
+      kind: 'function',
+      signature: '(fn: (err: unknown) => void) => void',
+      summary:
+        'Register a global handler for unhandled errors thrown inside `effect()` / `computed()` / `renderEffect()`. Without a handler, errors are logged to `console.error` and the effect re-throws (potentially crashing the surrounding frame). With one, the framework calls your handler with the thrown value and continues. Use for telemetry / error-boundary integration. **One handler only — calling twice replaces the first.**',
+      example: `setErrorHandler(err => {
+  reportToSentry(err)
+  toast.error('Something went wrong')
+})
+
+effect(() => {
+  if (count() > 100) throw new Error('count too high')
+})
+count.set(101)  // logs/reports via handler instead of crashing`,
+      mistakes: [
+        'Calling `setErrorHandler` multiple times and expecting all to fire — the second call REPLACES the first. Compose multiple handlers manually if you need a chain',
+        'Throwing inside the handler — the framework will swallow this too, but you lose visibility. Make handlers no-throw (try/catch internally if needed)',
+        'Expecting the handler to receive errors from `signal.set()` writes — only effect-runtime errors are routed. Synchronous errors at write time bubble up normally',
+      ],
+      seeAlso: ['effect', 'renderEffect'],
     },
   ],
   gotchas: [
