@@ -19,6 +19,7 @@
     "README.md",
     "LICENSE"
   ],
+  "sideEffects": false,
   "exports": {
     ".": "./base.json",
     "./app": "./app.json",
@@ -36,6 +37,5 @@
   "peerDependencies": {
     "@pyreon/core": ">=0.13.0",
     "typescript": ">=5.9.0"
-  },
-  "sideEffects": false
+  }
 }

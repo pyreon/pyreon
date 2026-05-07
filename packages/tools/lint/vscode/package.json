@@ -1,26 +1,25 @@
 {
   "name": "pyreon-lint",
   "displayName": "Pyreon Lint",
-  "description": "Pyreon-specific lint rules for VS Code — signals, JSX, SSR, performance, reactivity",
   "version": "0.13.1",
-  "publisher": "pyreon",
+  "description": "Pyreon-specific lint rules for VS Code — signals, JSX, SSR, performance, reactivity",
+  "categories": [
+    "Linters"
+  ],
+  "keywords": [
+    "jsx",
+    "lint",
+    "pyreon",
+    "reactivity",
+    "signals"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/tools/lint/vscode"
   },
-  "engines": {
-    "vscode": "^1.75.0"
-  },
-  "categories": ["Linters"],
-  "keywords": ["pyreon", "signals", "jsx", "lint", "reactivity"],
-  "activationEvents": [
-    "onLanguage:typescript",
-    "onLanguage:typescriptreact",
-    "onLanguage:javascript",
-    "onLanguage:javascriptreact"
-  ],
+  "publisher": "pyreon",
   "main": "./extension.js",
   "contributes": {
     "configuration": {
@@ -34,10 +33,24 @@
         "pyreonLint.preset": {
           "type": "string",
           "default": "recommended",
-          "enum": ["recommended", "strict", "app", "lib"],
+          "enum": [
+            "recommended",
+            "strict",
+            "app",
+            "lib"
+          ],
           "description": "Lint preset to use"
         }
       }
     }
+  },
+  "activationEvents": [
+    "onLanguage:javascript",
+    "onLanguage:javascriptreact",
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact"
+  ],
+  "engines": {
+    "vscode": "^1.75.0"
   }
 }

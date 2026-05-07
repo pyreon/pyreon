@@ -53,7 +53,7 @@
   },
   "dependencies": {
     "@oxc-project/types": "^0.123.0",
-    "oxc-parser": "^0.123.0"
+    "oxc-parser": "^0.129.0"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*"
