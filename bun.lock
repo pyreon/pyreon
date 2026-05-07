@@ -593,9 +593,36 @@
         "@pyreon/test-utils": "workspace:^",
         "happy-dom": "^20.8.3",
       },
+      "optionalDependencies": {
+        "@pyreon/compiler-darwin-arm64": "workspace:^",
+        "@pyreon/compiler-darwin-x64": "workspace:^",
+        "@pyreon/compiler-linux-arm64-gnu": "workspace:^",
+        "@pyreon/compiler-linux-x64-gnu": "workspace:^",
+        "@pyreon/compiler-win32-x64-msvc": "workspace:^",
+      },
       "peerDependencies": {
         "typescript": ">=5.0.0",
       },
+    },
+    "packages/core/compiler/npm/darwin-arm64": {
+      "name": "@pyreon/compiler-darwin-arm64",
+      "version": "0.15.0",
+    },
+    "packages/core/compiler/npm/darwin-x64": {
+      "name": "@pyreon/compiler-darwin-x64",
+      "version": "0.15.0",
+    },
+    "packages/core/compiler/npm/linux-arm64-gnu": {
+      "name": "@pyreon/compiler-linux-arm64-gnu",
+      "version": "0.15.0",
+    },
+    "packages/core/compiler/npm/linux-x64-gnu": {
+      "name": "@pyreon/compiler-linux-x64-gnu",
+      "version": "0.15.0",
+    },
+    "packages/core/compiler/npm/win32-x64-msvc": {
+      "name": "@pyreon/compiler-win32-x64-msvc",
+      "version": "0.15.0",
     },
     "packages/core/core": {
       "name": "@pyreon/core",
@@ -2202,6 +2229,16 @@
     "@pyreon/code": ["@pyreon/code@workspace:packages/fundamentals/code"],
 
     "@pyreon/compiler": ["@pyreon/compiler@workspace:packages/core/compiler"],
+
+    "@pyreon/compiler-darwin-arm64": ["@pyreon/compiler-darwin-arm64@workspace:packages/core/compiler/npm/darwin-arm64"],
+
+    "@pyreon/compiler-darwin-x64": ["@pyreon/compiler-darwin-x64@workspace:packages/core/compiler/npm/darwin-x64"],
+
+    "@pyreon/compiler-linux-arm64-gnu": ["@pyreon/compiler-linux-arm64-gnu@workspace:packages/core/compiler/npm/linux-arm64-gnu"],
+
+    "@pyreon/compiler-linux-x64-gnu": ["@pyreon/compiler-linux-x64-gnu@workspace:packages/core/compiler/npm/linux-x64-gnu"],
+
+    "@pyreon/compiler-win32-x64-msvc": ["@pyreon/compiler-win32-x64-msvc@workspace:packages/core/compiler/npm/win32-x64-msvc"],
 
     "@pyreon/connector-document": ["@pyreon/connector-document@workspace:packages/ui-system/connector-document"],
 
