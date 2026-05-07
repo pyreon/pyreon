@@ -1,15 +1,15 @@
 {
-  "sha": "b3fcc2db",
+  "sha": "cbb776c7",
   "app": "perf-dashboard",
   "journey": "formStateRead-10k",
   "mode": "dev",
   "runs": 3,
-  "timestamp": "2026-05-07T18:07:46.462Z",
-  "medianWallMs": 10,
-  "medianHeapBytes": 39600000,
+  "timestamp": "2026-05-07T18:31:39.304Z",
+  "medianWallMs": 20,
+  "medianHeapBytes": 53500000,
   "counters": {
-    "reactivity.signalWrite": 1,
-    "reactivity.effectRun": 0,
+    "reactivity.signalWrite": 7,
+    "reactivity.effectRun": 2,
     "runtime.mountChild": 0,
     "reactivity.signalCreate": 0,
     "form.fieldSignalCreate": 0,
@@ -18,7 +18,7 @@
     "styler.resolve": 0,
     "styler.sheet.insert": 0,
     "styler.sheet.insert.hit": 0,
-    "reactivity.computedRecompute": 1,
+    "reactivity.computedRecompute": 3,
     "form.formStateScan": 1,
     "form.formStateScan.fieldsRead": 10000
   }

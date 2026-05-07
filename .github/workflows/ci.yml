@@ -302,6 +302,16 @@ jobs:
         # Catches the "the whole feature is unblooded" gap noted in the
         # post-PR-#453 island audit.
         run: bun run test:e2e:islands
+      - name: Run e2e — perf-dashboard (useFormState selector-narrowing gate)
+        # Boots perf-dashboard on port 5183. Real-Chromium gate for the
+        # `useFormState(form, s => s.isValid)` selector-narrowing contract
+        # — asserts `form.formStateScan.fieldsRead === 0` on the selector
+        # path and `>= N` on the no-selector control path. The unit-level
+        # regression in @pyreon/form's form-additional.test.tsx is happy-
+        # dom; this is the real-browser regression gate so a bundler
+        # quirk that drops the dev-gate counter (or a use-form-state
+        # regression that re-introduces the eager scan) fails CI loudly.
+        run: bun run test:e2e:perf-dashboard
       - name: Run e2e — create-pyreon-app runtime (app/blog/dash fixtures)
         # Boots 3 pre-scaffolded fixture apps under examples/cpa-pw-* on
         # ports 5191-5193. Catches runtime regressions in scaffolded

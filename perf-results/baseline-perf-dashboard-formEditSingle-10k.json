@@ -1,12 +1,12 @@
 {
-  "sha": "b3fcc2db",
+  "sha": "cbb776c7",
   "app": "perf-dashboard",
   "journey": "formEditSingle-10k",
   "mode": "dev",
   "runs": 3,
-  "timestamp": "2026-05-07T18:07:24.821Z",
+  "timestamp": "2026-05-07T18:32:20.306Z",
   "medianWallMs": 7,
-  "medianHeapBytes": 33100000,
+  "medianHeapBytes": 37300000,
   "counters": {
     "reactivity.signalWrite": 1,
     "reactivity.effectRun": 1,

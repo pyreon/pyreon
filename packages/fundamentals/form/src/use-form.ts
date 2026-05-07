@@ -186,6 +186,28 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   // Track whether the form has been disposed (unmounted)
   let disposed = false
 
+  // ── Incremental count tracking (PR 2: granular form state) ──────────────────
+  //
+  // Pre-fix, `form.isValid` / `form.isDirty` were O(N) computeds that
+  // iterated every field's `error` / `dirty` signal on every recompute.
+  // Any field write that flipped error/dirty invalidated the form-level
+  // computed → next read scanned all N fields. With 10k fields, that's
+  // 10k signal reads per `useFormState` invocation that touches isValid.
+  //
+  // Fix: maintain `_invalidCount` and `_dirtyCount` signals updated
+  // incrementally via per-field `signal.subscribe` listeners (one per
+  // field, light — `signal.subscribe` adds to the Set with no effect-
+  // framework overhead). isValid/isDirty become O(1) reads of these
+  // count signals. The bookkeeping cost is one Set-add per field at
+  // mount + one comparison per error/dirty signal write.
+  //
+  // Verified against the forms-stress benchmark: `formStateReadSelector-10k`
+  // counter signature dropped from `fieldsRead = 10000` to `fieldsRead = 0`
+  // (selector + getter-backed summary in use-form-state.ts only reads
+  // `summary.isValid` → reads `_invalidCount` → no field iteration).
+  const _invalidCount = signal(0)
+  const _dirtyCount = signal(0)
+
   for (const [name, initial] of fieldEntries) {
     const valueSig = signal(initial) as Signal<TValues[typeof name]>
     const errorSig = signal<ValidationError>(undefined)
@@ -280,6 +302,30 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       }
     })
 
+    // Incremental count subscribers — see `_invalidCount` / `_dirtyCount`
+    // declarations above for the rationale. signal.subscribe is the
+    // lightweight subscriber path: adds to the signal's `_s` Set with no
+    // effect-framework overhead (no scope, no auto-track, no deps array).
+    // Each field gets 2 subscribers: one for error transitions, one for
+    // dirty. Total = 2N subscribers, light enough that 10k fields adds
+    // ~negligible overhead vs the existing N auto-revalidation effects.
+    let prevHasError = false
+    errorSig.subscribe(() => {
+      const hasError = errorSig.peek() !== undefined
+      if (hasError !== prevHasError) {
+        _invalidCount.update((n) => (hasError ? n + 1 : n - 1))
+        prevHasError = hasError
+      }
+    })
+    let prevIsDirty = false
+    dirtySig.subscribe(() => {
+      const isFieldDirty = dirtySig.peek()
+      if (isFieldDirty !== prevIsDirty) {
+        _dirtyCount.update((n) => (isFieldDirty ? n + 1 : n - 1))
+        prevIsDirty = isFieldDirty
+      }
+    })
+
     fields[name] = {
       value: valueSig,
       error: errorSig,
@@ -317,20 +363,12 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
 
   const isSubmitting = signal(false)
 
-  // Form-level computed signals
-  const isValid = computed(() => {
-    for (const name of fieldEntries.map(([n]) => n)) {
-      if (fields[name].error() !== undefined) return false
-    }
-    return true
-  })
-
-  const isDirty = computed(() => {
-    for (const name of fieldEntries.map(([n]) => n)) {
-      if (fields[name].dirty()) return true
-    }
-    return false
-  })
+  // Form-level computed signals — O(1) reads of incrementally-tracked
+  // count signals. Pre-fix these iterated all N fields on every recompute
+  // (and re-allocated the `fieldEntries.map` array). Post-fix they're
+  // pure scalar reads. See `_invalidCount` / `_dirtyCount` setup above.
+  const isValid = computed(() => _invalidCount() === 0)
+  const isDirty = computed(() => _dirtyCount() > 0)
 
   const getErrors = (): Partial<Record<keyof TValues, ValidationError>> => {
     const errors = {} as Partial<Record<keyof TValues, ValidationError>>
