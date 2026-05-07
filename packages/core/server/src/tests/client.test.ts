@@ -574,4 +574,83 @@ describe('hydrateIslands', () => {
     cleanup()
     window.matchMedia = origMatchMedia
   })
+
+  test('marks nested islands with data-island-error="nested" and skips them', () => {
+    document.body.innerHTML = `
+      <pyreon-island data-component="Outer" data-props="{}">
+        <div>
+          <pyreon-island data-component="Inner" data-props="{}"></pyreon-island>
+        </div>
+      </pyreon-island>
+    `
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const Outer: ComponentFn = () => h('div', null, 'outer')
+    const Inner: ComponentFn = () => h('div', null, 'inner')
+
+    const cleanup = hydrateIslands({
+      Outer: () => Promise.resolve({ default: Outer }),
+      Inner: () => Promise.resolve({ default: Inner }),
+    })
+
+    const inner = document.querySelector('pyreon-island[data-component="Inner"]')!
+    expect(inner.getAttribute('data-island-error')).toBe('nested')
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('nested inside another <pyreon-island>'),
+    )
+    // Outer is not nested → not marked
+    const outer = document.querySelector('pyreon-island[data-component="Outer"]')!
+    expect(outer.getAttribute('data-island-error')).toBeNull()
+
+    errorSpy.mockRestore()
+    cleanup()
+  })
+
+  test('marks islands with no registered loader as data-island-error="no-loader"', () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="Missing" data-props="{}"></pyreon-island>'
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const cleanup = hydrateIslands({})
+    const el = document.querySelector('pyreon-island')!
+    expect(el.getAttribute('data-island-error')).toBe('no-loader')
+
+    warnSpy.mockRestore()
+    cleanup()
+  })
+
+  test('marks islands with invalid props JSON as data-island-error="invalid-props"', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="Bad" data-props="not json"></pyreon-island>'
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const Comp: ComponentFn = () => h('div', null)
+    const cleanup = hydrateIslands({
+      Bad: () => Promise.resolve({ default: Comp }),
+    })
+    await new Promise((r) => setTimeout(r, 50))
+
+    const el = document.querySelector('pyreon-island')!
+    expect(el.getAttribute('data-island-error')).toBe('invalid-props')
+
+    errorSpy.mockRestore()
+    cleanup()
+  })
+
+  test('marks islands with hydration failure as data-island-error="hydration-failed"', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="Crash" data-props="{}"></pyreon-island>'
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const cleanup = hydrateIslands({
+      Crash: () => Promise.reject(new Error('boom')),
+    })
+    await new Promise((r) => setTimeout(r, 50))
+
+    const el = document.querySelector('pyreon-island')!
+    expect(el.getAttribute('data-island-error')).toBe('hydration-failed')
+
+    errorSpy.mockRestore()
+    cleanup()
+  })
 })

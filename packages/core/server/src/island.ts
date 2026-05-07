@@ -91,7 +91,7 @@ export function island<P extends Props = Props>(
   const IslandWrapper = async function IslandWrapper(props: P): Promise<VNode | null> {
     const mod = await loader()
     const Comp = typeof mod === 'function' ? mod : mod.default
-    const serializedProps = serializeIslandProps(props)
+    const serializedProps = serializeIslandProps(props, name)
 
     return h(
       'pyreon-island',
@@ -104,7 +104,8 @@ export function island<P extends Props = Props>(
     )
   }
 
-  // Attach metadata so the Vite plugin can detect islands for code-splitting
+  // Attach metadata so tooling (CLI project scanner, MCP, future codegen) can
+  // detect islands without runtime introspection.
   const wrapper = IslandWrapper as unknown as ComponentFn<P> & IslandMeta
   Object.defineProperties(wrapper, {
     __island: { value: true, enumerable: true },
@@ -118,20 +119,61 @@ export function island<P extends Props = Props>(
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Serialize component props to a JSON string for embedding in HTML attributes.
- * Strips non-serializable values (functions, symbols, children).
+ * Serialize island props to JSON for embedding in `data-props`.
+ *
+ * **Prop contract** (what survives the SSR → client roundtrip):
+ *
+ * - ✅ JSON-native: strings, finite numbers, booleans, null, arrays, plain objects
+ * - ❌ **Dropped silently**: `children`, functions, symbols, `undefined` (a warning
+ *   fires in dev when `children` is dropped — it's the most common surprise)
+ * - ❌ **Coerced**: `Date` becomes an ISO string (no auto-revival on the client),
+ *   `Map` / `Set` / class instances lose their type
+ * - ⚠️ **`BigInt` is unsupported**: `JSON.stringify` throws on `BigInt` values.
+ *   We catch the throw, log in dev, and emit `{}` rather than 500ing the SSR.
+ *   Convert to string yourself before passing as a prop.
+ *
+ * For anything more complex than JSON, pass an ID and have the island component
+ * fetch / restore the rich value on the client.
  */
-function serializeIslandProps(props: Record<string, unknown>): string {
+function serializeIslandProps(
+  props: Record<string, unknown>,
+  islandName: string,
+): string {
   const clean: Record<string, unknown> = {}
+  let droppedChildren = false
   for (const [key, value] of Object.entries(props)) {
-    // Skip non-serializable or internal props
-    if (key === 'children') continue
+    if (key === 'children') {
+      if (value !== undefined) droppedChildren = true
+      continue
+    }
     if (typeof value === 'function') continue
     if (typeof value === 'symbol') continue
     if (value === undefined) continue
     clean[key] = value
   }
+  if (droppedChildren && process.env.NODE_ENV !== 'production') {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[Pyreon] island "${islandName}" was passed children, but island props ` +
+        `do not support children — they were dropped. Render the children inside ` +
+        `the island component itself.`,
+    )
+  }
   // The SSR renderer's renderProp() already applies escapeHtml() to attribute
   // values, so the JSON is safe to embed in HTML attributes without double-escaping.
-  return JSON.stringify(clean)
+  try {
+    return JSON.stringify(clean)
+  } catch (err) {
+    // JSON.stringify throws on BigInt and on circular references. Don't 500
+    // the SSR — emit empty props and warn so the dev sees it before users do.
+    if (process.env.NODE_ENV !== 'production') {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[Pyreon] island "${islandName}" props could not be serialized (likely ` +
+          `BigInt or circular reference). Falling back to empty props. Original ` +
+          `error: ${(err as Error).message}`,
+      )
+    }
+    return '{}'
+  }
 }
