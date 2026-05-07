@@ -1,0 +1,165 @@
+name: Release Native Binaries
+
+# Cross-platform build matrix for the @pyreon/compiler napi-rs binary.
+# Phase 4 of the Rust-compiler-to-production roadmap: validates that
+# the binary cross-compiles cleanly to the 5 production target triples
+# and uploads each as a CI artifact for download/inspection.
+#
+# Phase 4 scope is intentionally narrow:
+#   - Build all 5 platforms (catches Cargo.toml / source issues per arch)
+#   - Upload artifacts (lets a maintainer download + manually distribute)
+#   - DO NOT npm publish per-platform packages yet (Phase 5)
+#
+# Trigger: manual only (workflow_dispatch). Tag-triggered publishing
+# lands in Phase 5 alongside the per-platform npm package skeletons +
+# the loader's per-platform resolution path.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref to build from (default: main)'
+        required: false
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS Apple Silicon — native arm64 runner.
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            host: native
+            ext: dylib
+            prefix: lib
+          # macOS Intel — uses macos-13 (last Intel runner before
+          # GitHub deprecated x86_64 macos-latest in favour of arm64).
+          - target: x86_64-apple-darwin
+            os: macos-13
+            host: native
+            ext: dylib
+            prefix: lib
+          # Linux x64 — direct native build.
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            host: native
+            ext: so
+            prefix: lib
+          # Linux ARM64 — cross-compile via cargo-zigbuild (zero-config
+          # glibc version selection, faster than docker-based `cross`).
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            host: zigbuild
+            ext: so
+            prefix: lib
+          # Windows x64 MSVC — direct native build on windows-latest.
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            host: native
+            ext: dll
+            prefix: ''
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install zig (for aarch64-linux cross-compile)
+        if: matrix.host == 'zigbuild'
+        uses: goto-bus-stop/setup-zig@7ab2955eb728f5440978d5824358023be3a2802d # v2.2.1
+        with:
+          version: 0.13.0
+
+      - name: Install cargo-zigbuild
+        if: matrix.host == 'zigbuild'
+        run: cargo install cargo-zigbuild --locked
+
+      - name: Cache cargo
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-release-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock') }}
+          restore-keys: cargo-release-${{ runner.os }}-${{ matrix.target }}-
+
+      - name: Build (native)
+        if: matrix.host == 'native'
+        working-directory: packages/core/compiler/native
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Build (cargo-zigbuild)
+        if: matrix.host == 'zigbuild'
+        working-directory: packages/core/compiler/native
+        run: cargo zigbuild --release --target ${{ matrix.target }}
+
+      - name: Stage artifact
+        # Standard napi-rs convention: rename platform shared lib to
+        # `pyreon-compiler-<triple>.node` so it's immediately consumable
+        # by Node's native-module loader without further renaming.
+        shell: bash
+        working-directory: packages/core/compiler/native
+        run: |
+          BIN_NAME="${{ matrix.prefix }}pyreon_compiler_native.${{ matrix.ext }}"
+          ARTIFACT="pyreon-compiler-${{ matrix.target }}.node"
+          SRC="target/${{ matrix.target }}/release/$BIN_NAME"
+          if [ ! -f "$SRC" ]; then
+            echo "::error::Expected built binary at $SRC, not found"
+            ls -la "target/${{ matrix.target }}/release/" || true
+            exit 1
+          fi
+          cp "$SRC" "$ARTIFACT"
+          ls -la "$ARTIFACT"
+          # Sanity check: file should be > 100KB. Empty / corrupted
+          # builds would silently upload otherwise.
+          SIZE=$(wc -c < "$ARTIFACT")
+          if [ "$SIZE" -lt 100000 ]; then
+            echo "::error::Binary too small ($SIZE bytes) — likely corrupted"
+            exit 1
+          fi
+          echo "Built ${{ matrix.target }}: $SIZE bytes"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pyreon-compiler-${{ matrix.target }}
+          path: packages/core/compiler/native/pyreon-compiler-${{ matrix.target }}.node
+          retention-days: 14
+          if-no-files-found: error
+
+  summary:
+    name: Build summary
+    needs: build
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Report
+        run: |
+          echo "## Cross-platform binary build summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Phase 4 validation: all 5 target triples built + uploaded as artifacts." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Next: download an artifact and verify locally:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "gh run download <run-id> -n pyreon-compiler-<triple>" >> $GITHUB_STEP_SUMMARY
+          echo "cp pyreon-compiler-<triple>.node packages/core/compiler/native/pyreon-compiler.node" >> $GITHUB_STEP_SUMMARY
+          echo "bun run --filter='@pyreon/compiler' test" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Phase 5 will wire these into per-platform npm packages and consumer install resolution." >> $GITHUB_STEP_SUMMARY
