@@ -3224,13 +3224,27 @@ fn flatten_children<'a>(children: &'a [JSXChild<'a>]) -> Vec<FlatChild<'a>> {
 }
 
 fn analyze_children(flat: &[FlatChild]) -> (bool, bool) {
+    // `useMixed` triggers placeholder-based positional mounting (each
+    // dynamic child gets a `<!>` comment slot in the template that
+    // `replaceChild`-replaces at mount). It must fire whenever ≥2 of
+    // {element, text, expression} are interleaved — otherwise dynamic
+    // text nodes added via `appendChild` land after all static template
+    // content, breaking source-order rendering for shapes like
+    // `<p>foo {x()} bar</p>` (rendered "foo  barX" instead of
+    // "foo X bar"). Mirrors `analyzeChildren` in
+    // `packages/core/compiler/src/jsx.ts:1132-1147` — the JS rule was
+    // updated by Phase B2's whitespace tests; this Rust port previously
+    // used `has_elem && has_non_elem` which only fires when AT LEAST
+    // ONE element child coexists with a text/expression — broken for
+    // pure text+expression mixes (`<div>hello{name()}</div>`).
     let has_elem = flat.iter().any(|c| matches!(c, FlatChild::Element(_, _)));
-    let has_non_elem = flat.iter().any(|c| !matches!(c, FlatChild::Element(_, _)));
+    let has_text = flat.iter().any(|c| matches!(c, FlatChild::Text(_)));
     let expr_count = flat
         .iter()
         .filter(|c| matches!(c, FlatChild::Expression(_)))
         .count();
-    (has_elem && has_non_elem, expr_count > 1)
+    let present = (has_elem as u8) + (has_text as u8) + ((expr_count > 0) as u8);
+    (present > 1, expr_count > 1)
 }
 
 fn emit_reactive_text_child(
