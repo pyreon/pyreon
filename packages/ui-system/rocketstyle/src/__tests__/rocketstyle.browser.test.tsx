@@ -314,6 +314,81 @@ describe('@pyreon/rocketstyle in real browser', () => {
     dark.unmount()
   })
 
+  // Bug 5 repro: cache-key collision under `useBooleans: true`.
+  //
+  // The user-facing bug shape: `<Btn primary />` and `<Btn secondary />`
+  // both render with the FIRST cached variant's resolved styles. Pre-fix
+  // the dimension-prop memo built its key from raw `propsRec[dimName]`
+  // BEFORE _calculateStylingAttrs resolved the boolean shorthand, so all
+  // boolean variants on the same dimension had `propsRec.state === undefined`
+  // and collided. Real-app symptom: a button group where primary, secondary,
+  // and danger variants all render in the FIRST color the user clicked.
+  //
+  // Real-Chromium proof: mounts both variants in parallel and asserts
+  // `getComputedStyle().color` is different. happy-dom's class-based
+  // assertions wouldn't catch this — only real CSS resolution proves
+  // the styler classCache served different cached styles for each variant.
+  it('Bug 5 repro: useBooleans:true with multiple boolean variants render with distinct computed styles', () => {
+    const Btn: any = rocketstyle({ useBooleans: true })({
+      name: 'BoolBtn',
+      component: Base,
+    })
+      .styles(
+        (css: any) => css`
+          color: ${({ $rocketstyle }: any) => $rocketstyle.color};
+        `,
+      )
+      .theme({ color: 'rgb(0, 0, 0)' })
+      .states({
+        primary: { color: 'rgb(255, 0, 0)' },
+        secondary: { color: 'rgb(0, 255, 0)' },
+        danger: { color: 'rgb(0, 0, 255)' },
+      })
+
+    const primaryMount = mountInBrowser(h(Btn, { id: 'p', primary: true }))
+    const secondaryMount = mountInBrowser(h(Btn, { id: 's', secondary: true }))
+    const dangerMount = mountInBrowser(h(Btn, { id: 'd', danger: true }))
+
+    const primaryEl = primaryMount.container.querySelector<HTMLElement>('#p')!
+    const secondaryEl = secondaryMount.container.querySelector<HTMLElement>('#s')!
+    const dangerEl = dangerMount.container.querySelector<HTMLElement>('#d')!
+
+    // Without the fix: all three resolve to whichever variant was cached
+    // first under the colliding key (mode|undefined|...). With the fix:
+    // each gets its own cache entry keyed off the resolved state value.
+    expect(getComputedStyle(primaryEl).color).toBe('rgb(255, 0, 0)')
+    expect(getComputedStyle(secondaryEl).color).toBe('rgb(0, 255, 0)')
+    expect(getComputedStyle(dangerEl).color).toBe('rgb(0, 0, 255)')
+
+    // Sibling mount under the SAME PyreonUI provider — exercises the
+    // cross-instance shared memo (per-theme WeakMap entry). Pre-fix this
+    // was the actual real-app shape: button group children mounted under
+    // a single provider, all hitting the same colliding key.
+    const groupMount = mountInBrowser(
+      h(PyreonUI, { theme: {}, mode: 'light' },
+        h('div', { id: 'group' },
+          h(Btn, { id: 'g-primary', primary: true }),
+          h(Btn, { id: 'g-secondary', secondary: true }),
+          h(Btn, { id: 'g-danger', danger: true }),
+        ),
+      ),
+    )
+    expect(
+      getComputedStyle(groupMount.container.querySelector<HTMLElement>('#g-primary')!).color,
+    ).toBe('rgb(255, 0, 0)')
+    expect(
+      getComputedStyle(groupMount.container.querySelector<HTMLElement>('#g-secondary')!).color,
+    ).toBe('rgb(0, 255, 0)')
+    expect(
+      getComputedStyle(groupMount.container.querySelector<HTMLElement>('#g-danger')!).color,
+    ).toBe('rgb(0, 0, 255)')
+
+    primaryMount.unmount()
+    secondaryMount.unmount()
+    dangerMount.unmount()
+    groupMount.unmount()
+  })
+
   it('multiple instances share definition-scoped caches (no per-mount rebuild)', () => {
     // Verifies the perf optimization: getDimensionsMap, reservedPropNames keys,
     // and omit Sets are cached at definition time (WeakMap), not rebuilt per mount.
