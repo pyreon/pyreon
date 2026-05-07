@@ -14,21 +14,21 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@pyreon/core": "workspace:*",
-    "@pyreon/head": "workspace:*",
-    "@pyreon/meta": "workspace:*",
-    "@pyreon/reactivity": "workspace:*",
-    "@pyreon/router": "workspace:*",
-    "@pyreon/runtime-dom": "workspace:*",
-    "@pyreon/runtime-server": "workspace:*",
-    "@pyreon/server": "workspace:*",
-    "@pyreon/zero": "workspace:*"
+    "@pyreon/core": "workspace:^",
+    "@pyreon/head": "workspace:^",
+    "@pyreon/meta": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/router": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/runtime-server": "workspace:^",
+    "@pyreon/server": "workspace:^",
+    "@pyreon/zero": "workspace:^"
   },
   "devDependencies": {
-    "@pyreon/lint": "workspace:*",
-    "@pyreon/mcp": "workspace:*",
-    "@pyreon/vite-plugin": "workspace:*",
-    "@pyreon/zero-cli": "workspace:*",
+    "@pyreon/lint": "workspace:^",
+    "@pyreon/mcp": "workspace:^",
+    "@pyreon/vite-plugin": "workspace:^",
+    "@pyreon/zero-cli": "workspace:^",
     "typescript": "^6.0.2",
     "vite": "^8.0.3"
   }
