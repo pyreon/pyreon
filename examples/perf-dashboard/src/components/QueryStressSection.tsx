@@ -25,13 +25,16 @@ import {
   useMutation,
   useQuery,
 } from '@pyreon/query'
+import type { Signal } from '@pyreon/reactivity'
 import { signal } from '@pyreon/reactivity'
 import { Accent, GhostButton, Row, Section, SectionTitle } from './atoms'
 import { themeSignal } from '../App'
 
 // ── Tracking ─────────────────────────────────────────────────────────────
 
-type StressMode = 'idle' | 'mount' | 'notify' | 'invalidate' | 'scan'
+type StressMode = 'idle' | 'mount' | 'notify' | 'reactive' | 'invalidate' | 'scan'
+
+const activeReactiveKey = { current: null as Signal<number> | null }
 
 // Mode + count drive the For key. A mode change OR count change forces an
 // unmount+mount of QueryAtScale. The reactive-key flip signal is separate
@@ -87,6 +90,18 @@ function QueryAtScale(props: { mode: StressMode; count: number }) {
         queryFn: () => Promise.resolve({ id: 0 }),
       }))
     }
+  } else if (props.mode === 'reactive') {
+    // N queries reading a shared reactive `reactKey` signal in their queryKey.
+    // External flips of reactKey should re-run every useQuery's setOptions
+    // effect → setOptions count grows by N per flip.
+    const reactKey = signal<number>(0)
+    activeReactiveKey.current = reactKey
+    for (let i = 0; i < props.count; i++) {
+      useQuery(() => ({
+        queryKey: ['perf-reactive', reactKey(), i],
+        queryFn: () => Promise.resolve({ id: i }),
+      }))
+    }
   } else if (props.mode === 'invalidate') {
     // 5 distinct keys distributed across N queries. The mutation will
     // invalidate all 5 keys per call → 5 cache-walk hits per mutation.
@@ -136,6 +151,23 @@ function QueryAtScale(props: { mode: StressMode; count: number }) {
 // helpers AFTER QueryAtScale is mounted (so the cache + observers are
 // already in place).
 
+function reactiveFlip(flips: number): void {
+  const sig = activeReactiveKey.current
+  if (!sig) return
+  // Tight-loop external writes — each .set propagates to every useQuery's
+  // setOptions effect (N per flip → N × K total). The For-effect untrack
+  // fix (mountFor / mountKeyedList runUntracked the render work) is what
+  // makes this work end-to-end; before the fix, the For effect tracked
+  // every signal read during child setup, re-ran on the first flip,
+  // disposed all inner setOptions effects, then handleIncrementalUpdate
+  // saw unchanged keys and skipped re-mount → 0 setOptions runs across
+  // K flips. Reference: PR #490 deferred journey + the regression test
+  // at packages/core/runtime-dom/src/tests/fanout-repro.test.tsx.
+  for (let i = 1; i <= flips; i++) {
+    sig.set(i)
+  }
+}
+
 function notifyDrive(events: number): void {
   const client = activeClient.current
   if (!client) return
@@ -178,6 +210,10 @@ interface PerfQueryWindow {
     setMount: (n: number) => void
     /** Mount N queries on the SAME key (notify fan-out scenario). */
     setNotify: (n: number) => void
+    /** Mount N queries reading a shared reactive key signal. */
+    setReactive: (n: number) => void
+    /** Drive: K reactive-key flips (each fires N setOptions effects). */
+    reactiveFlip: (flips: number) => void
     /** Mount N queries + 1 mutation with 5 invalidates. */
     setInvalidate: (n: number) => void
     /** Mount N queries + useIsFetching (scan scenario). */
@@ -205,6 +241,15 @@ if (typeof window !== 'undefined') {
       queryStressMode.set('notify')
       queryStressCount.set(n)
       status.set(`notify n=${n}`)
+    },
+    setReactive(n) {
+      queryStressMode.set('reactive')
+      queryStressCount.set(n)
+      status.set(`reactive n=${n}`)
+    },
+    reactiveFlip(flips) {
+      reactiveFlip(flips)
+      status.set(`reactive flips=${flips}`)
     },
     setInvalidate(n) {
       queryStressMode.set('invalidate')

@@ -1,0 +1,20 @@
+{
+  "sha": "ba05d068",
+  "app": "perf-dashboard",
+  "journey": "queryReactiveKey-1000",
+  "mode": "dev",
+  "runs": 5,
+  "timestamp": "2026-05-07T22:53:00.136Z",
+  "medianWallMs": 12,
+  "medianHeapBytes": 12700000,
+  "counters": {
+    "reactivity.signalWrite": 17,
+    "reactivity.effectRun": 1104,
+    "runtime.mountChild": 6,
+    "reactivity.signalCreate": 1,
+    "query.useQuery": 100,
+    "query.observerNotify": 400,
+    "query.setOptions": 1100,
+    "runtime.tpl": 1
+  }
+}

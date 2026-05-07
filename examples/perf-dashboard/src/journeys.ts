@@ -580,18 +580,34 @@ export const journeys: Record<string, (page: PageLike) => Promise<void>> = {
     })
   },
 
-  // queryReactiveKey-1000 — DEFERRED. The intended setup (N useQuery hooks
-  // reading a shared reactive key signal, flipped K times → N × K setOptions
-  // emissions) hit a Pyreon reactive-effect edge case where tight-loop
-  // signal writes from page.evaluate() weren't propagating to all subscribers
-  // — empirically, only 0–1 of K flips triggered the effect re-runs. Both
-  // module-level (HMR-wrapped) and function-level signals exhibited the same
-  // shape, ruling out the HMR wrapper. The `signalWrite` counter confirmed
-  // the writes happen; the subscriber notify path is what's broken under
-  // this specific shape (sync loop inside an evaluate boundary, external to
-  // any Pyreon mount frame). Re-investigating this in a follow-up — likely
-  // a Pyreon reactivity fix, not a query-side change. The setOptions counter
-  // is still exercised by `queryMount-1000` (1 setOptions per useQuery call).
+  /**
+   * **queryReactiveKey-1000** — 100 useQuery hooks reading a shared reactive
+   * `reactKey` signal in their queryKey closure, flipped 10 times → expected
+   * 100 × 10 = 1000 setOptions runs.
+   *
+   * Originally deferred from PR #490: tight-loop signal writes weren't
+   * propagating to subscribers under the real-app `<For>`-wrapped shape.
+   * Root cause was the For-effect tracking signal reads during child
+   * component setup — fixed by `mountFor` / `mountKeyedList` wrapping
+   * their render work in `runUntracked` (mirrors mountReactive's pattern).
+   * Regression test: `packages/core/runtime-dom/src/tests/fanout-repro.test.tsx`.
+   */
+  'queryReactiveKey-1000': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_query?: { clearAll: () => void; setReactive: (n: number) => void }
+      }
+      w.__pyreon_perf_query?.clearAll()
+      w.__pyreon_perf_query?.setReactive(100)
+    })
+    await page.waitForSelector('[data-testid="query-stress-ready"][data-mode="reactive"]')
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_query?: { reactiveFlip: (flips: number) => void }
+      }
+      w.__pyreon_perf_query?.reactiveFlip(10)
+    })
+  },
 
   /**
    * **mutationInvalidate-1000** — 100 cached queries + 1 mutation with 5
