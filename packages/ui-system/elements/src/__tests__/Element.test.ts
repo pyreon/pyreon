@@ -635,6 +635,155 @@ describe('Element', () => {
     })
   })
 
+  describe('equalBeforeAfter ResizeObserver', () => {
+    // Captures the live ResizeObserver constructor — we install a stub on
+    // globalThis for the duration of the test, mount + unmount via the real
+    // runtime-dom pipeline, and assert the observer was set up + cleaned up.
+    // Mirrors vitus-labs's useLayoutEffect + ResizeObserver setup so async
+    // slot resizes (font swaps, lazy text, viewport changes) keep the
+    // before/after slots equalized — not just the one-shot mount measurement.
+    type ROStub = {
+      observed: HTMLElement[]
+      disconnects: number
+      callbacks: Array<() => void>
+    }
+
+    function installResizeObserverStub(): ROStub {
+      const stub: ROStub = { observed: [], disconnects: 0, callbacks: [] }
+      class StubResizeObserver {
+        callback: () => void
+        constructor(callback: () => void) {
+          this.callback = callback
+          stub.callbacks.push(callback)
+        }
+        observe(node: HTMLElement) {
+          stub.observed.push(node)
+        }
+        disconnect() {
+          stub.disconnects++
+        }
+        unobserve() {
+          /* no-op */
+        }
+      }
+      ;(globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = StubResizeObserver
+      return stub
+    }
+
+    function uninstallResizeObserverStub(prev: unknown) {
+      if (prev === undefined)
+        delete (globalThis as unknown as { ResizeObserver?: unknown }).ResizeObserver
+      else (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = prev
+    }
+
+    it('observes the equalize ref on mount when equalBeforeAfter+before+after are set', async () => {
+      const { mount } = await import('@pyreon/runtime-dom')
+      const prev = (globalThis as unknown as { ResizeObserver?: unknown }).ResizeObserver
+      const stub = installResizeObserverStub()
+      try {
+        const root = document.createElement('div')
+        document.body.appendChild(root)
+
+        const unmount = mount(
+          h(Element, {
+            equalBeforeAfter: true,
+            beforeContent: h('span', null, 'B'),
+            children: 'main',
+            afterContent: h('span', null, 'A'),
+          }),
+          root,
+        )
+
+        expect(stub.observed.length).toBe(1)
+        expect(stub.disconnects).toBe(0)
+
+        unmount()
+        expect(stub.disconnects).toBe(1)
+
+        root.remove()
+      } finally {
+        uninstallResizeObserverStub(prev)
+      }
+    })
+
+    it('does not register an observer when equalBeforeAfter is false', async () => {
+      const { mount } = await import('@pyreon/runtime-dom')
+      const prev = (globalThis as unknown as { ResizeObserver?: unknown }).ResizeObserver
+      const stub = installResizeObserverStub()
+      try {
+        const root = document.createElement('div')
+        document.body.appendChild(root)
+
+        const unmount = mount(
+          h(Element, {
+            beforeContent: h('span', null, 'B'),
+            children: 'main',
+            afterContent: h('span', null, 'A'),
+          }),
+          root,
+        )
+
+        expect(stub.observed.length).toBe(0)
+
+        unmount()
+        root.remove()
+      } finally {
+        uninstallResizeObserverStub(prev)
+      }
+    })
+
+    it('does not register an observer when only one of before/after is set', async () => {
+      const { mount } = await import('@pyreon/runtime-dom')
+      const prev = (globalThis as unknown as { ResizeObserver?: unknown }).ResizeObserver
+      const stub = installResizeObserverStub()
+      try {
+        const root = document.createElement('div')
+        document.body.appendChild(root)
+
+        const unmount = mount(
+          h(Element, {
+            equalBeforeAfter: true,
+            beforeContent: h('span', null, 'B'),
+            children: 'main',
+          }),
+          root,
+        )
+
+        expect(stub.observed.length).toBe(0)
+
+        unmount()
+        root.remove()
+      } finally {
+        uninstallResizeObserverStub(prev)
+      }
+    })
+
+    it('survives missing ResizeObserver global (SSR / older runtimes)', async () => {
+      const { mount } = await import('@pyreon/runtime-dom')
+      const prev = (globalThis as unknown as { ResizeObserver?: unknown }).ResizeObserver
+      delete (globalThis as unknown as { ResizeObserver?: unknown }).ResizeObserver
+      try {
+        const root = document.createElement('div')
+        document.body.appendChild(root)
+
+        // Should not throw even though ResizeObserver is undefined.
+        const unmount = mount(
+          h(Element, {
+            equalBeforeAfter: true,
+            beforeContent: h('span', null, 'B'),
+            children: 'main',
+            afterContent: h('span', null, 'A'),
+          }),
+          root,
+        )
+        unmount()
+        root.remove()
+      } finally {
+        uninstallResizeObserverStub(prev)
+      }
+    })
+  })
+
   describe('component metadata', () => {
     it('has displayName set', () => {
       expect(Element.displayName).toBeDefined()

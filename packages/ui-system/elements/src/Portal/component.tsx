@@ -1,35 +1,48 @@
 /**
- * Portal component stub. In Pyreon, the actual Portal is provided by
- * @pyreon/core's runtime-dom. This component re-exports it for API
- * compatibility with the elements package structure.
+ * Portal — renders children into a per-instance wrapper element appended to
+ * `DOMLocation` (defaults to `document.body`). Mirrors vitus-labs's Portal:
+ * a fresh wrapper is created per Portal mount, children render INSIDE it
+ * (not directly into DOMLocation), and the wrapper is removed on unmount.
+ *
+ * Per-instance wrapper isolation matters when multiple Portals share a
+ * DOMLocation (e.g. several modals on `document.body`) — without the wrapper
+ * their children would intermingle, defeating CSS scoping and making
+ * cleanup brittle.
  */
 
 import type { VNodeChild } from '@pyreon/core'
-import { Portal as CorePortal } from '@pyreon/core'
+import { Portal as CorePortal, onUnmount } from '@pyreon/core'
 import { PKG_NAME } from '../constants'
 import type { PyreonComponent } from '../types'
 
 export interface Props {
   /**
-   * Defines a HTML DOM where children to be appended.
+   * DOM element to mount the wrapper into. Defaults to `document.body`.
    */
   DOMLocation?: HTMLElement
   /**
-   * Children to be rendered within **Portal** component.
+   * Children rendered inside the wrapper.
    */
   children: VNodeChild
   /**
-   * Valid HTML Tag
+   * HTML tag for the per-instance wrapper element. Defaults to `'div'`.
    */
   tag?: string
 }
 
 const Component: PyreonComponent<Props> = (props) => {
-  const target = props.DOMLocation ?? (typeof document !== 'undefined' ? document.body : undefined)
+  if (typeof document === 'undefined') return null
 
-  if (!target) return null
+  const tag = props.tag ?? 'div'
+  const target = props.DOMLocation ?? document.body
+  const wrapper = document.createElement(tag)
+  target.appendChild(wrapper)
 
-  return <CorePortal target={target}>{props.children}</CorePortal>
+  onUnmount(() => {
+    wrapper.remove()
+  })
+
+  return <CorePortal target={wrapper}>{props.children}</CorePortal>
 }
 
 const name = `${PKG_NAME}/Portal` as const

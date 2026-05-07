@@ -137,9 +137,20 @@ const Component: PyreonElement = (props) => {
   }
 
   if (own.equalBeforeAfter && own.beforeContent && own.afterContent) {
+    // Run once on mount AND continue equalizing as the element resizes —
+    // catches async slot content (font swaps, lazy text, viewport resize)
+    // that a one-shot measurement would miss. Mirrors vitus-labs's Element
+    // useLayoutEffect + ResizeObserver pattern.
     onMount(() => {
-      if (equalizeRef) equalize(equalizeRef, own.direction)
-      return undefined
+      const node = equalizeRef
+      if (!node) return undefined
+
+      equalize(node, own.direction)
+
+      if (typeof ResizeObserver === 'undefined') return undefined
+      const observer = new ResizeObserver(() => equalize(node, own.direction))
+      observer.observe(node)
+      return () => observer.disconnect()
     })
   }
 
