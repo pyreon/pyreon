@@ -615,6 +615,28 @@ describe('generateRouteModuleFromRoutes — with detected exports', () => {
     expect(result).toContain('import')
   })
 
+  it('emits getStaticPaths on the route record in static-imports mode', () => {
+    const routes = [
+      makeRoute('posts/[id].tsx', { hasGetStaticPaths: true } as Partial<RouteFileExports>),
+    ]
+    const result = generateRouteModuleFromRoutes(routes, './routes', { staticImports: true })
+    // Namespace import → `mod.getStaticPaths` lands as a route field.
+    expect(result).toMatch(/import \* as _m\d+ from "\.\/routes\/posts\/\[id\]\.tsx"/)
+    expect(result).toMatch(/getStaticPaths: _m\d+\.getStaticPaths/)
+  })
+
+  it('emits getStaticPaths on the route record in lazy mode (mixed branch)', () => {
+    // Lazy/SSR mode + getStaticPaths-only export → mixed shape: lazy
+    // component + namespace import for the function-shaped export.
+    const routes = [
+      makeRoute('posts/[id].tsx', { hasGetStaticPaths: true } as Partial<RouteFileExports>),
+    ]
+    const result = generateRouteModuleFromRoutes(routes, './routes')
+    expect(result).toContain('lazy(() => import("./routes/posts/[id].tsx"))')
+    expect(result).toContain('getStaticPaths:')
+    expect(result).toMatch(/import \* as _m\d+ from "\.\/routes\/posts\/\[id\]\.tsx"/)
+  })
+
   it('layout with no metadata only emits component import', () => {
     const layoutRoute: FileRoute = {
       filePath: '_layout.tsx',
@@ -757,6 +779,30 @@ describe('detectRouteExports', () => {
     expect(result.hasRenderMode).toBe(false)
     expect(result.hasError).toBe(false)
     expect(result.hasMiddleware).toBe(false)
+    expect(result.hasGetStaticPaths).toBe(false)
+  })
+
+  it('detects export function getStaticPaths', () => {
+    const result = detectRouteExports('export function getStaticPaths() { return [] }')
+    expect(result.hasGetStaticPaths).toBe(true)
+  })
+
+  it('detects export async function getStaticPaths', () => {
+    const result = detectRouteExports('export async function getStaticPaths() { return [] }')
+    expect(result.hasGetStaticPaths).toBe(true)
+  })
+
+  it('detects export const getStaticPaths', () => {
+    const result = detectRouteExports('export const getStaticPaths = () => []')
+    expect(result.hasGetStaticPaths).toBe(true)
+  })
+
+  it('detects export { getStaticPaths } re-export', () => {
+    const result = detectRouteExports(`
+      const getStaticPaths = () => []
+      export { getStaticPaths }
+    `)
+    expect(result.hasGetStaticPaths).toBe(true)
   })
 
   it('ignores commented-out exports', () => {

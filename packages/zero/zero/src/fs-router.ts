@@ -2,6 +2,34 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { FileRoute, RenderMode, RouteFileExports } from './types'
 
+/**
+ * Return type of a route file's `getStaticPaths()` export. Each entry
+ * supplies one set of concrete values for the route's dynamic segments;
+ * the SSG plugin expands the route's URL pattern with these params and
+ * renders one HTML file per entry.
+ *
+ * @example
+ * ```tsx
+ * // src/routes/posts/[id].tsx
+ * import type { GetStaticPaths } from '@pyreon/zero/server'
+ *
+ * export const getStaticPaths: GetStaticPaths<{ id: string }> = async () => {
+ *   const posts = await fetch('https://api.example.com/posts').then(r => r.json())
+ *   return posts.map((p) => ({ params: { id: p.slug } }))
+ * }
+ *
+ * export default function Post() { ... }
+ * ```
+ *
+ * For catch-all routes (`/blog/[...slug].tsx`), pass the full path through
+ * the catch-all param: `{ params: { slug: 'a/b' } }` → `/blog/a/b`.
+ */
+export type GetStaticPaths<
+  TParams extends Record<string, string> = Record<string, string>,
+> = () =>
+  | Array<{ params: TParams }>
+  | Promise<Array<{ params: TParams }>>
+
 // ─── File-system route conventions ──────────────────────────────────────────
 //
 // src/routes/
@@ -42,6 +70,7 @@ const ROUTE_EXPORT_NAMES = [
   'middleware',
   'loaderKey',
   'gcTime',
+  'getStaticPaths',
 ] as const
 
 type RouteExportName = (typeof ROUTE_EXPORT_NAMES)[number]
@@ -118,6 +147,7 @@ export function detectRouteExports(source: string): RouteFileExports {
     hasMiddleware: found.has('middleware'),
     hasLoaderKey: found.has('loaderKey'),
     hasGcTime: found.has('gcTime'),
+    hasGetStaticPaths: found.has('getStaticPaths'),
     ...(metaLiteral !== undefined ? { metaLiteral } : {}),
     ...(renderModeLiteral !== undefined ? { renderModeLiteral } : {}),
   }
@@ -751,6 +781,7 @@ const EMPTY_EXPORTS: RouteFileExports = {
   hasMiddleware: false,
   hasLoaderKey: false,
   hasGcTime: false,
+  hasGetStaticPaths: false,
 }
 
 /**
@@ -767,7 +798,8 @@ export function hasAnyMetaExport(exports: RouteFileExports): boolean {
     exports.hasError ||
     exports.hasMiddleware ||
     exports.hasLoaderKey ||
-    exports.hasGcTime
+    exports.hasGcTime ||
+    exports.hasGetStaticPaths
   )
 }
 
@@ -1095,6 +1127,8 @@ export function generateRouteModuleFromRoutes(
         if (exp.hasGuard) props.push(`${indent}  beforeEnter: ${mod}.guard`)
         if (exp.hasLoaderKey) props.push(`${indent}  loaderKey: ${mod}.loaderKey`)
         if (exp.hasGcTime) props.push(`${indent}  gcTime: ${mod}.gcTime`)
+        if (exp.hasGetStaticPaths)
+          props.push(`${indent}  getStaticPaths: ${mod}.getStaticPaths`)
         if (exp.hasMeta || exp.hasRenderMode) {
           const metaParts: string[] = []
           if (exp.hasMeta) metaParts.push(`...${mod}.meta`)
@@ -1132,7 +1166,13 @@ export function generateRouteModuleFromRoutes(
       const inlineableMeta =
         (!exp.hasMeta || exp.metaLiteral !== undefined) &&
         (!exp.hasRenderMode || exp.renderModeLiteral !== undefined)
-      const needsFunctionExports = exp.hasLoader || exp.hasGuard || exp.hasError
+      // getStaticPaths is a build-time export consumed by the SSG plugin's
+      // path-resolution phase. Like loader/guard/error, it can't be inlined
+      // as a literal — we need the actual function reference. Force the
+      // generator into the mixed branch (case 2) when present so a namespace
+      // import is emitted and `mod.getStaticPaths` lands on the route record.
+      const needsFunctionExports =
+        exp.hasLoader || exp.hasGuard || exp.hasError || exp.hasGetStaticPaths
 
       if (hasMeta && inlineableMeta && !needsFunctionExports) {
         // Optimal path — component lazy, metadata inlined.
@@ -1174,6 +1214,15 @@ export function generateRouteModuleFromRoutes(
           const mod = nextModuleImport(page.filePath)
           props.push(`${indent}  gcTime: ${mod}.gcTime`)
         }
+        if (exp.hasGetStaticPaths) {
+          // getStaticPaths runs at SSG build time (not request time), so
+          // routing it through a dynamic import is fine — but going through
+          // a namespace import keeps it consistent with loaderKey/gcTime
+          // and avoids per-call import overhead during the SSG enumeration
+          // phase.
+          const mod = nextModuleImport(page.filePath)
+          props.push(`${indent}  getStaticPaths: ${mod}.getStaticPaths`)
+        }
         emitInlineMeta(exp, props, indent)
         if (errorName) {
           // For error components we can't easily await — pass the lazy
@@ -1195,6 +1244,8 @@ export function generateRouteModuleFromRoutes(
         if (exp.hasGuard) props.push(`${indent}  beforeEnter: ${mod}.guard`)
         if (exp.hasLoaderKey) props.push(`${indent}  loaderKey: ${mod}.loaderKey`)
         if (exp.hasGcTime) props.push(`${indent}  gcTime: ${mod}.gcTime`)
+        if (exp.hasGetStaticPaths)
+          props.push(`${indent}  getStaticPaths: ${mod}.getStaticPaths`)
         if (exp.hasMeta || exp.hasRenderMode) {
           const metaParts: string[] = []
           if (exp.hasMeta) metaParts.push(`...${mod}.meta`)

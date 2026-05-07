@@ -24,7 +24,7 @@ export { defineConfig, resolveConfig } from "./config";
 
 // ─── File-system routing ────────────────────────────────────────────────────
 
-export type { GenerateRouteModuleOptions } from './fs-router'
+export type { GenerateRouteModuleOptions, GetStaticPaths } from './fs-router'
 export {
 	filePathToUrlPath,
 	generateMiddlewareModule,

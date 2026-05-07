@@ -90,6 +90,202 @@ describe('ssgPlugin', () => {
     })
   })
 
+  describe('expandUrlPattern', () => {
+    it('substitutes a single :param', () => {
+      expect(_internal.expandUrlPattern('/posts/:id', { id: 'a' })).toBe('/posts/a')
+    })
+
+    it('substitutes multiple :params', () => {
+      expect(_internal.expandUrlPattern('/users/:userId/posts/:postId', { userId: '1', postId: '2' })).toBe(
+        '/users/1/posts/2',
+      )
+    })
+
+    it('expands a catch-all :param* preserving slashes', () => {
+      expect(_internal.expandUrlPattern('/blog/:slug*', { slug: 'a/b/c' })).toBe('/blog/a/b/c')
+    })
+
+    it('throws when a required param is missing', () => {
+      expect(() => _internal.expandUrlPattern('/posts/:id', {})).toThrow(/without "id"/)
+    })
+
+    it('throws on empty-string value (would produce ambiguous URL)', () => {
+      expect(() => _internal.expandUrlPattern('/posts/:id', { id: '' })).toThrow(/without "id"/)
+    })
+
+    it('passes through static segments unchanged', () => {
+      expect(_internal.expandUrlPattern('/static/path', {})).toBe('/static/path')
+    })
+  })
+
+  describe('autoDetectStaticPaths with getStaticPaths', () => {
+    // We exercise autoDetectStaticPaths against a fixture directory built
+    // on-the-fly with mkdtempSync. Each test writes a minimal route tree,
+    // optionally a getStaticPaths registry, and asserts the expanded paths.
+    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = require('node:fs')
+    const { tmpdir } = require('node:os')
+    const path = require('node:path')
+
+    function makeFixture(files: Record<string, string>) {
+      const root = mkdtempSync(path.join(tmpdir(), 'pyreon-ssg-fixture-'))
+      for (const [rel, body] of Object.entries(files)) {
+        const full = path.join(root, rel)
+        mkdirSync(path.dirname(full), { recursive: true })
+        writeFileSync(full, body)
+      }
+      return {
+        routesDir: root,
+        cleanup: () => rmSync(root, { recursive: true, force: true }),
+      }
+    }
+
+    it('expands a dynamic route via getStaticPaths', async () => {
+      const f = makeFixture({
+        'index.tsx': 'export default () => null',
+        'posts/[id].tsx': 'export default () => null\nexport function getStaticPaths() {}',
+      })
+      try {
+        // The fs-router scanner picks up `getStaticPaths` from the route
+        // file; the SSG plugin pulls the actual function from the registry
+        // (which the SSR sub-build's compiled output exposes). For the
+        // unit test we hand-build the registry to mirror that contract.
+        const registry = new Map<string, () => Array<{ params: Record<string, string> }>>([
+          ['/posts/:id', () => [{ params: { id: 'a' } }, { params: { id: 'b' } }]],
+        ])
+        const errors: { path: string; error: unknown }[] = []
+        const paths = await _internal.autoDetectStaticPaths(f.routesDir, registry as any, errors)
+        expect(paths).toContain('/')
+        expect(paths).toContain('/posts/a')
+        expect(paths).toContain('/posts/b')
+        expect(errors).toEqual([])
+      } finally {
+        f.cleanup()
+      }
+    })
+
+    it('skips dynamic routes silently when no getStaticPaths is registered', async () => {
+      const f = makeFixture({
+        'index.tsx': 'export default () => null',
+        'posts/[id].tsx': 'export default () => null',
+      })
+      try {
+        const errors: { path: string; error: unknown }[] = []
+        const paths = await _internal.autoDetectStaticPaths(f.routesDir, undefined, errors)
+        expect(paths).toEqual(['/'])
+        expect(errors).toEqual([])
+      } finally {
+        f.cleanup()
+      }
+    })
+
+    it('expands an async getStaticPaths', async () => {
+      const f = makeFixture({
+        'posts/[id].tsx': 'export default () => null\nexport async function getStaticPaths() {}',
+      })
+      try {
+        const registry = new Map<string, () => Promise<Array<{ params: Record<string, string> }>>>([
+          ['/posts/:id', async () => [{ params: { id: 'x' } }]],
+        ])
+        const errors: { path: string; error: unknown }[] = []
+        const paths = await _internal.autoDetectStaticPaths(f.routesDir, registry as any, errors)
+        expect(paths).toContain('/posts/x')
+        expect(errors).toEqual([])
+      } finally {
+        f.cleanup()
+      }
+    })
+
+    it('captures errors when getStaticPaths throws', async () => {
+      const f = makeFixture({
+        'posts/[id].tsx': 'export default () => null\nexport function getStaticPaths() {}',
+      })
+      try {
+        const registry = new Map<string, () => Array<{ params: Record<string, string> }>>([
+          [
+            '/posts/:id',
+            () => {
+              throw new Error('fetch failed')
+            },
+          ],
+        ])
+        const errors: { path: string; error: unknown }[] = []
+        const paths = await _internal.autoDetectStaticPaths(f.routesDir, registry as any, errors)
+        // Failing route is omitted, but the call doesn't crash.
+        expect(paths).not.toContain('/posts/:id')
+        expect(errors).toHaveLength(1)
+        expect(errors[0]!.path).toBe('/posts/:id')
+        expect((errors[0]!.error as Error).message).toBe('fetch failed')
+      } finally {
+        f.cleanup()
+      }
+    })
+
+    it('captures errors when getStaticPaths returns a non-array', async () => {
+      const f = makeFixture({
+        'posts/[id].tsx': 'export default () => null\nexport function getStaticPaths() {}',
+      })
+      try {
+        const registry = new Map<string, () => unknown>([['/posts/:id', () => ({}) as any]])
+        const errors: { path: string; error: unknown }[] = []
+        await _internal.autoDetectStaticPaths(f.routesDir, registry as any, errors)
+        expect(errors).toHaveLength(1)
+        expect((errors[0]!.error as Error).message).toMatch(/must return an array/)
+      } finally {
+        f.cleanup()
+      }
+    })
+
+    it('captures errors when entry is missing params', async () => {
+      const f = makeFixture({
+        'posts/[id].tsx': 'export default () => null\nexport function getStaticPaths() {}',
+      })
+      try {
+        const registry = new Map<string, () => Array<{ params: Record<string, string> }>>([
+          // @ts-expect-error — deliberately malformed for the test
+          ['/posts/:id', () => [{ wrong: 'shape' }]],
+        ])
+        const errors: { path: string; error: unknown }[] = []
+        await _internal.autoDetectStaticPaths(f.routesDir, registry as any, errors)
+        expect(errors).toHaveLength(1)
+        expect((errors[0]!.error as Error).message).toMatch(/without "params"/)
+      } finally {
+        f.cleanup()
+      }
+    })
+
+    it('handles a catch-all route via getStaticPaths', async () => {
+      const f = makeFixture({
+        'docs/[...slug].tsx': 'export default () => null\nexport function getStaticPaths() {}',
+      })
+      try {
+        const registry = new Map<string, () => Array<{ params: Record<string, string> }>>([
+          ['/docs/:slug*', () => [{ params: { slug: 'a/b' } }, { params: { slug: 'c' } }]],
+        ])
+        const errors: { path: string; error: unknown }[] = []
+        const paths = await _internal.autoDetectStaticPaths(f.routesDir, registry as any, errors)
+        expect(paths).toContain('/docs/a/b')
+        expect(paths).toContain('/docs/c')
+      } finally {
+        f.cleanup()
+      }
+    })
+  })
+
+  describe('SSR entry source — getStaticPaths registry', () => {
+    it('emits a __getStaticPathsRegistry collector that walks routes + children', () => {
+      // The SSR sub-build exports a Map<urlPath, getStaticPaths>. The
+      // collector must:
+      // 1. Walk the top-level routes array
+      // 2. Recurse into route.children (nested layouts)
+      // 3. Skip routes without a getStaticPaths function
+      // 4. Use the route's `path` as the map key
+      expect(_internal.SSR_ENTRY_SOURCE).toContain('__getStaticPathsRegistry')
+      expect(_internal.SSR_ENTRY_SOURCE).toContain('collectStaticPathsRegistry')
+      expect(_internal.SSR_ENTRY_SOURCE).toContain('typeof r.getStaticPaths === "function"')
+      expect(_internal.SSR_ENTRY_SOURCE).toContain('Array.isArray(r.children)')
+    })
+  })
+
   describe('output path resolution', () => {
     it('"/" → dist/index.html', () => {
       expect(_internal.resolveOutputPath('/dist', '/')).toBe('/dist/index.html')
