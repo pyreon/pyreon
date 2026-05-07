@@ -497,6 +497,65 @@ describe('island', () => {
     )
     expect(vnode.props['data-props']).toBe('{}')
   })
+
+  test('island() falls back to {} on BigInt props instead of throwing the SSR', async () => {
+    const Inner: ComponentFn = () => h('div', null)
+    const Widget = island(() => Promise.resolve({ default: Inner }), { name: 'BigIntProps' })
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const vnode = await (Widget as unknown as (props: Record<string, unknown>) => Promise<VNode>)({
+      // BigInt is not JSON-serializable; would throw inside JSON.stringify pre-fix
+      huge: BigInt('9007199254740993'),
+    })
+    expect(vnode.props['data-props']).toBe('{}')
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('BigInt or circular reference'),
+    )
+    errorSpy.mockRestore()
+  })
+
+  test('island() falls back to {} on circular-reference props', async () => {
+    const Inner: ComponentFn = () => h('div', null)
+    const Widget = island(() => Promise.resolve({ default: Inner }), { name: 'CircularProps' })
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const cyclic: Record<string, unknown> = { name: 'foo' }
+    cyclic.self = cyclic
+    const vnode = await (Widget as unknown as (props: Record<string, unknown>) => Promise<VNode>)({
+      data: cyclic,
+    })
+    expect(vnode.props['data-props']).toBe('{}')
+    expect(errorSpy).toHaveBeenCalled()
+    errorSpy.mockRestore()
+  })
+
+  test('island() warns when children prop is dropped (dev only)', async () => {
+    const Inner: ComponentFn = () => h('div', null)
+    const Widget = island(() => Promise.resolve({ default: Inner }), { name: 'WithKids' })
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await (Widget as unknown as (props: Record<string, unknown>) => Promise<VNode>)({
+      title: 'has children',
+      children: h('span', null, 'kid'),
+    })
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('island "WithKids" was passed children'),
+    )
+    warnSpy.mockRestore()
+  })
+
+  test('island() does NOT warn when children is undefined (no real children)', async () => {
+    const Inner: ComponentFn = () => h('div', null)
+    const Widget = island(() => Promise.resolve({ default: Inner }), { name: 'NoKidsWarn' })
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await (Widget as unknown as (props: Record<string, unknown>) => Promise<VNode>)({
+      title: 'no children',
+      children: undefined,
+    })
+    expect(warnSpy).not.toHaveBeenCalled()
+    warnSpy.mockRestore()
+  })
 })
 
 // ─── SSG ─────────────────────────────────────────────────────────────────────

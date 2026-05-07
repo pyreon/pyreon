@@ -112,9 +112,25 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
     const componentId = el.getAttribute('data-component')
     if (!componentId) continue
 
+    // Detect nested islands. An island whose ancestor (up the DOM tree) is
+    // also a `<pyreon-island>` would, on hydration, be torn out and replaced
+    // when the outer island hydrates — losing its hydrate strategy entirely.
+    // Mark it as errored, log, and skip rather than silently break.
+    if (el.parentElement?.closest('pyreon-island')) {
+      console.error(
+        `[Pyreon] island "${componentId}" is nested inside another <pyreon-island>. ` +
+          `Nested islands are not supported — the outer island's hydrateRoot replaces ` +
+          `the inner element before its loader runs. Move the inner island out of the ` +
+          `outer island's tree, or fold them into a single component.`,
+      )
+      el.setAttribute('data-island-error', 'nested')
+      continue
+    }
+
     const loader = registry[componentId]
     if (!loader) {
       console.warn(`No loader registered for island "${componentId}"`)
+      el.setAttribute('data-island-error', 'no-loader')
       continue
     }
 
@@ -209,6 +225,7 @@ async function hydrateIsland(
       }
     } catch (parseErr) {
       console.error(`Invalid island props JSON for "${name}"`, parseErr)
+      el.setAttribute('data-island-error', 'invalid-props')
       return
     }
 
@@ -217,6 +234,7 @@ async function hydrateIsland(
     hydrateRoot(el, h(Comp, props))
   } catch (err) {
     console.error(`Failed to hydrate island "${name}"`, err)
+    el.setAttribute('data-island-error', 'hydration-failed')
   }
 }
 
