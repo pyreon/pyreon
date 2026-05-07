@@ -5,6 +5,8 @@
  * These test the plugin's transform logic directly (no Vite required).
  */
 
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { join as pathJoin } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 // ── Import internals ─────────────────────────────────────────────────────────
@@ -347,6 +349,85 @@ describe('plugin config', () => {
     }
     expect(config.optimizeDeps.exclude).toContain('react')
     expect(config.optimizeDeps.exclude).toContain('react-dom')
+  })
+
+  // Regression: pre-fix, the plugin's `bun` resolve condition redirected
+  // every `@pyreon/*` import to source `.ts(x)` files. In a non-monorepo
+  // consumer app, Vite's deps optimizer (esbuild) tried to pre-bundle
+  // those packages from `node_modules` and silently produced broken
+  // bundles in `.vite/deps/`, surfacing as
+  //   `File does not exist at .../node_modules/.vite/deps/@pyreon_styler.js`
+  // at runtime. Fix scans the consumer's package.json for `@pyreon/*`
+  // deps and adds them to optimizeDeps.exclude so the optimizer skips
+  // them (resolution then goes through the plugin's own resolveId hook
+  // and Vite's normal source pipeline).
+  it("auto-excludes consumer's @pyreon/* deps from optimizeDeps (Vite optimizer fix)", async () => {
+    // Build a fake consumer package.json with a few @pyreon/* deps.
+    const tmpRoot = pathJoin(import.meta.dirname, 'fixtures', 'pyreon-deps-consumer')
+    rmSync(tmpRoot, { recursive: true, force: true })
+    mkdirSync(tmpRoot, { recursive: true })
+    writeFileSync(
+      pathJoin(tmpRoot, 'package.json'),
+      JSON.stringify({
+        name: 'fake-consumer',
+        dependencies: {
+          '@pyreon/core': '^0.15.0',
+          '@pyreon/styler': '^0.15.0',
+          '@pyreon/runtime-dom': '^0.15.0',
+          // Non-@pyreon dep MUST NOT leak into the exclude list.
+          react: '^19.0.0',
+        },
+        devDependencies: {
+          '@pyreon/vite-plugin': '^0.15.0',
+        },
+      }),
+    )
+
+    const plugin = pyreonPlugin()
+    const config = getConfigHook(plugin)({ root: tmpRoot }, { command: 'serve' }) as {
+      optimizeDeps: { exclude: string[] }
+    }
+    expect(config.optimizeDeps.exclude).toContain('@pyreon/core')
+    expect(config.optimizeDeps.exclude).toContain('@pyreon/styler')
+    expect(config.optimizeDeps.exclude).toContain('@pyreon/runtime-dom')
+    expect(config.optimizeDeps.exclude).toContain('@pyreon/vite-plugin')
+    expect(config.optimizeDeps.exclude).not.toContain('react')
+
+    rmSync(tmpRoot, { recursive: true, force: true })
+  })
+
+  it("merges @pyreon/* deps with compat aliases without dup'ing", async () => {
+    const tmpRoot = pathJoin(import.meta.dirname, 'fixtures', 'pyreon-deps-compat')
+    rmSync(tmpRoot, { recursive: true, force: true })
+    mkdirSync(tmpRoot, { recursive: true })
+    writeFileSync(
+      pathJoin(tmpRoot, 'package.json'),
+      JSON.stringify({ dependencies: { '@pyreon/core': '^0.15.0' } }),
+    )
+
+    const plugin = pyreonPlugin({ compat: 'react' })
+    const config = getConfigHook(plugin)({ root: tmpRoot }, { command: 'serve' }) as {
+      optimizeDeps: { exclude: string[] }
+    }
+    // Compat list still present
+    expect(config.optimizeDeps.exclude).toContain('react')
+    // Pyreon list also present
+    expect(config.optimizeDeps.exclude).toContain('@pyreon/core')
+    // Deduplicated (Set)
+    const occurrences = config.optimizeDeps.exclude.filter((d) => d === 'react').length
+    expect(occurrences).toBe(1)
+
+    rmSync(tmpRoot, { recursive: true, force: true })
+  })
+
+  it('handles missing/malformed consumer package.json gracefully', async () => {
+    const plugin = pyreonPlugin()
+    // Point at a directory that doesn't exist — should not throw.
+    const config = getConfigHook(plugin)(
+      { root: '/nonexistent/path/that/does/not/exist' },
+      { command: 'serve' },
+    ) as { optimizeDeps: { exclude: string[] } }
+    expect(config.optimizeDeps.exclude).toEqual([])
   })
 
   it('adds SSR build config when isSsrBuild', async () => {
