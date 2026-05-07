@@ -1,4 +1,11 @@
-import { Counter, IdleClock, MobileMenu, StaticBadge, VisibleComments } from './islands'
+import {
+  CommandPalette,
+  Counter,
+  IdleClock,
+  MobileMenu,
+  StaticBadge,
+  VisibleComments,
+} from './islands'
 
 export default function App() {
   return (
@@ -26,6 +33,16 @@ export default function App() {
         <h2>media((max-width: 768px))</h2>
         <p>Only hydrates when viewport width ≤ 768px.</p>
         <MobileMenu />
+      </section>
+
+      <section style="margin-top: 32px;">
+        <h2>interaction</h2>
+        <p>
+          Hydrates on the user's first interaction with the island (focus / click /
+          pointerenter / touchstart). Perfect for modals, dropdowns, command
+          palettes — interactive but not visible until the user reaches for them.
+        </p>
+        <CommandPalette />
       </section>
 
       <section style="margin-top: 32px;">

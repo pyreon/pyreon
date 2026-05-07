@@ -343,6 +343,11 @@ const MATRIX: Cell[] = [
           { name: 'IdleClock', fingerprints: ['idle-clock-time'], maxGzippedKb: 5 },
           { name: 'VisibleComments', fingerprints: ['visible-comments-list'], maxGzippedKb: 5 },
           { name: 'MobileMenu', fingerprints: ['mobile-menu-toggle', 'mobile-menu-state'], maxGzippedKb: 5 },
+          {
+            name: 'CommandPalette',
+            fingerprints: ['command-palette-trigger', 'command-palette-input'],
+            maxGzippedKb: 5,
+          },
         ],
         // hydrate: 'never' islands MUST be absent from the client bundle.
         // No chunk with their basename, AND no chunk content referencing

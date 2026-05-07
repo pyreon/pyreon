@@ -8,4 +8,6 @@ import * as autoRegistry from 'virtual:pyreon/islands-registry'
 //
 // `hydrate: 'never'` islands (e.g. StaticBadge) are deliberately omitted
 // from the auto-registry — their components stay out of the client bundle.
+// `hydrate: 'interaction'` islands (e.g. CommandPalette) are picked up
+// automatically.
 hydrateIslandsAuto(autoRegistry)

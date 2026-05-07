@@ -15,15 +15,15 @@ import { expect, test } from '@playwright/test'
  */
 
 test.describe('islands-showcase — hydration strategies', () => {
-  test('SSR HTML is complete: 5 islands, correct data-hydrate, correct SSR children', async ({
+  test('SSR HTML is complete: 7 islands, correct data-hydrate, correct SSR children', async ({
     page,
   }) => {
     const response = await page.goto('/')
     expect(response?.status()).toBe(200)
 
-    // All 6 islands present in SSR HTML (StaticBadge appears twice — once in
+    // All 7 islands present in SSR HTML (StaticBadge appears twice — once in
     // the intro paragraph + once in the "never" section).
-    await expect(page.locator('pyreon-island')).toHaveCount(6)
+    await expect(page.locator('pyreon-island')).toHaveCount(7)
 
     // Each strategy is represented at least once.
     await expect(
@@ -37,6 +37,9 @@ test.describe('islands-showcase — hydration strategies', () => {
     ).toHaveCount(1)
     await expect(
       page.locator('pyreon-island[data-hydrate^="media("]'),
+    ).toHaveCount(1)
+    await expect(
+      page.locator('pyreon-island[data-hydrate="interaction"]'),
     ).toHaveCount(1)
     await expect(
       page.locator('pyreon-island[data-hydrate="never"]'),
@@ -165,6 +168,42 @@ test.describe('islands-showcase — hydration strategies', () => {
     // Wait long enough for any hydration to settle if it WERE going to.
     await page.waitForTimeout(500)
     await expect(page.getByTestId('mobile-menu-state')).toHaveText('closed')
+  })
+
+  test('hydrate=interaction: CommandPalette stays SSR-only until first interaction, then hydrates and is interactive', async ({
+    page,
+  }) => {
+    await page.goto('/')
+
+    const island = page.locator('pyreon-island[data-component="CommandPalette"]')
+    await expect(island).toBeVisible()
+    await expect(island).toHaveAttribute('data-hydrate', 'interaction')
+
+    // Pre-interaction: listeners attached, panel SSR-rendered with
+    // display:none, loader hasn't fired.
+    await expect(island).toHaveAttribute('data-island-state', 'awaiting-interaction')
+    await expect(page.getByTestId('command-palette-state')).toHaveText('closed')
+    await expect(page.getByTestId('command-palette-panel')).toHaveCSS('display', 'none')
+    await expect(island).not.toHaveAttribute('data-island-error', /.+/)
+
+    // First interaction: clicking the trigger button. The capture-phase
+    // listener on the island wrapper fires FIRST, captures the click target,
+    // stops the in-flight event, hydrates async, then re-dispatches the
+    // click on the same target so the live handler runs. Net result: the
+    // user's first click both wakes the island AND fires the action.
+    await page.getByTestId('command-palette-trigger').click()
+
+    // After hydration the data-island-state attribute is removed.
+    await expect(island).not.toHaveAttribute('data-island-state', /.+/, {
+      timeout: 5000,
+    })
+    // Palette is open now (replayed click hit the live handler).
+    await expect(page.getByTestId('command-palette-state')).toHaveText('open')
+    await expect(page.getByTestId('command-palette-panel')).toHaveCSS('display', 'block')
+
+    // Type into the palette — proves the live component is fully interactive.
+    await page.getByTestId('command-palette-input').fill('term')
+    await expect(page.getByTestId('command-palette-list')).toContainText('terminal')
   })
 
   test('hydrate=never: StaticBadge stays SSR-only with NO data-island-error and NO interactivity', async ({

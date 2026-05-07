@@ -382,6 +382,27 @@ describe('middleware types', () => {
     // Just verify the module can be imported — it's pure types
     expect(mod).toBeDefined()
   })
+
+  test('useRequestLocals returns the current request locals from context', async () => {
+    const { useRequestLocals } = await import('../middleware')
+    // Outside a request context, returns the default empty object — exercises
+    // the function-call path so coverage sees it (was 50%/never-called before).
+    const locals = useRequestLocals()
+    expect(typeof locals).toBe('object')
+    expect(locals).not.toBeNull()
+  })
+
+  test('createHandler invokes collectStyles and prepends styleTag to head', async () => {
+    const App: ComponentFn = () => h('div', null, 'styled')
+    const handler = createHandler({
+      App,
+      routes: [{ path: '/', component: App }],
+      collectStyles: () => '<style data-test="style">.x{color:red}</style>',
+    })
+    const res = await handler(new Request('http://localhost/'))
+    const html = await res.text()
+    expect(html).toContain('<style data-test="style">')
+  })
 })
 
 // ─── Islands ─────────────────────────────────────────────────────────────────
@@ -462,7 +483,12 @@ describe('island', () => {
 
   test('island() resolves direct function module (not { default })', async () => {
     const Inner: ComponentFn = () => h('span', null, 'direct')
-    const Widget = island(() => Promise.resolve({ default: Inner }), { name: 'Direct' })
+    // Loader returns the ComponentFn DIRECTLY (no { default } wrapper) —
+    // covers the function-typeof branch in the unwrap code.
+    const Widget = island(
+      () => Promise.resolve(Inner as unknown as ComponentFn),
+      { name: 'Direct' },
+    )
 
     const vnode = await (Widget as unknown as (props: Record<string, unknown>) => Promise<VNode>)(
       {},

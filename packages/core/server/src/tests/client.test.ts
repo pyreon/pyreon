@@ -4,7 +4,7 @@
 
 import type { ComponentFn } from '@pyreon/core'
 import { h } from '@pyreon/core'
-import { hydrateIslands, startClient } from '../client'
+import { hydrateIslands, hydrateIslandsAuto, startClient } from '../client'
 
 // ─── startClient ────────────────────────────────────────────────────────────
 
@@ -944,6 +944,379 @@ describe('hydrateIslands', () => {
     expect(loaderCalls).toBe(0)
 
     globalThis.IntersectionObserver = origIO
+  })
+
+  // ─── hydrateIslandsAuto tests ────────────────────────────────────────────
+
+  test('hydrateIslandsAuto: throws on disabled stub registry with actionable message', () => {
+    expect(() =>
+      hydrateIslandsAuto({
+        __pyreonIslandsEnabled: false,
+        __pyreonIslandRegistry: {},
+      }),
+    ).toThrow(/pyreon\({ islands: true }\)/)
+  })
+
+  test('hydrateIslandsAuto: forwards enabled registry to hydrateIslands', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="Auto" data-props="{}"></pyreon-island>'
+
+    let loaded = 0
+    const cleanup = hydrateIslandsAuto({
+      __pyreonIslandsEnabled: true,
+      __pyreonIslandRegistry: {
+        Auto: () => {
+          loaded++
+          return Promise.resolve({ default: () => h('div', null, 'auto') })
+        },
+      },
+    })
+
+    await new Promise((r) => setTimeout(r, 50))
+    expect(loaded).toBe(1)
+
+    cleanup()
+  })
+
+  // ─── requestIdleCallback path tests (happy-dom lacks it natively) ────────
+
+  test('hydrate=idle: uses requestIdleCallback when present + cancelIdleCallback on cleanup', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="Idle" data-hydrate="idle" data-props="{}"></pyreon-island>'
+
+    let scheduled: ((deadline?: unknown) => void) | null = null
+    let cancelledId: number | null = null
+    ;(window as unknown as Record<string, unknown>).requestIdleCallback = (cb: () => void) => {
+      scheduled = cb
+      return 42
+    }
+    ;(window as unknown as Record<string, unknown>).cancelIdleCallback = (id: number) => {
+      cancelledId = id
+    }
+
+    let loaded = 0
+    const cleanup = hydrateIslands({
+      Idle: () => {
+        loaded++
+        return Promise.resolve({ default: () => h('div', null, 'idle') })
+      },
+    })
+
+    expect(typeof scheduled).toBe('function')
+    cleanup()
+    expect(cancelledId).toBe(42)
+    // After cancellation, even if the idle callback fires, the cancel guard skips the load.
+    if (scheduled) (scheduled as () => void)()
+    await new Promise((r) => setTimeout(r, 20))
+    expect(loaded).toBe(0)
+
+    delete (window as unknown as Record<string, unknown>).requestIdleCallback
+    delete (window as unknown as Record<string, unknown>).cancelIdleCallback
+  })
+
+  test('prefetch=idle: uses requestIdleCallback when present + cancelIdleCallback on cleanup', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="PreIdleNative" data-hydrate="visible" data-prefetch="idle" data-props="{}"></pyreon-island>'
+
+    let scheduled: ((deadline?: unknown) => void) | null = null
+    let cancelledId: number | null = null
+    ;(window as unknown as Record<string, unknown>).requestIdleCallback = (cb: () => void) => {
+      scheduled = cb
+      return 99
+    }
+    ;(window as unknown as Record<string, unknown>).cancelIdleCallback = (id: number) => {
+      cancelledId = id
+    }
+
+    // Block IntersectionObserver from auto-firing.
+    const origIO = globalThis.IntersectionObserver
+    globalThis.IntersectionObserver = class {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+      takeRecords() {
+        return []
+      }
+      get root() {
+        return null
+      }
+      get rootMargin() {
+        return ''
+      }
+      get thresholds() {
+        return []
+      }
+    } as unknown as typeof IntersectionObserver
+
+    let loaded = 0
+    const cleanup = hydrateIslands({
+      PreIdleNative: () => {
+        loaded++
+        return Promise.resolve({ default: () => h('div', null) })
+      },
+    })
+
+    expect(typeof scheduled).toBe('function')
+    cleanup()
+    expect(cancelledId).toBe(99)
+
+    delete (window as unknown as Record<string, unknown>).requestIdleCallback
+    delete (window as unknown as Record<string, unknown>).cancelIdleCallback
+    globalThis.IntersectionObserver = origIO
+  })
+
+  // ─── Interaction strategy tests ─────────────────────────────────────────
+
+  test('interaction: stamps awaiting-interaction marker, hydrates on first click + replays', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="CmdPalette" data-hydrate="interaction" data-props="{}">' +
+      '<button data-testid="trigger" type="button">open</button>' +
+      '</pyreon-island>'
+
+    let loaded = 0
+    let liveClicks = 0
+    const Live: ComponentFn = () => {
+      const onClick = () => {
+        liveClicks++
+      }
+      return h(
+        'button',
+        { 'data-testid': 'trigger', type: 'button', onClick },
+        'open',
+      )
+    }
+
+    const cleanup = hydrateIslands({
+      CmdPalette: () => {
+        loaded++
+        return Promise.resolve({ default: Live })
+      },
+    })
+
+    const island = document.querySelector('pyreon-island')!
+    expect(island.getAttribute('data-island-state')).toBe('awaiting-interaction')
+    expect(loaded).toBe(0)
+
+    // First click — stops propagation, triggers hydration, captures replay path.
+    const btn = island.querySelector<HTMLElement>('[data-testid="trigger"]')!
+    btn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    expect(loaded).toBe(1)
+    // After hydration, replay fires the live handler exactly once.
+    expect(liveClicks).toBe(1)
+    expect(island.getAttribute('data-island-state')).toBeNull()
+
+    cleanup()
+  })
+
+  test('interaction: focus event hydrates without click replay', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="MenuFocus" data-hydrate="interaction" data-props="{}">' +
+      '<button type="button">menu</button>' +
+      '</pyreon-island>'
+
+    let loaded = 0
+    const cleanup = hydrateIslands({
+      MenuFocus: () => {
+        loaded++
+        return Promise.resolve({ default: () => h('button', null, 'menu') })
+      },
+    })
+
+    const btn = document.querySelector<HTMLElement>('pyreon-island button')!
+    btn.dispatchEvent(new FocusEvent('focus', { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(loaded).toBe(1)
+
+    cleanup()
+  })
+
+  test('interaction(<events>): only listed events trigger hydration', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="OnlyClick" data-hydrate="interaction(click)" data-props="{}">' +
+      '<button type="button">x</button>' +
+      '</pyreon-island>'
+
+    let loaded = 0
+    const cleanup = hydrateIslands({
+      OnlyClick: () => {
+        loaded++
+        return Promise.resolve({ default: () => h('button', null, 'x') })
+      },
+    })
+
+    const btn = document.querySelector<HTMLElement>('pyreon-island button')!
+    // Focus is NOT in the list — must not trigger hydration.
+    btn.dispatchEvent(new FocusEvent('focus', { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(loaded).toBe(0)
+    // Click IS in the list — fires it.
+    btn.click()
+    await new Promise((r) => setTimeout(r, 20))
+    expect(loaded).toBe(1)
+
+    cleanup()
+  })
+
+  test('interaction(): empty event list falls back to defaults', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="Defaults" data-hydrate="interaction()" data-props="{}">' +
+      '<button type="button">x</button>' +
+      '</pyreon-island>'
+
+    let loaded = 0
+    const cleanup = hydrateIslands({
+      Defaults: () => {
+        loaded++
+        return Promise.resolve({ default: () => h('button', null, 'x') })
+      },
+    })
+
+    const btn = document.querySelector<HTMLElement>('pyreon-island button')!
+    btn.click()
+    await new Promise((r) => setTimeout(r, 20))
+    expect(loaded).toBe(1)
+
+    cleanup()
+  })
+
+  test('interaction: cleanup() before any interaction removes listeners + clears marker', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="EarlyCancel" data-hydrate="interaction" data-props="{}">' +
+      '<button type="button">x</button>' +
+      '</pyreon-island>'
+
+    let loaded = 0
+    const cleanup = hydrateIslands({
+      EarlyCancel: () => {
+        loaded++
+        return Promise.resolve({ default: () => h('button', null, 'x') })
+      },
+    })
+
+    const island = document.querySelector('pyreon-island')!
+    expect(island.getAttribute('data-island-state')).toBe('awaiting-interaction')
+    cleanup()
+    expect(island.getAttribute('data-island-state')).toBeNull()
+
+    // Click after cleanup — listener has been removed, must not load.
+    const btn = island.querySelector<HTMLElement>('button')!
+    btn.click()
+    await new Promise((r) => setTimeout(r, 20))
+    expect(loaded).toBe(0)
+  })
+
+  test('interaction: click replay falls back to tag+child-index path when no testid', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="NoTestid" data-hydrate="interaction" data-props="{}">' +
+      '<div><button type="button">x</button></div>' +
+      '</pyreon-island>'
+
+    let loaded = 0
+    let liveClicks = 0
+    const Live: ComponentFn = () => {
+      const onClick = () => {
+        liveClicks++
+      }
+      // Same DOM shape so the path resolves: pyreon-island > div > button
+      return h(
+        'div',
+        null,
+        h('button', { type: 'button', onClick }, 'x'),
+      )
+    }
+
+    const cleanup = hydrateIslands({
+      NoTestid: () => {
+        loaded++
+        return Promise.resolve({ default: Live })
+      },
+    })
+
+    const btn = document.querySelector<HTMLElement>('pyreon-island button')!
+    btn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    expect(loaded).toBe(1)
+    expect(liveClicks).toBe(1)
+
+    cleanup()
+  })
+
+  test('interaction: replay path returns null when live tree shape differs (no replay fired)', async () => {
+    // SSR shape: pyreon-island > div > button
+    document.body.innerHTML =
+      '<pyreon-island data-component="ShapeMismatch" data-hydrate="interaction" data-props="{}">' +
+      '<div><button type="button">x</button></div>' +
+      '</pyreon-island>'
+
+    let liveClicks = 0
+    // Live shape: pyreon-island > section (not div) > button — captured path
+    // expects tag=DIV at step 0, finds SECTION instead. resolveReplayPath
+    // returns null, liveTarget guard skips replay.
+    const Live: ComponentFn = () =>
+      h(
+        'section',
+        null,
+        h(
+          'button',
+          {
+            type: 'button',
+            onClick: () => {
+              liveClicks++
+            },
+          },
+          'x',
+        ),
+      )
+
+    const cleanup = hydrateIslands({
+      ShapeMismatch: () => Promise.resolve({ default: Live }),
+    })
+
+    const btn = document.querySelector<HTMLElement>('pyreon-island button')!
+    btn.click()
+    await new Promise((r) => setTimeout(r, 30))
+    // No replay because the path resolves to null (tag mismatch).
+    expect(liveClicks).toBe(0)
+
+    cleanup()
+  })
+
+  test('interaction: non-click event triggers hydrate without setting replayPath', async () => {
+    // pointerenter is a non-click event; it kicks off hydration but no replay.
+    document.body.innerHTML =
+      '<pyreon-island data-component="HoverOnly" data-hydrate="interaction" data-props="{}">' +
+      '<button type="button">x</button>' +
+      '</pyreon-island>'
+
+    let loaded = 0
+    let liveClicks = 0
+    const Live: ComponentFn = () =>
+      h(
+        'button',
+        {
+          type: 'button',
+          onClick: () => {
+            liveClicks++
+          },
+        },
+        'x',
+      )
+    const cleanup = hydrateIslands({
+      HoverOnly: () => {
+        loaded++
+        return Promise.resolve({ default: Live })
+      },
+    })
+
+    const btn = document.querySelector<HTMLElement>('pyreon-island button')!
+    btn.dispatchEvent(new Event('pointerenter', { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 30))
+    expect(loaded).toBe(1)
+    // No click was fired — no replay.
+    expect(liveClicks).toBe(0)
+
+    cleanup()
   })
 
   test('marks islands with hydration failure as data-island-error="hydration-failed"', async () => {
