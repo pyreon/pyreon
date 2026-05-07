@@ -25,7 +25,7 @@ describe('getPlatformPackageName', () => {
   it('returns null for unsupported platform (freebsd)', () => {
     // freebsd is intentionally not in the supported allowlist — caller
     // skips per-platform resolution and falls through to JS.
-    expect(getPlatformPackageName('freebsd' as NodeJS.Platform, 'x64', null)).toBeNull()
+    expect(getPlatformPackageName('freebsd', 'x64', null)).toBeNull()
   })
 
   it('returns null for unsupported arch on a supported platform (linux ia32)', () => {

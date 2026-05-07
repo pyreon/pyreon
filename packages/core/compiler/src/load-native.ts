@@ -40,6 +40,21 @@ export interface NativeBinding {
   ) => unknown
 }
 
+// Local Node-process surface. `@pyreon/runtime-dom` ships an ambient
+// `declare var process: { env: { NODE_ENV?: string } }` to enforce the
+// bundler-agnostic dev-gate pattern, which narrows `process` for ANY
+// file pulled in by runtime-dom's typecheck — including this one when
+// imported via the `bun` condition. Casting through a local interface
+// restores access to the platform/arch/report fields we genuinely need.
+interface NodeProcess {
+  platform: string
+  arch: string
+  report?: {
+    getReport(): unknown
+  }
+}
+const nodeProcess = process as unknown as NodeProcess
+
 /**
  * Resolve the per-platform package name following the napi-rs naming
  * convention: `@pyreon/compiler-<platform>-<arch>[-<libc>]`.
@@ -55,8 +70,8 @@ export interface NativeBinding {
  * skips per-platform resolution entirely and falls through to JS.
  */
 export function getPlatformPackageName(
-  platform: NodeJS.Platform = process.platform,
-  arch: string = process.arch,
+  platform: string = nodeProcess.platform,
+  arch: string = nodeProcess.arch,
   libc: string | null = detectLibc(platform),
 ): string | null {
   // Build the suffix for libc-bearing platforms (Linux glibc/musl,
@@ -85,11 +100,11 @@ export function getPlatformPackageName(
  * Node-canonical detection: present on glibc, absent on musl. Falls
  * back to `gnu` on read failure since glibc is the more common case.
  */
-function detectLibc(platform: NodeJS.Platform): string | null {
+function detectLibc(platform: string): string | null {
   if (platform === 'win32') return 'msvc'
   if (platform !== 'linux') return null
   try {
-    const report = process.report?.getReport()
+    const report = nodeProcess.report?.getReport()
     if (typeof report === 'object' && report !== null) {
       const header = (report as { header?: { glibcVersionRuntime?: string } }).header
       return header?.glibcVersionRuntime ? 'gnu' : 'musl'
