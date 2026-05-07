@@ -29,31 +29,21 @@
  */
 
 import { parseSync } from 'oxc-parser'
-import { createRequire } from 'node:module'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
 import { REACT_EVENT_REMAP } from './event-names'
+import { loadNativeBinding } from './load-native'
 
 // ─── Native binary auto-detection ────────────────────────────────────────────
-// Try to load the Rust napi-rs binary for 3.7-8.2x faster transforms.
-// Falls back to the JS implementation below if the binary isn't available
-// (wrong platform, CI environment, WASM runtime like StackBlitz, etc.)
+// Two-path resolution: in-tree binary first (dev mode), then per-platform
+// npm package (production install via optionalDependencies). Falls through
+// to the JS implementation below when both paths fail (wrong platform, CI
+// environment, WASM runtime like StackBlitz, missing per-platform package).
 //
-// Uses createRequire for ESM compatibility — __dirname and require() don't
-// exist in ESM modules.
+// See `load-native.ts` for the resolution logic.
 type NativeTransformFn = (code: string, filename: string, ssr: boolean, knownSignals: string[] | null) => TransformResult
-let nativeTransformJsx: NativeTransformFn | null = null
-
-try {
-  const __filename = fileURLToPath(import.meta.url)
-  const __dirname = dirname(__filename)
-  const nativeRequire = createRequire(import.meta.url)
-  const nativePath = join(__dirname, '..', 'native', 'pyreon-compiler.node')
-  const native = nativeRequire(nativePath) as { transformJsx: NativeTransformFn }
-  nativeTransformJsx = native.transformJsx
-} catch {
-  // Native binary not available — JS fallback will be used
-}
+const nativeBinding = loadNativeBinding(import.meta.url)
+const nativeTransformJsx: NativeTransformFn | null = nativeBinding
+  ? (nativeBinding.transformJsx as NativeTransformFn)
+  : null
 
 export interface CompilerWarning {
   /** Warning message */
