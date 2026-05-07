@@ -46,6 +46,13 @@
   "dependencies": {
     "oxc-parser": "^0.129.0"
   },
+  "optionalDependencies": {
+    "@pyreon/compiler-darwin-arm64": "workspace:^",
+    "@pyreon/compiler-darwin-x64": "workspace:^",
+    "@pyreon/compiler-linux-arm64-gnu": "workspace:^",
+    "@pyreon/compiler-linux-x64-gnu": "workspace:^",
+    "@pyreon/compiler-win32-x64-msvc": "workspace:^"
+  },
   "devDependencies": {
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
