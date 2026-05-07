@@ -55,6 +55,7 @@ interface FormsStressHooks {
   triggerStateRead: () => void
   triggerStateReadSelector: () => void
   fillField: (name: string, value: string) => void
+  resetField: (name: string) => void
 }
 
 ;(window as unknown as { __pyreon_perf_forms: FormsStressHooks }).__pyreon_perf_forms = {
@@ -89,23 +90,49 @@ interface FormsStressHooks {
     const value = useFormState(active.form as any, (s) => s.isValid)()
     formStressLastSelectorValue.set(value)
   },
-  // Fill a single field by name without DOM round-trip — direct signal
-  // write through the form's exposed `fields[name].value.set(...)`. Used
-  // by the `formEditSingle-10k` and `formEditBatch-10k` journeys to
-  // measure per-field write cost without Playwright's `page.fill` adding
-  // noise (locator resolution + event dispatch + re-render).
+  // Fill a single field by name. Uses the field's `setValue` API instead
+  // of `value.set` directly because the realistic UX path (input
+  // `onInput` → `register(name).onInput(e)`) ALSO flips `dirty` and
+  // `touched` when the value differs from initial. Calling `value.set`
+  // alone bypasses that and produces unrealistic counter signatures (no
+  // dirty / touched signal write → state-read journeys read memoized
+  // atoms with no invalidation, looking artificially fast).
   fillField: (name: string, value: string) => {
     const active = (
       window as unknown as {
         __pyreon_perf_forms_active?: {
-          form: { fields: Record<string, { value: { set: (v: unknown) => void } }> }
+          form: {
+            fields: Record<
+              string,
+              { value: { set: (v: unknown) => void }; setValue?: (v: unknown) => void }
+            >
+          }
           scale: number
         }
       }
     ).__pyreon_perf_forms_active
     if (!active) return
     const f = active.form.fields[name]
-    if (f) f.value.set(value)
+    if (!f) return
+    if (typeof f.setValue === 'function') f.setValue(value)
+    else f.value.set(value)
+  },
+  // Reset a field to its initial state. Used by the state-read journeys
+  // to ensure each measurement run starts with a CLEAN dirty/touched
+  // state — without this, run 2+ hits the memoized atom (dirty was
+  // already true from run 1's setValue, no invalidation, no scan).
+  resetField: (name: string) => {
+    const active = (
+      window as unknown as {
+        __pyreon_perf_forms_active?: {
+          form: { fields: Record<string, { reset?: () => void }> }
+          scale: number
+        }
+      }
+    ).__pyreon_perf_forms_active
+    if (!active) return
+    const f = active.form.fields[name]
+    if (f && typeof f.reset === 'function') f.reset()
   },
 }
 

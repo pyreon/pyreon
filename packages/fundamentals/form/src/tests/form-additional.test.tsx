@@ -362,6 +362,172 @@ describe('useFormState — additional scenarios', () => {
   })
 })
 
+// ─── useFormState — selector narrowing (PR 2 regression gate) ────────────────
+//
+// Locks in the contract from the forms-stress benchmark: a selector that
+// reads ONLY scalar fields (isValid / isDirty / isSubmitting / submitCount /
+// submitError / isValidating) MUST NOT trigger the atomic touched/dirty/
+// errors computeds. Pre-PR2 the eager-scan summary always built all 3 maps;
+// post-PR2 the getter-backed summary only materializes the maps the
+// selector actually reads.
+//
+// Bisect-verifiable: revert use-form-state.ts to the eager-scan shape and
+// the assertion `fieldsRead === 0` after a scalar-only selector flip will
+// fail with `fieldsRead === N`.
+
+describe('useFormState — selector narrowing (perf contract)', () => {
+  type CountSink = { __pyreon_count__?: (name: string, n?: number) => void }
+
+  function withCounters<T>(fn: (counts: Record<string, number>) => T): T {
+    const counts: Record<string, number> = {}
+    const sink = globalThis as CountSink
+    const prev = sink.__pyreon_count__
+    sink.__pyreon_count__ = (name: string, n = 1) => {
+      counts[name] = (counts[name] ?? 0) + n
+    }
+    try {
+      return fn(counts)
+    } finally {
+      if (prev) sink.__pyreon_count__ = prev
+      else delete sink.__pyreon_count__
+    }
+  }
+
+  it('scalar-only selector does NOT scan field maps when a field error is set', () => {
+    withCounters((counts) => {
+      const initialValues = Object.fromEntries(
+        Array.from({ length: 50 }, (_, i) => [`f${i}`, '']),
+      ) as Record<string, string>
+      const { result, unmount } = mountWith(() => {
+        const form = useForm({
+          initialValues,
+          onSubmit: () => {
+            /* noop */
+          },
+        })
+        const canSubmit = useFormState(form, (s) => s.isValid)
+        return { form, canSubmit }
+      })
+
+      expect(result.canSubmit()).toBe(true)
+      counts['form.formStateScan.fieldsRead'] = 0
+      counts['form.formStateScan'] = 0
+
+      // Set a field error directly (avoids async validator timing). isValid
+      // should flip via the incremental _invalidCount path.
+      result.form.setFieldError('f0', 'bad')
+      expect(result.canSubmit()).toBe(false)
+
+      // canSubmit recomputed (isValid changed). The atomic computeds for
+      // touched/dirty/errors maps must NOT fire — selector reads only isValid.
+      expect(counts['form.formStateScan.fieldsRead']).toBe(0)
+      expect(counts['form.formStateScan']).toBe(0)
+      unmount()
+    })
+  })
+
+  it('selector reading errors map DOES materialize the errors atom (and only it)', () => {
+    withCounters((counts) => {
+      const initialValues = Object.fromEntries(
+        Array.from({ length: 50 }, (_, i) => [`f${i}`, '']),
+      ) as Record<string, string>
+      const { result, unmount } = mountWith(() => {
+        const form = useForm({
+          initialValues,
+          onSubmit: () => {
+            /* noop */
+          },
+        })
+        const errCount = useFormState(form, (s) => Object.keys(s.errors).length)
+        return { form, errCount }
+      })
+
+      // Initial read: errors atom materializes once (fieldsRead=N).
+      expect(result.errCount()).toBe(0)
+      const initialReads = counts['form.formStateScan.fieldsRead'] ?? 0
+      expect(initialReads).toBe(50)
+
+      // Flipping touched should NOT invalidate the errors atom. The signals
+      // are independent now — touched updates don't fire the errors computed.
+      result.form.fields.f0?.setTouched()
+      expect(result.errCount()).toBe(0)
+      const afterTouched = counts['form.formStateScan.fieldsRead'] ?? 0
+      expect(afterTouched).toBe(initialReads) // no extra scan
+      unmount()
+    })
+  })
+})
+
+// ─── form.isValid / form.isDirty — incremental count contract ─────────────────
+//
+// Pre-PR2 these computeds iterated all N field signals on every recompute.
+// Post-PR2 they're O(1) reads of `_invalidCount` / `_dirtyCount` signals.
+// This test locks in the SEMANTICS — toggling errors/dirty correctly
+// flips the form-level signals — which is what would silently regress
+// if the count-tracking subscribers leaked or double-counted.
+
+describe('form.isValid / form.isDirty — incremental count contract', () => {
+  it('isValid toggles correctly across error transitions on multiple fields', () => {
+    const { result, unmount } = mountWith(() =>
+      useForm({
+        initialValues: { a: '', b: '', c: '' },
+        onSubmit: () => {
+          /* noop */
+        },
+      }),
+    )
+
+    expect(result.isValid()).toBe(true)
+
+    result.setFieldError('a', 'bad')
+    expect(result.isValid()).toBe(false)
+
+    result.setFieldError('b', 'bad')
+    expect(result.isValid()).toBe(false)
+
+    // Fix one — still invalid because b is bad.
+    result.setFieldError('a', undefined)
+    expect(result.isValid()).toBe(false)
+
+    // Fix the other.
+    result.setFieldError('b', undefined)
+    expect(result.isValid()).toBe(true)
+
+    // Re-break one — must flip back.
+    result.setFieldError('c', 'bad')
+    expect(result.isValid()).toBe(false)
+    unmount()
+  })
+
+  it('isDirty toggles correctly across dirty/clean transitions', () => {
+    const { result, unmount } = mountWith(() =>
+      useForm({
+        initialValues: { a: 'x', b: 'y' },
+        onSubmit: () => {
+          /* noop */
+        },
+      }),
+    )
+
+    expect(result.isDirty()).toBe(false)
+
+    result.fields.a.setValue('changed')
+    expect(result.isDirty()).toBe(true)
+
+    result.fields.b.setValue('also-changed')
+    expect(result.isDirty()).toBe(true)
+
+    // Revert one — still dirty.
+    result.fields.a.setValue('x')
+    expect(result.isDirty()).toBe(true)
+
+    // Revert the other — clean again.
+    result.fields.b.setValue('y')
+    expect(result.isDirty()).toBe(false)
+    unmount()
+  })
+})
+
 // ─── Validation integration — schema-based ───────────────────────────────────
 
 describe('validation integration — schema-based', () => {

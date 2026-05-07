@@ -253,6 +253,25 @@ export const journeys: Record<string, (page: PageLike) => Promise<void>> = {
       ).__pyreon_perf_forms?.setScale(10000)
     })
     await page.waitForSelector('[data-testid="forms-stress-ready"]')
+    // Force a fresh dirty/touched state each run so the atomic computed
+    // memoization in PR 2 doesn't conflate "selector + memoized" with
+    // "selector narrowing." Reset → write → read produces invalidation
+    // each run; median represents "real-world: a state read AFTER a
+    // field change" — the common UI pattern (input changes → submit
+    // button re-evaluates `canSubmit`).
+    await page.evaluate(() => {
+      const hooks = (
+        window as unknown as {
+          __pyreon_perf_forms?: {
+            resetField: (n: string) => void
+            fillField: (n: string, v: string) => void
+          }
+        }
+      ).__pyreon_perf_forms
+      if (!hooks) return
+      hooks.resetField('f0')
+      hooks.fillField('f0', `read-${Date.now()}`)
+    })
     await page.evaluate(() => {
       ;(
         window as unknown as { __pyreon_perf_forms?: { triggerStateRead: () => void } }
@@ -278,6 +297,22 @@ export const journeys: Record<string, (page: PageLike) => Promise<void>> = {
       ).__pyreon_perf_forms?.setScale(10000)
     })
     await page.waitForSelector('[data-testid="forms-stress-ready"]')
+    // Same reset → write → read pattern as formStateRead-10k for
+    // honest measurement. Selector reads `s.isValid` only — should
+    // touch zero atomic computeds (the win this PR delivers).
+    await page.evaluate(() => {
+      const hooks = (
+        window as unknown as {
+          __pyreon_perf_forms?: {
+            resetField: (n: string) => void
+            fillField: (n: string, v: string) => void
+          }
+        }
+      ).__pyreon_perf_forms
+      if (!hooks) return
+      hooks.resetField('f0')
+      hooks.fillField('f0', `selector-${Date.now()}`)
+    })
     await page.evaluate(() => {
       ;(
         window as unknown as { __pyreon_perf_forms?: { triggerStateReadSelector: () => void } }
