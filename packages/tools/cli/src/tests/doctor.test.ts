@@ -354,3 +354,128 @@ describe('doctor — --audit-tests integration', () => {
     expect(output).not.toMatch(/^## MEDIUM/m)
   })
 })
+
+// ─── --check-islands integration (PR C) ─────────────────────────────────────
+
+describe('doctor — --check-islands integration', () => {
+  let logSpy: ReturnType<typeof vi.spyOn>
+  let tmpDir: string
+
+  beforeEach(() => {
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    tmpDir = makeTmpDir()
+    fs.mkdirSync(path.join(tmpDir, 'packages'), { recursive: true })
+  })
+  afterEach(() => {
+    logSpy.mockRestore()
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('does NOT print islands audit output when --check-islands is absent (default)', async () => {
+    writeFile(
+      tmpDir,
+      'packages/x/src/Counter.tsx',
+      `import { island } from '@pyreon/server'
+       export const Counter = island(() => import('./Inner'), { name: 'Counter', hydrate: 'load' })`,
+    )
+    const opts: DoctorOptions = {
+      fix: false,
+      json: false,
+      ci: false,
+      cwd: tmpDir,
+      checkIslands: false,
+    }
+    await doctor(opts)
+    const output = logSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n')
+    expect(output).not.toContain('Islands audit')
+  })
+
+  it('prints the islands audit when --check-islands is passed', async () => {
+    writeFile(
+      tmpDir,
+      'packages/x/src/A.tsx',
+      `import { island } from '@pyreon/server'
+       export const A = island(() => import('./AInner'), { name: 'Dup', hydrate: 'load' })`,
+    )
+    writeFile(
+      tmpDir,
+      'packages/y/src/B.tsx',
+      `import { island } from '@pyreon/server'
+       export const B = island(() => import('./BInner'), { name: 'Dup', hydrate: 'load' })`,
+    )
+    writeFile(tmpDir, 'packages/x/src/AInner.tsx', `export default () => null`)
+    writeFile(tmpDir, 'packages/y/src/BInner.tsx', `export default () => null`)
+    const opts: DoctorOptions = {
+      fix: false,
+      json: false,
+      ci: false,
+      cwd: tmpDir,
+      checkIslands: true,
+    }
+    await doctor(opts)
+    const output = logSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n')
+    expect(output).toContain('Islands audit')
+    expect(output).toContain('## duplicate-name')
+    // Both file locations appear in the human-readable section
+    expect(output).toContain('A.tsx')
+    expect(output).toContain('B.tsx')
+  })
+
+  it('emits machine-readable JSON when --json + --check-islands both set', async () => {
+    writeFile(
+      tmpDir,
+      'packages/x/src/Orphan.tsx',
+      `import { island } from '@pyreon/server'
+       export const Orphan = island(() => import('./Inner'), { name: 'Orphan', hydrate: 'load' })`,
+    )
+    writeFile(tmpDir, 'packages/x/src/Inner.tsx', `export default () => null`)
+    const opts: DoctorOptions = {
+      fix: false,
+      json: true,
+      ci: false,
+      cwd: tmpDir,
+      checkIslands: true,
+    }
+    await doctor(opts)
+    // Two JSON blobs logged separately — doctor result then the audit.
+    const blobs = logSpy.mock.calls
+      .map((c: unknown[]) => String(c[0] ?? ''))
+      .filter((s: string) => s.trim().startsWith('{'))
+    expect(blobs.length).toBeGreaterThanOrEqual(2)
+    const auditBlob = blobs.find((s: string) => s.includes('islandAudit'))
+    expect(auditBlob).toBeDefined()
+    const parsed = JSON.parse(auditBlob!) as {
+      islandAudit: { findings: Array<{ code: string }>; summary: { islandsDeclared: number } }
+    }
+    expect(parsed.islandAudit.summary.islandsDeclared).toBe(1)
+    // The orphan declaration should produce exactly one dead-island finding.
+    const codes = parsed.islandAudit.findings.map((f) => f.code)
+    expect(codes).toContain('dead-island')
+  })
+
+  it('emits a clean green-light section when no findings are present', async () => {
+    writeFile(
+      tmpDir,
+      'packages/x/src/Counter.tsx',
+      `import { island } from '@pyreon/server'
+       export const Counter = island(() => import('./Inner'), { name: 'Counter', hydrate: 'load' })`,
+    )
+    writeFile(tmpDir, 'packages/x/src/Inner.tsx', `export default () => null`)
+    writeFile(
+      tmpDir,
+      'packages/x/src/index.ts',
+      `export { Counter } from './Counter'`,
+    )
+    const opts: DoctorOptions = {
+      fix: false,
+      json: false,
+      ci: false,
+      cwd: tmpDir,
+      checkIslands: true,
+    }
+    await doctor(opts)
+    const output = logSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n')
+    expect(output).toContain('Islands audit')
+    expect(output).toContain('No island findings')
+  })
+})
