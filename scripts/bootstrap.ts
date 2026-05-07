@@ -213,6 +213,28 @@ for (const pkg of packages) {
 // explicitly opted in; otherwise the script behaves normally.
 const forceFail = process.env.PYREON_BOOTSTRAP_FORCE_FAIL === '1'
 
+// Build the @pyreon/compiler Rust native binary if cargo is available.
+// Runs on EVERY bootstrap invocation (including the all-fresh fast path
+// below) because the binary's freshness is independent of the lib/ mtime
+// check above — the native script has its own mtime-skip (~30ms when
+// fresh) so the cost is negligible. Soft-fail when cargo is missing or
+// the build errors: same fail-open rationale as the git-hooks install
+// below (bun install must never abort over an optional perf artifact).
+// Reference: packages/core/compiler/scripts/build-native.ts (cargo
+// bare-repo workaround, platform extension mapping).
+try {
+  execSync('bun packages/core/compiler/scripts/build-native.ts', {
+    cwd: ROOT,
+    stdio: 'inherit',
+    timeout: 300_000, // matches the script's internal cargo timeout
+  })
+} catch {
+  // oxlint-disable-next-line no-console
+  console.warn(
+    '[bootstrap] @pyreon/compiler native build skipped (cargo missing or build failed). JS fallback will be used.',
+  )
+}
+
 if (dirty.length === 0 && !forceFail) {
   // All lib/ dirs exist AND are fresh — instant no-op.
   process.exit(0)
