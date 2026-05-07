@@ -2,6 +2,15 @@ import type { ComponentFn, VNode, VNodeChild } from '@pyreon/core'
 import { Fragment, h } from '@pyreon/core'
 import { describe, expect, it, vi } from 'vitest'
 import Iterator from '../helpers/Iterator/component'
+import type { LooseProps as IteratorLooseProps } from '../helpers/Iterator/types'
+
+// The strict overloads on Iterator's public surface reject edge-case shapes
+// like `{}` (no data, no children) or `{ children, data }` (conflicting
+// modes). The runtime tolerates them deliberately — we test those tolerated
+// edge cases here, so we cast to the loose internal prop type the
+// implementation accepts. End users hit the strict overloads; these tests
+// exercise the runtime fallbacks the overloads structurally forbid.
+const Loose = Iterator as unknown as (props: IteratorLooseProps) => VNodeChild
 
 const asVNode = (v: unknown) => v as VNode
 
@@ -43,7 +52,7 @@ describe('Iterator', () => {
     })
 
     it('returns null when children is null/undefined', () => {
-      const result = Iterator({})
+      const result = Loose({})
       expect(result).toBeNull()
     })
 
@@ -87,7 +96,7 @@ describe('Iterator', () => {
 
     it('children take priority over data', () => {
       const child = h('span', { 'data-testid': 'child' }, 'Child wins')
-      const result = Iterator({
+      const result = Loose({
         children: child,
         component: TextItem,
         data: ['x', 'y'],
@@ -442,7 +451,7 @@ describe('Iterator', () => {
 
   describe('edge cases', () => {
     it('returns null when component is missing but data exists', () => {
-      const result = Iterator({ data: ['a', 'b'] })
+      const result = Loose({ data: ['a', 'b'] })
       expect(result).toBeNull()
     })
 

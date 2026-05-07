@@ -3,12 +3,16 @@ import { Provider } from '@pyreon/unistyle'
 export type { ElementProps, PyreonElement } from './Element'
 export { Element } from './Element'
 export type {
+  ChildrenProps as IteratorChildrenProps,
   ElementType,
   ExtendedProps,
+  LooseProps as IteratorLooseProps,
   MaybeNull,
+  ObjectProps as IteratorObjectProps,
   ObjectValue,
   Props as IteratorProps,
   PropsCallback,
+  SimpleProps as IteratorSimpleProps,
   SimpleValue,
 } from './helpers/Iterator'
 export { default as Iterator } from './helpers/Iterator'
