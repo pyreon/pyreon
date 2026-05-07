@@ -112,10 +112,11 @@ batch(() => {
 })
 store.todos[0].done = true   // fine-grained — only 'done' subscribers fire
 store.todos.push({ text: 'Build app', done: false })  // array methods work`,
-    notes: 'Create a deeply reactive proxy-based object. Mutations at any depth trigger fine-grained updates — `store.todos[0].done = true` only re-runs effects that read `store.todos[0].done`, not effects that read `store.todos.length` or other items. No immer, no spread-copy, no `produce()` — just mutate. Works with nested objects, arrays, Maps, and Sets. See also: signal.',
+    notes: 'Create a deeply reactive proxy-based object. Mutations at any depth trigger fine-grained updates — `store.todos[0].done = true` only re-runs effects that read `store.todos[0].done`, not effects that read `store.todos.length` or other items. No immer, no spread-copy, no `produce()` — just mutate. Works with nested plain objects and arrays. Built-in types with internal slots (`Map`, `Set`, `WeakMap`, `WeakSet`, `Date`, `RegExp`, `Promise`, `Error`) are returned raw and are NOT deeply reactive — they fail the Proxy internal-slot check on every method call. Replace the whole field (`store.users = new Map(store.users)`) to trigger reactivity for these. See also: signal.',
     mistakes: `- Replacing the entire store object — \`store = { ... }\` replaces the variable, not the proxy. Mutate properties instead: \`store.filter = "active"\`
 - Destructuring store properties at setup — \`const { filter } = store\` captures the value once, losing reactivity. Read \`store.filter\` inside reactive scopes
-- Using \`createStore\` for simple scalar state — use \`signal()\` for primitives; \`createStore\` adds proxy overhead that only pays off for nested objects`,
+- Using \`createStore\` for simple scalar state — use \`signal()\` for primitives; \`createStore\` adds proxy overhead that only pays off for nested objects
+- Expecting fine-grained reactivity inside Map/Set/Date/RegExp/Promise — these are returned raw because Proxy can't intercept methods that rely on internal slots. Mutating the raw instance (\`store.users.set(...)\`) does NOT notify subscribers. Replace the whole field (\`store.users = new Map(store.users)\`) to trigger reactivity`,
   },
 
   'reactivity/untrack': {

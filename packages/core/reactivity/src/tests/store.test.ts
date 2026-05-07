@@ -143,6 +143,60 @@ describe('createStore', () => {
     expect(bValues).toEqual([2, undefined])
   })
 
+  // Regression: delete-then-reassign cycle. Pre-fix `deleteProperty` removed
+  // the entry from `propSignals`, so a later `set` on the same key created a
+  // FRESH signal — but every effect that previously read the key was tracked
+  // against the OLD signal, which had been dropped. Effects never re-ran on
+  // the reassign. Fix keeps the signal in `propSignals`, and `get` short-
+  // circuits to the existing signal when the key isn't `hasOwn` but a tracked
+  // signal exists. See store.ts (deleteProperty, get).
+  test('delete-then-reassign re-runs effects (signal identity preserved)', () => {
+    const state = createStore({ a: 1, b: 2 } as Record<string, number | undefined>)
+    const bValues: (number | undefined)[] = []
+    effect(() => {
+      bValues.push(state.b)
+    })
+    expect(bValues).toEqual([2])
+    delete state.b
+    expect(bValues).toEqual([2, undefined])
+    state.b = 99
+    expect(bValues).toEqual([2, undefined, 99])
+    // Cycle a second time to lock the contract — same signal identity reused.
+    delete state.b
+    state.b = 7
+    expect(bValues).toEqual([2, undefined, 99, undefined, 7])
+  })
+
+  // Regression: built-in objects with internal slots (Map, Set, Date, …) used
+  // to be wrapped in the proxy, which broke their methods (`Map.prototype.set`
+  // called on a Proxy → `TypeError: incompatible receiver`). Fix returns the
+  // raw instance from `wrap()` for these types — no fine-grained reactivity
+  // for their contents, but they're at least usable. See store.ts
+  // (isBuiltinNonProxiable).
+  test('Map fields are returned raw, not wrapped (proxy-incompatible)', () => {
+    const state = createStore({ users: new Map<string, number>() })
+    expect(() => state.users.set('alice', 1)).not.toThrow()
+    expect(state.users.get('alice')).toBe(1)
+    expect(state.users.size).toBe(1)
+  })
+
+  test('Set fields are returned raw, not wrapped', () => {
+    const state = createStore({ tags: new Set<string>() })
+    expect(() => state.tags.add('foo')).not.toThrow()
+    expect(state.tags.has('foo')).toBe(true)
+  })
+
+  test('Date fields are returned raw, not wrapped', () => {
+    const d = new Date('2026-01-01')
+    const state = createStore({ created: d })
+    expect(state.created.getFullYear()).toBe(2026)
+  })
+
+  test('RegExp fields are returned raw, not wrapped', () => {
+    const state = createStore({ rx: /abc/ })
+    expect(state.rx.test('abc')).toBe(true)
+  })
+
   test('setting array length directly triggers reactivity', () => {
     const state = createStore({ items: [1, 2, 3, 4, 5] })
     const lengths: number[] = []
