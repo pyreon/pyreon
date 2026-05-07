@@ -57,7 +57,7 @@
   "devDependencies": {
     "@babel/core": "^7.29.0",
     "@babel/plugin-transform-react-jsx": "^7.28.6",
-    "@changesets/changelog-github": "^0.6.0",
+    "@changesets/changelog-github": "^0.7.0",
     "@changesets/cli": "^2.31.0",
     "@playwright/test": "^1.59.1",
     "@preact/signals-core": "^1.14.1",
@@ -79,7 +79,7 @@
     "next": "^16.2.4",
     "oxc-parser": "^0.129.0",
     "oxc-transform": "^0.129.0",
-    "oxfmt": "^0.43.0",
+    "oxfmt": "^0.48.0",
     "oxlint": "^1.63.0",
     "playwright": "^1.59.1",
     "radix3": "^1.1.2",
