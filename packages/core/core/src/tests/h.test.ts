@@ -176,6 +176,27 @@ describe('h() — VNode creation', () => {
       expect(outer.children).toHaveLength(2)
       expect((outer.children[0] as VNode).type).toBe(Fragment)
     })
+
+    // Regression: pre-fix, `Fragment` was `Symbol('Pyreon.Fragment')` — a
+    // fresh symbol per module evaluation. When `h.ts` got bundled into BOTH
+    // `lib/index.js` AND `lib/jsx-runtime.js` (each a separate published
+    // entry point), each bundle created a DISTINCT Symbol identity. JSX
+    // `<>` compiles to `jsx(Fragment, ...)` referring to jsx-runtime's
+    // Fragment; `runtime-server` checks `vnode.type === Fragment` against
+    // `@pyreon/core`'s main-entry Fragment. The two never matched →
+    // fell through to `renderElement` → tried to stringify the Symbol →
+    // SSG crashed with `TypeError: Cannot convert a Symbol value to
+    // a string`.
+    //
+    // Fix: use `Symbol.for('Pyreon.Fragment')` — the global registry keys
+    // by string, so all bundles inlining h.ts share the same identity.
+    //
+    // This test asserts the global-registry contract: Fragment IS
+    // retrievable from the registry. Bisect-verifiable: reverting h.ts to
+    // `Symbol(...)` makes this fail.
+    test('Fragment uses Symbol.for() for cross-bundle identity stability', () => {
+      expect(Fragment).toBe(Symbol.for('Pyreon.Fragment'))
+    })
   })
 })
 
