@@ -17,6 +17,7 @@
  *   get_anti_patterns         — Browse the anti-patterns catalog, optionally filtered by category
  *   get_changelog             — Recent release notes for a @pyreon/* package, parsed from CHANGELOG.md
  *   audit_test_environment    — Scan test files for mock-vnode patterns (PR #197 bug class)
+ *   audit_islands             — Project-wide islands audit (5 cross-file foot-guns)
  *
  * Usage:
  *   bunx @pyreon/mcp          # stdio transport (for IDE integration)
@@ -26,10 +27,12 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
   type AuditRisk,
+  auditIslands,
   auditTestEnvironment,
   detectPyreonPatterns,
   detectReactPatterns,
   diagnoseError,
+  formatIslandAudit,
   formatTestAudit,
   migrateReactCode,
 } from '@pyreon/compiler'
@@ -599,6 +602,26 @@ server.tool(
           limit,
         }),
       )
+    },
+  )
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Tool: audit_islands — project-wide islands audit (PR C of islands DX roadmap)
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  server.tool(
+    'audit_islands',
+    {
+      json: z
+        .boolean()
+        .optional()
+        .describe(
+          'Return raw JSON output instead of human-readable markdown. Useful when an agent wants to programmatically count findings by code or filter by location.',
+        ),
+    },
+    async ({ json }) => {
+      const result = auditIslands(process.cwd())
+      return textResult(formatIslandAudit(result, { json }))
     },
   )
 

@@ -26,3 +26,11 @@ export type {
   TestAuditResult,
 } from './test-audit'
 export { auditTestEnvironment, formatTestAudit } from './test-audit'
+export type {
+  IslandAuditFormatOptions,
+  IslandAuditResult,
+  IslandFinding,
+  IslandFindingCode,
+  IslandLocation,
+} from './island-audit'
+export { auditIslands, formatIslandAudit } from './island-audit'

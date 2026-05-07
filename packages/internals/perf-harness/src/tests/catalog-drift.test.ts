@@ -35,6 +35,7 @@ const INSTRUMENTED_PACKAGE_ROOTS = [
   'packages/core/runtime-dom/src',
   'packages/core/runtime-server/src',
   'packages/core/router/src',
+  'packages/core/server/src',
   'packages/ui-system/styler/src',
   'packages/ui-system/unistyle/src',
   'packages/ui-system/rocketstyle/src',
@@ -43,6 +44,16 @@ const INSTRUMENTED_PACKAGE_ROOTS = [
   'packages/fundamentals/rx/src',
   'packages/fundamentals/query/src',
 ]
+
+// Some packages emit counters under a namespace that doesn't match the package
+// name (e.g. `runtime-dom` emits `runtime.*`, `server` emits `island.*` for
+// the islands feature). Map the package directory name to the counter prefix
+// used in COUNTERS.md so the per-package "found at least one counter" sanity
+// check passes against the actual prefix.
+const LAYER_PREFIX_OVERRIDE: Record<string, string> = {
+  'runtime-dom': 'runtime',
+  server: 'island',
+}
 
 // Matches any `<ident>.__pyreon_count__?.('<name>')` call.
 // Framework packages use a locally-bound `_countSink = globalThis as { ... }`
@@ -103,10 +114,8 @@ describe('counter catalog drift', () => {
     // Defensive: if this ever trips, it means the walker isn't reaching a
     // package that should be instrumented (broken glob? moved package?).
     for (const rootRel of INSTRUMENTED_PACKAGE_ROOTS) {
-      const layer =
-        rootRel.split('/').at(-2) === 'runtime-dom'
-          ? 'runtime'
-          : (rootRel.split('/').at(-2) as string)
+      const pkgDir = rootRel.split('/').at(-2) as string
+      const layer = LAYER_PREFIX_OVERRIDE[pkgDir] ?? pkgDir
       const hasAny = [...emitted.keys()].some((n) => n.startsWith(`${layer}.`))
       expect(hasAny, `no counters emitted for layer ${layer} (${rootRel})`).toBe(true)
     }

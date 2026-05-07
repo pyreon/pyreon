@@ -12,6 +12,21 @@
 # the cheap-to-detect failures locally instead of waiting 5 min for CI
 # to bounce them.
 #
+# ── Timeout & stale-process safety net ──
+#
+# Each step has a timeout (default 300s) so the hook can never hang
+# forever — historically vitest workers from prior worktree sessions
+# could deadlock the test step indefinitely. On timeout: kill the step,
+# print actionable guidance (likely cause + bypass flag), exit 1.
+#
+# The hook also detects long-running `vitest` processes from sibling
+# worktrees at startup and warns — they're a frequent cause of the
+# test-step hang, but we don't auto-kill them (they may belong to
+# another active dev session).
+#
+# Tunable:
+#   PYREON_PRE_PUSH_TIMEOUT_SEC=300   # per-step timeout (default 300)
+#
 # Opt-out:
 #   PYREON_SKIP_PRE_PUSH=1 git push   # one-off bypass for emergencies
 #   git push --no-verify              # git's native bypass (also works)
@@ -31,14 +46,75 @@ fi
 REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT" || exit 1
 
+TIMEOUT_SEC="${PYREON_PRE_PUSH_TIMEOUT_SEC:-300}"
+
 echo "[pyreon pre-push] running local validation (lint + typecheck + tests)"
-echo "[pyreon pre-push] bypass with PYREON_SKIP_PRE_PUSH=1 or git push --no-verify"
+echo "[pyreon pre-push] per-step timeout: ${TIMEOUT_SEC}s. bypass with PYREON_SKIP_PRE_PUSH=1 or git push --no-verify"
 echo
 
+# ── Stale-process check ──────────────────────────────────────────────
+# Heuristic: any vitest process older than 10 minutes belonging to this
+# user is likely orphaned from a prior worktree session. Warn (don't kill)
+# — the user may have an intentional `vitest --watch` going elsewhere.
+STALE_VITEST=$(ps -o pid,etime,command -u "$(id -un)" 2>/dev/null \
+  | awk '/vitest run|vitest --watch/ && !/awk/ {
+      # etime format: [[DD-]HH:]MM:SS
+      n = split($2, parts, /[-:]/)
+      total = 0
+      if (n == 2) total = parts[1]*60 + parts[2]              # MM:SS
+      else if (n == 3) total = parts[1]*3600 + parts[2]*60 + parts[3]  # HH:MM:SS
+      else if (n == 4) total = parts[1]*86400 + parts[2]*3600 + parts[3]*60 + parts[4]  # DD-HH:MM:SS
+      if (total > 600) print $1
+    }')
+if [ -n "$STALE_VITEST" ]; then
+  STALE_COUNT=$(echo "$STALE_VITEST" | wc -l | tr -d ' ')
+  echo "[pyreon pre-push] ⚠️  $STALE_COUNT vitest process(es) running for >10 minutes detected:"
+  echo "$STALE_VITEST" | sed 's/^/                     pid /'
+  echo "                     If unintentional, kill them with: pkill -f 'vitest run'"
+  echo
+fi
+
+# ── run_with_timeout: portable timeout wrapper ──────────────────────
+# Spawn the command in background, poll for completion, kill if exceeded.
+# Returns 0 on success, 1 on command failure, 124 on timeout (matching
+# coreutils `timeout`'s convention).
+run_with_timeout() {
+  step_name="$1"
+  shift
+  cmd="$*"
+
+  # Run in background so we can time it
+  eval "$cmd" &
+  cmd_pid=$!
+  start=$(date +%s)
+  while kill -0 "$cmd_pid" 2>/dev/null; do
+    now=$(date +%s)
+    if [ $((now - start)) -ge "$TIMEOUT_SEC" ]; then
+      echo
+      echo "[pyreon pre-push] ❌ $step_name exceeded ${TIMEOUT_SEC}s — killing."
+      echo "[pyreon pre-push]    Common cause: orphaned vitest processes from a prior worktree."
+      echo "[pyreon pre-push]    Try: pkill -f 'vitest run' && git push"
+      echo "[pyreon pre-push]    Or:  PYREON_SKIP_PRE_PUSH=1 git push  (one-off bypass)"
+      kill -TERM "$cmd_pid" 2>/dev/null
+      sleep 2
+      kill -KILL "$cmd_pid" 2>/dev/null
+      # Also kill any orphaned vitest spawned by this step
+      pkill -KILL -f "vitest run" 2>/dev/null
+      return 124
+    fi
+    sleep 1
+  done
+  wait "$cmd_pid"
+  return $?
+}
+
 # ── 1. Lint ──────────────────────────────────────────────────────────
-# Whole-repo lint — oxlint is Rust-powered, ~3-15s. No filter needed.
 echo "[1/3] lint"
-if ! bun run lint; then
+run_with_timeout "lint" "bun run lint"
+LINT_RC=$?
+if [ $LINT_RC -eq 124 ]; then
+  exit 1
+elif [ $LINT_RC -ne 0 ]; then
   echo
   echo "[pyreon pre-push] ❌ lint failed — fix the errors above and retry."
   exit 1
@@ -46,18 +122,34 @@ fi
 echo
 
 # ── 2. Affected filter ───────────────────────────────────────────────
-# Compute the affected-packages filter the same way CI does. If we
-# fail to compute it (e.g. detached HEAD, no upstream), fall back to
-# the full repo for safety — slower but never wrong.
+# `affected.ts` emits one of three shapes:
+#   1. `--filter=@pyreon/x --filter=...`  — normal case, run only those
+#   2. `--filter=*`                       — diff failed / root-file changed,
+#                                            run everything as a safety net
+#   3. ``  (empty string)                 — no committed changes diff
+#                                            origin/main → genuinely nothing
+#                                            to test; skip tests + typecheck
+#
+# Empty case (3) used to fall back to `--filter='*'` here, but that ran
+# the full 60+-package suite for what was usually a no-op push (e.g.
+# pre-push on a branch with no diff vs origin/main yet). The full-repo
+# run is heavyweight (60+ parallel vitest workers, occasional flakes
+# from resource contention) and bypasses the whole point of "affected".
 FILTER=$(bun run scripts/affected.ts --base=origin/main 2>/dev/null || echo "")
 if [ -z "$FILTER" ]; then
-  echo "[pyreon pre-push] no affected packages computed — running full repo"
-  FILTER="--filter='*'"
+  echo "[pyreon pre-push] no affected packages — skipping typecheck + tests"
+  echo
+  echo "[pyreon pre-push] ✓ all checks passed — pushing"
+  exit 0
 fi
 
 # ── 3. Typecheck (affected) ──────────────────────────────────────────
 echo "[2/3] typecheck (affected)"
-if ! eval "bun run $FILTER typecheck"; then
+run_with_timeout "typecheck" "bun run $FILTER typecheck"
+TC_RC=$?
+if [ $TC_RC -eq 124 ]; then
+  exit 1
+elif [ $TC_RC -ne 0 ]; then
   echo
   echo "[pyreon pre-push] ❌ typecheck failed — fix the errors above and retry."
   exit 1
@@ -69,11 +161,17 @@ echo
 # script (most examples). That is NOT a failure for us — treat it as
 # "nothing to run".
 echo "[3/3] tests (affected)"
-TEST_OUTPUT=$(eval "bun run $FILTER test" 2>&1)
+TEST_OUTPUT_FILE=$(mktemp -t pyreon-pre-push-XXXXXX)
+trap 'rm -f "$TEST_OUTPUT_FILE"' EXIT
+
+run_with_timeout "tests" "bun run $FILTER test > '$TEST_OUTPUT_FILE' 2>&1"
 TEST_EXIT=$?
-echo "$TEST_OUTPUT"
-if [ $TEST_EXIT -ne 0 ]; then
-  if echo "$TEST_OUTPUT" | grep -q "No packages matched the filter"; then
+cat "$TEST_OUTPUT_FILE"
+
+if [ $TEST_EXIT -eq 124 ]; then
+  exit 1
+elif [ $TEST_EXIT -ne 0 ]; then
+  if grep -q "No packages matched the filter" "$TEST_OUTPUT_FILE"; then
     echo "[pyreon pre-push] (no test scripts in affected packages — ok)"
   else
     echo

@@ -17,9 +17,11 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import {
+  auditIslands,
   auditTestEnvironment,
   type AuditRisk,
   detectReactPatterns,
+  formatIslandAudit,
   formatTestAudit,
   hasReactPatterns,
   migrateReactCode,
@@ -41,6 +43,15 @@ export interface DoctorOptions {
   auditTests?: boolean | undefined
   /** Minimum risk level to include in the test-audit report. Default 'medium'. */
   auditMinRisk?: AuditRisk | undefined
+  /**
+   * When true, run the project-wide islands audit and append the result
+   * to the doctor output. Catches cross-file foot-guns (duplicate names,
+   * dead islands, registry drift, nested islands, never-with-registry)
+   * that PR G's per-file detector and PR B's auto-registry can't reach
+   * (manual `hydrateIslands({...})` for non-Vite consumers, library
+   * authors, multi-package projects). Default false.
+   */
+  checkIslands?: boolean | undefined
 }
 
 interface FileResult {
@@ -86,6 +97,23 @@ export async function doctor(options: DoctorOptions): Promise<number> {
     } else {
       console.log('')
       console.log(formatTestAudit(auditResult, { minRisk: options.auditMinRisk ?? 'medium' }))
+      console.log('')
+    }
+  }
+
+  // Islands audit — optional follow-on pass (PR C of the islands DX
+  // roadmap). Runs the project-wide cross-file scan. Like the
+  // test-audit, this is a "should review" signal — exit code unaffected
+  // (the build doesn't break) but in CI you can pipe `--check-islands
+  // --json` and grep for findings.length > 0 to gate on it.
+  if (options.checkIslands) {
+    const islandsResult = auditIslands(options.cwd)
+    if (options.json) {
+      console.log('')
+      console.log(JSON.stringify({ islandAudit: islandsResult }, null, 2))
+    } else {
+      console.log('')
+      console.log(formatIslandAudit(islandsResult))
       console.log('')
     }
   }

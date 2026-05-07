@@ -6,7 +6,7 @@ export default defineManifest({
   tagline:
     'Model Context Protocol server — live API lookup, validation, migration, anti-pattern catalog, changelog, test-environment audit',
   description:
-    'MCP server (stdio transport) that exposes Pyreon\\\'s structured knowledge to AI coding assistants (Claude Code, Cursor, etc.). Eleven tools: `get_api` (look up any Pyreon API), `validate` (catch React + Pyreon-specific anti-patterns in a snippet), `migrate_react` (auto-convert React code), `diagnose` (parse a Pyreon error into structured fix info), `get_routes` / `get_components` (project introspection), `get_browser_smoke_status` (which packages need a browser smoke test), `get_pattern` (canonical "how do I do X" docs), `get_anti_patterns` (the catalog from `.claude/rules/anti-patterns.md`), `get_changelog` (recent release notes per package), and `audit_test_environment` (mock-vnode test scanner — PR #197 bug class).',
+    'MCP server (stdio transport) that exposes Pyreon\\\'s structured knowledge to AI coding assistants (Claude Code, Cursor, etc.). Twelve tools: `get_api` (look up any Pyreon API), `validate` (catch React + Pyreon-specific anti-patterns in a snippet), `migrate_react` (auto-convert React code), `diagnose` (parse a Pyreon error into structured fix info), `get_routes` / `get_components` (project introspection), `get_browser_smoke_status` (which packages need a browser smoke test), `get_pattern` (canonical "how do I do X" docs), `get_anti_patterns` (the catalog from `.claude/rules/anti-patterns.md`), `get_changelog` (recent release notes per package), `audit_test_environment` (mock-vnode test scanner — PR #197 bug class), and `audit_islands` (project-wide islands cross-file audit — duplicate names, dead islands, registry drift, nested islands, never-with-registry).',
   category: 'server',
   features: [
     'Eleven tools covering lookup, validation, migration, diagnosis, introspection, audit',
@@ -14,7 +14,7 @@ export default defineManifest({
     'Project context cached per server instance, auto-invalidates on cwd change',
     'Manifest-driven — `get_api` reads `api-reference.ts`, regenerated from package manifests',
     'AST-based detectors — `validate` catches React + Pyreon-specific patterns statically',
-    'Real-repo audit tools (`audit_test_environment`, `get_browser_smoke_status`) walk packages/',
+    'Real-repo audit tools (`audit_test_environment`, `audit_islands`, `get_browser_smoke_status`) walk packages/',
   ],
   longExample: `// .mcp/config.json — register the server with any MCP-aware client
 {
@@ -38,7 +38,9 @@ export default defineManifest({
 //   get_changelog({ package: 'flow', limit: 5 })
 //     → recent release notes filtered through ceremonial-bump removal
 //   audit_test_environment({ minRisk: 'medium' })
-//     → mock-vnode test files ranked HIGH / MEDIUM / LOW`,
+//     → mock-vnode test files ranked HIGH / MEDIUM / LOW
+//   audit_islands({})
+//     → project-wide islands audit (5 cross-file foot-guns)`,
   api: [
     {
       name: 'get_browser_smoke_status',
@@ -169,7 +171,20 @@ get_changelog({ package: '@pyreon/router', since: '0.12.0' })`,
         'Scan every `*.test.{ts,tsx}` under `packages/` for the mock-vnode anti-pattern that caused PR #197\\\'s silent metadata drop. Files are classified HIGH / MEDIUM / LOW based on the balance of mock-vnode literals + helpers + helper-call sites vs real `h()` calls + `@pyreon/core` import. Three context-aware skips (helper-def vs binding discrimination, type-guard call-arg skip, template-string fixture mask) keep the false-positive rate low. Run before merging a new test file or after a framework change.',
       example: `audit_test_environment({ minRisk: 'medium', limit: 10 })
 // → grouped report with HIGH / MEDIUM / LOW sections`,
-      seeAlso: ['get_browser_smoke_status'],
+      seeAlso: ['get_browser_smoke_status', 'audit_islands'],
+    },
+    {
+      name: 'audit_islands',
+      kind: 'constant',
+      signature: 'tool: audit_islands({ json?: boolean }) → IslandAuditReport',
+      summary:
+        'Project-wide cross-file islands audit (PR C of the islands DX roadmap). Walks `packages/` + `examples/` and runs five detectors that auto-registry can\\\'t reach (manual `hydrateIslands({...})` for non-Vite consumers / library authors) AND PR G\\\'s per-file `island-never-with-registry-entry` detector misses (it only catches the same-file shape): `duplicate-name`, `never-with-registry-entry`, `registry-mismatch`, `nested-island`, `dead-island`. Each finding ships with file path + line/column + actionable fix suggestion. Companion to the `pyreon doctor --check-islands` CLI flag (same scanner, same five detectors). Run before merging an island PR; CI gate by piping `--json` and grepping `findings.length > 0`.',
+      example: `audit_islands({})
+// → markdown-grouped report with one section per finding code
+
+audit_islands({ json: true })
+// → machine-readable { root, findings: [...], summary: {...} }`,
+      seeAlso: ['audit_test_environment', 'get_anti_patterns'],
     },
   ],
   gotchas: [
