@@ -31,6 +31,15 @@ import { createRouter, hydrateLoaderData, type RouteRecord, RouterProvider } fro
 import { hydrateRoot, mount } from '@pyreon/runtime-dom'
 import type { HydrationStrategy, PrefetchStrategy } from './island'
 
+// Dev-time counter sink — see packages/internals/perf-harness for contract.
+// Same pattern as @pyreon/runtime-dom: bare process.env.NODE_ENV gate (the
+// bundler-agnostic library standard) so counter strings tree-shake out under
+// every modern bundler (Vite, Webpack/Next.js, Rolldown, esbuild, Rollup,
+// Parcel, Bun) when consumers ship a production bundle. The optional-chain
+// short-circuits in dev when no consumer has called perfHarness.install().
+const __DEV__ = process.env.NODE_ENV !== 'production'
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 // ─── Full app hydration ──────────────────────────────────────────────────────
 
 export interface StartClientOptions {
@@ -132,6 +141,7 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
           `outer island's tree, or fold them into a single component.`,
       )
       el.setAttribute('data-island-error', 'nested')
+      if (__DEV__) _countSink.__pyreon_count__?.('island.skipped.nested')
       continue
     }
 
@@ -141,12 +151,16 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
     // no loader is registered because the loader's whole purpose is to be
     // imported. Skip the missing-loader warning for never-strategy islands;
     // any other strategy without a loader IS a real misconfiguration.
-    if (strategy === 'never') continue
+    if (strategy === 'never') {
+      if (__DEV__) _countSink.__pyreon_count__?.('island.skipped.never')
+      continue
+    }
 
     const loader = registry[componentId]
     if (!loader) {
       console.warn(`No loader registered for island "${componentId}"`)
       el.setAttribute('data-island-error', 'no-loader')
+      if (__DEV__) _countSink.__pyreon_count__?.('island.skipped.no-loader')
       continue
     }
 
@@ -160,6 +174,7 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
     const prefetchCleanup = schedulePrefetch(el as HTMLElement, loader, prefetch)
     if (prefetchCleanup) cleanups.push(prefetchCleanup)
 
+    if (__DEV__) _countSink.__pyreon_count__?.('island.scheduled')
     const cleanup = scheduleHydration(el as HTMLElement, loader, propsJson, strategy)
     if (cleanup) cleanups.push(cleanup)
   }
@@ -183,6 +198,7 @@ function schedulePrefetch(
   // resolves to the same module via JS's import-promise dedup).
   const prime = () => {
     if (cancelled) return
+    if (__DEV__) _countSink.__pyreon_count__?.('island.prefetch')
     loader().catch(() => {
       // Silent — hydration will surface the failure with its own error path.
       // Prefetch is a hint, not a contract.
@@ -517,15 +533,18 @@ async function hydrateIsland(
     } catch (parseErr) {
       console.error(`Invalid island props JSON for "${name}"`, parseErr)
       el.setAttribute('data-island-error', 'invalid-props')
+      if (__DEV__) _countSink.__pyreon_count__?.('island.error')
       return
     }
 
     const mod = await loader()
     const Comp = typeof mod === 'function' ? mod : mod.default
     hydrateRoot(el, h(Comp, props))
+    if (__DEV__) _countSink.__pyreon_count__?.('island.hydrated')
   } catch (err) {
     console.error(`Failed to hydrate island "${name}"`, err)
     el.setAttribute('data-island-error', 'hydration-failed')
+    if (__DEV__) _countSink.__pyreon_count__?.('island.error')
   }
 }
 
