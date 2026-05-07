@@ -402,4 +402,84 @@ export const journeys: Record<string, (page: PageLike) => Promise<void>> = {
       w.__pyreon_perf_stores?.seedStores(1000)
     })
   },
+
+  // ─── @pyreon/rx stress journeys ────────────────────────────────────────
+  //
+  // All journeys go through `window.__pyreon_perf_rx` exposed in
+  // src/components/RxStressSection.tsx. Pattern matches store/form:
+  // window helper instead of `.click()` so the counter signal is clean.
+
+  /**
+   * **rxFilterMap-10k** — 10k-item array signal, then `rx.filter` + `rx.map`
+   * chained as separate calls. Measures `rx.transform.signal: 2` +
+   * 2 `reactivity.computedRecompute` calls. Compare to `rxPipe-10k`
+   * to see the structural win of pipe.
+   */
+  'rxFilterMap-10k': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_rx?: { filterMap: (n: number) => void }
+      }
+      w.__pyreon_perf_rx?.filterMap(10000)
+    })
+  },
+
+  /**
+   * **rxPipe-10k** — same shape as `rxFilterMap-10k` but composed via
+   * `rx.pipe()`. Pipe collapses the entire chain into ONE computed →
+   * `rx.pipe: 1`, `rx.transform.signal: 0` (pipe doesn't go through
+   * `reactive()`). Counter signature proves the structural difference.
+   */
+  'rxPipe-10k': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_rx?: { pipeChain: (n: number) => void }
+      }
+      w.__pyreon_perf_rx?.pipeChain(10000)
+    })
+  },
+
+  /**
+   * **rxSortBy-10k** — sortBy on 10k items. One transform allocation +
+   * one computed recompute. Mostly stresses `reactivity.computedRecompute`
+   * cost; rx-side counters are fixed at 1.
+   */
+  'rxSortBy-10k': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_rx?: { sortBy: (n: number) => void }
+      }
+      w.__pyreon_perf_rx?.sortBy(10000)
+    })
+  },
+
+  /**
+   * **rxDebounceRapid-1k** — 1000 rapid signal writes through a 16ms
+   * debounced signal. Measures `rx.debounce.create: 1` plus the
+   * downstream debounce settling work. Awaits one debounce cycle so
+   * the timer fires inside the journey body (not after the snapshot).
+   */
+  'rxDebounceRapid-1k': async (page) => {
+    await page.evaluate(async () => {
+      const w = window as unknown as {
+        __pyreon_perf_rx?: { debounceRapid: (writes: number) => Promise<void> }
+      }
+      await w.__pyreon_perf_rx?.debounceRapid(1000)
+    })
+  },
+
+  /**
+   * **rxAggregate-10k** — 4 parallel aggregations (sum / count / min / max)
+   * over a 10k array signal. Each aggregation allocates its own computed
+   * (no shared computeds across calls). Measures `rx.transform.signal: 4`
+   * plus 4 `reactivity.computedRecompute` calls.
+   */
+  'rxAggregate-10k': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_rx?: { aggregate: (n: number) => void }
+      }
+      w.__pyreon_perf_rx?.aggregate(10000)
+    })
+  },
 }

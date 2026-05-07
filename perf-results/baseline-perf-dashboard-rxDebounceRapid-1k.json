@@ -1,0 +1,16 @@
+{
+  "sha": "51664b11",
+  "app": "perf-dashboard",
+  "journey": "rxDebounceRapid-1k",
+  "mode": "dev",
+  "runs": 5,
+  "timestamp": "2026-05-07T19:13:07.348Z",
+  "medianWallMs": 37,
+  "medianHeapBytes": 10000000,
+  "counters": {
+    "reactivity.signalCreate": 2,
+    "rx.debounce.create": 1,
+    "reactivity.effectRun": 1001,
+    "reactivity.signalWrite": 1001
+  }
+}

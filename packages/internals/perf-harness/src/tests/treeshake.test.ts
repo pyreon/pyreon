@@ -82,6 +82,21 @@ const FILES_UNDER_TEST: { layer: string; file: string; counterNames: string[] }[
       'store.actionCall',
     ],
   },
+  {
+    layer: 'rx-collections',
+    file: 'packages/fundamentals/rx/src/collections.ts',
+    counterNames: ['rx.transform.signal', 'rx.transform.raw'],
+  },
+  {
+    layer: 'rx-pipe',
+    file: 'packages/fundamentals/rx/src/pipe.ts',
+    counterNames: ['rx.pipe'],
+  },
+  {
+    layer: 'rx-timing',
+    file: 'packages/fundamentals/rx/src/timing.ts',
+    counterNames: ['rx.debounce.create', 'rx.throttle.create'],
+  },
   // runtime-server is NOT in this list — it's a server package that keeps
   // the `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`
   // compound (server-only packages are exempt from `pyreon/no-process-dev-gate`

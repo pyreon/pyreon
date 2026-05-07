@@ -1,6 +1,11 @@
 import { effect, signal } from '@pyreon/reactivity'
 import type { ReadableSignal } from './types'
 
+const __DEV__: boolean = process.env.NODE_ENV !== 'production'
+
+// Dev-time counter sink — see packages/internals/perf-harness for contract.
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 /**
  * Debounce a signal — emits the latest value after `ms` of silence.
  * Returns a new signal that updates only after the source stops changing.
@@ -12,6 +17,10 @@ export function debounce<T>(
   source: ReadableSignal<T>,
   ms: number,
 ): ReadableSignal<T> & { dispose: () => void } {
+  // Per debounce instance — scales with how many debounced signals the
+  // app holds. Growing across navigations without matching dispose()
+  // calls = leak (each instance keeps an effect + setTimeout state).
+  if (__DEV__) _countSink.__pyreon_count__?.('rx.debounce.create')
   const debounced = signal(source())
   let timer: ReturnType<typeof setTimeout> | undefined
 
@@ -40,6 +49,9 @@ export function throttle<T>(
   source: ReadableSignal<T>,
   ms: number,
 ): ReadableSignal<T> & { dispose: () => void } {
+  // Per throttle instance — same leak-detection rationale as
+  // `rx.debounce.create`. Each instance owns an effect + a setTimeout.
+  if (__DEV__) _countSink.__pyreon_count__?.('rx.throttle.create')
   const throttled = signal(source())
   let lastEmit = 0
   let timer: ReturnType<typeof setTimeout> | undefined

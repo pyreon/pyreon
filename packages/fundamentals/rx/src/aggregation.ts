@@ -2,8 +2,17 @@ import { computed } from '@pyreon/reactivity'
 import type { KeyOf, ReadableSignal } from './types'
 import { isSignal, resolveKey } from './types'
 
+const __DEV__: boolean = process.env.NODE_ENV !== 'production'
+
+// Dev-time counter sink — see packages/internals/perf-harness for contract.
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 function reactive<TIn, TOut>(source: TIn, fn: (val: any) => TOut): any {
-  if (isSignal(source)) return computed(() => fn((source as ReadableSignal<any>)()))
+  if (isSignal(source)) {
+    if (__DEV__) _countSink.__pyreon_count__?.('rx.transform.signal')
+    return computed(() => fn((source as ReadableSignal<any>)()))
+  }
+  if (__DEV__) _countSink.__pyreon_count__?.('rx.transform.raw')
   return fn(source)
 }
 
