@@ -23,31 +23,25 @@ const parentFixCSS = `
   flex-direction: column;
 `
 
-const fullHeightCSS = `
-  height: 100%;
-`
-
-const blockCSS = `
-  align-self: stretch;
-  flex: 1;
-  min-width: 0;
-`
-
-const childFixPosition = (isBlock?: boolean) => `display: ${isBlock ? 'flex' : 'inline-flex'};`
-
-const styles: ResponsiveStylesCallback = ({ theme: t, css: cssFn }) => cssFn`
-  ${t.alignY === 'block' && fullHeightCSS};
-
+export const styles: ResponsiveStylesCallback = ({ theme: t, css: cssFn }) => cssFn`
   ${alignContent({
     direction: t.direction,
     alignX: t.alignX,
     alignY: t.alignY,
   })};
 
-  ${t.block && blockCSS};
-  ${t.alignY === 'block' && t.block && fullHeightCSS};
+  /*
+   * Always emit a value for the block-related properties so a responsive
+   * theme that flips from \`block: true\` at one breakpoint to \`block: false\`
+   * at another resets cleanly. Previously \`align-self\` / \`width\` / \`height\`
+   * were only set when the truthy branch matched, which left the prior
+   * breakpoint's values cascading through.
+   */
+  ${`align-self: ${t.block ? 'stretch' : 'auto'};
+     width: ${t.block ? '100%' : 'auto'};
+     height: ${t.alignY === 'block' ? '100%' : 'auto'};`};
 
-  ${!t.childFix && childFixPosition(t.block)};
+  ${!t.childFix && `display: ${t.block ? 'flex' : 'inline-flex'};`};
   ${t.parentFix && parentFixCSS};
 
   ${t.extraStyles && extendCss(t.extraStyles as Parameters<typeof extendCss>[0])};
