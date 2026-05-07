@@ -89,3 +89,35 @@ export function setCurrentScope(scope: EffectScope | null): void {
 export function effectScope(): EffectScope {
   return new EffectScope()
 }
+
+/**
+ * Register a callback to run when the current `EffectScope` stops. Vue 3
+ * parity. Must be called inside `scope.runInScope(fn)` — the registration
+ * captures the ambient scope, so calling outside any scope is a no-op (with
+ * a dev warning to surface the missing scope).
+ *
+ * Use to clean up resources tied to a scope's lifetime: timers, listeners,
+ * external subscriptions. Equivalent to calling `getCurrentScope()?.add({
+ * dispose: fn })` but with the scope capture handled.
+ *
+ * @example
+ * scope.runInScope(() => {
+ *   const ws = new WebSocket(url)
+ *   onScopeDispose(() => ws.close())
+ *   // ws.close() runs when scope.stop() is called
+ * })
+ */
+export function onScopeDispose(fn: () => void): void {
+  const scope = _currentScope
+  if (!scope) {
+    if (process.env.NODE_ENV !== 'production') {
+      // oxlint-disable-next-line no-console
+      console.warn(
+        '[pyreon] onScopeDispose() called without an active EffectScope — callback will never run. ' +
+          'Wrap the call in `scope.runInScope(() => { ... })` or check `getCurrentScope()` before calling.',
+      )
+    }
+    return
+  }
+  scope.add({ dispose: fn })
+}

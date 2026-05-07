@@ -17,7 +17,13 @@ export {
 } from './effect'
 export { reconcile } from './reconcile'
 export { createResource, type Resource } from './resource'
-export { EffectScope, effectScope, getCurrentScope, setCurrentScope } from './scope'
+export {
+  EffectScope,
+  effectScope,
+  getCurrentScope,
+  onScopeDispose,
+  setCurrentScope,
+} from './scope'
 export {
   type ReadonlySignal,
   type Signal,
@@ -25,6 +31,6 @@ export {
   type SignalOptions,
   signal,
 } from './signal'
-export { createStore, isStore } from './store'
+export { createStore, isStore, markRaw, shallowReactive } from './store'
 export { runUntracked, runUntracked as untrack } from './tracking'
 export { type WatchOptions, watch } from './watch'
