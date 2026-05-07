@@ -1,7 +1,21 @@
 import type { ComponentFn, Props, VNode, VNodeChild } from './types'
 
-/** Marker for fragment nodes — renders children without a wrapper element */
-export const Fragment: unique symbol = Symbol('Pyreon.Fragment')
+/**
+ * Marker for fragment nodes — renders children without a wrapper element.
+ *
+ * MUST use `Symbol.for(...)` (global registry, keyed by string), NOT
+ * `Symbol(...)` (fresh per evaluation). `h.ts` is inlined into BOTH the
+ * main `lib/index.js` and the `lib/jsx-runtime.js` published bundles —
+ * each bundle's evaluation of a bare `Symbol(...)` would produce a
+ * DISTINCT Symbol identity. JSX `<>` compiles to `jsx(Fragment, ...)` and
+ * resolves to jsx-runtime's identity; `runtime-server` checks
+ * `vnode.type === Fragment` against the main-entry identity. Mismatch
+ * fell through to `renderElement` and crashed SSG with
+ * `TypeError: Cannot convert a Symbol value to a string`.
+ * `Symbol.for()` keys by string in a global registry shared across all
+ * bundle evaluations — same identity everywhere.
+ */
+export const Fragment: symbol = Symbol.for('Pyreon.Fragment')
 
 /**
  * Hyperscript function — the compiled output of JSX.
