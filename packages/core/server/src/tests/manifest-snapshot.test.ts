@@ -21,6 +21,8 @@ describe('gen-docs — server snapshot', () => {
     const record = renderApiReferenceEntries(manifest)
     expect(Object.keys(record).sort()).toEqual([
       'server/createHandler',
+      'server/hydrateIslands',
+      'server/hydrateIslandsAuto',
       'server/island',
       'server/prerender',
     ])
