@@ -97,6 +97,24 @@ const FILES_UNDER_TEST: { layer: string; file: string; counterNames: string[] }[
     file: 'packages/fundamentals/rx/src/timing.ts',
     counterNames: ['rx.debounce.create', 'rx.throttle.create'],
   },
+  {
+    // @pyreon/server's client.ts is a BROWSER entry (hydrates islands /
+    // full apps in the user's browser), even though the package's main
+    // surface is the SSR handler. It uses the bundler-agnostic
+    // `process.env.NODE_ENV` gate — the same as runtime-dom, NOT the
+    // server-only `typeof process` compound.
+    layer: 'server-client',
+    file: 'packages/core/server/src/client.ts',
+    counterNames: [
+      'island.scheduled',
+      'island.hydrated',
+      'island.skipped.never',
+      'island.skipped.nested',
+      'island.skipped.no-loader',
+      'island.error',
+      'island.prefetch',
+    ],
+  },
   // runtime-server is NOT in this list — it's a server package that keeps
   // the `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`
   // compound (server-only packages are exempt from `pyreon/no-process-dev-gate`
