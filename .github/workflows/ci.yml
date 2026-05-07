@@ -233,6 +233,62 @@ jobs:
         run: bunx playwright install --with-deps chromium
       - run: bun run test:browser
 
+  # ── Test (Rust binary): cross-backend equivalence gate ───────────────
+  # Builds the @pyreon/compiler Rust napi-rs binary and runs the compiler
+  # test suite with it loaded. The cross-backend equivalence harness
+  # (235 patterns) auto-detects the binary's presence and asserts every
+  # JS-path output matches the Rust-path output. Without this job, only
+  # the JS fallback is exercised in CI — which is exactly what shipped the
+  # 6 divergences caught in Phase 1 (#491). Locks the Rust path against
+  # silent regressions going forward.
+  test-rust-binary:
+    name: Test (Rust binary)
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo registry
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-registry-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock') }}
+          restore-keys: cargo-registry-${{ runner.os }}-
+      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            node_modules
+            packages/*/*/node_modules
+            examples/*/node_modules
+            docs/node_modules
+          key: ${{ env.NM_KEY }}
+      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: packages/*/*/lib
+          key: ${{ env.BOOTSTRAP_KEY }}
+      - name: Build native binary
+        run: bun run --filter='@pyreon/compiler' build:native
+      - name: Assert binary present
+        # Soft-fail in build-native.ts means cargo trouble silently routes
+        # consumers to JS. CI's job is the opposite — fail loudly so the
+        # gate can never erode to "JS-only ran, equivalence checks
+        # silently skipped."
+        run: |
+          BIN=packages/core/compiler/native/pyreon-compiler.node
+          if [ ! -f "$BIN" ]; then
+            echo "::error::Native binary missing at $BIN. Cargo build failed silently (build-native.ts soft-fails). The Rust equivalence gate cannot run without it."
+            exit 1
+          fi
+          echo "Binary OK: $(ls -la $BIN)"
+      - name: Run @pyreon/compiler tests against Rust binary
+        run: bun run --filter='@pyreon/compiler' test
+
   # ── E2E: real-Chromium app-level tests against example apps ──────────
   # Runs the playwright `playground` project — 30 tests covering signal
   # → DOM updates, computed values, batching, mount/unmount, conditional

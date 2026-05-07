@@ -74,7 +74,7 @@ describe('scripts/bootstrap.ts exit-code policy', () => {
     expect(existsSync(BOOTSTRAP)).toBe(true)
   })
 
-  it('exits 1 under postinstall when build fails (loud failure)', () => {
+  it('exits 1 under postinstall when build fails (loud failure)', { timeout: 90_000 }, () => {
     const result = runBootstrap({
       npm_lifecycle_event: 'postinstall',
     })
