@@ -187,8 +187,13 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
     return
   }
   if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.component')
+  let streamHooks: { unmount: Array<() => void> | null } | null = null
   try {
-    const { vnode: output } = runWithHooks(vnode.type as ComponentFn, mergeChildrenIntoProps(vnode))
+    const { vnode: output, hooks } = runWithHooks(
+      vnode.type as ComponentFn,
+      mergeChildrenIntoProps(vnode),
+    )
+    streamHooks = hooks
     const resolved = output instanceof Promise ? await output : output
     if (resolved !== null) await streamNode(resolved, enqueue)
   } catch (err) {
@@ -202,6 +207,13 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
     const ctx = _streamCtxAls.getStore()
     if (ctx && ctx.suspenseDepth > 0) throw err
     enqueue('<!--pyreon-error-->')
+  } finally {
+    // See `renderComponent` for the contract — `provide()` pushes context
+    // frames and registers `onUnmount(popContext)`; SSR must invoke those
+    // hooks AFTER children stream (and on error paths too — finally) so
+    // the stack doesn't leak into siblings or into the Suspense boundary's
+    // recovery render. Bug 4.
+    if (streamHooks) runUnmountHooks(streamHooks)
   }
 }
 
@@ -284,8 +296,15 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
 
   // No streaming context (e.g. called from renderToString) — render children inline
   if (!ctx) {
-    const { vnode: output } = runWithHooks(Suspense as ComponentFn, vnode.props)
-    if (output !== null) await streamNode(output, enqueue)
+    const { vnode: output, hooks } = runWithHooks(Suspense as ComponentFn, vnode.props)
+    try {
+      if (output !== null) await streamNode(output, enqueue)
+    } finally {
+      // Bug 4: `provide()` registers `onUnmount(popContext)` — without
+      // running hooks here, Suspense boundaries leak context frames to
+      // siblings just like regular components do.
+      runUnmountHooks(hooks)
+    }
     return
   }
 
@@ -408,17 +427,49 @@ async function renderChildren(children: VNodeChild[]): Promise<string> {
 
 async function renderComponent(vnode: VNode & { type: ComponentFn }): Promise<string> {
   if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.component')
-  const { vnode: output } = runWithHooks(vnode.type, mergeChildrenIntoProps(vnode))
+  const { vnode: output, hooks } = runWithHooks(vnode.type, mergeChildrenIntoProps(vnode))
 
   // Async component function (async function Component()) — await the promise
-  if (output instanceof Promise) {
-    const resolved = await output
-    if (resolved === null) return ''
-    return renderNode(resolved)
+  let html: string
+  try {
+    if (output instanceof Promise) {
+      const resolved = await output
+      html = resolved === null ? '' : await renderNode(resolved)
+    } else if (output === null) {
+      html = ''
+    } else {
+      html = await renderNode(output)
+    }
+  } finally {
+    // Run unmount hooks AFTER children have rendered. `provide(ctx, value)`
+    // pushes a context frame and registers `onUnmount(popContext)` to pop
+    // it on unmount. Without invoking these hooks during SSR, every
+    // `provide()` call leaks its context frame onto the global stack —
+    // subsequent siblings see the wrong context value (Bug 4).
+    // try/catch per-hook so one buggy cleanup doesn't stop the others.
+    runUnmountHooks(hooks)
   }
+  return html
+}
 
-  if (output === null) return ''
-  return renderNode(output)
+/**
+ * Invoke unmount hooks collected during `runWithHooks`. Per-hook try/catch
+ * isolates failures — one buggy cleanup must not block others (e.g. when
+ * multiple `provide()` calls register `popContext` hooks, dropping any one
+ * would corrupt the context stack for siblings).
+ */
+function runUnmountHooks(hooks: { unmount: Array<() => void> | null }): void {
+  if (!hooks.unmount) return
+  for (const fn of hooks.unmount) {
+    try {
+      fn()
+    } catch (err) {
+      if (__DEV__) {
+        // oxlint-disable-next-line no-console
+        console.error('[Pyreon SSR] unmount hook threw:', err)
+      }
+    }
+  }
 }
 
 async function renderElement(vnode: VNode): Promise<string> {

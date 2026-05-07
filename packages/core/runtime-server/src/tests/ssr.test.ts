@@ -1,5 +1,14 @@
 import type { ComponentFn, VNode } from '@pyreon/core'
-import { createContext, For, Fragment, h, pushContext, Suspense, useContext } from '@pyreon/core'
+import {
+  createContext,
+  For,
+  Fragment,
+  h,
+  provide,
+  pushContext,
+  Suspense,
+  useContext,
+} from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import {
   configureStoreIsolation,
@@ -1105,6 +1114,100 @@ describe('renderToString — For key markers', () => {
 })
 
 // ─── For SSR — key markers in stream ─────────────────────────────────────────
+
+// ─── Bug 4: SSR provide() context cleanup across siblings ───────────────────
+//
+// Regression: pre-fix, `renderComponent` invoked `runWithHooks(...)` to render
+// each component but DESTRUCTURED only the vnode — never invoked the
+// component's unmount hooks. `provide(context, value)` registers
+// `onUnmount(popContext)` to clean up its pushed context frame on unmount.
+// Without unmount-hook invocation during SSR, every `provide()` call left
+// its context frame on the global stack permanently. Subsequent siblings
+// saw the leaked context value instead of the outer provider's value.
+//
+// Real-world manifestation (bokisch.com): a `<PyreonUI inversed>` inside an
+// `<Intro>` section flipped mode to dark and pushed it as context. After
+// Intro rendered, every subsequent section (`<Quote>`, `<Companies>`, etc.)
+// saw the inverted dark mode → all sections rendered in dark even though
+// the page was in light mode → wrong colors everywhere.
+
+describe('SSR — provide() context cleanup across siblings (Bug 4)', () => {
+  test('sibling AFTER a provide() call sees the OUTER context value, not the leak', async () => {
+    const Ctx = createContext('outer')
+
+    // Component that pushes a NEW context value via `provide()`.
+    const Inner: ComponentFn = () => {
+      provide(Ctx, 'inner')
+      return h('span', { 'data-testid': 'inner' }, () => useContext(Ctx))
+    }
+
+    // Sibling rendered AFTER Inner — should see 'outer', not 'inner'.
+    const Sibling: ComponentFn = () => {
+      return h('span', { 'data-testid': 'sibling' }, () => useContext(Ctx))
+    }
+
+    // Outer wrapper: <div><Inner /><Sibling /></div>. Pre-fix, Sibling
+    // sees 'inner' because Inner's provide() was never popped.
+    const App: ComponentFn = () => {
+      return h(Fragment, null, h(Inner, null), h(Sibling, null))
+    }
+
+    const html = await renderToString(h(App, null))
+
+    expect(html).toContain('data-testid="inner">inner<')
+    expect(html).toContain('data-testid="sibling">outer<') // not "inner"
+  })
+
+  test('multiple sequential provide() calls each clean up their own frame', async () => {
+    const Ctx = createContext('default')
+
+    const First: ComponentFn = () => {
+      provide(Ctx, 'first')
+      return h('span', { 'data-testid': 'first' }, () => useContext(Ctx))
+    }
+    const Second: ComponentFn = () => {
+      provide(Ctx, 'second')
+      return h('span', { 'data-testid': 'second' }, () => useContext(Ctx))
+    }
+    const Third: ComponentFn = () => {
+      return h('span', { 'data-testid': 'third' }, () => useContext(Ctx))
+    }
+
+    const html = await renderToString(
+      h(Fragment, null, h(First, null), h(Second, null), h(Third, null)),
+    )
+
+    expect(html).toContain('data-testid="first">first<')
+    expect(html).toContain('data-testid="second">second<')
+    // Third sees 'default' — no leakage from First or Second.
+    expect(html).toContain('data-testid="third">default<')
+  })
+
+  test('nested provide() — child sees parent provide, sibling outside sees outer', async () => {
+    const Ctx = createContext('outer')
+
+    const InnerChild: ComponentFn = () =>
+      h('span', { 'data-testid': 'inner-child' }, () => useContext(Ctx))
+
+    const Provider: ComponentFn = () => {
+      provide(Ctx, 'provider-value')
+      return h('div', null, h(InnerChild, null))
+    }
+
+    const Sibling: ComponentFn = () =>
+      h('span', { 'data-testid': 'sibling' }, () => useContext(Ctx))
+
+    const html = await renderToString(
+      h(Fragment, null, h(Provider, null), h(Sibling, null)),
+    )
+
+    // Inner child sees the provider's value (correct).
+    expect(html).toContain('data-testid="inner-child">provider-value<')
+    // Sibling outside the provider sees outer (must NOT see leaked
+    // provider-value).
+    expect(html).toContain('data-testid="sibling">outer<')
+  })
+})
 
 describe('renderToStream — For key markers', () => {
   test('emits key markers for each item in stream', async () => {
