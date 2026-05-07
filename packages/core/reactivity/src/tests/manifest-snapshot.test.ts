@@ -68,7 +68,12 @@ describe('gen-docs — reactivity snapshot', () => {
 
   it('renders @pyreon/reactivity to MCP api-reference entries — one per api[] item', () => {
     const record = renderApiReferenceEntries(reactivityManifest)
-    expect(Object.keys(record).length).toBe(9)
+    // 22 entries: 8 original (signal/computed/effect/batch/onCleanup/watch/
+    // createStore/untrack) + 1 createResource (PR #459) + 13 from M1
+    // enrichment (renderEffect, nextTick, createSelector, cell, reconcile,
+    // isStore, effectScope, getCurrentScope, setCurrentScope,
+    // onSignalUpdate, inspectSignal, why, setErrorHandler).
+    expect(Object.keys(record).length).toBe(22)
     expect(Object.keys(record)).toContain('reactivity/signal')
     expect(Object.keys(record)).toContain('reactivity/createResource')
     // Spot-check the flagship API — signal is the core primitive
@@ -78,5 +83,11 @@ describe('gen-docs — reactivity snapshot', () => {
     // Spot-check createResource has the dispose mistake (regression for H3)
     const resource = record['reactivity/createResource']!
     expect(resource.mistakes).toContain('Forgetting `dispose()`')
+    // Spot-check newly-added entries surface their key foot-guns
+    expect(record['reactivity/createSelector']!.mistakes).toContain(
+      'every row subscribes to source',
+    )
+    expect(record['reactivity/effectScope']!.mistakes).toContain('leak')
+    expect(record['reactivity/cell']!.notes).toContain('NOT callable')
   })
 })
