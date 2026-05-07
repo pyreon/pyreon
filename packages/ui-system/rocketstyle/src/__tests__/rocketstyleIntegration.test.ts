@@ -575,3 +575,107 @@ describe('theme and state injection', () => {
     expect(vnode.$rocketstate.state).toBe('primary')
   })
 })
+
+// --------------------------------------------------------
+// component-swap reset (cloneAndEnhance)
+// --------------------------------------------------------
+// `.config({ component: NewBase })` swaps the underlying renderable. The prior
+// .attrs() / .priorityAttrs() / .filterAttrs() / .compose() chains were
+// tailored to the previous component's prop shape — applying them to a
+// different component silently leaks invalid props through to the DOM (e.g.
+// `disabled` on an `<a>`). vitus-labs's rocketstyle drops those chains on
+// component swap; this regression test locks in matching behavior here.
+describe('component-swap reset', () => {
+  it('drops .attrs() chain when component changes', () => {
+    const ButtonBase: any = ({ children, $rocketstyle, $rocketstate, ...rest }: any) => ({
+      type: 'button',
+      props: rest,
+      children,
+    })
+    ButtonBase.displayName = 'ButtonBase'
+
+    const AnchorBase: any = ({ children, $rocketstyle, $rocketstate, ...rest }: any) => ({
+      type: 'a',
+      props: rest,
+      children,
+    })
+    AnchorBase.displayName = 'AnchorBase'
+
+    const Button: any = rocketstyle()({
+      name: 'Button',
+      component: ButtonBase,
+    }).attrs((() => ({ 'data-button-attr': 'leaked' })) as any)
+
+    const Link: any = Button.config({ component: AnchorBase })
+
+    const result = renderProps(Link)
+    expect(result['data-button-attr']).toBeUndefined()
+  })
+
+  it('preserves .attrs() chain when component is not changed', () => {
+    const Base: any = ({ children, $rocketstyle, $rocketstate, ...rest }: any) => ({
+      type: 'div',
+      props: rest,
+      children,
+    })
+    Base.displayName = 'Base'
+
+    const Button: any = rocketstyle()({
+      name: 'Button',
+      component: Base,
+    }).attrs((() => ({ 'data-keep': 'yes' })) as any)
+
+    const Same: any = Button.config({ DEBUG: false })
+
+    const result = renderProps(Same)
+    expect(result['data-keep']).toBe('yes')
+  })
+
+  it('preserves .attrs() chain when same component is re-passed via config', () => {
+    const Base: any = ({ children, $rocketstyle, $rocketstate, ...rest }: any) => ({
+      type: 'div',
+      props: rest,
+      children,
+    })
+    Base.displayName = 'Base'
+
+    const Button: any = rocketstyle()({
+      name: 'Button',
+      component: Base,
+    }).attrs((() => ({ 'data-keep': 'yes' })) as any)
+
+    const Same: any = Button.config({ component: Base })
+
+    const result = renderProps(Same)
+    expect(result['data-keep']).toBe('yes')
+  })
+
+  it('lets fresh attrs after component swap apply to the new component', () => {
+    const ButtonBase: any = ({ children, $rocketstyle, $rocketstate, ...rest }: any) => ({
+      type: 'button',
+      props: rest,
+      children,
+    })
+    ButtonBase.displayName = 'ButtonBase'
+
+    const AnchorBase: any = ({ children, $rocketstyle, $rocketstate, ...rest }: any) => ({
+      type: 'a',
+      props: rest,
+      children,
+    })
+    AnchorBase.displayName = 'AnchorBase'
+
+    const Button: any = rocketstyle()({
+      name: 'Button',
+      component: ButtonBase,
+    }).attrs((() => ({ 'data-from-button': 'original' })) as any)
+
+    const Link: any = Button.config({ component: AnchorBase }).attrs(
+      (() => ({ 'data-from-link': 'fresh' })) as any,
+    )
+
+    const result = renderProps(Link)
+    expect(result['data-from-button']).toBeUndefined()
+    expect(result['data-from-link']).toBe('fresh')
+  })
+})
