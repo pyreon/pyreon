@@ -267,6 +267,85 @@ describe('makeItResponsive', () => {
     })
   })
 
+  describe('stringify fallback (mirrors vitus-labs)', () => {
+    // Where the two paths diverge observably: `styles` is invoked
+    // ONCE per breakpoint in the optimized path (for stringification),
+    // and TWICE per breakpoint in the fallback path (once for
+    // stringify which returns null, then again to re-render against
+    // the engine for the @media wrapper). With 2 breakpoints that's
+    // 2 calls vs 4 calls — clean observable distinction.
+
+    it('takes the unoptimized path when styles result has [object Foo] toString', () => {
+      // Foreign-engine result whose default toString is `[object ForeignResult]`.
+      // stringifyResult returns null → canOptimize=false → fallback path.
+      class ForeignResult {
+        constructor(public payload: string) {}
+        // Default toString → "[object ForeignResult]"
+      }
+
+      const sortedBreakpoints = ['xs', 'sm']
+      const media: Record<string, (s: TemplateStringsArray, ...v: any[]) => string> = {
+        xs: mockCss,
+        sm: mockCss,
+      }
+
+      let stylesCalls = 0
+      const stylesReturningForeign = ({ theme }: { theme: Record<string, unknown> }) => {
+        stylesCalls++
+        return new ForeignResult(JSON.stringify(theme))
+      }
+
+      // Distinct values per breakpoint so optimizeTheme keeps both keys
+      // (identical values get deduplicated upstream and never reach the
+      // optimization-vs-fallback split).
+      const responsive = makeItResponsive({
+        theme: { color: { xs: 'red', sm: 'blue' } },
+        css: mockCss,
+        styles: stylesReturningForeign as any,
+      })
+
+      responsive({
+        theme: {
+          breakpoints: { xs: 0, sm: 576 },
+          __PYREON__: { sortedBreakpoints, media },
+        },
+      })
+
+      // Fallback signature: stringify pass + re-render pass = 2 calls per bp
+      expect(stylesCalls).toBe(4)
+    })
+
+    it('takes the optimized path for plain-string styles results', () => {
+      const sortedBreakpoints = ['xs', 'sm']
+      const media: Record<string, (s: TemplateStringsArray, ...v: any[]) => string> = {
+        xs: mockCss,
+        sm: mockCss,
+      }
+
+      let stylesCalls = 0
+      const stylesCountingMock = (args: { theme: Record<string, unknown> }) => {
+        stylesCalls++
+        return mockStyles(args)
+      }
+
+      const responsive = makeItResponsive({
+        theme: { color: { xs: 'red', sm: 'blue' } },
+        css: mockCss,
+        styles: stylesCountingMock,
+      })
+
+      responsive({
+        theme: {
+          breakpoints: { xs: 0, sm: 576 },
+          __PYREON__: { sortedBreakpoints, media },
+        },
+      })
+
+      // Optimized signature: stringify pass only = 1 call per bp
+      expect(stylesCalls).toBe(2)
+    })
+  })
+
   describe('render-output cache (mirrors vitus-labs)', () => {
     it('returns the same rendered output by reference when called twice with stable theme + internal-theme refs', () => {
       const sortedBreakpoints = ['xs', 'sm']
@@ -347,5 +426,6 @@ describe('makeItResponsive', () => {
       // New outer theme object → no render cache hit → media template re-runs
       expect(xsCalls).toBeGreaterThan(callsAfterA)
     })
+
   })
 })
