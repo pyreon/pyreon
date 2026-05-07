@@ -6,6 +6,7 @@ export type { MakeItResponsive, MakeItResponsiveStyles } from './makeItResponsiv
 export { default as makeItResponsive } from './makeItResponsive'
 export type { NormalizeTheme } from './normalizeTheme'
 export { default as normalizeTheme } from './normalizeTheme'
+export { default as optimizeBreakpointDeltas } from './optimizeBreakpointDeltas'
 export type { OptimizeTheme } from './optimizeTheme'
 export { default as optimizeTheme } from './optimizeTheme'
 export type { SortBreakpoints } from './sortBreakpoints'
