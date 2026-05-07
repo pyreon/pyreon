@@ -16,6 +16,9 @@ export const IdleClock = island(() => import('./components/IdleClock'), {
 export const VisibleComments = island(() => import('./components/VisibleComments'), {
   name: 'VisibleComments',
   hydrate: 'visible',
+  // Pre-warm the chunk during browser idle so by the time the island scrolls
+  // into view, hydration is instant instead of blank-while-fetching.
+  prefetch: 'idle',
 })
 
 export const MobileMenu = island(() => import('./components/MobileMenu'), {

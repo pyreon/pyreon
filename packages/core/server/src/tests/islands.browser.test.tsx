@@ -264,6 +264,121 @@ describe('@pyreon/server — hydrateIslands in real Chromium', () => {
     cleanupIslands()
   })
 
+  it('prefetch=idle: pre-warms the loader BEFORE hydration trigger fires', async () => {
+    // Push the island below the fold — `hydrate: 'visible'` would NOT have
+    // hydrated it on mount. With `prefetch: 'idle'`, the loader still fires
+    // during idle so the chunk is warm by scroll-in.
+    const spacer = document.createElement('div')
+    spacer.style.height = '5000px'
+    document.body.appendChild(spacer)
+
+    const island = document.createElement('pyreon-island') as HTMLElement
+    island.setAttribute('data-component', 'PrefetchedComments')
+    island.setAttribute('data-props', '{}')
+    island.setAttribute('data-hydrate', 'visible')
+    island.setAttribute('data-prefetch', 'idle')
+    island.innerHTML = '<span data-testid="ssr-children">SSR children</span>'
+    document.body.appendChild(island)
+
+    let loaderCalls = 0
+    const cleanup = hydrateIslands({
+      PrefetchedComments: () => {
+        loaderCalls++
+        return Promise.resolve({ default: () => <div data-testid="comments">x</div> })
+      },
+    })
+
+    // Wait for requestIdleCallback to fire. No scrolling yet — the island
+    // is still below the fold. With prefetch=idle, the loader MUST run.
+    for (let i = 0; i < 30; i++) {
+      await flushFrames()
+      if (loaderCalls > 0) break
+    }
+    expect(loaderCalls).toBe(1)
+    // But hydration has NOT happened yet — SSR children remain.
+    expect(island.querySelector('[data-testid="ssr-children"]')).not.toBeNull()
+    expect(island.querySelector('[data-testid="comments"]')).toBeNull()
+
+    cleanup()
+    cleanupIslands()
+    spacer.remove()
+  })
+
+  it('prefetch=visible: pre-warms the loader ~200px before viewport entry', async () => {
+    const spacer = document.createElement('div')
+    spacer.style.height = '5000px'
+    document.body.appendChild(spacer)
+
+    const island = document.createElement('pyreon-island') as HTMLElement
+    island.setAttribute('data-component', 'PrefetchVisible')
+    island.setAttribute('data-props', '{}')
+    // Pair prefetch=visible with hydrate=media(query that won't match) so
+    // hydration NEVER fires — isolating the prefetch path. (1px width can't
+    // ever be true on a real browser viewport.)
+    island.setAttribute('data-hydrate', 'media((max-width: 1px))')
+    island.setAttribute('data-prefetch', 'visible')
+    island.innerHTML = '<span data-testid="ssr-children">SSR children</span>'
+    document.body.appendChild(island)
+
+    let loaderCalls = 0
+    const cleanup = hydrateIslands({
+      PrefetchVisible: () => {
+        loaderCalls++
+        return Promise.resolve({ default: () => <div>x</div> })
+      },
+    })
+
+    // Without scroll, the island is below the fold — prefetch=visible's
+    // IntersectionObserver hasn't fired yet.
+    await settle()
+    expect(loaderCalls).toBe(0)
+
+    // Scroll into view → IntersectionObserver fires → loader runs once.
+    island.scrollIntoView({ behavior: 'instant', block: 'center' })
+    for (let i = 0; i < 30; i++) {
+      await flushFrames()
+      if (loaderCalls > 0) break
+    }
+    expect(loaderCalls).toBe(1)
+    // Hydration STILL hasn't happened (media query won't match on a real
+    // viewport) — SSR children still in place. This proves prefetch and
+    // hydration are independent.
+    expect(island.querySelector('[data-testid="ssr-children"]')).not.toBeNull()
+
+    cleanup()
+    cleanupIslands()
+    spacer.remove()
+  })
+
+  it('prefetch=none (default / unset): does NOT call loader before hydration trigger', async () => {
+    const spacer = document.createElement('div')
+    spacer.style.height = '5000px'
+    document.body.appendChild(spacer)
+
+    // No data-prefetch attribute at all — exercises the default-none path.
+    const island = installIsland({
+      hydrate: 'visible',
+      componentName: 'NoPrefetch',
+    })
+
+    let loaderCalls = 0
+    const cleanup = hydrateIslands({
+      NoPrefetch: () => {
+        loaderCalls++
+        return Promise.resolve({ default: () => <div>x</div> })
+      },
+    })
+
+    await settle()
+    // Below the fold + no prefetch → loader must NOT have been called.
+    expect(loaderCalls).toBe(0)
+    expect(island.querySelector('[data-testid="ssr-children"]')).not.toBeNull()
+
+    cleanup()
+    cleanupIslands()
+    spacer.remove()
+  })
+
   it('flags invalid props JSON with data-island-error="invalid-props"', async () => {
     const island = document.createElement('pyreon-island') as HTMLElement
     island.setAttribute('data-component', 'BadProps')

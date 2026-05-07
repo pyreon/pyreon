@@ -637,6 +637,236 @@ describe('hydrateIslands', () => {
     cleanup()
   })
 
+  test('prefetch=idle: pre-warms loader during idle BEFORE hydration trigger', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="PreIdle" data-hydrate="visible" data-prefetch="idle" data-props="{}"></pyreon-island>'
+
+    let loaderCalls = 0
+    const Comp: ComponentFn = () => h('div', null, 'pre-idle')
+
+    // Mock IntersectionObserver so it does NOT auto-fire on observe — this
+    // isolates the prefetch path from hydration.
+    const origIO = globalThis.IntersectionObserver
+    globalThis.IntersectionObserver = class {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+      takeRecords() {
+        return []
+      }
+      get root() {
+        return null
+      }
+      get rootMargin() {
+        return ''
+      }
+      get thresholds() {
+        return []
+      }
+    } as unknown as typeof IntersectionObserver
+
+    const cleanup = hydrateIslands({
+      PreIdle: () => {
+        loaderCalls++
+        return Promise.resolve({ default: Comp })
+      },
+    })
+    // Wait long enough for requestIdleCallback (or its setTimeout fallback)
+    // to fire — happy-dom doesn't ship requestIdleCallback so the 200ms
+    // setTimeout fallback is what we exercise here.
+    await new Promise((r) => setTimeout(r, 300))
+
+    expect(loaderCalls).toBe(1)
+    cleanup()
+    globalThis.IntersectionObserver = origIO
+  })
+
+  test('prefetch=visible: pre-warms loader via IntersectionObserver before hydration', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="PreVis" data-hydrate="media((max-width: 1px))" data-prefetch="visible" data-props="{}"></pyreon-island>'
+
+    let loaderCalls = 0
+    const Comp: ComponentFn = () => h('div', null, 'pre-vis')
+
+    // Two IntersectionObserver instances are created when both prefetch=visible
+    // AND hydrate=visible — but here hydrate=media(unmatched), so only ONE
+    // IntersectionObserver instance is created (the prefetch one). Fire its
+    // callback synchronously on observe().
+    const origIO = globalThis.IntersectionObserver
+    globalThis.IntersectionObserver = class {
+      private cb: IntersectionObserverCallback
+      constructor(cb: IntersectionObserverCallback) {
+        this.cb = cb
+      }
+      observe(_el: Element) {
+        this.cb(
+          [{ isIntersecting: true } as IntersectionObserverEntry],
+          this as unknown as IntersectionObserver,
+        )
+      }
+      disconnect() {}
+      unobserve() {}
+      takeRecords() {
+        return []
+      }
+      get root() {
+        return null
+      }
+      get rootMargin() {
+        return ''
+      }
+      get thresholds() {
+        return []
+      }
+    } as unknown as typeof IntersectionObserver
+
+    // Mock matchMedia → matches: false so hydration does NOT fire.
+    const origMatchMedia = window.matchMedia
+    window.matchMedia = (q: string) =>
+      ({
+        matches: false,
+        media: q,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => true,
+      }) as unknown as MediaQueryList
+
+    const cleanup = hydrateIslands({
+      PreVis: () => {
+        loaderCalls++
+        return Promise.resolve({ default: Comp })
+      },
+    })
+    await new Promise((r) => setTimeout(r, 50))
+
+    // Loader called exactly once via the prefetch IntersectionObserver path.
+    // hydrate=media doesn't match → no second loader call from hydration.
+    expect(loaderCalls).toBe(1)
+
+    cleanup()
+    globalThis.IntersectionObserver = origIO
+    window.matchMedia = origMatchMedia
+  })
+
+  test('prefetch=visible falls back to immediate prime when IntersectionObserver is missing', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="PreFallback" data-hydrate="media((max-width: 1px))" data-prefetch="visible" data-props="{}"></pyreon-island>'
+
+    let loaderCalls = 0
+    const Comp: ComponentFn = () => h('div', null, 'fb')
+
+    const origIO = (window as unknown as Record<string, unknown>).IntersectionObserver
+    delete (window as unknown as Record<string, unknown>).IntersectionObserver
+    const origMatchMedia = window.matchMedia
+    window.matchMedia = (q: string) =>
+      ({
+        matches: false,
+        media: q,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => true,
+      }) as unknown as MediaQueryList
+
+    const cleanup = hydrateIslands({
+      PreFallback: () => {
+        loaderCalls++
+        return Promise.resolve({ default: Comp })
+      },
+    })
+    await new Promise((r) => setTimeout(r, 50))
+    expect(loaderCalls).toBe(1)
+
+    cleanup()
+    ;(window as unknown as Record<string, unknown>).IntersectionObserver = origIO
+    window.matchMedia = origMatchMedia
+  })
+
+  test('prefetch absent (default none): does NOT call loader before hydration trigger', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="NoPre" data-hydrate="visible" data-props="{}"></pyreon-island>'
+
+    let loaderCalls = 0
+    const Comp: ComponentFn = () => h('div', null)
+
+    // Block IntersectionObserver from auto-firing → hydration won't run either.
+    const origIO = globalThis.IntersectionObserver
+    globalThis.IntersectionObserver = class {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+      takeRecords() {
+        return []
+      }
+      get root() {
+        return null
+      }
+      get rootMargin() {
+        return ''
+      }
+      get thresholds() {
+        return []
+      }
+    } as unknown as typeof IntersectionObserver
+
+    const cleanup = hydrateIslands({
+      NoPre: () => {
+        loaderCalls++
+        return Promise.resolve({ default: Comp })
+      },
+    })
+    await new Promise((r) => setTimeout(r, 300))
+    expect(loaderCalls).toBe(0)
+
+    cleanup()
+    globalThis.IntersectionObserver = origIO
+  })
+
+  test('cleanup cancels pending prefetch before it fires', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="CancelPre" data-hydrate="visible" data-prefetch="idle" data-props="{}"></pyreon-island>'
+
+    let loaderCalls = 0
+    const Comp: ComponentFn = () => h('div', null)
+
+    const origIO = globalThis.IntersectionObserver
+    globalThis.IntersectionObserver = class {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+      takeRecords() {
+        return []
+      }
+      get root() {
+        return null
+      }
+      get rootMargin() {
+        return ''
+      }
+      get thresholds() {
+        return []
+      }
+    } as unknown as typeof IntersectionObserver
+
+    const cleanup = hydrateIslands({
+      CancelPre: () => {
+        loaderCalls++
+        return Promise.resolve({ default: Comp })
+      },
+    })
+    // Cancel BEFORE the 200ms setTimeout fallback fires.
+    cleanup()
+    await new Promise((r) => setTimeout(r, 300))
+    expect(loaderCalls).toBe(0)
+
+    globalThis.IntersectionObserver = origIO
+  })
+
   test('marks islands with hydration failure as data-island-error="hydration-failed"', async () => {
     document.body.innerHTML =
       '<pyreon-island data-component="Crash" data-props="{}"></pyreon-island>'

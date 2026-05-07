@@ -1095,18 +1095,23 @@ export default createHandler({
   },
 
   'server/island': {
-    signature: 'island(loader: () => Promise<ComponentFn>, options: { name: string; hydrate?: HydrationStrategy }): ComponentFn',
-    example: `const SearchBar = island(
-  () => import("./SearchBar"),
-  { name: "SearchBar", hydrate: "visible" }
+    signature: 'island(loader: () => Promise<ComponentFn>, options: { name: string; hydrate?: HydrationStrategy; prefetch?: PrefetchStrategy }): ComponentFn',
+    example: `// Pair visible-hydration with idle-prefetch — chunk arrives during
+// browser idle so by scroll-in, hydration is instant.
+const Comments = island(
+  () => import("./Comments"),
+  { name: "Comments", hydrate: "visible", prefetch: "idle" }
 )
 
-// Hydration strategies: "load" | "idle" | "visible" | "media" | "never"`,
-    notes: 'Wrap a lazily-loaded component in a `<pyreon-island>` boundary with a hydration strategy. The rest of the page stays HTML-only; only the island fetches its JS bundle and hydrates. Strategies: `"load"` (immediate), `"idle"` (`requestIdleCallback`), `"visible"` (IntersectionObserver), `"media(query)"` (matchMedia), `"never"` (HTML-only, no JS). Props passed to islands are JSON-serialized — non-JSON values (functions, symbols, undefined, children) are stripped. See also: createHandler, hydrateIslands.',
+// Hydration strategies: "load" | "idle" | "visible" | "media" | "never"
+// Prefetch strategies:  "none" (default) | "idle" | "visible"`,
+    notes: 'Wrap a lazily-loaded component in a `<pyreon-island>` boundary with a hydration strategy. The rest of the page stays HTML-only; only the island fetches its JS bundle and hydrates. Strategies: `"load"` (immediate), `"idle"` (`requestIdleCallback`), `"visible"` (IntersectionObserver), `"media(query)"` (matchMedia), `"never"` (HTML-only, no JS). Props passed to islands are JSON-serialized — non-JSON values (functions, symbols, undefined, children) are stripped. Pair with `prefetch: "idle"` or `"visible"` to pre-warm the chunk BEFORE the hydration trigger fires — eliminates the blank-while-fetching flash on `visible`-strategy islands. Prefetch is a no-op for `hydrate: "load"` (loader runs synchronously already) and `hydrate: "never"` (defeats the zero-JS strategy). See also: createHandler, hydrateIslands.',
     mistakes: `- Passing function props (event handlers, callbacks) — silently stripped during JSON serialization, the island sees \`undefined\`
 - Passing children to an island — stripped; islands cannot render arbitrary descendant trees from props
 - Forgetting to call \`hydrateIslands({ Name: () => import("./Path") })\` on the client — islands render as HTML and never hydrate
-- Using a duplicate \`name\` across two islands — the client-side registry collapses them, only one loader will fire`,
+- Using a duplicate \`name\` across two islands — the client-side registry collapses them, only one loader will fire
+- Setting \`prefetch: "idle"\` on a \`hydrate: "load"\` island — load runs the loader synchronously, prefetch is redundant (silently suppressed; no \`data-prefetch\` attribute is emitted)
+- Setting any \`prefetch\` on a \`hydrate: "never"\` island — defeats the whole zero-JS point of \`never\` (silently suppressed)`,
   },
 
   'server/prerender': {

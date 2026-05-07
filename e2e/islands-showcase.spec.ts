@@ -87,6 +87,46 @@ test.describe('islands-showcase — hydration strategies', () => {
     expect(after).not.toBe(before)
   })
 
+  test('prefetch=idle: VisibleComments chunk is fetched BEFORE scroll-in (warm cache on hydration)', async ({
+    page,
+  }) => {
+    // The VisibleComments island pairs `hydrate: 'visible'` with
+    // `prefetch: 'idle'` — the chunk should be requested during browser idle
+    // BEFORE the IntersectionObserver fires from a scroll. Counter-based
+    // network assertion (timing-based would be flaky).
+    const visibleCommentsRequests: string[] = []
+    page.on('request', (req) => {
+      const url = req.url()
+      // Match BOTH dev-mode URL (Vite serves `/src/components/VisibleComments.tsx?...`)
+      // AND prod-mode chunk filename (`VisibleComments-<hash>.js`). The webServer
+      // here runs `vite dev`, so the dev pattern is the active one — but keep
+      // the prod pattern so the spec works when run against `vite build` too.
+      if (
+        /\/components\/VisibleComments\.tsx(\?|$)/.test(url) ||
+        /\/VisibleComments[-.][^/]*\.js(\?|$)/.test(url)
+      ) {
+        visibleCommentsRequests.push(url)
+      }
+    })
+
+    await page.goto('/')
+
+    // Sanity: the SSR-emitted attribute is present.
+    const island = page.locator('pyreon-island[data-component="VisibleComments"]')
+    await expect(island).toHaveAttribute('data-prefetch', 'idle')
+    await expect(island).toHaveAttribute('data-hydrate', 'visible')
+
+    // Wait for browser idle to fire prefetch. requestIdleCallback in headless
+    // Chromium typically fires within a few ms after the main bundle settles.
+    // Generous timeout — we want signal, not flake.
+    await expect.poll(() => visibleCommentsRequests.length, { timeout: 5000 }).toBeGreaterThan(0)
+
+    // CRITICAL: prove the chunk arrived BEFORE we scrolled. The island is
+    // still below the fold — its IntersectionObserver hasn't fired.
+    const list = page.getByTestId('visible-comments-list')
+    await expect(list.locator('li')).toHaveCount(0)
+  })
+
   test('hydrate=visible: VisibleComments stays SSR-only until scrolled into view', async ({
     page,
   }) => {

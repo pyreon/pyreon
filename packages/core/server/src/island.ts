@@ -50,6 +50,22 @@
  *   - "visible"        — hydrate when the island scrolls into the viewport
  *   - "media(query)"   — hydrate when a media query matches
  *   - "never"          — never hydrate (render-only, no client JS)
+ *
+ * ## Prefetch hint
+ *
+ * Pair a deferred-hydration strategy (`visible` / `media(...)`) with a `prefetch`
+ * hint to start fetching the island's chunk BEFORE it's needed for hydration —
+ * the chunk is warm in the module cache by the time the hydration trigger fires,
+ * so hydration is instant instead of blank-while-fetching.
+ *
+ *   - "none" (default) — no prefetch
+ *   - "idle"           — call loader() during browser idle time (requestIdleCallback)
+ *   - "visible"        — call loader() ~200px before the island scrolls into view
+ *
+ * Pair `hydrate: 'visible'` with `prefetch: 'idle'` for the canonical "fetch
+ * during idle, hydrate on scroll-in" pattern. Prefetch is a no-op (silently
+ * skipped) for `hydrate: 'load'` (loader runs synchronously already) and
+ * `hydrate: 'never'` (defeats the zero-JS strategy).
  */
 
 import type { ComponentFn, Props, VNode } from '@pyreon/core'
@@ -59,17 +75,26 @@ import { h } from '@pyreon/core'
 
 export type HydrationStrategy = 'load' | 'idle' | 'visible' | 'never' | `media(${string})`
 
+export type PrefetchStrategy = 'none' | 'idle' | 'visible'
+
 export interface IslandOptions {
   /** Unique name — must match the key in the client-side hydrateIslands() registry */
   name: string
   /** When to hydrate on the client (default: "load") */
   hydrate?: HydrationStrategy
+  /**
+   * Pre-warm the island's chunk before its hydration trigger fires.
+   * Best paired with `hydrate: 'visible'` or `hydrate: 'media(...)'`.
+   * Default: "none". No-op when paired with `hydrate: 'load'` or `'never'`.
+   */
+  prefetch?: PrefetchStrategy
 }
 
 export interface IslandMeta {
   readonly __island: true
   readonly name: string
   readonly hydrate: HydrationStrategy
+  readonly prefetch: PrefetchStrategy
 }
 
 // ─── Server-side island factory ──────────────────────────────────────────────
@@ -86,22 +111,25 @@ export function island<P extends Props = Props>(
   loader: () => Promise<{ default: ComponentFn<P> } | ComponentFn<P>>,
   options: IslandOptions,
 ): ComponentFn<P> & IslandMeta {
-  const { name, hydrate = 'load' } = options
+  const { name, hydrate = 'load', prefetch = 'none' } = options
 
   const IslandWrapper = async function IslandWrapper(props: P): Promise<VNode | null> {
     const mod = await loader()
     const Comp = typeof mod === 'function' ? mod : mod.default
     const serializedProps = serializeIslandProps(props, name)
 
-    return h(
-      'pyreon-island',
-      {
-        'data-component': name,
-        'data-props': serializedProps,
-        'data-hydrate': hydrate,
-      },
-      h(Comp, props),
-    )
+    // Only emit data-prefetch when it actually changes behavior. `none` is the
+    // default and pointless on `load` / `never` — keep the rendered HTML clean.
+    const attrs: Record<string, string> = {
+      'data-component': name,
+      'data-props': serializedProps,
+      'data-hydrate': hydrate,
+    }
+    if (prefetch !== 'none' && hydrate !== 'load' && hydrate !== 'never') {
+      attrs['data-prefetch'] = prefetch
+    }
+
+    return h('pyreon-island', attrs, h(Comp, props))
   }
 
   // Attach metadata so tooling (CLI project scanner, MCP, future codegen) can
@@ -111,6 +139,7 @@ export function island<P extends Props = Props>(
     __island: { value: true, enumerable: true },
     name: { value: name, enumerable: true, writable: false, configurable: true },
     hydrate: { value: hydrate, enumerable: true },
+    prefetch: { value: prefetch, enumerable: true },
   })
 
   return wrapper

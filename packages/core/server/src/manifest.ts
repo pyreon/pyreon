@@ -13,8 +13,9 @@ export default defineManifest({
     'mode: "string" (renderToString) or "stream" (renderToStream with Suspense out-of-order)',
     'Middleware chain — `(ctx) => Response | void | Promise<…>`, short-circuit on first Response',
     'prerender({ handler, paths, outDir, origin?, onPage? }) — SSG with onPage callback',
-    'island(loader, { name, hydrate }) — lazy island with hydration strategy',
+    'island(loader, { name, hydrate, prefetch? }) — lazy island with hydration strategy + optional prefetch hint',
     'Hydration strategies: "load" | "idle" | "visible" | "media(...)" | "never"',
+    'Prefetch hints: "idle" | "visible" — pre-warm the chunk before the hydration trigger fires',
     'useRequestLocals() bridges middleware `ctx.locals` into the component tree',
     'Loader-data inline-script escaping — `</script>` becomes `<\\/script>`',
   ],
@@ -87,20 +88,25 @@ export default createHandler({
       name: 'island',
       kind: 'function',
       signature:
-        'island(loader: () => Promise<ComponentFn>, options: { name: string; hydrate?: HydrationStrategy }): ComponentFn',
+        'island(loader: () => Promise<ComponentFn>, options: { name: string; hydrate?: HydrationStrategy; prefetch?: PrefetchStrategy }): ComponentFn',
       summary:
-        'Wrap a lazily-loaded component in a `<pyreon-island>` boundary with a hydration strategy. The rest of the page stays HTML-only; only the island fetches its JS bundle and hydrates. Strategies: `"load"` (immediate), `"idle"` (`requestIdleCallback`), `"visible"` (IntersectionObserver), `"media(query)"` (matchMedia), `"never"` (HTML-only, no JS). Props passed to islands are JSON-serialized — non-JSON values (functions, symbols, undefined, children) are stripped.',
-      example: `const SearchBar = island(
-  () => import("./SearchBar"),
-  { name: "SearchBar", hydrate: "visible" }
+        'Wrap a lazily-loaded component in a `<pyreon-island>` boundary with a hydration strategy. The rest of the page stays HTML-only; only the island fetches its JS bundle and hydrates. Strategies: `"load"` (immediate), `"idle"` (`requestIdleCallback`), `"visible"` (IntersectionObserver), `"media(query)"` (matchMedia), `"never"` (HTML-only, no JS). Props passed to islands are JSON-serialized — non-JSON values (functions, symbols, undefined, children) are stripped. Pair with `prefetch: "idle"` or `"visible"` to pre-warm the chunk BEFORE the hydration trigger fires — eliminates the blank-while-fetching flash on `visible`-strategy islands. Prefetch is a no-op for `hydrate: "load"` (loader runs synchronously already) and `hydrate: "never"` (defeats the zero-JS strategy).',
+      example: `// Pair visible-hydration with idle-prefetch — chunk arrives during
+// browser idle so by scroll-in, hydration is instant.
+const Comments = island(
+  () => import("./Comments"),
+  { name: "Comments", hydrate: "visible", prefetch: "idle" }
 )
 
-// Hydration strategies: "load" | "idle" | "visible" | "media" | "never"`,
+// Hydration strategies: "load" | "idle" | "visible" | "media" | "never"
+// Prefetch strategies:  "none" (default) | "idle" | "visible"`,
       mistakes: [
         'Passing function props (event handlers, callbacks) — silently stripped during JSON serialization, the island sees `undefined`',
         'Passing children to an island — stripped; islands cannot render arbitrary descendant trees from props',
         'Forgetting to call `hydrateIslands({ Name: () => import("./Path") })` on the client — islands render as HTML and never hydrate',
         'Using a duplicate `name` across two islands — the client-side registry collapses them, only one loader will fire',
+        'Setting `prefetch: "idle"` on a `hydrate: "load"` island — load runs the loader synchronously, prefetch is redundant (silently suppressed; no `data-prefetch` attribute is emitted)',
+        'Setting any `prefetch` on a `hydrate: "never"` island — defeats the whole zero-JS point of `never` (silently suppressed)',
       ],
       seeAlso: ['createHandler', 'hydrateIslands'],
     },
