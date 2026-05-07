@@ -90,6 +90,37 @@ export interface ZeroConfig {
      * `false` to opt out — the route tree is left alone.
      */
     emit404?: boolean
+    /**
+     * When a route loader throws `redirect('/target')` during SSG, write
+     * a `dist/_redirects` file (Netlify / Cloudflare Pages convention)
+     * AND a `dist/_redirects.json` (Vercel convention) listing every
+     * redirected source path → target. Static hosts pick whichever
+     * format their platform supports automatically. The redirected
+     * path's HTML file is NOT emitted — the redirect is the response.
+     *
+     * Without this option, redirect-throwing loaders land in
+     * `errors[]` and the path silently disappears from the build —
+     * the user sees no output for `/old` AND no warning that the
+     * loader ran a redirect. Default: `true`. Set to `false` to
+     * restore the pre-PR-B behaviour (redirects treated as errors).
+     */
+    emitRedirects?: boolean
+    /**
+     * Additionally emit a static HTML file at the source path with a
+     * `<meta http-equiv="refresh">` redirect — for adapters / hosts
+     * that don't read `_redirects` (plain S3, GitHub Pages, simple
+     * file servers). The meta-refresh fallback works on any HTTP
+     * server that serves static files.
+     *
+     * - `'none'` (default): only `_redirects` / `_redirects.json` are
+     *   emitted; no per-redirect HTML file.
+     * - `'meta-refresh'`: emit `dist/<source>/index.html` containing
+     *   `<meta http-equiv="refresh" content="0; url=<target>">` plus
+     *   a canonical link tag for SEO. Status code information is
+     *   lost (meta-refresh has no status equivalent), so 301/302/307/
+     *   308 all collapse to "client-side refresh".
+     */
+    redirectsAsHtml?: 'none' | 'meta-refresh'
   }
 
   /** ISR config — only used when mode is "isr". */
