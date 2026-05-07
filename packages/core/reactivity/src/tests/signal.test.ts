@@ -284,4 +284,59 @@ describe('signal', () => {
       errorSpy.mockRestore()
     })
   })
+
+  // L7 audit gap: cap-iteration in notifySubscribers caps at originalSize to
+  // avoid infinite loops if a subscriber re-inserts itself or others into the
+  // Set. The contract: subscribers added DURING notification fire next round,
+  // not this round (no double-fire). Pin the contract.
+  describe('subscriber cap-iteration during notification (L7)', () => {
+    test('subscriber added mid-notification fires on the NEXT write, not the current one', () => {
+      const s = signal(0)
+      const fires: string[] = []
+
+      const lateSubscriber = (): void => {
+        fires.push('late')
+      }
+
+      s.subscribe(() => {
+        fires.push('first')
+        // Add a NEW subscriber during the notification. Per cap-iteration
+        // contract, it should NOT fire this round.
+        s.subscribe(lateSubscriber)
+      })
+
+      s.set(1)
+      // Only "first" fires this round — "late" gets registered, doesn't run.
+      expect(fires).toEqual(['first'])
+
+      // Next write — both fire (first was already there, late is now registered).
+      fires.length = 0
+      s.set(2)
+      expect(fires.sort()).toEqual(['first', 'late'])
+    })
+
+    test('subscriber that disposes itself mid-iteration cleans up cleanly', () => {
+      const s = signal(0)
+      let disposeMe: (() => void) | null = null
+      let firstRuns = 0
+      let secondRuns = 0
+
+      s.subscribe(() => {
+        firstRuns++
+      })
+      disposeMe = s.subscribe(() => {
+        secondRuns++
+        disposeMe?.() // self-dispose
+      })
+
+      s.set(1)
+      expect(firstRuns).toBe(1)
+      expect(secondRuns).toBe(1)
+
+      // Next write — second is gone, first still fires.
+      s.set(2)
+      expect(firstRuns).toBe(2)
+      expect(secondRuns).toBe(1)
+    })
+  })
 })

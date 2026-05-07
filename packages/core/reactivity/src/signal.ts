@@ -40,7 +40,11 @@ export interface Signal<T> {
    * Returns a disposer that nulls the slot.
    */
   direct(updater: () => void): () => void
-  /** Debug name — useful for devtools and logging. */
+  /**
+   * Debug name — useful for devtools and logging. Set via the `name` option at
+   * creation; can be reassigned at any time (`s.label = 'renamed'`) since it's
+   * stored as a regular own property on the signal function.
+   */
   label: string | undefined
   /** Returns a snapshot of the signal's debug info (value, name, subscriber count). */
   debug(): SignalDebugInfo<T>
