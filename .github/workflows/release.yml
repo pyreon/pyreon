@@ -18,7 +18,13 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 15 min was too tight for a fresh full-monorepo publish — the 0.15.0
+    # release timed out mid-publish at minute 15 with ~5 of 55 packages
+    # still queued. Each `npm publish --provenance` takes 5-15s and the
+    # build phase alone (~3 min) plus `bun install` (~1 min) eat 4 min
+    # before publishing even starts. 45 gives comfortable headroom even
+    # if a future release adds packages or npm registry is slow.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
