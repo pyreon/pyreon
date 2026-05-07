@@ -78,6 +78,18 @@ export interface ZeroConfig {
   ssg?: {
     /** Paths to prerender (or function returning paths). */
     paths?: string[] | (() => string[] | Promise<string[]>)
+    /**
+     * Auto-emit `dist/404.html` from the route tree's `_404.tsx` /
+     * `_not-found.tsx` convention. fs-router already wires `_404.tsx` as
+     * `notFoundComponent` on its parent layout route; the SSG plugin walks
+     * the tree, picks up the first one, renders it through the same SSR
+     * pipeline as regular paths (so styler CSS / @pyreon/head metadata land
+     * correctly), and writes the result to `dist/404.html`. Static hosts
+     * (Netlify, Cloudflare Pages, GitHub Pages, S3+CloudFront) serve this
+     * file automatically for unmatched URLs. Default: `true`. Set to
+     * `false` to opt out — the route tree is left alone.
+     */
+    emit404?: boolean
   }
 
   /** ISR config — only used when mode is "isr". */
