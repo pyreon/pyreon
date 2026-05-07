@@ -10,7 +10,15 @@
 import type { VNode, VNodeChild } from '@pyreon/core'
 import { Fragment } from '@pyreon/core'
 import { isEmpty, render } from '@pyreon/ui-core'
-import type { ExtendedProps, ObjectValue, Props, SimpleValue } from './types'
+import type {
+  ChildrenProps,
+  ExtendedProps,
+  LooseProps,
+  ObjectProps,
+  ObjectValue,
+  SimpleProps,
+  SimpleValue,
+} from './types'
 
 type ClassifiedData =
   | { type: 'simple'; data: SimpleValue[] }
@@ -70,7 +78,7 @@ const attachItemProps: AttachItemProps = ({ i, length }: { i: number; length: nu
   }
 }
 
-const Component = (props: Props) => {
+const Component = (props: LooseProps) => {
   const {
     itemKey,
     valueName,
@@ -246,7 +254,37 @@ const Component = (props: Props) => {
   return renderItems()
 }
 
-export default Object.assign(Component, {
+// ---------------------------------------------------------------------------
+// Public callable type — overloads expose the generic `<T>` API at the JSX
+// boundary while the impl stays loose-typed. TS picks the matching overload
+// based on the props object passed:
+//
+//   <Iterator data={['a','b']} valueName="text" component={Item} />
+//   ^ T inferred as string → SimpleProps<string> overload selected
+//
+//   <Iterator data={users} component={UserCard} />
+//   ^ T inferred as User → ObjectProps<User> overload selected
+//
+//   <Iterator>{...}</Iterator>            → ChildrenProps overload selected
+// ---------------------------------------------------------------------------
+export interface IteratorComponent {
+  // T is inferred from the `data` prop at the JSX site — no explicit generic
+  // argument needed. SimpleProps first (matches `data: SimpleValue[]`), then
+  // ObjectProps (object[]), then ChildrenProps. The narrow overloads enforce
+  // per-mode constraints (valueName required for primitive arrays, forbidden
+  // for object arrays, etc.) — there is intentionally no loose fallback
+  // overload at the public surface.
+  <T extends SimpleValue>(props: SimpleProps<T>): VNodeChild
+  <T extends ObjectValue>(props: ObjectProps<T>): VNodeChild
+  (props: ChildrenProps): VNodeChild
+  isIterator: true
+  RESERVED_PROPS: typeof RESERVED_PROPS
+  displayName?: string
+}
+
+const Iterator = Object.assign(Component, {
   isIterator: true as const,
   RESERVED_PROPS,
-})
+}) as unknown as IteratorComponent
+
+export default Iterator
