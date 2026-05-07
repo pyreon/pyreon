@@ -129,4 +129,159 @@ export const journeys: Record<string, (page: PageLike) => Promise<void>> = {
     await page.fill('[data-testid="form-password"]', 'secret')
     await page.fill('[data-testid="form-confirm-password"]', 'secret')
   },
+
+  // ─── @pyreon/form 10k-field stress journeys (forms-stress benchmark) ────
+  //
+  // Five journeys exercising the @pyreon/form package at production-stress
+  // scale (10,000 fields). Default page state has the FormStressSection
+  // unmounted (scale=0); each journey flips the scale signal via the
+  // window helper to drive deterministic mount / edit / state-read paths.
+  //
+  // Counter signature predicted by the audit:
+  //   - formMount-10k        → ~60k form.fieldSignalCreate, ~10k form.fieldEffectCreate
+  //   - formEditSingle-10k   → 1 reactivity.signalWrite, small const effectRun
+  //   - formEditBatch-10k    → 100 signalWrite, proportional effectRun
+  //   - formStateRead-10k    → 1 form.formStateScan, 10k form.formStateScan.fieldsRead
+  //   - formStateReadSelector-10k → if narrows: ~3 fieldsRead. If not: 10k (confirms the bottleneck)
+
+  /**
+   * **formMount-10k** — mount cost of useForm with 10,000 field defs.
+   *
+   * Resets scale to 0 (unmount any existing FormAtScale), then sets to
+   * 10000 (mount fresh). Counter reset in record.ts:170 happens BEFORE
+   * the journey body, so this journey's snapshot captures BOTH paths
+   * (the unmount + the mount). Run-to-run consistency: every run
+   * unmounts whatever was there and mounts 10k → identical work shape
+   * across all 5 runs → median is meaningful.
+   */
+  'formMount-10k': async (page) => {
+    await page.evaluate(() => {
+      ;(
+        window as unknown as { __pyreon_perf_forms?: { setScale: (n: number) => void } }
+      ).__pyreon_perf_forms?.setScale(0)
+    })
+    await page.evaluate(() => {
+      ;(
+        window as unknown as { __pyreon_perf_forms?: { setScale: (n: number) => void } }
+      ).__pyreon_perf_forms?.setScale(10000)
+    })
+    await page.waitForSelector('[data-testid="forms-stress-ready"]')
+  },
+
+  /**
+   * **formEditSingle-10k** — single-field write in a 10k-field context.
+   *
+   * Ensures scale=10000 (no-op if already mounted from prior journey),
+   * then writes ONE field. Per-field write cost should be O(1) regardless
+   * of N — the audit's prediction. If `effectRun` scales with N here,
+   * we have a per-field cascade leak.
+   */
+  'formEditSingle-10k': async (page) => {
+    await page.evaluate(() => {
+      ;(
+        window as unknown as { __pyreon_perf_forms?: { setScale: (n: number) => void } }
+      ).__pyreon_perf_forms?.setScale(10000)
+    })
+    await page.waitForSelector('[data-testid="forms-stress-ready"]')
+    // Write directly via the window helper to skip Playwright's locator
+    // resolution + event dispatch. We're measuring the SIGNAL write path,
+    // not Playwright's fill machinery.
+    //
+    // Use Date.now() so each run writes a UNIQUE value — without it, run
+    // 2+ would short-circuit via `Object.is` (signal value unchanged from
+    // prior run's persisted state) and counters would land at 0. The
+    // rotating value forces every run to do the same work.
+    await page.evaluate(() => {
+      const stamp = String(Date.now())
+      ;(
+        window as unknown as {
+          __pyreon_perf_forms?: { fillField: (name: string, value: string) => void }
+        }
+      ).__pyreon_perf_forms?.fillField('f0', stamp)
+    })
+  },
+
+  /**
+   * **formEditBatch-10k** — 100 field writes in a 10k-field context.
+   *
+   * Realistic partial-update shape (form-fill, paste-prefill, autosave-
+   * dirtying). Should scale linearly with K (=100), NOT N (=10000). If
+   * counter signature shows N-scaled work, there's an O(N) per-write
+   * something hiding in the form pipeline.
+   */
+  'formEditBatch-10k': async (page) => {
+    await page.evaluate(() => {
+      ;(
+        window as unknown as { __pyreon_perf_forms?: { setScale: (n: number) => void } }
+      ).__pyreon_perf_forms?.setScale(10000)
+    })
+    await page.waitForSelector('[data-testid="forms-stress-ready"]')
+    await page.evaluate(() => {
+      const hooks = (
+        window as unknown as {
+          __pyreon_perf_forms?: { fillField: (name: string, value: string) => void }
+        }
+      ).__pyreon_perf_forms
+      if (!hooks) return
+      // Use a stamp to force unique values across runs — see
+      // formEditSingle-10k for the Object.is short-circuit reason.
+      const stamp = Date.now()
+      // Spread writes across the field range so the test exercises
+      // hashing / map lookup variance — not just the same hot field.
+      for (let i = 0; i < 100; i++) {
+        const idx = Math.floor((i * 9973) % 10000) // pseudo-random spread, deterministic
+        hooks.fillField(`f${idx}`, `batch-${stamp}-${i}`)
+      }
+    })
+  },
+
+  /**
+   * **formStateRead-10k** — useFormState() WITHOUT selector, on a
+   * 10k-field form.
+   *
+   * Single read fires `form.formStateScan` once. The smoking-gun counter
+   * is `form.formStateScan.fieldsRead` — should equal 10000 because
+   * useFormState's `buildSummary` always iterates every field, even on a
+   * no-selector read. Pre-fix expectation: 10000. Post-PR-3 fix: should
+   * drop dramatically (selector-narrowed) but no-selector read keeps
+   * scanning — that's correct.
+   */
+  'formStateRead-10k': async (page) => {
+    await page.evaluate(() => {
+      ;(
+        window as unknown as { __pyreon_perf_forms?: { setScale: (n: number) => void } }
+      ).__pyreon_perf_forms?.setScale(10000)
+    })
+    await page.waitForSelector('[data-testid="forms-stress-ready"]')
+    await page.evaluate(() => {
+      ;(
+        window as unknown as { __pyreon_perf_forms?: { triggerStateRead: () => void } }
+      ).__pyreon_perf_forms?.triggerStateRead()
+    })
+  },
+
+  /**
+   * **formStateReadSelector-10k** — useFormState(form, s => s.isValid)
+   * on a 10k-field form.
+   *
+   * The selector touches only `isValid` — a properly-narrowed selector
+   * should subscribe to ~1-3 signals (the `_invalidFieldCount` derived
+   * signal in PR 4 candidate, or just `form.isValid()` today). Today's
+   * implementation scans all 10k fields anyway (PR 3 candidate fix).
+   * This journey is the regression-pin for the narrowing improvement —
+   * post-PR-3 the `fieldsRead` counter should drop to ~3.
+   */
+  'formStateReadSelector-10k': async (page) => {
+    await page.evaluate(() => {
+      ;(
+        window as unknown as { __pyreon_perf_forms?: { setScale: (n: number) => void } }
+      ).__pyreon_perf_forms?.setScale(10000)
+    })
+    await page.waitForSelector('[data-testid="forms-stress-ready"]')
+    await page.evaluate(() => {
+      ;(
+        window as unknown as { __pyreon_perf_forms?: { triggerStateReadSelector: () => void } }
+      ).__pyreon_perf_forms?.triggerStateReadSelector()
+    })
+  },
 }

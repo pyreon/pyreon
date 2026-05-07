@@ -68,6 +68,20 @@ jobs:
             journey: dashboard
           - app: perf-dashboard
             journey: form
+          # Forms-stress benchmark — 10k-field @pyreon/form audit. Five
+          # journeys exercising mount + edit + state-read at production
+          # scale. Drives the form.fieldSignalCreate / formStateScan /
+          # formStateScan.fieldsRead counters introduced for this audit.
+          - app: perf-dashboard
+            journey: formMount-10k
+          - app: perf-dashboard
+            journey: formEditSingle-10k
+          - app: perf-dashboard
+            journey: formEditBatch-10k
+          - app: perf-dashboard
+            journey: formStateRead-10k
+          - app: perf-dashboard
+            journey: formStateReadSelector-10k
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6

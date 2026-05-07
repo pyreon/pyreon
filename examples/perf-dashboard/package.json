@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@pyreon/core": "workspace:*",
+    "@pyreon/form": "workspace:*",
     "@pyreon/perf-harness": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",

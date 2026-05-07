@@ -2,6 +2,9 @@ import type { Computed } from '@pyreon/reactivity'
 import { computed } from '@pyreon/reactivity'
 import type { FormState, ValidationError } from './types'
 
+// Dev-time counter sink. See packages/internals/perf-harness/COUNTERS.md.
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 export interface FormStateSummary<TValues extends Record<string, unknown>> {
   isSubmitting: boolean
   isValidating: boolean
@@ -41,17 +44,32 @@ export function useFormState<TValues extends Record<string, unknown>, R>(
   selector?: (state: FormStateSummary<TValues>) => R,
 ): Computed<FormStateSummary<TValues>> | Computed<R> {
   const buildSummary = (): FormStateSummary<TValues> => {
+    if (process.env.NODE_ENV !== 'production')
+      // One emission per buildSummary call. Drives the
+      // `form.formStateScan.fieldsRead` counter below to surface the
+      // "selector ignored — full O(N) scan happens regardless" smoking gun
+      // predicted by the audit.
+      _countSink.__pyreon_count__?.('form.formStateScan')
+
     const touchedFields = {} as Partial<Record<keyof TValues, boolean>>
     const dirtyFields = {} as Partial<Record<keyof TValues, boolean>>
     const errors = {} as Partial<Record<keyof TValues, ValidationError>>
 
+    let scannedCount = 0
     for (const key of Object.keys(form.fields) as (keyof TValues & string)[]) {
       const field = form.fields[key]
       if (field.touched()) touchedFields[key] = true
       if (field.dirty()) dirtyFields[key] = true
       const err = field.error()
       if (err !== undefined) errors[key] = err
+      scannedCount++
     }
+    if (process.env.NODE_ENV !== 'production')
+      // Counts EVERY field signal touched per scan. Equals N for any
+      // useFormState() call, even when the selector only needs `isValid`
+      // or `isSubmitting`. PR 3 candidate: split into atomic computeds
+      // resolved against getter-backed summary (see plan).
+      _countSink.__pyreon_count__?.('form.formStateScan.fieldsRead', scannedCount)
 
     return {
       isSubmitting: form.isSubmitting(),
