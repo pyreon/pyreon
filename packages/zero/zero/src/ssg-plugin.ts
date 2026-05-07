@@ -132,7 +132,7 @@ export default async function renderPath(path) {
   })
 }
 
-// ─── getStaticPaths enumeration ─────────────────────────────────────────────
+// ─── getStaticPaths enumeration (PR A) ──────────────────────────────────────
 //
 // Walks the generated routes tree and collects every dynamic route's
 // \`getStaticPaths\` function alongside its URL pattern. The SSG plugin
@@ -158,6 +158,48 @@ function collectStaticPathsRegistry(rs, out) {
 
 /** Map of \`urlPath → getStaticPaths function\` for every dynamic route. */
 export const __getStaticPathsRegistry = collectStaticPathsRegistry(routes, new Map())
+
+// ─── 404 emission (PR C) ────────────────────────────────────────────────────
+//
+// Walk the route tree and return the first \`notFoundComponent\` reference
+// found. fs-router attaches \`_404.tsx\` / \`_not-found.tsx\` to its parent
+// layout's RouteRecord. Apps typically register exactly one (root-level
+// \`_404.tsx\`); if more than one is present (per-locale \`_404\`s under
+// nested layouts in the future), we pick the first via depth-first walk
+// — same component the runtime's not-found handler wrapper picks up.
+function findNotFoundComponent(rs) {
+  for (const r of rs) {
+    if (typeof r.notFoundComponent === "function") return r.notFoundComponent
+    if (Array.isArray(r.children)) {
+      const nested = findNotFoundComponent(r.children)
+      if (nested) return nested
+    }
+  }
+  return null
+}
+export const __notFoundComponent = findNotFoundComponent(routes)
+
+// Render the not-found component through the same SSR pipeline as a
+// regular path. We DON'T navigate the router to a probe path — the
+// runtime's 404 wrapper short-circuits BEFORE the router for unmatched
+// URLs and renders the component directly via h(NotFound, null), so
+// the SSG path mirrors that. The result flows through the same template
+// injection in the outer plugin (styler tag, @pyreon/head meta, loader
+// data — all consistent with regular pages) and lands at \`dist/404.html\`.
+export async function __renderNotFound() {
+  if (!__notFoundComponent) return null
+
+  return runWithRequestContext(async () => {
+    const vnode = h(__notFoundComponent, null)
+    const { html: appHtml, head } = await renderWithHead(vnode)
+
+    const styleTag = __pyreonGetStylerTag()
+    const isEmpty = !styleTag || styleTag.indexOf("></style>") !== -1
+    const finalHead = isEmpty ? head : styleTag + "\\n" + head
+
+    return { appHtml, head: finalHead, loaderScript: "" }
+  })
+}
 `.trimStart()
 
 const SSR_ENTRY_FILENAME = '__pyreon-zero-ssg-entry.js'
@@ -283,6 +325,46 @@ function resolveOutputPath(distDir: string, path: string): string {
 }
 
 /**
+ * Inject a rendered SSR result into the index.html template. Prefers
+ * Pyreon's `<!--pyreon-head-->` / `<!--pyreon-app-->` /
+ * `<!--pyreon-scripts-->` placeholders; falls back to inserting before
+ * `</head>` / inside `<div id="app">` / before `</body>` so a bare
+ * Vite-style `index.html` (no Pyreon comments) still receives content.
+ *
+ * Factored out of the per-path render loop so the 404 emission path can
+ * reuse the exact same injection rules — keeps the rendered _404.tsx
+ * subject to the same head/body/scripts pipeline as regular pages
+ * (styler tag, @pyreon/head meta, hashed asset preload links).
+ */
+function injectIntoTemplate(
+  template: string,
+  result: { appHtml: string; head: string; loaderScript: string },
+): string {
+  let html = template
+  if (html.includes('<!--pyreon-head-->')) {
+    html = html.replace('<!--pyreon-head-->', result.head)
+  } else if (result.head) {
+    html = html.replace('</head>', `${result.head}</head>`)
+  }
+  if (html.includes('<!--pyreon-app-->')) {
+    html = html.replace('<!--pyreon-app-->', result.appHtml)
+  } else if (result.appHtml) {
+    const appDivMatch = html.match(/<div\s+id=["']app["']\s*>([\s\S]*?)<\/div>/)
+    if (appDivMatch) {
+      html = html.replace(appDivMatch[0], `<div id="app">${result.appHtml}</div>`)
+    } else {
+      html = html.replace('</body>', `<div id="app">${result.appHtml}</div></body>`)
+    }
+  }
+  if (html.includes('<!--pyreon-scripts-->')) {
+    html = html.replace('<!--pyreon-scripts-->', result.loaderScript)
+  } else if (result.loaderScript) {
+    html = html.replace('</body>', `${result.loaderScript}</body>`)
+  }
+  return html
+}
+
+/**
  * Plugin that performs SSG when `mode: "ssg"` is configured. Wires into
  * Vite's `closeBundle` hook so it runs once after the main client build
  * completes. The recursive SSR sub-build is gated by an env flag.
@@ -400,7 +482,21 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // expected here. Suppress per Vite's own recommendation.
       const handlerMod = (await import(/* @vite-ignore */ pathToFileURL(handlerPath).href)) as {
         default: (path: string) => Promise<{ appHtml: string; head: string; loaderScript: string }>
+        // PR A — getStaticPaths registry collected from the routes tree.
         __getStaticPathsRegistry?: GetStaticPathsRegistry
+        // PR C — 404 emission. The synthetic SSG entry walks the routes
+        // tree at module-eval time and exports the first
+        // `notFoundComponent` it finds (root-level `_404.tsx` in the
+        // common case), plus an async `__renderNotFound()` that pushes
+        // it through the same renderWithHead pipeline as regular paths.
+        // The outer plugin reads both: presence gates the emission,
+        // the renderer produces the same `{ appHtml, head, loaderScript }`
+        // shape so `injectIntoTemplate` can reuse the same injection
+        // rules. The `?` keeps zero forward-compatible — an entry built
+        // before PR C just doesn't expose these and emit404 silently
+        // no-ops.
+        __notFoundComponent?: unknown
+        __renderNotFound?: () => Promise<{ appHtml: string; head: string; loaderScript: string } | null>
       }
       const renderPath = handlerMod.default
       const registry = handlerMod.__getStaticPathsRegistry
@@ -442,32 +538,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
             ),
           ])
 
-          // Inject into the index.html template. Prefer Pyreon's standard
-          // placeholders; fall back to <head>/<body>/<#app> insertion
-          // points so apps with a minimal `<div id="app"></div>` template
-          // still render content.
-          let html = template
-          if (html.includes('<!--pyreon-head-->')) {
-            html = html.replace('<!--pyreon-head-->', result.head)
-          } else if (result.head) {
-            html = html.replace('</head>', `${result.head}</head>`)
-          }
-          if (html.includes('<!--pyreon-app-->')) {
-            html = html.replace('<!--pyreon-app-->', result.appHtml)
-          } else if (result.appHtml) {
-            // Drop the rendered HTML inside #app; if not found, append to body.
-            const appDivMatch = html.match(/<div\s+id=["']app["']\s*>([\s\S]*?)<\/div>/)
-            if (appDivMatch) {
-              html = html.replace(appDivMatch[0], `<div id="app">${result.appHtml}</div>`)
-            } else {
-              html = html.replace('</body>', `<div id="app">${result.appHtml}</div></body>`)
-            }
-          }
-          if (html.includes('<!--pyreon-scripts-->')) {
-            html = html.replace('<!--pyreon-scripts-->', result.loaderScript)
-          } else if (result.loaderScript) {
-            html = html.replace('</body>', `${result.loaderScript}</body>`)
-          }
+          const html = injectIntoTemplate(template, result)
 
           const filePath = resolveOutputPath(distDir, p)
 
@@ -486,6 +557,43 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         }
       }
 
+      // PR C — Auto-emit dist/404.html from _404.tsx convention.
+      //
+      // fs-router scans `_404.tsx` / `_not-found.tsx` and attaches it as
+      // `notFoundComponent` on its parent layout RouteRecord. The
+      // synthetic SSG entry walks the routes tree at module-eval time,
+      // picks up the first one, and exposes an async `__renderNotFound()`.
+      // We read it here, render through the same template injection
+      // pipeline as regular paths, and write to `dist/404.html` (NOT
+      // `dist/__pyreon_404__/index.html` — static hosts (Netlify,
+      // Cloudflare Pages, GitHub Pages, S3+CloudFront) serve `404.html`
+      // automatically for unmatched URLs, which is the convention every
+      // major SSG framework uses).
+      //
+      // Gated by `config.ssg.emit404 !== false` (default true). Skipped
+      // silently when no `_404.tsx` exists (handler exposes
+      // `__notFoundComponent: null`) — the gate isn't an error, it's the
+      // "user didn't ship a 404 page" path.
+      let emitted404 = false
+      if (config.ssg?.emit404 !== false && handlerMod.__notFoundComponent && handlerMod.__renderNotFound) {
+        try {
+          const result = await Promise.race([
+            handlerMod.__renderNotFound(),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('Prerender timeout for 404 (30s)')), 30_000),
+            ),
+          ])
+          if (result) {
+            const html = injectIntoTemplate(template, result)
+            const filePath = join(distDir, '404.html')
+            await writeFile(filePath, html, 'utf-8')
+            emitted404 = true
+          }
+        } catch (error) {
+          errors.push({ path: '404.html', error })
+        }
+      }
+
       // Cleanup the SSR build artifacts — they're an implementation detail
       // and shouldn't ship to the static host.
       await rm(ssrOutDir, { recursive: true, force: true })
@@ -493,7 +601,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       const elapsed = Date.now() - start
       // oxlint-disable-next-line no-console
       console.log(
-        `[zero:ssg] Prerendered ${pages} page(s) in ${elapsed}ms` +
+        `[zero:ssg] Prerendered ${pages} page(s)${emitted404 ? ' + 404.html' : ''} in ${elapsed}ms` +
           (errors.length > 0 ? ` (${errors.length} error(s))` : ''),
       )
       for (const { path: errPath, error } of errors) {
@@ -513,6 +621,7 @@ export const _internal = {
   autoDetectStaticPaths,
   resolveOutputPath,
   expandUrlPattern,
+  injectIntoTemplate,
   SSR_ENTRY_SOURCE,
   SSR_ENTRY_FILENAME,
 }

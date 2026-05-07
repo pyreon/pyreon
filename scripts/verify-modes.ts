@@ -217,6 +217,14 @@ const MATRIX: Cell[] = [
       // and this assertion fails (the home page doesn't use styler so
       // it intentionally produces no tag — only assert about page).
       assertFileContains(aboutPath, 'data-pyreon-styler')
+      // PR C — 404 emission. ssr-showcase has `_404.ts` so the SSG
+      // build must auto-emit `dist/404.html`. Static hosts (Netlify,
+      // Cloudflare Pages, GitHub Pages, S3+CloudFront) serve this file
+      // for any unmatched URL. Bisect-verifiable: revert the
+      // `findNotFoundComponent` walk in ssg-plugin.ts and the file
+      // disappears.
+      assertFileExists(join(dist, '404.html'))
+      assertFileContains(join(dist, '404.html'), 'data-testid="not-found-page"')
     },
   },
   {
@@ -300,6 +308,10 @@ const MATRIX: Cell[] = [
       assertFileExists(join(dist, 'index.html'))
       assertFileExists(join(dist, 'about', 'index.html'))
       assertFileDoesNotExist(join(dist, '.zero-ssg-server'))
+      // PR C — 404 emission applies in autodetect mode too. The
+      // emit404 step runs after the path loop regardless of how paths
+      // were resolved.
+      assertFileExists(join(dist, '404.html'))
     },
   },
 

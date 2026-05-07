@@ -304,6 +304,111 @@ describe('ssgPlugin', () => {
     })
   })
 
+  describe('404 emission — SSR entry source (PR C)', () => {
+    // The entry source emits an exported `__notFoundComponent` reference
+    // and an async `__renderNotFound()`. Both surface to the outer plugin's
+    // closeBundle: presence of the component gates emission, the renderer
+    // produces `{ appHtml, head, loaderScript }` matching regular paths.
+    it('exports __notFoundComponent walked from the routes tree', () => {
+      expect(_internal.SSR_ENTRY_SOURCE).toContain('export const __notFoundComponent')
+      expect(_internal.SSR_ENTRY_SOURCE).toContain('findNotFoundComponent(routes)')
+    })
+
+    it('walks recursively into route children', () => {
+      // A `_404.tsx` under a nested layout (e.g. per-locale) attaches as
+      // `notFoundComponent` on the nested layout's RouteRecord, NOT on
+      // the root. The walker must descend into `r.children`.
+      expect(_internal.SSR_ENTRY_SOURCE).toContain('Array.isArray(r.children)')
+      expect(_internal.SSR_ENTRY_SOURCE).toContain('findNotFoundComponent(r.children)')
+    })
+
+    it('exports an async __renderNotFound that uses the same head pipeline', () => {
+      expect(_internal.SSR_ENTRY_SOURCE).toContain('export async function __renderNotFound')
+      // Reuses renderWithHead so styler tag + @pyreon/head meta land
+      // on the rendered 404 page exactly like regular paths.
+      expect(_internal.SSR_ENTRY_SOURCE).toContain('renderWithHead(vnode)')
+    })
+
+    it('returns null when no notFoundComponent exists in the tree', () => {
+      expect(_internal.SSR_ENTRY_SOURCE).toContain('if (!__notFoundComponent) return null')
+    })
+
+    it('does NOT preload a router for 404 — renders the component directly', () => {
+      // Mirrors the runtime's createServer wrapper which short-circuits
+      // BEFORE the router for unmatched URLs and renders the not-found
+      // component via h(NotFound, null). The SSG path uses the same shape.
+      const renderNotFoundBlock = _internal.SSR_ENTRY_SOURCE.slice(
+        _internal.SSR_ENTRY_SOURCE.indexOf('export async function __renderNotFound'),
+      )
+      expect(renderNotFoundBlock).not.toContain('router.preload')
+      expect(renderNotFoundBlock).not.toContain('createApp')
+    })
+  })
+
+  describe('injectIntoTemplate (PR C)', () => {
+    // Factored out of the per-path render loop in PR C so the 404 path
+    // can reuse the exact same injection rules. The previous shape
+    // inlined the same regex/replace block in two places — risk of drift.
+    const result = {
+      appHtml: '<div>app</div>',
+      head: '<title>X</title>',
+      loaderScript: '<script>window.D=1</script>',
+    }
+
+    it('replaces Pyreon comment placeholders when present', () => {
+      const tpl =
+        '<html><head><!--pyreon-head--></head><body><!--pyreon-app--><!--pyreon-scripts--></body></html>'
+      const html = _internal.injectIntoTemplate(tpl, result)
+      expect(html).toContain('<title>X</title>')
+      expect(html).toContain('<div>app</div>')
+      expect(html).toContain('<script>window.D=1</script>')
+      expect(html).not.toContain('<!--pyreon-head-->')
+      expect(html).not.toContain('<!--pyreon-app-->')
+      expect(html).not.toContain('<!--pyreon-scripts-->')
+    })
+
+    it('falls back to before-</head> for head when no placeholder', () => {
+      const tpl = '<html><head></head><body><div id="app"></div></body></html>'
+      const html = _internal.injectIntoTemplate(tpl, result)
+      expect(html).toContain('<title>X</title></head>')
+    })
+
+    it('falls back to inside <div id="app"> for app when no placeholder', () => {
+      const tpl = '<html><head></head><body><div id="app"></div></body></html>'
+      const html = _internal.injectIntoTemplate(tpl, result)
+      expect(html).toContain('<div id="app"><div>app</div></div>')
+    })
+
+    it('falls back to before-</body> for app when no #app and no placeholder', () => {
+      const tpl = '<html><head></head><body></body></html>'
+      // Head injects first. App has no #app + no placeholder → wraps appHtml
+      // in <div id="app"> before </body>. Script then injects again before
+      // </body>, so the FINAL </body> trails the script — but the app div
+      // is structurally present and its contents preserved.
+      const html = _internal.injectIntoTemplate(tpl, result)
+      expect(html).toContain('<div id="app"><div>app</div></div>')
+      expect(html.indexOf('<div id="app">')).toBeLessThan(html.indexOf('<script>window.D=1</script>'))
+    })
+
+    it('falls back to before-</body> for loader script when no placeholder', () => {
+      const tpl = '<html><head></head><body><div id="app"></div></body></html>'
+      const html = _internal.injectIntoTemplate(tpl, result)
+      expect(html).toContain('<script>window.D=1</script></body>')
+    })
+
+    it('skips empty head/loaderScript without injecting blank content', () => {
+      const tpl = '<html><head></head><body><div id="app"></div></body></html>'
+      const html = _internal.injectIntoTemplate(tpl, {
+        appHtml: '<div>app</div>',
+        head: '',
+        loaderScript: '',
+      })
+      // No empty replacement was injected before </head> or </body>
+      expect(html).toContain('<head></head>')
+      expect(html).toContain('</body>')
+    })
+  })
+
   describe('closeBundle is no-op when mode != "ssg"', () => {
     // The plugin returns from closeBundle without side effects when SSG
     // is not configured. We can't easily run the real closeBundle in unit
