@@ -12,6 +12,13 @@ export interface Resource<T> {
   error: Signal<unknown>
   /** Re-run the fetcher with the current source value. */
   refetch(): void
+  /**
+   * Stop the source-tracking effect. After dispose(), source changes no
+   * longer trigger fetches and any in-flight response is ignored. Idempotent.
+   * Required for resources created outside an `EffectScope` to avoid leaking
+   * the source-tracking effect for the lifetime of the program.
+   */
+  dispose(): void
 }
 
 /**
@@ -50,7 +57,8 @@ export function createResource<T, P>(
       })
   }
 
-  effect(() => {
+  let disposed = false
+  const sourceEffect = effect(() => {
     const param = source()
     runUntracked(() => doFetch(param))
   })
@@ -60,7 +68,17 @@ export function createResource<T, P>(
     loading,
     error,
     refetch() {
+      if (disposed) return
       runUntracked(() => doFetch(source()))
+    },
+    dispose() {
+      if (disposed) return
+      disposed = true
+      // Bump requestId so any pending in-flight response is treated as stale
+      // and discarded by the .then/.catch handlers — prevents post-dispose
+      // writes to data/loading/error.
+      requestId++
+      sourceEffect.dispose()
     },
   }
 }
