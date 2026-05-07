@@ -185,10 +185,10 @@ function stringLiteralValue(node: ts.Node): string | undefined {
  * string-literal options are captured. Other shapes fall through (false
  * negatives, by design).
  */
-function extractIslandDecls(sf: ts.SourceFile, absPath: string): IslandDecl[] {
+function extractIslandDecls(sf: ts.SourceFile, absPath: string, root: string): IslandDecl[] {
   const decls: IslandDecl[] = []
   const fileDir = dirname(absPath)
-  const relPath = relative(process.cwd(), absPath)
+  const relPath = relative(root, absPath)
 
   function visit(node: ts.Node): void {
     if (
@@ -252,9 +252,13 @@ function extractIslandDecls(sf: ts.SourceFile, absPath: string): IslandDecl[] {
  * shorthand (`{ Counter }`) and property-assignment (`{ Counter: () =>
  * import('./Counter') }`) forms.
  */
-function extractRegistryEntries(sf: ts.SourceFile, absPath: string): RegistryEntry[] {
+function extractRegistryEntries(
+  sf: ts.SourceFile,
+  absPath: string,
+  root: string,
+): RegistryEntry[] {
   const entries: RegistryEntry[] = []
-  const relPath = relative(process.cwd(), absPath)
+  const relPath = relative(root, absPath)
 
   function visit(node: ts.Node): void {
     if (
@@ -331,7 +335,7 @@ function extractImports(sf: ts.SourceFile, absPath: string): Set<string> {
   return out
 }
 
-function extractFromFile(absPath: string): FileExtraction {
+function extractFromFile(absPath: string, root: string): FileExtraction {
   let code = ''
   try {
     code = readFileSync(absPath, 'utf8')
@@ -340,8 +344,8 @@ function extractFromFile(absPath: string): FileExtraction {
   }
   const sf = ts.createSourceFile(absPath, code, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TSX)
   return {
-    islands: extractIslandDecls(sf, absPath),
-    registryEntries: extractRegistryEntries(sf, absPath),
+    islands: extractIslandDecls(sf, absPath, root),
+    registryEntries: extractRegistryEntries(sf, absPath, root),
     imports: extractImports(sf, absPath),
   }
 }
@@ -505,7 +509,7 @@ function detectDeadIslands(
 // Public API
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function auditIslands(rootDir: string = process.cwd()): IslandAuditResult {
+export function auditIslands(rootDir: string): IslandAuditResult {
   const root = findMonorepoRoot(rootDir)
   const findings: IslandFinding[] = []
   const summary = {
@@ -540,7 +544,7 @@ export function auditIslands(rootDir: string = process.cwd()): IslandAuditResult
   const resolvedImports = new Set<string>()
 
   for (const file of files) {
-    const ex = extractFromFile(file)
+    const ex = extractFromFile(file, root)
     if (ex.islands.length > 0) {
       declsByFile.set(file, ex.islands)
       allDecls.push(...ex.islands)
