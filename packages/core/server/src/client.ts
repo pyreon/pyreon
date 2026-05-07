@@ -91,17 +91,21 @@ type IslandLoader = () => Promise<{ default: ComponentFn } | ComponentFn>
  * Hydrate all `<pyreon-island>` elements on the page.
  *
  * Only loads JavaScript for components that are actually present in the HTML.
- * Respects hydration strategies (load, idle, visible, media, never).
+ * Respects hydration strategies (load, idle, visible, media, never). Returns
+ * a cleanup function that disconnects any pending observers/listeners.
+ *
+ * **`hydrate: 'never'` islands do NOT require a registry entry** — the whole
+ * point of the strategy is shipping zero client JS, so importing the loader
+ * (which would pull the component into the client bundle graph) defeats it.
+ * Such islands are silently skipped here without a `data-island-error` flag.
  *
  * @example
  * hydrateIslands({
  *   Counter: () => import("./Counter"),
  *   Search:  () => import("./Search"),
+ *   // No entry for `StaticBadge` even though it appears as a never-island
+ *   // in the HTML — registering one would defeat the strategy.
  * })
- */
-/**
- * Hydrate all `<pyreon-island>` elements on the page.
- * Returns a cleanup function that disconnects any pending observers/listeners.
  */
 export function hydrateIslands(registry: Record<string, IslandLoader>): () => void {
   if (typeof document === 'undefined') return () => {}
@@ -127,6 +131,14 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
       continue
     }
 
+    const strategy = (el.getAttribute('data-hydrate') ?? 'load') as HydrationStrategy
+
+    // `hydrate: 'never'` deliberately ships zero client JS for the island —
+    // no loader is registered because the loader's whole purpose is to be
+    // imported. Skip the missing-loader warning for never-strategy islands;
+    // any other strategy without a loader IS a real misconfiguration.
+    if (strategy === 'never') continue
+
     const loader = registry[componentId]
     if (!loader) {
       console.warn(`No loader registered for island "${componentId}"`)
@@ -134,7 +146,6 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
       continue
     }
 
-    const strategy = (el.getAttribute('data-hydrate') ?? 'load') as HydrationStrategy
     const propsJson = el.getAttribute('data-props') ?? '{}'
 
     const cleanup = scheduleHydration(el as HTMLElement, loader, propsJson, strategy)

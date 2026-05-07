@@ -43,6 +43,7 @@
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
     "prepublishOnly": "bun run build"
@@ -56,6 +57,8 @@
     "@pyreon/runtime-server": "workspace:^"
   },
   "devDependencies": {
-    "@pyreon/manifest": "workspace:*"
+    "@pyreon/manifest": "workspace:*",
+    "@vitest/browser": "^4.1.4",
+    "@vitest/browser-playwright": "^4.1.4"
   }
 }
