@@ -136,6 +136,15 @@ export interface RouteFileExports {
    */
   hasGcTime: boolean
   /**
+   * Has `export function getStaticPaths` or `export const getStaticPaths`.
+   * Used at SSG build time to enumerate concrete values for dynamic routes
+   * (`/posts/[id].tsx` → `[/posts/1, /posts/2, …]`). The function returns
+   * `Array<{ params: Record<string, string> }>`. Mirrors Astro's per-route
+   * convention. Without it, dynamic routes are silently skipped during SSG
+   * auto-detect — the user must hand-list every value in `ssg.paths`.
+   */
+  hasGetStaticPaths: boolean
+  /**
    * Raw text of the `export const meta = …` initializer, captured as a
    * literal expression. When present, the route generator inlines this
    * value directly into the generated routes module instead of importing

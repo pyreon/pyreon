@@ -131,17 +131,85 @@ export default async function renderPath(path) {
     return { appHtml, head: finalHead, loaderScript }
   })
 }
+
+// ─── getStaticPaths enumeration ─────────────────────────────────────────────
+//
+// Walks the generated routes tree and collects every dynamic route's
+// \`getStaticPaths\` function alongside its URL pattern. The SSG plugin
+// calls this once before rendering and uses the returned map to expand
+// dynamic routes (\`/posts/:id\` × \`[{id:'a'},{id:'b'}]\` → \`/posts/a\`,
+// \`/posts/b\`). Routes without \`getStaticPaths\` are absent from the map.
+//
+// Why we collect ALL routes here instead of resolving on-demand: the
+// SSG plugin's \`resolvePaths\` runs in the OUTER Vite plugin context (no
+// access to the bundled routes module). The SSR sub-build is the only
+// place where the user's compiled route exports are reachable, so we
+// expose a sync collector that lets the plugin call user functions
+// indirectly via the entry's exports.
+function collectStaticPathsRegistry(rs, out) {
+  for (const r of rs) {
+    if (typeof r.getStaticPaths === "function" && typeof r.path === "string") {
+      out.set(r.path, r.getStaticPaths)
+    }
+    if (Array.isArray(r.children)) collectStaticPathsRegistry(r.children, out)
+  }
+  return out
+}
+
+/** Map of \`urlPath → getStaticPaths function\` for every dynamic route. */
+export const __getStaticPathsRegistry = collectStaticPathsRegistry(routes, new Map())
 `.trimStart()
 
 const SSR_ENTRY_FILENAME = '__pyreon-zero-ssg-entry.js'
 
+/** Per-route enumerator. URL pattern (`/posts/:id`) → params list. */
+export type GetStaticPathsRegistry = Map<
+  string,
+  () => Promise<Array<{ params: Record<string, string> }>> | Array<{ params: Record<string, string> }>
+>
+
 /**
- * Auto-detect static paths from the route tree. A "static" path is one with
- * NO dynamic segments (`[id]`, `[...rest]`). Dynamic routes are skipped
- * because we can't enumerate their values at build time without a
- * `getStaticPaths`-style API.
+ * Substitute concrete values for `:param` / `:param*` segments in a URL
+ * pattern. Mirrors the inverse of `filePathToUrlPath`.
+ *
+ *   /posts/:id            × { id: 'a' }            → /posts/a
+ *   /posts/:id/:slug      × { id: 'a', slug: 'b' } → /posts/a/b
+ *   /blog/:rest*          × { rest: 'a/b' }         → /blog/a/b   (catch-all preserves slashes)
+ *
+ * Missing params or empty values throw — the SSG plugin treats this as a
+ * `getStaticPaths` error and records it in the per-path errors array.
  */
-async function autoDetectStaticPaths(routesDir: string): Promise<string[]> {
+export function expandUrlPattern(pattern: string, params: Record<string, string>): string {
+  return pattern
+    .split('/')
+    .map((seg) => {
+      if (!seg.startsWith(':')) return seg
+      const isCatchAll = seg.endsWith('*')
+      const name = isCatchAll ? seg.slice(1, -1) : seg.slice(1)
+      const value = params[name]
+      if (value === undefined || value === '') {
+        throw new Error(
+          `[zero:ssg] getStaticPaths for "${pattern}" returned params without "${name}"`,
+        )
+      }
+      return value
+    })
+    .join('/')
+}
+
+/**
+ * Auto-detect static paths from the route tree AND expand dynamic routes
+ * via each route's `getStaticPaths` export (when present). A "static" path
+ * is one with NO dynamic segments (`[id]`, `[...rest]`); a "dynamic" path
+ * with `getStaticPaths` is expanded via the registry; remaining dynamic
+ * routes are silently skipped (the user must hand-list them in
+ * `ssg.paths`).
+ */
+async function autoDetectStaticPaths(
+  routesDir: string,
+  registry?: GetStaticPathsRegistry,
+  errors: { path: string; error: unknown }[] = [],
+): Promise<string[]> {
   // Routes dir missing → fall back to "/" anyway. A project that doesn't
   // expose routes via fs-routing (custom routes module, single-page app
   // shell, etc.) still needs at least an index.html so static hosts have
@@ -151,18 +219,40 @@ async function autoDetectStaticPaths(routesDir: string): Promise<string[]> {
   const files = await scanRouteFiles(routesDir)
   const fileRoutes = parseFileRoutes(files)
 
-  // FileRoute is a FLAT list (no nested children) keyed by `urlPath`.
-  // Dynamic segments compile to `:param` (e.g. `[id]` → `:id`) and
-  // catch-alls to `*`. Skip any urlPath containing those — they need a
-  // `getStaticPaths`-style API to enumerate concrete values, which Pyreon
-  // doesn't ship yet.
   const out: string[] = []
   for (const r of fileRoutes) {
     if (r.isLayout || r.isError || r.isLoading || r.isNotFound) continue
     const path = r.urlPath
     if (!path) continue
-    if (/[:*]/.test(path)) continue
-    out.push(path)
+
+    // Static path — emit as-is.
+    if (!/[:*]/.test(path)) {
+      out.push(path)
+      continue
+    }
+
+    // Dynamic path — expand via getStaticPaths if available.
+    const enumerator = registry?.get(path)
+    if (!enumerator) continue // no getStaticPaths → skip silently
+
+    try {
+      const result = await enumerator()
+      if (!Array.isArray(result)) {
+        throw new Error(
+          `getStaticPaths for "${path}" must return an array, got ${typeof result}`,
+        )
+      }
+      for (const entry of result) {
+        if (!entry || typeof entry !== 'object' || !entry.params) {
+          throw new Error(
+            `getStaticPaths for "${path}" returned an entry without "params"`,
+          )
+        }
+        out.push(expandUrlPattern(path, entry.params))
+      }
+    } catch (error) {
+      errors.push({ path, error })
+    }
   }
 
   // Always include "/" as a fallback if no static routes were found —
@@ -174,6 +264,8 @@ async function autoDetectStaticPaths(routesDir: string): Promise<string[]> {
 async function resolvePaths(
   config: ZeroConfig,
   routesDir: string,
+  registry?: GetStaticPathsRegistry,
+  errors: { path: string; error: unknown }[] = [],
 ): Promise<string[]> {
   const explicit = config.ssg?.paths
   if (typeof explicit === 'function') {
@@ -181,7 +273,7 @@ async function resolvePaths(
     return Array.isArray(result) ? result : []
   }
   if (Array.isArray(explicit)) return explicit
-  return autoDetectStaticPaths(routesDir)
+  return autoDetectStaticPaths(routesDir, registry, errors)
 }
 
 function resolveOutputPath(distDir: string, path: string): string {
@@ -308,8 +400,10 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // expected here. Suppress per Vite's own recommendation.
       const handlerMod = (await import(/* @vite-ignore */ pathToFileURL(handlerPath).href)) as {
         default: (path: string) => Promise<{ appHtml: string; head: string; loaderScript: string }>
+        __getStaticPathsRegistry?: GetStaticPathsRegistry
       }
       const renderPath = handlerMod.default
+      const registry = handlerMod.__getStaticPathsRegistry
 
       // Read the user's built index.html template. Vite has just produced it
       // with hashed asset URLs (`/assets/index-XYZ.js`), preload links, etc.
@@ -319,9 +413,15 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // `</body>` respectively so a bare `index.html` still works.
       const template = await readFile(indexHtmlPath, 'utf-8')
 
+      // Errors from getStaticPaths run AND per-page render are collected
+      // into the same array so the post-render summary catches both. The
+      // SSG plugin completes either way — a single bad route shouldn't
+      // abort the whole site build.
+      const errors: { path: string; error: unknown }[] = []
+
       // Resolve paths and render.
       const routesDir = join(root, 'src', 'routes')
-      const paths = await resolvePaths(config, routesDir)
+      const paths = await resolvePaths(config, routesDir, registry, errors)
 
       if (paths.length === 0) {
         // oxlint-disable-next-line no-console
@@ -331,7 +431,6 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       }
 
       let pages = 0
-      const errors: { path: string; error: unknown }[] = []
       const start = Date.now()
 
       for (const p of paths) {
@@ -413,6 +512,7 @@ export const _internal = {
   resolvePaths,
   autoDetectStaticPaths,
   resolveOutputPath,
+  expandUrlPattern,
   SSR_ENTRY_SOURCE,
   SSR_ENTRY_FILENAME,
 }
