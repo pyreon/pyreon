@@ -315,6 +315,46 @@ const MATRIX: Cell[] = [
     },
   },
 
+  // cpa-pw-blog × ssg — exercises the full SSG roadmap stack:
+  //   PR A: getStaticPaths enumerates blog post slugs
+  //   PR C: _404.tsx emits dist/404.html
+  //   PR F: seoPlugin({ useSsgPaths: true }) reads the resolved-paths
+  //         manifest and includes dynamic blog post URLs in sitemap.xml
+  // Uses the example's own vite.config.ts (which wires getStaticPaths +
+  // seoPlugin + fontPlugin together) — see useExampleConfig: true.
+  {
+    example: 'cpa-pw-blog',
+    mode: 'ssg',
+    useExampleConfig: true,
+    smoke: (dist) => {
+      // Static routes from auto-detect.
+      assertFileExists(join(dist, 'index.html'))
+      assertFileExists(join(dist, 'about', 'index.html'))
+      assertFileExists(join(dist, 'blog', 'index.html'))
+      assertFileExists(join(dist, '404.html'))
+
+      // PR F — sitemap.xml emitted by seoPlugin AFTER the SSG manifest
+      // exists. Must contain the static routes AND the dynamic blog
+      // post URLs enumerated by getStaticPaths in [slug].tsx.
+      const sitemapPath = join(dist, 'sitemap.xml')
+      assertFileExists(sitemapPath)
+      // Pre-PR-F: sitemap walks file-system routes and skips `[slug]`
+      // (silent regex filter) — the blog post URLs would be absent.
+      // Post-PR-F: useSsgPaths reads the manifest, blog post URLs land
+      // in sitemap.xml. The slugs come from `examples/cpa-pw-blog/src/lib/posts.ts`.
+      assertFileContains(sitemapPath, 'https://example.com/about')
+      assertFileContains(sitemapPath, 'https://example.com/blog')
+      // Blog post slugs come from `examples/cpa-pw-blog/src/content/posts/`.
+      assertFileContains(sitemapPath, '/blog/welcome')
+      assertFileContains(sitemapPath, '/blog/why-signals')
+      assertFileContains(sitemapPath, '/blog/static-vs-ssr')
+
+      // PR F cleanup — the manifest is an internal artifact and must
+      // NOT ship to the static host (no `_pyreon-ssg-paths.json` in dist).
+      assertFileDoesNotExist(join(dist, '_pyreon-ssg-paths.json'))
+    },
+  },
+
   // fundamentals-playground — exercises every fundamental package
   // (form, query, store, machine, charts, code, hotkeys, i18n, …).
   // If a fundamentals package's build path breaks, this catches it.

@@ -1,5 +1,8 @@
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { generateRobots, generateSitemap, jsonLd } from '../seo'
+import { generateRobots, generateSitemap, jsonLd, seoPlugin } from '../seo'
 
 describe('generateSitemap', () => {
   const config = { origin: 'https://example.com' }
@@ -148,5 +151,157 @@ describe('jsonLd', () => {
     const data = JSON.parse(jsonStr)
     expect(data.headline).toBe('Test Article')
     expect(data.author.name).toBe('Author')
+  })
+})
+
+// ─── PR F — useSsgPaths integration ─────────────────────────────────────────
+
+describe('seoPlugin — useSsgPaths (PR F)', () => {
+  // Each test writes a fresh dist dir with a `_pyreon-ssg-paths.json`
+  // manifest, runs the plugin's closeBundle, asserts the resulting
+  // sitemap.xml content. The plugin's `configResolved` captures
+  // `distDir`; mock the minimum shape Vite passes in.
+  function makeFixture(paths: string[] | null) {
+    const root = mkdtempSync(join(tmpdir(), 'pyreon-seo-fixture-'))
+    const distDir = join(root, 'dist')
+    mkdirSync(distDir, { recursive: true })
+    if (paths !== null) {
+      writeFileSync(
+        join(distDir, '_pyreon-ssg-paths.json'),
+        JSON.stringify({ paths }, null, 2),
+      )
+    }
+    return {
+      root,
+      distDir,
+      cleanup: () => rmSync(root, { recursive: true, force: true }),
+    }
+  }
+
+  it('moves to closeBundle + sets enforce: "post" when useSsgPaths is true', () => {
+    // Without `useSsgPaths`, `enforce` is undefined (default) AND
+    // sitemap emits at generateBundle. With `useSsgPaths`, `enforce`
+    // flips to 'post' AND closeBundle handles emission. Both contracts
+    // matter — without enforce: 'post' the plugin might run BEFORE the
+    // SSG plugin's manifest-write at closeBundle.
+    const off = seoPlugin({ sitemap: { origin: 'https://example.com' } }) as any
+    const on = seoPlugin({ sitemap: { origin: 'https://example.com', useSsgPaths: true } }) as any
+    expect(off.enforce).toBeUndefined()
+    expect(on.enforce).toBe('post')
+  })
+
+  it('reads the manifest at closeBundle + emits sitemap.xml with SSG paths', async () => {
+    const f = makeFixture(['/', '/about', '/blog/post-a', '/blog/post-b'])
+    try {
+      const plugin = seoPlugin({
+        sitemap: { origin: 'https://example.com', useSsgPaths: true },
+      }) as any
+      plugin.configResolved({ root: f.root, build: { outDir: 'dist' } })
+      await plugin.closeBundle()
+
+      const sitemapPath = join(f.distDir, 'sitemap.xml')
+      expect(existsSync(sitemapPath)).toBe(true)
+      const xml = readFileSync(sitemapPath, 'utf-8')
+      // Every manifest path appears as a <loc>.
+      expect(xml).toContain('<loc>https://example.com</loc>')
+      expect(xml).toContain('<loc>https://example.com/about</loc>')
+      expect(xml).toContain('<loc>https://example.com/blog/post-a</loc>')
+      expect(xml).toContain('<loc>https://example.com/blog/post-b</loc>')
+    } finally {
+      f.cleanup()
+    }
+  })
+
+  it('cleans up the manifest after reading (internal artifact)', async () => {
+    const f = makeFixture(['/', '/about'])
+    const manifestPath = join(f.distDir, '_pyreon-ssg-paths.json')
+    expect(existsSync(manifestPath)).toBe(true)
+    try {
+      const plugin = seoPlugin({
+        sitemap: { origin: 'https://example.com', useSsgPaths: true },
+      }) as any
+      plugin.configResolved({ root: f.root, build: { outDir: 'dist' } })
+      await plugin.closeBundle()
+      // Manifest is internal — must NOT remain in the published dist.
+      expect(existsSync(manifestPath)).toBe(false)
+    } finally {
+      f.cleanup()
+    }
+  })
+
+  it('falls back gracefully when manifest is missing (no SSG step ran)', async () => {
+    const f = makeFixture(null)
+    try {
+      const plugin = seoPlugin({
+        sitemap: { origin: 'https://example.com', useSsgPaths: true },
+      }) as any
+      plugin.configResolved({ root: f.root, build: { outDir: 'dist' } })
+      // Should not throw — sitemap may still emit from the file-scan
+      // fallback (or be empty if no routes found). The contract is
+      // "don't crash when ssgPlugin didn't run."
+      await expect(plugin.closeBundle()).resolves.toBeUndefined()
+    } finally {
+      f.cleanup()
+    }
+  })
+
+  it('skips closeBundle emission entirely when useSsgPaths is false', async () => {
+    const f = makeFixture(['/should-not-appear'])
+    try {
+      const plugin = seoPlugin({
+        sitemap: { origin: 'https://example.com' },
+      }) as any
+      plugin.configResolved({ root: f.root, build: { outDir: 'dist' } })
+      await plugin.closeBundle()
+      // Without `useSsgPaths`, closeBundle must be a no-op — sitemap
+      // emission stays at generateBundle for that path.
+      expect(existsSync(join(f.distDir, 'sitemap.xml'))).toBe(false)
+    } finally {
+      f.cleanup()
+    }
+  })
+
+  it('ignores malformed manifest JSON (bad shape)', async () => {
+    const f = makeFixture(null)
+    // Hand-write a malformed manifest — wrong shape entirely.
+    writeFileSync(join(f.distDir, '_pyreon-ssg-paths.json'), '{"not-paths": "garbage"}')
+    try {
+      const plugin = seoPlugin({
+        sitemap: { origin: 'https://example.com', useSsgPaths: true },
+      }) as any
+      plugin.configResolved({ root: f.root, build: { outDir: 'dist' } })
+      await plugin.closeBundle()
+      // Plugin must NOT crash on malformed manifest. It should fall
+      // back to file-scan-only behaviour.
+      // (Whether sitemap emits depends on whether the file-scan finds
+      // any routes — irrelevant to this assertion.)
+    } finally {
+      f.cleanup()
+    }
+  })
+
+  it('filters non-string entries from the manifest paths array', async () => {
+    const f = makeFixture(null)
+    writeFileSync(
+      join(f.distDir, '_pyreon-ssg-paths.json'),
+      // Mixed types — only strings should land in the sitemap.
+      JSON.stringify({ paths: ['/valid', 42, null, '/also-valid', { not: 'string' }] }),
+    )
+    try {
+      const plugin = seoPlugin({
+        sitemap: { origin: 'https://example.com', useSsgPaths: true },
+      }) as any
+      plugin.configResolved({ root: f.root, build: { outDir: 'dist' } })
+      await plugin.closeBundle()
+
+      const sitemapPath = join(f.distDir, 'sitemap.xml')
+      const xml = readFileSync(sitemapPath, 'utf-8')
+      expect(xml).toContain('<loc>https://example.com/valid</loc>')
+      expect(xml).toContain('<loc>https://example.com/also-valid</loc>')
+      // Non-string entries are dropped silently — sitemap stays clean.
+      expect(xml).not.toContain('<loc>https://example.com42</loc>')
+    } finally {
+      f.cleanup()
+    }
   })
 })

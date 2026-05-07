@@ -643,6 +643,16 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // HTML files. Loader redirects DON'T produce a per-path index.html
       // — the redirect IS the response.
       const redirects: RedirectEntry[] = []
+      // PR F — track every path that produced a `dist/<path>/index.html` so
+      // the post-loop step can emit `dist/_pyreon-ssg-paths.json` for
+      // `seoPlugin({ sitemap: { useSsgPaths: true } })` to read at its
+      // own `closeBundle`. We track the resolved URL paths (post-
+      // getStaticPaths expansion + per-locale duplication when PR H
+      // ships) — exactly what the sitemap.xml needs. Paths that errored
+      // OR redirected are intentionally absent: errored pages have no
+      // HTML to link to, and redirect sources go to `_redirects`, not
+      // sitemap.xml (linking to a redirect source confuses crawlers).
+      const writtenPaths: string[] = []
       const start = Date.now()
 
       for (const p of paths) {
@@ -686,9 +696,38 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           await mkdir(dirname(filePath), { recursive: true })
           await writeFile(filePath, html, 'utf-8')
           pages++
+          writtenPaths.push(p)
         } catch (error) {
           errors.push({ path: p, error })
         }
+      }
+
+      // PR F — Sitemap path manifest.
+      //
+      // Write the resolved URL paths to `dist/_pyreon-ssg-paths.json` so
+      // `seoPlugin({ sitemap: { useSsgPaths: true } })` can read them at
+      // its own `closeBundle` and emit a sitemap that includes dynamic-
+      // route enumerations (PR A's `getStaticPaths`) AND per-locale
+      // variants (PR H, when shipped). Without this manifest, `seoPlugin`
+      // walks the file-system route tree directly and silently skips
+      // dynamic routes (`[id]`) because their concrete values aren't
+      // knowable at file-scan time.
+      //
+      // The 404 path is omitted intentionally — error pages don't belong
+      // in sitemap.xml. Redirected sources are ALSO omitted (they're
+      // already absent from `writtenPaths` because the loop hits the
+      // redirect branch + `continue` before the push).
+      //
+      // Always emit when SSG ran. Filename starts with `_` so static
+      // hosts that publish the dist root don't ALSO publish this internal
+      // manifest as a public asset — convention matches `_redirects` /
+      // `_redirects.json`. The seoPlugin reads + cleans it up after use.
+      if (writtenPaths.length > 0) {
+        await writeFile(
+          join(distDir, '_pyreon-ssg-paths.json'),
+          `${JSON.stringify({ paths: writtenPaths }, null, 2)}\n`,
+          'utf-8',
+        )
       }
 
       // PR C — Auto-emit dist/404.html from _404.tsx convention.
