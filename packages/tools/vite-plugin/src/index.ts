@@ -41,6 +41,12 @@ import type { Plugin, ViteDevServer } from 'vite'
 const HMR_RUNTIME_ID = '\0pyreon/hmr-runtime'
 const HMR_RUNTIME_IMPORT = 'virtual:pyreon/hmr-runtime'
 
+// Virtual module ID for the auto-generated islands registry. See
+// `prescanIslandDeclarations` + the `load` hook for emit shape. Consumed by
+// `hydrateIslandsAuto()` in `@pyreon/server/client`.
+const ISLANDS_REGISTRY_ID = '\0pyreon/islands-registry'
+const ISLANDS_REGISTRY_IMPORT = 'virtual:pyreon/islands-registry'
+
 export type CompatFramework = 'react' | 'preact' | 'vue' | 'solid'
 
 export interface PyreonPluginOptions {
@@ -72,6 +78,33 @@ export interface PyreonPluginOptions {
     /** Server entry file path (e.g. "./src/entry-server.ts") */
     entry: string
   }
+
+  /**
+   * Auto-discover `island()` declarations and expose them as
+   * `virtual:pyreon/islands-registry` for `hydrateIslandsAuto()` in
+   * `@pyreon/server/client`.
+   *
+   * Eliminates the manual sync between `island()` declarations and the
+   * client-side `hydrateIslands({ ... })` registry — typo / forgotten entry /
+   * registry drift is the #1 author foot-gun for islands.
+   *
+   * Defaults to `true`. The prescan is cheap (regex over the same files
+   * already walked by `prescanSignalExports`); set to `false` only if you
+   * have a reason not to support `hydrateIslandsAuto()`.
+   *
+   * `hydrate: 'never'` islands are deliberately OMITTED from the auto-
+   * registry — the whole point of the strategy is shipping zero client JS,
+   * so registering a loader (which would pull the component module into the
+   * client bundle graph) defeats it.
+   *
+   * @example
+   * pyreon({ islands: true })
+   *
+   * // src/entry-client.ts
+   * import { hydrateIslandsAuto } from '@pyreon/server/client'
+   * hydrateIslandsAuto()
+   */
+  islands?: boolean
 }
 
 // ── Compat JSX import sources ─────────────────────────────────────────────────
@@ -232,6 +265,10 @@ function scanPyreonDeps(root: string): string[] {
 export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
   const ssrConfig = options?.ssr
   const compat = options?.compat
+  // Default islands support to enabled — the prescan is cheap and the virtual
+  // module is harmless if the user has no `island()` calls. Opt out only if
+  // you have a specific reason.
+  const islandsEnabled = options?.islands !== false
   let isBuild = false
   let projectRoot = ''
 
@@ -245,6 +282,13 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
   // Cache `isPyreonWorkspaceFile` lookups by directory — package.json reads
   // happen at most once per containing directory across the build.
   const pyreonWorkspaceDirCache = new Map<string, boolean>()
+
+  // ── Island declaration registry ─────────────────────────────────────────
+  // Tracks every `island(() => import('PATH'), { name: 'X', hydrate: 'Y' })`
+  // call across the source tree. Keyed by absolute source-file path of the
+  // declaration site so HMR can invalidate per-file. Each entry's loader path
+  // is resolved relative to the file where the call was written.
+  const islandRegistry = new Map<string, IslandDecl[]>()
 
   return {
     name: 'pyreon',
@@ -318,11 +362,21 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       // ordering problem where component.tsx is transformed before
       // store.ts — without pre-scanning, the registry would be empty.
       await prescanSignalExports(projectRoot, signalExportRegistry)
+
+      // Mirror prescan for `island()` declarations. The result populates
+      // `virtual:pyreon/islands-registry`, consumed by `hydrateIslandsAuto()`
+      // in `@pyreon/server/client`. Eliminates the manual sync between
+      // `island()` source-of-truth and the client `hydrateIslands({ ... })`
+      // call — the #1 author foot-gun for islands.
+      if (islandsEnabled) {
+        await prescanIslandDeclarations(projectRoot, islandRegistry)
+      }
     },
 
     // ── Virtual module + compat alias resolution ─────────────────────────────
     async resolveId(id, importer) {
       if (id === HMR_RUNTIME_IMPORT) return HMR_RUNTIME_ID
+      if (id === ISLANDS_REGISTRY_IMPORT) return ISLANDS_REGISTRY_ID
 
       // `@pyreon/core/jsx-runtime` resolves to the compat package only for
       // user code — never for `@pyreon/*` framework files (zero, router,
@@ -352,6 +406,9 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       if (id === HMR_RUNTIME_ID) {
         return HMR_RUNTIME_SOURCE
       }
+      if (id === ISLANDS_REGISTRY_ID) {
+        return renderIslandsRegistry(islandRegistry, islandsEnabled)
+      }
     },
 
     async transform(code, id, transformOptions) {
@@ -374,6 +431,12 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       // incrementally. buildStart pre-scans all files, but this handles
       // files created/modified after buildStart (dev mode HMR).
       scanSignalExports(code, normalizeModuleId(id), signalExportRegistry)
+
+      // ── Same incremental update for island() declarations ──────────────
+      // HMR: when a user adds/renames/removes an island() call, the
+      // virtual:pyreon/islands-registry module needs to reflect it on the
+      // next dev-server module reload.
+      if (islandsEnabled) scanIslandDeclarations(code, id, islandRegistry)
 
       // ── Resolve imported signals from the registry ─────────────────────
       // Check each import in this file: if the imported module has signal
@@ -739,6 +802,189 @@ function isAssetRequest(url: string): boolean {
 function normalizeModuleId(id: string): string {
   const queryIndex = id.indexOf('?')
   return queryIndex >= 0 ? id.slice(0, queryIndex) : id
+}
+
+// ─── Island declaration scanner ────────────────────────────────────────────
+
+/**
+ * One island() call site discovered in source.
+ *
+ * `loaderAbsPath` is the dynamic-import target resolved relative to the
+ * source file where the call was written. Vite's resolver finds the actual
+ * file (.tsx / .jsx / .ts / .js extension auto-added) when the registry
+ * module emits `() => import('<loaderAbsPath>')`.
+ */
+interface IslandDecl {
+  name: string
+  hydrate: string
+  loaderAbsPath: string
+}
+
+/**
+ * Pre-scan all source files in the project for `island()` declarations.
+ *
+ * Called from `buildStart` (when `islands: true`) so the registry is fully
+ * populated before any transforms run. Mirrors `prescanSignalExports` shape;
+ * the per-file regex pattern matches:
+ *
+ *   island(() => import('PATH'), { name: 'NAME', hydrate: 'STRATEGY' })
+ *
+ * Edge cases the regex deliberately doesn't cover (user falls back to manual
+ * `hydrateIslands({ ... })`):
+ *   - Loader is a variable, not an inline arrow: `island(myLoader, { name })`
+ *   - Name is a variable: `island(() => import('./X'), { name: NAME_CONST })`
+ *   - Options come from a spread: `island(loader, { ...opts })`
+ */
+async function prescanIslandDeclarations(
+  root: string,
+  registry: Map<string, IslandDecl[]>,
+): Promise<void> {
+  const files: string[] = []
+
+  function walk(dir: string) {
+    try {
+      for (const entry of readdirSync(dir)) {
+        if (
+          entry.startsWith('.') ||
+          entry === 'node_modules' ||
+          entry === 'dist' ||
+          entry === 'lib' ||
+          entry === 'build'
+        )
+          continue
+        const full = pathJoin(dir, entry)
+        try {
+          const stat = statSync(full)
+          if (stat.isDirectory()) walk(full)
+          else if (/\.(ts|tsx|js|jsx)$/.test(entry)) files.push(full)
+        } catch {
+          /* permission error, etc. */
+        }
+      }
+    } catch {
+      /* dir doesn't exist */
+    }
+  }
+
+  walk(root)
+
+  for (const file of files) {
+    try {
+      const code = readFileSync(file, 'utf-8')
+      scanIslandDeclarations(code, file, registry)
+    } catch {
+      /* read error */
+    }
+  }
+}
+
+/**
+ * Scan a single source file for `island()` declarations and record them.
+ *
+ * The regex captures:
+ *   - Group 1: dynamic-import path (`./components/Counter`)
+ *   - Group 2: options block contents
+ *
+ * Then a follow-up regex pulls `name: 'X'` and `hydrate: 'Y'` from the
+ * options block. Single-line and multi-line forms both work.
+ *
+ * Resolves the loader path relative to the file where the call lives so
+ * the emitted virtual-module registry gets an absolute path Vite's resolver
+ * can find.
+ */
+function scanIslandDeclarations(
+  code: string,
+  filePath: string,
+  registry: Map<string, IslandDecl[]>,
+): void {
+  // `[\s\S]` lets the options block span multiple lines. The lazy `?` after
+  // the options block prevents over-matching when several `island()` calls
+  // appear in the same file.
+  const ISLAND_CALL_RE =
+    /island\s*\(\s*\(\s*\)\s*=>\s*import\s*\(\s*['"]([^'"]+)['"]\s*\)\s*,\s*\{([\s\S]*?)\}\s*\)/g
+  const decls: IslandDecl[] = []
+  let match: RegExpExecArray | null
+  while ((match = ISLAND_CALL_RE.exec(code)) !== null) {
+    const importPath = match[1]!
+    const optsBlock = match[2]!
+    const nameMatch = /(?:^|[\s,{])name\s*:\s*['"]([^'"]+)['"]/.exec(optsBlock)
+    if (!nameMatch) continue // can't auto-register without a name
+    const hydrateMatch = /(?:^|[\s,{])hydrate\s*:\s*['"]([^'"]+)['"]/.exec(optsBlock)
+    const hydrate = hydrateMatch ? hydrateMatch[1]! : 'load'
+    const loaderAbsPath = importPath.startsWith('.')
+      ? resolveRelative(filePath, importPath)
+      : importPath
+    decls.push({ name: nameMatch[1]!, hydrate, loaderAbsPath })
+  }
+  if (decls.length > 0) {
+    registry.set(normalizeModuleId(filePath), decls)
+  } else {
+    // Clean up if file no longer declares islands (e.g. after edit)
+    registry.delete(normalizeModuleId(filePath))
+  }
+}
+
+/**
+ * Resolve a dynamic-import specifier to an absolute path, mirroring how Node
+ * / Vite resolve `import('./X')` from the source file's directory.
+ */
+function resolveRelative(fromFile: string, relPath: string): string {
+  return pathJoin(dirname(fromFile), relPath)
+}
+
+/**
+ * Render the auto-generated `virtual:pyreon/islands-registry` source. Emits:
+ *
+ *   export const __pyreonIslandRegistry = {
+ *     Counter:   () => import('/abs/path/to/components/Counter'),
+ *     IdleClock: () => import('/abs/path/to/components/IdleClock'),
+ *     // never-strategy islands deliberately omitted
+ *   }
+ *
+ * `hydrate: 'never'` islands are skipped — registering a loader for them
+ * would defeat the strategy by pulling the component module into the
+ * client bundle graph. `hydrateIslandsAuto()` short-circuits never-islands
+ * at runtime regardless; emitting here would still create the dynamic-
+ * import chunk.
+ *
+ * Duplicate `name` across declarations: the LAST one wins. Documented as
+ * an anti-pattern (caught by the planned `pyreon doctor --check-islands`).
+ */
+function renderIslandsRegistry(
+  registry: Map<string, IslandDecl[]>,
+  enabled: boolean,
+): string {
+  if (!enabled) {
+    return [
+      `// pyreon plugin: islands feature is disabled (pyreon({ islands: false })).`,
+      `// hydrateIslandsAuto() will throw at runtime — re-enable via vite.config.ts`,
+      `// or use manual hydrateIslands({ ... }) instead.`,
+      `export const __pyreonIslandRegistry = {};`,
+      `export const __pyreonIslandsEnabled = false;`,
+    ].join('\n')
+  }
+  const entries: string[] = []
+  const seen = new Set<string>()
+  // Deterministic order: sort by name for stable output / predictable HMR.
+  const all = Array.from(registry.values()).flat()
+  all.sort((a, b) => a.name.localeCompare(b.name))
+  for (const { name, hydrate, loaderAbsPath } of all) {
+    if (hydrate === 'never') continue
+    if (seen.has(name)) continue
+    seen.add(name)
+    // JSON.stringify gives proper escaping for both name (object key) and path.
+    entries.push(`  ${JSON.stringify(name)}: () => import(${JSON.stringify(loaderAbsPath)}),`)
+  }
+  return [
+    `// Auto-generated by @pyreon/vite-plugin (islands: true). Do not edit.`,
+    `// Sourced from island() declarations in your project. Never-strategy`,
+    `// islands are intentionally omitted — registering a loader for them`,
+    `// would defeat the zero-JS contract.`,
+    `export const __pyreonIslandRegistry = {`,
+    ...entries,
+    `};`,
+    `export const __pyreonIslandsEnabled = true;`,
+  ].join('\n')
 }
 
 /**
