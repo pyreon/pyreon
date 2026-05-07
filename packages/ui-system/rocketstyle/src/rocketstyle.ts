@@ -263,23 +263,46 @@ const rocketComponent: RocketComponent = (options) => {
       // Read reactive inputs (tracks theme + mode signals)
       const theme = themeAttrs.theme
       const mode = themeAttrs.mode
+      const propsRec = props as Record<string, unknown>
 
-      // Build key: mode | dimensionProps | pseudoState. Reading dimension
+      // Resolve active dimensions FIRST so the cache key uses the RESOLVED
+      // dimension values, not the raw prop names. Under `useBooleans: true`
+      // the user writes `<X primary />` / `<X secondary />` — both map to
+      // `state="primary"` / `state="secondary"` after _calculateStylingAttrs
+      // resolves the boolean shorthand. Keying off `propsRec[dimName]` would
+      // read `undefined` for both (the dimension prop itself was never set)
+      // and collide every variant onto the first cached entry. Reading
+      // `rocketstateRaw[dimName]` gives the resolved string and partitions
+      // them correctly.
+      // Resolved from props (not localCtx which has pseudo getters).
+      const rocketstateRaw = _calculateStylingAttrs({
+        props: pickStyledAttrs(propsRec, reservedPropNames),
+        dimensions,
+      })
+
+      // Build key: mode | dimensionValues | pseudoState. Reading dimension
       // props + pseudo signals here tracks them in the surrounding computed
       // so any change re-runs us with a different key.
       let key = mode as string
-      const propsRec = props as Record<string, unknown>
       for (const dimName in dimensions) {
-        const v = propsRec[dimName]
-        // String/number/boolean serialize directly. Anything else (including
-        // undefined / objects) gets a typeof tag so we don't collide.
-        key +=
-          '|' +
-          (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
-            ? String(v)
-            : v === undefined
-              ? ''
-              : '~' + typeof v)
+        const v = rocketstateRaw[dimName]
+        // Multi-key dimensions (e.g. variant={['primary', 'rounded']}) are
+        // arrays. Sort + join so equivalent sets hash identically; without
+        // this both `['a','b']` and `['b','a']` would produce different keys.
+        if (Array.isArray(v)) {
+          key +=
+            '|' + (v.length === 0 ? '' : (v as unknown[]).slice().sort().join(','))
+        } else {
+          // String/number/boolean serialize directly. Anything else (including
+          // undefined / objects) gets a typeof tag so we don't collide.
+          key +=
+            '|' +
+            (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+              ? String(v)
+              : v === undefined
+                ? ''
+                : '~' + typeof v)
+        }
       }
       for (const k of ALL_PSEUDO_KEYS) {
         const propV = propsRec[k]
@@ -330,12 +353,6 @@ const rocketComponent: RocketComponent = (options) => {
         dimHelper.set(theme, getDimensionThemes(theme, options))
       }
       const themes = dimHelper.get(theme)
-
-      // Resolve active dimensions from props (not localCtx which has pseudo getters)
-      const rocketstateRaw = _calculateStylingAttrs({
-        props: pickStyledAttrs(propsRec, reservedPropNames),
-        dimensions,
-      })
 
       // Resolve mode-specific theme
       const modeBaseHelper = ThemeManager.modeBaseTheme[mode]
