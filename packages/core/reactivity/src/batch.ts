@@ -102,13 +102,33 @@ export function batch(fn: () => void): void {
           if (pendingEffects.size > 0) {
             if (++effectPass > MAX_PASSES) {
               if (__DEV__) {
+                // Surface labels of dropped effects when available — helps
+                // identify the offending effect in a real app. Falls back to
+                // bare count for anonymous effects.
+                const droppedCount = pendingEffects.size
+                const labels: string[] = []
+                for (const notify of pendingEffects) {
+                  const label = (notify as { _label?: string })._label
+                  if (label) labels.push(label)
+                  if (labels.length >= 5) break
+                }
+                const labelHint = labels.length
+                  ? ` Sample labels: ${labels.join(', ')}${droppedCount > labels.length ? `, …${droppedCount - labels.length} more` : ''}.`
+                  : ''
                 // oxlint-disable-next-line no-console
                 console.warn(
                   '[pyreon] batch effect flush exceeded MAX_PASSES (32) — possible infinite re-enqueue loop. ' +
-                    `${pendingEffects.size} pending effects dropped. ` +
+                    `${droppedCount} pending effects dropped.${labelHint} ` +
+                    'Common cause: an effect that writes to a signal it also reads, without a guard. ' +
                     'See packages/core/reactivity/src/batch.ts for the multi-pass flush contract.',
                 )
               }
+              // Drop the queue so subsequent batches start clean — without
+              // this, the next batch would re-encounter the offending effect
+              // immediately on its first pass and trip MAX_PASSES instantly,
+              // making the original error harder to diagnose.
+              pendingEffects.clear()
+              _nextEffectPass.clear()
               break
             }
             _visitedThisPass = new Set<() => void>()

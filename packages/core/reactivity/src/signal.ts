@@ -83,7 +83,27 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
     _countSink.__pyreon_count__?.('reactivity.signalWrite')
   const prev = this._v
   this._v = newValue
-  if (isTracing()) _notifyTraceListeners(this as unknown as Signal<unknown>, prev, newValue)
+  if (isTracing()) {
+    // Trace listeners are user-supplied debug code that fires on every
+    // signal write. A throwing listener here would leave `_v` updated but
+    // subscribers never notified (state divergence: readers see the new
+    // value, but no effects run). Trace failures must not corrupt program
+    // state — wrap in try/catch and route through `_userErrorHandler` so
+    // the corruption is at least visible. Listeners are removed via the
+    // disposer returned by `onSignalUpdate`; this catch prevents one bad
+    // listener from breaking unrelated reactive flow.
+    try {
+      _notifyTraceListeners(this as unknown as Signal<unknown>, prev, newValue)
+    } catch (err) {
+      if (process.env.NODE_ENV !== 'production') {
+        // oxlint-disable-next-line no-console
+        console.error(
+          '[pyreon] signal trace listener threw — listener is buggy. Subscribers continue uninterrupted.',
+          err,
+        )
+      }
+    }
+  }
   // Auto-batch the notification chain. Without this, a diamond dependency
   // graph (a → b, c → d → effect) fires the apex effect TWICE per write
   // because subscribers cascade inline: the first path through `b` reaches

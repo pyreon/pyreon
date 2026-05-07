@@ -562,3 +562,74 @@ describe('batch — subscriber-throw stale-Set leak (audit bug #19)', () => {
     expect(fires).toBe(3)
   })
 })
+
+// Regression: pre-fix, MAX_PASSES=32 exhaustion was a bisect blind spot — no
+// test verified the warning fires AND that the queue is cleared so the next
+// batch starts clean. Without queue clearing, the offending effect immediately
+// re-trips MAX_PASSES on every subsequent batch, masking the original cause.
+describe('batch — MAX_PASSES exhaustion (regression)', () => {
+  test('infinite re-enqueue loop is contained: warns, drops, next batch clean', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    // Two signals — the offending effect reads `a` and writes `b`, and a
+    // sibling effect reads `b` and writes `a`. This is the classic
+    // ping-pong infinite loop. Within a single batch, each pass re-enqueues
+    // both effects; MAX_PASSES caps the cascade.
+    const a = signal(0)
+    const b = signal(0)
+    let aReads = 0
+    let bReads = 0
+
+    effect(() => {
+      aReads++
+      // Write to `b` based on `a` — re-enqueues the b-reading effect.
+      b.set(a() + 1)
+    })
+    effect(() => {
+      bReads++
+      // Write to `a` based on `b` — re-enqueues the a-reading effect.
+      a.set(b() + 1)
+    })
+
+    // Initial reads.
+    expect(aReads).toBeGreaterThan(0)
+    expect(bReads).toBeGreaterThan(0)
+    aReads = 0
+    bReads = 0
+
+    // Trigger the loop. The batch should max out at MAX_PASSES and warn.
+    batch(() => {
+      a.set(100)
+    })
+
+    // Warning fires with the actionable hint.
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('exceeded MAX_PASSES'),
+    )
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Common cause'),
+    )
+
+    // Bisect contract: the queue is cleared after the cap, so a fresh
+    // unrelated batch is NOT immediately re-tripped. Without the clear,
+    // any subsequent batch would re-encounter the still-pending effects
+    // and re-fire the warning instantly.
+    warnSpy.mockClear()
+    const unrelated = signal(0)
+    let unrelatedRuns = 0
+    effect(() => {
+      unrelatedRuns++
+      void unrelated()
+    })
+    const baseline = unrelatedRuns
+    batch(() => {
+      unrelated.set(1)
+    })
+    expect(unrelatedRuns).toBe(baseline + 1)
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('exceeded MAX_PASSES'),
+    )
+
+    warnSpy.mockRestore()
+  })
+})

@@ -32,6 +32,12 @@ export class EffectScope {
 
   /** Register a callback to run after any reactive update in this scope. */
   addUpdateHook(fn: () => void): void {
+    // Mirror `add()`'s behavior: silently no-op when scope is stopped.
+    // Without this, hooks pushed after `stop()` would leak into a freshly-
+    // allocated `_updateHooks` array and never fire (because `notifyEffectRan`
+    // checks `_active` first), giving the caller no feedback that the
+    // registration was futile.
+    if (!this._active) return
     if (this._updateHooks === null) this._updateHooks = []
     this._updateHooks.push(fn)
   }

@@ -1,4 +1,5 @@
 import { batch } from '../batch'
+import { onSignalUpdate } from '../debug'
 import { effect } from '../effect'
 import { signal } from '../signal'
 
@@ -229,6 +230,58 @@ describe('signal', () => {
       // Value should not change — the argument is ignored
       expect(s()).toBe(42)
       warnSpy.mockRestore()
+    })
+  })
+
+  // Regression: pre-fix, a throwing trace listener (registered via
+  // onSignalUpdate) was called inline between the `_v` write and subscriber
+  // notification. If it threw, `_v` was updated but no effects ran — divergent
+  // state. Fix wraps the trace dispatch in try/catch.
+  describe('throwing trace listener does not corrupt state', () => {
+    test('subscribers still fire when a trace listener throws', () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const s = signal(0)
+      const subscriberRuns: number[] = []
+      effect(() => {
+        subscriberRuns.push(s())
+      })
+
+      const dispose = onSignalUpdate(() => {
+        throw new Error('trace listener boom')
+      })
+
+      // Pre-fix: the throwing listener would prevent the subscriber from
+      // firing. Post-fix: the listener throws, gets logged, subscriber runs.
+      s.set(5)
+      expect(subscriberRuns).toEqual([0, 5])
+      // Dev mode logs the listener error — bisect-verify the wrap is in place
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('trace listener threw'),
+        expect.any(Error),
+      )
+
+      dispose()
+      errorSpy.mockRestore()
+    })
+
+    test('multiple writes survive a chronically-broken listener', () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const s = signal(0)
+      const seen: number[] = []
+      effect(() => {
+        seen.push(s())
+      })
+
+      const dispose = onSignalUpdate(() => {
+        throw new Error('always')
+      })
+      s.set(1)
+      s.set(2)
+      s.set(3)
+      expect(seen).toEqual([0, 1, 2, 3])
+
+      dispose()
+      errorSpy.mockRestore()
     })
   })
 })
