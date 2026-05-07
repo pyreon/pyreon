@@ -51,6 +51,23 @@ const SSG_BUILD_FLAG = 'PYREON_ZERO_SSG_INNER_BUILD'
 // router per path, so we mirror the dev SSR pipeline (`renderSsr` in
 // vite-plugin.ts): per request → new createApp({ url: path }) → preload
 // loaders → renderWithHead → serialize loader data → done.
+// SSG entry template — see notes above for the design rationale.
+//
+// **Styler CSS flush.** `@pyreon/styler` accumulates server-rendered CSS
+// rules into its singleton `sheet.ssrBuffer` as components render, then
+// emits them via `sheet.getStyleTag()`. Before this was wired into the SSG
+// path, prerendered HTML carried styler-generated class names (`pyr-1abc23`)
+// on every element but had ZERO `<style>` tags in the head — meaning every
+// SSG page rendered un-styled until the client JS ran and re-emitted the
+// CSS. The fix lazy-imports `@pyreon/styler` so projects that don't use it
+// pay nothing, calls `sheet.reset()` per request to start clean (singleton
+// state would leak across paths in the same SSG sub-build), and injects
+// the resulting `<style>` tag into the head ahead of @pyreon/head's tags.
+//
+// `@pyreon/server`'s `createHandler` exposes the same hook via a
+// `collectStyles` option (handler.ts:84-91); the SSG path used to bypass
+// that entirely because it builds its own renderer rather than going
+// through createHandler.
 const SSR_ENTRY_SOURCE = `
 import { routes } from "virtual:zero/routes"
 import { h } from "@pyreon/core"
@@ -58,6 +75,31 @@ import { renderWithHead } from "@pyreon/head/ssr"
 import { serializeLoaderData } from "@pyreon/router"
 import { runWithRequestContext } from "@pyreon/runtime-server"
 import { createApp } from "@pyreon/zero/server"
+
+// Lazy-imported styler integration. Projects that don't depend on
+// @pyreon/styler skip this entirely (the import fails silently, the
+// helper stays a no-op). Hot path: an awaited dynamic import resolved
+// once at entry-module evaluation, then sync calls per request.
+//
+// **No reset between paths.** @pyreon/styler's styled() inserts CSS
+// rules into sheet.ssrBuffer at MODULE-EVAL TIME (top-level of styled.ts:95),
+// not per-render. After that initial insert, each render of a styled
+// component just attaches the cached class name to props — no new buffer
+// push. Calling sheet.reset() between SSG paths would WIPE all rules and
+// leave subsequent pages style-less. For SSG this is acceptable: the
+// generated CSS is identical across all pages (same module-eval cache),
+// and shipping the full rule set in every page's <style> tag matches
+// how static SSG sites handle CSS — every page is self-contained,
+// cacheable by the browser, no per-route CSS code splitting needed.
+let __pyreonGetStylerTag = () => ""
+try {
+  const stylerMod = await import("@pyreon/styler")
+  if (stylerMod && stylerMod.sheet && typeof stylerMod.sheet.getStyleTag === "function") {
+    __pyreonGetStylerTag = () => stylerMod.sheet.getStyleTag()
+  }
+} catch {
+  // No @pyreon/styler in the project — leave the no-op stub in place.
+}
 
 export default async function renderPath(path) {
   const { App, router } = createApp({
@@ -71,12 +113,22 @@ export default async function renderPath(path) {
   return runWithRequestContext(async () => {
     const app = h(App, null)
     const { html: appHtml, head } = await renderWithHead(app)
+
+    // Inject styler's <style data-pyreon-styler="..."> tag into the head
+    // BEFORE @pyreon/head's tags so the CSS cascade orders correctly with
+    // any meta/link tags the user added. Empty buffer emits a benign
+    // empty <style></style> — detected via the literal closing pair to
+    // avoid polluting the head when no styler is in use.
+    const styleTag = __pyreonGetStylerTag()
+    const isEmpty = !styleTag || styleTag.indexOf("></style>") !== -1
+    const finalHead = isEmpty ? head : styleTag + "\\n" + head
+
     const loaderData = serializeLoaderData(router)
     const hasData = loaderData && Object.keys(loaderData).length > 0
     const loaderScript = hasData
       ? \`<script>window.__PYREON_LOADER_DATA__=\${JSON.stringify(loaderData).replace(/<\\//g, "<\\\\/")}</script>\`
       : ""
-    return { appHtml, head, loaderScript }
+    return { appHtml, head: finalHead, loaderScript }
   })
 }
 `.trimStart()

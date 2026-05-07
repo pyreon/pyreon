@@ -207,6 +207,16 @@ const MATRIX: Cell[] = [
       assertFileContains(aboutPath, 'Pyreon is a signal-based UI framework')
       // Cleanup of the temporary SSR sub-build dir
       assertFileDoesNotExist(join(dist, '.zero-ssg-server'))
+      // Styler CSS flush regression: about.ts uses a `styled('span')` so
+      // its SSG render populates `@pyreon/styler`'s `sheet.ssrBuffer`.
+      // Pre-fix, prerendered HTML carried styler-generated class names
+      // but ZERO `<style>` tags — CSS only appeared after client JS ran.
+      // The fix in ssg-plugin.ts injects `<style data-pyreon-styler="...">`
+      // into the head during SSG via a lazy-imported styler integration.
+      // Bisect-verifiable: revert ssg-plugin.ts to the no-flush version
+      // and this assertion fails (the home page doesn't use styler so
+      // it intentionally produces no tag — only assert about page).
+      assertFileContains(aboutPath, 'data-pyreon-styler')
     },
   },
   {
