@@ -14,6 +14,21 @@ const dryRun = process.argv.includes('--dry-run')
 const otpArg = process.argv.find((a) => a.startsWith('--otp='))
 const otp = otpArg?.split('=')[1]
 
+// Per-platform npm stub packages — published exclusively by
+// .github/workflows/release-native.yml on tag push (the workflow downloads
+// the platform-specific binary, drops it into the stub, and runs `npm
+// publish` per cell). Skip them here to avoid duplicate-publish errors
+// (npm rejects republishing the same version) and the deeper bug shape
+// where this script would publish empty stubs (no binary inside) BEFORE
+// the workflow's matrix even starts.
+const PLATFORM_STUB_PACKAGES = new Set([
+  '@pyreon/compiler-darwin-arm64',
+  '@pyreon/compiler-darwin-x64',
+  '@pyreon/compiler-linux-arm64-gnu',
+  '@pyreon/compiler-linux-x64-gnu',
+  '@pyreon/compiler-win32-x64-msvc',
+])
+
 // Collect all package directories (packages/*/*)
 const packageDirs: { path: string; name: string }[] = []
 const categories = await readdir(PACKAGES_DIR, { withFileTypes: true })
@@ -62,6 +77,11 @@ for (const dir of packageDirs) {
   const raw = await readFile(pkgPath, 'utf-8')
   const pkg = JSON.parse(raw)
   if (pkg.private || !pkg.name) continue
+  if (PLATFORM_STUB_PACKAGES.has(pkg.name)) {
+    console.log(`⏭️  ${pkg.name}@${pkg.version} — published by release-native.yml`)
+    skipped.push(pkg.name)
+    continue
+  }
 
   const check = Bun.spawnSync(['npm', 'view', `${pkg.name}@${pkg.version}`, 'version'], {
     stdout: 'pipe',
