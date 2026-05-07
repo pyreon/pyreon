@@ -25,21 +25,35 @@ const createAttrsHOC: AttrsStyleHOC = ({ attrs, priorityAttrs }) => {
   // Pre-build the chain reducers once (not per render).
   const calculateAttrs = calculateChainOptions(attrs)
   const calculatePriorityAttrs = calculateChainOptions(priorityAttrs)
+  // Most components never call .attrs() — short-circuit the merge work below
+  // so the no-chain mount path skips 2 reducer invocations + 3 object spreads.
+  // Mirrors vitus-labs's attrsHoc fast-path; React-side memoization
+  // (useMemo / useStableValue) is omitted because Pyreon components run once
+  // per mount, not on every render.
+  const hasAttrs = (attrs?.length ?? 0) > 0
+  const hasPriorityAttrs = (priorityAttrs?.length ?? 0) > 0
+  const hasAnyChain = hasAttrs || hasPriorityAttrs
 
   const attrsHoc = (WrappedComponent: ComponentFn<any>) => {
     const HOCComponent: ComponentFn<any> = (props) => {
       // Strip undefined values so they don't shadow defaults from attrs callbacks.
       const filteredProps = removeUndefinedProps(props)
 
+      // Fast path: no attrs configured — skip reducers + spreads entirely.
+      if (!hasAnyChain) return WrappedComponent(filteredProps)
+
       // 1. Resolve priority attrs (lowest precedence defaults).
-      const prioritizedAttrs = calculatePriorityAttrs([filteredProps])
+      const prioritizedAttrs = hasPriorityAttrs
+        ? calculatePriorityAttrs([filteredProps])
+        : null
       // 2. Resolve normal attrs — these see priority + explicit props as input.
-      const finalAttrs = calculateAttrs([
-        {
-          ...prioritizedAttrs,
-          ...filteredProps,
-        },
-      ])
+      const finalAttrs = hasAttrs
+        ? calculateAttrs([
+            prioritizedAttrs
+              ? { ...prioritizedAttrs, ...filteredProps }
+              : filteredProps,
+          ])
+        : null
 
       // 3. Merge: priority < normal attrs < explicit props (last wins).
       const finalProps = {
