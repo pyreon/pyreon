@@ -85,6 +85,7 @@ export default defineConfig({
             { text: 'Router', link: '/docs/router' },
             { text: 'Head', link: '/docs/head' },
             { text: 'Server', link: '/docs/server' },
+            { text: 'Island Architecture', link: '/docs/island-architecture' },
             { text: 'Vite Plugin', link: '/docs/vite-plugin' },
             { text: 'TypeScript', link: '/docs/typescript' },
             { text: 'CLI', link: '/docs/cli' },
