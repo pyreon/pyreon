@@ -544,6 +544,81 @@ describe('ssgPlugin', () => {
     })
   })
 
+  describe('renderErrorArtifact (PR G)', () => {
+    it('serialises Error instances with name + message + stack', () => {
+      const err = new TypeError('boom')
+      const out = _internal.renderErrorArtifact([{ path: '/posts/1', error: err }])
+      const parsed = JSON.parse(out) as {
+        errors: Array<{ path: string; message: string; name: string; stack?: string }>
+      }
+      expect(parsed.errors).toHaveLength(1)
+      expect(parsed.errors[0]?.path).toBe('/posts/1')
+      expect(parsed.errors[0]?.message).toBe('boom')
+      expect(parsed.errors[0]?.name).toBe('TypeError')
+      expect(typeof parsed.errors[0]?.stack).toBe('string')
+    })
+
+    it('serialises non-Error throws (string / number / object) via String()', () => {
+      const out = _internal.renderErrorArtifact([
+        { path: '/a', error: 'plain string' },
+        { path: '/b', error: 42 },
+        { path: '/c', error: { custom: 'shape' } },
+      ])
+      const parsed = JSON.parse(out) as {
+        errors: Array<{ path: string; message: string; name: string }>
+      }
+      expect(parsed.errors[0]?.message).toBe('plain string')
+      expect(parsed.errors[0]?.name).toBe('Error')
+      expect(parsed.errors[0]?.stack).toBeUndefined()
+      expect(parsed.errors[1]?.message).toBe('42')
+      // Object → '[object Object]' via String() — acceptable; thrown
+      // non-Error objects are an anti-pattern, just don't crash here.
+      expect(parsed.errors[2]?.message).toBe('[object Object]')
+    })
+
+    it('wraps entries in { errors: [...] } object (forward-compatible)', () => {
+      // Bare-array shape would lock us out of adding fields like
+      // `buildId` / `timing` / `version` in a future PR. Object-wrapped
+      // shape lets consumers `JSON.parse(file).errors` safely.
+      const out = _internal.renderErrorArtifact([])
+      const parsed = JSON.parse(out) as Record<string, unknown>
+      expect(parsed).toHaveProperty('errors')
+      expect(Array.isArray(parsed.errors)).toBe(true)
+    })
+
+    it('emits trailing newline (POSIX text-file convention)', () => {
+      const out = _internal.renderErrorArtifact([
+        { path: '/x', error: new Error('y') },
+      ])
+      expect(out.endsWith('\n')).toBe(true)
+    })
+
+    it('preserves entry order (path 1 → path 2 → path 3)', () => {
+      // Order matters for users diffing the artifact across builds —
+      // entry order should match the render-loop traversal order.
+      const out = _internal.renderErrorArtifact([
+        { path: '/a', error: new Error('1') },
+        { path: '/b', error: new Error('2') },
+        { path: '/c', error: new Error('3') },
+      ])
+      const parsed = JSON.parse(out) as { errors: Array<{ path: string }> }
+      expect(parsed.errors.map((e) => e.path)).toEqual(['/a', '/b', '/c'])
+    })
+
+    it('handles the synthetic "(onPathError)" path suffix from callback throws', () => {
+      // The render loop appends "(onPathError)" to the path when the
+      // user callback itself throws. The artifact serialiser doesn't
+      // need special handling — the suffix is just part of the path
+      // string — but lock this in so downstream parsers don't get
+      // surprised by a suffix that wasn't documented.
+      const out = _internal.renderErrorArtifact([
+        { path: '/posts/bad (onPathError)', error: new Error('callback boom') },
+      ])
+      const parsed = JSON.parse(out) as { errors: Array<{ path: string }> }
+      expect(parsed.errors[0]?.path).toBe('/posts/bad (onPathError)')
+    })
+  })
+
   describe('closeBundle is no-op when mode != "ssg"', () => {
     // The plugin returns from closeBundle without side effects when SSG
     // is not configured. We can't easily run the real closeBundle in unit
