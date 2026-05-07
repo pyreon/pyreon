@@ -1,0 +1,40 @@
+{
+  "name": "@pyreon/compiler-linux-x64-musl",
+  "version": "0.15.0",
+  "description": "Linux x64 musl prebuilt native binary for @pyreon/compiler",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core/compiler#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyreon/pyreon.git",
+    "directory": "packages/core/compiler/npm/linux-x64-musl"
+  },
+  "main": "pyreon-compiler.node",
+  "files": [
+    "pyreon-compiler.node",
+    "README.md",
+    "LICENSE"
+  ],
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "libc": [
+    "musl"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "lint": "echo 'no source — platform binary package'",
+    "typecheck": "echo 'no source — platform binary package'"
+  }
+}
