@@ -29,7 +29,7 @@ import type { ComponentFn } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { createRouter, hydrateLoaderData, type RouteRecord, RouterProvider } from '@pyreon/router'
 import { hydrateRoot, mount } from '@pyreon/runtime-dom'
-import type { HydrationStrategy } from './island'
+import type { HydrationStrategy, PrefetchStrategy } from './island'
 
 // ─── Full app hydration ──────────────────────────────────────────────────────
 
@@ -148,12 +148,78 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
 
     const propsJson = el.getAttribute('data-props') ?? '{}'
 
+    // Prefetch (if requested) primes the module cache before the hydration
+    // trigger fires. Independent of hydration scheduling — the same loader
+    // promise is reused, so a `visible` island with `prefetch: 'idle'` will
+    // hit a warm cache when the IntersectionObserver finally fires.
+    const prefetch = (el.getAttribute('data-prefetch') ?? 'none') as PrefetchStrategy
+    const prefetchCleanup = schedulePrefetch(el as HTMLElement, loader, prefetch)
+    if (prefetchCleanup) cleanups.push(prefetchCleanup)
+
     const cleanup = scheduleHydration(el as HTMLElement, loader, propsJson, strategy)
     if (cleanup) cleanups.push(cleanup)
   }
 
   return () => {
     for (const fn of cleanups) fn()
+  }
+}
+
+function schedulePrefetch(
+  el: HTMLElement,
+  loader: IslandLoader,
+  prefetch: PrefetchStrategy,
+): (() => void) | null {
+  if (prefetch === 'none') return null
+  if (typeof window === 'undefined') return null
+  let cancelled = false
+  // Fire and forget — we don't await; the dynamic import warms the module
+  // cache and the hydration path will await its OWN loader() call (which
+  // resolves to the same module via JS's import-promise dedup).
+  const prime = () => {
+    if (cancelled) return
+    loader().catch(() => {
+      // Silent — hydration will surface the failure with its own error path.
+      // Prefetch is a hint, not a contract.
+    })
+  }
+
+  if (prefetch === 'idle') {
+    if ('requestIdleCallback' in window) {
+      const id = requestIdleCallback(prime)
+      return () => {
+        cancelled = true
+        cancelIdleCallback(id)
+      }
+    }
+    const id = setTimeout(prime, 200)
+    return () => {
+      cancelled = true
+      clearTimeout(id)
+    }
+  }
+
+  // 'visible' — fetch ~200px before the island enters the viewport
+  if (!('IntersectionObserver' in window)) {
+    prime()
+    return null
+  }
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          observer.disconnect()
+          prime()
+          return
+        }
+      }
+    },
+    { rootMargin: '200px' },
+  )
+  observer.observe(el)
+  return () => {
+    cancelled = true
+    observer.disconnect()
   }
 }
 

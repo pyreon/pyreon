@@ -488,6 +488,63 @@ describe('island', () => {
     expect(meta.hydrate).toBe('visible')
   })
 
+  test("island() defaults prefetch to 'none' and does NOT emit data-prefetch attribute", async () => {
+    const Inner: ComponentFn = () => h('div', null)
+    const Widget = island(() => Promise.resolve({ default: Inner }), {
+      name: 'NoPrefetch',
+      hydrate: 'visible',
+    })
+    expect((Widget as unknown as { prefetch: string }).prefetch).toBe('none')
+    const vnode = await (Widget as unknown as (props: Record<string, unknown>) => Promise<VNode>)(
+      {},
+    )
+    expect('data-prefetch' in vnode.props).toBe(false)
+  })
+
+  test("island() emits data-prefetch when paired with a deferred hydrate strategy", async () => {
+    const Inner: ComponentFn = () => h('div', null)
+    const Widget = island(() => Promise.resolve({ default: Inner }), {
+      name: 'PrefetchIdle',
+      hydrate: 'visible',
+      prefetch: 'idle',
+    })
+    expect((Widget as unknown as { prefetch: string }).prefetch).toBe('idle')
+    const vnode = await (Widget as unknown as (props: Record<string, unknown>) => Promise<VNode>)(
+      {},
+    )
+    expect(vnode.props['data-prefetch']).toBe('idle')
+    expect(vnode.props['data-hydrate']).toBe('visible')
+  })
+
+  test("island() suppresses data-prefetch when hydrate='load' (loader runs synchronously)", async () => {
+    const Inner: ComponentFn = () => h('div', null)
+    const Widget = island(() => Promise.resolve({ default: Inner }), {
+      name: 'PointlessPrefetch',
+      hydrate: 'load',
+      prefetch: 'idle',
+    })
+    const vnode = await (Widget as unknown as (props: Record<string, unknown>) => Promise<VNode>)(
+      {},
+    )
+    // Metadata still records what the user asked for, but the runtime
+    // attribute is suppressed because prefetch is meaningless on load.
+    expect((Widget as unknown as { prefetch: string }).prefetch).toBe('idle')
+    expect('data-prefetch' in vnode.props).toBe(false)
+  })
+
+  test("island() suppresses data-prefetch when hydrate='never' (defeats zero-JS strategy)", async () => {
+    const Inner: ComponentFn = () => h('div', null)
+    const Widget = island(() => Promise.resolve({ default: Inner }), {
+      name: 'NeverPrefetch',
+      hydrate: 'never',
+      prefetch: 'visible',
+    })
+    const vnode = await (Widget as unknown as (props: Record<string, unknown>) => Promise<VNode>)(
+      {},
+    )
+    expect('data-prefetch' in vnode.props).toBe(false)
+  })
+
   test('island() serializes empty props as empty object', async () => {
     const Inner: ComponentFn = () => h('div', null)
     const Widget = island(() => Promise.resolve({ default: Inner }), { name: 'Empty' })
