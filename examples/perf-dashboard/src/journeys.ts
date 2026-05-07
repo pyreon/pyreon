@@ -284,4 +284,122 @@ export const journeys: Record<string, (page: PageLike) => Promise<void>> = {
       ).__pyreon_perf_forms?.triggerStateReadSelector()
     })
   },
+
+  // ─── @pyreon/store stress journeys ─────────────────────────────────────
+  //
+  // All journeys go through `window.__pyreon_perf_stores` exposed in
+  // src/components/StoreStressSection.tsx. Pattern matches `form`:
+  // window helper instead of `.click()` to avoid Playwright cost
+  // dominating the counter signal.
+  //
+  // Each journey calls `clearAll()` first so re-runs against the same page
+  // start from a clean slate. NOTE: registered plugins persist across
+  // `clearAll` (no unregister API). The pluginScale journey uses idempotent
+  // `registerPlugins` semantics so cycle 2..N is a no-op for plugin
+  // registration — every cycle measures `pluginCount × storeCount` exactly.
+
+  /**
+   * **storeMount-1000** — mount 1k fresh stores.
+   * Measures `store.defineStore` × 1000 + `store.pluginRun` × 1000 × P
+   * (where P is the count of registered plugins, typically 0 in baseline).
+   */
+  'storeMount-1000': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_stores?: {
+          clearAll: () => void
+          seedStores: (n: number) => void
+        }
+      }
+      w.__pyreon_perf_stores?.clearAll()
+      w.__pyreon_perf_stores?.seedStores(1000)
+    })
+  },
+
+  /**
+   * **storeAction-10k** — 10k action invocations across 10 stores, each with
+   * 5 onAction listeners. Measures `store.actionCall` × 10k +
+   * `store.actionListenerNotify` × 50k. The 5:1 ratio is the structural
+   * number; divergence run-over-run = listener leak.
+   */
+  'storeAction-10k': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_stores?: {
+          clearAll: () => void
+          seedStores: (n: number) => void
+          actionLoop: (calls: number, listenersPerStore: number) => void
+        }
+      }
+      w.__pyreon_perf_stores?.clearAll()
+      w.__pyreon_perf_stores?.seedStores(10)
+      w.__pyreon_perf_stores?.actionLoop(10000, 5)
+    })
+  },
+
+  /**
+   * **storeWrite-10k** — 1k `patch()` calls × 3 keys each across 10 stores.
+   * Measures `store.patchKey` × 30k (1k patches × 3 keys × 10 stores). The
+   * underlying batch should make the per-patch subscriber notify O(1).
+   */
+  'storeWrite-10k': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_stores?: {
+          clearAll: () => void
+          seedStores: (n: number) => void
+          patchLoop: (patchesPerStore: number, keysPerPatch: number) => void
+        }
+      }
+      w.__pyreon_perf_stores?.clearAll()
+      w.__pyreon_perf_stores?.seedStores(10)
+      w.__pyreon_perf_stores?.patchLoop(1000, 3)
+    })
+  },
+
+  /**
+   * **storeSubscribeNotify-1k** — 100 stores × 10 subscribers each, then
+   * 1 write per store. Measures `store.subscribeNotify` × 1000.
+   * Tracks per-write fan-out cost.
+   */
+  'storeSubscribeNotify-1k': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_stores?: {
+          clearAll: () => void
+          seedStores: (n: number) => void
+          subscribeFan: (subscribersPerStore: number) => void
+        }
+      }
+      w.__pyreon_perf_stores?.clearAll()
+      w.__pyreon_perf_stores?.seedStores(100)
+      w.__pyreon_perf_stores?.subscribeFan(10)
+    })
+  },
+
+  /**
+   * **storePluginScale-1000** — 1k stores under 5 registered plugins.
+   * Measures `store.pluginRun` × 5000 (5 plugins × 1000 stores). The
+   * audit flagged plugin chain as uncached — this journey isolates that
+   * O(stores × plugins) cost cleanly. Likely target for the first
+   * follow-up optimization PR.
+   *
+   * `registerPlugins` is idempotent (top-up to N), so cycle 2..N is a
+   * no-op for plugin registration — every cycle measures exactly
+   * `pluginCount × storeCount`.
+   */
+  'storePluginScale-1000': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_stores?: {
+          fullReset: () => void
+          registerPlugins: (n: number) => void
+          seedStores: (n: number) => void
+        }
+      }
+      w.__pyreon_perf_stores?.fullReset()
+      w.__pyreon_perf_stores?.registerPlugins(5)
+      w.__pyreon_perf_stores?.seedStores(1000)
+    })
+  },
 }

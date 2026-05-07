@@ -39,6 +39,7 @@ const INSTRUMENTED_PACKAGE_ROOTS = [
   'packages/ui-system/unistyle/src',
   'packages/ui-system/rocketstyle/src',
   'packages/fundamentals/form/src',
+  'packages/fundamentals/store/src',
 ]
 
 // Matches any `<ident>.__pyreon_count__?.('<name>')` call.

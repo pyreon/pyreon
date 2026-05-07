@@ -40,6 +40,7 @@ import {
   Th,
   Title,
 } from './components/atoms'
+import { StoreStressSection } from './components/StoreStressSection'
 import { darkTheme, lightTheme, type Theme } from './theme'
 
 // ── State ────────────────────────────────────────────────────────────────────
@@ -629,6 +630,7 @@ export function App() {
       <LongFormSection />
       <FormStressSection />
       <ModalSection />
+      <StoreStressSection />
     </Shell>
   )
 }

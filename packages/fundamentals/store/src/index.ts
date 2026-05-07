@@ -26,6 +26,12 @@
 
 const __DEV__: boolean = process.env.NODE_ENV !== 'production'
 
+// Dev-time counter sink — see packages/internals/perf-harness for contract.
+// Globalthis sink (no @pyreon/perf-harness import) so this file stays
+// publishable without a dev-only dep, and the counter strings + guard
+// tree-shake out at consumer build time.
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 export type { Signal } from '@pyreon/reactivity'
 export { batch, computed, effect, signal } from '@pyreon/reactivity'
 
@@ -125,6 +131,10 @@ export function defineStore<T extends Record<string, unknown>>(
     const registry = getRegistry()
     if (registry.has(id)) return registry.get(id) as StoreApi<T>
 
+    // Mount-N-stores baseline. Fires only on cache miss (cache hit short-circuits above)
+    // so the counter measures FRESH store creations, not registry lookups.
+    if (__DEV__) _countSink.__pyreon_count__?.('store.defineStore')
+
     const raw = setup()
 
     // Classify properties
@@ -169,7 +179,13 @@ export function defineStore<T extends Record<string, unknown>>(
         events: [{ key, newValue, oldValue }],
       }
       const state = getState()
-      for (const cb of subscribers) cb(mutation, state)
+      for (const cb of subscribers) {
+        // Fan-out per signal-write × subscriber. High count under stress
+        // means user code is over-subscribing — collapse with `selector`
+        // pattern or move state into a dedicated store.
+        if (__DEV__) _countSink.__pyreon_count__?.('store.subscribeNotify')
+        cb(mutation, state)
+      }
     }
 
     // Subscribe to each signal for change detection
@@ -192,6 +208,10 @@ export function defineStore<T extends Record<string, unknown>>(
     // Wrap actions
     function wrapAction(key: string, original: (...args: any[]) => unknown) {
       return (...args: unknown[]) => {
+        // Per wrapped-action invocation. Pair with `store.actionListenerNotify`
+        // for the listener fan-out ratio.
+        if (__DEV__) _countSink.__pyreon_count__?.('store.actionCall')
+
         const afterCbs: ((result: unknown) => void)[] = []
         const errorCbs: ((error: unknown) => void)[] = []
 
@@ -204,6 +224,10 @@ export function defineStore<T extends Record<string, unknown>>(
         }
 
         for (const listener of actionListeners) {
+          // Fires BEFORE the action body runs. Ratio = listener count.
+          // Diverging from `actionCall` ratio across runs = listeners
+          // attaching/detaching (likely a leak).
+          if (__DEV__) _countSink.__pyreon_count__?.('store.actionListenerNotify')
           listener(context)
         }
 
@@ -272,6 +296,10 @@ export function defineStore<T extends Record<string, unknown>>(
             for (const [key, value] of Object.entries(partialOrFn)) {
               if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
               if (signalKeys.includes(key)) {
+                // Per-key write inside batched patch. Tracks batch-size
+                // distribution; correlate with `reactivity.signalWrite`
+                // — the two should match 1:1 on the object-form path.
+                if (__DEV__) _countSink.__pyreon_count__?.('store.patchKey')
                 ;(raw[key] as SignalLike).set(value)
               }
             }
@@ -288,7 +316,14 @@ export function defineStore<T extends Record<string, unknown>>(
             events: patchEvents,
           }
           const state = getState()
-          for (const cb of subscribers) cb(mutation, state)
+          for (const cb of subscribers) {
+            // Same fan-out counter as the direct-notify path; the patch
+            // path emits ONCE per patch (not per key) thanks to the
+            // batched flush, so this should equal the patch call count
+            // multiplied by subscriber count.
+            if (__DEV__) _countSink.__pyreon_count__?.('store.subscribeNotify')
+            cb(mutation, state)
+          }
         }
         patchEvents = []
       },
@@ -335,6 +370,11 @@ export function defineStore<T extends Record<string, unknown>>(
     // Run plugins — errors in one plugin should not break store creation,
     // but they must be visible in dev mode so developers can diagnose.
     for (const plugin of _plugins) {
+      // O(stores × plugins). Likely the biggest optimization target —
+      // the plugin chain runs uncached on every fresh store creation.
+      // Big number under storePluginScale-1000 means caching the
+      // plugin-init result per store-id is worth investigating.
+      if (__DEV__) _countSink.__pyreon_count__?.('store.pluginRun')
       try {
         plugin(api as StoreApi<Record<string, unknown>>)
       } catch (err) {
