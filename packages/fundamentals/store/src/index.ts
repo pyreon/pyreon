@@ -155,7 +155,10 @@ export function defineStore<T extends Record<string, unknown>>(
     }
 
     // ─── subscribe infrastructure ───────────────────────────────────────
-    const subscribers = new Set<SubscribeCallback>()
+    // Lazy Set allocation: most stores never get a user subscribe() call.
+    // Initialise as null and allocate only on first add — for a 1k-store
+    // mount that's 1000 fewer Set allocations per page boot.
+    let subscribers: Set<SubscribeCallback> | null = null
     let patchInProgress = false
     let patchEvents: MutationInfo['events'] = []
 
@@ -172,7 +175,7 @@ export function defineStore<T extends Record<string, unknown>>(
         patchEvents.push({ key, newValue, oldValue })
         return
       }
-      if (subscribers.size === 0) return
+      if (subscribers === null || subscribers.size === 0) return
       const mutation: MutationInfo = {
         storeId: id,
         type: 'direct',
@@ -203,14 +206,25 @@ export function defineStore<T extends Record<string, unknown>>(
     }
 
     // ─── onAction infrastructure ────────────────────────────────────────
-    const actionListeners = new Set<OnActionCallback>()
+    // Lazy Set allocation — most stores never get a user onAction() call.
+    // The action wrapper still pays the null-check on every action call,
+    // but the empty-listener case skips both Set allocation AND iteration.
+    let actionListeners: Set<OnActionCallback> | null = null
 
     // Wrap actions
     function wrapAction(key: string, original: (...args: any[]) => unknown) {
       return (...args: unknown[]) => {
         // Per wrapped-action invocation. Pair with `store.actionListenerNotify`
-        // for the listener fan-out ratio.
+        // for the listener fan-out ratio. Fires on BOTH fast path and slow
+        // path so the action-count denominator stays correct.
         if (__DEV__) _countSink.__pyreon_count__?.('store.actionCall')
+
+        // Fast path: no listeners attached → skip ActionContext allocation
+        // and the after/onError callback arrays entirely. Exceptions
+        // propagate naturally to the caller.
+        if (actionListeners === null || actionListeners.size === 0) {
+          return original(...args)
+        }
 
         const afterCbs: ((result: unknown) => void)[] = []
         const errorCbs: ((error: unknown) => void)[] = []
@@ -309,7 +323,7 @@ export function defineStore<T extends Record<string, unknown>>(
         patchInProgress = false
 
         // Emit a single notification for the patch
-        if (subscribers.size > 0 && patchEvents.length > 0) {
+        if (subscribers !== null && subscribers.size > 0 && patchEvents.length > 0) {
           const mutation: MutationInfo = {
             storeId: id,
             type: 'patch',
@@ -329,7 +343,7 @@ export function defineStore<T extends Record<string, unknown>>(
       },
 
       subscribe(callback: SubscribeCallback, options?: { immediate?: boolean }): () => void {
-        subscribers.add(callback)
+        ;(subscribers ??= new Set()).add(callback)
         if (options?.immediate) {
           const mutation: MutationInfo = {
             storeId: id,
@@ -339,14 +353,14 @@ export function defineStore<T extends Record<string, unknown>>(
           callback(mutation, getState())
         }
         return () => {
-          subscribers.delete(callback)
+          subscribers?.delete(callback)
         }
       },
 
       onAction(callback: OnActionCallback): () => void {
-        actionListeners.add(callback)
+        ;(actionListeners ??= new Set()).add(callback)
         return () => {
-          actionListeners.delete(callback)
+          actionListeners?.delete(callback)
         }
       },
 
@@ -361,26 +375,31 @@ export function defineStore<T extends Record<string, unknown>>(
       dispose() {
         for (const unsub of signalUnsubs) unsub()
         signalUnsubs.length = 0
-        subscribers.clear()
-        actionListeners.clear()
+        subscribers?.clear()
+        actionListeners?.clear()
         getRegistry().delete(id)
       },
     }
 
     // Run plugins — errors in one plugin should not break store creation,
     // but they must be visible in dev mode so developers can diagnose.
-    for (const plugin of _plugins) {
-      // O(stores × plugins). Likely the biggest optimization target —
-      // the plugin chain runs uncached on every fresh store creation.
-      // Big number under storePluginScale-1000 means caching the
-      // plugin-init result per store-id is worth investigating.
-      if (__DEV__) _countSink.__pyreon_count__?.('store.pluginRun')
-      try {
-        plugin(api as StoreApi<Record<string, unknown>>)
-      } catch (err) {
-        if (__DEV__) {
-          // oxlint-disable-next-line no-console
-          console.warn(`[Pyreon] Store plugin error for "${id}":`, err)
+    // Fast path: most apps register zero plugins. Skipping the loop entirely
+    // saves the iteration + try/catch frame allocation for every fresh
+    // store creation in the common case.
+    if (_plugins.length > 0) {
+      for (const plugin of _plugins) {
+        // O(stores × plugins). Likely target for further optimization —
+        // the plugin chain runs uncached on every fresh store creation.
+        // Big number under storePluginScale-1000 means caching the
+        // plugin-init result per store-id is worth investigating.
+        if (__DEV__) _countSink.__pyreon_count__?.('store.pluginRun')
+        try {
+          plugin(api as StoreApi<Record<string, unknown>>)
+        } catch (err) {
+          if (__DEV__) {
+            // oxlint-disable-next-line no-console
+            console.warn(`[Pyreon] Store plugin error for "${id}":`, err)
+          }
         }
       }
     }
