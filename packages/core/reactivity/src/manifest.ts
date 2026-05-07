@@ -356,6 +356,44 @@ isStore(null)  // false (null-safe)`,
       seeAlso: ['createStore', 'reconcile'],
     },
     {
+      name: 'shallowReactive',
+      kind: 'function',
+      signature: '<T extends object>(initial: T) => T',
+      summary:
+        'Create a SHALLOW reactive store — only top-level mutations trigger updates. Nested objects are NOT auto-wrapped; reading a nested object returns the raw reference, and mutating it does NOT trigger any effect. Replacing the top-level reference DOES trigger reactivity. Use when nested data is immutable (frozen API responses), when you want explicit control over which subtrees are reactive, or when you need to store class instances/third-party objects without paying the deep-proxy overhead. Vue 3 parity.',
+      example: `const store = shallowReactive({ user: { name: 'Alice' }, count: 0 })
+effect(() => store.count)        // tracks store.count
+effect(() => store.user)         // tracks store.user reference (not its contents)
+store.user.name = 'Bob'          // does NOT trigger any effect (nested mutation)
+store.count = 5                  // triggers count effect
+store.user = { name: 'Bob' }     // triggers user effect (reference replacement)`,
+      mistakes: [
+        'Expecting nested mutations to trigger effects — they don\'t. Use `createStore` if you need deep reactivity, or replace the top-level reference (`store.user = { ...store.user, name: \'Bob\' }`)',
+        'Mixing shallow + deep on the same raw object — `createStore(raw)` and `shallowReactive({ wrapper: raw })` produce DIFFERENT proxies (separate caches). Pick one shape per data flow',
+      ],
+      seeAlso: ['createStore', 'markRaw'],
+    },
+    {
+      name: 'markRaw',
+      kind: 'function',
+      signature: '<T extends object>(value: T) => T',
+      summary:
+        'Mark an object as RAW — `createStore` and `shallowReactive` will return it unwrapped. Useful for class instances, third-party objects, DOM nodes, or any shape that shouldn\'t be deeply proxied (Vue 3 parity). Marking is one-way: there\'s no `unmarkRaw`. Mark BEFORE the object enters a store; marking after wrap doesn\'t unwrap an existing proxy.',
+      example: `import { markRaw, createStore } from '@pyreon/reactivity'
+
+class Editor { /* ... */ }
+const ed = markRaw(new Editor())   // skips proxy
+const store = createStore({ editor: ed })
+store.editor === ed                 // true — raw reference preserved
+store.editor.someMethod()           // works — class methods see real receiver`,
+      mistakes: [
+        'Marking an object AFTER it\'s been wrapped — the existing proxy is unaffected. Mark before the object enters any store',
+        'Expecting `markRaw(obj)` to return a different object — it mutates `obj` and returns the SAME reference (with the marker symbol attached)',
+        'Using markRaw on plain data objects to "skip" deep wrap — for that, use `shallowReactive`. markRaw is for class instances and externally-managed shapes',
+      ],
+      seeAlso: ['createStore', 'shallowReactive'],
+    },
+    {
       name: 'untrack',
       kind: 'function',
       signature: '(fn: () => T) => T',
@@ -393,7 +431,25 @@ count.set(10)  // no log — effect was disposed`,
         'Creating effects outside `runInScope(fn)` and expecting them to be tracked — effects must run during the synchronous body of `runInScope` to register with the scope',
         'Stopping a scope that has pending updates — in-flight microtasks may still fire `onUpdate` hooks; design for idempotency or check `isActive` before writes',
       ],
-      seeAlso: ['effect', 'getCurrentScope'],
+      seeAlso: ['effect', 'getCurrentScope', 'onScopeDispose'],
+    },
+    {
+      name: 'onScopeDispose',
+      kind: 'function',
+      signature: '(fn: () => void) => void',
+      summary:
+        'Register a callback to run when the current `EffectScope` stops. Vue 3 parity. Captures the AMBIENT scope at registration time, so it must be called inside `scope.runInScope(fn)`. Calling outside any scope is a no-op (with a dev warning). Use for resource cleanup tied to scope lifetime — timers, listeners, external subscriptions. Equivalent to `getCurrentScope()?.add({ dispose: fn })` but without the boilerplate.',
+      example: `scope.runInScope(() => {
+  const ws = new WebSocket(url)
+  onScopeDispose(() => ws.close())
+  // ws.close() runs when scope.stop() is called
+})`,
+      mistakes: [
+        'Calling outside any scope — silently no-ops in production, dev warns. The callback is dropped on the floor; verify with \`getCurrentScope()\` before calling if scope is uncertain',
+        'Expecting the callback to run on EFFECT cleanup — `onScopeDispose` fires only on `scope.stop()`. For per-effect cleanup, use `onCleanup()` inside the effect body or return a cleanup function from it',
+        'Using outside `runInScope` and inside an effect callback — the effect captures whatever scope was ambient when the effect SET UP, not when the registration runs. Effects re-run later may see a different ambient scope; register at setup, not in the body',
+      ],
+      seeAlso: ['effectScope', 'getCurrentScope', 'onCleanup'],
     },
     {
       name: 'getCurrentScope',

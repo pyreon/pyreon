@@ -17,8 +17,40 @@ import { type Signal, signal } from './signal'
 
 // WeakMap: raw object → its reactive proxy (ensures each raw object gets one proxy)
 const proxyCache = new WeakMap<object, object>()
+// Separate cache for shallow proxies — same raw can produce different proxies
+// depending on shallow vs deep mode, so we can't share proxyCache.
+const shallowProxyCache = new WeakMap<object, object>()
 
 const IS_STORE = Symbol('pyreon.store')
+const IS_RAW = Symbol('pyreon.raw')
+
+/**
+ * Mark an object as RAW — `createStore` and `shallowReactive` will return it
+ * unwrapped. Useful when storing class instances, third-party objects, or
+ * other shapes that shouldn't be deeply proxied (Vue 3 parity).
+ *
+ * @example
+ * const cm = markRaw(new CodeMirrorView(...))
+ * const store = createStore({ editor: cm })
+ * store.editor === cm  // true (not wrapped)
+ *
+ * Note: marking is one-way — there's no `unmarkRaw`. Mark BEFORE the object
+ * enters a store; marking after wrap doesn't unwrap an existing proxy.
+ */
+export function markRaw<T extends object>(value: T): T {
+  Object.defineProperty(value, IS_RAW, {
+    value: true,
+    enumerable: false,
+    configurable: true,
+    writable: false,
+  })
+  return value
+}
+
+/** Returns true if the value was marked with `markRaw()`. */
+function isMarkedRaw(value: object): boolean {
+  return (value as Record<symbol, unknown>)[IS_RAW] === true
+}
 
 // Built-in object types that have internal slots and fail the Proxy
 // internal-slot check on every method call (`Map.prototype.set` called on a
@@ -54,15 +86,41 @@ export function isStore(value: unknown): boolean {
  * Returns a proxy — mutations to the proxy trigger fine-grained reactive updates.
  */
 export function createStore<T extends object>(initial: T): T {
-  return wrap(initial) as T
+  return wrap(initial, false) as T
 }
 
-function wrap(raw: object): object {
+/**
+ * Create a SHALLOW reactive store — only top-level mutations trigger updates.
+ * Nested objects are NOT auto-wrapped; reading a nested object returns the
+ * raw reference. Use when:
+ *   - the nested objects are immutable (frozen API responses)
+ *   - you want explicit control over which subtrees are reactive
+ *   - you need to store class instances or third-party objects without
+ *     paying the deep-proxy overhead
+ *
+ * @example
+ * const store = shallowReactive({ user: { name: 'Alice' }, count: 0 })
+ * effect(() => console.log(store.user))  // tracks store.user reference
+ * effect(() => console.log(store.count)) // tracks store.count
+ * store.user.name = 'Bob'                // does NOT trigger any effect
+ * store.count = 5                        // triggers the count effect
+ * store.user = { name: 'Bob' }           // triggers the user effect
+ */
+export function shallowReactive<T extends object>(initial: T): T {
+  return wrap(initial, true) as T
+}
+
+function wrap(raw: object, shallow: boolean): object {
   // Built-ins with internal slots (Map, Set, Date, …) can't be proxied: their
   // methods fail the receiver check when called on the proxy. Return raw.
   if (isBuiltinNonProxiable(raw)) return raw
+  // Vue parity — `markRaw()` opts an object out of proxying entirely. Useful
+  // for class instances, third-party objects, or any shape the consumer
+  // wants to keep unwrapped.
+  if (isMarkedRaw(raw)) return raw
 
-  const cached = proxyCache.get(raw)
+  const cache = shallow ? shallowProxyCache : proxyCache
+  const cached = cache.get(raw)
   if (cached) return cached
 
   // Per-property signals. Lazily created on first access.
@@ -105,9 +163,11 @@ function wrap(raw: object): object {
       // Track via per-property signal
       const value = getOrCreateSignal(key)()
 
-      // Deep reactivity: wrap nested objects/arrays transparently
-      if (value !== null && typeof value === 'object') {
-        return wrap(value as object)
+      // Deep reactivity: wrap nested objects/arrays transparently. Shallow
+      // mode skips this — nested objects are returned raw so consumers can
+      // mutate them outside the proxy without triggering effects.
+      if (!shallow && value !== null && typeof value === 'object') {
+        return wrap(value as object, false)
       }
 
       return value
@@ -174,6 +234,6 @@ function wrap(raw: object): object {
     },
   })
 
-  proxyCache.set(raw, proxy)
+  cache.set(raw, proxy)
   return proxy
 }

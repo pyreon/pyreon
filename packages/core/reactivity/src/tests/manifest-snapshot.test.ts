@@ -68,12 +68,13 @@ describe('gen-docs — reactivity snapshot', () => {
 
   it('renders @pyreon/reactivity to MCP api-reference entries — one per api[] item', () => {
     const record = renderApiReferenceEntries(reactivityManifest)
-    // 22 entries: 8 original (signal/computed/effect/batch/onCleanup/watch/
+    // 25 entries: 8 original (signal/computed/effect/batch/onCleanup/watch/
     // createStore/untrack) + 1 createResource (PR #459) + 13 from M1
     // enrichment (renderEffect, nextTick, createSelector, cell, reconcile,
     // isStore, effectScope, getCurrentScope, setCurrentScope,
-    // onSignalUpdate, inspectSignal, why, setErrorHandler).
-    expect(Object.keys(record).length).toBe(22)
+    // onSignalUpdate, inspectSignal, why, setErrorHandler) + 3 from M4
+    // Vue parity (markRaw, shallowReactive, onScopeDispose).
+    expect(Object.keys(record).length).toBe(25)
     expect(Object.keys(record)).toContain('reactivity/signal')
     expect(Object.keys(record)).toContain('reactivity/createResource')
     // Spot-check the flagship API — signal is the core primitive
