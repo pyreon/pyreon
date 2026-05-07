@@ -53,6 +53,11 @@ for (let i = 0; i < propertyMap.length; i++) {
       }
     }
   }
+  // kind: 'special' descriptors carry only `id` (no key/keys). Index by id so
+  // the fast path resolves them when paired with non-special keys; otherwise
+  // fragments.length > 0 from non-special hits skips the fallback full-scan
+  // and the special is silently dropped.
+  if (d.id) addKey(d.id)
 }
 
 /**
