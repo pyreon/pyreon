@@ -42,6 +42,7 @@ const INSTRUMENTED_PACKAGE_ROOTS = [
   'packages/fundamentals/form/src',
   'packages/fundamentals/store/src',
   'packages/fundamentals/rx/src',
+  'packages/fundamentals/query/src',
 ]
 
 // Some packages emit counters under a namespace that doesn't match the package

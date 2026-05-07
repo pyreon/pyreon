@@ -98,6 +98,21 @@ const FILES_UNDER_TEST: { layer: string; file: string; counterNames: string[] }[
     counterNames: ['rx.debounce.create', 'rx.throttle.create'],
   },
   {
+    layer: 'query-use-query',
+    file: 'packages/fundamentals/query/src/use-query.ts',
+    counterNames: ['query.useQuery', 'query.observerNotify', 'query.setOptions'],
+  },
+  {
+    layer: 'query-use-mutation',
+    file: 'packages/fundamentals/query/src/use-mutation.ts',
+    counterNames: ['query.useMutation', 'query.invalidate'],
+  },
+  {
+    layer: 'query-use-is-fetching',
+    file: 'packages/fundamentals/query/src/use-is-fetching.ts',
+    counterNames: ['query.isFetchingScan'],
+  },
+  {
     // @pyreon/server's client.ts is a BROWSER entry (hydrates islands /
     // full apps in the user's browser), even though the package's main
     // surface is the SSR handler. It uses the bundler-agnostic
