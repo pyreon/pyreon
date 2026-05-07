@@ -279,8 +279,9 @@ function scheduleHydration(
 ): (() => void) | null {
   if (typeof window === 'undefined') return null
   let cancelled = false
-  const hydrate = () => {
-    if (!cancelled) hydrateIsland(el, loader, propsJson)
+  const hydrate = (): Promise<void> => {
+    if (cancelled) return Promise.resolve()
+    return hydrateIsland(el, loader, propsJson)
   }
 
   switch (strategy) {
@@ -309,6 +310,9 @@ function scheduleHydration(
     case 'never':
       return null
 
+    case 'interaction':
+      return scheduleInteractionHydration(el, hydrate, DEFAULT_INTERACTION_EVENTS)
+
     default:
       // media(query)
       if (strategy.startsWith('media(')) {
@@ -330,9 +334,156 @@ function scheduleHydration(
           mql.removeEventListener('change', onChange)
         }
       }
+      // interaction(<events>) — comma-separated event names
+      if (strategy.startsWith('interaction(')) {
+        const eventsStr = strategy.slice(12, -1).trim()
+        const events = eventsStr
+          ? eventsStr.split(',').map((s) => s.trim()).filter(Boolean)
+          : DEFAULT_INTERACTION_EVENTS
+        return scheduleInteractionHydration(el, hydrate, events)
+      }
       hydrate()
       return null
   }
+}
+
+/**
+ * Default events for the `interaction` strategy. Picked to cover the common
+ * "user reaches for it" surface: keyboard (`focus`), mouse (`pointerenter`,
+ * `click`), and touch (`touchstart`). First matching event triggers hydrate
+ * + removes ALL listeners (one-shot).
+ */
+const DEFAULT_INTERACTION_EVENTS: readonly string[] = [
+  'focus',
+  'click',
+  'pointerenter',
+  'touchstart',
+]
+
+function scheduleInteractionHydration(
+  el: HTMLElement,
+  hydrate: () => Promise<void>,
+  events: readonly string[],
+): () => void {
+  let hydrationStarted = false
+  let hydrated = false
+  // Holds replay info if a click came in during in-flight hydration —
+  // we replay the click on the equivalent post-hydration element so the
+  // user's first click both wakes the island AND fires the live handler.
+  //
+  // Hydration may REPLACE DOM nodes (mismatch fallback, or even successful
+  // hydrate-as-mount on some shapes). The original `event.target` reference
+  // can therefore be detached after hydration completes. To survive this,
+  // we capture an identifying "replay path" — preferring `data-testid` (a
+  // stable, semantic identifier) and falling back to a tag-based child
+  // index walk relative to `el`. After hydration we re-query the live tree.
+  let replayPath: ReplayPath | null = null
+  // Stamp a "scheduled" marker for tests / devtools introspection.
+  el.setAttribute('data-island-state', 'awaiting-interaction')
+
+  const startHydration = () => {
+    if (hydrationStarted) return
+    hydrationStarted = true
+    el.setAttribute('data-island-state', 'hydrating')
+    void hydrate().then(() => {
+      hydrated = true
+      el.removeAttribute('data-island-state')
+      for (const ev of events) {
+        el.removeEventListener(ev, dispatch, INTERACTION_LISTENER_OPTS)
+      }
+      if (!replayPath) return
+      const liveTarget = resolveReplayPath(el, replayPath)
+      if (liveTarget && liveTarget.isConnected) {
+        liveTarget.dispatchEvent(
+          new MouseEvent('click', { bubbles: true, cancelable: true }),
+        )
+      }
+    })
+  }
+
+  const dispatch = (event: Event) => {
+    // After hydration, listeners are removed in the `then` above —
+    // this branch is defensive only.
+    if (hydrated) return
+
+    if (event.type === 'click') {
+      // Stop the click — the SSR DOM has no live click handler bound yet,
+      // so propagating it does nothing useful. Capture the click target
+      // for replay after hydration. Works whether or not hydration was
+      // already started by a previous non-click event — the click always
+      // replays as the user-intended action.
+      event.stopImmediatePropagation()
+      event.preventDefault()
+      const target = event.target as HTMLElement | null
+      if (target) replayPath = captureReplayPath(el, target)
+    }
+    startHydration()
+  }
+
+  // `passive: false` because the click handler may need preventDefault on
+  // the original event in the replay path. `capture: true` so we run
+  // BEFORE the live event-delegation handler that hydrateRoot installs
+  // on the container (otherwise the click would already have propagated
+  // past us by the time we react to non-click events firing first).
+  for (const ev of events) {
+    el.addEventListener(ev, dispatch, INTERACTION_LISTENER_OPTS)
+  }
+  return () => {
+    if (hydrated) return
+    el.removeAttribute('data-island-state')
+    for (const ev of events) {
+      el.removeEventListener(ev, dispatch, INTERACTION_LISTENER_OPTS)
+    }
+  }
+}
+
+const INTERACTION_LISTENER_OPTS: AddEventListenerOptions = {
+  passive: false,
+  capture: true,
+}
+
+/**
+ * A locator path for replaying a click after hydration MAY have replaced the
+ * original DOM node. Two strategies:
+ *   - `testid`: re-query the live tree by `[data-testid="..."]`. Stable,
+ *     semantic, survives DOM swap.
+ *   - `path`: a tag-name + child-index walk from the island root. Fallback
+ *     for elements without a test id. Less stable (assumes the live tree
+ *     mirrors the SSR tree's shape) but covers the no-testid case.
+ */
+type ReplayPath =
+  | { kind: 'testid'; value: string }
+  | { kind: 'path'; steps: { tag: string; index: number }[] }
+
+function captureReplayPath(el: Element, target: Element): ReplayPath | null {
+  const testid = target.getAttribute?.('data-testid')
+  if (testid) return { kind: 'testid', value: testid }
+  // Walk up from target to el, collecting (tag, child-index) at each step.
+  const steps: { tag: string; index: number }[] = []
+  let node: Element | null = target
+  while (node && node !== el) {
+    const parent: Element | null = node.parentElement
+    if (!parent) return null
+    const siblings = Array.from(parent.children)
+    const index = siblings.indexOf(node)
+    if (index < 0) return null
+    steps.unshift({ tag: node.tagName, index })
+    node = parent
+  }
+  return node === el ? { kind: 'path', steps } : null
+}
+
+function resolveReplayPath(el: Element, path: ReplayPath): HTMLElement | null {
+  if (path.kind === 'testid') {
+    return el.querySelector<HTMLElement>(`[data-testid="${path.value}"]`)
+  }
+  let node: Element | null = el
+  for (const { tag, index } of path.steps) {
+    const child: Element | undefined = node?.children[index]
+    if (!child || child.tagName !== tag) return null
+    node = child
+  }
+  return node as HTMLElement | null
 }
 
 async function hydrateIsland(

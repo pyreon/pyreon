@@ -45,18 +45,25 @@
  * ## Hydration strategies
  *
  * Control when an island hydrates via the `hydrate` option:
- *   - "load" (default) — hydrate immediately on page load
- *   - "idle"           — hydrate when the browser is idle (requestIdleCallback)
- *   - "visible"        — hydrate when the island scrolls into the viewport
- *   - "media(query)"   — hydrate when a media query matches
- *   - "never"          — never hydrate (render-only, no client JS)
+ *   - "load" (default)         — hydrate immediately on page load
+ *   - "idle"                   — hydrate when the browser is idle (requestIdleCallback)
+ *   - "visible"                — hydrate when the island scrolls into the viewport
+ *   - "interaction"            — hydrate on first user interaction (focus/click/pointerenter/touchstart)
+ *   - "interaction(<events>)"  — hydrate on first matching event (e.g. "interaction(focus)" or "interaction(click,touchstart)")
+ *   - "media(query)"           — hydrate when a media query matches
+ *   - "never"                  — never hydrate (render-only, no client JS)
+ *
+ * Use `interaction` for components that are interactive but not visible on
+ * load — modals, dropdowns, command palettes. The component stays as a
+ * non-hydrated DOM region until the user reaches for it (clicks the trigger,
+ * tabs through the page, hovers, taps).
  *
  * ## Prefetch hint
  *
- * Pair a deferred-hydration strategy (`visible` / `media(...)`) with a `prefetch`
- * hint to start fetching the island's chunk BEFORE it's needed for hydration —
- * the chunk is warm in the module cache by the time the hydration trigger fires,
- * so hydration is instant instead of blank-while-fetching.
+ * Pair a deferred-hydration strategy (`visible` / `interaction` / `media(...)`)
+ * with a `prefetch` hint to start fetching the island's chunk BEFORE it's needed
+ * for hydration — the chunk is warm in the module cache by the time the
+ * hydration trigger fires, so hydration is instant instead of blank-while-fetching.
  *
  *   - "none" (default) — no prefetch
  *   - "idle"           — call loader() during browser idle time (requestIdleCallback)
@@ -73,7 +80,14 @@ import { h } from '@pyreon/core'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type HydrationStrategy = 'load' | 'idle' | 'visible' | 'never' | `media(${string})`
+export type HydrationStrategy =
+  | 'load'
+  | 'idle'
+  | 'visible'
+  | 'interaction'
+  | 'never'
+  | `media(${string})`
+  | `interaction(${string})`
 
 export type PrefetchStrategy = 'none' | 'idle' | 'visible'
 

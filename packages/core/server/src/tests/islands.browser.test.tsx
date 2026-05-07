@@ -194,6 +194,112 @@ describe('@pyreon/server — hydrateIslands in real Chromium', () => {
     cleanupIslands()
   })
 
+  it('hydrate=interaction: stays SSR-only until first focus/click/pointerenter; one-shot', async () => {
+    const island = installIsland({
+      hydrate: 'interaction',
+      componentName: 'CmdK',
+    })
+
+    let loaderCalls = 0
+    const cleanup = hydrateIslands({
+      CmdK: () => {
+        loaderCalls += 1
+        return Promise.resolve({
+          default: () => <div data-testid="cmdk-mounted">mounted</div>,
+        })
+      },
+    })
+
+    await settle()
+    expect(loaderCalls).toBe(0)
+    // Listeners attached — surfaced via data-island-state for assertions.
+    expect(island.getAttribute('data-island-state')).toBe('awaiting-interaction')
+    expect(island.querySelector('[data-testid="cmdk-mounted"]')).toBeNull()
+
+    // First click triggers hydrate.
+    island.click()
+    for (let i = 0; i < 20; i++) {
+      await flushFrames()
+      if (island.querySelector('[data-testid="cmdk-mounted"]')) break
+    }
+    expect(loaderCalls).toBe(1)
+    expect(island.querySelector('[data-testid="cmdk-mounted"]')).not.toBeNull()
+    expect(island.getAttribute('data-island-state')).toBeNull()
+
+    // Subsequent clicks must NOT re-fire the loader (one-shot listeners).
+    island.click()
+    island.click()
+    island.click()
+    await settle()
+    expect(loaderCalls).toBe(1)
+
+    cleanup()
+    cleanupIslands()
+  })
+
+  it('hydrate=interaction(focus): only the named events trigger hydrate', async () => {
+    const island = installIsland({
+      hydrate: 'interaction(focus)',
+      componentName: 'FocusOnly',
+    })
+    // Make the island actually focusable so dispatched focus event has a target.
+    island.tabIndex = 0
+
+    let loaderCalls = 0
+    const cleanup = hydrateIslands({
+      FocusOnly: () => {
+        loaderCalls += 1
+        return Promise.resolve({ default: () => <div>focused</div> })
+      },
+    })
+
+    await settle()
+    // A click should NOT trigger this strategy — only focus.
+    island.click()
+    await settle()
+    expect(loaderCalls).toBe(0)
+
+    // Focus DOES trigger.
+    island.dispatchEvent(new FocusEvent('focus'))
+    for (let i = 0; i < 20; i++) {
+      await flushFrames()
+      if (loaderCalls > 0) break
+    }
+    expect(loaderCalls).toBe(1)
+
+    cleanup()
+    cleanupIslands()
+  })
+
+  it('hydrate=interaction: cleanup() removes listeners before any interaction', async () => {
+    const island = installIsland({
+      hydrate: 'interaction',
+      componentName: 'NeverInteracted',
+    })
+
+    let loaderCalls = 0
+    const cleanup = hydrateIslands({
+      NeverInteracted: () => {
+        loaderCalls += 1
+        return Promise.resolve({ default: () => <div>x</div> })
+      },
+    })
+
+    await settle()
+    expect(island.getAttribute('data-island-state')).toBe('awaiting-interaction')
+
+    // Remove listeners BEFORE any interaction happens.
+    cleanup()
+    expect(island.getAttribute('data-island-state')).toBeNull()
+
+    // Click after cleanup should NOT trigger the loader.
+    island.click()
+    await settle()
+    expect(loaderCalls).toBe(0)
+
+    cleanupIslands()
+  })
+
   it('hydrate=never WITHOUT a registry entry stays clean (no data-island-error)', async () => {
     // The whole point of hydrate=never is shipping zero client JS — so the
     // user does NOT register a loader. Pre-fix the missing-loader check

@@ -26,6 +26,11 @@ export const MobileMenu = island(() => import('./components/MobileMenu'), {
   hydrate: 'media((max-width: 768px))',
 })
 
+export const CommandPalette = island(() => import('./components/CommandPalette'), {
+  name: 'CommandPalette',
+  hydrate: 'interaction',
+})
+
 export const StaticBadge = island(() => import('./components/StaticBadge'), {
   name: 'StaticBadge',
   hydrate: 'never',

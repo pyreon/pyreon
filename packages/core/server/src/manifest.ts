@@ -90,15 +90,21 @@ export default createHandler({
       signature:
         'island(loader: () => Promise<ComponentFn>, options: { name: string; hydrate?: HydrationStrategy; prefetch?: PrefetchStrategy }): ComponentFn',
       summary:
-        'Wrap a lazily-loaded component in a `<pyreon-island>` boundary with a hydration strategy. The rest of the page stays HTML-only; only the island fetches its JS bundle and hydrates. Strategies: `"load"` (immediate), `"idle"` (`requestIdleCallback`), `"visible"` (IntersectionObserver), `"media(query)"` (matchMedia), `"never"` (HTML-only, no JS). Props passed to islands are JSON-serialized — non-JSON values (functions, symbols, undefined, children) are stripped. Pair with `prefetch: "idle"` or `"visible"` to pre-warm the chunk BEFORE the hydration trigger fires — eliminates the blank-while-fetching flash on `visible`-strategy islands. Prefetch is a no-op for `hydrate: "load"` (loader runs synchronously already) and `hydrate: "never"` (defeats the zero-JS strategy).',
-      example: `// Pair visible-hydration with idle-prefetch — chunk arrives during
+        'Wrap a lazily-loaded component in a `<pyreon-island>` boundary with a hydration strategy. The rest of the page stays HTML-only; only the island fetches its JS bundle and hydrates. Strategies: `"load"` (immediate), `"idle"` (`requestIdleCallback`), `"visible"` (IntersectionObserver), `"interaction"` (first focus/click/pointerenter/touchstart — also `"interaction(<events>)"` for custom event lists; clicks are REPLAYED on the equivalent live element after hydration so the first click both wakes the island AND fires the action), `"media(query)"` (matchMedia), `"never"` (HTML-only, no JS). Props passed to islands are JSON-serialized — non-JSON values (functions, symbols, undefined, children) are stripped. Pair with `prefetch: "idle"` or `"visible"` to pre-warm the chunk BEFORE the hydration trigger fires — eliminates the blank-while-fetching flash on deferred-strategy islands. Prefetch is a no-op for `hydrate: "load"` (loader runs synchronously already) and `hydrate: "never"` (defeats the zero-JS strategy).',
+      example: `// Visible-hydration paired with idle-prefetch — chunk arrives during
 // browser idle so by scroll-in, hydration is instant.
 const Comments = island(
   () => import("./Comments"),
   { name: "Comments", hydrate: "visible", prefetch: "idle" }
 )
 
-// Hydration strategies: "load" | "idle" | "visible" | "media" | "never"
+// Interaction-hydration — perfect for modals / dropdowns / command palettes.
+const CommandPalette = island(
+  () => import("./CommandPalette"),
+  { name: "CommandPalette", hydrate: "interaction" }, // first focus/click/pointerenter/touchstart
+)
+
+// Hydration strategies: "load" | "idle" | "visible" | "interaction" | "media" | "never"
 // Prefetch strategies:  "none" (default) | "idle" | "visible"`,
       mistakes: [
         'Passing function props (event handlers, callbacks) — silently stripped during JSON serialization, the island sees `undefined`',
@@ -108,6 +114,8 @@ const Comments = island(
         'Setting `prefetch: "idle"` on a `hydrate: "load"` island — load runs the loader synchronously, prefetch is redundant (silently suppressed; no `data-prefetch` attribute is emitted)',
         'Setting any `prefetch` on a `hydrate: "never"` island — defeats the whole zero-JS point of `never` (silently suppressed)',
         'Registering a `hydrate: "never"` island in `hydrateIslands({ ... })` — defeats the strategy by pulling the component module into the client bundle. The whole point of `never` is zero client JS. The runtime short-circuits never-strategy before the registry lookup so missing entries are silent (no `data-island-error="no-loader"`); the auto-registry omits never-strategy islands by design.',
+        'Using `"interaction"` for visible-on-load components — defeats the strategy. Use `"load"` for above-the-fold interactive content; reserve `"interaction"` for modals / dropdowns / command palettes that are interactive but only shown on user demand',
+        'Relying on focus/pointerenter to trigger the SAME action as click for `"interaction"` — only clicks are replayed post-hydration. Non-click events trigger hydration but no replay (focus can\\\'t be reliably re-dispatched once the user has tabbed past; pointerenter is passive)',
       ],
       seeAlso: ['createHandler', 'hydrateIslands', 'hydrateIslandsAuto'],
     },
