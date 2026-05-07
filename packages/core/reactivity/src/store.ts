@@ -20,6 +20,26 @@ const proxyCache = new WeakMap<object, object>()
 
 const IS_STORE = Symbol('pyreon.store')
 
+// Built-in object types that have internal slots and fail the Proxy
+// internal-slot check on every method call (`Map.prototype.set` called on a
+// Proxy → `TypeError: Method ... called on incompatible receiver`). Returning
+// the raw instance keeps these usable but at the cost of fine-grained
+// reactivity for their contents — write replace-the-whole-Map style if you
+// need reactivity (`store.users = new Map(store.users)`). A future PR can
+// add Vue-style collection-aware wrapping for Map/Set if demand emerges.
+function isBuiltinNonProxiable(obj: object): boolean {
+  return (
+    obj instanceof Map ||
+    obj instanceof Set ||
+    obj instanceof WeakMap ||
+    obj instanceof WeakSet ||
+    obj instanceof Date ||
+    obj instanceof RegExp ||
+    obj instanceof Promise ||
+    obj instanceof Error
+  )
+}
+
 /** Returns true if the value is a createStore proxy. */
 export function isStore(value: unknown): boolean {
   return (
@@ -38,6 +58,10 @@ export function createStore<T extends object>(initial: T): T {
 }
 
 function wrap(raw: object): object {
+  // Built-ins with internal slots (Map, Set, Date, …) can't be proxied: their
+  // methods fail the receiver check when called on the proxy. Return raw.
+  if (isBuiltinNonProxiable(raw)) return raw
+
   const cached = proxyCache.get(raw)
   if (cached) return cached
 
@@ -63,10 +87,18 @@ function wrap(raw: object): object {
       // Array length — tracked via dedicated signal for push/pop/splice reactivity
       if (isArray && key === 'length') return lengthSig?.()
 
-      // Non-own properties: prototype methods (forEach, map, push, …)
-      // These must be returned untracked so array methods work normally.
-      // Array methods will then go through set/get on indices via the proxy.
+      // Non-own properties without a tracked signal: prototype methods
+      // (forEach, map, push, …) returned untracked so array methods work.
+      // BUT if a signal already exists for this key, the property was tracked
+      // before — most likely the property is currently absent because of a
+      // `delete` operation. Continue tracking via the existing signal so that
+      // a subsequent reassign (`state.b = 99`) re-runs effects that read the
+      // key during its absent window. Without this branch, the `delete` →
+      // notify-undefined → effect-re-runs-and-reads-`undefined`-via-this-fast-
+      // path → effect-loses-subscription chain breaks reactivity for any
+      // delete-then-reassign cycle.
       if (!Object.hasOwn(target, key)) {
+        if (propSignals.has(key)) return propSignals.get(key)?.()
         return (target as Record<PropertyKey, unknown>)[key]
       }
 
@@ -113,9 +145,17 @@ function wrap(raw: object): object {
 
     deleteProperty(target, key) {
       delete (target as Record<PropertyKey, unknown>)[key]
+      // Notify subscribers that the property is now undefined, but KEEP the
+      // signal in `propSignals`. If we delete the entry, a later `set` on the
+      // same key creates a fresh signal — but every effect that previously
+      // read this key tracked the old (dropped) signal and never re-runs on
+      // the reassign. Keeping the entry preserves signal identity across
+      // delete-then-reassign cycles. The trade-off is that long-lived stores
+      // with high churn on transient keys retain those signal entries; for
+      // workloads where that's a real leak, reassign to undefined instead of
+      // delete.
       if (typeof key !== 'symbol' && propSignals.has(key)) {
         propSignals.get(key)?.set(undefined)
-        propSignals.delete(key)
       }
       if (isArray) lengthSig?.set((target as unknown[]).length)
       return true
