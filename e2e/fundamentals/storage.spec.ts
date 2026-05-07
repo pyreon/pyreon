@@ -2,16 +2,23 @@ import { expect, test } from '@playwright/test'
 
 test.describe('Storage — browser APIs', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/')
-    await page.waitForSelector('nav.sidebar')
-    // Clear storage before each test
-    await page.evaluate(() => {
-      localStorage.clear()
-      sessionStorage.clear()
+    // Clear storage BEFORE the page loads — `addInitScript` runs in every
+    // new document context before any user code executes. Avoids the race
+    // where `page.evaluate` after `waitForSelector` lands mid-navigation and
+    // throws "Execution context was destroyed" on slow CI.
+    await page.addInitScript(() => {
+      try {
+        localStorage.clear()
+        sessionStorage.clear()
+      } catch {
+        // Cross-origin or storage-disabled context — skip.
+      }
       document.cookie.split(';').forEach((c) => {
         document.cookie = c.trim().split('=')[0] + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/'
       })
     })
+    await page.goto('/')
+    await page.waitForSelector('nav.sidebar')
   })
 
   test('localStorage persists and reads back', async ({ page }) => {
