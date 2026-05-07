@@ -38,18 +38,42 @@ type CloneAndEnhance = (
   opts: Partial<ExtendedConfiguration>,
 ) => ReturnType<typeof rocketComponent>
 
-/** Clones the current configuration and merges new options, returning a fresh rocketComponent. */
-const cloneAndEnhance: CloneAndEnhance = (defaultOpts, opts) =>
-  rocketComponent({
+/**
+ * Clones the current configuration and merges new options, returning a fresh
+ * rocketComponent.
+ *
+ * Component-swap reset: when `opts.component` is set AND differs from the
+ * current `defaultOpts.component`, the prior `attrs`, `priorityAttrs`,
+ * `filterAttrs`, and `compose` chains are dropped — they were tailored to the
+ * previous component's prop shape, and applying them to a different component
+ * silently leaks invalid props through to the DOM (e.g. `disabled` on an
+ * `<a>`). Callers who want to preserve them must re-chain explicitly:
+ *
+ *   const NewBtn = Button.config({ component: 'a' }).attrs(sharedAttrs)
+ */
+const cloneAndEnhance: CloneAndEnhance = (defaultOpts, opts) => {
+  const componentChanged =
+    opts.component != null && opts.component !== defaultOpts.component
+
+  return rocketComponent({
     ...defaultOpts,
-    attrs: chainOptions(opts.attrs, defaultOpts.attrs),
-    filterAttrs: [...(defaultOpts.filterAttrs ?? []), ...(opts.filterAttrs ?? [])],
-    priorityAttrs: chainOptions(opts.priorityAttrs, defaultOpts.priorityAttrs),
+    attrs: componentChanged
+      ? chainOptions(opts.attrs, [])
+      : chainOptions(opts.attrs, defaultOpts.attrs),
+    filterAttrs: componentChanged
+      ? [...(opts.filterAttrs ?? [])]
+      : [...(defaultOpts.filterAttrs ?? []), ...(opts.filterAttrs ?? [])],
+    priorityAttrs: componentChanged
+      ? chainOptions(opts.priorityAttrs, [])
+      : chainOptions(opts.priorityAttrs, defaultOpts.priorityAttrs),
     statics: { ...defaultOpts.statics, ...opts.statics },
-    compose: { ...defaultOpts.compose, ...opts.compose },
+    compose: componentChanged
+      ? { ...opts.compose }
+      : { ...defaultOpts.compose, ...opts.compose },
     ...chainOrOptions(CONFIG_KEYS, opts, defaultOpts),
     ...chainReservedKeyOptions([...defaultOpts.dimensionKeys, ...STYLING_KEYS], opts, defaultOpts),
   } as Parameters<typeof rocketComponent>[0])
+}
 
 // --------------------------------------------------------
 // rocketComponent
