@@ -40,6 +40,10 @@ const KNOWN_DETECTOR_CODES = new Set([
   'raw-remove-event-listener',
   'date-math-random-id',
   'on-click-undefined',
+  'signal-write-as-call',
+  'static-return-null-conditional',
+  'as-unknown-as-vnodechild',
+  'island-never-with-registry-entry',
 ])
 
 describe('patterns content — structural shape', () => {

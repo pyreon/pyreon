@@ -483,4 +483,145 @@ describe('detectPyreonPatterns', () => {
       expect(diags.filter((d) => d.code === 'as-unknown-as-vnodechild')).toEqual([])
     })
   })
+
+  describe('island-never-with-registry-entry', () => {
+    it('flags a hydrateIslands key matching a hydrate: "never" island declaration', () => {
+      const code = `
+        import { island } from '@pyreon/server'
+        import { hydrateIslands } from '@pyreon/server/client'
+        export const StaticBadge = island(() => import('./StaticBadge'), {
+          name: 'StaticBadge',
+          hydrate: 'never',
+        })
+        hydrateIslands({
+          StaticBadge: () => import('./StaticBadge'),
+        })
+      `
+      const diags = detectPyreonPatterns(code)
+      const hits = diags.filter((d) => d.code === 'island-never-with-registry-entry')
+      expect(hits).toHaveLength(1)
+      expect(hits[0]!.message).toContain('StaticBadge')
+      expect(hits[0]!.message).toContain("'never'")
+    })
+
+    it('does NOT flag a hydrateIslands key for a non-never island', () => {
+      const code = `
+        import { island } from '@pyreon/server'
+        import { hydrateIslands } from '@pyreon/server/client'
+        export const Counter = island(() => import('./Counter'), {
+          name: 'Counter',
+          hydrate: 'load',
+        })
+        hydrateIslands({
+          Counter: () => import('./Counter'),
+        })
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'island-never-with-registry-entry')).toEqual([])
+    })
+
+    it('does NOT flag a never-island when no hydrateIslands call appears', () => {
+      const code = `
+        import { island } from '@pyreon/server'
+        export const StaticBadge = island(() => import('./StaticBadge'), {
+          name: 'StaticBadge',
+          hydrate: 'never',
+        })
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'island-never-with-registry-entry')).toEqual([])
+    })
+
+    it('does NOT flag when hydrateIslands omits never-strategy islands (canonical)', () => {
+      const code = `
+        import { island } from '@pyreon/server'
+        import { hydrateIslands } from '@pyreon/server/client'
+        export const Counter = island(() => import('./Counter'), {
+          name: 'Counter',
+          hydrate: 'load',
+        })
+        export const StaticBadge = island(() => import('./StaticBadge'), {
+          name: 'StaticBadge',
+          hydrate: 'never',
+        })
+        hydrateIslands({
+          Counter: () => import('./Counter'),
+          // StaticBadge intentionally omitted
+        })
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'island-never-with-registry-entry')).toEqual([])
+    })
+
+    it('flags multiple never-islands registered in the same hydrateIslands call', () => {
+      const code = `
+        import { island } from '@pyreon/server'
+        import { hydrateIslands } from '@pyreon/server/client'
+        export const A = island(() => import('./A'), { name: 'A', hydrate: 'never' })
+        export const B = island(() => import('./B'), { name: 'B', hydrate: 'never' })
+        hydrateIslands({
+          A: () => import('./A'),
+          B: () => import('./B'),
+        })
+      `
+      const diags = detectPyreonPatterns(code)
+      const hits = diags.filter((d) => d.code === 'island-never-with-registry-entry')
+      expect(hits).toHaveLength(2)
+      expect(hits.map((h) => h.message).join('|')).toContain('"A"')
+      expect(hits.map((h) => h.message).join('|')).toContain('"B"')
+    })
+
+    it('handles string-literal property keys in hydrateIslands', () => {
+      const code = `
+        import { island } from '@pyreon/server'
+        import { hydrateIslands } from '@pyreon/server/client'
+        export const X = island(() => import('./X'), { name: 'X', hydrate: 'never' })
+        hydrateIslands({
+          'X': () => import('./X'),
+        })
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(
+        diags.filter((d) => d.code === 'island-never-with-registry-entry'),
+      ).toHaveLength(1)
+    })
+
+    it('does NOT flag non-string `hydrate` values (variable indirection)', () => {
+      const code = `
+        import { island } from '@pyreon/server'
+        import { hydrateIslands } from '@pyreon/server/client'
+        const STRATEGY = 'never'
+        export const X = island(() => import('./X'), { name: 'X', hydrate: STRATEGY })
+        hydrateIslands({
+          X: () => import('./X'),
+        })
+      `
+      // The detector intentionally only recognizes string-literal hydrate
+      // values — variable indirection takes us past the static-detection
+      // surface into pyreon doctor --check-islands territory.
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'island-never-with-registry-entry')).toEqual([])
+    })
+
+    it('reports `fixable: false` (no auto-fix; manual edit required)', () => {
+      const code = `
+        import { island } from '@pyreon/server'
+        import { hydrateIslands } from '@pyreon/server/client'
+        export const X = island(() => import('./X'), { name: 'X', hydrate: 'never' })
+        hydrateIslands({
+          X: () => import('./X'),
+        })
+      `
+      const diags = detectPyreonPatterns(code)
+      const hit = diags.find((d) => d.code === 'island-never-with-registry-entry')
+      expect(hit).toBeDefined()
+      expect(hit!.fixable).toBe(false)
+    })
+
+    it('hasPyreonPatterns regex pre-filter recognizes the never-strategy form', () => {
+      expect(
+        hasPyreonPatterns(`island(() => import('./X'), { name: 'X', hydrate: 'never' })`),
+      ).toBe(true)
+    })
+  })
 })
