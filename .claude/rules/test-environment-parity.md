@@ -17,6 +17,7 @@ The canonical machine-readable list lives at [`.claude/rules/browser-packages.js
 - `@pyreon/runtime-dom`
 - `@pyreon/router`
 - `@pyreon/head`
+- `@pyreon/server`
 - `@pyreon/flow`
 - `@pyreon/code`
 - `@pyreon/charts`

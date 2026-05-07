@@ -586,6 +586,10 @@ XSS escape in Suspense swap templates — all template content is properly escap
 `island(loader, { name, hydrate })` → async ComponentFn → `<pyreon-island>` element.
 Client: `hydrateIslands({ Name: () => import(...) })` — strategies: load, idle, visible, media, never.
 
+**`hydrate: 'never'` islands MUST NOT have a registry entry.** The whole point of the strategy is shipping zero client JS — registering a loader in `hydrateIslands({ ... })` defeats it by pulling the component module into the client bundle graph. `hydrateIslands` short-circuits before the registry lookup for never-strategy islands so missing entries are silent (NOT a `data-island-error="no-loader"` flag). Reference: `packages/core/server/src/client.ts:hydrateIslands`.
+
+**Real-app coverage**: `examples/islands-showcase` exercises one island per strategy (Counter / IdleClock / VisibleComments / MobileMenu / StaticBadge). Real-Chromium e2e gate at `e2e/islands-showcase.spec.ts` + `e2e/islands-showcase-mobile.spec.ts` (separate config `playwright.islands-showcase.config.ts`, separate webServer boot — same isolation rationale as ui-regression / app-showcase / compat-layers). Per-package browser smoke at `packages/core/server/src/tests/islands.browser.test.tsx` covers each strategy in isolation under real `IntersectionObserver` / `requestIdleCallback` / `matchMedia` (the unit-level happy-dom suite at `client.test.ts` cannot exercise these).
+
 ### JSX Compiler
 
 **Dual-backend architecture**: Rust native binary (napi-rs, 3.7-8.9x faster) with automatic JS fallback.
