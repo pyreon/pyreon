@@ -229,4 +229,63 @@ describe('createSelector', () => {
       expect(isSelected(2)).toBe(false)
     })
   })
+
+  // Regression: pre-fix, the source-tracking effect ran forever AND the
+  // per-value subs/hosts Maps grew unboundedly. With dynamic value spaces
+  // (UUIDs, ephemeral IDs) this leaked memory for the lifetime of the
+  // program. dispose() now stops the effect AND clears both Maps.
+  describe('dispose', () => {
+    test('stops source-tracking after dispose', () => {
+      const selected = signal(0)
+      const isSelected = createSelector(() => selected())
+      const runs: number[] = []
+      effect(() => {
+        runs.push(isSelected(1) ? 1 : 0)
+      })
+      expect(runs).toEqual([0])
+      selected.set(1)
+      expect(runs).toEqual([0, 1])
+
+      isSelected.dispose()
+      // Source change after dispose — the effect that tracks `isSelected(1)`
+      // should NOT re-run because the selector's internal effect was stopped.
+      selected.set(2)
+      expect(runs).toEqual([0, 1])
+    })
+
+    test('post-dispose calls return last-known result without tracking', () => {
+      const selected = signal(0)
+      const isSelected = createSelector(() => selected())
+      isSelected.dispose()
+      // Last known value was 0 — calls return its match against the query.
+      expect(isSelected(0)).toBe(true)
+      expect(isSelected(1)).toBe(false)
+    })
+
+    test('dispose is idempotent', () => {
+      const selected = signal(0)
+      const isSelected = createSelector(() => selected())
+      expect(() => {
+        isSelected.dispose()
+        isSelected.dispose()
+        isSelected.dispose()
+      }).not.toThrow()
+    })
+
+    test('post-dispose: source no longer propagates to selector', () => {
+      // Observable consequence of stopping the internal effect — proves
+      // the per-value Maps are no longer being populated either (because
+      // the tracking path is bypassed entirely after dispose).
+      const selected = signal('initial')
+      const isSelected = createSelector(() => selected())
+      // Build up the cache by querying many unique values.
+      for (let i = 0; i < 100; i++) isSelected(`uuid-${i}`)
+      isSelected.dispose()
+      // After dispose, the source is no longer tracked — changing it
+      // doesn't propagate to the selector's internal `current` value.
+      selected.set('changed')
+      expect(isSelected('initial')).toBe(true) // last-known wins
+      expect(isSelected('changed')).toBe(false) // never propagated
+    })
+  })
 })

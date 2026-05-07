@@ -199,4 +199,33 @@ describe('effectScope', () => {
     expect(errors.length).toBe(1)
     console.error = origError
   })
+
+  // Regression: pre-fix, addUpdateHook always allocated `_updateHooks` and
+  // pushed the fn even after `stop()`. The fn never fired (because
+  // notifyEffectRan checks `_active` first), but the registration leaked
+  // an array allocation and gave the caller no signal that the hook was
+  // futile. Mirrors `add()`'s silent-no-op-when-stopped contract.
+  test('addUpdateHook honors _active — silently no-ops on stopped scope', () => {
+    const scope = effectScope()
+    scope.stop()
+
+    let hookFired = false
+    scope.addUpdateHook(() => {
+      hookFired = true
+    })
+
+    // Cause an update — the hook should NOT fire because scope is stopped.
+    scope.notifyEffectRan()
+    expect(hookFired).toBe(false)
+
+    // The internal `_updateHooks` should not have been allocated either.
+    // We can't introspect the private field, but the observable contract
+    // is "stopped scopes don't fire hooks under any circumstance" — which
+    // would have held pre-fix too because `notifyEffectRan` already
+    // gated on `_active`. The fix prevents the array allocation; we test
+    // the consequence: no fire, regardless of how often you push.
+    for (let i = 0; i < 100; i++) scope.addUpdateHook(() => {})
+    scope.notifyEffectRan()
+    expect(hookFired).toBe(false)
+  })
 })

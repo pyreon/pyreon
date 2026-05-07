@@ -21,6 +21,20 @@ function notifyBucket(bucket: Set<() => void>): void {
   }
 }
 
+/** Selector predicate with a `dispose()` method to release internal state. */
+export interface Selector<T> {
+  (value: T): boolean
+  /**
+   * Stop the source-tracking effect AND clear the per-value subscriber/host
+   * Maps. After dispose, calls to the selector return the last-known result
+   * but no longer track. Required for selectors over dynamic value spaces
+   * (UUIDs, ephemeral IDs) created outside an `EffectScope` — without it,
+   * each unique queried value adds a permanent entry to the internal Maps,
+   * leaking memory for the lifetime of the program. Idempotent.
+   */
+  dispose(): void
+}
+
 /**
  * Create an equality selector — returns a reactive predicate that is true
  * only for the currently selected value.
@@ -33,13 +47,19 @@ function notifyBucket(bucket: Set<() => void>): void {
  * const isSelected = createSelector(selectedId)
  * // In each row:
  * class: () => (isSelected(row.id) ? "selected" : "")
+ *
+ * @example
+ * // Dynamic value spaces — call dispose() to release the per-value cache:
+ * const isCurrentTab = createSelector(() => currentTabId())
+ * onUnmount(() => isCurrentTab.dispose())
  */
-export function createSelector<T>(source: () => T): (value: T) => boolean {
+export function createSelector<T>(source: () => T): Selector<T> {
   const subs = new Map<T, Set<() => void>>()
   let current: T
   let initialized = false
+  let disposed = false
 
-  effect(() => {
+  const sourceEffect = effect(() => {
     const next = source()
     if (!initialized) {
       initialized = true
@@ -60,18 +80,30 @@ export function createSelector<T>(source: () => T): (value: T) => boolean {
   // Reusable hosts per value — avoids allocating a closure per trackSubscriber call
   const hosts = new Map<T, { _s: Set<() => void> | null }>()
 
-  return (value: T): boolean => {
-    let host = hosts.get(value)
-    if (!host) {
-      let bucket = subs.get(value)
-      if (!bucket) {
-        bucket = new Set()
-        subs.set(value, bucket)
+  const selector = ((value: T): boolean => {
+    if (!disposed) {
+      let host = hosts.get(value)
+      if (!host) {
+        let bucket = subs.get(value)
+        if (!bucket) {
+          bucket = new Set()
+          subs.set(value, bucket)
+        }
+        host = { _s: bucket }
+        hosts.set(value, host)
       }
-      host = { _s: bucket }
-      hosts.set(value, host)
+      trackSubscriber(host)
     }
-    trackSubscriber(host)
     return Object.is(current, value)
+  }) as Selector<T>
+
+  selector.dispose = (): void => {
+    if (disposed) return
+    disposed = true
+    sourceEffect.dispose()
+    subs.clear()
+    hosts.clear()
   }
+
+  return selector
 }
