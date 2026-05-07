@@ -212,6 +212,7 @@ expect(node.textContent).toBe('5')`,
       mistakes: [
         'Reading browser globals in the `source` function — it runs at setup time (not just in mounted context), so `no-window-in-ssr` fires on `window.X` there',
         'Expecting signals read inside the `callback` to be tracked — only the `source` function establishes tracking; the callback is untracked',
+        'Forgetting to return a cleanup function from the callback — `watch` honors a returned function as a cleanup that runs before each re-run AND on dispose. Useful for cancelling in-flight requests, clearing timers, or removing listeners attached on the previous run',
       ],
       seeAlso: ['effect', 'computed'],
     },

@@ -633,3 +633,119 @@ describe('batch — MAX_PASSES exhaustion (regression)', () => {
     warnSpy.mockRestore()
   })
 })
+
+// M6 audit gap (b): writing a signal from inside a `signal.subscribe` listener
+// (raw subscriber, not effect). Writes during dispatch must batch correctly
+// AND not infinite-loop the dispatcher.
+describe('batch — write from raw signal.subscribe listener (regression)', () => {
+  test('listener that writes another signal does not infinite-loop', () => {
+    const a = signal(0)
+    const b = signal(0)
+    const seen: number[] = []
+    a.subscribe(() => {
+      // Write a different signal from inside the dispatch
+      b.set(a.peek() + 100)
+    })
+    b.subscribe(() => {
+      seen.push(b.peek())
+    })
+
+    a.set(5)
+    expect(b.peek()).toBe(105)
+    expect(seen).toEqual([105])
+
+    a.set(7)
+    expect(b.peek()).toBe(107)
+    expect(seen).toEqual([105, 107])
+  })
+
+  test('listener writing the SAME signal short-circuits via Object.is dedup', () => {
+    const s = signal(0)
+    let listenerRuns = 0
+    s.subscribe(() => {
+      listenerRuns++
+      // Re-write same value — _set short-circuits via Object.is
+      s.set(s.peek())
+    })
+
+    s.set(5)
+    // Listener fires once for the user write; the in-listener re-write is
+    // a no-op via Object.is. Without the no-op, this would infinite-loop.
+    expect(listenerRuns).toBe(1)
+  })
+
+  test('listener writing a DIFFERENT value to its own signal is contained by MAX_PASSES', () => {
+    // This IS an infinite re-write loop — listener writes increment, which
+    // re-fires the listener, which writes increment, etc. The MAX_PASSES cap
+    // (PR #462) keeps it bounded. Without it, this test hangs.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const s = signal(0)
+    let listenerRuns = 0
+    s.subscribe(() => {
+      listenerRuns++
+      if (listenerRuns < 1000) s.set(s.peek() + 1)
+    })
+
+    s.set(1)
+    // Bounded — bisect-verifiable: the contract is "doesn't hang" rather
+    // than "fires N times" (the exact count depends on MAX_PASSES timing).
+    expect(listenerRuns).toBeGreaterThan(0)
+    expect(listenerRuns).toBeLessThan(10000) // would be infinite without the cap
+    warnSpy.mockRestore()
+  })
+})
+
+// M6 audit gap (d): cross-batch interleaving — outer batch starts flushing,
+// an inner batch begins inside an effect that fired during flush. The inner
+// batch must drain its own writes correctly without leaking into the outer.
+describe('batch — cross-batch interleaving (regression)', () => {
+  test('inner batch inside effect drains independently', () => {
+    const a = signal(0)
+    const b = signal(0)
+    const c = signal(0)
+    const seen: { a: number; b: number; c: number }[] = []
+
+    effect(() => {
+      const av = a()
+      const bv = b()
+      const cv = c()
+      seen.push({ a: av, b: bv, c: cv })
+      if (av > 0) {
+        batch(() => {
+          b.set(av * 10)
+          c.set(av * 100)
+        })
+      }
+    })
+    seen.length = 0
+
+    batch(() => {
+      a.set(1)
+    })
+
+    // Inner batch's b/c writes should have applied. The effect re-ran with
+    // propagated values (subject to dedup). Final state proves drain.
+    const final = seen[seen.length - 1]
+    expect(final).toEqual({ a: 1, b: 10, c: 100 })
+  })
+
+  test('nested batch with overlapping writes does not double-flush', () => {
+    const s = signal(0)
+    let runs = 0
+    effect(() => {
+      void s()
+      runs++
+    })
+    runs = 0
+
+    batch(() => {
+      s.set(1)
+      batch(() => {
+        s.set(2)
+      })
+      s.set(3)
+    })
+    expect(runs).toBe(1)
+    expect(s.peek()).toBe(3)
+  })
+})

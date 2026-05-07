@@ -348,4 +348,58 @@ describe('computed', () => {
       expect(warns.some((m) => m.includes('async function'))).toBe(false)
     })
   })
+
+  // M6 audit gap (c): creating a computed inside another computed's recompute
+  // body. Edge case — the inner computed registers its `recompute` as a
+  // signal subscriber DURING the outer's evaluation. The new computed should
+  // track the outer's source dependency correctly and not crash the recompute.
+  describe('computed-in-computed recompute (regression)', () => {
+    test('creating a computed inside a computed body is safe and tracks correctly', () => {
+      const source = signal(1)
+      let innerCreated = 0
+
+      // Outer computed creates a new computed each time it runs.
+      const outer = computed(() => {
+        const v = source()
+        innerCreated++
+        const inner = computed(() => v * 2)
+        return inner()
+      })
+
+      // First read — outer creates inner #1, returns 2.
+      expect(outer()).toBe(2)
+      expect(innerCreated).toBe(1)
+
+      // Source change — outer recomputes, creates inner #2, returns 4.
+      source.set(2)
+      expect(outer()).toBe(4)
+      expect(innerCreated).toBe(2)
+
+      // Verify the previously-created inner computeds didn't capture stale
+      // tracking — the latest outer() value reflects the latest source.
+      source.set(10)
+      expect(outer()).toBe(20)
+      expect(innerCreated).toBe(3)
+    })
+
+    test('inner computed reads outer source signal — no double-track or recompute leak', () => {
+      const source = signal(1)
+      let outerRuns = 0
+
+      const outer = computed(() => {
+        outerRuns++
+        const v = source()
+        // Inner reads the same source — should not double-subscribe outer.
+        const inner = computed(() => source() + v)
+        return inner()
+      })
+
+      expect(outer()).toBe(2)
+      expect(outerRuns).toBe(1)
+
+      source.set(5)
+      expect(outer()).toBe(10)
+      expect(outerRuns).toBe(2) // not 3 or more (no double-fire)
+    })
+  })
 })

@@ -28,7 +28,15 @@ export function reconcile<T extends object>(source: T, target: T): void {
 }
 
 function _reconcileInner(source: object, target: object, seen: WeakSet<object>): void {
-  if (seen.has(source)) return // circular reference — stop recursion
+  // The `seen` set is keyed on `source`, not `target` — protects against
+  // CIRCULAR references in the source tree (avoids infinite recursion). A
+  // consequence: DIAMOND-shaped sources (the SAME nested object referenced
+  // from two different parent paths in `source`) only get reconciled into
+  // their FIRST encountered position in `target`. The second occurrence is
+  // skipped. This is intentional — reconcile assumes source is a tree, not
+  // a DAG. Pass distinct object references (or deep-clone before reconcile)
+  // if your source is a DAG.
+  if (seen.has(source)) return
   seen.add(source)
   if (Array.isArray(source) && Array.isArray(target)) {
     _reconcileArray(source as unknown[], target as unknown[], seen)

@@ -128,7 +128,8 @@ expect(node.textContent).toBe('5')`,
 })`,
     notes: 'Explicit reactive watcher — tracks `source` and fires `callback` when it changes. Unlike `effect()`, the callback receives both `next` and `prev` values and does NOT auto-track signals read inside the callback body. `source` is evaluated at setup time to establish tracking; reading browser globals there still fires SSR lint rules. Returns a dispose function. See also: effect, computed.',
     mistakes: `- Reading browser globals in the \`source\` function — it runs at setup time (not just in mounted context), so \`no-window-in-ssr\` fires on \`window.X\` there
-- Expecting signals read inside the \`callback\` to be tracked — only the \`source\` function establishes tracking; the callback is untracked`,
+- Expecting signals read inside the \`callback\` to be tracked — only the \`source\` function establishes tracking; the callback is untracked
+- Forgetting to return a cleanup function from the callback — \`watch\` honors a returned function as a cleanup that runs before each re-run AND on dispose. Useful for cancelling in-flight requests, clearing timers, or removing listeners attached on the previous run`,
   },
 
   'reactivity/createSelector': {
