@@ -103,12 +103,54 @@ const Comments = island(
       mistakes: [
         'Passing function props (event handlers, callbacks) — silently stripped during JSON serialization, the island sees `undefined`',
         'Passing children to an island — stripped; islands cannot render arbitrary descendant trees from props',
-        'Forgetting to call `hydrateIslands({ Name: () => import("./Path") })` on the client — islands render as HTML and never hydrate',
+        'Forgetting to wire client-side hydration — under `@pyreon/vite-plugin` use `hydrateIslandsAuto(registry)` (the registry is auto-generated from `island()` calls); without a plugin use the manual `hydrateIslands({ Name: () => import("./Path") })`',
         'Using a duplicate `name` across two islands — the client-side registry collapses them, only one loader will fire',
         'Setting `prefetch: "idle"` on a `hydrate: "load"` island — load runs the loader synchronously, prefetch is redundant (silently suppressed; no `data-prefetch` attribute is emitted)',
         'Setting any `prefetch` on a `hydrate: "never"` island — defeats the whole zero-JS point of `never` (silently suppressed)',
+        'Registering a `hydrate: "never"` island in `hydrateIslands({ ... })` — defeats the strategy by pulling the component module into the client bundle. The whole point of `never` is zero client JS. The runtime short-circuits never-strategy before the registry lookup so missing entries are silent (no `data-island-error="no-loader"`); the auto-registry omits never-strategy islands by design.',
       ],
-      seeAlso: ['createHandler', 'hydrateIslands'],
+      seeAlso: ['createHandler', 'hydrateIslands', 'hydrateIslandsAuto'],
+    },
+    {
+      name: 'hydrateIslands',
+      kind: 'function',
+      signature:
+        'hydrateIslands(registry: Record<string, () => Promise<ComponentFn | { default: ComponentFn }>>): () => void',
+      summary:
+        'Client-side counterpart to `island()`. Walks every `<pyreon-island>` element on the page and schedules hydration per its `data-hydrate` strategy. Manual form: the user maintains the `Name → loader` mapping by hand (must match every `island()` `name` field). Returns a cleanup function that disconnects pending observers / listeners. Use `hydrateIslandsAuto()` under `@pyreon/vite-plugin` to skip the manual sync. Imported from `@pyreon/server/client`, NOT from `@pyreon/server` (server-only entry).',
+      example: `import { hydrateIslands } from "@pyreon/server/client"
+
+hydrateIslands({
+  Counter:  () => import("./Counter"),
+  SearchBar: () => import("./SearchBar"),
+  // hydrate: "never" islands are intentionally omitted —
+  // registering them defeats the zero-JS contract.
+})`,
+      mistakes: [
+        'Registry key must match the `island()` `name` field exactly — typo / drift causes runtime `data-island-error="no-loader"`. Use `hydrateIslandsAuto()` to eliminate this manual sync.',
+        'Including a `hydrate: "never"` island in the registry — defeats the strategy by pulling its module into the client bundle. Skip never-islands; the runtime short-circuits silently for them.',
+        'Importing from `@pyreon/server` instead of `@pyreon/server/client` — the main entry is server-only and stubs/throws on client-side use.',
+      ],
+      seeAlso: ['island', 'hydrateIslandsAuto'],
+    },
+    {
+      name: 'hydrateIslandsAuto',
+      kind: 'function',
+      signature:
+        'hydrateIslandsAuto(registry: AutoIslandRegistry): () => void',
+      summary:
+        'Auto-discovered counterpart to `hydrateIslands()`. Under `@pyreon/vite-plugin` (`pyreon({ islands: true })` is the default), the plugin pre-scans your source for `island()` declarations and emits a `virtual:pyreon/islands-registry` virtual module. The user imports it into `entry-client.ts` and passes it here. Eliminates the manual `Name → loader` sync that drives the #1 author foot-gun for islands. Never-strategy islands are omitted from the auto-registry by design — their components stay out of the client bundle.',
+      example: `// src/entry-client.ts
+import { hydrateIslandsAuto } from "@pyreon/server/client"
+import * as registry from "virtual:pyreon/islands-registry"
+
+hydrateIslandsAuto(registry)`,
+      mistakes: [
+        'Calling without the registry argument — the function takes the imported virtual module explicitly. The user-side `import` is what lets the plugin\\\'s `resolveId` hook run; importing from inside `@pyreon/server/client` would fail at build time because Rolldown\\\'s static-import analysis runs before plugin resolveId hooks for workspace sources.',
+        'Using under a non-Vite bundler — the virtual module only exists under `@pyreon/vite-plugin`. Fall back to manual `hydrateIslands({ ... })` for non-Vite consumers.',
+        'Setting `pyreon({ islands: false })` and still calling `hydrateIslandsAuto()` — the plugin emits a stub registry that throws at runtime with a clear error message. Either re-enable islands (the default) or use `hydrateIslands({ ... })` instead.',
+      ],
+      seeAlso: ['hydrateIslands', 'island'],
     },
     {
       name: 'prerender',

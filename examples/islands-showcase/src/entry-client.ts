@@ -1,14 +1,11 @@
-import { hydrateIslands } from '@pyreon/server/client'
+import { hydrateIslandsAuto } from '@pyreon/server/client'
+// @ts-expect-error virtual module — provided by @pyreon/vite-plugin
+import * as autoRegistry from 'virtual:pyreon/islands-registry'
 
-// The keys here MUST match each island's `name` in src/islands.ts.
-// Islands not listed here log a "no loader registered" warning and stay un-hydrated.
-hydrateIslands({
-  Counter: () => import('./components/Counter'),
-  IdleClock: () => import('./components/IdleClock'),
-  VisibleComments: () => import('./components/VisibleComments'),
-  MobileMenu: () => import('./components/MobileMenu'),
-  // StaticBadge has hydrate: 'never' — registering it would still skip hydration
-  // (the strategy short-circuits before the loader runs), but omitting it makes
-  // the intent explicit AND ensures the StaticBadge module isn't pulled into the
-  // client graph at all.
-})
+// Auto-discovers `island()` declarations in src/ via @pyreon/vite-plugin's
+// `virtual:pyreon/islands-registry`. No manual sync between island() names
+// and a hydrateIslands({ ... }) registry — the #1 author foot-gun closed.
+//
+// `hydrate: 'never'` islands (e.g. StaticBadge) are deliberately omitted
+// from the auto-registry — their components stay out of the client bundle.
+hydrateIslandsAuto(autoRegistry)
