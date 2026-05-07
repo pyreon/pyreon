@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs'
+import { readFile, rm, writeFile } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import type { Middleware } from '@pyreon/server'
 import type { Plugin } from 'vite'
 
@@ -20,6 +23,31 @@ export interface SitemapConfig {
   priority?: number
   /** Additional URLs to include (for dynamic routes). */
   additionalPaths?: SitemapEntry[]
+  /**
+   * When `true` AND the build is running in SSG mode, the sitemap reads
+   * the resolved-paths manifest emitted by the SSG plugin
+   * (`dist/_pyreon-ssg-paths.json`) and includes EVERY prerendered URL —
+   * including dynamic routes enumerated via `getStaticPaths` (PR A) and
+   * per-locale variants (PR H, when shipped). Without this flag the
+   * sitemap walks the file-system route tree directly and silently
+   * skips dynamic routes (`[id]` / `[...slug]`) because their concrete
+   * values aren't knowable without running each route's enumerator.
+   *
+   * Sequencing: when `true`, sitemap.xml emission moves from Vite's
+   * `generateBundle` hook (where the SSG plugin's path enumeration
+   * hasn't run yet) to `closeBundle` with `enforce: 'post'` so it
+   * runs AFTER the SSG plugin. The user must ensure `seoPlugin()` is
+   * placed AFTER `zero()` in the Vite plugin array (the canonical
+   * ordering — `closeBundle` hooks fire in plugin-registration order).
+   *
+   * Falls back gracefully: when the manifest doesn't exist (mode is
+   * not `ssg`, or the SSG step was skipped), the sitemap still walks
+   * the file-system routes — same shape as without this flag.
+   *
+   * Default: `false` (preserves prior behaviour). Set `true` for SSG
+   * sites that ship dynamic-route enumerations.
+   */
+  useSsgPaths?: boolean
 }
 
 export interface SitemapEntry {
@@ -194,20 +222,40 @@ export interface SeoPluginConfig {
  *     pyreon(),
  *     zero(),
  *     seoPlugin({
- *       sitemap: { origin: "https://example.com" },
+ *       sitemap: {
+ *         origin: "https://example.com",
+ *         useSsgPaths: true, // include dynamic-route enumerations
+ *       },
  *       robots: { sitemap: "https://example.com/sitemap.xml" },
  *     }),
  *   ],
  * }
  */
 export function seoPlugin(config: SeoPluginConfig = {}): Plugin {
+  // PR F — when `useSsgPaths` is true, sitemap.xml emission moves to
+  // `closeBundle` (post-SSG) so the SSG plugin's resolved-paths manifest
+  // is available. Otherwise it stays at `generateBundle` for the
+  // file-scan-only fast path.
+  const useSsgPaths = config.sitemap?.useSsgPaths === true
+  let distDir = ''
+
   return {
     name: 'pyreon-zero-seo',
     apply: 'build',
+    // `enforce: 'post'` for the closeBundle case so we run AFTER the
+    // SSG plugin's path-manifest write. `closeBundle` hooks fire in
+    // plugin-registration order, but enforce-post pushes us to the
+    // tail regardless of where seoPlugin lands in the user's array.
+    ...(useSsgPaths ? ({ enforce: 'post' } as const) : {}),
+
+    configResolved(resolved) {
+      distDir = resolve(resolved.root, resolved.build.outDir)
+    },
 
     async generateBundle(_, _bundle) {
-      // Generate sitemap.xml
-      if (config.sitemap) {
+      // Skip sitemap emission here when `useSsgPaths` is true — moves to
+      // `closeBundle` below where the SSG manifest is readable.
+      if (config.sitemap && !useSsgPaths) {
         const { scanRouteFiles } = await import('./fs-router')
         const routesDir = `${process.cwd()}/src/routes`
 
@@ -234,6 +282,60 @@ export function seoPlugin(config: SeoPluginConfig = {}): Plugin {
           fileName: 'robots.txt',
           source: robots,
         })
+      }
+    },
+
+    async closeBundle() {
+      // PR F — `useSsgPaths` path. Read the manifest the SSG plugin
+      // wrote at its own `closeBundle`, merge into the file-scan paths,
+      // emit sitemap.xml to dist via writeFile (Vite's `emitFile` API
+      // only works during the bundling phase, not at closeBundle).
+      if (!config.sitemap || !useSsgPaths) return
+
+      const { scanRouteFiles } = await import('./fs-router')
+      const routesDir = `${process.cwd()}/src/routes`
+      const manifestPath = join(distDir, '_pyreon-ssg-paths.json')
+
+      try {
+        let ssgPaths: SitemapEntry[] = []
+        if (existsSync(manifestPath)) {
+          const raw = await readFile(manifestPath, 'utf-8')
+          const parsed = JSON.parse(raw) as { paths?: unknown }
+          if (Array.isArray(parsed.paths)) {
+            ssgPaths = parsed.paths
+              .filter((p): p is string => typeof p === 'string')
+              .map((path) => ({ path }))
+          }
+          // Cleanup — manifest is an internal artifact, not for
+          // the published static host.
+          try {
+            await rm(manifestPath, { force: true })
+          } catch {
+            // best-effort
+          }
+        }
+
+        // File-scan still runs as a fallback for static routes that
+        // weren't enumerated by the SSG manifest (e.g. mode is `ssg`
+        // but the manifest write was skipped, or static routes
+        // are present alongside the SSG output). The merge dedups
+        // by path so a static route emitted by both paths only
+        // appears once in the sitemap.
+        let files: string[] = []
+        try {
+          files = await scanRouteFiles(routesDir)
+        } catch {
+          // routesDir missing — only the SSG manifest paths land in the sitemap.
+        }
+
+        const merged: SitemapConfig = {
+          ...config.sitemap,
+          additionalPaths: [...ssgPaths, ...(config.sitemap.additionalPaths ?? [])],
+        }
+        const sitemap = generateSitemap(files, merged)
+        await writeFile(join(distDir, 'sitemap.xml'), sitemap, 'utf-8')
+      } catch {
+        // Sitemap generation failed — skip silently
       }
     },
   }
