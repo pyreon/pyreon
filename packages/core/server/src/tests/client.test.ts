@@ -827,6 +827,85 @@ describe('hydrateIslands', () => {
     globalThis.IntersectionObserver = origIO
   })
 
+  test('prefetch loader rejection: caught silently when hydration NEVER fires (no unhandled rejection)', async () => {
+    // Contract under test: prefetch is fire-and-forget. If the loader rejects
+    // AND no subsequent hydration call ever runs (e.g. media-query strategy
+    // that never matches, or user navigates away pre-scroll), the rejection
+    // MUST NOT bubble up as `unhandledrejection`. Hydration's own `await
+    // loader()` would otherwise consume the rejection via JS's import-promise
+    // dedup — but in this scenario hydration never fires, so prefetch's own
+    // `.catch(() => {})` is the ONLY handler, and removing it would surface
+    // the unhandled rejection.
+    //
+    // To isolate prefetch from hydration: pair `prefetch: 'idle'` with a
+    // media query that can never match (max-width: 1px), so the hydration
+    // path stays parked forever and prefetch's catch handler is the only
+    // protection.
+    document.body.innerHTML =
+      '<pyreon-island data-component="RejectPre" data-hydrate="media((max-width: 1px))" data-prefetch="idle" data-props="{}"></pyreon-island>'
+
+    let prefetchCalls = 0
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    // Mock matchMedia → never matches, so hydration's mql.addEventListener
+    // path waits forever and never calls loader().
+    const origMatchMedia = window.matchMedia
+    window.matchMedia = (q: string) =>
+      ({
+        matches: false,
+        media: q,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => true,
+      }) as unknown as MediaQueryList
+
+    // Listen on BOTH `window.unhandledrejection` (browser env) and Node's
+    // `process.on('unhandledRejection')` — vitest's happy-dom env doesn't
+    // reliably fire the browser event, but Node-level rejection tracking
+    // does fire (vitest's runner is Node + happy-dom shims).
+    let unhandled = false
+    const onUnhandled = (event: PromiseRejectionEvent) => {
+      unhandled = true
+      event.preventDefault?.()
+    }
+    const onProcUnhandled = (reason: unknown) => {
+      // Only flag rejections that came from OUR loader (not test runner internals).
+      if (reason instanceof Error && reason.message === 'boom') {
+        unhandled = true
+      }
+    }
+    window.addEventListener('unhandledrejection', onUnhandled)
+    process.on('unhandledRejection', onProcUnhandled)
+
+    const cleanup = hydrateIslands({
+      RejectPre: () => {
+        prefetchCalls++
+        return Promise.reject(new Error('boom'))
+      },
+    })
+
+    // Wait long enough for: idle-fallback setTimeout(200), microtask drain,
+    // and Node's unhandledRejection tick (deferred to next tick by spec).
+    await new Promise((r) => setTimeout(r, 400))
+    // Force one more macrotask so Node's unhandledRejection has fired.
+    await new Promise((r) => setImmediate(r))
+
+    // Prefetch fired (proves the rejection actually reached the handler).
+    expect(prefetchCalls).toBe(1)
+    // Critical assertion: no unhandled rejection. This is what
+    // `loader().catch(() => {})` protects.
+    expect(unhandled).toBe(false)
+
+    cleanup()
+    window.matchMedia = origMatchMedia
+    window.removeEventListener('unhandledrejection', onUnhandled)
+    process.off('unhandledRejection', onProcUnhandled)
+    errorSpy.mockRestore()
+  })
+
   test('cleanup cancels pending prefetch before it fires', async () => {
     document.body.innerHTML =
       '<pyreon-island data-component="CancelPre" data-hydrate="visible" data-prefetch="idle" data-props="{}"></pyreon-island>'
