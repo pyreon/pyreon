@@ -64,10 +64,28 @@ The local-fast subset of the validation checklist runs automatically on
 Total runtime target: 30-60s for a typical PR. Catches the cheap-to-
 detect failures locally instead of waiting 5 min for CI to bounce them.
 
+**Per-step timeout + stale-process safety net** — each step has a
+configurable timeout (default 300s via `PYREON_PRE_PUSH_TIMEOUT_SEC`).
+The hook can never hang forever: on timeout it kills the step, prints
+actionable guidance ("orphaned vitest from a prior worktree → `pkill -f
+'vitest run'` and retry"), and exits 1. Companion startup check warns
+about long-running vitest processes (>10 min old) belonging to other
+worktrees — they don't get auto-killed (might be intentional `vitest
+--watch` elsewhere) but flagged so the user can decide.
+
+**Empty-affected case** — when there are no committed changes vs
+`origin/main` (e.g. pushing the same commit, freshly-rebased branch
+that resolved to no diff), the hook **skips typecheck + tests** and
+exits 0. Earlier the empty case fell back to `--filter='*'` which ran
+the full 60+-package suite for what was supposed to be a no-op push —
+needlessly heavy and prone to parallel-run flakes.
+
 **Bypass:**
 
 - `PYREON_SKIP_PRE_PUSH=1 git push` — env-var bypass for one-off
   pushes (clearly named so it can't be mistaken for a permanent flag).
+- `PYREON_PRE_PUSH_TIMEOUT_SEC=600 git push` — extend the per-step
+  timeout (e.g. when running on a slow machine with full filter).
 - `git push --no-verify` — git's native bypass.
 - `git config --unset core.hooksPath` — disable repo-wide, keeps the
   hook script committed for whoever does want it.
