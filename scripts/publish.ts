@@ -25,7 +25,9 @@ const PLATFORM_STUB_PACKAGES = new Set([
   '@pyreon/compiler-darwin-arm64',
   '@pyreon/compiler-darwin-x64',
   '@pyreon/compiler-linux-arm64-gnu',
+  '@pyreon/compiler-linux-arm64-musl',
   '@pyreon/compiler-linux-x64-gnu',
+  '@pyreon/compiler-linux-x64-musl',
   '@pyreon/compiler-win32-x64-msvc',
 ])
 

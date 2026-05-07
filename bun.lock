@@ -597,7 +597,9 @@
         "@pyreon/compiler-darwin-arm64": "workspace:^",
         "@pyreon/compiler-darwin-x64": "workspace:^",
         "@pyreon/compiler-linux-arm64-gnu": "workspace:^",
+        "@pyreon/compiler-linux-arm64-musl": "workspace:^",
         "@pyreon/compiler-linux-x64-gnu": "workspace:^",
+        "@pyreon/compiler-linux-x64-musl": "workspace:^",
         "@pyreon/compiler-win32-x64-msvc": "workspace:^",
       },
       "peerDependencies": {
@@ -616,8 +618,16 @@
       "name": "@pyreon/compiler-linux-arm64-gnu",
       "version": "0.15.0",
     },
+    "packages/core/compiler/npm/linux-arm64-musl": {
+      "name": "@pyreon/compiler-linux-arm64-musl",
+      "version": "0.15.0",
+    },
     "packages/core/compiler/npm/linux-x64-gnu": {
       "name": "@pyreon/compiler-linux-x64-gnu",
+      "version": "0.15.0",
+    },
+    "packages/core/compiler/npm/linux-x64-musl": {
+      "name": "@pyreon/compiler-linux-x64-musl",
       "version": "0.15.0",
     },
     "packages/core/compiler/npm/win32-x64-msvc": {
@@ -2236,7 +2246,11 @@
 
     "@pyreon/compiler-linux-arm64-gnu": ["@pyreon/compiler-linux-arm64-gnu@workspace:packages/core/compiler/npm/linux-arm64-gnu"],
 
+    "@pyreon/compiler-linux-arm64-musl": ["@pyreon/compiler-linux-arm64-musl@workspace:packages/core/compiler/npm/linux-arm64-musl"],
+
     "@pyreon/compiler-linux-x64-gnu": ["@pyreon/compiler-linux-x64-gnu@workspace:packages/core/compiler/npm/linux-x64-gnu"],
+
+    "@pyreon/compiler-linux-x64-musl": ["@pyreon/compiler-linux-x64-musl@workspace:packages/core/compiler/npm/linux-x64-musl"],
 
     "@pyreon/compiler-win32-x64-msvc": ["@pyreon/compiler-win32-x64-msvc@workspace:packages/core/compiler/npm/win32-x64-msvc"],
 
