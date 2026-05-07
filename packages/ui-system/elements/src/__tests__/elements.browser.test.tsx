@@ -82,4 +82,51 @@ describe('@pyreon/elements browser smoke', () => {
       })
     }
   })
+
+  // Regression: Wrapper used to silently drop dangerouslySetInnerHTML.
+  // The unit test asserts Wrapper forwards the prop on the rendered
+  // vnode; this real-Chromium test asserts the SVG actually appears in
+  // the DOM after mount — the user-visible bug shape was "renders empty
+  // <div></div> instead of inlined SVG".
+  describe('dangerouslySetInnerHTML — real-Chromium DOM proof', () => {
+    it('inlines an SVG via Element + dangerouslySetInnerHTML', () => {
+      const { container, unmount } = mountInBrowser(
+        <Element
+          tag="div"
+          data-id="logo"
+          dangerouslySetInnerHTML={{
+            __html: '<svg viewBox="0 0 10 10"><rect width="10" height="10" /></svg>',
+          }}
+        />,
+      )
+      const root = container.querySelector('[data-id="logo"]')
+      expect(root).toBeTruthy()
+      // The SVG must actually be in the DOM, not lost between Wrapper and
+      // the renderer. Pre-fix this assertion failed: container had
+      // <div data-id="logo"></div> with no children.
+      const svg = root?.querySelector('svg')
+      expect(svg).toBeTruthy()
+      expect(svg?.tagName.toLowerCase()).toBe('svg')
+      expect(svg?.querySelector('rect')).toBeTruthy()
+      unmount()
+    })
+
+    it('inlines markup on a button (needsFix path)', () => {
+      const { container, unmount } = mountInBrowser(
+        <Element
+          tag="button"
+          data-id="btn"
+          dangerouslySetInnerHTML={{ __html: '<strong>Save</strong>' }}
+        />,
+      )
+      const btn = container.querySelector('[data-id="btn"]')
+      expect(btn).toBeTruthy()
+      // The bold text must reach the DOM. The needsFix gate's existing
+      // `!own.dangerouslySetInnerHTML` clause skips the two-layer fix,
+      // so this falls into the !needsFix branch and the fix's
+      // `if (innerHTML)` path takes over.
+      expect(btn?.querySelector('strong')?.textContent).toBe('Save')
+      unmount()
+    })
+  })
 })

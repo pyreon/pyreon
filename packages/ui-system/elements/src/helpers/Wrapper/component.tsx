@@ -50,6 +50,15 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
   // slot is dropped here too instead of leaking into the JSX.
   const isVoidTag = !own.dangerouslySetInnerHTML && getShouldBeEmpty(own.tag)
 
+  // dangerouslySetInnerHTML and children are mutually exclusive — both
+  // become inner content (per `runtime-server/src/index.ts:228` and
+  // `runtime-dom/src/props.ts:289`). Pre-fix the prop was in OWN_KEYS,
+  // moved into `own` by splitProps, and never re-attached to the rendered
+  // vnode — so `<Logo dangerouslySetInnerHTML={...} />` rendered an empty
+  // <div></div>. Forward the prop to the styled vnode and drop the
+  // children slot when innerHTML is set.
+  const innerHTML = own.dangerouslySetInnerHTML
+
   if (!needsFix) {
     const bundle = internElementBundle({
       block: own.block,
@@ -61,6 +70,9 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
     })
     if (isVoidTag) {
       return <Styled {...commonProps} $element={bundle} />
+    }
+    if (innerHTML) {
+      return <Styled {...commonProps} $element={bundle} dangerouslySetInnerHTML={innerHTML} />
     }
     return (
       <Styled {...commonProps} $element={bundle}>
@@ -82,6 +94,26 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
     alignY: own.alignY,
     equalCols: own.equalCols,
   })
+
+  // needsFix path: innerHTML belongs on the INNER styled node (where the
+  // actual content lives), NOT on the outer flex-fix wrapper. The
+  // `needsFix` computation already excludes the innerHTML case
+  // (`!own.dangerouslySetInnerHTML && isWebFixNeeded(own.tag)`), so this
+  // branch normally won't execute when innerHTML is set — but we keep
+  // the defensive forwarding so the contract is robust against future
+  // refactors of the needsFix gate.
+  if (innerHTML) {
+    return (
+      <Styled {...commonProps} $element={parentBundle}>
+        <Styled
+          as={asTag}
+          $childFix
+          $element={childBundle}
+          dangerouslySetInnerHTML={innerHTML}
+        />
+      </Styled>
+    )
+  }
 
   return (
     <Styled {...commonProps} $element={parentBundle}>
