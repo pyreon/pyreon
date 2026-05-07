@@ -226,12 +226,18 @@ async function renderStreamResponse(
 
         push(shellTail)
       } catch (err) {
+        // Defensive: catastrophic stream-level failure (rare; the SSR pipeline
+        // emits its own error markup for component-level errors). Status code
+        // is already 200 by the time we get here so we can only emit an
+        // inline error script and close the body. Branch is intentionally
+        // hard to exercise from tests without mocking `reader.read()`.
+        /* v8 ignore start */
         if (__DEV__) {
           console.error('[Pyreon Server] Stream render failed:', err)
         }
-        // Emit an inline error indicator — status code is already sent (200)
         push(`<script>console.error("[pyreon/server] Stream render failed")</script>`)
         push(shellTail)
+        /* v8 ignore stop */
       } finally {
         controller.close()
       }

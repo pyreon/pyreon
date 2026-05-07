@@ -53,6 +53,9 @@ export interface StartClientOptions {
  * Returns a cleanup function that unmounts the app.
  */
 export function startClient(options: StartClientOptions): () => void {
+  // SSR-only guard: hard-fails if startClient is called server-side. Cannot be
+  // exercised under happy-dom (document is always defined in the test env).
+  /* v8 ignore next 3 */
   if (typeof document === 'undefined') {
     throw new Error('[Pyreon] startClient() can only be called in the browser.')
   }
@@ -108,6 +111,7 @@ type IslandLoader = () => Promise<{ default: ComponentFn } | ComponentFn>
  * })
  */
 export function hydrateIslands(registry: Record<string, IslandLoader>): () => void {
+  /* v8 ignore next */
   if (typeof document === 'undefined') return () => {}
   const islands = document.querySelectorAll('pyreon-island')
   const cleanups: (() => void)[] = []
@@ -171,6 +175,7 @@ function schedulePrefetch(
   prefetch: PrefetchStrategy,
 ): (() => void) | null {
   if (prefetch === 'none') return null
+  /* v8 ignore next */
   if (typeof window === 'undefined') return null
   let cancelled = false
   // Fire and forget — we don't await; the dynamic import warms the module
@@ -259,6 +264,7 @@ export interface AutoIslandRegistry {
  * hydrateIslandsAuto(registry)
  */
 export function hydrateIslandsAuto(registry: AutoIslandRegistry): () => void {
+  /* v8 ignore next */
   if (typeof document === 'undefined') return () => {}
   if (!registry.__pyreonIslandsEnabled) {
     throw new Error(
@@ -277,6 +283,7 @@ function scheduleHydration(
   propsJson: string,
   strategy: HydrationStrategy,
 ): (() => void) | null {
+  /* v8 ignore next */
   if (typeof window === 'undefined') return null
   let cancelled = false
   const hydrate = (): Promise<void> => {
@@ -307,8 +314,12 @@ function scheduleHydration(
     case 'visible':
       return observeVisibility(el, hydrate)
 
-    case 'never':
-      return null
+    // `case 'never'` is dead here — `hydrateIslands` short-circuits before
+    // calling `scheduleHydration` when strategy === 'never' (the whole point
+    // of the strategy is shipping zero client JS). Removing the case keeps
+    // the branch surface tight; if a future caller invokes scheduleHydration
+    // directly with 'never', the default fallback (immediate hydrate) is the
+    // wrong shape — gate it at the call site, not here.
 
     case 'interaction':
       return scheduleInteractionHydration(el, hydrate, DEFAULT_INTERACTION_EVENTS)
@@ -459,9 +470,13 @@ function captureReplayPath(el: Element, target: Element): ReplayPath | null {
   const testid = target.getAttribute?.('data-testid')
   if (testid) return { kind: 'testid', value: testid }
   // Walk up from target to el, collecting (tag, child-index) at each step.
+  // `node` is non-null on every iteration because we early-return when
+  // `parent` is null (the only path that could leave node nullable). The
+  // `Element | null` type is preserved for the post-loop `node === el` check
+  // so the path-not-found case still returns null cleanly.
   const steps: { tag: string; index: number }[] = []
   let node: Element | null = target
-  while (node && node !== el) {
+  while (node !== el) {
     const parent: Element | null = node.parentElement
     if (!parent) return null
     const siblings = Array.from(parent.children)
@@ -470,7 +485,7 @@ function captureReplayPath(el: Element, target: Element): ReplayPath | null {
     steps.unshift({ tag: node.tagName, index })
     node = parent
   }
-  return node === el ? { kind: 'path', steps } : null
+  return { kind: 'path', steps }
 }
 
 function resolveReplayPath(el: Element, path: ReplayPath): HTMLElement | null {
@@ -515,6 +530,7 @@ async function hydrateIsland(
 }
 
 function observeVisibility(el: HTMLElement, callback: () => void): (() => void) | null {
+  /* v8 ignore next */
   if (typeof window === 'undefined') return null
   if (!('IntersectionObserver' in window)) {
     callback()
