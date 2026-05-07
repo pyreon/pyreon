@@ -195,6 +195,35 @@ store.todos.push({ text: 'Build app', done: false })  // array methods work`,
       seeAlso: ['signal'],
     },
     {
+      name: 'createResource',
+      kind: 'function',
+      signature:
+        '<T, P>(source: () => P, fetcher: (param: P) => Promise<T>) => Resource<T>',
+      summary:
+        'Async data primitive. Auto-fetches whenever `source()` changes — `data`, `loading`, `error` are signals readable inside effects. Stale-response guarded via internal `requestId` (typing fast then slow does not flicker old data). `refetch()` re-runs the fetcher with the current source value. **`dispose()` MUST be called for resources created outside an `EffectScope`** — otherwise the source-tracking effect leaks for the lifetime of the program.',
+      example: `const userId = signal(1)
+const user = createResource(
+  () => userId(),
+  (id) => fetch(\`/api/users/\${id}\`).then(r => r.json()),
+)
+effect(() => {
+  if (user.loading()) return
+  if (user.error()) return console.error(user.error())
+  console.log(user.data())
+})
+userId.set(2)            // auto-refetches
+user.refetch()           // explicit refetch with current source
+user.dispose()           // stop tracking, discard in-flight response`,
+      mistakes: [
+        'Forgetting `dispose()` for resources outside an EffectScope — the internal source-tracking effect runs forever, leaking memory and unbounded fetch calls on source changes',
+        'Calling `refetch()` after `dispose()` — silently no-ops; check disposed state on your end if needed',
+        'Reading `data()` without checking `loading()` / `error()` — undefined values flow through; gate the read on those signals',
+        'Expecting an in-flight response to update the resource AFTER `dispose()` — the response is discarded by design (stale-id check), `loading` may stay frozen at its dispose-time value',
+        'Reading signals INSIDE the fetcher and expecting tracked re-runs — only `source()` is tracked; signals read inside `fetcher` are read once per call without subscription',
+      ],
+      seeAlso: ['signal', 'effect', 'effectScope'],
+    },
+    {
       name: 'untrack',
       kind: 'function',
       signature: '(fn: () => T) => T',

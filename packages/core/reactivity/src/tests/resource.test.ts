@@ -230,4 +230,97 @@ describe('createResource', () => {
     await new Promise((r) => setTimeout(r, 10))
     expect(results).toEqual(['user-1', 'user-5', 'user-5'])
   })
+
+  // Regression: pre-fix, the source-tracking effect ran forever with no API
+  // to stop it. Resources created outside an EffectScope leaked the effect
+  // for the lifetime of the program. dispose() now stops the effect AND
+  // marks pending in-flight responses as stale.
+  describe('dispose', () => {
+    test('stops source-tracking after dispose', async () => {
+      const src = signal(1)
+      const calls: number[] = []
+      const resource = createResource(
+        () => src(),
+        (id) => {
+          calls.push(id)
+          return Promise.resolve(`user-${id}`)
+        },
+      )
+
+      await new Promise((r) => setTimeout(r, 10))
+      expect(calls).toEqual([1])
+
+      resource.dispose()
+
+      // Source change after dispose — should NOT trigger a new fetch.
+      src.set(2)
+      await new Promise((r) => setTimeout(r, 10))
+      expect(calls).toEqual([1])
+    })
+
+    test('refetch is a no-op after dispose', async () => {
+      const src = signal(1)
+      const calls: number[] = []
+      const resource = createResource(
+        () => src(),
+        (id) => {
+          calls.push(id)
+          return Promise.resolve(`user-${id}`)
+        },
+      )
+
+      await new Promise((r) => setTimeout(r, 10))
+      expect(calls).toEqual([1])
+
+      resource.dispose()
+      resource.refetch()
+      await new Promise((r) => setTimeout(r, 10))
+      expect(calls).toEqual([1])
+    })
+
+    test('in-flight response is discarded after dispose', async () => {
+      const src = signal(1)
+      // Capture the resolver via a one-element holder so TS doesn't narrow
+      // the closure-assigned variable to `never` after the new Promise
+      // callback returns. `let r = null` then assignment inside the
+      // callback narrows to `never` post-callback (no follow-callback flow).
+      const holder: { resolve: (v: string) => void } = {
+        resolve: () => undefined,
+      }
+      const resource = createResource(
+        () => src(),
+        () =>
+          new Promise<string>((r) => {
+            holder.resolve = r
+          }),
+      )
+
+      // Don't resolve yet — fetch is in flight.
+      expect(resource.loading()).toBe(true)
+      resource.dispose()
+
+      // Now resolve — handlers should see the bumped requestId and discard.
+      holder.resolve('late-result')
+      await new Promise((r) => setTimeout(r, 10))
+
+      expect(resource.data()).toBeUndefined()
+      // loading was true at dispose; response was discarded so the
+      // post-fetch `loading.set(false)` never ran. That's the documented
+      // contract — dispose freezes the resource at its current state.
+      expect(resource.loading()).toBe(true)
+    })
+
+    test('dispose is idempotent', () => {
+      const src = signal(1)
+      const resource = createResource(
+        () => src(),
+        (id) => Promise.resolve(`user-${id}`),
+      )
+      expect(() => {
+        resource.dispose()
+        resource.dispose()
+        resource.dispose()
+      }).not.toThrow()
+    })
+  })
 })

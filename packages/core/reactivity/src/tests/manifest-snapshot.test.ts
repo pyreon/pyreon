@@ -68,11 +68,15 @@ describe('gen-docs — reactivity snapshot', () => {
 
   it('renders @pyreon/reactivity to MCP api-reference entries — one per api[] item', () => {
     const record = renderApiReferenceEntries(reactivityManifest)
-    expect(Object.keys(record).length).toBe(8)
+    expect(Object.keys(record).length).toBe(9)
     expect(Object.keys(record)).toContain('reactivity/signal')
+    expect(Object.keys(record)).toContain('reactivity/createResource')
     // Spot-check the flagship API — signal is the core primitive
     const signal = record['reactivity/signal']!
     expect(signal.mistakes?.split('\n').length).toBe(6)
     expect(signal.notes).toContain('CALLABLE FUNCTION')
+    // Spot-check createResource has the dispose mistake (regression for H3)
+    const resource = record['reactivity/createResource']!
+    expect(resource.mistakes).toContain('Forgetting `dispose()`')
   })
 })
