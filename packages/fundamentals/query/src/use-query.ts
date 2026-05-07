@@ -10,6 +10,11 @@ import type {
 import { QueryObserver } from '@tanstack/query-core'
 import { useQueryClient } from './query-client'
 
+const __DEV__: boolean = process.env.NODE_ENV !== 'production'
+
+// Dev-time counter sink — see packages/internals/perf-harness for contract.
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 export interface UseQueryResult<TData, TError = DefaultError> {
   /** Raw signal — the full observer result. Fine-grained accessors below are preferred. */
   result: Signal<QueryObserverResult<TData, TError>>
@@ -43,6 +48,10 @@ export interface UseQueryResult<TData, TError = DefaultError> {
 export function useQuery<TData = unknown, TError = DefaultError, TKey extends QueryKey = QueryKey>(
   options: () => QueryObserverOptions<TData, TError, TData, TData, TKey>,
 ): UseQueryResult<TData, TError> {
+  // Mount-N baseline. One emit per hook call; observer + 9 signal allocations
+  // + subscribe + setOptions effect follow.
+  if (__DEV__) _countSink.__pyreon_count__?.('query.useQuery')
+
   const client = useQueryClient()
   const observer = new QueryObserver<TData, TError, TData, TData, TKey>(client, options())
   const initial = observer.getCurrentResult()
@@ -62,6 +71,9 @@ export function useQuery<TData = unknown, TError = DefaultError, TKey extends Qu
   // Subscribe synchronously — data flows before mount (correct for SSR pre-population).
   // batch() coalesces all signal updates into one notification flush.
   const unsub = observer.subscribe((r) => {
+    // Per upstream cache-update fan-out. Pair with `query.useQuery` for the
+    // notify-per-mount ratio: high notify/mount = subscriber over-fan-out.
+    if (__DEV__) _countSink.__pyreon_count__?.('query.observerNotify')
     batch(() => {
       resultSig.set(r)
       dataSig.set(r.data)
@@ -78,6 +90,10 @@ export function useQuery<TData = unknown, TError = DefaultError, TKey extends Qu
   // Track reactive options: when signals inside options() change, update the observer.
   // effect() is auto-registered in the component's EffectScope → auto-disposed on unmount.
   effect(() => {
+    // Per re-run of the options-builder effect. Reactive query keys (signal
+    // reads inside options()) drive this counter — high value vs mount count
+    // means upstream signals churn the options builder.
+    if (__DEV__) _countSink.__pyreon_count__?.('query.setOptions')
     observer.setOptions(options())
   })
 

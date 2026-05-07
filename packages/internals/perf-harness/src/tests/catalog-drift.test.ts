@@ -41,6 +41,7 @@ const INSTRUMENTED_PACKAGE_ROOTS = [
   'packages/fundamentals/form/src',
   'packages/fundamentals/store/src',
   'packages/fundamentals/rx/src',
+  'packages/fundamentals/query/src',
 ]
 
 // Matches any `<ident>.__pyreon_count__?.('<name>')` call.

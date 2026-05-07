@@ -1,0 +1,22 @@
+{
+  "sha": "7f93a298",
+  "app": "perf-dashboard",
+  "journey": "mutationInvalidate-1000",
+  "mode": "dev",
+  "runs": 5,
+  "timestamp": "2026-05-07T20:28:15.031Z",
+  "medianWallMs": 117,
+  "medianHeapBytes": 39600000,
+  "counters": {
+    "reactivity.signalWrite": 2330,
+    "reactivity.effectRun": 104,
+    "runtime.mountChild": 6,
+    "query.useQuery": 100,
+    "reactivity.signalCreate": 908,
+    "query.observerNotify": 405,
+    "query.setOptions": 100,
+    "query.useMutation": 1,
+    "runtime.tpl": 1,
+    "query.invalidate": 5000
+  }
+}

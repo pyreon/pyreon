@@ -97,6 +97,21 @@ const FILES_UNDER_TEST: { layer: string; file: string; counterNames: string[] }[
     file: 'packages/fundamentals/rx/src/timing.ts',
     counterNames: ['rx.debounce.create', 'rx.throttle.create'],
   },
+  {
+    layer: 'query-use-query',
+    file: 'packages/fundamentals/query/src/use-query.ts',
+    counterNames: ['query.useQuery', 'query.observerNotify', 'query.setOptions'],
+  },
+  {
+    layer: 'query-use-mutation',
+    file: 'packages/fundamentals/query/src/use-mutation.ts',
+    counterNames: ['query.useMutation', 'query.invalidate'],
+  },
+  {
+    layer: 'query-use-is-fetching',
+    file: 'packages/fundamentals/query/src/use-is-fetching.ts',
+    counterNames: ['query.isFetchingScan'],
+  },
   // runtime-server is NOT in this list — it's a server package that keeps
   // the `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`
   // compound (server-only packages are exempt from `pyreon/no-process-dev-gate`

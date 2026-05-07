@@ -517,4 +517,126 @@ export const journeys: Record<string, (page: PageLike) => Promise<void>> = {
       w.__pyreon_perf_rx?.aggregate(10000)
     })
   },
+
+  // ─── @pyreon/query stress journeys (query foundation) ──────────────────
+  //
+  // Four journey shapes, each driven through window.__pyreon_perf_query.
+  // The setup call mounts QueryAtScale (via signal-driven `<For>` in
+  // QueryStressSection); the drive call runs the imperative loop AFTER
+  // mount completes via `await page.waitForSelector(...)`.
+  //
+  // Counter signatures observed in baselines:
+  //   - queryMount-1000          → 1000 query.useQuery + 2000 observerNotify
+  //                                (initial subscribe pass × 2 — getCurrentResult + subscribe).
+  //   - queryNotify-10k          → 10 useQuery + ≈10000 observerNotify (10 × 1000).
+  //   - mutationInvalidate-1000  → 1 useMutation + 1000 × 5 = 5000 invalidate.
+  //   - isFetchingScan-10k       → 1 useIsFetching + ≈20000 scan
+  //                                (each setQueryData fires 2 cache events).
+  //
+  // queryReactiveKey-1000 is deferred — see the comment block on that
+  // journey below.
+
+  /**
+   * **queryMount-1000** — mount 1000 useQuery hooks with distinct keys.
+   * Pure mount-N baseline. The reset-and-re-set sequence forces a fresh
+   * unmount + remount cycle so each run measures the same work shape.
+   */
+  'queryMount-1000': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_query?: { clearAll: () => void; setMount: (n: number) => void }
+      }
+      w.__pyreon_perf_query?.clearAll()
+    })
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_query?: { setMount: (n: number) => void }
+      }
+      w.__pyreon_perf_query?.setMount(1000)
+    })
+    await page.waitForSelector('[data-testid="query-stress-ready"][data-mode="mount"]')
+  },
+
+  /**
+   * **queryNotify-10k** — 10 subscribers on the same key + 1000 cache
+   * updates. Each setQueryData fires every observer's subscribe callback,
+   * so the total notify count is 10 × 1000 = 10000. Reveals if the
+   * 9-signal-set-per-notify fan-out is structurally O(N × subscribers).
+   */
+  'queryNotify-10k': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_query?: { clearAll: () => void; setNotify: (n: number) => void }
+      }
+      w.__pyreon_perf_query?.clearAll()
+      w.__pyreon_perf_query?.setNotify(10)
+    })
+    await page.waitForSelector('[data-testid="query-stress-ready"][data-mode="notify"]')
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_query?: { notifyDrive: (events: number) => void }
+      }
+      w.__pyreon_perf_query?.notifyDrive(1000)
+    })
+  },
+
+  // queryReactiveKey-1000 — DEFERRED. The intended setup (N useQuery hooks
+  // reading a shared reactive key signal, flipped K times → N × K setOptions
+  // emissions) hit a Pyreon reactive-effect edge case where tight-loop
+  // signal writes from page.evaluate() weren't propagating to all subscribers
+  // — empirically, only 0–1 of K flips triggered the effect re-runs. Both
+  // module-level (HMR-wrapped) and function-level signals exhibited the same
+  // shape, ruling out the HMR wrapper. The `signalWrite` counter confirmed
+  // the writes happen; the subscriber notify path is what's broken under
+  // this specific shape (sync loop inside an evaluate boundary, external to
+  // any Pyreon mount frame). Re-investigating this in a follow-up — likely
+  // a Pyreon reactivity fix, not a query-side change. The setOptions counter
+  // is still exercised by `queryMount-1000` (1 setOptions per useQuery call).
+
+  /**
+   * **mutationInvalidate-1000** — 100 cached queries + 1 mutation with 5
+   * invalidates, fired 1000 times. Each mutation runs its onSuccess
+   * which invalidates 5 keys → 1000 × 5 = 5000 invalidate emissions.
+   * Each invalidate also fans out to matching observers in the cache.
+   */
+  'mutationInvalidate-1000': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_query?: { clearAll: () => void; setInvalidate: (n: number) => void }
+      }
+      w.__pyreon_perf_query?.clearAll()
+      w.__pyreon_perf_query?.setInvalidate(100)
+    })
+    await page.waitForSelector('[data-testid="query-stress-ready"][data-mode="invalidate"]')
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_query?: { invalidateDrive: (mutations: number) => void }
+      }
+      w.__pyreon_perf_query?.invalidateDrive(1000)
+    })
+  },
+
+  /**
+   * **isFetchingScan-10k** — 100 cached queries + useIsFetching + 10k
+   * cache events. Each cache event triggers the queryCache.subscribe
+   * channel, which fires useIsFetching's listener, which calls
+   * `client.isFetching(filters)` to walk the cache → 10k full-cache
+   * scans. Reveals how O(cacheSize) the global counter pattern is.
+   */
+  'isFetchingScan-10k': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_query?: { clearAll: () => void; setScan: (n: number) => void }
+      }
+      w.__pyreon_perf_query?.clearAll()
+      w.__pyreon_perf_query?.setScan(100)
+    })
+    await page.waitForSelector('[data-testid="query-stress-ready"][data-mode="scan"]')
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_query?: { scanDrive: (events: number) => void }
+      }
+      w.__pyreon_perf_query?.scanDrive(10000)
+    })
+  },
 }

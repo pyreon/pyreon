@@ -12,6 +12,11 @@ import type {
 import { InfiniteQueryObserver } from '@tanstack/query-core'
 import { useQueryClient } from './query-client'
 
+const __DEV__: boolean = process.env.NODE_ENV !== 'production'
+
+// Dev-time counter sink — see packages/internals/perf-harness for contract.
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 export interface UseInfiniteQueryResult<TQueryFnData, TError = DefaultError> {
   /** Raw signal — full observer result. */
   result: Signal<InfiniteQueryObserverResult<InfiniteData<TQueryFnData>, TError>>
@@ -61,6 +66,9 @@ export function useInfiniteQuery<
     TPageParam
   >,
 ): UseInfiniteQueryResult<TQueryFnData, TError> {
+  // Mount-N baseline — pairs with useQuery / useSuspenseQuery on the same name.
+  if (__DEV__) _countSink.__pyreon_count__?.('query.useQuery')
+
   const client = useQueryClient()
   const observer = new InfiniteQueryObserver<
     TQueryFnData,
@@ -86,6 +94,7 @@ export function useInfiniteQuery<
   const hasPreviousPage = signal(initial.hasPreviousPage)
 
   const unsub = observer.subscribe((r) => {
+    if (__DEV__) _countSink.__pyreon_count__?.('query.observerNotify')
     batch(() => {
       resultSig.set(r)
       dataSig.set(r.data)
@@ -104,6 +113,7 @@ export function useInfiniteQuery<
   })
 
   effect(() => {
+    if (__DEV__) _countSink.__pyreon_count__?.('query.setOptions')
     observer.setOptions(options())
   })
 
