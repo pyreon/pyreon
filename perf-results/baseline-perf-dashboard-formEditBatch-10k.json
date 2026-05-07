@@ -1,0 +1,22 @@
+{
+  "sha": "b3fcc2db",
+  "app": "perf-dashboard",
+  "journey": "formEditBatch-10k",
+  "mode": "dev",
+  "runs": 3,
+  "timestamp": "2026-05-07T18:07:35.890Z",
+  "medianWallMs": 7,
+  "medianHeapBytes": 35100000,
+  "counters": {
+    "reactivity.signalWrite": 100,
+    "reactivity.effectRun": 100,
+    "runtime.mountChild": 0,
+    "reactivity.signalCreate": 0,
+    "form.fieldSignalCreate": 0,
+    "form.fieldEffectCreate": 0,
+    "runtime.tpl": 0,
+    "styler.resolve": 0,
+    "styler.sheet.insert": 0,
+    "styler.sheet.insert.hit": 0
+  }
+}

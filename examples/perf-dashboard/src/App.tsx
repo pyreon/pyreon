@@ -13,6 +13,7 @@
  * investigation.
  */
 import { For, provide, Show } from '@pyreon/core'
+import { field, useForm, useFormState } from '@pyreon/form'
 import { perfHarness } from '@pyreon/perf-harness'
 import { computed, signal } from '@pyreon/reactivity'
 import { ThemeContext } from '@pyreon/styler'
@@ -175,7 +176,34 @@ function generateRows(n: number): Row[] {
   }))
 }
 
-// ── Sections ─────────────────────────────────────────────────────────────────
+// ── Forms-stress state ───────────────────────────────────────────────────────
+//
+// Variable-scale `@pyreon/form` benchmark. Default scale is 0 (nothing
+// mounted) so the page boots fast. Journeys flip the scale signal to
+// trigger a fresh mount of N fields via the per-N FormAtScale instance,
+// then optionally drive `useFormState` reads for the smoking-gun
+// `form.formStateScan.fieldsRead` counter.
+//
+// Why a per-scale wrapper component (FormAtScale) rather than `useForm`
+// directly inside the section: useForm runs at component setup. Changing
+// the scale signal must REMOUNT the inner subtree so a fresh useForm runs
+// with the new field count — `<Show when={...}>` toggles mount/unmount;
+// pairing it with a keyed inner means each scale change unmounts the old
+// form (firing its disposal hooks) and mounts a fresh one. Without the
+// remount, the same useForm instance from the FIRST scale would hang
+// around forever.
+
+export const formStressScale = signal<number>(0)
+
+// Last-read `useFormState` snapshot — exposed to the journey via the
+// window hook so Playwright can read what the latest scan returned. Lets
+// us assert "selector narrowed correctly" or "all fields scanned" without
+// inspecting the DOM.
+export const formStressLastSummary = signal<unknown>(null)
+
+// Last-read `useFormState(form, selector)` value — separate signal for
+// `formStateReadSelector` journey so we can compare counter signatures.
+export const formStressLastSelectorValue = signal<unknown>(null)
 
 const stats = Array.from({ length: 24 }, (_, i) => ({
   label: `Metric ${String.fromCharCode(65 + (i % 26))}${Math.floor(i / 26) || ''}`,
@@ -446,6 +474,82 @@ function LongFormSection() {
   )
 }
 
+// ── Forms-stress section ─────────────────────────────────────────────────────
+//
+// Variable-scale `@pyreon/form` exercise. Mounted only when
+// `formStressScale() > 0`. Each scale change unmounts the prior FormAtScale
+// (with its useForm) and mounts a fresh one — this is the boundary the
+// `formMount-*` journeys measure.
+
+function FormAtScale(props: { scale: number }) {
+  // Generate field defs at component setup. useForm is called ONCE at this
+  // setup with N fields → 6×N signals + N effects allocated eagerly.
+  const fieldDefs = Array.from({ length: props.scale }, (_, i) => field(`f${i}`, ''))
+  const form = useForm({
+    fields: fieldDefs,
+    onSubmit: () => {},
+  })
+
+  // Expose the form to the window helper so the journey can:
+  //   1. fill fields by name without DOM lookups (faster Playwright path)
+  //   2. trigger useFormState reads to capture the formStateScan counter
+  //
+  // Cleared by FormStressSection's <Show> when scale flips back to 0.
+  if (typeof window !== 'undefined') {
+    ;(window as unknown as { __pyreon_perf_forms_active?: { form: unknown; scale: number } }).__pyreon_perf_forms_active =
+      { form, scale: props.scale }
+  }
+
+  return (
+    <Section theme={themeSignal()}>
+      <SectionTitle theme={themeSignal()}>
+        Forms stress ({props.scale} fields via @pyreon/form)
+      </SectionTitle>
+      {/* The ready marker carries text so Playwright's default `visible`
+          state check (waitForSelector) treats it as visible — a zero-
+          sized empty div is "hidden" by default and `record.ts` would
+          time out with `locator resolved to hidden ...`. */}
+      <div data-testid="forms-stress-ready" data-scale={String(props.scale)}>
+        Mounted {props.scale} fields
+      </div>
+      <Grid>
+        <For each={() => Object.keys(form.fields)} by={(name) => name}>
+          {(name) => (
+            <Field theme={themeSignal()}>
+              {name}
+              <Input
+                theme={themeSignal()}
+                data-testid={`forms-stress-field-${name}`}
+                value={() => String(form.fields[name as keyof typeof form.fields]?.value() ?? '')}
+                onInput={(ev: Event) => {
+                  const f = form.fields[name as keyof typeof form.fields]
+                  if (f) f.value.set((ev.currentTarget as HTMLInputElement).value as never)
+                }}
+              />
+            </Field>
+          )}
+        </For>
+      </Grid>
+    </Section>
+  )
+}
+
+function FormStressSection() {
+  // Use `<For>` keyed by scale so a scale change (e.g. 100 → 1000) FORCES
+  // an unmount + remount cycle — the prior FormAtScale's useForm disposes
+  // and a fresh one allocates with the new field count. `<Show>` would
+  // stay at "true" and re-evaluate children with the new prop instead of
+  // remounting, defeating the per-scale isolation we need.
+  return (
+    <For
+      each={() => (formStressScale() > 0 ? [formStressScale()] : [])}
+      by={(s: number) => s}
+    >
+      {(scale: number) => <FormAtScale scale={scale} />}
+    </For>
+  )
+}
+
 function ModalSection() {
   return (
     <Section theme={themeSignal()}>
@@ -523,6 +627,7 @@ export function App() {
       <ChatSection />
       <WidgetGridSection />
       <LongFormSection />
+      <FormStressSection />
       <ModalSection />
     </Shell>
   )

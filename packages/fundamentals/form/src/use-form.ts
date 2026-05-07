@@ -13,6 +13,13 @@ import type {
   ValidationError,
 } from './types'
 
+// Dev-time counter sink — see packages/internals/perf-harness/COUNTERS.md.
+// The bare `process.env.NODE_ENV !== 'production'` gate is the bundler-
+// agnostic library standard (per .claude/rules/anti-patterns.md). Vite,
+// Webpack, esbuild, Rollup, Parcel, and Bun all replace this at consumer
+// build time and tree-shake the counter call to zero in prod bundles.
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 /**
  * Options for the field-definition-based useForm overload.
  * Types are inferred from the field definitions array.
@@ -186,6 +193,11 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     const dirtySig = signal(false)
     const fieldDisabled = signal(false)
     const fieldReadOnly = signal(false)
+    if (process.env.NODE_ENV !== 'production')
+      // 6 signals per field — value/error/touched/dirty/disabled/readOnly.
+      // Surfaces the eager-allocation cost: scales 6×N at useForm({fields})
+      // init time. PR 2 candidate: lazy materialization on first read.
+      _countSink.__pyreon_count__?.('form.fieldSignalCreate', 6)
 
     // Initialize validation version
     validationVersions[name] = 0
@@ -256,6 +268,11 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     // Reading `submitCount()` inside the effect tracks it so the effect
     // re-runs when submitCount changes (e.g. after `reset()` zeros it,
     // we go back to passive mode).
+    if (process.env.NODE_ENV !== 'production')
+      // One auto-revalidation effect per field — scales linearly with N.
+      // Each effect tracks valueSig + submitCount, so a `submitCount` flip
+      // re-runs ALL N effects in one pass.
+      _countSink.__pyreon_count__?.('form.fieldEffectCreate')
     effect(() => {
       const v = valueSig()
       if (validateOn === 'change' || submitCount() > 0) {
@@ -340,6 +357,11 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
         fields[name].error.set(undefined)
       }
 
+      if (process.env.NODE_ENV !== 'production')
+        // One emission per submit. The N async tasks span across
+        // `fieldEntries.map(...)` below — measure dispatch fan-out via
+        // wall-clock + heap deltas in the perf-record harness.
+        _countSink.__pyreon_count__?.('form.validateParallel')
       // Run field-level validators with all values for cross-field support
       await Promise.all(
         fieldEntries.map(async ([name]) => {
