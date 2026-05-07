@@ -4,6 +4,7 @@ import {
   For,
   Fragment,
   h,
+  onUnmount,
   provide,
   pushContext,
   Suspense,
@@ -1206,6 +1207,46 @@ describe('SSR — provide() context cleanup across siblings (Bug 4)', () => {
     // Sibling outside the provider sees outer (must NOT see leaked
     // provider-value).
     expect(html).toContain('data-testid="sibling">outer<')
+  })
+
+  // Bug 4 follow-up: the FIRST attempt at the fix (running runUnmountHooks
+  // during SSR) overshot — it fired ALL user-registered onUnmount hooks,
+  // not just `provide()`'s `popContext`. That broke @pyreon/head, where
+  // `useHead({ title })` registers `onUnmount(() => removeFromHeadStore())`
+  // to clean up on CSR unmount; running it during SSR cleared the head
+  // store BEFORE `renderWithHead` extracted it → 38 head tests failed,
+  // every SSR'd page lost its <title>/<meta>/<link> tags.
+  //
+  // Architectural rule: SSR has no real unmount phase (the response
+  // ships, the process moves on). User-registered `onUnmount` hooks are
+  // for the CSR lifecycle. The ONE SSR-visible side effect of `provide()`
+  // is its context frame, and we clean that up structurally (snapshot +
+  // trim the stack) without firing user hooks.
+  test('user-registered onUnmount hooks DO NOT fire during SSR (head store contract)', async () => {
+    // Simulate `useHead({ title })`-style registration: register an entry
+    // in a per-render store, register `onUnmount` to clean it up. Real
+    // `@pyreon/head` does this via a context'd HeadStore; we use a
+    // module-local for the test.
+    const store: { title?: string } = {}
+
+    const TitleRegister: ComponentFn = () => {
+      store.title = 'Hello SSR'
+      onUnmount(() => {
+        delete store.title
+      })
+      return null
+    }
+
+    const App: ComponentFn = () =>
+      h('html', null, h('head', null, h(TitleRegister, null)), h('body', null))
+
+    await renderToString(h(App, null))
+
+    // After SSR completes, the head-style store entry MUST still be
+    // present — `renderWithHead` and similar post-render extractors
+    // need it. If `runUnmountHooks` were called here, `store.title`
+    // would be undefined.
+    expect(store.title).toBe('Hello SSR')
   })
 })
 

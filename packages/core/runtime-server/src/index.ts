@@ -16,11 +16,13 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { ClassValue, ComponentFn, ForProps, VNode, VNodeChild } from '@pyreon/core'
 import {
+  captureContextStack,
   cx,
   ForSymbol,
   Fragment,
   makeReactiveProps,
   normalizeStyleValue,
+  popContext,
   runWithHooks,
   Suspense,
   setContextStackProvider,
@@ -187,13 +189,19 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
     return
   }
   if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.component')
-  let streamHooks: { unmount: Array<() => void> | null } | null = null
+  // Snapshot the context stack BEFORE the component renders so we can pop
+  // any frames pushed via `provide()` after children stream. We do NOT run
+  // user-registered unmount hooks during SSR — that would clear state still
+  // needed by post-render extraction (e.g. `useHead` uses `onUnmount` to
+  // remove its registered tags from the head store; running it during SSR
+  // wipes the entries before `renderWithHead` reads them). See `renderComponent`
+  // for the full architectural rationale.
+  const stackLenBefore = captureContextStack().length
   try {
-    const { vnode: output, hooks } = runWithHooks(
+    const { vnode: output } = runWithHooks(
       vnode.type as ComponentFn,
       mergeChildrenIntoProps(vnode),
     )
-    streamHooks = hooks
     const resolved = output instanceof Promise ? await output : output
     if (resolved !== null) await streamNode(resolved, enqueue)
   } catch (err) {
@@ -208,12 +216,7 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
     if (ctx && ctx.suspenseDepth > 0) throw err
     enqueue('<!--pyreon-error-->')
   } finally {
-    // See `renderComponent` for the contract — `provide()` pushes context
-    // frames and registers `onUnmount(popContext)`; SSR must invoke those
-    // hooks AFTER children stream (and on error paths too — finally) so
-    // the stack doesn't leak into siblings or into the Suspense boundary's
-    // recovery render. Bug 4.
-    if (streamHooks) runUnmountHooks(streamHooks)
+    trimContextStack(stackLenBefore)
   }
 }
 
@@ -296,14 +299,17 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
 
   // No streaming context (e.g. called from renderToString) — render children inline
   if (!ctx) {
-    const { vnode: output, hooks } = runWithHooks(Suspense as ComponentFn, vnode.props)
+    const stackLenBefore = captureContextStack().length
+    const { vnode: output } = runWithHooks(Suspense as ComponentFn, vnode.props)
     try {
       if (output !== null) await streamNode(output, enqueue)
     } finally {
-      // Bug 4: `provide()` registers `onUnmount(popContext)` — without
-      // running hooks here, Suspense boundaries leak context frames to
-      // siblings just like regular components do.
-      runUnmountHooks(hooks)
+      // `provide()` pushes context frames; pop them after children render so
+      // they don't leak into siblings. See `renderComponent` for the full
+      // architectural rationale (we trim the stack instead of running unmount
+      // hooks because user hooks like `useHead`'s `onUnmount` are still load-
+      // bearing for post-render extraction during SSR).
+      trimContextStack(stackLenBefore)
     }
     return
   }
@@ -427,7 +433,24 @@ async function renderChildren(children: VNodeChild[]): Promise<string> {
 
 async function renderComponent(vnode: VNode & { type: ComponentFn }): Promise<string> {
   if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.component')
-  const { vnode: output, hooks } = runWithHooks(vnode.type, mergeChildrenIntoProps(vnode))
+  // Snapshot the context stack length BEFORE the component renders. After
+  // children render, trim back to this length — that pops every frame the
+  // component pushed via `provide(ctx, value)` (which calls `pushContext` +
+  // registers `onUnmount(popContext)`). Without this, every provider during
+  // SSR leaks its frame onto the global stack and subsequent siblings see
+  // the wrong context value (Bug 4 — bokisch.com `<PyreonUI inversed>`
+  // inside `<Intro>` flipped every later section to dark).
+  //
+  // We trim the stack DIRECTLY instead of running the component's unmount
+  // hooks because users register `onUnmount` for things still load-bearing
+  // at post-render time during SSR — `useHead({ title })` uses `onUnmount`
+  // to remove its head entries, and running it here wipes the head store
+  // before `renderWithHead` extracts it. SSR has no real "unmount" phase
+  // (the response ships, the process moves on); user-registered cleanup
+  // is for the CSR lifecycle. `provide()`'s frame cleanup is the only
+  // SSR-visible side effect and we handle it structurally below.
+  const stackLenBefore = captureContextStack().length
+  const { vnode: output } = runWithHooks(vnode.type, mergeChildrenIntoProps(vnode))
 
   // Async component function (async function Component()) — await the promise
   let html: string
@@ -441,34 +464,29 @@ async function renderComponent(vnode: VNode & { type: ComponentFn }): Promise<st
       html = await renderNode(output)
     }
   } finally {
-    // Run unmount hooks AFTER children have rendered. `provide(ctx, value)`
-    // pushes a context frame and registers `onUnmount(popContext)` to pop
-    // it on unmount. Without invoking these hooks during SSR, every
-    // `provide()` call leaks its context frame onto the global stack —
-    // subsequent siblings see the wrong context value (Bug 4).
-    // try/catch per-hook so one buggy cleanup doesn't stop the others.
-    runUnmountHooks(hooks)
+    trimContextStack(stackLenBefore)
   }
   return html
 }
 
 /**
- * Invoke unmount hooks collected during `runWithHooks`. Per-hook try/catch
- * isolates failures — one buggy cleanup must not block others (e.g. when
- * multiple `provide()` calls register `popContext` hooks, dropping any one
- * would corrupt the context stack for siblings).
+ * Pop context frames pushed during a component's render. Trims the global
+ * context stack back to the snapshot length captured before the component
+ * ran. Each iteration calls `popContext` once — symmetric with `provide()`'s
+ * `pushContext()` so frames pop in LIFO order even when a single component
+ * called `provide()` multiple times.
+ *
+ * Why not run user unmount hooks here? See `renderComponent` for the full
+ * architectural rationale — TL;DR: SSR has no unmount phase, `useHead` uses
+ * `onUnmount` to clear head entries that the post-render extraction still
+ * needs, etc. The structural fix is to clean up the ONE SSR-visible side
+ * effect of `provide()` (its context frame) without firing other hooks.
  */
-function runUnmountHooks(hooks: { unmount: Array<() => void> | null }): void {
-  if (!hooks.unmount) return
-  for (const fn of hooks.unmount) {
-    try {
-      fn()
-    } catch (err) {
-      if (__DEV__) {
-        // oxlint-disable-next-line no-console
-        console.error('[Pyreon SSR] unmount hook threw:', err)
-      }
-    }
+function trimContextStack(targetLen: number): void {
+  let current = captureContextStack().length
+  while (current > targetLen) {
+    popContext()
+    current--
   }
 }
 
