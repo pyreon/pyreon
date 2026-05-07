@@ -35,6 +35,7 @@ const KNOWN_CODES = [
   'signal-write-as-call',
   'static-return-null-conditional',
   'as-unknown-as-vnodechild',
+  'island-never-with-registry-entry',
 ] as const
 type KnownCode = (typeof KNOWN_CODES)[number]
 

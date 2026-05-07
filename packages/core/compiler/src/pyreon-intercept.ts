@@ -41,6 +41,14 @@
  *  - `as-unknown-as-vnodechild` — defensive `as unknown as VNodeChild`
  *                       cast on JSX returns is unnecessary (`JSX.Element`
  *                       is already assignable to `VNodeChild`).
+ *  - `island-never-with-registry-entry` — an `island()` declared with
+ *                       `hydrate: 'never'` is also registered in the same
+ *                       file's `hydrateIslands({ ... })` call. The whole
+ *                       point of `'never'` is shipping zero client JS;
+ *                       registering pulls the component module into the
+ *                       client bundle graph (the runtime short-circuits
+ *                       and never calls the loader, but the bundler still
+ *                       includes the import). Drop the registry entry.
  *
  * Two-mode surface mirrors `react-intercept.ts`:
  *  - `detectPyreonPatterns(code)` — diagnostics only
@@ -81,6 +89,7 @@ export type PyreonDiagnosticCode =
   | 'signal-write-as-call'
   | 'static-return-null-conditional'
   | 'as-unknown-as-vnodechild'
+  | 'island-never-with-registry-entry'
 
 export interface PyreonDiagnostic {
   /** Machine-readable code for filtering + programmatic handling */
@@ -114,6 +123,21 @@ interface DetectContext {
    * patterns that should be `sig.set(value)`.
    */
   signalBindings: Set<string>
+  /**
+   * Names of `island()` declarations carrying `hydrate: 'never'`. Populated
+   * by `collectNeverIslandNames()` before the main detection walk. Used by
+   * `detectIslandNeverWithRegistry` to flag entries in
+   * `hydrateIslands({ ... })` whose key matches a never-strategy island.
+   *
+   * Cross-call detection: the never-vs-registry mismatch is only catchable
+   * when both sides live in the same source. In real apps the `island()`
+   * declarations sit in `src/islands.ts` and the `hydrateIslands()` call
+   * sits in `src/entry-client.ts`. The static detector covers the common
+   * "all in one file" case (which catches the bug while users are first
+   * learning the API); the cross-file case is the territory of `pyreon
+   * doctor --check-islands` (separate PR / future scope).
+   */
+  neverIslandNames: Set<string>
 }
 
 function getNodeText(ctx: DetectContext, node: ts.Node): string {
@@ -648,6 +672,101 @@ function detectAsUnknownAsVNodeChild(ctx: DetectContext, node: ts.AsExpression):
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Island never-with-registry detection
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Pre-pass: walk the source for `island(loader, { name: 'X', hydrate: 'never' })`
+ * call expressions and collect the `name` field of each never-strategy island.
+ *
+ * Recognized shape (mirrors `@pyreon/vite-plugin`'s `scanIslandDeclarations`):
+ *
+ *   island(() => import('./X'), { name: 'X', hydrate: 'never' })
+ *
+ * Edge cases the AST-walker deliberately doesn't cover (unrecognized calls
+ * fall through and don't populate the set — false-negatives, not false
+ * positives):
+ *
+ *   - Loader is a variable, not an inline arrow
+ *   - Name is a variable / template / spread, not a string literal
+ *   - Options come from a spread (`island(loader, opts)`)
+ *
+ * The same rules apply on the registry side (`detectIslandNeverWithRegistry`):
+ * unrecognized keys won't match. Both halves are syntactic — a semantic
+ * cross-package audit lives in `pyreon doctor --check-islands` (separate PR).
+ */
+function collectNeverIslandNames(sf: ts.SourceFile): Set<string> {
+  const names = new Set<string>()
+  function walk(node: ts.Node): void {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'island' &&
+      node.arguments.length >= 2
+    ) {
+      const opts = node.arguments[1]
+      if (opts && ts.isObjectLiteralExpression(opts)) {
+        let nameVal: string | undefined
+        let hydrateVal: string | undefined
+        for (const prop of opts.properties) {
+          if (!ts.isPropertyAssignment(prop)) continue
+          const key = prop.name
+          const keyText = ts.isIdentifier(key)
+            ? key.text
+            : ts.isStringLiteral(key)
+              ? key.text
+              : ''
+          if (keyText === 'name' && ts.isStringLiteral(prop.initializer)) {
+            nameVal = prop.initializer.text
+          } else if (keyText === 'hydrate' && ts.isStringLiteral(prop.initializer)) {
+            hydrateVal = prop.initializer.text
+          }
+        }
+        if (nameVal && hydrateVal === 'never') {
+          names.add(nameVal)
+        }
+      }
+    }
+    ts.forEachChild(node, walk)
+  }
+  walk(sf)
+  return names
+}
+
+/**
+ * Flag entries in `hydrateIslands({ X: () => import('./X'), ... })` whose
+ * key matches an `island()` name declared with `hydrate: 'never'` in the
+ * same file. Each matching entry produces one diagnostic at the property's
+ * location so the IDE highlights exactly which key needs to go.
+ */
+function detectIslandNeverWithRegistry(ctx: DetectContext, node: ts.CallExpression): void {
+  if (ctx.neverIslandNames.size === 0) return
+  const callee = node.expression
+  if (!ts.isIdentifier(callee) || callee.text !== 'hydrateIslands') return
+  const arg = node.arguments[0]
+  if (!arg || !ts.isObjectLiteralExpression(arg)) return
+  for (const prop of arg.properties) {
+    if (!ts.isPropertyAssignment(prop) && !ts.isShorthandPropertyAssignment(prop)) continue
+    const key = prop.name
+    const keyText = ts.isIdentifier(key)
+      ? key.text
+      : ts.isStringLiteral(key)
+        ? key.text
+        : ''
+    if (!keyText || !ctx.neverIslandNames.has(keyText)) continue
+    pushDiag(
+      ctx,
+      prop,
+      'island-never-with-registry-entry',
+      `island "${keyText}" was declared with \`hydrate: 'never'\` and MUST NOT be registered in \`hydrateIslands({ ... })\`. The whole point of the \`'never'\` strategy is shipping zero client JS — registering pulls the component module into the client bundle graph (the runtime short-circuits never-strategy before the registry lookup, but the bundler still includes the import). Drop this entry; the framework handles never-strategy islands at SSR with no client-side wiring.`,
+      getNodeText(ctx, prop),
+      `// remove the "${keyText}" entry — never-strategy islands need no registry entry`,
+      false,
+    )
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Visitor
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -674,6 +793,7 @@ function visitNode(ctx: DetectContext, node: ts.Node): void {
     detectEmptyTheme(ctx, node)
     detectRawEventListener(ctx, node)
     detectSignalWriteAsCall(ctx, node)
+    detectIslandNeverWithRegistry(ctx, node)
   }
   if (ts.isJsxAttribute(node)) {
     detectOnClickUndefined(ctx, node)
@@ -701,6 +821,7 @@ export function detectPyreonPatterns(code: string, filename = 'input.tsx'): Pyre
     code,
     diagnostics: [],
     signalBindings: collectSignalBindings(sf),
+    neverIslandNames: collectNeverIslandNames(sf),
   }
   visit(ctx, sf)
   // Sort by (line, column) for stable ordering when multiple patterns fire.
@@ -723,6 +844,11 @@ export function hasPyreonPatterns(code: string): boolean {
     // static-return-null-conditional: `if (...) return null` anywhere
     /\bif\s*\([^)]+\)\s*\{?\s*return\s+null\b/.test(code) ||
     // as-unknown-as-vnodechild
-    /\bas\s+unknown\s+as\s+VNodeChild\b/.test(code)
+    /\bas\s+unknown\s+as\s+VNodeChild\b/.test(code) ||
+    // island-never-with-registry-entry: a never-strategy declaration AND a
+    // hydrateIslands call must both appear in the same source for the bug
+    // shape to trigger. Pre-filter on EITHER half — the AST walker fast-
+    // exits when the never-island set is empty.
+    (/\bisland\s*\(/.test(code) && /\bhydrate\s*:\s*['"]never['"]/.test(code))
   )
 }
