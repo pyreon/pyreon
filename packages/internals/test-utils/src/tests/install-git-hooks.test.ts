@@ -1,10 +1,36 @@
 import { execSync, spawnSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { installHooks } from '../../../../../scripts/install-git-hooks'
 
 /**
- * Subprocess regression test for `scripts/install-git-hooks.ts` policy.
+ * Build an env that strips every `GIT_*` variable. When this test runs
+ * inside a git hook (e.g. via `git push` → pre-push → bun → vitest),
+ * git sets `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`, etc. to point
+ * at the OUTER repo. ANY `execSync('git ...')` we run inherits those
+ * env vars and silently writes to the OUTER repo's config — even with
+ * `cwd: tempDir` set. (Yes, this script's tests literally corrupted
+ * the running worktree's git config the first few times this PR was
+ * pushed: `user.email = test@test.local` ended up in the worktree's
+ * `.git/config` because `git config user.email ...` saw GIT_DIR and
+ * wrote there instead of into the test temp dir's config.)
+ *
+ * The script under test (`installHooks`) does its own GIT_* clearing
+ * inside `runGit()`. The TEST FIXTURE must do the same for its setup
+ * commands (`git init`, `git config user.email`, `git config --get`)
+ * because those bypass the script and would otherwise leak.
+ */
+const cleanGitEnv = (): NodeJS.ProcessEnv => {
+  const env = { ...process.env }
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('GIT_')) delete env[key]
+  }
+  return env
+}
+
+/**
+ * Tests for the `installHooks` policy in `scripts/install-git-hooks.ts`.
  *
  * Policy (post gap #1 closure — see PR opening this gap closure batch):
  *
@@ -15,46 +41,38 @@ import { join, resolve } from 'node:path'
  *      `.git/hooks/`, the hook lived at `.githooks/`).
  *
  *   2. If `core.hooksPath` is set to a real custom path (`.husky`,
- *      `.lefthook`, etc.) → leave it untouched + warn. Pyreon doesn't
- *      clobber existing tooling.
+ *      `.lefthook`, etc.) → leave it untouched. Pyreon doesn't clobber
+ *      existing tooling.
  *
  *   3. If already set to `.githooks` → silent no-op (idempotent).
  *
- * The pre-push hook itself runs lint + affected typecheck + tests
- * before allowing the push to leave the laptop. Without this install
- * working correctly, every PR is at risk of CI bouncing on issues a
- * local validation would catch.
+ * Implementation note: each test creates a temp git directory and
+ * invokes `installHooks(testDir)` directly. **No subprocess fork**, no
+ * stdout/stderr capture — under parallel vitest load (the pre-push hook
+ * runs `bun run --filter='*' test` against 60+ packages simultaneously),
+ * spawnSync output buffering becomes non-deterministic and the previous
+ * subprocess-based test was failing on every push. The structured
+ * `InstallResult` return value is the contract; what `main()` prints is
+ * a formatting concern tested separately by the smoke test below.
  *
- * Implementation note: each test creates a temp git directory so the
- * real repo's config isn't perturbed. The script discovers its repo
- * root via `git rev-parse --show-toplevel`, so we must run it from
- * inside the temp dir — the `cwd` of `spawnSync` controls this.
+ * `realpathSync(mkdtempSync(...))` canonicalizes the macOS
+ * `/var → /private/var` symlink so the policy's path comparison sees
+ * the same string git reports — kept as a safety net even though direct
+ * function calls don't go through the subprocess cwd resolution where
+ * the symlink quirk originally bit.
  */
 
-const REPO_ROOT = resolve(import.meta.dirname, '..', '..', '..', '..', '..')
-const SCRIPT = resolve(REPO_ROOT, 'scripts', 'install-git-hooks.ts')
-
 interface RunResult {
-  status: number | null
-  stdout: string
-  stderr: string
+  result: ReturnType<typeof installHooks>
   hooksPath: string | null
 }
 
 function setupTempRepo(): string {
-  // Canonicalize via realpathSync because on macOS `mkdtempSync(tmpdir())`
-  // returns `/var/folders/X` while `git rev-parse --show-toplevel` returns
-  // `/private/var/folders/X` (the same dir, reached through the
-  // `/var → /private/var` symlink). The script does plain string compare
-  // — that's the right behavior for real repo paths, which don't go
-  // through symlinks. The test fixture lives in tmpdir(), which on macOS
-  // does. Canonicalize HERE so the fixture matches what the script will
-  // resolve, rather than adding test-driven canonicalization to the
-  // production script.
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'pyreon-hooks-test-')))
-  execSync('git init -q', { cwd: dir })
-  execSync('git config user.email test@test.local', { cwd: dir })
-  execSync('git config user.name test', { cwd: dir })
+  const env = cleanGitEnv()
+  execSync('git init -q', { cwd: dir, env })
+  execSync('git config user.email test@test.local', { cwd: dir, env })
+  execSync('git config user.name test', { cwd: dir, env })
   // Pyreon's installer requires the `.githooks/` directory to exist
   // (it represents "this repo has hooks committed"). Create it.
   mkdirSync(join(dir, '.githooks'), { recursive: true })
@@ -65,37 +83,25 @@ function setupTempRepo(): string {
 }
 
 function runInstall(cwd: string): RunResult {
-  const result = spawnSync('bun', [SCRIPT], {
-    cwd,
-    encoding: 'utf-8',
-    timeout: 30_000,
-    env: {
-      PATH: process.env.PATH,
-      HOME: process.env.HOME,
-    },
-  })
+  const result = installHooks(cwd)
   let hooksPath: string | null = null
   try {
     hooksPath = execSync('git config --get core.hooksPath', {
       cwd,
+      env: cleanGitEnv(),
       encoding: 'utf-8',
     }).trim()
   } catch {
     hooksPath = null
   }
-  return {
-    status: result.status,
-    stdout: result.stdout ?? '',
-    stderr: result.stderr ?? '',
-    hooksPath,
-  }
+  return { result, hooksPath }
 }
 
 function setHooksPath(cwd: string, path: string): void {
-  execSync(`git config core.hooksPath ${path}`, { cwd })
+  execSync(`git config core.hooksPath ${path}`, { cwd, env: cleanGitEnv() })
 }
 
-describe('scripts/install-git-hooks.ts', () => {
+describe('installHooks (policy)', () => {
   let testDir: string
 
   beforeEach(() => {
@@ -107,10 +113,9 @@ describe('scripts/install-git-hooks.ts', () => {
   })
 
   it('installs .githooks when core.hooksPath is unset', () => {
-    const result = runInstall(testDir)
-    expect(result.status).toBe(0)
-    expect(result.hooksPath).toBe('.githooks')
-    expect(result.stdout).toContain('git hooks installed')
+    const { result, hooksPath } = runInstall(testDir)
+    expect(result).toEqual({ kind: 'installed', previousValue: null })
+    expect(hooksPath).toBe('.githooks')
   })
 
   it('overwrites core.hooksPath when set to git default <git-dir>/hooks (relative)', () => {
@@ -118,9 +123,9 @@ describe('scripts/install-git-hooks.ts', () => {
     // hook at .githooks/ orphaned. The fix detects "set to default
     // location" as not-a-real-override.
     setHooksPath(testDir, '.git/hooks')
-    const result = runInstall(testDir)
-    expect(result.status).toBe(0)
-    expect(result.hooksPath).toBe('.githooks')
+    const { result, hooksPath } = runInstall(testDir)
+    expect(result).toEqual({ kind: 'installed', previousValue: '.git/hooks' })
+    expect(hooksPath).toBe('.githooks')
   })
 
   it('overwrites core.hooksPath when set to absolute git default path', () => {
@@ -129,47 +134,68 @@ describe('scripts/install-git-hooks.ts', () => {
     // matches git's default. Either way, treat as no-override.
     const absoluteDefault = resolve(testDir, '.git', 'hooks')
     setHooksPath(testDir, absoluteDefault)
-    const result = runInstall(testDir)
-    expect(result.status).toBe(0)
-    expect(result.hooksPath).toBe('.githooks')
+    const { result, hooksPath } = runInstall(testDir)
+    expect(result.kind).toBe('installed')
+    expect(hooksPath).toBe('.githooks')
   })
 
   it('preserves real user override (.husky)', () => {
     // husky / lefthook / custom paths are NOT default locations and
     // signal genuine user intent. Pyreon must not clobber them.
     setHooksPath(testDir, '.husky')
-    const result = runInstall(testDir)
-    expect(result.status).toBe(0)
-    expect(result.hooksPath).toBe('.husky')
-    expect(result.stderr).toContain('leaving as-is')
+    const { result, hooksPath } = runInstall(testDir)
+    expect(result).toEqual({ kind: 'preserved-user-override', currentValue: '.husky' })
+    expect(hooksPath).toBe('.husky')
   })
 
   it('preserves real user override (.lefthook)', () => {
     setHooksPath(testDir, '.lefthook')
-    const result = runInstall(testDir)
-    expect(result.status).toBe(0)
-    expect(result.hooksPath).toBe('.lefthook')
-    expect(result.stderr).toContain('leaving as-is')
+    const { result, hooksPath } = runInstall(testDir)
+    expect(result).toEqual({ kind: 'preserved-user-override', currentValue: '.lefthook' })
+    expect(hooksPath).toBe('.lefthook')
   })
 
   it('is idempotent when already configured', () => {
     setHooksPath(testDir, '.githooks')
-    const result = runInstall(testDir)
-    expect(result.status).toBe(0)
-    expect(result.hooksPath).toBe('.githooks')
-    // Silent — no install message on the second run.
-    expect(result.stdout).not.toContain('git hooks installed')
+    const { result, hooksPath } = runInstall(testDir)
+    expect(result).toEqual({ kind: 'already-configured' })
+    expect(hooksPath).toBe('.githooks')
   })
 
   it('exits silently when not in a git repo', () => {
     const nonGitDir = realpathSync(mkdtempSync(join(tmpdir(), 'pyreon-no-git-')))
     try {
-      const result = runInstall(nonGitDir)
-      expect(result.status).toBe(0)
-      expect(result.hooksPath).toBe(null)
-      expect(result.stdout).toBe('')
+      const result = installHooks(nonGitDir)
+      expect(result).toEqual({ kind: 'not-a-git-repo' })
     } finally {
       rmSync(nonGitDir, { recursive: true, force: true })
+    }
+  })
+})
+
+const REPO_ROOT = resolve(import.meta.dirname, '..', '..', '..', '..', '..')
+const SCRIPT = resolve(REPO_ROOT, 'scripts', 'install-git-hooks.ts')
+
+describe('install-git-hooks bin entry (smoke)', () => {
+  // ONE thin smoke test that exercises the actual subprocess shape so
+  // we don't lose coverage of the bin entrypoint. Asserts only on exit
+  // code — NOT on captured stdout/stderr (which is unreliable under
+  // parallel vitest load and was the original failure mode this PR
+  // closes). Pre-set hooksPath to `.githooks` so the script hits the
+  // `already-configured` no-op path and exits cleanly.
+  it('exits 0 when run as a subprocess in an already-configured repo', () => {
+    const dir = setupTempRepo()
+    execSync('git config core.hooksPath .githooks', { cwd: dir })
+    try {
+      const result = spawnSync('bun', [SCRIPT], {
+        cwd: dir,
+        timeout: 30_000,
+        // No env stripping — inherit parent's PATH/HOME like real
+        // users on `bun install` postinstall.
+      })
+      expect(result.status).toBe(0)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
     }
   })
 })

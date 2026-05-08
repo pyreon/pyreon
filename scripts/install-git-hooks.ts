@@ -24,6 +24,17 @@
  * Wired into the existing `postinstall` flow via `scripts/bootstrap.ts`,
  * so it runs once on `bun install` and then never again until the
  * setting is unset.
+ *
+ * ── Testability ──
+ *
+ * The policy is exposed as `installHooks(cwd) → InstallResult` for
+ * direct unit testing — tests call the function with a temp git repo
+ * cwd and assert on the structured return value. No subprocess fork,
+ * no stdout/stderr capture (which is unreliable under parallel vitest
+ * load — the hook PR closing this gap rewrote the tests around the
+ * structured return). `main()` is the thin wrapper that invokes
+ * `installHooks(process.cwd())` and translates the result to console
+ * output for the `bun install` postinstall path.
  */
 
 import { execSync } from 'node:child_process'
@@ -32,27 +43,76 @@ import { resolve } from 'node:path'
 
 const HOOKS_DIR = '.githooks'
 
-function run(cmd: string, opts: { capture?: boolean } = {}): string | null {
+/**
+ * Result of running the install policy. Tests assert on the kind +
+ * fields directly — no parsing of console output required.
+ */
+export type InstallResult =
+  | { kind: 'not-a-git-repo' }
+  | { kind: 'no-hooks-dir' }
+  | { kind: 'already-configured' }
+  | { kind: 'installed'; previousValue: string | null }
+  | { kind: 'preserved-user-override'; currentValue: string }
+
+interface RunOpts {
+  cwd: string
+  capture?: boolean
+}
+
+function escapeShellArg(s: string): string {
+  // Single-quote escaping for POSIX shell. The cwd path is the only
+  // user-influenced value reaching git here; this lets us use `git -C`
+  // safely without shell-out concerns.
+  return `'${s.replace(/'/g, `'\\''`)}'`
+}
+
+function runGit(cmd: string, opts: RunOpts): string | null {
+  // CRITICAL: every git invocation must be hermetic with respect to
+  // ambient git env vars. When this script runs inside a git hook
+  // (e.g. inherited via pre-push → bun → vitest workers), git sets
+  // `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`, etc. in the
+  // environment to point at the OUTER hook's repo. Those env vars
+  // override `-C <dir>` and `cwd` — git uses GIT_DIR if set,
+  // regardless of where it was invoked. Test fixtures that `git init`
+  // a temp dir then expect git to read THAT dir's config will silently
+  // see the outer hook's repo's config instead.
+  //
+  // We clear every well-known git env var before invoking. The script
+  // owns the cwd contract via `-C` + `execSync`'s cwd option, so the
+  // env vars are pure noise in our context.
+  if (!cmd.startsWith('git ')) {
+    throw new Error('[pyreon] runGit only handles git commands')
+  }
+  const fullCmd = `git -C ${escapeShellArg(opts.cwd)} ${cmd.slice(4)}`
+  const env = { ...process.env }
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('GIT_')) delete env[key]
+  }
   try {
     if (opts.capture) {
-      return execSync(cmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+      return execSync(fullCmd, {
+        cwd: opts.cwd,
+        env,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim()
     }
-    execSync(cmd, { stdio: 'ignore' })
+    execSync(fullCmd, { cwd: opts.cwd, env, stdio: 'ignore' })
     return null
   } catch {
     return null
   }
 }
 
-function isGitRepo(): boolean {
-  return run('git rev-parse --git-dir', { capture: true }) !== null
+function isGitRepo(cwd: string): boolean {
+  return runGit('git rev-parse --git-dir', { cwd, capture: true }) !== null
 }
 
-function getCurrentHooksPath(): string | null {
-  return run('git config --get core.hooksPath', { capture: true })
+function getCurrentHooksPath(cwd: string): string | null {
+  return runGit('git config --get core.hooksPath', { cwd, capture: true })
 }
 
-function getDefaultHooksPaths(repoRoot: string): string[] {
+function getDefaultHooksPaths(cwd: string, repoRoot: string): string[] {
   // Collect every path that git COULD use as the default hooks
   // directory. In a main checkout, only one matches: `<git-dir>/hooks`.
   // In a worktree, `core.hooksPath` is repo-shared and still points at
@@ -60,68 +120,92 @@ function getDefaultHooksPaths(repoRoot: string): string[] {
   // own `git rev-parse --git-dir` returns the per-worktree git dir
   // (`<main-git-dir>/worktrees/<name>`). We have to accept BOTH.
   const paths = new Set<string>()
-  const gitDir = run('git rev-parse --git-dir', { capture: true }) ?? '.git'
-  const gitCommonDir = run('git rev-parse --git-common-dir', { capture: true }) ?? gitDir
+  const gitDir = runGit('git rev-parse --git-dir', { cwd, capture: true }) ?? '.git'
+  const gitCommonDir = runGit('git rev-parse --git-common-dir', { cwd, capture: true }) ?? gitDir
   paths.add(resolve(repoRoot, gitDir, 'hooks'))
   paths.add(resolve(repoRoot, gitCommonDir, 'hooks'))
   return [...paths]
 }
 
-function main(): void {
-  if (!isGitRepo()) {
+/**
+ * Run the install policy in the given working directory. Returns a
+ * structured `InstallResult` describing what happened — no console
+ * output, no subprocess. Side effect: when the result is `installed`,
+ * `git config core.hooksPath .githooks` has been written.
+ *
+ * Tests call this directly with a temp-dir cwd. `main()` calls it with
+ * `process.cwd()` and translates the result for `bun install`.
+ */
+export function installHooks(cwd: string): InstallResult {
+  if (!isGitRepo(cwd)) {
     // Tarball / fresh extract / non-git checkout — nothing to wire up.
-    return
+    return { kind: 'not-a-git-repo' }
   }
 
-  const repoRoot = run('git rev-parse --show-toplevel', { capture: true })
-  if (!repoRoot) return
+  const repoRoot = runGit('git rev-parse --show-toplevel', { cwd, capture: true })
+  if (!repoRoot) return { kind: 'not-a-git-repo' }
 
   const hooksDirAbs = resolve(repoRoot, HOOKS_DIR)
   if (!existsSync(hooksDirAbs)) {
     // Repo doesn't have the hooks directory committed — common when an
     // older clone exists alongside a newer install. Don't error.
-    return
+    return { kind: 'no-hooks-dir' }
   }
 
-  const current = getCurrentHooksPath()
+  const current = getCurrentHooksPath(cwd)
   if (current === HOOKS_DIR) {
-    // Already configured — exit silently. This runs on every `bun install`,
-    // so noisy success messages would clutter routine workflows.
-    return
+    // Already configured — exit silently. This runs on every
+    // `bun install`, so noisy success messages would clutter routine
+    // workflows.
+    return { kind: 'already-configured' }
   }
 
-  // Distinguish "real user override" (husky, lefthook, custom path) from
-  // "core.hooksPath happens to point at git's default location". The
-  // default is `<git-dir>/hooks` — an older bootstrap may have set it
-  // explicitly, or the user may have set it without realising it
-  // matches the default. In either case, Pyreon's hook at .githooks/ is
-  // orphaned because git looks at the configured path. Treat the
+  // Distinguish "real user override" (husky, lefthook, custom path)
+  // from "core.hooksPath happens to point at git's default location".
+  // The default is `<git-dir>/hooks` — an older bootstrap may have set
+  // it explicitly, or the user may have set it without realising it
+  // matches the default. In either case, Pyreon's hook at .githooks/
+  // is orphaned because git looks at the configured path. Treat the
   // default-location case as "no real override" and replace with our
   // hooks directory.
-  //
-  // This is the gap-#1 fix from the structural-cleanup sequence —
-  // pre-fix any non-empty `current` was treated as a user override and
-  // Pyreon's pre-push validation never fired.
-  const defaultHooksPaths = getDefaultHooksPaths(repoRoot)
+  const defaultHooksPaths = getDefaultHooksPaths(cwd, repoRoot)
   const currentResolved = current ? resolve(repoRoot, current) : null
   const isDefaultPath = currentResolved !== null && defaultHooksPaths.includes(currentResolved)
 
   if (current && !isDefaultPath) {
-    // The user has a real custom hooks path (husky / lefthook / custom).
-    // Don't clobber it — print a one-line note and exit so they can
-    // wire ours in manually if they want.
-    console.warn(
-      `[pyreon] core.hooksPath is set to "${current}" — leaving as-is.\n` +
-        `        Pyreon's hooks live in .githooks/ — chain them in if desired.`,
-    )
-    return
+    // The user has a real custom hooks path — leave it alone.
+    return { kind: 'preserved-user-override', currentValue: current }
   }
 
-  // Either no config OR config points to git's default `<git-dir>/hooks`
-  // (which means Pyreon's hook isn't running). Install ours.
-  run(`git config core.hooksPath ${HOOKS_DIR}`)
-  console.log('[pyreon] git hooks installed (.githooks/) — pre-push validation enabled.')
-  console.log('[pyreon] bypass with PYREON_SKIP_PRE_PUSH=1 or git push --no-verify.')
+  // Either no config OR config points to git's default
+  // `<git-dir>/hooks` (which means Pyreon's hook isn't running).
+  // Install ours.
+  runGit(`git config core.hooksPath ${HOOKS_DIR}`, { cwd })
+  return { kind: 'installed', previousValue: current }
 }
 
-main()
+function main(): void {
+  const result = installHooks(process.cwd())
+  switch (result.kind) {
+    case 'not-a-git-repo':
+    case 'no-hooks-dir':
+    case 'already-configured':
+      // Silent — these are no-op states. The postinstall hook runs on
+      // every `bun install`, so clutter-free is the contract.
+      return
+    case 'installed':
+      console.log(
+        '[pyreon] git hooks installed (.githooks/) — pre-push validation enabled.',
+      )
+      console.log('[pyreon] bypass with PYREON_SKIP_PRE_PUSH=1 or git push --no-verify.')
+      return
+    case 'preserved-user-override':
+      console.warn(
+        `[pyreon] core.hooksPath is set to "${result.currentValue}" — leaving as-is.\n` +
+          `        Pyreon's hooks live in .githooks/ — chain them in if desired.`,
+      )
+      return
+  }
+}
+
+if (import.meta.main) main()
