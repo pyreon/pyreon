@@ -1,0 +1,19 @@
+{
+  "sha": "55ff4481",
+  "app": "perf-dashboard",
+  "journey": "domAppend-10k",
+  "mode": "dev",
+  "runs": 5,
+  "timestamp": "2026-05-08T10:19:19.603Z",
+  "medianWallMs": 31,
+  "medianHeapBytes": 13400000,
+  "counters": {
+    "reactivity.signalWrite": 15,
+    "reactivity.effectRun": 14,
+    "runtime.mountChild": 7,
+    "reactivity.signalCreate": 1,
+    "runtime.tpl": 10001,
+    "runtime.applyProp": 3,
+    "runtime.cleanup": 10002
+  }
+}

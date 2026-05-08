@@ -1,0 +1,20 @@
+{
+  "sha": "55ff4481",
+  "app": "perf-dashboard",
+  "journey": "domConditionalToggle-1000",
+  "mode": "dev",
+  "runs": 5,
+  "timestamp": "2026-05-08T10:19:20.305Z",
+  "medianWallMs": 206,
+  "medianHeapBytes": 16100000,
+  "counters": {
+    "reactivity.signalWrite": 4007,
+    "reactivity.effectRun": 6006,
+    "runtime.mountChild": 6010,
+    "runtime.applyProp": 6,
+    "runtime.cleanup": 3003,
+    "reactivity.signalCreate": 1000,
+    "runtime.mountReactive": 4000,
+    "runtime.tpl": 4000
+  }
+}

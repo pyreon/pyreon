@@ -1,0 +1,20 @@
+{
+  "sha": "55ff4481",
+  "app": "perf-dashboard",
+  "journey": "domMount-1000",
+  "mode": "dev",
+  "runs": 5,
+  "timestamp": "2026-05-08T10:19:19.381Z",
+  "medianWallMs": 14,
+  "medianHeapBytes": 10000000,
+  "counters": {
+    "reactivity.signalWrite": 6,
+    "reactivity.effectRun": 6,
+    "runtime.mountChild": 10,
+    "runtime.applyProp": 6,
+    "runtime.cleanup": 1003,
+    "reactivity.signalCreate": 1000,
+    "runtime.tpl": 1000,
+    "runtime.bindText": 1000
+  }
+}

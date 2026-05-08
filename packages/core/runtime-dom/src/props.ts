@@ -10,6 +10,9 @@ type Cleanup = () => void
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
 const __DEV__ = process.env.NODE_ENV !== 'production'
 
+// Dev-time counter sink — see packages/internals/perf-harness for contract.
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 // ─── Configurable sanitizer ──────────────────────────────────────────────────
 
 export type SanitizeFn = (html: string) => string
@@ -205,6 +208,7 @@ export function applyProps(el: Element, props: Props): Cleanup | null {
  * Bind an event handler (onClick → "click") with batching + delegation support.
  */
 function applyEventProp(el: Element, key: string, value: unknown): Cleanup | null {
+  if (__DEV__) _countSink.__pyreon_count__?.('runtime.applyEvent')
   if (typeof value !== 'function') {
     // `undefined` and `null` are legitimate — conditional handler pattern:
     //   <button onClick={condition ? handler : undefined}>
@@ -295,7 +299,13 @@ function applyStaticProp(el: Element, key: string, value: unknown): void {
   setStaticProp(el, key, value)
 }
 
+// `runtime.applyProp` fires for EVERY prop key, including events. `runtime.applyEvent`
+// fires only for `on*` props — strict subset. Useful diagnostic ratios:
+//   applyEvent / applyProp = event-handler density per element
+//   applyProp - applyEvent = static / reactive attr density
+// Don't subtract them and treat as disjoint.
 export function applyProp(el: Element, key: string, value: unknown): Cleanup | null {
+  if (__DEV__) _countSink.__pyreon_count__?.('runtime.applyProp')
   // Event listener: onClick → "click"
   if (EVENT_RE.test(key)) return applyEventProp(el, key, value)
 
