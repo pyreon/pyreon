@@ -905,6 +905,26 @@ Rule of thumb:
 
   Generic worker-pool primitive `runWithConcurrency(items, concurrency, processItem, onSettled?)` is exported via `_internal` and tested in isolation (10 specs in `packages/zero/zero/src/tests/ssg-plugin.test.ts` — `runWithConcurrency (PR D)` describe block). Cap-clamping bisect-verified: removing the `max(1, …) + min(…, items.length)` clamps fails the `concurrency=0 → clamped to 1` spec with `expected [] to have a length of 3 but got 0`. The summary log includes a `(concurrency: N)` suffix when N > 1 so build output documents the actual schedule used. Reference: `packages/zero/zero/src/ssg-plugin.ts:runWithConcurrency` + the SSG closeBundle's worker pool that calls it.
 
+  **PR H — i18n route duplication (SSG roadmap).** Pre-PR-H, the `i18nRouting()` Vite plugin handled request-time locale detection (Accept-Language, cookies, root redirect) but routes themselves were never duplicated per locale — `expandRoutesForLocales` didn't exist, the docstring at `i18n-routing.ts:179-182` falsely claimed fs-router consumed the i18n config, and SSG outputs / SSR matchers had no `/de/about` / `/cs/about` records to render against. Now: `zero({ i18n: { locales: ['en','de','cs'], defaultLocale: 'en' } })` (or `{ strategy: 'prefix' | 'prefix-except-default' }`) propagates through both build-time route generation (`vite-plugin.ts`'s virtual-routes load) AND SSG path expansion (`ssg-plugin.ts:autoDetectStaticPaths`) via the new `expandRoutesForLocales` helper.
+
+  Two strategies:
+
+  - **`prefix-except-default`** (default): default locale keeps unprefixed URLs (`/about` stays `/about`), non-default locales get explicit prefixes (`/de/about`, `/cs/about`). Best for SEO-on-default-locale apps — search engines see canonical URLs at `/about` while non-default speakers get explicit prefixes.
+  - **`prefix`**: every locale prefixed including default (`/en/about`, `/de/about`, `/cs/about`). Root `/` becomes `/en` / `/de` / `/cs`. Better when no locale is "primary".
+
+  Layouts, error boundaries, loading components, and 404 pages duplicate along with their pages — same source `filePath` (same component module), new locale-prefixed `urlPath` / `dirPath` / `depth`. The route tree built from the expanded array therefore has one fully-formed subtree per locale, so layout matching, dynamic params (`[id]` → `:id`), and catch-all routes (`[...slug]` → `:slug*`) all compose naturally with the locale prefix — no special cases.
+
+  **`getStaticPaths` composition**: each duplicate route inherits the same `exports.getStaticPaths`. The SSG plugin's `expandUrlPattern` step then expands `/blog/[slug]` × locales × enumerator output into the cross-product (`/blog/a`, `/blog/b`, `/de/blog/a`, `/de/blog/b`, … under `prefix-except-default` with 2 slugs × 3 locales = 6 paths). Cardinality compounds, by design — `ssg.concurrency` (PR D) limits in-flight renders independent of route count.
+
+  No-op safety: empty `locales` returns input unchanged; `[en] + prefix-except-default` short-circuits to identity (no other locales to prefix). The `i18nRouting()` Vite plugin (request-time middleware) is unchanged and orthogonal — both can be used together.
+
+  Bisect-verified at TWO layers:
+
+  - **Unit** (`packages/zero/zero/src/tests/i18n-routing.test.ts` — `expandRoutesForLocales` describe block, 18 specs): covers prefix vs prefix-except-default, catch-all routes (`[...slug]`), dynamic params (`[id]`), root index, layouts (per-locale subtree wrapping), `getStaticPaths` exports inheritance, depth recomputation, no-op cases, default-strategy fallback, multi-route trees.
+  - **Real-app build** (`scripts/verify-modes.ts` — `ssr-showcase × ssg-i18n` cell with `locales: ['en','de','cs']`): asserts `dist/about/index.html`, `dist/de/about/index.html`, `dist/cs/about/index.html` all exist (per-locale variants); asserts `dist/en/about/index.html` does NOT exist (default-locale unprefixed under prefix-except-default). Bisect-verified by reverting the `expandRoutesForLocales` calls in BOTH `ssg-plugin.ts:autoDetectStaticPaths` AND `vite-plugin.ts`'s virtual-routes load — cell fails with `expected file: dist/de/index.html` (de-locale variant never enumerated, SSG didn't render it). Restore → 6/6 ssr-showcase cells pass.
+
+  Reference: `packages/zero/zero/src/i18n-routing.ts:expandRoutesForLocales` + the new `i18n?: I18nRoutingConfig` field on `ZeroConfig`.
+
 ## Testing
 
 ```bash
