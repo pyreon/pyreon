@@ -2013,7 +2013,7 @@ const fileResult = lintFile('app.tsx', source, allRules, config, cache)
 
 ## @pyreon/mcp — MCP Server
 
-MCP server (stdio transport) that exposes Pyreon\'s structured knowledge to AI coding assistants (Claude Code, Cursor, etc.). Twelve tools: `get_api` (look up any Pyreon API), `validate` (catch React + Pyreon-specific anti-patterns in a snippet), `migrate_react` (auto-convert React code), `diagnose` (parse a Pyreon error into structured fix info), `get_routes` / `get_components` (project introspection), `get_browser_smoke_status` (which packages need a browser smoke test), `get_pattern` (canonical "how do I do X" docs), `get_anti_patterns` (the catalog from `.claude/rules/anti-patterns.md`), `get_changelog` (recent release notes per package), `audit_test_environment` (mock-vnode test scanner — PR #197 bug class), and `audit_islands` (project-wide islands cross-file audit — duplicate names, dead islands, registry drift, nested islands, never-with-registry).
+MCP server (stdio transport) that exposes Pyreon\'s structured knowledge to AI coding assistants (Claude Code, Cursor, etc.). Thirteen tools: `mcp_overview` (start here — markdown table of every tool with "when to use" + example, read straight from this manifest), `get_api` (look up any Pyreon API), `validate` (catch React + Pyreon-specific anti-patterns in a snippet), `migrate_react` (auto-convert React code), `diagnose` (parse a Pyreon error into structured fix info), `get_routes` / `get_components` (project introspection), `get_browser_smoke_status` (which packages need a browser smoke test), `get_pattern` (canonical "how do I do X" docs), `get_anti_patterns` (the catalog from `.claude/rules/anti-patterns.md`), `get_changelog` (recent release notes per package), `audit_test_environment` (mock-vnode test scanner — PR #197 bug class), and `audit_islands` (project-wide islands cross-file audit — duplicate names, dead islands, registry drift, nested islands, never-with-registry).
 
 ```typescript
 // .mcp/config.json — register the server with any MCP-aware client
@@ -2027,6 +2027,8 @@ MCP server (stdio transport) that exposes Pyreon\'s structured knowledge to AI c
 }
 
 // Then from the client (Claude Code, Cursor, etc.):
+//   mcp_overview()
+//     → markdown table: tool | when_to_use | example (start here)
 //   get_api({ package: 'flow', symbol: 'createFlow' })
 //     → signature, example, common mistakes
 //   validate({ code: '<MyButton onClick={handler}>...' })

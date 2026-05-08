@@ -6,6 +6,7 @@
  * to generate, validate, and migrate Pyreon code.
  *
  * Tools:
+ *   mcp_overview              — Discoverability map: every tool's "when to use" + example, in one call
  *   get_api                   — Look up any Pyreon API: signature, usage, common mistakes
  *   validate                  — Check a code snippet for Pyreon anti-patterns
  *   migrate_react             — Convert React code to idiomatic Pyreon
@@ -624,6 +625,35 @@ server.tool(
       return textResult(formatIslandAudit(result, { json }))
     },
   )
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // Tool: mcp_overview — discoverability "what tool when" map (T2.5.9)
+  //
+  // Reads from this package's own manifest at runtime — single source of truth.
+  // Reuses the same data that drives api-reference.ts + llms-full.txt + the
+  // generated docs/docs/mcp.md sections. Adding a new tool to manifest.ts
+  // automatically surfaces it here on next call; no second wiring step.
+  // ═══════════════════════════════════════════════════════════════════════════════
+
+  server.tool('mcp_overview', {}, async () => {
+    const { default: manifest } = await import('./manifest')
+    const tools = manifest.api.filter((e) => e.signature.startsWith('tool: '))
+
+    const rows = tools.map((e) => {
+      const whenToUse = (e.summary.split(/(?<=[.!?])\s+/)[0] ?? e.summary)
+        .trim()
+        .replace(/\|/g, '\\|')
+      const example = (e.example.split('\n')[0] ?? '').trim().replace(/\|/g, '\\|')
+      return `| \`${e.name}\` | ${whenToUse} | \`${example}\` |`
+    })
+
+    return textResult(
+      `**MCP Tools (${tools.length}):**\n\n` +
+        '| Tool | When to use | Example |\n' +
+        '|---|---|---|\n' +
+        rows.join('\n'),
+    )
+  })
 
   return server
 }
