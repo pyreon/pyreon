@@ -293,30 +293,33 @@ export function mountKeyedList(
   const e = effect(() => {
     const newList = accessor()
     const n = newList.length
+    // Same untracking rationale as mountFor — see comment there. Child
+    // mounts via mountVNode must not re-track on this effect's run.
+    runUntracked(() => {
+      if (n === 0 && cache.size > 0) {
+        for (const entry of cache.values()) entry.cleanup()
+        cache.clear()
+        curPos.clear()
+        currentKeyOrder = []
+        clearBetween(startMarker, tailMarker)
+        return
+      }
 
-    if (n === 0 && cache.size > 0) {
-      for (const entry of cache.values()) entry.cleanup()
-      cache.clear()
+      const { newKeyOrder, newKeySet } = collectKeyOrder(newList)
+      removeStaleEntries(newKeySet)
+      mountNewEntries(newList)
+
+      if (currentKeyOrder.length > 0 && n > 0) {
+        lis = keyedListReorder(lis, n, newKeyOrder, curPos, cache, parent, tailMarker)
+      }
+
       curPos.clear()
-      currentKeyOrder = []
-      clearBetween(startMarker, tailMarker)
-      return
-    }
-
-    const { newKeyOrder, newKeySet } = collectKeyOrder(newList)
-    removeStaleEntries(newKeySet)
-    mountNewEntries(newList)
-
-    if (currentKeyOrder.length > 0 && n > 0) {
-      lis = keyedListReorder(lis, n, newKeyOrder, curPos, cache, parent, tailMarker)
-    }
-
-    curPos.clear()
-    for (let i = 0; i < newKeyOrder.length; i++) {
-      const k = newKeyOrder[i]
-      if (k !== undefined) curPos.set(k, i)
-    }
-    currentKeyOrder = newKeyOrder
+      for (let i = 0; i < newKeyOrder.length; i++) {
+        const k = newKeyOrder[i]
+        if (k !== undefined) curPos.set(k, i)
+      }
+      currentKeyOrder = newKeyOrder
+    })
   })
 
   return () => {
@@ -715,25 +718,36 @@ export function mountFor<T>(
     if (!liveParent) return
     const items = source()
     const n = items.length
+    // Child mounts (renderInto → mountChild) must NOT re-track on this
+    // effect's run, mirroring mountReactive's pattern at line ~92. Without
+    // this, any signal read during a child component's setup (e.g. useQuery
+    // calling `new QueryObserver(client, options())` at construction time,
+    // which reads any signals inside the options builder) leaks its
+    // subscription up to the For effect. A flip of the unrelated signal
+    // re-runs For, runCleanup() disposes ALL inner effects, and
+    // handleIncrementalUpdate skips re-mount on key match — leaving the
+    // subtree's inner effects gone forever. Reproduced by the
+    // `<For>`-shaped test in fanout-repro.test.tsx; deferred from PR #490.
+    runUntracked(() => {
+      if (n === 0) {
+        handleFastClear(liveParent)
+        return
+      }
 
-    if (n === 0) {
-      handleFastClear(liveParent)
-      return
-    }
+      if (currentKeys.length === 0) {
+        handleFreshRender(items, n, liveParent)
+        return
+      }
 
-    if (currentKeys.length === 0) {
-      handleFreshRender(items, n, liveParent)
-      return
-    }
+      const newKeys = collectNewKeys(items, n)
 
-    const newKeys = collectNewKeys(items, n)
+      if (!hasAnyKeptKey(n, newKeys)) {
+        handleReplaceAll(items, n, newKeys, liveParent)
+        return
+      }
 
-    if (!hasAnyKeptKey(n, newKeys)) {
-      handleReplaceAll(items, n, newKeys, liveParent)
-      return
-    }
-
-    handleIncrementalUpdate(items, n, newKeys, liveParent)
+      handleIncrementalUpdate(items, n, newKeys, liveParent)
+    })
   })
 
   return () => {

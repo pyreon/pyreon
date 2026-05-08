@@ -1,6 +1,6 @@
 import type { Props, VNodeChild } from '@pyreon/core'
 import { createRef, h, nativeCompat, onMount } from '@pyreon/core'
-import { effect } from '@pyreon/reactivity'
+import { effect, runUntracked } from '@pyreon/reactivity'
 import { mountChild } from './mount'
 
 export interface KeepAliveProps extends Props {
@@ -51,8 +51,15 @@ export function KeepAlive(props: KeepAliveProps): VNodeChild {
       const isActive = props.active?.() ?? true
 
       if (!childMounted) {
-        // Mount children into the container div exactly once
-        childCleanup = mountChild(props.children ?? null, container, null)
+        // Mount children UNTRACKED — child component setup must not
+        // subscribe this effect. Otherwise an unrelated signal flip in
+        // the children would re-run KeepAlive's effect, runCleanup()
+        // would dispose the children's inner effects (because they were
+        // collected as inner effects of this run via _innerEffectCollector),
+        // and the `if (!childMounted)` guard would skip re-mount → the
+        // children become permanently un-reactive while still rendered.
+        // Same shape as the mountFor / mountKeyedList fix in nodes.ts.
+        childCleanup = runUntracked(() => mountChild(props.children ?? null, container, null))
         childMounted = true
       }
 

@@ -199,12 +199,22 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
       const key = props.keyFn(item, i)
       if (entries.has(key)) continue
       const itemRef = createRef<HTMLElement>()
-      const rawVNode = runUntracked(() => props.render(item, i))
-      const vnode: VNode =
-        typeof rawVNode.type === 'string'
-          ? { ...rawVNode, props: { ...rawVNode.props, ref: itemRef } as Props }
-          : rawVNode
-      const cleanup = mountChild(vnode, container, null)
+      // Both render AND mountChild must run untracked — child component
+      // setup (signal reads inside the render callback's resulting tree,
+      // useTheme / useQuery's options() construction etc.) must NOT
+      // subscribe this effect. Otherwise an unrelated signal flip re-runs
+      // the TransitionGroup effect, runCleanup() disposes the children's
+      // inner effects, and the next mount path skips re-rendering kept
+      // entries → the inner reactivity is lost. Same shape as the
+      // mountFor / mountKeyedList fix in nodes.ts.
+      const cleanup = runUntracked(() => {
+        const rawVNode = props.render(item, i)
+        const vnode: VNode =
+          typeof rawVNode.type === 'string'
+            ? { ...rawVNode, props: { ...rawVNode.props, ref: itemRef } as Props }
+            : rawVNode
+        return mountChild(vnode, container, null)
+      })
       const entry: ItemEntry = { key, ref: itemRef, cleanup, leaving: false, cancelTransition: null }
       entries.set(key, entry)
       newEntries.push(entry)
