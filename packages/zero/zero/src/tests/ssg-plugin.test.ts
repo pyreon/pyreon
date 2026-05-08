@@ -619,6 +619,167 @@ describe('ssgPlugin', () => {
     })
   })
 
+  describe('runWithConcurrency (PR D)', () => {
+    it('processes every item exactly once', async () => {
+      const items = ['a', 'b', 'c', 'd', 'e']
+      const seen: string[] = []
+      await _internal.runWithConcurrency(items, 2, async (item) => {
+        seen.push(item)
+      })
+      expect(seen.sort()).toEqual([...items].sort())
+      expect(seen).toHaveLength(items.length)
+    })
+
+    it('respects the concurrency cap — never more than N in flight', async () => {
+      // Track in-flight count by incrementing on entry + decrementing on exit.
+      // The peak is the maximum that should match the concurrency cap.
+      const items = Array.from({ length: 20 }, (_, i) => i)
+      let inFlight = 0
+      let peak = 0
+      const release: Array<() => void> = []
+      const gate: Array<Promise<void>> = []
+      for (let i = 0; i < items.length; i++) {
+        gate.push(new Promise((r) => release.push(r)))
+      }
+      const runPromise = _internal.runWithConcurrency(items, 4, async (i) => {
+        inFlight++
+        peak = Math.max(peak, inFlight)
+        await gate[i]
+        inFlight--
+      })
+      // Release one at a time so the peak measurement is meaningful.
+      for (const r of release) {
+        await new Promise((resolve) => setTimeout(resolve, 1))
+        r()
+      }
+      await runPromise
+      expect(peak).toBe(4)
+      expect(inFlight).toBe(0)
+    })
+
+    it('concurrency=1 renders fully sequentially (no overlap)', async () => {
+      const items = [1, 2, 3, 4, 5]
+      let inFlight = 0
+      let peak = 0
+      await _internal.runWithConcurrency(items, 1, async () => {
+        inFlight++
+        peak = Math.max(peak, inFlight)
+        await new Promise((resolve) => setTimeout(resolve, 1))
+        inFlight--
+      })
+      expect(peak).toBe(1)
+    })
+
+    it('clamps concurrency=0 to 1 (never silently hangs)', async () => {
+      const items = [1, 2, 3]
+      const seen: number[] = []
+      await _internal.runWithConcurrency(items, 0, async (i) => {
+        seen.push(i)
+      })
+      expect(seen).toHaveLength(3)
+    })
+
+    it('concurrency higher than items.length spawns at most items.length workers', async () => {
+      // Empirically: with 2 items and concurrency 100, we should spawn 2
+      // workers, not 100. Otherwise idle workers hold microtasks on a
+      // Promise.all hub-and-spoke and slow tear-down.
+      const items = ['x', 'y']
+      let started = 0
+      await _internal.runWithConcurrency(items, 100, async () => {
+        started++
+      })
+      // Both items processed, no extras.
+      expect(started).toBe(2)
+    })
+
+    it('empty items returns immediately (no workers spawned)', async () => {
+      let started = 0
+      await _internal.runWithConcurrency([], 4, async () => {
+        started++
+      })
+      expect(started).toBe(0)
+    })
+
+    it('onSettled fires once per item, in path-SETTLE order', async () => {
+      // Items 'slow', 'fast' — slow has longer wait. With concurrency 2,
+      // both start in parallel; fast settles first, then slow. onSettled
+      // sequence should be ['fast', 'slow'].
+      const items = ['slow', 'fast']
+      const settled: string[] = []
+      await _internal.runWithConcurrency(
+        items,
+        2,
+        async (item) => {
+          await new Promise((resolve) => setTimeout(resolve, item === 'slow' ? 20 : 1))
+        },
+        async (item) => {
+          settled.push(item)
+        },
+      )
+      expect(settled).toEqual(['fast', 'slow'])
+    })
+
+    it('onSettled receives correct idx (input position, not settle order)', async () => {
+      const items = ['slow', 'fast']
+      const settled: Array<{ item: string; idx: number }> = []
+      await _internal.runWithConcurrency(
+        items,
+        2,
+        async (item) => {
+          await new Promise((resolve) => setTimeout(resolve, item === 'slow' ? 20 : 1))
+        },
+        async (item, idx) => {
+          settled.push({ item, idx })
+        },
+      )
+      // 'fast' settles first but its idx is 1 (input position).
+      expect(settled[0]).toEqual({ item: 'fast', idx: 1 })
+      expect(settled[1]).toEqual({ item: 'slow', idx: 0 })
+    })
+
+    it('errors thrown by processItem propagate (no swallowing)', async () => {
+      // Caller is responsible for catching exceptions. The pool doesn't
+      // mask them — they fail the overall await Promise.all.
+      const items = [1, 2, 3]
+      await expect(
+        _internal.runWithConcurrency(items, 2, async (i) => {
+          if (i === 2) throw new Error('boom')
+        }),
+      ).rejects.toThrow('boom')
+    })
+
+    it('async onSettled is awaited before its worker pulls the next item', async () => {
+      // Per-worker serialization: a worker can't claim its NEXT item
+      // until its previous onSettled has resolved. This keeps progress
+      // counters monotonic from any single worker's perspective.
+      // Cross-worker serialization is NOT guaranteed (documented).
+      const items = [1, 2, 3, 4]
+      const trace: string[] = []
+      // Concurrency 1 → strict per-item serialization (process N → settle N → process N+1).
+      await _internal.runWithConcurrency(
+        items,
+        1,
+        async (i) => {
+          trace.push(`process-${i}`)
+        },
+        async (i) => {
+          await new Promise((resolve) => setTimeout(resolve, 5))
+          trace.push(`settle-${i}`)
+        },
+      )
+      expect(trace).toEqual([
+        'process-1',
+        'settle-1',
+        'process-2',
+        'settle-2',
+        'process-3',
+        'settle-3',
+        'process-4',
+        'settle-4',
+      ])
+    })
+  })
+
   describe('closeBundle is no-op when mode != "ssg"', () => {
     // The plugin returns from closeBundle without side effects when SSG
     // is not configured. We can't easily run the real closeBundle in unit

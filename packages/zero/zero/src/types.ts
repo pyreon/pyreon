@@ -163,6 +163,60 @@ export interface ZeroConfig {
      * matching pre-PR-G behaviour.
      */
     errorArtifact?: 'json' | 'none'
+    /**
+     * Maximum number of paths rendered in parallel during the SSG closeBundle
+     * loop. Default: `4` — a sensible balance between speedup and the risk
+     * of exhausting downstream resources (DB connection pools, fetch
+     * rate-limits) inside loaders. Set to `1` to render fully sequentially
+     * (the pre-PR-D behaviour). Set to a higher value for faster builds
+     * on CI / multi-core hosts; the practical ceiling is the number of
+     * loader-side concurrent connections your app's data layer tolerates.
+     *
+     * The render-error pipeline (`onPathError` callback, `errors[]`
+     * collection, `_pyreon-ssg-errors.json` artifact) is unchanged —
+     * concurrency only affects how many paths are in flight at once,
+     * not how their successes / failures are recorded.
+     *
+     * @example
+     * ssg: {
+     *   concurrency: 8, // Faster builds for static-content sites
+     * }
+     */
+    concurrency?: number
+    /**
+     * Per-path progress callback. Invoked once per path AFTER its render
+     * settles (success, redirect, OR failure) — never during in-flight
+     * renders. Receives `{ completed, total, currentPath, elapsed }`
+     * where:
+     *   - `completed` is the count of paths whose render has settled (1-indexed)
+     *   - `total` is the full path count from `resolvePaths()`
+     *   - `currentPath` is the path that just settled
+     *   - `elapsed` is wall-clock ms since the loop started
+     *
+     * Use cases: build-tool progress bars (Vite picks up stdout), CI
+     * heartbeat lines on long builds (10k-path sites take minutes —
+     * silent stretches look hung), build-time perf instrumentation.
+     *
+     * Async callbacks are awaited before the next path's progress fires,
+     * so a slow callback can serialize progress reporting (it does NOT
+     * gate the worker pool — paths keep rendering in parallel; only
+     * the progress callbacks themselves are serialized). Throws are
+     * captured into `errors[]` with the path suffix `(onProgress)` so
+     * a buggy callback can't take down the build.
+     *
+     * @example
+     * ssg: {
+     *   onProgress: ({ completed, total, currentPath, elapsed }) => {
+     *     console.log(`[${completed}/${total}] ${currentPath} (${elapsed}ms)`)
+     *   },
+     * }
+     */
+    onProgress?: (info: {
+      completed: number
+      total: number
+      currentPath: string
+      elapsed: number
+    }) => void | Promise<void>
   }
 
   /** ISR config — only used when mode is "isr". */

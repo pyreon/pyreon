@@ -450,6 +450,62 @@ function renderMetaRefreshHtml(target: string): string {
  * is meant to be read both by tooling AND humans diagnosing a failed
  * build, so byte-density is not the priority.
  */
+/**
+ * Drain `items` through `concurrency` parallel workers, calling
+ * `processItem(item)` on each and `onSettled(item, idx)` once each
+ * settles (regardless of resolve/reject). The work-stealing pattern
+ * (each worker pulls from a shared `nextIdx++` cursor) keeps load
+ * balanced even when individual `processItem` calls vary widely in
+ * duration — a fast item doesn't make its worker idle until the slowest
+ * peer finishes.
+ *
+ * Settle ordering: `onSettled` fires in the order items finish, NOT in
+ * input order. `idx` is the index into `items` (same identity across
+ * `processItem` and `onSettled`), useful for "completed N of M"
+ * progress reporting.
+ *
+ * Concurrency clamping: ≤ 0 inputs ARE clamped to 1 — the worker pool
+ * is meaningless without at least one worker, but a value of `0` from
+ * a misconfiguration shouldn't silently hang. The actual worker count
+ * is `min(concurrency, items.length)` so a 2-item list with concurrency
+ * 10 only spawns 2 workers (no idle workers spawned).
+ *
+ * Errors from `processItem` are NOT caught here — callers must handle
+ * exceptions inside `processItem` (the SSG path does so via try/catch
+ * in `renderOne`). Errors from `onSettled` likewise propagate; in the
+ * SSG path the caller wraps it to record into `errors[]`. We don't
+ * silently swallow because that would hide real bugs.
+ *
+ * Atomic operations under Node's single-threaded JS: `nextIdx++` is
+ * atomic — workers never observe a partial increment, so two workers
+ * never claim the same index. The pool relies on this invariant; do
+ * NOT port to a multi-threaded runtime without revisiting.
+ */
+async function runWithConcurrency<T>(
+  items: readonly T[],
+  concurrency: number,
+  processItem: (item: T, idx: number) => Promise<void>,
+  onSettled?: (item: T, idx: number) => Promise<void> | void,
+): Promise<void> {
+  const cap = Math.max(1, concurrency)
+  const workerCount = Math.min(cap, items.length)
+  if (workerCount === 0) return
+
+  let nextIdx = 0
+
+  const worker = async (): Promise<void> => {
+    while (true) {
+      const idx = nextIdx++
+      if (idx >= items.length) return
+      const item = items[idx]!
+      await processItem(item, idx)
+      if (onSettled) await onSettled(item, idx)
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()))
+}
+
 function renderErrorArtifact(entries: { path: string; error: unknown }[]): string {
   const errors = entries.map(({ path, error }) => ({
     path,
@@ -688,7 +744,17 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       const writtenPaths: string[] = []
       const start = Date.now()
 
-      for (const p of paths) {
+      // PR D — render a single path. Extracted from the inline loop body
+      // so the worker-pool below can call it concurrently. All side
+      // effects (redirects.push, errors.push, writtenPaths.push, pages++)
+      // are append-only mutations on shared arrays/counter — safe under
+      // the concurrent worker pattern because Node is single-threaded
+      // (each worker yields at every `await`, never in mid-statement).
+      //
+      // Returns the path on settle so the worker can fire onProgress with
+      // it. Throws are NOT propagated — they're caught here and recorded
+      // in `errors[]`, so a single failed path can't take down the worker.
+      const renderOne = async (p: string): Promise<void> => {
         try {
           const result = await Promise.race([
             renderPath(p),
@@ -707,12 +773,12 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
               const resolvedOut = resolve(distDir)
               if (!resolve(filePath).startsWith(resolvedOut)) {
                 errors.push({ path: p, error: new Error(`Path traversal detected: "${p}"`) })
-                continue
+                return
               }
               await mkdir(dirname(filePath), { recursive: true })
               await writeFile(filePath, renderMetaRefreshHtml(result.to), 'utf-8')
             }
-            continue
+            return
           }
 
           const html = injectIntoTemplate(template, result)
@@ -723,7 +789,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           const resolvedOut = resolve(distDir)
           if (!resolve(filePath).startsWith(resolvedOut)) {
             errors.push({ path: p, error: new Error(`Path traversal detected: "${p}"`) })
-            continue
+            return
           }
 
           await mkdir(dirname(filePath), { recursive: true })
@@ -747,7 +813,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
                 const resolvedOut = resolve(distDir)
                 if (!resolve(filePath).startsWith(resolvedOut)) {
                   errors.push({ path: p, error: new Error(`Path traversal detected: "${p}"`) })
-                  continue
+                  return
                 }
                 await mkdir(dirname(filePath), { recursive: true })
                 await writeFile(filePath, fallbackHtml, 'utf-8')
@@ -759,6 +825,36 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           }
         }
       }
+
+      // PR D — worker-pool concurrency. Default 4 workers in flight; the
+      // user can opt into more via `ssg.concurrency` (CI multi-core) or
+      // back to 1 for fully sequential (the pre-PR-D shape). Per-path
+      // logic lives in `renderOne()`; the pool primitive lives in
+      // `runWithConcurrency()` (testable in isolation).
+      //
+      // Progress ordering: `onProgress` fires in path-SETTLE order, NOT
+      // input order. Across workers, callbacks may run in parallel —
+      // the runtime doesn't serialize them. If you need strict serial
+      // output (e.g. a progress bar painting one line at a time), wrap
+      // the callback to push to a single-consumer queue.
+      const concurrency = Math.max(1, config.ssg?.concurrency ?? 4)
+      let completed = 0
+
+      await runWithConcurrency(paths, concurrency, renderOne, async (p) => {
+        completed++
+        if (config.ssg?.onProgress) {
+          try {
+            await config.ssg.onProgress({
+              completed,
+              total: paths.length,
+              currentPath: p,
+              elapsed: Date.now() - start,
+            })
+          } catch (callbackError) {
+            errors.push({ path: `${p} (onProgress)`, error: callbackError })
+          }
+        }
+      })
 
       // PR F — Sitemap path manifest.
       //
@@ -861,9 +957,10 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
 
       const elapsed = Date.now() - start
       const redirectsSummary = redirects.length > 0 ? ` + ${redirects.length} redirect(s)` : ''
+      const concurrencySummary = concurrency > 1 ? ` (concurrency: ${concurrency})` : ''
       // oxlint-disable-next-line no-console
       console.log(
-        `[zero:ssg] Prerendered ${pages} page(s)${emitted404 ? ' + 404.html' : ''}${redirectsSummary} in ${elapsed}ms` +
+        `[zero:ssg] Prerendered ${pages} page(s)${emitted404 ? ' + 404.html' : ''}${redirectsSummary} in ${elapsed}ms${concurrencySummary}` +
           (errors.length > 0 ? ` (${errors.length} error(s))` : ''),
       )
       for (const { path: errPath, error } of errors) {
@@ -888,6 +985,7 @@ export const _internal = {
   renderVercelRedirectsJson,
   renderMetaRefreshHtml,
   renderErrorArtifact,
+  runWithConcurrency,
   SSR_ENTRY_SOURCE,
   SSR_ENTRY_FILENAME,
 }
