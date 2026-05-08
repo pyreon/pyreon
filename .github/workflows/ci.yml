@@ -358,6 +358,15 @@ jobs:
         # Catches the "the whole feature is unblooded" gap noted in the
         # post-PR-#453 island audit.
         run: bun run test:e2e:islands
+      - name: Run e2e — SSG subpath / base-path runtime (PR E)
+        # Same separate-config rationale. Builds ssr-showcase with
+        # `zero({ base: '/blog/' })` then previews on port 5198 and runs
+        # 4 specs that exercise the runtime contract under base — page
+        # load, asset URL fetch success, in-app RouterLink-click
+        # navigation, post-hydration counter reactivity. Companion to
+        # the verify-modes ssr-showcase × ssg-subpath cell which gates
+        # the build artifact; this gates the runtime behaviour.
+        run: bun run test:e2e:ssg-subpath
       - name: Run e2e — perf-dashboard (useFormState selector-narrowing gate)
         # Boots perf-dashboard on port 5183. Real-Chromium gate for the
         # `useFormState(form, s => s.isValid)` selector-narrowing contract
