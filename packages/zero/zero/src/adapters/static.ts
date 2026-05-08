@@ -3,11 +3,24 @@ import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../t
 /**
  * Static adapter — just copies the client build output.
  * Used with SSG mode where all pages are pre-rendered at build time.
+ *
+ * **SSG mode (PR J)**: no-op — `outDir` already IS the dist directory
+ * the SSG plugin produced. Copying it onto itself would only fail. The
+ * static adapter is the canonical zero-overhead deploy target for
+ * pure-static sites.
+ *
+ * **SSR mode**: copies clientOutDir → outDir. Calling `static` with SSR
+ * mode is unusual — the static adapter doesn't support server-side
+ * execution — but preserved as a "client-only output packager".
  */
 export function staticAdapter(): Adapter {
   return {
     name: 'static',
     async build(options: AdapterBuildOptions) {
+      if (options.kind === 'ssg') {
+        // SSG dist is already at outDir — nothing to copy or rewrite.
+        return
+      }
       const { cp, mkdir } = await import('node:fs/promises')
 
       await mkdir(options.outDir, { recursive: true })

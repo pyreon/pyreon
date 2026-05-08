@@ -23,6 +23,31 @@ export function netlifyAdapter(): Adapter {
   return {
     name: 'netlify',
     async build(options: AdapterBuildOptions) {
+      if (options.kind === 'ssg') {
+        // PR J — SSG branch. Emit `netlify.toml` with `publish = "."`
+        // (the dist root) and asset-cache headers — no functions. Tells
+        // Netlify "this dist directory IS the publishable output, serve
+        // it as a static site". Without this file, Netlify falls back
+        // to whatever the user has at the repo root (might miss the
+        // dist/ direct-upload shape).
+        //
+        // PR B's `dist/_redirects` (loader-redirect manifest) is
+        // emitted by ssgPlugin BEFORE the adapter runs, so this branch
+        // doesn't need to write it. The two files coexist cleanly —
+        // Netlify reads both.
+        const { writeFile } = await import('node:fs/promises')
+        const { join } = await import('node:path')
+        const toml = `[build]
+  publish = "."
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+`
+        await writeFile(join(options.outDir, 'netlify.toml'), toml)
+        return
+      }
       await validateBuildInputs(options)
       const { writeFile, cp, mkdir } = await import('node:fs/promises')
       const { join } = await import('node:path')

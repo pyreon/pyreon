@@ -3,11 +3,20 @@ import { validateBuildInputs } from './validate'
 
 /**
  * Bun adapter — generates a standalone Bun.serve() entry.
+ *
+ * **SSG mode (PR J)**: no-op. Bun adapter exists for serving the SSR
+ * runtime; SSG output is already complete static HTML — serve it with
+ * any static-file server (`bun preview` / `bunx serve` / nginx / Caddy).
+ * Use `staticAdapter()` if you want explicit SSG semantics.
  */
 export function bunAdapter(): Adapter {
   return {
     name: 'bun',
     async build(options: AdapterBuildOptions) {
+      if (options.kind === 'ssg') {
+        // Bun runner has nothing to add for prerendered SSG dist.
+        return
+      }
       await validateBuildInputs(options)
       const { writeFile, cp, mkdir } = await import('node:fs/promises')
       const { join } = await import('node:path')

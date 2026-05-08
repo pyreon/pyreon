@@ -962,6 +962,34 @@ Rule of thumb:
 
   Reference: `packages/zero/zero/src/fs-router.ts:detectRouteExports` (literal extraction), `packages/zero/zero/src/types.ts:RouteFileExports` (`hasRevalidate` + `revalidateLiteral`) and `Adapter.revalidate?` + `AdapterRevalidateResult`, `packages/zero/zero/src/ssg-plugin.ts:buildRevalidateManifest` + the manifest-emit block in `closeBundle`, `packages/zero/zero/src/adapters/*.ts:revalidate` per-platform implementations.
 
+  **PR J — adapter.build() wired into SSG closeBundle + per-platform SSG branches.** Pre-PR-J `Adapter.build()` was implemented for all 6 adapters (`vercel`, `cloudflare`, `netlify`, `node`, `bun`, `static`) BUT no production code path called the methods. Apps configured for `adapter: 'vercel' | 'cloudflare' | 'netlify'` got their dist directory built but no platform routing config emitted — `.vercel/output/config.json` / `_routes.json` / `netlify.toml` were absent, forcing users to write those files by hand or accept platform-default behaviour (which on Cloudflare meant invoking the Pages function for every URL even when the site was fully prerendered, wasting compute / cost on paid plans).
+
+  PR J wires `adapter.build()` into `ssgPlugin`'s `closeBundle` AFTER the path render loop. The build pipeline is now:
+
+  1. Render all paths (PR D worker pool)
+  2. Emit `_redirects` / `_redirects.json` (PR B redirect manifests)
+  3. Emit `dist/404.html` (PR C)
+  4. Emit `_pyreon-ssg-paths.json` (PR F sitemap manifest)
+  5. Emit `_pyreon-ssg-errors.json` if any errors (PR G)
+  6. **Call `adapter.build({ kind: 'ssg', outDir, config })`** (PR J — new step)
+  7. Cleanup SSR build artifacts
+
+  **`AdapterBuildOptions` is now a discriminated union** on the new `kind` field. Pre-PR-J it was a single SSR-shaped struct with `serverEntry` / `clientOutDir` required. SSG callers couldn't supply a server entry (every page is prerendered) so they couldn't invoke `build()`. The discriminated union splits into:
+
+  - `{ kind: 'ssr', serverEntry, clientOutDir, outDir, config }` — for SSR mode (unchanged shape; existing adapter SSR branches keep working with no behavior change)
+  - `{ kind: 'ssg', outDir, config }` — new SSG variant; `outDir` IS the rendered dist directory the SSG plugin produced
+
+  Each platform adapter's SSG branch:
+
+  - **`vercelAdapter`**: writes `.vercel/output/config.json` v3 STATIC variant (no functions, just routes for `/assets/*` long-cache headers). Does NOT copy files into `.vercel/output/static/` — Vercel's CLI deploy auto-detects the dist root, and copying would break user post-build steps (sourcemap upload, perf scripts).
+  - **`cloudflareAdapter`**: writes `_routes.json` with `version: 1, include: [], exclude: ['/*']` — i.e. "every URL is static, never invoke a Pages Function". Without this file, Cloudflare Pages defaults to running the worker on every request, wasting compute. No `_worker.js` emitted (zero-function deploy).
+  - **`netlifyAdapter`**: writes `netlify.toml` with `publish = "."` (the dist root) + `Cache-Control` headers for `/assets/*`. No functions/redirects directives — PR B's `dist/_redirects` already covers loader-redirect manifests, and the `netlify.toml` declares the static-site shape.
+  - **`staticAdapter`**, **`nodeAdapter`**, **`bunAdapter`**: SSG no-op. Static dist is already at `outDir` (nothing to copy); node/bun adapters are SSR runners (irrelevant for prerendered output). The validateBuildInputs helper early-returns for `kind: 'ssg'` so SSG-mode users don't see misleading "server entry not found" errors.
+
+  **Adapter throws are caught in the SSG closeBundle wiring** so a buggy adapter can't take down a successful render — the error lands in `errors[]` with path `(adapter:<name>)` and surfaces in the post-build summary. The summary log gains `[adapter: <name>]` when adapter is non-default (i.e. anything other than `node`).
+
+  Bisect-verified: removing the SSG branch from `cloudflareAdapter` → 2/2 cloudflare-SSG specs fail with `TypeError: The "src" argument must be of type string ... Received undefined` (the SSR branch tries to read undefined `clientOutDir` / `serverEntry`). Restored → 9/9 PR-J SSG specs pass + all 14 pre-existing SSR specs pass. **What's NOT in PR J**: serverless adapters in SSR mode still aren't auto-invoked because zero doesn't run a separate Vite SSR build for `mode: 'ssr'` apps — that's separate infra (a future PR can wire it). Direct deploy of SSR mode requires the user to handle their own server bundle. References: `packages/zero/zero/src/types.ts:AdapterBuildOptions`, `packages/zero/zero/src/adapters/{vercel,cloudflare,netlify,static,node,bun}.ts`, `packages/zero/zero/src/ssg-plugin.ts` (closeBundle adapter.build invocation).
+
 ## Testing
 
 ```bash

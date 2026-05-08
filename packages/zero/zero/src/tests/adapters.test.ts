@@ -81,6 +81,7 @@ describe('vercel adapter build', () => {
     const outDir = join(TMP, 'vercel-out')
     const adapter = vercelAdapter()
     await adapter.build({
+      kind: 'ssr',
       serverEntry: join(MOCK_SERVER, 'entry-server.js'),
       clientOutDir: MOCK_CLIENT,
       outDir,
@@ -113,6 +114,7 @@ describe('cloudflare adapter build', () => {
     const outDir = join(TMP, 'cf-out')
     const adapter = cloudflareAdapter()
     await adapter.build({
+      kind: 'ssr',
       serverEntry: join(MOCK_SERVER, 'entry-server.js'),
       clientOutDir: MOCK_CLIENT,
       outDir,
@@ -143,6 +145,7 @@ describe('netlify adapter build', () => {
     const outDir = join(TMP, 'netlify-out')
     const adapter = netlifyAdapter()
     await adapter.build({
+      kind: 'ssr',
       serverEntry: join(MOCK_SERVER, 'entry-server.js'),
       clientOutDir: MOCK_CLIENT,
       outDir,
@@ -173,6 +176,7 @@ describe('node adapter build', () => {
     const outDir = join(TMP, 'node-out')
     const adapter = nodeAdapter()
     await adapter.build({
+      kind: 'ssr',
       serverEntry: join(MOCK_SERVER, 'entry-server.js'),
       clientOutDir: MOCK_CLIENT,
       outDir,
@@ -197,6 +201,7 @@ describe('bun adapter build', () => {
     const outDir = join(TMP, 'bun-out')
     const adapter = bunAdapter()
     await adapter.build({
+      kind: 'ssr',
       serverEntry: join(MOCK_SERVER, 'entry-server.js'),
       clientOutDir: MOCK_CLIENT,
       outDir,
@@ -219,6 +224,7 @@ describe('static adapter build', () => {
     const outDir = join(TMP, 'static-out')
     const adapter = staticAdapter()
     await adapter.build({
+      kind: 'ssr',
       serverEntry: join(MOCK_SERVER, 'entry-server.js'),
       clientOutDir: MOCK_CLIENT,
       outDir,
@@ -464,5 +470,153 @@ describe('netlifyAdapter.revalidate', () => {
       if (before !== undefined) process.env.NETLIFY_BUILD_HOOK_URL = before
       else delete process.env.NETLIFY_BUILD_HOOK_URL
     }
+  })
+})
+
+// ─── SSG-mode adapter.build() tests (PR J) ──────────────────────────────────
+//
+// Pre-PR-J adapter.build() was implemented but never invoked from any
+// real build pipeline + had no SSG branch (it always assumed serverEntry
+// existed). PR J added a discriminated `kind: 'ssr' | 'ssg'` to
+// AdapterBuildOptions so SSG callers can invoke build() without faking
+// a serverEntry. These tests assert each adapter's SSG branch produces
+// the right platform routing config (or correctly no-ops for adapters
+// that don't add SSG-specific files).
+
+async function setupSsgDist() {
+  await rm(TMP, { recursive: true, force: true })
+  const ssgDist = join(TMP, 'ssg-dist')
+  await mkdir(ssgDist, { recursive: true })
+  const { writeFile } = await import('node:fs/promises')
+  // Mock prerendered output the SSG plugin would have produced.
+  await writeFile(join(ssgDist, 'index.html'), '<html><body>home</body></html>')
+  await mkdir(join(ssgDist, 'about'), { recursive: true })
+  await writeFile(join(ssgDist, 'about', 'index.html'), '<html><body>about</body></html>')
+  await mkdir(join(ssgDist, 'assets'), { recursive: true })
+  await writeFile(join(ssgDist, 'assets', 'index-abc.js'), '/* mock */')
+  return ssgDist
+}
+
+describe('vercel adapter — SSG mode (PR J)', () => {
+  it('emits .vercel/output/config.json without functions', async () => {
+    const ssgDist = await setupSsgDist()
+    const adapter = vercelAdapter()
+    await adapter.build({ kind: 'ssg', outDir: ssgDist, config: {} })
+
+    const configPath = join(ssgDist, '.vercel', 'output', 'config.json')
+    expect(existsSync(configPath)).toBe(true)
+    const cfg = JSON.parse(await readFile(configPath, 'utf-8'))
+    expect(cfg.version).toBe(3)
+    // SSG variant: no functions (every page is prerendered).
+    expect(cfg.functions).toBeUndefined()
+    // Long-cache header for /assets/* mirrors the SSR variant.
+    expect(cfg.routes.some((r: { src: string }) => r.src === '/assets/(.*)')).toBe(true)
+    await cleanup()
+  })
+
+  it('does NOT copy dist files into static/ subdir (preserves user post-build steps)', async () => {
+    // Vercel's CLI deploy flow detects the dist root automatically;
+    // adapters that move files break user post-build steps (sourcemap
+    // upload, perf scripts, custom asset handling). Verify dist content
+    // STAYS at outDir, not copied into .vercel/output/static/.
+    const ssgDist = await setupSsgDist()
+    const adapter = vercelAdapter()
+    await adapter.build({ kind: 'ssg', outDir: ssgDist, config: {} })
+
+    expect(existsSync(join(ssgDist, 'index.html'))).toBe(true)
+    expect(existsSync(join(ssgDist, '.vercel', 'output', 'static'))).toBe(false)
+    await cleanup()
+  })
+})
+
+describe('cloudflare adapter — SSG mode (PR J)', () => {
+  it('emits _routes.json with include:[] + exclude:["/*"]', async () => {
+    // The static-only signal: Pages reads _routes.json and skips the
+    // function for any URL matching `exclude` patterns. With include
+    // empty + exclude='/*', every URL bypasses the worker → pure
+    // static deploy.
+    const ssgDist = await setupSsgDist()
+    const adapter = cloudflareAdapter()
+    await adapter.build({ kind: 'ssg', outDir: ssgDist, config: {} })
+
+    const routesPath = join(ssgDist, '_routes.json')
+    expect(existsSync(routesPath)).toBe(true)
+    const routes = JSON.parse(await readFile(routesPath, 'utf-8'))
+    expect(routes.version).toBe(1)
+    expect(routes.include).toEqual([])
+    expect(routes.exclude).toEqual(['/*'])
+    await cleanup()
+  })
+
+  it('does NOT emit _worker.js for SSG (zero-function deploy)', async () => {
+    const ssgDist = await setupSsgDist()
+    const adapter = cloudflareAdapter()
+    await adapter.build({ kind: 'ssg', outDir: ssgDist, config: {} })
+
+    expect(existsSync(join(ssgDist, '_worker.js'))).toBe(false)
+    await cleanup()
+  })
+})
+
+describe('netlify adapter — SSG mode (PR J)', () => {
+  it('emits netlify.toml with publish="." and asset cache headers, no functions', async () => {
+    const ssgDist = await setupSsgDist()
+    const adapter = netlifyAdapter()
+    await adapter.build({ kind: 'ssg', outDir: ssgDist, config: {} })
+
+    const tomlPath = join(ssgDist, 'netlify.toml')
+    expect(existsSync(tomlPath)).toBe(true)
+    const toml = await readFile(tomlPath, 'utf-8')
+    expect(toml).toContain('publish = "."')
+    expect(toml).toContain('Cache-Control = "public, max-age=31536000, immutable"')
+    expect(toml).not.toContain('[[redirects]]')
+    expect(toml).not.toContain('functions')
+    await cleanup()
+  })
+
+  it('does NOT emit netlify/functions/ for SSG', async () => {
+    const ssgDist = await setupSsgDist()
+    const adapter = netlifyAdapter()
+    await adapter.build({ kind: 'ssg', outDir: ssgDist, config: {} })
+
+    expect(existsSync(join(ssgDist, 'netlify', 'functions'))).toBe(false)
+    await cleanup()
+  })
+})
+
+describe('static / node / bun adapters — SSG mode no-op (PR J)', () => {
+  it('static adapter: no-op (dist is already at outDir)', async () => {
+    const ssgDist = await setupSsgDist()
+    const adapter = staticAdapter()
+    await expect(
+      adapter.build({ kind: 'ssg', outDir: ssgDist, config: {} }),
+    ).resolves.toBeUndefined()
+    // No new platform-specific files emitted.
+    expect(existsSync(join(ssgDist, '.vercel'))).toBe(false)
+    expect(existsSync(join(ssgDist, '_routes.json'))).toBe(false)
+    expect(existsSync(join(ssgDist, 'netlify.toml'))).toBe(false)
+    await cleanup()
+  })
+
+  it('node adapter: no-op (SSG dist needs no Node runner)', async () => {
+    const ssgDist = await setupSsgDist()
+    const adapter = nodeAdapter()
+    await expect(
+      adapter.build({ kind: 'ssg', outDir: ssgDist, config: {} }),
+    ).resolves.toBeUndefined()
+    expect(existsSync(join(ssgDist, 'index.js'))).toBe(false)
+    expect(existsSync(join(ssgDist, 'server'))).toBe(false)
+    await cleanup()
+  })
+
+  it('bun adapter: no-op (SSG dist needs no Bun runner)', async () => {
+    const ssgDist = await setupSsgDist()
+    const adapter = bunAdapter()
+    await expect(
+      adapter.build({ kind: 'ssg', outDir: ssgDist, config: {} }),
+    ).resolves.toBeUndefined()
+    expect(existsSync(join(ssgDist, 'index.ts'))).toBe(false)
+    expect(existsSync(join(ssgDist, 'server'))).toBe(false)
+    await cleanup()
   })
 })
