@@ -123,6 +123,11 @@ export function createServer(options: CreateServerOptions) {
 	const { App } = createApp({
 		routes: options.routes,
 		routerMode: "history",
+		// Forward zero's `base` to createRouter so RouterLinks render
+		// correctly prefixed hrefs during SSR — must match the value
+		// the client-side `startClient` reads from `__ZERO_BASE__` so
+		// hydration doesn't mismatch.
+		...(config.base && config.base !== "/" ? { base: config.base } : {}),
 	});
 
 	const handler = createHandler({

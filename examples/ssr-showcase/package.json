@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:subpath": "vite build --config vite.config.subpath.ts",
     "preview": "vite preview",
+    "preview:subpath": "vite preview --config vite.config.subpath.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },

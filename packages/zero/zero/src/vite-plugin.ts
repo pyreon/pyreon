@@ -371,6 +371,25 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 				...(userConfig.port !== undefined
 					? { server: { port: config.port } }
 					: {}),
+				// Propagate `zero({ base })` to Vite's `base` config — that's
+				// what controls asset URL rewriting in the built HTML/JS
+				// (`<script src="/blog/assets/…">`). Pre-fix this was a
+				// typed-but-unimplemented field: `__ZERO_BASE__` was defined
+				// as a Vite global but no consumer existed, AND Vite's own
+				// `base` had to be set manually in vite.config.ts. Setting
+				// it here makes `zero({ base: '/blog/' })` the canonical
+				// single-source-of-truth surface; the value flows through
+				// to (a) Vite's HTML/asset URL rewriter, (b) `createRouter`
+				// via `__ZERO_BASE__` in `startClient` / `createApp`, (c)
+				// the SSG entry's `createApp({ base })` call.
+				//
+				// Vite's config-merge semantics: plugin-returned config is
+				// the BASE; user's `vite.config.ts` top-level overrides.
+				// So a user who sets BOTH `zero({ base: '/blog/' })` AND
+				// `vite.config.base: '/foo/'` gets the latter — the user's
+				// explicit override wins. The default `/` is a no-op
+				// (matches Vite's default), so always-setting is safe.
+				base: config.base,
 				define: {
 					__ZERO_MODE__: JSON.stringify(config.mode),
 					__ZERO_BASE__: JSON.stringify(config.base),

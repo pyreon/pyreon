@@ -5,6 +5,13 @@ import { hydrateLoaderData } from '@pyreon/router'
 import { hydrateRoot, mount } from '@pyreon/runtime-dom'
 import { createApp } from './app'
 
+// Vite-injected build-time constant. Defined in `vite-plugin.ts`'s
+// `config()` hook from `zero({ base })`. Falls back to `'/'` for
+// non-Vite builds (test environments, etc.) so the read is always
+// safe. The fallback is documented intent — there's no Pyreon
+// deployment outside Vite that consumes this.
+declare const __ZERO_BASE__: string
+
 // ─── Client entry factory ───────────────────────────────────────────────────
 
 export interface StartClientOptions {
@@ -59,10 +66,21 @@ export function startClient(options: StartClientOptions) {
   const container = document.getElementById('app')
   if (!container) throw new Error('[Pyreon] Missing #app container element')
 
+  // Read the Vite-injected base so `createRouter({ base })` matches the
+  // value Vite used to rewrite asset URLs. `typeof` guard covers the
+  // edge case where the constant isn't defined (non-Vite test contexts);
+  // missing the constant in a real Vite build is impossible because the
+  // plugin's `config()` hook always declares it via `define`.
+  const base =
+    typeof __ZERO_BASE__ !== 'undefined' && __ZERO_BASE__ !== '/'
+      ? __ZERO_BASE__
+      : undefined
+
   const { App, router } = createApp({
     routes: options.routes,
     routerMode: 'history',
     ...(options.layout ? { layout: options.layout } : {}),
+    ...(base ? { base } : {}),
   })
 
   // ── Loader data hydration (SSR path) ───────────────────────────────────────

@@ -21,6 +21,19 @@ export interface CreateAppOptions {
 
   /** Global error component. */
   errorComponent?: ComponentFn
+
+  /**
+   * Base URL prefix for the deployed app (e.g. `/blog/`). Forwarded to
+   * `createRouter({ base })` so RouterLinks render correctly prefixed
+   * hrefs (`<a href="/blog/about">` instead of `<a href="/about">`) and
+   * the router strips the prefix from incoming URLs before matching.
+   *
+   * Default: `'/'`. Pre-fix this was disconnected from `zero({ base })`
+   * — RouterLinks rendered un-prefixed hrefs even when Vite's asset URL
+   * rewriting was correctly using the prefix, causing client-side
+   * navigation to break against subpath deploys.
+   */
+  base?: string
 }
 
 /**
@@ -33,6 +46,7 @@ export function createApp(options: CreateAppOptions) {
     routes: options.routes,
     mode: options.routerMode ?? 'history',
     ...(options.url ? { url: options.url } : {}),
+    ...(options.base && options.base !== '/' ? { base: options.base } : {}),
     scrollBehavior: 'top',
   })
 
