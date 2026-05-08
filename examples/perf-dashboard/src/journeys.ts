@@ -772,4 +772,102 @@ export const journeys: Record<string, (page: PageLike) => Promise<void>> = {
     })
     await page.waitForSelector('[data-testid="dom-stress-ready"][data-mode="events"]')
   },
+
+  // ─── @pyreon/i18n perf-foundation journeys ─────────────────────────
+  //
+  // Four journeys exercising i18n's hot path. Each uses the
+  // `__pyreon_perf_i18n` window helper to stage state deterministically;
+  // the journey body is short and the COUNTERS are the measurement.
+  //
+  // Predicted counter signatures (per journey diff vs baseline):
+  //
+  //   - i18nT-1000           → ~1000 i18n.t, ~1000 i18n.lookupKey,
+  //                            1000 i18n.interpolate (greeting has {{name}})
+  //   - i18nT-interpolate-10k → 10000 i18n.t, 10000 i18n.lookupKey,
+  //                             10000 i18n.interpolate
+  //   - i18nT-localeFlip-100 → 100 (initial render) + 100×10 (re-runs after
+  //                            10 flips) ≈ 1100 i18n.t, ≈10 reactivity.signalWrite
+  //   - i18nT-plural-1000    → 1000 i18n.t, 1000 i18n.pluralResolve,
+  //                            ~2000 i18n.lookupKey (plural-suffix probe + fallback path)
+
+  /**
+   * Render 1000 nodes each subscribing to t('greeting', {name: 'UserN'}).
+   * Smoking-gun for "what does a localized list page cost on mount?"
+   */
+  'i18nT-1000': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as { __pyreon_perf_i18n?: { reset: () => void } }
+      w.__pyreon_perf_i18n?.reset()
+    })
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_i18n?: { setRenderScale: (n: number) => void }
+      }
+      w.__pyreon_perf_i18n?.setRenderScale(1000)
+    })
+    await page.waitForSelector('[data-testid="i18n-item-999"]')
+  },
+
+  /**
+   * 10k tight-loop t() calls with interpolation. Pure throughput shape;
+   * the result strings are discarded — only the counters matter.
+   *
+   * If `i18n.interpolate` dominates wall-clock time vs `i18n.lookupKey`,
+   * the regex per-call is the bottleneck (the data-driven trigger for a
+   * follow-up parsed-template-cache PR).
+   */
+  'i18nT-interpolate-10k': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as { __pyreon_perf_i18n?: { reset: () => void } }
+      w.__pyreon_perf_i18n?.reset()
+    })
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_i18n?: { runInterpolate: (n: number) => void }
+      }
+      w.__pyreon_perf_i18n?.runInterpolate(10000)
+    })
+  },
+
+  /**
+   * 100 t-subscribers × 10 locale flips. Tests fan-out from the locale
+   * signal — one signal write notifies N effects. Predicts roughly
+   * 100 + 100×10 = 1100 t() calls and 10 reactivity.signalWrite.
+   */
+  'i18nT-localeFlip-100': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as { __pyreon_perf_i18n?: { reset: () => void } }
+      w.__pyreon_perf_i18n?.reset()
+    })
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_i18n?: { setRenderScale: (n: number) => void }
+      }
+      w.__pyreon_perf_i18n?.setRenderScale(100)
+    })
+    await page.waitForSelector('[data-testid="i18n-item-99"]')
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_i18n?: { flipLocale: () => void }
+      }
+      for (let i = 0; i < 10; i++) w.__pyreon_perf_i18n?.flipLocale()
+    })
+  },
+
+  /**
+   * 1000 t() calls with `count` value — exercises the plural path.
+   * `i18n.pluralResolve` should equal 1000 (one allocation per call).
+   */
+  'i18nT-plural-1000': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as { __pyreon_perf_i18n?: { reset: () => void } }
+      w.__pyreon_perf_i18n?.reset()
+    })
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_i18n?: { runPlural: (n: number) => void }
+      }
+      w.__pyreon_perf_i18n?.runPlural(1000)
+    })
+  },
 }

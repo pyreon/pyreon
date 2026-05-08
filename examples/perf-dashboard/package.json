@@ -14,6 +14,7 @@
   "dependencies": {
     "@pyreon/core": "workspace:*",
     "@pyreon/form": "workspace:*",
+    "@pyreon/i18n": "workspace:*",
     "@pyreon/perf-harness": "workspace:*",
     "@pyreon/query": "workspace:*",
     "@pyreon/reactivity": "workspace:*",

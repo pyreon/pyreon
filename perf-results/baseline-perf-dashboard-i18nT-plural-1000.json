@@ -1,0 +1,18 @@
+{
+  "sha": "b3fcc2db",
+  "app": "perf-dashboard",
+  "journey": "i18nT-plural-1000",
+  "mode": "dev",
+  "runs": 5,
+  "timestamp": "2026-05-08T08:23:20.249Z",
+  "medianWallMs": 7,
+  "medianHeapBytes": 10000000,
+  "counters": {
+    "reactivity.signalWrite": 1,
+    "reactivity.effectRun": 1,
+    "i18n.t": 1000,
+    "i18n.pluralResolve": 1000,
+    "i18n.lookupKey": 1000,
+    "i18n.interpolate": 1000
+  }
+}

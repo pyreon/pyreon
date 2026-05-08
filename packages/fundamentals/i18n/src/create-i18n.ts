@@ -3,6 +3,9 @@ import { interpolate } from './interpolation'
 import { resolvePluralCategory } from './pluralization'
 import type { I18nInstance, I18nOptions, InterpolationValues, TranslationDictionary } from './types'
 
+const __DEV__: boolean = process.env.NODE_ENV !== 'production'
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 /**
  * Resolve a dot-separated key path in a nested dictionary.
  * E.g. "user.greeting" → dictionary.user.greeting
@@ -156,6 +159,11 @@ export function createI18n(options: I18nOptions): I18nInstance {
   }
 
   function lookupKey(loc: string, namespace: string, keyPath: string): string | undefined {
+    // Per actual lookup invocation. In the current uncached impl this is
+    // ~1:1 with `i18n.t` (plus an extra hit when the plural-suffix branch
+    // probes both `key_one` and the resolved key). A future cache will
+    // diverge: `i18n.lookupKey` will plateau while `i18n.t` keeps growing.
+    if (__DEV__) _countSink.__pyreon_count__?.('i18n.lookupKey')
     const nsMap = store.get(loc)
     if (!nsMap) return undefined
     const dict = nsMap.get(namespace)
@@ -185,9 +193,13 @@ export function createI18n(options: I18nOptions): I18nInstance {
 
       // Try exact form first (e.g. "items_one"), then fall back to base key
       const pluralKey = `${keyPath}_${category}`
-      const pluralResult =
-        lookupKey(currentLocale, namespace, pluralKey) ??
-        (fallbackLocale ? lookupKey(fallbackLocale, namespace, pluralKey) : undefined)
+      let pluralResult = lookupKey(currentLocale, namespace, pluralKey)
+      if (pluralResult === undefined && fallbackLocale) {
+        // Fires when the user-locale missed AND we're consulting fallbackLocale.
+        // Should be ~0 in well-translated apps; growing = missing translations.
+        if (__DEV__) _countSink.__pyreon_count__?.('i18n.lookupKey.fallback')
+        pluralResult = lookupKey(fallbackLocale, namespace, pluralKey)
+      }
 
       if (pluralResult) {
         return interpolate(pluralResult, values)
@@ -195,9 +207,11 @@ export function createI18n(options: I18nOptions): I18nInstance {
     }
 
     // Standard lookup: current locale → fallback locale
-    const result =
-      lookupKey(currentLocale, namespace, keyPath) ??
-      (fallbackLocale ? lookupKey(fallbackLocale, namespace, keyPath) : undefined)
+    let result = lookupKey(currentLocale, namespace, keyPath)
+    if (result === undefined && fallbackLocale) {
+      if (__DEV__) _countSink.__pyreon_count__?.('i18n.lookupKey.fallback')
+      result = lookupKey(fallbackLocale, namespace, keyPath)
+    }
 
     if (result !== undefined) {
       return interpolate(result, values)
@@ -216,6 +230,11 @@ export function createI18n(options: I18nOptions): I18nInstance {
   // ── Public API ──────────────────────────────────────────────────────
 
   const t = (key: string, values?: InterpolationValues): string => {
+    // THE primary i18n hot counter — every `t()` invocation. Scales with
+    // the density of localized text on the page. Pair with
+    // `i18n.lookupKey` and `i18n.interpolate` for the per-call cost
+    // breakdown.
+    if (__DEV__) _countSink.__pyreon_count__?.('i18n.t')
     return resolveTranslation(key, values)
   }
 
@@ -232,6 +251,13 @@ export function createI18n(options: I18nOptions): I18nInstance {
     // Deduplicate concurrent loads for the same locale:namespace
     const existing = pendingPromises.get(cacheKey)
     if (existing) return existing
+
+    // Post-dedup: this counts ACTUAL fetches triggered. Re-loading an already
+    // -loaded namespace short-circuits at `nsMap.has(namespace)` above, and
+    // a concurrent load short-circuits via `pendingPromises`. Growing across
+    // route navigations to the SAME namespace = leak (something is clearing
+    // the loaded set between navigations).
+    if (__DEV__) _countSink.__pyreon_count__?.('i18n.namespaceLoad')
 
     pendingLoads.update((n) => n + 1)
 
