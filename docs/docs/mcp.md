@@ -339,18 +339,13 @@ Each finding ships with file path + line/column + actionable fix suggestion. Com
 
 ## API Reference Coverage
 
-The `get_api` tool has entries for all public exports across these packages:
+The `get_api` tool has entries for the public exports of every published `@pyreon/*` package — 32 packages on the manifest pipeline today. Coverage is regenerated whenever a package's `src/manifest.ts` changes via `bun run gen-docs`. Spot-check the live entry count with:
 
-| Package               | Coverage                                                                                                                                                           |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `@pyreon/reactivity`  | signal, computed, effect, batch, watch, createStore, createResource, renderEffect, EffectScope                                                                     |
-| `@pyreon/core`        | h, Fragment, createContext, useContext, onMount, onUnmount, onUpdate, Show, Switch, Match, For, Suspense, ErrorBoundary, lazy, Dynamic, defineComponent, createRef |
-| `@pyreon/runtime-dom` | mount, hydrateRoot, Transition, TransitionGroup, KeepAlive, Portal, applyProp, applyProps                                                                          |
-| `@pyreon/compiler`    | transformJSX                                                                                                                                                       |
-| `@pyreon/router`      | createRouter, RouterProvider, RouterView, RouterLink, useRouter, useRoute, useSearchParams, useLoaderData                                                          |
-| `@pyreon/head`        | useHead, HeadProvider                                                                                                                                              |
-| `@pyreon/server`      | createHandler, prerender, island, hydrateIslands, startClient                                                                                                      |
-| `@pyreon/vite-plugin` | pyreon (Vite plugin factory)                                                                                                                                       |
+```bash
+bun run gen-docs --check
+```
+
+Major coverage areas: `@pyreon/reactivity`, `@pyreon/core`, `@pyreon/runtime-dom`, `@pyreon/router`, `@pyreon/head`, `@pyreon/server`, `@pyreon/store`, `@pyreon/state-tree`, `@pyreon/form`, `@pyreon/validation`, `@pyreon/query`, `@pyreon/hooks`, `@pyreon/permissions`, `@pyreon/machine`, `@pyreon/storage`, `@pyreon/i18n`, `@pyreon/document`, `@pyreon/document-primitives`, `@pyreon/flow`, `@pyreon/charts`, `@pyreon/code`, `@pyreon/hotkeys`, `@pyreon/table`, `@pyreon/virtual`, `@pyreon/feature`, `@pyreon/lint`, `@pyreon/mcp`, `@pyreon/ui-core`, `@pyreon/unistyle`, `@pyreon/rx`, `@pyreon/toast`, `@pyreon/url-state`.
 
 ---
 

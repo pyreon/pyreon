@@ -39,6 +39,20 @@ Traditional TanStack Query adapters (e.g., `@tanstack/react-query`) re-render th
 - A loading spinner that only reads `query.isPending()` will not re-run when data arrives (it will re-run once to switch from pending to not-pending, but not for the data change itself).
 - The `result` signal provides the full observer result for cases where you need multiple fields in one read.
 
+### Lazy signal allocation
+
+Each `useQuery` / `useMutation` / `useSuspenseQuery` / `useInfiniteQuery` exposes 8-13 fine-grained `Signal<T>` fields, but real consumers typically read 1-2. The hooks lazy-allocate each signal on first property access via a slot-bag (`slots.data ??= signal(...)`); the subscribe callback only writes to materialized slots. Same `Signal<T>` identity is preserved across repeat property access (load-bearing for Pyreon's identity-keyed effect tracking).
+
+Real-world impact (5-run median on the perf-dashboard stress journeys):
+
+| Journey | `signalCreate` | `signalWrite` | wall-clock |
+| --- | --- | --- | --- |
+| `queryMount-1000` | 9000 → **0** | 10006 → **6** (-99.9%) | -15% |
+| `queryNotify-10k` | n/a | 20070 → **7** (-100%) | -22% |
+| `mutationInvalidate-1000` | 908 → **0** | unchanged | heap -25.8% |
+
+The journey numbers are the EXTREME case (the stress component reads ZERO result fields → zero materialization). Real apps reading 1-3 fields land in the 67-89% range. Reference: PR #492.
+
 ## Setup
 
 ### QueryClientProvider

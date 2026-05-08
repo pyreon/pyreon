@@ -241,7 +241,100 @@ The temporary `dist/.zero-ssg-server/` artifacts are cleaned up automatically af
 - `() => string[]` — sync function, useful for deriving paths from a glob or static config
 - `() => Promise<string[]>` — async function, useful for fetching paths from a CMS or database
 
-If `ssg.paths` is omitted, the plugin auto-detects static paths from the file-system route tree — every route without a `:param` or `*` catch-all segment is included. Dynamic routes are skipped (no `getStaticPaths`-style API yet — pass them explicitly via `ssg.paths`). When no static paths exist, a single `/` fallback is always produced so the static host has at least an `index.html`.
+If `ssg.paths` is omitted, the plugin auto-detects static paths from the file-system route tree — every route without a `:param` or `*` catch-all segment is included. **Dynamic routes** can opt in to enumeration by exporting `getStaticPaths` from the route file (see below). When no static paths exist, a single `/` fallback is always produced so the static host has at least an `index.html`.
+
+#### `getStaticPaths` per-route export
+
+Dynamic routes (e.g. `/posts/[id].tsx`) can enumerate concrete values by exporting `getStaticPaths`:
+
+```tsx
+// src/routes/posts/[id].tsx
+import type { GetStaticPaths } from '@pyreon/zero/server'
+
+export const getStaticPaths: GetStaticPaths<{ id: string }> = () => [
+  { params: { id: 'a' } },
+  { params: { id: 'b' } },
+]
+
+export default function Post({ params }) {
+  return <article>Post {params.id}</article>
+}
+```
+
+Sync or async are both supported (`() => Array<{ params }>` or `() => Promise<...>`). Catch-all routes (`[...slug].tsx`) work via `{ params: { slug: 'a/b' } }` → `/blog/a/b`. Errors during enumeration (function throws, returns non-array, missing params) are captured into `PrerenderResult.errors` and the build continues for other routes — SSG never aborts on a single bad enumerator.
+
+Mirrors Astro's per-route convention. Reference: `packages/zero/zero/src/fs-router.ts:detectRouteExports`.
+
+#### `_404.tsx` convention
+
+Drop a `_404.tsx` (or `_not-found.tsx`) anywhere in the routes tree and SSG auto-emits `dist/404.html` at build time. Static hosts (Netlify, Cloudflare Pages, GitHub Pages, S3 + CloudFront) serve `404.html` automatically for unmatched URLs:
+
+```tsx
+// src/routes/_404.tsx
+import { Meta } from '@pyreon/zero'
+
+export default function NotFound() {
+  return (
+    <>
+      <Meta title="Not found" noIndex />
+      <h1>404 — page not found</h1>
+    </>
+  )
+}
+```
+
+The 404 page is rendered through the same head/styler pipeline as every other path (`@pyreon/styler` tag, `@pyreon/head` meta, asset preload links all land correctly). Disable with `ssg.emit404: false`. The runtime's not-found handler short-circuits BEFORE the router for unmatched URLs and renders the component directly via `h(NotFound, null)`.
+
+#### Redirect handling during SSG
+
+Throw `redirect(url, status?)` inside a route loader and SSG catches it during prerender:
+
+```tsx
+import { redirect } from '@pyreon/router'
+
+export const loader = ({ params }) => {
+  if (params.slug === 'old-name') throw redirect('/blog/new-name', 301)
+  return loadPost(params.slug)
+}
+```
+
+During SSG, redirects are written to a `_redirects` manifest file at the build root (Netlify-compatible format). The path is skipped from prerender output. CSR (client navigation) catches the same `redirect()` and routes through `router.replace()` automatically.
+
+#### Sitemap auto-emit
+
+`dist/sitemap.xml` is generated automatically from the resolved SSG path set (post-`getStaticPaths` expansion). Configure via `seo.sitemap`:
+
+```ts
+defineConfig({
+  mode: 'ssg',
+  seo: {
+    siteUrl: 'https://example.com',
+    sitemap: { changefreq: 'weekly', priority: 0.8 },
+  },
+})
+```
+
+#### `onPathError` callback + error artifact
+
+When SSG hits a per-path render error, it captures it into `PrerenderResult.errors` and continues. Inspect or fail the build via `onPathError`:
+
+```ts
+defineConfig({
+  mode: 'ssg',
+  ssg: {
+    onPathError: ({ path, error }) => {
+      console.error(`[ssg] ${path}: ${error.message}`)
+      // throw to fail the build, or return to continue
+    },
+  },
+})
+```
+
+The full error set is also written to `dist/_pyreon-ssg-errors.json` (path, error message, stack) so CI gates can post-process it. Successful builds with zero errors omit the file.
+
+#### `zeroPlugin()` returns `Plugin[]`
+
+Since the SSG runtime landed, `zeroPlugin()` returns `Plugin[]` (`[mainPlugin]` for non-SSG modes, `[mainPlugin, ssgPlugin]` for SSG). Vite's plugins array natively accepts nested arrays, so `plugins: [pyreon(), zero()]` keeps working unchanged. Only downstream test code that asserted `zeroPlugin()` returns a single Plugin needs `[0]` or array-aware access.
 
 ### SPA (Single-Page Application)
 

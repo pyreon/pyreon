@@ -508,7 +508,7 @@ const routes = [
 startClient({ App, routes })
 ```
 
-### `hydrateIslands` — Partial hydration
+### `hydrateIslands` — Partial hydration (manual registry)
 
 For island architecture where only specific components are interactive:
 
@@ -528,11 +528,59 @@ The registry keys must match the `name` in the server-side `island()` calls.
 
 1. Queries all `<pyreon-island>` elements in the DOM.
 2. For each element, looks up the component loader in the registry by `data-component`.
-3. Respects the `data-hydrate` strategy (load, idle, visible, media, never).
+3. Respects the `data-hydrate` strategy (load, idle, visible, **interaction**, media, never).
 4. Deserializes `data-props` and hydrates the component in place.
 5. Returns a cleanup function that disconnects any pending observers/listeners.
 
 Only components actually present in the HTML are loaded — if a page doesn't use `SearchBar`, its JavaScript is never fetched.
+
+### `hydrateIslandsAuto` — Auto-discovered registry (preferred)
+
+When using `@pyreon/vite-plugin` (`pyreon({ islands: true })` is the default), the plugin auto-scans the source tree for every `island()` declaration and emits a virtual module containing the registry. Use `hydrateIslandsAuto(registry)` to consume it without writing the registry by hand:
+
+```ts title="src/entry-client.ts"
+import { hydrateIslandsAuto } from '@pyreon/server/client'
+import islandsRegistry from 'virtual:pyreon/islands-registry'
+
+hydrateIslandsAuto(islandsRegistry)
+```
+
+This eliminates the manual sync between every `island()` declaration and the client registry — typo / forgotten entry / registry drift was the #1 author foot-gun before auto-registry shipped. Reference: `examples/islands-showcase`.
+
+`hydrate: 'never'` islands are deliberately omitted from the auto-registry so their components stay out of the client bundle. Don't pair `hydrate: 'never'` with a manual `hydrateIslands({ X })` entry — the lint rule `pyreon/island-never-with-registry-entry` flags this in the same file; the project-wide `pyreon doctor --check-islands` audit catches the cross-file shape.
+
+### `interaction` strategy + click replay
+
+`hydrate: 'interaction'` defers hydration until first user interaction (`focus` / `click` / `pointerenter` / `touchstart` by default). Customize via `'interaction(<events>)'`. Click events are **replayed** on the equivalent live element post-hydration so the user's first click both wakes the island AND fires the action — closes the "user clicks but nothing happens until they click again" UX trap. The replay path uses `data-testid` when present, falling back to a tag + child-index walk relative to the island root.
+
+Pair with `prefetch: 'idle' | 'visible'` to pre-warm the chunk before the trigger fires:
+
+```ts
+// Server side:
+island(() => import('./components/MobileMenu'), {
+  name: 'MobileMenu',
+  hydrate: 'interaction',
+  prefetch: 'idle',          // chunk fetched during browser idle
+})
+```
+
+Suppressed (no `data-prefetch` attribute) when `hydrate: 'load'` (loader runs synchronously) or `hydrate: 'never'` (defeats zero-JS).
+
+### Island perf counters
+
+When `@pyreon/perf-harness` is installed, the server-side island machinery emits 7 counters under the `island.*` namespace:
+
+| Counter                  | Meaning                                                     |
+| ------------------------ | ----------------------------------------------------------- |
+| `island.scheduled`       | Per-island hydration scheduled (idle / visible / etc.)      |
+| `island.hydrated`        | Completed hydrations                                        |
+| `island.skipped.never`   | Skipped — `hydrate: 'never'` (zero-JS)                      |
+| `island.skipped.nested`  | Skipped — nested island (outer hydrates first, swaps DOM)   |
+| `island.skipped.no-loader` | Skipped — registry mismatch (loader not found)            |
+| `island.error`           | Hydration error (also surfaces via `data-island-error`)     |
+| `island.prefetch`        | Prefetch hint fired (idle / visible)                        |
+
+`scheduled - hydrated` at steady state = islands still waiting on a deferred trigger; `skipped.no-loader` should be zero (registry drift); `error` should be zero (pair with `data-island-error="invalid-props"|"hydration-failed"` on the failing element to diagnose).
 
 ---
 
