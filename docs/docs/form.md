@@ -975,6 +975,23 @@ state() // { isSubmitting, isValid, isDirty, errors, touchedFields, dirtyFields,
 const canSubmit = useFormState(form, (s) => s.isValid && !s.isSubmitting)
 ```
 
+### Granular selectors — O(1) `isValid` / `isDirty`
+
+The selector is **load-bearing** on a large form. Without a selector, `useFormState(form)` returns a snapshot whose construction iterates every field — fine for a 30-field form, painful at 10k. With a selector:
+
+- `s.isValid` and `s.isDirty` are O(1) reads of `_invalidCount` / `_dirtyCount` signals (updated incrementally via per-field `signal.subscribe` listeners).
+- `s.errors` / `s.touchedFields` / `s.dirtyFields` are atomic computeds (one per form), only materialized when the selector reads them.
+- A selector that returns `s.isValid && !s.isSubmitting` subscribes to ~3 signals total — independent of field count.
+
+Real-world impact on a 10k-field form:
+
+| Journey | `form.formStateScan.fieldsRead` |
+| --- | --- |
+| `formStateRead-10k` (no selector) | 10000 |
+| `formStateReadSelector-10k` (returns `s.isValid`) | **0** |
+
+Use selectors aggressively — submit-button gates, dirty indicators, validation badges all want narrow subscriptions. The atomic computeds are shared across all `useFormState()` calls on the same form via a per-form `WeakMap` cache. Reference: PR #483.
+
 **`FormStateSummary` shape:**
 
 | Property        | Type                                  | Description                         |

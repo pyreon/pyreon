@@ -54,6 +54,7 @@ const App = () => <div>{_$h0}</div>
 
 - **`transformJSX(code, filename?, options?): TransformResult`** -- Transforms JSX source code. Uses the Rust native binary when available, falls back to JS.
 - **`transformJSX_JS(code, filename?, options?): TransformResult`** -- JS-only transform (bypasses native binary). Useful for debugging or cross-backend testing.
+- **`loadNativeBinding(): NativeBinding | null`** -- Resolve the native `.node` binding via two paths: (1) in-tree at `packages/core/compiler/native/` (workspace-internal), (2) per-platform npm package (`@pyreon/compiler-<platform>-<arch>[-<libc>]`). Returns `null` when neither path resolves; `transformJSX()` then falls through to the JS path silently.
 
 ### Types
 
@@ -67,6 +68,22 @@ const App = () => <div>{_$h0}</div>
 - **Rust path** (`native/`): full reactive pass using `oxc_parser`/`oxc_ast` Rust crates directly. Zero JSON serialization, zero JS AST traversal. Single-pass recursive walk with cached analysis.
 - **JS fallback** (`src/jsx.ts`): uses `oxc-parser` (Rust NAPI binding) for parsing + JS reactive pass. Activated automatically when the native binary isn't available.
 - **Auto-detection**: `transformJSX()` loads the native binary via `createRequire` (ESM-safe), falls back per-call with try/catch.
+
+### Per-platform packages
+
+The native binary ships as **separate optional dependencies**, one per platform. npm / bun installs only the matching one for the consumer's platform via `os` / `cpu` fields in each platform package's manifest:
+
+| Platform | Arch    | libc   | Package                              |
+| -------- | ------- | ------ | ------------------------------------ |
+| darwin   | arm64   | —      | `@pyreon/compiler-darwin-arm64`      |
+| darwin   | x64     | —      | `@pyreon/compiler-darwin-x64`        |
+| linux    | x64     | gnu    | `@pyreon/compiler-linux-x64-gnu`     |
+| linux    | x64     | musl   | `@pyreon/compiler-linux-x64-musl`    |
+| linux    | arm64   | gnu    | `@pyreon/compiler-linux-arm64-gnu`   |
+| linux    | arm64   | musl   | `@pyreon/compiler-linux-arm64-musl`  |
+| win32    | x64     | —      | `@pyreon/compiler-win32-x64-msvc`    |
+
+`detectLibc()` distinguishes glibc vs musl on Linux at load time (the wrong libc silently fails to load, doesn't throw). If neither the in-tree binary nor the per-platform package is available (CI without the package, WASM, unsupported platform), the loader returns `null` and `transformJSX()` uses the JS path — no error.
 
 ## Implementation Notes
 

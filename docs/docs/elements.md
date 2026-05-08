@@ -146,8 +146,10 @@ When only `children` is provided (no `beforeContent` or `afterContent`), the wra
 | `gap`           | `number`                                     | --                              | Gap between slots in pixels. Rendered as `gap: Npx` on the flex container.                                                                                                  |
 | `block`         | `boolean`                                    | `false`                         | When `true`, uses `display: flex` instead of `display: inline-flex`. Makes the element take full width of its parent.                                                       |
 | `equalCols`     | `boolean`                                    | `false`                         | When `true`, all three slots get `flex: 1; min-width: 0`, dividing the space equally instead of the default behavior where before/after shrink-wrap and the center expands. |
+| `equalBeforeAfter` | `boolean`                                 | `false`                         | When `true`, the `beforeContent` and `afterContent` slots are kept the same width via a `ResizeObserver` — handles async slot content (font swaps, lazy text, viewport resize) without snapping out of alignment. Falls back to a one-shot mount-time measurement when `ResizeObserver` is undefined (SSR or older runtimes).                                                                                                                          |
 | `class`         | `string`                                     | --                              | CSS class name applied to the outer element.                                                                                                                                |
 | `style`         | `string \| Record<string, string \| number>` | --                              | Inline styles merged with computed flex styles. Can be a CSS string or an object. Object styles are merged with the computed styles; string styles are appended.            |
+| `dangerouslySetInnerHTML` | `{ __html: string }`               | --                              | Inject raw HTML (React-compatible shape). Mutually exclusive with `children` — both runtime-dom and runtime-server treat both as inner-content sources. Forwarded through `Wrapper` correctly (was silently dropped pre-#486).                                                                                                                                                                                                                              |
 
 Element also passes through any valid HTML attributes: `id`, `role`, `tabindex`, `title`, `href`, `src`, `alt`, `type`, `name`, `value`, `disabled`, `hidden`, `draggable`, `ref`, `key`, and any `on*` event handlers, `data-*` attributes, or `aria-*` attributes.
 
@@ -552,6 +554,23 @@ The second argument to the render function provides positional metadata about ea
 | `even`   | `boolean` | `true` when the index is even (0, 2, 4, ...). Note: the first item (index 0) is considered even. |
 
 For a single-item array, both `first` and `last` are `true`.
+
+### Generic over `T` — strict overload tiers
+
+`Iterator` and `List` both ship three strict overloads (`SimpleProps<T>`, `ObjectProps<T>`, `ChildrenProps`) so that mixed array shapes produce a real type error rather than silently typechecking through a loose union:
+
+```tsx
+// ✓ primitive array — `valueName` allowed
+<Iterator data={[1, 2, 3]}>{(n) => <li>{n}</li>}</Iterator>
+
+// ✓ object array — `children` is the render fn (no `valueName`)
+<Iterator data={[{ id: 1 }, { id: 2 }]}>{(item) => <li>{item.id}</li>}</Iterator>
+
+// ✗ TS error — mixed shape, neither branch matches
+<Iterator data={[1, { id: 1 }, null]}>{(item) => <li />}</Iterator>
+```
+
+The discriminator is `unknown extends T ? LooseProps : T extends SimpleValue ? SimpleProps<T> : T extends ObjectValue ? ObjectProps<T> : ChildrenProps`. List inherits the same overloads through `IteratorChildrenProps & ListExtras`. If you hit a "no overload matches this call" error, the data array shape is genuinely mixed — split it into two `<List>`s of single-shape data. Reference: PR #473.
 
 ### Wrapper vs. Fragment Behavior
 

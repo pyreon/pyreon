@@ -944,10 +944,35 @@ Performance (Pyreon reactive pass only):
 | Medium (24 lines) | 12.6K ops/sec | 103K ops/sec | 8.2x |
 | Large (500+ lines) | 309 ops/sec | 1,544 ops/sec | 5.0x |
 
+### Native binary loader + per-platform packages
+
+`transformJSX()` resolves the native binary in two steps via `loadNativeBinding()`:
+
+1. **In-tree**: a same-OS-and-arch `.node` binary in `packages/core/compiler/native/` (workspace-internal builds, monorepo dev).
+2. **Per-platform npm package**: `@pyreon/compiler-<platform>-<arch>[-<libc>]` declared as an `optionalDependency`. npm / bun installs only the matching one for the consumer's platform — package manifest expresses this via the `os` / `cpu` fields per platform package.
+
+Currently published platform packages:
+
+| Platform   | Arch    | libc   | Package                                |
+| ---------- | ------- | ------ | -------------------------------------- |
+| `darwin`   | `arm64` | —      | `@pyreon/compiler-darwin-arm64`        |
+| `darwin`   | `x64`   | —      | `@pyreon/compiler-darwin-x64`          |
+| `linux`    | `x64`   | `gnu`  | `@pyreon/compiler-linux-x64-gnu`       |
+| `linux`    | `x64`   | `musl` | `@pyreon/compiler-linux-x64-musl`      |
+| `linux`    | `arm64` | `gnu`  | `@pyreon/compiler-linux-arm64-gnu`     |
+| `linux`    | `arm64` | `musl` | `@pyreon/compiler-linux-arm64-musl`    |
+| `win32`    | `x64`   | —      | `@pyreon/compiler-win32-x64-msvc`      |
+
+`detectLibc()` distinguishes glibc vs musl on Linux at load time (necessary because the wrong libc would silently fail to load, not throw). If neither path resolves (CI without the platform package, WASM, or a platform we don't ship for), the call falls through to the JS path silently — `transformJSX()` always returns a result.
+
+To diagnose the resolved path in dev: set `DEBUG=pyreon:compiler` and the loader logs which path it took (in-tree, per-platform package, or JS fallback) on first call.
+
 ## Exports Summary
 
-| Export            | Type     | Description                                               |
-| ----------------- | -------- | --------------------------------------------------------- |
-| `transformJSX`    | Function | Transform JSX source code with Pyreon's reactive compiler |
-| `TransformResult` | Type     | Interface for the transform output                        |
-| `CompilerWarning` | Type     | Interface for compiler warning objects                    |
+| Export                | Type     | Description                                               |
+| --------------------- | -------- | --------------------------------------------------------- |
+| `transformJSX`        | Function | Transform JSX source code (auto-selects native or JS)     |
+| `transformJSX_JS`     | Function | JS-only path — bypasses the native binary                 |
+| `loadNativeBinding`   | Function | Resolve the native `.node` binding (or `null` if absent)  |
+| `TransformResult`     | Type     | Interface for the transform output                        |
+| `CompilerWarning`     | Type     | Interface for compiler warning objects                    |

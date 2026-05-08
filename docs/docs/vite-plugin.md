@@ -170,13 +170,16 @@ interface PyreonPluginOptions {
     /** Server entry file path (e.g. "./src/entry-server.ts") */
     entry: string
   }
+  /** Enable island auto-discovery + virtual registry. Default: true. */
+  islands?: boolean
 }
 ```
 
-| Option      | Type     | Required              | Description                                                                                                                                                                             |
-| ----------- | -------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ssr`       | `object` | No                    | Enable SSR dev middleware. When provided, the plugin adds middleware to Vite's dev server that handles server-rendered requests.                                                        |
-| `ssr.entry` | `string` | Yes (if `ssr` is set) | Path to the server entry file, relative to the project root. This file must export a `handler` function (or a default export) with the signature `(req: Request) => Promise<Response>`. |
+| Option      | Type      | Required              | Description                                                                                                                                                                             |
+| ----------- | --------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ssr`       | `object`  | No                    | Enable SSR dev middleware. When provided, the plugin adds middleware to Vite's dev server that handles server-rendered requests.                                                        |
+| `ssr.entry` | `string`  | Yes (if `ssr` is set) | Path to the server entry file, relative to the project root. This file must export a `handler` function (or a default export) with the signature `(req: Request) => Promise<Response>`. |
+| `islands`   | `boolean` | No                    | Auto-discover `island()` declarations + emit a virtual registry. Default: `true`. Set `false` to opt out of auto-registration (e.g., when using `hydrateIslands({ ... })` manually).    |
 
 ### Usage
 
@@ -188,7 +191,27 @@ pyreon()
 pyreon({
   ssr: { entry: './src/entry-server.ts' },
 })
+
+// Disable island auto-registry (opt out)
+pyreon({ islands: false })
 ```
+
+### Auto-discovered island registry
+
+When `islands: true` (default), the plugin pre-scans the source tree at `buildStart` for `island(() => import('PATH'), { name, hydrate })` calls and emits a virtual module at `virtual:pyreon/islands-registry`. This eliminates the manual sync between every `island()` declaration and the client `hydrateIslands({ ... })` call — typo / forgotten entry / registry drift was the #1 author foot-gun.
+
+Use it from `entry-client.ts`:
+
+```ts
+import { hydrateIslandsAuto } from '@pyreon/server/client'
+import islandsRegistry from 'virtual:pyreon/islands-registry'
+
+hydrateIslandsAuto(islandsRegistry)
+```
+
+Why the user passes the import explicitly rather than `hydrateIslandsAuto()` resolving the virtual module itself: Rolldown's static-import analysis runs before plugin `resolveId` hooks for workspace package sources, so an `import 'virtual:...'` inside `@pyreon/server/client` would fail to resolve at build time. Putting the import in the user's `entry-client.ts` (where the plugin's `resolveId` fires natively) is the clean shape.
+
+`hydrate: 'never'` islands are deliberately omitted from the auto-registry so their components stay out of the client bundle. The manual `hydrateIslands({ ... })` API is still public for non-Vite consumers.
 
 ---
 

@@ -1278,6 +1278,47 @@ mount(<App />, document.getElementById('app')!)
 
 `serializeLoaderData` uses route path patterns as keys (stable across server and client). `hydrateLoaderData` populates the router's internal `_loaderData` map so the initial render uses server-fetched data without re-running loaders.
 
+### redirect() — control-flow from inside a loader
+
+Throw `redirect(url, status?)` inside a route loader to redirect the navigation **before** the layout renders. This is the canonical pattern for SSR-side auth gates and replaces the fragile `onMount + router.push('/login')` workaround under nested-layout dev SSR + hydration (which would briefly render the auth-gated layout before redirecting, leaking authenticated UI structure to anonymous users).
+
+```tsx
+import { redirect, type LoaderContext } from '@pyreon/router'
+
+export const loader = async ({ request, params }: LoaderContext) => {
+  const session = await getSession(request)
+  if (!session) {
+    throw redirect('/login?next=' + encodeURIComponent(params.path), 307)
+  }
+  return loadUser(session.userId)
+}
+```
+
+Default status is `307` (Temporary Redirect, method-preserving). Use `301` for permanent redirects, `302` for legacy GET-coercing behavior.
+
+**SSR-side**: `@pyreon/server`'s handler catches the thrown error and returns a real HTTP `302` / `307` `Location:` Response — no layout HTML leaks server-side.
+
+**CSR-side**: the router's loader-runner catches the redirect and propagates as `router.replace(target)` with redirect-depth bookkeeping (max 10 hops, matches the route-record `redirect:` field).
+
+**Companion guards** (for custom error boundaries that should let redirects pass through):
+
+```tsx
+import { isRedirectError, getRedirectInfo } from '@pyreon/router'
+
+<ErrorBoundary
+  fallback={(err) => {
+    if (isRedirectError(err)) throw err  // re-throw, let the router handle it
+    return <div>Error: {err.message}</div>
+  }}
+>
+  <App />
+</ErrorBoundary>
+```
+
+`getRedirectInfo(err)` returns `{ url, status }` for further inspection. Most apps don't need to touch these — the framework handles redirects transparently — but they're available for advanced control flow.
+
+**`LoaderContext.request`** is populated only when a loader runs during SSR (via `prefetchLoaderData(router, path, request)`); `undefined` on every CSR navigation. This lets server-side loaders read cookies / auth headers and decide whether to `redirect()` BEFORE the layout renders.
+
 ## Lazy Loading
 
 Use the `lazy()` helper for code-splitting route components:

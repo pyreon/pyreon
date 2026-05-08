@@ -70,6 +70,8 @@ batch(() => {
 - **`createStore(initial)`** -- Creates a deeply reactive store object.
 - **`isStore(value): boolean`** -- Checks whether a value is a reactive store.
 - **`reconcile(target, source)`** -- Efficiently patches a store to match a new value.
+- **`shallowReactive<T>(initial): T`** -- Creates a SHALLOWLY reactive store: top-level property writes notify, but nested object mutations don't (Vue 3 parity). Use for large object graphs where deep proxying would be wasteful.
+- **`markRaw<T>(value): T`** -- Mark an object as RAW so `createStore` and `shallowReactive` return it unwrapped (Vue 3 parity). Useful for class instances, third-party objects, DOM nodes, or any shape that shouldn't be deeply proxied. Marking is one-way (no `unmarkRaw`); mark BEFORE the object enters a store.
 
 ## License
 

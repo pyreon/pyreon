@@ -856,6 +856,45 @@ appState.todos.push({ id: 1, text: 'Buy milk', done: false })
 appState.todos[0].done = true // none of the above effects fire (they don't read .done)
 ```
 
+### shallowReactive
+
+Vue 3 parity helper for store-shaped reactivity that does **not** recurse into nested objects. Top-level property writes (and replacements) notify subscribers; nested object mutations do not. Use this when a large object graph contains data that doesn't need deep tracking — e.g. caches, large records, externally-managed shapes.
+
+```ts
+import { shallowReactive, effect } from '@pyreon/reactivity'
+
+const store = shallowReactive({ user: { name: 'Alice' }, count: 0 })
+
+effect(() => {
+  console.log(store.user.name, store.count)
+})
+
+store.count = 1 // ✓ effect re-runs (top-level write)
+store.user.name = 'Bob' // ✗ effect does NOT re-run (nested mutation)
+store.user = { name: 'Bob' } // ✓ effect re-runs (top-level reference replacement)
+```
+
+**Common pitfall**: mixing shallow + deep on the same raw object — `createStore(raw)` and `shallowReactive({ wrapper: raw })` produce DIFFERENT proxies (separate caches). Pick one shape per data flow.
+
+### markRaw
+
+Mark an object so `createStore` and `shallowReactive` will return it unwrapped (Vue 3 parity). Useful for class instances (Editor, Canvas, MapInstance), third-party objects, DOM nodes, or any shape that shouldn't be deeply proxied.
+
+```ts
+import { markRaw, createStore } from '@pyreon/reactivity'
+
+class Editor {
+  /* … */
+}
+const ed = markRaw(new Editor()) // skips proxy
+const state = createStore({ editor: ed, count: 0 })
+state.editor // returns the original Editor instance, not a proxy
+```
+
+Marking is **one-way** — there is no `unmarkRaw`. Mark BEFORE the object enters a store; marking after wrap doesn't unwrap an existing proxy. Note that `markRaw(obj)` mutates `obj` in place (attaches a non-enumerable marker symbol) and returns the SAME reference — don't expect a different object.
+
+For plain data objects where you just want to skip deep tracking, use `shallowReactive` instead — `markRaw` is for class instances and externally-managed shapes.
+
 ## reconcile
 
 Surgically diff new state into an existing `createStore` proxy. Instead of replacing the store root (which would trigger all downstream effects), `reconcile` walks both the new value and the store in parallel and only updates signals whose values actually changed.
@@ -1158,6 +1197,25 @@ scope.runInScope(() => {
   effect(() => console.log(count()))
 })
 ```
+
+### onScopeDispose
+
+Vue 3 parity helper. Register a callback to run when the **current** scope stops:
+
+```ts
+import { effectScope, onScopeDispose } from '@pyreon/reactivity'
+
+const scope = effectScope()
+scope.runInScope(() => {
+  const ws = new WebSocket('wss://api/feed')
+  onScopeDispose(() => ws.close())
+})
+
+// Later — when the scope tears down, the WebSocket closes automatically:
+scope.stop()
+```
+
+Equivalent to `getCurrentScope()?.add({ dispose: fn })` but reads more naturally at the call site. Calling `onScopeDispose` outside an active scope emits a dev-mode warning and is a no-op in production.
 
 ### Component Lifecycle Integration
 
@@ -1518,6 +1576,12 @@ editor.redo() // current() === "Hello, World"
 ### Stores
 
 <APICard name="createStore" type="function" signature="createStore<T extends object>(initial: T): T" description="Creates a deep reactive proxy store with automatic nested tracking." />
+
+<APICard name="shallowReactive" type="function" signature="shallowReactive<T extends object>(initial: T): T" description="Vue-3 parity. Creates a SHALLOWLY reactive store: top-level writes notify, nested mutations don't." />
+
+<APICard name="markRaw" type="function" signature="markRaw<T extends object>(value: T): T" description="Vue-3 parity. Mark an object so createStore / shallowReactive return it unwrapped (class instances, third-party objects, DOM nodes)." />
+
+<APICard name="isStore" type="function" signature="isStore(value: unknown): boolean" description="Type guard — returns true if the value is a Pyreon reactive store proxy." />
 
 <APICard name="reconcile" type="function" signature="reconcile<T>(store: T, data: T): void" description="Surgically diffs new data into an existing store, minimizing reactive updates." />
 

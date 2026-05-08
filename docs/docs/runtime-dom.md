@@ -291,6 +291,26 @@ if (import.meta.env.DEV) {
 hydrateRoot(document.getElementById('app')!, <App />)
 ```
 
+#### onHydrationMismatch — telemetry hook
+
+For wiring hydration-mismatch reports into Sentry / Datadog / observability tooling without depending on `console.warn` parsing, register a structured callback:
+
+```ts
+import { onHydrationMismatch } from '@pyreon/runtime-dom'
+
+onHydrationMismatch((mismatch) => {
+  // mismatch: { type: 'tag' | 'text' | 'missing', expected, actual, path }
+  reportError({
+    component: 'hydration',
+    phase: 'mismatch',
+    error: new Error(`Hydration ${mismatch.type} mismatch at ${mismatch.path}`),
+    metadata: mismatch,
+  })
+})
+```
+
+The hook fires on every hydration mismatch (in addition to the dev-mode console warning when `enableHydrationWarnings()` is on), so a single call surfaces the full mismatch flow to your telemetry pipeline. Returns a disposer that unregisters the listener.
+
 ## Template Cloning
 
 Template cloning is Pyreon's optimization for repetitive DOM structures. Instead of creating elements one by one with `createElement` + `setAttribute`, it parses HTML once into a `<template>` element and clones it via `cloneNode(true)` -- approximately 5-10x faster.
@@ -1284,6 +1304,31 @@ function ExpensiveForm() {
 | Form values     | Preserved                 | Lost                          |
 | DOM nodes       | Always in DOM (hidden)    | Added/removed                 |
 | Memory usage    | Higher (all tabs mounted) | Lower (only active tab)       |
+
+## Reactive-render contract — child mounts run untracked
+
+`<For>`, internal `mountKeyedList`, `KeepAlive`, and `TransitionGroup` all wrap their child mount work in `runUntracked(() => ...)` — same pattern `mountReactive` (the renderer for `{() => ...}` accessor children) already had.
+
+What this means in practice: signal reads during a child component's setup do **not** subscribe the OUTER reactive primitive's effect. Concretely, this code shape works as expected:
+
+```tsx
+const userId = signal(1)
+
+<For each={items} by={r => r.id}>
+  {(item) => {
+    // ✓ This signal read does NOT track the For effect.
+    const query = useQuery(() => ({
+      queryKey: ['user', userId(), item.id],   // ← reads userId
+      queryFn: () => fetch(`/users/${userId()}`).then(r => r.json()),
+    }))
+    return <li>{() => query.data()?.name}</li>
+  }}
+</For>
+```
+
+When `userId.set(2)` fires, only the `useQuery`'s internal `setOptions` effect re-runs — the `<For>` effect itself does NOT re-run. Without this contract, `<For>` would re-run, dispose every inner setOptions effect, and silently lose reactivity on every item (the keyed-update path skips re-mount on unchanged keys).
+
+This is the documented contract; if you find a case where it doesn't hold, treat it as a framework bug. Reference fix: PR #505. Anti-pattern catalog entry: `.claude/rules/anti-patterns.md` → "Reactive-render entry points missing `runUntracked` around child mounts".
 
 ## Real-World Examples
 

@@ -44,6 +44,33 @@ The `doctor` command checks your project setup to catch common issues early.
 pyreon doctor
 ```
 
+#### `--check-islands`
+
+Run the project-wide islands audit (companion to the MCP `audit_islands` tool — same scanner, same five detectors). Walks `packages/` + `examples/` and flags:
+
+- `duplicate-name` — two `island()` calls with the same `name` (only the first hydrates)
+- `never-with-registry-entry` — `hydrate: 'never'` paired with a manual registry entry
+- `registry-mismatch` — `hydrateIslands({ X })` where `X` has no matching `island()`
+- `nested-island` — an `island()` whose loader-target file ALSO contains an `island()`
+- `dead-island` — an `island()` no other source imports (statically OR dynamically)
+
+```bash
+pyreon doctor --check-islands
+pyreon doctor --check-islands --json   # CI gate — pipe and grep findings.length > 0
+```
+
+#### `--audit-tests`
+
+Scan every `*.test.{ts,tsx}` under `packages/` for the mock-vnode anti-pattern that caused PR #197's silent metadata drop. Files are classified HIGH / MEDIUM / LOW based on the balance of mock-vnode literals + helpers + helper-call sites vs real `h()` calls + `@pyreon/core` import.
+
+```bash
+pyreon doctor --audit-tests
+pyreon doctor --audit-tests --audit-min-risk medium    # filter floor
+pyreon doctor --audit-tests --json                     # machine-readable
+```
+
+Three context-aware skips (helper-def vs binding discrimination, type-guard call-arg skip, template-string fixture mask) keep the false-positive rate low. Run before merging a new test file or after a framework change to verify parallel real-`h()` coverage is in place.
+
 ### `generate`
 
 The `generate` command scaffolds new code into your project.

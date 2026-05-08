@@ -1406,6 +1406,10 @@ function App() {
 
 Inner boundaries catch errors first. If an inner boundary is already in an error state (it has already caught one error), the error propagates to the next outer boundary.
 
+#### Microtask-deferred error.set
+
+When the boundary catches an error, the internal `error.set(err)` call is deferred to a microtask via the batch system's two-tier flush. This is what makes the boundary safely usable even when the error fires inside the same effect run that mounted the throwing child — the next pass of the flush sees the error signal change and mounts the fallback. No synchronous `handling` flag, no `queueMicrotask` workaround — both were removed when the structural fix in `packages/core/reactivity/src/batch.ts` landed (PR #381 + #433). See `.claude/rules/anti-patterns.md` → "Re-entrant signal write inside the same effect's batch flush".
+
 #### Error Boundary Internals
 
 `ErrorBoundary` uses a module-level stack of handler functions. During setup, it pushes a handler onto the stack. When a child component throws during mount, `dispatchToErrorBoundary()` invokes the innermost handler. The handler stores the error in a signal; when the signal becomes non-null, the fallback renders instead of the children.
