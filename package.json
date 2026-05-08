@@ -53,6 +53,7 @@
     "check-bundle-budgets": "bun scripts/check-bundle-budgets.ts",
     "check-distribution": "bun scripts/check-distribution.ts",
     "check-doc-claims": "bun scripts/check-doc-claims.ts",
+    "check-mcp-docs": "bun scripts/check-mcp-docs.ts",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "bun run build && bun run scripts/publish.ts"

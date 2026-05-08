@@ -71,9 +71,52 @@ bunx @pyreon/mcp
 
 ---
 
+## Tools by intent
+
+Pick the tool that matches what you're trying to do — call `mcp_overview` first if you want the live catalog with one-line "when to use" descriptions for every tool.
+
+- **Discover the tool surface** — [`mcp_overview`](#mcp_overview) (start here)
+- **Look up an API** — [`get_api`](#get_api)
+- **Validate a snippet against React + Pyreon anti-patterns** — [`validate`](#validate)
+- **Convert React code to Pyreon** — [`migrate_react`](#migrate_react)
+- **Diagnose a Pyreon error** — [`diagnose`](#diagnose)
+- **Project introspection** — [`get_routes`](#get_routes), [`get_components`](#get_components)
+- **Find a "how do I do X" pattern** — [`get_pattern`](#get_pattern)
+- **Browse the anti-pattern catalog** — [`get_anti_patterns`](#get_anti_patterns)
+- **Read recent release notes** — [`get_changelog`](#get_changelog)
+- **Audit test environment for mock-vnode drift** — [`audit_test_environment`](#audit_test_environment)
+- **Audit islands cross-file foot-guns** — [`audit_islands`](#audit_islands)
+- **Check browser smoke coverage** — [`get_browser_smoke_status`](#get_browser_smoke_status)
+
+---
+
 ## Tools
 
-The MCP server exposes six tools that AI assistants can call.
+The MCP server exposes thirteen tools that AI assistants can call.
+
+### mcp_overview
+
+Returns a markdown table of every registered MCP tool with a one-sentence "when to use" description and a one-line example. Reads from the package's manifest at runtime — single source of truth, so adding a new tool surfaces here automatically. Intended as the **first call** for any AI agent connecting to the server: enumerates the surface so the agent can navigate by intent rather than guessing tool names from `tools/list`.
+
+**Parameters:** None
+
+**Example call:**
+
+```json
+{}
+```
+
+**Response shape:**
+
+```text
+**MCP Tools (13):**
+
+| Tool | When to use | Example |
+|---|---|---|
+| `mcp_overview` | Returns a markdown table of every registered MCP tool... | `mcp_overview()` |
+| `get_api` | Look up any Pyreon API by package and symbol... | `get_api({ package: 'flow', symbol: 'createFlow' })` |
+| ... (one row per registered tool)
+```
 
 ### get_api
 
@@ -187,6 +230,110 @@ Scans the project directory for exported component functions. For each component
 - Component name and file path
 - Props interface fields
 - Signal declarations within the component
+
+### get_browser_smoke_status
+
+Companion to the `pyreon/require-browser-smoke-test` lint rule. Reports which browser-categorized Pyreon packages have at least one `*.browser.test.{ts,tsx}` file under `src/`. Reads the same `.claude/rules/browser-packages.json` single source of truth as the rule and the CI script. Lets an AI agent check coverage **before** writing a new browser package (so it adds a smoke test in the same PR) instead of discovering the failure when CI runs.
+
+**Parameters:** None
+
+**Response includes:**
+
+- `Covered (N)` — packages that ship at least one browser smoke test
+- `Missing` — packages categorized as browser but with no `*.browser.test.*` file
+- `Listed in browser-packages.json but not found in this repo` — drift between the JSON list and the actual workspace
+
+Falls back with a clear message when `.claude/rules/browser-packages.json` isn't present (consumer apps that don't ship the Pyreon monorepo layout).
+
+### get_pattern
+
+Fetches a canonical "how do I do X" pattern body from `docs/patterns/` in the monorepo. Patterns are markdown files keyed by slug (e.g. `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `keyed-lists`, `reactive-context`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`).
+
+**Parameters:**
+
+| Param  | Type     | Description                                                                                |
+| ------ | -------- | ------------------------------------------------------------------------------------------ |
+| `name` | `string` | Pattern slug — e.g. `"controllable-state"`. Omit to receive the catalog of available slugs |
+
+**Example call:**
+
+```json
+{ "name": "controllable-state" }
+```
+
+When a pattern isn't found, returns up to 5 fuzzy-matched suggestions plus the full catalog.
+
+### get_anti_patterns
+
+Browses the anti-pattern catalog parsed live from `.claude/rules/anti-patterns.md`. Each entry surfaces the rule body plus its `[detector: <code>]` tag (when one exists), so an agent can pair the catalog entry with the live static detector run by the [`validate`](#validate) tool.
+
+**Parameters:**
+
+| Param      | Type      | Description                                                                                                                                                                                                          |
+| ---------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `category` | `string?` | Filter to one category. Allowed: `reactivity`, `jsx`, `context`, `architecture`, `testing`, `lifecycle`, `documentation`, `all`. Omit (or pass `"all"`) for the full catalog. Returns matching suggestions on a typo. |
+
+**Example call:**
+
+```json
+{ "category": "reactivity" }
+```
+
+### get_changelog
+
+Recent release notes for any `@pyreon/*` package, parsed from `packages/**/CHANGELOG.md`. Filters out ceremonial bump-only releases (pure dependency updates with no user-facing body) by default. Useful when an agent needs to know what changed since a given version without scraping `git log` or raw markdown.
+
+**Parameters:**
+
+| Param                      | Type       | Description                                                                                                                          |
+| -------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `package`                  | `string?`  | Package name — accepts `"query"` or `"@pyreon/query"`. Omit to receive the index of all available packages with their latest version |
+| `limit`                    | `number?`  | Maximum number of substantive versions to return. Default `5`                                                                        |
+| `includeDependencyUpdates` | `boolean?` | Re-include the bump-only releases the tool drops by default                                                                          |
+| `since`                    | `string?`  | Only include versions strictly newer than this (e.g. `"0.12.0"`). Useful when the agent knows the version it was trained against     |
+
+**Example call:**
+
+```json
+{ "package": "flow", "limit": 5 }
+```
+
+### audit_test_environment
+
+Scans every `*.test.{ts,tsx}` under `packages/` for the mock-vnode anti-pattern (PR #197 bug class — tests that construct `{ type, props, children }` literals or custom `vnode()` helpers instead of going through the real `h()` from `@pyreon/core`). Each file is classified `HIGH` / `MEDIUM` / `LOW` by the balance of mock literals, mock-helper definitions and call-sites vs real `h()` calls.
+
+**Parameters:**
+
+| Param     | Type      | Description                                                                                                |
+| --------- | --------- | ---------------------------------------------------------------------------------------------------------- |
+| `minRisk` | `string?` | `"high"`, `"medium"`, or `"low"`. Default `"medium"` (HIGH + MEDIUM files). `"low"` shows everything       |
+| `limit`   | `number?` | Max entries per risk group. Default `20`                                                                   |
+
+**Example call:**
+
+```json
+{ "minRisk": "medium" }
+```
+
+The detector includes false-positive heuristics (helper-def vs binding discrimination, type-guard call-arg skip, template-string fixture mask) so genuine code doesn't drown out the real findings.
+
+### audit_islands
+
+Project-wide islands audit — runs five cross-file detectors that auto-registry can't reach: `duplicate-name` (two `island()` declarations sharing a name — runtime hydrates only the first), `never-with-registry-entry` (a `hydrate: 'never'` island registered in any file's manual `hydrateIslands({ ... })` call, defeating the zero-JS goal), `registry-mismatch` (a manual registry entry with no matching `island()` declaration anywhere — typo / removed island / forgotten import), `nested-island` (an `island()` whose loader-target file also contains an `island()` call — outer's `hydrateRoot` replaces the inner before its loader runs), and `dead-island` (an `island()` declaration whose file is never imported statically or dynamically — unreachable code).
+
+**Parameters:**
+
+| Param  | Type       | Description                                                                                                                                                                |
+| ------ | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `json` | `boolean?` | Return raw JSON output instead of human-readable markdown. Useful when an agent wants to programmatically count findings by code or filter by location                     |
+
+**Example call:**
+
+```json
+{}
+```
+
+Each finding ships with file path + line/column + actionable fix suggestion. Companion to `pyreon doctor --check-islands` (CLI) — same detector, two surfaces.
 
 ---
 
