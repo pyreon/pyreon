@@ -884,6 +884,18 @@ Rule of thumb:
 
   CI consumption is now structural: `cat dist/_pyreon-ssg-errors.json | jq '.errors | length' | grep -q '^0$' || exit 1` gates on render failures without parsing console output. Reference: `packages/zero/zero/src/ssg-plugin.ts:renderErrorArtifact` (serializer) + the `catch` block of the per-path render loop (the `onPathError` invocation).
 
+  **PR E — subpath / base-path single-source-of-truth wiring.** Pre-PR-E, zero shipped THREE disconnected `base` settings: (a) `vite.config.base` controlled asset URL rewriting in built HTML/JS; (b) `zero({ base })` was typed in `ZeroConfig` and exposed to the client as `__ZERO_BASE__` — but **nothing read it**, the global was a typed-but-unimplemented surface; (c) `createRouter({ base })` controlled RouterLink href prefixing and route matching but was never wired from zero's config. Apps deployed to `/blog/` had to manually set ALL THREE in sync, and silently broke when any drifted (assets prefixed but RouterLinks weren't, or vice-versa). Now `zero({ base: '/blog/' })` is the canonical single source of truth and propagates through three coordination points:
+
+  - **Vite's `base`**: `vite-plugin.ts`'s `config()` hook returns `base: config.base`. Vite's config-merge semantics make plugin-returned config the BASE — user's explicit `vite.config.base` still overrides if both are set, so the user's manual override wins. Asset URLs in built HTML get the prefix automatically.
+  - **`createApp({ base })` → `createRouter({ base })`**: a new `base?: string` field on `CreateAppOptions` flows through to the router. RouterLink hrefs render with the prefix (`<a href="/blog/about">` not `<a href="/about">`), and `stripBase` correctly handles incoming URLs at request time.
+  - **Three call sites forward base to createApp**: (1) `entry-server.ts` `createServer()` reads `config.base` from `resolveConfig`. (2) `client.ts` `startClient()` reads the Vite-defined `__ZERO_BASE__` global. (3) `ssg-plugin.ts`'s SSR_ENTRY_SOURCE template captures `__ZERO_BASE__` at module-eval time and passes through on every per-path render call.
+
+  **Dist filesystem layout deliberately stays unprefixed.** `dist/about/index.html`, NOT `dist/blog/about/index.html`. Static hosts (Netlify, Cloudflare Pages, GitHub Pages, S3+CloudFront) serve `dist/` mounted at `/blog/`, mapping `/blog/about` → `dist/about/index.html`. The base belongs in URL contracts (asset paths in HTML, router hrefs), not in the on-disk layout. This matches how every major SSG framework handles subpath deploys.
+
+  **`__ZERO_BASE__` fallback safety**: `typeof __ZERO_BASE__ !== 'undefined' && __ZERO_BASE__ !== '/'` — both client.ts and the SSG entry handle the no-Vite-define edge case (test environments, etc.) by treating the constant as undefined. The fallback is never hit in real Vite builds because the plugin's `config()` hook always declares the define.
+
+  Real-app coverage: `verify-modes ssr-showcase × ssg-subpath` cell with `zero({ base: '/blog/' })` asserts BOTH (a) asset URLs in `dist/index.html` start with `/blog/assets/` AND (b) RouterLink hrefs in `dist/about/index.html` resolve to `/blog/about` / `/blog/posts`. Bisect-verified at TWO layers: removing `base: config.base` from `vite-plugin.ts:config()` fails the asset-URL assertion; removing the `base: __ssgBase` forward in `ssg-plugin.ts:SSR_ENTRY_SOURCE` fails the RouterLink-href assertion. Per-API unit tests live in `packages/zero/zero/src/tests/app.test.ts` (`createApp — base option (PR E)` describe block, 4 specs covering forward + nested + default-`/` + undefined).
+
 ## Testing
 
 ```bash

@@ -91,3 +91,54 @@ describe('createApp — double-layout defense', () => {
     expect(matches).toBe(false)
   })
 })
+
+// PR E — subpath / base-path wiring. `zero({ base: '/blog/' })` must
+// reach createRouter via createApp's `base` option so RouterLink hrefs
+// render with the prefix. Pre-PR-E this surface was disconnected: the
+// `base` option didn't exist on CreateAppOptions, and the router defaulted
+// to `'/'` regardless of the user's zero config.
+describe('createApp — base option (PR E)', () => {
+  const Page: ComponentFn = () =>
+    h('span', { 'data-testid': 'home', id: 'page' }, 'page')
+
+  it('forwards `base` to createRouter so RouterLink hrefs are prefixed', () => {
+    // Use the router exposed by createApp to verify the base reached
+    // through. RouterLink rendering is downstream — if the router has
+    // the right base, links get the prefix.
+    //
+    // Router's `normalizeBase('/blog/')` strips the trailing slash and
+    // stores `/blog` internally. That's the value we verify here; the
+    // verify-modes cell verifies the rendered href has the trailing
+    // slash where it belongs (`/blog/about`).
+    const routes: RouteRecord[] = [{ path: '/', component: Page }]
+    const { router } = createApp({ routes, base: '/blog/', url: '/' })
+
+    const internalBase = (router as unknown as { _base?: string })._base
+    expect(internalBase).toBe('/blog')
+  })
+
+  it('passes through nested base correctly', () => {
+    const routes: RouteRecord[] = [{ path: '/', component: Page }]
+    const { router } = createApp({ routes, base: '/foo/bar/', url: '/' })
+    const internalBase = (router as unknown as { _base?: string })._base
+    expect(internalBase).toBe('/foo/bar')
+  })
+
+  it('omits the option when base is `/` (default)', () => {
+    // `/` is the no-prefix case — passing it through would still work,
+    // but the conditional in createApp keeps the createRouter call clean.
+    // Verifies the conditional spread doesn't accidentally always pass.
+    const routes: RouteRecord[] = [{ path: '/', component: Page }]
+    const { router } = createApp({ routes, base: '/', url: '/' })
+    const internalBase = (router as unknown as { _base?: string })._base
+    // Router stores empty string when no base — that's the no-prefix sentinel.
+    expect(internalBase).toBe('')
+  })
+
+  it('omits the option when base is undefined', () => {
+    const routes: RouteRecord[] = [{ path: '/', component: Page }]
+    const { router } = createApp({ routes, url: '/' })
+    const internalBase = (router as unknown as { _base?: string })._base
+    expect(internalBase).toBe('')
+  })
+})

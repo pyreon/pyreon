@@ -101,11 +101,21 @@ try {
   // No @pyreon/styler in the project — leave the no-op stub in place.
 }
 
+// PR E — \`__ZERO_BASE__\` is the Vite-defined build-time constant
+// carrying the value of \`zero({ base })\`. Read it once at module
+// eval and forward to createRouter via createApp so SSG-rendered
+// pages have correctly-prefixed RouterLink hrefs that match the
+// asset URLs Vite already prefixed in the built HTML template.
+const __ssgBase = typeof __ZERO_BASE__ !== "undefined" && __ZERO_BASE__ !== "/"
+  ? __ZERO_BASE__
+  : undefined
+
 export default async function renderPath(path) {
   const { App, router } = createApp({
     routes,
     routerMode: "history",
     url: path,
+    ...(__ssgBase ? { base: __ssgBase } : {}),
   })
 
   // PR B — redirect handling. \`router.preload\` runs every loader in the
