@@ -367,6 +367,17 @@ jobs:
         # the verify-modes ssr-showcase × ssg-subpath cell which gates
         # the build artifact; this gates the runtime behaviour.
         run: bun run test:e2e:ssg-subpath
+      - name: Run e2e — SSG i18n route duplication runtime (PR H follow-up)
+        # Same separate-config rationale. Builds ssr-showcase with
+        # `zero({ i18n: { locales: ['en','de','cs'], defaultLocale: 'en' } })`
+        # then previews on port 5199 and runs 4 specs that exercise the
+        # runtime contract for per-locale routes — default-locale
+        # unprefixed load, non-default prefixed load, third-locale
+        # multi-locale duplication, RouterLink click as client-side push.
+        # Companion to the verify-modes ssr-showcase × ssg-i18n cell
+        # which gates the dist filesystem; this gates the runtime
+        # routing/hydration behaviour.
+        run: bun run test:e2e:ssg-i18n
       - name: Run e2e — perf-dashboard (useFormState selector-narrowing gate)
         # Boots perf-dashboard on port 5183. Real-Chromium gate for the
         # `useFormState(form, s => s.isValid)` selector-narrowing contract

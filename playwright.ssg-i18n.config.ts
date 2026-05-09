@@ -1,0 +1,67 @@
+import { defineConfig } from '@playwright/test'
+
+/**
+ * Playwright config — SSG i18n route duplication real-Chromium gate
+ * (PR H follow-up).
+ *
+ * Companion to `verify-modes ssr-showcase × ssg-i18n` cell. The
+ * verify-modes cell asserts the BUILD ARTIFACT (per-locale dist
+ * files exist at the right prefixes). This config tests the
+ * RUNTIME behaviour: real Chromium loads each per-locale page,
+ * the router matches the duplicated route record at request time,
+ * and RouterLink navigation works under the locale prefix.
+ *
+ * The two layers complement each other:
+ *   - verify-modes catches build-time regressions (the
+ *     `expandRoutesForLocales` call wiring in
+ *     `vite-plugin.ts`'s virtual-routes load AND
+ *     `ssg-plugin.ts:autoDetectStaticPaths`).
+ *   - This e2e catches runtime regressions (the router's matcher
+ *     for the duplicated record, hydration under the prefixed URL,
+ *     in-app navigation between locale subtrees).
+ *
+ * webServer chains build + preview because vite preview doesn't
+ * build by itself. Pre-build runs once via `build:i18n`; preview
+ * serves the result on port 5199. Same shape as the ssg-subpath
+ * config (port 5198) — separate ports so both gates can run in
+ * the same CI step without colliding.
+ *
+ * Separate config (not folded into playwright.config.ts) because
+ * Playwright's `webServer` array boots ALL listed servers
+ * regardless of `--project` selection — same boot-isolation
+ * rationale as ui-regression / compat-layers / app-showcase /
+ * islands-showcase / ssg-subpath.
+ *
+ * Specs: `e2e/ssg-i18n.spec.ts` — see file header for coverage map.
+ *
+ * CI: `.github/workflows/ci.yml`'s `E2E` job runs this as a
+ * separate step after the existing test:e2e:ssg-subpath step.
+ */
+export default defineConfig({
+  testDir: './e2e',
+  timeout: 60_000,
+  retries: 0,
+  use: {
+    headless: true,
+    browserName: 'chromium',
+  },
+  projects: [
+    {
+      name: 'ssg-i18n',
+      testMatch: /ssg-i18n\.spec\.ts$/,
+      use: { baseURL: 'http://localhost:5199' },
+    },
+  ],
+  webServer: [
+    {
+      // `&&` chain: build the i18n dist first, then preview it on
+      // a fixed port. Build exits; preview stays alive. Playwright
+      // considers the server "up" once the port responds.
+      command:
+        'bun run --filter=@pyreon/ssr-showcase build:i18n && bun run --filter=@pyreon/ssr-showcase preview:i18n -- --port 5199 --strictPort',
+      port: 5199,
+      timeout: 180_000,
+      reuseExistingServer: !process.env.CI,
+    },
+  ],
+})

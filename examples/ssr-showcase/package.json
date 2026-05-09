@@ -7,8 +7,10 @@
     "dev": "vite",
     "build": "vite build",
     "build:subpath": "vite build --config vite.config.subpath.ts",
+    "build:i18n": "vite build --config vite.config.i18n.ts",
     "preview": "vite preview",
     "preview:subpath": "vite preview --config vite.config.subpath.ts",
+    "preview:i18n": "vite preview --config vite.config.i18n.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },
