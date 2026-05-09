@@ -59,6 +59,18 @@ interface Cell {
    * `@pyreon/vite-plugin` with `ssr: { entry }`). Defaults to false.
    */
   useExampleConfig?: boolean
+  /**
+   * i18n routing config (PR H). Forwarded to `zero({ i18n })` in the
+   * generated verify config. Triggers `expandRoutesForLocales` which
+   * fans every FileRoute into per-locale variants. Cells using this
+   * field assert that the dist tree has per-locale index.html files
+   * under the right prefixes per the configured strategy.
+   */
+  i18n?: {
+    locales: string[]
+    defaultLocale: string
+    strategy?: 'prefix' | 'prefix-except-default'
+  }
   /** Smoke assertion — throws on failure. Receives absolute path to dist/. */
   smoke: (distDir: string) => void
 }
@@ -311,10 +323,15 @@ const MATRIX: Cell[] = [
     // No ssgPaths → triggers autodetect
     smoke: (dist) => {
       // Autodetect should at minimum produce / and /about (both exist
-      // as static routes in ssr-showcase). Posts has dynamic [id]
-      // segments so it's correctly skipped.
+      // as static routes in ssr-showcase).
       assertFileExists(join(dist, 'index.html'))
       assertFileExists(join(dist, 'about', 'index.html'))
+      // posts/[id].ts has getStaticPaths → autodetect enumerates
+      // post IDs 1, 2, 3 (all entries in the POSTS array). PR A
+      // contract: dynamic routes with getStaticPaths are NOT skipped.
+      assertFileExists(join(dist, 'posts', '1', 'index.html'))
+      assertFileExists(join(dist, 'posts', '2', 'index.html'))
+      assertFileExists(join(dist, 'posts', '3', 'index.html'))
       assertFileDoesNotExist(join(dist, '.zero-ssg-server'))
       // PR C — 404 emission applies in autodetect mode too. The
       // emit404 step runs after the path loop regardless of how paths
@@ -362,6 +379,139 @@ const MATRIX: Cell[] = [
       // RouterLink correctly prepends the base when emitting hrefs.
       assertFileContains(join(dist, 'about', 'index.html'), 'href="/blog/about"')
       assertFileContains(join(dist, 'about', 'index.html'), 'href="/blog/posts"')
+    },
+  },
+
+  // ssr-showcase × ssg-i18n — PR H. Locale-prefixed route variants.
+  //
+  // Sets `zero({ i18n: { locales: ['en','de','cs'], defaultLocale: 'en' } })`
+  // (defaults to prefix-except-default strategy). The build's
+  // `autoDetectStaticPaths` calls `expandRoutesForLocales`, which fans
+  // each FileRoute into per-locale variants:
+  //
+  //   `/`        → `/`,         `/de`,        `/cs`
+  //   `/about`   → `/about`,    `/de/about`,  `/cs/about`
+  //   `/posts`   → `/posts`,    `/de/posts`,  `/cs/posts`
+  //
+  // The default locale (`en`) keeps unprefixed URLs (canonical /
+  // SEO-friendly); non-default locales get explicit prefixes.
+  //
+  // The cell asserts the dist filesystem layout matches the contract:
+  // every locale has its own index.html / about/index.html /
+  // posts/index.html. The default-locale variants live at the
+  // unprefixed path; non-defaults live under their locale prefix.
+  // Catches the regression where `expandRoutesForLocales` is reverted
+  // (only default-locale paths emitted; `/de/about/index.html`
+  // missing).
+  //
+  // Bisect-verifiable: revert the `expandRoutesForLocales` call in
+  // `ssg-plugin.ts:autoDetectStaticPaths` AND in `vite-plugin.ts`'s
+  // virtual-routes load → cell fails with "expected file: dist/de/about/index.html"
+  // (de locale variant was never enumerated, so SSG didn't render it).
+  {
+    example: 'ssr-showcase',
+    mode: 'ssg',
+    i18n: {
+      locales: ['en', 'de', 'cs'],
+      defaultLocale: 'en',
+      strategy: 'prefix-except-default',
+    },
+    smoke: (dist) => {
+      // Default-locale variants live at unprefixed paths (SEO-canonical).
+      assertFileExists(join(dist, 'index.html'))
+      assertFileExists(join(dist, 'about', 'index.html'))
+      assertFileExists(join(dist, 'posts', 'index.html'))
+
+      // Non-default locales land under their locale prefix.
+      assertFileExists(join(dist, 'de', 'index.html'))
+      assertFileExists(join(dist, 'de', 'about', 'index.html'))
+      assertFileExists(join(dist, 'de', 'posts', 'index.html'))
+      assertFileExists(join(dist, 'cs', 'index.html'))
+      assertFileExists(join(dist, 'cs', 'about', 'index.html'))
+      assertFileExists(join(dist, 'cs', 'posts', 'index.html'))
+
+      // Default locale MUST NOT have a prefixed variant under
+      // prefix-except-default — `/en/about` would be a duplicate
+      // canonical URL split across two paths, hurting SEO.
+      assertFileDoesNotExist(join(dist, 'en', 'about', 'index.html'))
+
+      // ── Dynamic-routes × i18n composition ────────────────────────
+      // posts/[id].ts has getStaticPaths returning [1, 2, 3]. With
+      // 3 locales, the cross-product is 9 paths under
+      // prefix-except-default (3 default-unprefixed + 3×2 prefixed
+      // for non-default locales). This is the PR A × PR H interaction
+      // — verifies cardinality compounds correctly through both the
+      // route-duplication step AND the URL-pattern-expansion step.
+      // Default-locale post pages — unprefixed.
+      assertFileExists(join(dist, 'posts', '1', 'index.html'))
+      assertFileExists(join(dist, 'posts', '2', 'index.html'))
+      assertFileExists(join(dist, 'posts', '3', 'index.html'))
+      // Non-default locales × every post ID.
+      assertFileExists(join(dist, 'de', 'posts', '1', 'index.html'))
+      assertFileExists(join(dist, 'de', 'posts', '2', 'index.html'))
+      assertFileExists(join(dist, 'de', 'posts', '3', 'index.html'))
+      assertFileExists(join(dist, 'cs', 'posts', '1', 'index.html'))
+      assertFileExists(join(dist, 'cs', 'posts', '2', 'index.html'))
+      assertFileExists(join(dist, 'cs', 'posts', '3', 'index.html'))
+    },
+  },
+
+  // ssr-showcase × ssg-i18n-prefix — PR H, prefix strategy.
+  //
+  // Same shape as the prefix-except-default cell above but with
+  // `strategy: 'prefix'`. EVERY locale (including the default)
+  // gets explicit URL prefixes — no canonical-default carve-out.
+  // Used by apps with no "primary" locale where every URL should
+  // self-identify its locale (e.g. multilingual government sites,
+  // i18n-first SaaS dashboards). The dist tree's static-route shape
+  // therefore puts /en/about, /de/about, /cs/about all under their
+  // own subtrees — and crucially `dist/about/index.html` (no prefix)
+  // does NOT exist.
+  //
+  // Also re-asserts the dynamic-route × locale composition under
+  // this strategy so we don't regress one of the two strategies
+  // silently.
+  {
+    example: 'ssr-showcase',
+    mode: 'ssg',
+    i18n: {
+      locales: ['en', 'de', 'cs'],
+      defaultLocale: 'en',
+      strategy: 'prefix',
+    },
+    smoke: (dist) => {
+      // Every locale prefixed — including the default `en`.
+      assertFileExists(join(dist, 'en', 'index.html'))
+      assertFileExists(join(dist, 'en', 'about', 'index.html'))
+      assertFileExists(join(dist, 'en', 'posts', 'index.html'))
+      assertFileExists(join(dist, 'de', 'index.html'))
+      assertFileExists(join(dist, 'de', 'about', 'index.html'))
+      assertFileExists(join(dist, 'de', 'posts', 'index.html'))
+      assertFileExists(join(dist, 'cs', 'index.html'))
+      assertFileExists(join(dist, 'cs', 'about', 'index.html'))
+      assertFileExists(join(dist, 'cs', 'posts', 'index.html'))
+
+      // Under `prefix` strategy, no unprefixed canonical URLs exist —
+      // EVERY route lives under its locale prefix. Bisect-verifiable:
+      // if the strategy guard in `expandRoutesForLocales` regresses
+      // and accidentally keeps the default-locale unprefixed variant,
+      // these assertions fail and surface the regression.
+      assertFileDoesNotExist(join(dist, 'about', 'index.html'))
+      assertFileDoesNotExist(join(dist, 'posts', 'index.html'))
+
+      // Dynamic-routes × prefix-strategy: every post × every locale.
+      assertFileExists(join(dist, 'en', 'posts', '1', 'index.html'))
+      assertFileExists(join(dist, 'en', 'posts', '2', 'index.html'))
+      assertFileExists(join(dist, 'en', 'posts', '3', 'index.html'))
+      assertFileExists(join(dist, 'de', 'posts', '1', 'index.html'))
+      assertFileExists(join(dist, 'de', 'posts', '2', 'index.html'))
+      assertFileExists(join(dist, 'de', 'posts', '3', 'index.html'))
+      assertFileExists(join(dist, 'cs', 'posts', '1', 'index.html'))
+      assertFileExists(join(dist, 'cs', 'posts', '2', 'index.html'))
+      assertFileExists(join(dist, 'cs', 'posts', '3', 'index.html'))
+
+      // No unprefixed dynamic post variants either.
+      assertFileDoesNotExist(join(dist, 'posts', '1', 'index.html'))
     },
   },
 
@@ -477,13 +627,16 @@ function configSourceFor(cell: Cell): string {
   const baseConfig = cell.base
     ? `, base: ${JSON.stringify(cell.base)}`
     : ''
+  const i18nConfig = cell.i18n
+    ? `, i18n: ${JSON.stringify(cell.i18n)}`
+    : ''
   return `import pyreon from '@pyreon/vite-plugin'
 import zero from '@pyreon/zero/server'
 import { defineConfig } from 'vite'
 
 // Auto-generated by scripts/verify-modes.ts — do not commit.
 export default defineConfig({
-  plugins: [pyreon(), zero({ mode: ${JSON.stringify(cell.mode)}${baseConfig}${ssgConfig} })],
+  plugins: [pyreon(), zero({ mode: ${JSON.stringify(cell.mode)}${baseConfig}${ssgConfig}${i18nConfig} })],
   resolve: { conditions: ['bun'] },
 })
 `

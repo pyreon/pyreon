@@ -54,6 +54,7 @@ import {
 	scanRouteFiles,
 	scanRouteFilesWithExports,
 } from "./fs-router";
+import { expandRoutesForLocales } from "./i18n-routing";
 import { render404Page } from "./not-found";
 import { ssgPlugin } from "./ssg-plugin";
 import type { ZeroConfig } from "./types";
@@ -109,7 +110,13 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 					//   • lazy() for routes that only export `default` (best code splitting)
 					//   • Direct mod.loader/.guard/.meta access for routes with metadata
 					//   • No spurious IMPORT_IS_UNDEFINED warnings from Rolldown
-					const routes = await scanRouteFilesWithExports(routesDir, config.mode);
+					const baseRoutes = await scanRouteFilesWithExports(routesDir, config.mode);
+					// PR H — fan routes into per-locale variants when `i18n` is
+					// configured. No-op when unset; identity-returns the input
+					// otherwise so existing apps see byte-identical output.
+					const routes = config.i18n
+						? expandRoutesForLocales(baseRoutes, config.i18n)
+						: baseRoutes;
 					return generateRouteModuleFromRoutes(routes, routesDir, {
 						staticImports: config.mode === 'ssg',
 					});

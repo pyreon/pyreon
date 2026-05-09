@@ -1,5 +1,6 @@
 import { h, Show } from '@pyreon/core'
 import { useLoaderData } from '@pyreon/router'
+import type { GetStaticPaths } from '@pyreon/zero/server'
 
 interface Post {
   id: number
@@ -38,6 +39,13 @@ export default function PostPage() {
 export async function loader({ params }: { params: Record<string, string> }) {
   const id = Number(params.id)
   return POSTS.find((p) => p.id === id) ?? null
+}
+
+// SSG enumerator — exercised by the verify-modes ssg-i18n cell to prove
+// dynamic-route × locale composition (cross-product of post IDs × locales
+// produces correctly-prefixed dist HTML for each combination).
+export const getStaticPaths: GetStaticPaths<{ id: string }> = () => {
+  return POSTS.map((p) => ({ params: { id: String(p.id) } }))
 }
 
 export const meta = {

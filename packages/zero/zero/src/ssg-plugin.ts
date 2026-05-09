@@ -28,6 +28,7 @@ import { pathToFileURL } from 'node:url'
 import type { Plugin } from 'vite'
 import { resolveConfig } from './config'
 import { parseFileRoutes, scanRouteFiles } from './fs-router'
+import { expandRoutesForLocales, type I18nRoutingConfig } from './i18n-routing'
 import type { ZeroConfig } from './types'
 
 // Marker env var used to skip the SSG hook on the recursive SSR sub-build —
@@ -280,6 +281,7 @@ async function autoDetectStaticPaths(
   routesDir: string,
   registry?: GetStaticPathsRegistry,
   errors: { path: string; error: unknown }[] = [],
+  i18n?: I18nRoutingConfig,
 ): Promise<string[]> {
   // Routes dir missing → fall back to "/" anyway. A project that doesn't
   // expose routes via fs-routing (custom routes module, single-page app
@@ -288,7 +290,13 @@ async function autoDetectStaticPaths(
   // override this floor.
   if (!existsSync(routesDir)) return ['/']
   const files = await scanRouteFiles(routesDir)
-  const fileRoutes = parseFileRoutes(files)
+  // PR H — fan routes into per-locale variants when `i18n` is configured.
+  // Each duplicated FileRoute carries the same `getStaticPaths` enumerator
+  // (via `exports`) so dynamic + i18n cardinality compounds naturally:
+  // `/blog/[slug]` × `[en, de]` × 3 slugs → 6 paths under
+  // `prefix-except-default`.
+  const baseRoutes = parseFileRoutes(files)
+  const fileRoutes = i18n ? expandRoutesForLocales(baseRoutes, i18n) : baseRoutes
 
   const out: string[] = []
   for (const r of fileRoutes) {
@@ -344,7 +352,7 @@ async function resolvePaths(
     return Array.isArray(result) ? result : []
   }
   if (Array.isArray(explicit)) return explicit
-  return autoDetectStaticPaths(routesDir, registry, errors)
+  return autoDetectStaticPaths(routesDir, registry, errors, config.i18n)
 }
 
 function resolveOutputPath(distDir: string, path: string): string {

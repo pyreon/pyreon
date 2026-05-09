@@ -39,6 +39,7 @@
     "test:e2e:app-showcase": "bunx playwright test --config=playwright.app-showcase.config.ts",
     "test:e2e:islands": "bunx playwright test --config=playwright.islands-showcase.config.ts",
     "test:e2e:ssg-subpath": "bunx playwright test --config=playwright.ssg-subpath.config.ts",
+    "test:e2e:ssg-i18n": "bunx playwright test --config=playwright.ssg-i18n.config.ts",
     "test:e2e:cpa": "bunx playwright test --config=playwright.cpa.config.ts",
     "test:e2e:perf-dashboard": "bunx playwright test --config=playwright.perf-dashboard.config.ts",
     "visual-test:capture": "bunx playwright test --project=visual",

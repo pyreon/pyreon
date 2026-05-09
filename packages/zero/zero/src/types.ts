@@ -1,6 +1,7 @@
 import type { ComponentFn } from '@pyreon/core'
 import type { LoaderContext, NavigationGuard } from '@pyreon/router'
 import type { Middleware } from '@pyreon/server'
+import type { I18nRoutingConfig } from './i18n-routing'
 
 // Re-export router's `LoaderContext` so consumers importing it from
 // `@pyreon/zero` keep working. The previous duplicate `interface
@@ -227,6 +228,16 @@ export interface ZeroConfig {
 
   /** Base URL path. Default: "/" */
   base?: string
+
+  /**
+   * i18n routing — locale-prefixed route variants generated at build time
+   * (PR H of the SSG roadmap). When set, every `FileRoute` is fanned into
+   * per-locale duplicates by `expandRoutesForLocales` from
+   * `@pyreon/zero`. Independent from the `i18nRouting()` Vite plugin
+   * (which only handles request-time locale detection); both can be used
+   * together. See `expandRoutesForLocales` JSDoc for strategy semantics.
+   */
+  i18n?: I18nRoutingConfig
 
   /** App-level middleware applied to all routes. */
   middleware?: Middleware[]
