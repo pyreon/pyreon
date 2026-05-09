@@ -71,6 +71,7 @@ const ROUTE_EXPORT_NAMES = [
   'loaderKey',
   'gcTime',
   'getStaticPaths',
+  'revalidate',
 ] as const
 
 type RouteExportName = (typeof ROUTE_EXPORT_NAMES)[number]
@@ -131,12 +132,27 @@ export function detectRouteExports(source: string): RouteFileExports {
   const rawRenderMode = found.has('renderMode')
     ? extractLiteralExport(source, 'renderMode')
     : undefined
+  // PR I — capture `revalidate` as a literal so the build-time ISR
+  // manifest (`dist/_pyreon-revalidate.json`) can be emitted from the
+  // SSG plugin without loading the route module. The route generator
+  // does NOT inline `revalidate` into the route record — it's a build-
+  // time-only concern that adapters consume via the manifest.
+  const rawRevalidate = found.has('revalidate')
+    ? extractLiteralExport(source, 'revalidate')
+    : undefined
   const cleanMeta = rawMeta !== undefined ? stripTypeAssertions(rawMeta) : undefined
   const cleanRenderMode =
     rawRenderMode !== undefined ? stripTypeAssertions(rawRenderMode) : undefined
+  const cleanRevalidate =
+    rawRevalidate !== undefined ? stripTypeAssertions(rawRevalidate) : undefined
   const metaLiteral = cleanMeta !== undefined && isPureLiteral(cleanMeta) ? cleanMeta : undefined
   const renderModeLiteral =
     cleanRenderMode !== undefined && isPureLiteral(cleanRenderMode) ? cleanRenderMode : undefined
+  // `revalidate` literals are number (`60`) or boolean (`false`) — never
+  // an object/array — so `isPureLiteral` is overkill. Keep the same
+  // safety check for defense-in-depth.
+  const revalidateLiteral =
+    cleanRevalidate !== undefined && isPureLiteral(cleanRevalidate) ? cleanRevalidate : undefined
 
   return {
     hasLoader: found.has('loader'),
@@ -148,8 +164,10 @@ export function detectRouteExports(source: string): RouteFileExports {
     hasLoaderKey: found.has('loaderKey'),
     hasGcTime: found.has('gcTime'),
     hasGetStaticPaths: found.has('getStaticPaths'),
+    hasRevalidate: found.has('revalidate'),
     ...(metaLiteral !== undefined ? { metaLiteral } : {}),
     ...(renderModeLiteral !== undefined ? { renderModeLiteral } : {}),
+    ...(revalidateLiteral !== undefined ? { revalidateLiteral } : {}),
   }
 }
 
@@ -782,6 +800,7 @@ const EMPTY_EXPORTS: RouteFileExports = {
   hasLoaderKey: false,
   hasGcTime: false,
   hasGetStaticPaths: false,
+  hasRevalidate: false,
 }
 
 /**

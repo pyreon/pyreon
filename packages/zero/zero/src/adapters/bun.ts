@@ -1,4 +1,4 @@
-import type { Adapter, AdapterBuildOptions } from '../types'
+import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
 import { validateBuildInputs } from './validate'
 
 /**
@@ -62,6 +62,16 @@ console.log("\\n  ⚡ Zero production server running on http://localhost:${port}
 `.trimStart()
 
       await writeFile(join(outDir, 'index.ts'), serverEntry)
+    },
+    async revalidate(_path: string): Promise<AdapterRevalidateResult> {
+      // Self-hosted Bun has no platform-driven ISR — same shape as
+      // nodeAdapter. See nodeAdapter.revalidate for full rationale.
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(
+          '[Pyreon] bunAdapter.revalidate() is a no-op — self-hosted Bun has no platform-driven ISR. Use mode: "isr" for runtime LRU caching, or vercelAdapter / cloudflareAdapter / netlifyAdapter for platform-driven build-time ISR.',
+        )
+      }
+      return { regenerated: false }
     },
   }
 }

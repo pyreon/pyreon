@@ -27,7 +27,7 @@ import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { Plugin } from 'vite'
 import { resolveConfig } from './config'
-import { parseFileRoutes, scanRouteFiles } from './fs-router'
+import { parseFileRoutes, scanRouteFiles, scanRouteFilesWithExports } from './fs-router'
 import { expandRoutesForLocales, type I18nRoutingConfig } from './i18n-routing'
 import type { ZeroConfig } from './types'
 
@@ -514,6 +514,94 @@ async function runWithConcurrency<T>(
   await Promise.all(Array.from({ length: workerCount }, () => worker()))
 }
 
+/**
+ * PR I — build the revalidate manifest from scanned FileRoutes + the
+ * list of paths that successfully rendered.
+ *
+ * For each FileRoute with a `revalidateLiteral` (captured at scan time
+ * via `detectRouteExports`), parse the literal as JSON (numbers and
+ * `false` are valid JSON tokens), build a regex from the route's
+ * urlPath pattern, and match against `writtenPaths`. Each matching
+ * concrete path goes into the manifest under the route's revalidate
+ * value.
+ *
+ * Returns `{}` when no routes have a revalidate literal — the caller
+ * checks `Object.keys(...).length > 0` before writing the manifest.
+ *
+ * Static routes match exactly (urlPath === concretePath). Dynamic
+ * routes (`/posts/:id`) compile to `^\/posts\/[^/]+$`. Catch-alls
+ * (`/blog/:slug*`) compile to `^\/blog\/.*$`. Layout / error / loading
+ * / not-found routes are skipped — they don't appear in writtenPaths
+ * anyway, but the explicit guard keeps the helper stand-alone-testable.
+ *
+ * Exposed via `_internal.buildRevalidateManifest` so it can be unit-
+ * tested without a full SSG round-trip.
+ */
+export function buildRevalidateManifest(
+  fileRoutes: ReadonlyArray<{
+    urlPath: string
+    isLayout: boolean
+    isError: boolean
+    isLoading: boolean
+    isNotFound: boolean
+    exports?: { revalidateLiteral?: string }
+  }>,
+  writtenPaths: readonly string[],
+): Record<string, number | false> {
+  const manifest: Record<string, number | false> = {}
+  for (const route of fileRoutes) {
+    if (route.isLayout || route.isError || route.isLoading || route.isNotFound) continue
+    const literal = route.exports?.revalidateLiteral
+    if (literal === undefined) continue
+    let parsed: unknown
+    try {
+      // The literal text is a number (`60`, `3600`) or boolean
+      // (`false`). JSON.parse handles both. Other values (`true`,
+      // strings, objects) aren't valid `revalidate` shapes — skip
+      // silently rather than throw.
+      parsed = JSON.parse(literal)
+    } catch {
+      continue
+    }
+    if (typeof parsed !== 'number' && parsed !== false) continue
+    const value = parsed as number | false
+    const matcher = compileUrlPatternMatcher(route.urlPath)
+    for (const concretePath of writtenPaths) {
+      if (matcher(concretePath)) {
+        manifest[concretePath] = value
+      }
+    }
+  }
+  return manifest
+}
+
+/**
+ * Compile a route's urlPath pattern (`/posts/:id`, `/blog/:slug*`,
+ * `/about`) into a predicate that returns `true` for any concrete
+ * path that matches. Static patterns return a `===` comparator.
+ * Dynamic / catch-all patterns return a regex predicate.
+ *
+ * Internal helper to `buildRevalidateManifest`. Mirrors the routing
+ * matcher's behaviour for `:param` (single segment) and `:param*`
+ * (catch-all, zero-or-more segments). Doesn't need to handle every
+ * router edge case — the writtenPaths it matches against are already
+ * concrete (no params, no wildcards).
+ */
+function compileUrlPatternMatcher(urlPath: string): (concrete: string) => boolean {
+  if (!urlPath.includes(':') && !urlPath.includes('*')) {
+    return (concrete) => concrete === urlPath
+  }
+  // Escape regex metachars (except `:` and `*` which we handle
+  // explicitly), then substitute `:name*` → `.*` and `:name` → `[^/]+`.
+  // Order matters — `:name*` MUST be replaced before `:name`.
+  const regex = urlPath
+    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/:([A-Za-z_$][\w$]*)\*/g, '.*')
+    .replace(/:([A-Za-z_$][\w$]*)/g, '[^/]+')
+  const re = new RegExp(`^${regex}$`)
+  return (concrete) => re.test(concrete)
+}
+
 function renderErrorArtifact(entries: { path: string; error: unknown }[]): string {
   const errors = entries.map(({ path, error }) => ({
     path,
@@ -892,6 +980,53 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         )
       }
 
+      // PR I — Build-time ISR revalidate manifest.
+      //
+      // Walk the route files for `export const revalidate = <n|false>`
+      // declarations (captured as a literal at scan time), match each
+      // declaration's url-pattern against the rendered written paths,
+      // and emit `dist/_pyreon-revalidate.json` mapping concrete path
+      // → revalidate value. Adapters (vercel/cloudflare/netlify) read
+      // this manifest at deploy time to wire platform-specific ISR
+      // (Vercel `output/config.json`, Cloudflare cache rules, Netlify
+      // redirect headers).
+      //
+      // Path matching: static routes (`/about`) match writtenPaths[i]
+      // exactly. Dynamic routes (`/posts/:id`) and catch-all
+      // (`/blog/:slug*`) compile to a regex and match every concrete
+      // child. Same revalidate value applies to all enumerated children
+      // — `posts/[id].tsx` with `export const revalidate = 60` gives
+      // `/posts/1`, `/posts/2`, `/posts/3` ALL `60` in the manifest.
+      //
+      // Filename starts with `_` so the static-host publish step
+      // doesn't expose it as a public asset (matches `_redirects` /
+      // `_redirects.json` / `_pyreon-ssg-paths.json` convention).
+      // ONLY emit when at least one route has a revalidate literal —
+      // empty manifests aren't useful, and absence is a meaningful
+      // signal to adapters ("no per-route ISR config, fall through to
+      // platform defaults").
+      if (existsSync(routesDir)) {
+        try {
+          const fileRoutesWithExports = await scanRouteFilesWithExports(routesDir, config.mode)
+          const revalidateManifest = buildRevalidateManifest(
+            fileRoutesWithExports,
+            writtenPaths,
+          )
+          if (Object.keys(revalidateManifest).length > 0) {
+            await writeFile(
+              join(distDir, '_pyreon-revalidate.json'),
+              `${JSON.stringify({ revalidate: revalidateManifest }, null, 2)}\n`,
+              'utf-8',
+            )
+          }
+        } catch (err) {
+          // Manifest emission is opt-in via the `revalidate` export.
+          // A scan failure shouldn't abort the build — just record it
+          // alongside the other SSG errors so CI surfaces it.
+          errors.push({ path: '(revalidate-manifest)', error: err })
+        }
+      }
+
       // PR C — Auto-emit dist/404.html from _404.tsx convention.
       //
       // fs-router scans `_404.tsx` / `_not-found.tsx` and attaches it as
@@ -994,6 +1129,7 @@ export const _internal = {
   renderMetaRefreshHtml,
   renderErrorArtifact,
   runWithConcurrency,
+  buildRevalidateManifest,
   SSR_ENTRY_SOURCE,
   SSR_ENTRY_FILENAME,
 }

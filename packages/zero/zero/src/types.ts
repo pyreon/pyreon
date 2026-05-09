@@ -295,6 +295,16 @@ export interface RouteFileExports {
    */
   hasGetStaticPaths: boolean
   /**
+   * Has `export const revalidate` (number, in seconds, or `false` for
+   * never-revalidate). PR I — build-time ISR. The SSG plugin emits a
+   * `dist/_pyreon-revalidate.json` manifest mapping `{ path: revalidate }`
+   * which the deploy adapter (Vercel / Cloudflare / Netlify) consumes
+   * to wire platform-specific ISR rebuild-on-stale. The route generator
+   * does NOT inline `revalidate` onto the route record — it's a
+   * build-time-only concern that never reaches the runtime router.
+   */
+  hasRevalidate: boolean
+  /**
    * Raw text of the `export const meta = …` initializer, captured as a
    * literal expression. When present, the route generator inlines this
    * value directly into the generated routes module instead of importing
@@ -313,6 +323,22 @@ export interface RouteFileExports {
    * as a literal expression. Same inlining strategy as `metaLiteral`.
    */
   renderModeLiteral?: string
+  /**
+   * Raw text of the `export const revalidate = …` initializer (e.g.
+   * `'60'`, `'false'`, `'3600'`). Captured at scan time so the SSG
+   * plugin can read the value to emit the build-time ISR manifest
+   * WITHOUT loading the route module — which is critical because the
+   * manifest is emitted from the synthetic SSR build's outer plugin
+   * context, where evaluating route modules would re-trigger the
+   * recursive sub-build env-flag guard.
+   *
+   * Only set when the revalidate export is a top-level
+   * `export const revalidate = <numeric|boolean literal>` that passes
+   * `isPureLiteral`. Anything else (function calls, references to
+   * other declarations) leaves this undefined and the manifest falls
+   * back to omitting the entry.
+   */
+  revalidateLiteral?: string
 }
 
 /** Internal representation of a file-system route before conversion to RouteRecord. */
@@ -362,6 +388,37 @@ export interface Adapter {
   name: string
   /** Build the production server/output for this adapter. */
   build(options: AdapterBuildOptions): Promise<void>
+  /**
+   * Revalidate a prerendered path on the deploy platform's ISR layer
+   * (PR I — build-time ISR). Called by user code (webhook handlers,
+   * cron jobs, CMS triggers, etc.) to trigger a rebuild-on-stale for
+   * the named path. Optional — adapters without platform ISR support
+   * (static, node, bun) implement a no-op. Returns `{ regenerated:
+   * boolean }` so user code can branch on whether the platform actually
+   * accepted the revalidation request.
+   *
+   * Distinct from runtime ISR (`mode: 'isr'`, on-demand LRU caching in
+   * `@pyreon/zero/server`'s `createISRHandler`). Build-time ISR is
+   * static prerender + platform-driven rebuild-on-stale; runtime ISR is
+   * SSR-cached-with-TTL. They can coexist.
+   *
+   * Per-route `revalidate` metadata flows from `export const revalidate
+   * = 60` in route files into a `dist/_pyreon-revalidate.json` manifest
+   * the adapter reads at deploy time. Adapters use that manifest to
+   * configure platform ISR (Vercel `output/config.json`, Cloudflare
+   * Cache API rules, Netlify revalidation headers).
+   */
+  revalidate?(path: string): Promise<AdapterRevalidateResult>
+}
+
+/**
+ * Result of `Adapter.revalidate(path)`. `regenerated: false` means the
+ * adapter does not support platform ISR (no-op fallback) OR the
+ * platform rejected the request. Adapters that throw on platform-API
+ * failure should let it propagate so user code can handle the rejection.
+ */
+export interface AdapterRevalidateResult {
+  regenerated: boolean
 }
 
 export interface AdapterBuildOptions {

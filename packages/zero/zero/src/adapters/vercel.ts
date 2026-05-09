@@ -1,4 +1,4 @@
-import type { Adapter, AdapterBuildOptions } from '../types'
+import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
 import { validateBuildInputs } from './validate'
 
 /**
@@ -81,6 +81,44 @@ export default async function handler(req) {
       }
 
       await writeFile(join(vercelDir, 'config.json'), JSON.stringify(config, null, 2))
+    },
+    async revalidate(path: string): Promise<AdapterRevalidateResult> {
+      // Vercel ISR API — POST to a deployment-relative
+      // revalidation endpoint with a secret token. Reads
+      // `VERCEL_DEPLOYMENT_URL` (auto-injected by Vercel runtime) and
+      // `VERCEL_REVALIDATE_TOKEN` (user-set in dashboard) from env.
+      // Mirrors Next.js's `res.revalidate()` shape — a HEAD request
+      // with the path + token, Vercel rebuilds the page in the
+      // background and serves stale-while-revalidate to subsequent
+      // visitors until the rebuild lands.
+      //
+      // No `regenerated: true` until Vercel acks 200 — partial-purge
+      // behaviour (the platform queues the regenerate but doesn't
+      // confirm it landed) is documented as a "false-positive
+      // possible" caveat in the Adapter.revalidate JSDoc.
+      const deploymentUrl = process.env.VERCEL_DEPLOYMENT_URL ?? process.env.VERCEL_URL
+      const token = process.env.VERCEL_REVALIDATE_TOKEN
+      if (!deploymentUrl || !token) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(
+            '[Pyreon] vercelAdapter.revalidate() needs VERCEL_DEPLOYMENT_URL (or VERCEL_URL) AND VERCEL_REVALIDATE_TOKEN env vars. Set the token in Vercel project settings → Environment Variables.',
+          )
+        }
+        return { regenerated: false }
+      }
+      const protocol = deploymentUrl.startsWith('http') ? '' : 'https://'
+      const url = `${protocol}${deploymentUrl}/api/_pyreon-revalidate?path=${encodeURIComponent(path)}&secret=${encodeURIComponent(token)}`
+      try {
+        const res = await fetch(url, { method: 'POST' })
+        return { regenerated: res.ok }
+      } catch (err) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(
+            `[Pyreon] vercelAdapter.revalidate(${path}) failed: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        }
+        return { regenerated: false }
+      }
     },
   }
 }
