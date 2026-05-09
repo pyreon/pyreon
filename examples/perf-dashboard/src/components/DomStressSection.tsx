@@ -22,7 +22,7 @@
  * setMode call forces unmount+mount of DomAtScale so each journey's snapshot
  * window starts clean.
  */
-import { For, h, Show } from '@pyreon/core'
+import { For, Show } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
 import { signal } from '@pyreon/reactivity'
 import { themeSignal } from '../App'
