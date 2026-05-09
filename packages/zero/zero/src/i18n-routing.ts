@@ -1,19 +1,39 @@
 import { createContext } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import type { Plugin } from 'vite'
+import type { FileRoute } from './types'
 
 // ─── Localized routing ─────────────────────────────────────────────────────
 //
-// Adds locale-prefixed routes to Zero's file-system router:
-// - /about → /en/about, /de/about, /cs/about
-// - / → /en, /de, /cs (or default locale without prefix)
-// - Automatic locale detection from Accept-Language header
-// - Redirect to preferred locale
-// - hreflang link generation
+// Adds locale-prefixed routes to Zero's file-system router (PR H of the SSG
+// roadmap). Two complementary halves:
+//
+// 1. **Build-time route duplication** — `expandRoutesForLocales(routes, config)`
+//    fans every `FileRoute` into per-locale variants according to the
+//    configured `strategy`. Called from `vite-plugin.ts`'s virtual-routes
+//    load AND `ssg-plugin.ts`'s pre-render path expansion. Wired via the
+//    `i18n?: I18nRoutingConfig` field on `ZeroConfig`.
+//
+// 2. **Request-time locale detection** — the `i18nRouting()` Vite plugin
+//    below attaches a middleware that reads `Accept-Language` / cookies,
+//    sets the `localeSignal` for `useLocale()`, and redirects root
+//    requests to the detected locale. Independent from (1) — `i18nRouting()`
+//    only handles middleware; route duplication happens via
+//    `expandRoutesForLocales` regardless of whether this plugin is mounted.
+//
+// Examples (with `locales: ["en","de","cs"]`, `defaultLocale: "en"`):
+// - `prefix-except-default` (default): `/about` (en, unprefixed) +
+//   `/de/about`, `/cs/about`. Best for SEO-on-default-locale apps.
+// - `prefix`: `/en/about`, `/de/about`, `/cs/about`. Every URL
+//   self-identifies its locale.
 //
 // Usage:
-//   import { i18nRouting } from "@pyreon/zero"
-//   export default { plugins: [Pyreon], defaultLocale: "en" })] }
+//   // zero.config.ts
+//   import { defineConfig, i18nRouting } from "@pyreon/zero"
+//   export default defineConfig({
+//     i18n: { locales: ["en","de","cs"], defaultLocale: "en" },
+//     plugins: [i18nRouting({ locales: ["en","de","cs"], defaultLocale: "en" })],
+//   })
 
 export interface I18nRoutingConfig {
   /** Supported locales. e.g. ["en", "de", "cs"] */
@@ -109,6 +129,117 @@ export function buildLocalePath(
 }
 
 /**
+ * Fan a `FileRoute[]` into per-locale duplicates so the file-system router
+ * knows about every localized URL pattern at build time. PR H — was the
+ * missing half of the i18n story before this PR (the `i18nRouting()` Vite
+ * plugin only handled request-time locale detection; routes themselves
+ * were never duplicated, so static-host SSG outputs and SSR matching had
+ * no `/de/about` / `/cs/about` records to render against).
+ *
+ * Strategy semantics:
+ *
+ * - **`prefix-except-default`** (default): the default locale's routes
+ *   keep their original `urlPath` unchanged (`/about` stays `/about`); all
+ *   non-default locales get a prefix (`/de/about`, `/cs/about`). Best for
+ *   SEO-on-default-locale apps — search engines see canonical URLs at
+ *   `/about` while non-default speakers get explicit prefixes.
+ *
+ * - **`prefix`**: every locale gets its own prefix, including the default
+ *   (`/en/about`, `/de/about`, `/cs/about`). Root `/` becomes `/en` /
+ *   `/de` / `/cs`. Better when no locale is "primary" — every URL
+ *   self-identifies its locale.
+ *
+ * Layouts, error boundaries, loading components, and 404 pages duplicate
+ * along with their pages — same source file (same `filePath`), new
+ * locale-prefixed `urlPath` / `dirPath` / `depth`. The route tree built
+ * from the expanded array therefore has one fully-formed subtree per
+ * locale, so layout matching, dynamic params (`[id]` → `:id`), and
+ * catch-all routes (`[...slug]` → `:slug*`) all compose naturally with
+ * the locale prefix — no special cases.
+ *
+ * `getStaticPaths` composition (for SSG): each duplicate route inherits
+ * the same `exports.getStaticPaths`. The SSG plugin's `expandUrlPattern`
+ * step then expands `/blog/[slug]` × `[en, de]` × `getStaticPaths()
+ * → ['a', 'b']` into `/blog/a`, `/blog/b`, `/de/blog/a`, `/de/blog/b`
+ * (or all six prefixed forms under `'prefix'` strategy). Cardinality
+ * compounds, which is by design — `ssg.concurrency` (PR D) limits
+ * in-flight renders independent of route count.
+ *
+ * No-op when `config.locales` is empty or contains only the default
+ * locale (prefix-except-default strategy with no other locales) — returns
+ * the input array unchanged. Always return a fresh array on duplication
+ * so callers don't accidentally mutate cached input.
+ *
+ * Reference: the helper is called from `vite-plugin.ts`'s virtual route
+ * module load AND `ssg-plugin.ts`'s pre-render path expansion. Tested in
+ * isolation — duplication is a pure transform on FileRoute[] with no
+ * filesystem or network side effects.
+ */
+export function expandRoutesForLocales(
+  routes: FileRoute[],
+  config: I18nRoutingConfig,
+): FileRoute[] {
+  const strategy = config.strategy ?? 'prefix-except-default'
+  const { locales, defaultLocale } = config
+
+  // Cheap no-op guards. Empty `locales` would otherwise produce an empty
+  // route array, killing the app silently.
+  if (locales.length === 0) return routes
+  if (
+    strategy === 'prefix-except-default'
+    && locales.length === 1
+    && locales[0] === defaultLocale
+  ) {
+    return routes
+  }
+
+  const expanded: FileRoute[] = []
+  for (const route of routes) {
+    for (const locale of locales) {
+      // For prefix-except-default, the default locale uses the ORIGINAL
+      // urlPath / dirPath / depth — no prefix applied.
+      if (strategy === 'prefix-except-default' && locale === defaultLocale) {
+        expanded.push(route)
+        continue
+      }
+
+      const newUrlPath = prefixUrlPath(route.urlPath, locale)
+      // dirPath needs the locale segment too so the route-tree builder
+      // groups localized siblings correctly. Original empty `dirPath`
+      // (root-level routes) becomes the bare locale.
+      const newDirPath = route.dirPath === '' ? locale : `${locale}/${route.dirPath}`
+      // Recompute depth from the new urlPath. Layouts at the root (depth
+      // 0) become depth 1 under their locale prefix; nested routes shift
+      // up by 1.
+      const newDepth = newUrlPath === '/' ? 0 : newUrlPath.split('/').filter(Boolean).length
+
+      expanded.push({
+        ...route,
+        urlPath: newUrlPath,
+        dirPath: newDirPath,
+        depth: newDepth,
+      })
+    }
+  }
+  return expanded
+}
+
+/**
+ * Prepend `/locale` to a URL pattern. Handles three shapes:
+ *   `/`         → `/de`
+ *   `/about`    → `/de/about`
+ *   `/users/:id` / `/blog/:slug*` → `/de/users/:id` / `/de/blog/:slug*`
+ *
+ * Internal helper to `expandRoutesForLocales`; not exported because the
+ * public surface for path-building is `buildLocalePath` (which strips
+ * existing locale prefixes — different semantics).
+ */
+function prefixUrlPath(urlPath: string, locale: string): string {
+  if (urlPath === '/') return `/${locale}`
+  return `/${locale}${urlPath}`
+}
+
+/**
  * Create a LocaleContext for use in components and loaders.
  */
 export function createLocaleContext(
@@ -176,10 +307,12 @@ export function i18nRouting(config: I18nRoutingConfig): Plugin {
   return {
     name: 'pyreon-zero-i18n-routing',
 
-    // Route duplication is NOT handled here. The fs-router's `scanRouteFiles`
-    // consumes the i18n config to duplicate routes per locale at build time.
-    // This plugin only provides: (1) the server middleware for locale detection
-    // and (2) the runtime hooks (useLocale, setLocale) for client-side use.
+    // Route duplication is NOT handled here. It happens in
+    // `vite-plugin.ts` and `ssg-plugin.ts` via `expandRoutesForLocales`,
+    // gated by the `i18n` field on `ZeroConfig`. This plugin only
+    // provides: (1) the dev server middleware for locale detection
+    // (Accept-Language, cookies, root redirect) and (2) the runtime
+    // hooks (useLocale, setLocale) for client-side use.
     configResolved() {},
 
     configureServer(server) {

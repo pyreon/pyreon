@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
+import { parseFileRoutes } from '../fs-router'
 import {
   buildLocalePath,
   createLocaleContext,
   detectLocaleFromHeader,
+  expandRoutesForLocales,
   extractLocaleFromPath,
 } from '../i18n-routing'
+import type { FileRoute } from '../types'
 
 describe('detectLocaleFromHeader', () => {
   const locales = ['en', 'de', 'cs']
@@ -159,5 +162,219 @@ describe('i18nRouting plugin', () => {
     const { i18nRouting: routing } = await import('../i18n-routing')
     const plugin = routing({ locales: ['en', 'de'], defaultLocale: 'en' }) as any
     expect(plugin.name).toBe('pyreon-zero-i18n-routing')
+  })
+})
+
+// ─── PR H — expandRoutesForLocales ─────────────────────────────────────────
+
+describe('expandRoutesForLocales', () => {
+  // Compose with the real fs-router so test inputs match production
+  // FileRoute shape (urlPath, dirPath, depth, isLayout, etc.). Using
+  // mock objects would let a regression in `parseFileRoutes` semantics
+  // slip past these tests.
+  const parse = (files: string[]): FileRoute[] => parseFileRoutes(files)
+
+  describe('strategy: prefix-except-default', () => {
+    const config = {
+      locales: ['en', 'de', 'cs'],
+      defaultLocale: 'en',
+      strategy: 'prefix-except-default' as const,
+    }
+
+    it('keeps default-locale route unprefixed, prefixes others', () => {
+      const routes = parse(['about.tsx'])
+      const expanded = expandRoutesForLocales(routes, config)
+      const urlPaths = expanded.map((r) => r.urlPath).sort()
+      expect(urlPaths).toEqual(['/about', '/cs/about', '/de/about'])
+    })
+
+    it('preserves filePath across all locale variants (same source module)', () => {
+      const routes = parse(['about.tsx'])
+      const expanded = expandRoutesForLocales(routes, config)
+      // Every variant points at the same source file — the duplication
+      // is at the URL-pattern level, not the module level.
+      expect(expanded.every((r) => r.filePath === 'about.tsx')).toBe(true)
+    })
+
+    it('prefixes catch-all routes correctly', () => {
+      const routes = parse(['blog/[...slug].tsx'])
+      const expanded = expandRoutesForLocales(routes, config)
+      const urlPaths = expanded.map((r) => r.urlPath).sort()
+      // Default kept, others prefixed; the `:slug*` catch-all syntax
+      // composes naturally with the locale prefix.
+      expect(urlPaths).toEqual(['/blog/:slug*', '/cs/blog/:slug*', '/de/blog/:slug*'])
+      expect(expanded.every((r) => r.isCatchAll)).toBe(true)
+    })
+
+    it('prefixes dynamic-param routes correctly', () => {
+      const routes = parse(['users/[id].tsx'])
+      const expanded = expandRoutesForLocales(routes, config)
+      const urlPaths = expanded.map((r) => r.urlPath).sort()
+      expect(urlPaths).toEqual(['/cs/users/:id', '/de/users/:id', '/users/:id'])
+    })
+
+    it('prefixes root index correctly', () => {
+      const routes = parse(['index.tsx'])
+      const expanded = expandRoutesForLocales(routes, config)
+      const urlPaths = expanded.map((r) => r.urlPath).sort()
+      // Root `/` stays for default; `/de` and `/cs` (no trailing slash)
+      // for non-default — matches buildLocalePath's behaviour.
+      expect(urlPaths).toEqual(['/', '/cs', '/de'])
+    })
+
+    it('duplicates layouts so each locale subtree wraps correctly', () => {
+      // _layout at dashboard scope wraps everything under /dashboard.
+      // After expansion we need a layout at `/de/dashboard` too,
+      // otherwise /de/dashboard/* loses its layout. The duplicated
+      // FileRoute carries the same filePath (same component module) —
+      // only the urlPath/dirPath/depth shift.
+      const routes = parse(['dashboard/_layout.tsx', 'dashboard/index.tsx'])
+      const expanded = expandRoutesForLocales(routes, config)
+      const layouts = expanded.filter((r) => r.isLayout)
+      const layoutPaths = layouts.map((r) => r.urlPath).sort()
+      expect(layoutPaths).toEqual(['/cs/dashboard', '/dashboard', '/de/dashboard'])
+      expect(layouts.every((r) => r.filePath === 'dashboard/_layout.tsx')).toBe(true)
+    })
+
+    it('inherits exports (getStaticPaths) onto all locale variants', () => {
+      // getStaticPaths composition is the SSG composition contract:
+      // each locale variant of `/blog/[slug]` carries the SAME
+      // enumerator, so the SSG plugin's expandUrlPattern step produces
+      // `/blog/x` × locales × slugs concrete URLs.
+      const routes = parse(['blog/[slug].tsx']).map((r) => ({
+        ...r,
+        exports: {
+          hasDefault: true,
+          hasLoader: false,
+          hasGuard: false,
+          hasMeta: false,
+          hasMiddleware: false,
+          hasGetStaticPaths: true,
+        },
+      }))
+      const expanded = expandRoutesForLocales(routes, config)
+      // Every variant's `exports` object should carry hasGetStaticPaths.
+      // (The SSG plugin's registry separately keys by urlPath; what
+      // matters here is the FileRoute carries the export-detection
+      // through the duplication.)
+      expect(expanded.every((r) => r.exports?.hasGetStaticPaths === true)).toBe(true)
+    })
+
+    it('recomputes depth from the new urlPath', () => {
+      const routes = parse(['about.tsx']) // depth 1
+      const expanded = expandRoutesForLocales(routes, config)
+      // /about → depth 1, /de/about → depth 2, /cs/about → depth 2.
+      const byPath = Object.fromEntries(expanded.map((r) => [r.urlPath, r.depth]))
+      expect(byPath['/about']).toBe(1)
+      expect(byPath['/de/about']).toBe(2)
+      expect(byPath['/cs/about']).toBe(2)
+    })
+  })
+
+  describe('strategy: prefix', () => {
+    const config = {
+      locales: ['en', 'de', 'cs'],
+      defaultLocale: 'en',
+      strategy: 'prefix' as const,
+    }
+
+    it('prefixes EVERY locale including the default', () => {
+      const routes = parse(['about.tsx'])
+      const expanded = expandRoutesForLocales(routes, config)
+      const urlPaths = expanded.map((r) => r.urlPath).sort()
+      expect(urlPaths).toEqual(['/cs/about', '/de/about', '/en/about'])
+    })
+
+    it('prefixes root-index across all locales', () => {
+      const routes = parse(['index.tsx'])
+      const expanded = expandRoutesForLocales(routes, config)
+      const urlPaths = expanded.map((r) => r.urlPath).sort()
+      expect(urlPaths).toEqual(['/cs', '/de', '/en'])
+    })
+
+    it('does NOT keep an unprefixed default-locale variant', () => {
+      // Under prefix-strategy, `/about` (no prefix) does not exist —
+      // the user's URLs all self-identify their locale.
+      const routes = parse(['about.tsx'])
+      const expanded = expandRoutesForLocales(routes, config)
+      expect(expanded.find((r) => r.urlPath === '/about')).toBeUndefined()
+    })
+  })
+
+  describe('no-op cases', () => {
+    it('returns input unchanged when locales is empty', () => {
+      const routes = parse(['about.tsx'])
+      const expanded = expandRoutesForLocales(routes, {
+        locales: [],
+        defaultLocale: 'en',
+      })
+      expect(expanded).toBe(routes)
+    })
+
+    it('returns input unchanged when only defaultLocale + prefix-except-default', () => {
+      // [en] + prefix-except-default = no prefixing happens (en is
+      // unprefixed under that strategy). Pure no-op — short-circuit
+      // returns the input identity.
+      const routes = parse(['about.tsx'])
+      const expanded = expandRoutesForLocales(routes, {
+        locales: ['en'],
+        defaultLocale: 'en',
+        strategy: 'prefix-except-default',
+      })
+      expect(expanded).toBe(routes)
+    })
+
+    it('still emits a single prefixed variant under prefix strategy with locales: [en]', () => {
+      // [en] + prefix = one /en/about route, not the no-op shape.
+      const routes = parse(['about.tsx'])
+      const expanded = expandRoutesForLocales(routes, {
+        locales: ['en'],
+        defaultLocale: 'en',
+        strategy: 'prefix',
+      })
+      expect(expanded.map((r) => r.urlPath)).toEqual(['/en/about'])
+    })
+  })
+
+  describe('default strategy fallback', () => {
+    it('uses prefix-except-default when strategy is omitted', () => {
+      const routes = parse(['about.tsx'])
+      const expanded = expandRoutesForLocales(routes, {
+        locales: ['en', 'de'],
+        defaultLocale: 'en',
+      })
+      const urlPaths = expanded.map((r) => r.urlPath).sort()
+      expect(urlPaths).toEqual(['/about', '/de/about'])
+    })
+  })
+
+  describe('multiple routes + multi-segment paths', () => {
+    it('expands an entire route tree consistently', () => {
+      const routes = parse([
+        'index.tsx',
+        'about.tsx',
+        'users/[id].tsx',
+        'blog/_layout.tsx',
+        'blog/[...slug].tsx',
+      ])
+      const expanded = expandRoutesForLocales(routes, {
+        locales: ['en', 'de'],
+        defaultLocale: 'en',
+        strategy: 'prefix-except-default',
+      })
+      const urlPaths = expanded.map((r) => r.urlPath).sort()
+      expect(urlPaths).toEqual([
+        '/',
+        '/about',
+        '/blog',
+        '/blog/:slug*',
+        '/de',
+        '/de/about',
+        '/de/blog',
+        '/de/blog/:slug*',
+        '/de/users/:id',
+        '/users/:id',
+      ])
+    })
   })
 })
