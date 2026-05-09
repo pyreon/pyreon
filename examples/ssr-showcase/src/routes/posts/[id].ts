@@ -40,6 +40,16 @@ export async function loader({ params }: { params: Record<string, string> }) {
   return POSTS.find((p) => p.id === id) ?? null
 }
 
+// PR H follow-up — enumerates concrete post IDs for SSG. Combined with
+// `zero({ i18n })`, the SSG plugin produces the cross-product:
+// 3 IDs × N locales paths. Lets the verify-modes ssg-i18n cell assert
+// dynamic-route × locale composition (the unit test in
+// i18n-routing.test.ts covers it at the function level; this gates it
+// at the dist-filesystem level).
+export function getStaticPaths() {
+  return POSTS.map((p) => ({ params: { id: String(p.id) } }))
+}
+
 export const meta = {
   title: 'Post — SSR Showcase',
 }

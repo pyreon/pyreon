@@ -348,6 +348,72 @@ describe('expandRoutesForLocales', () => {
     })
   })
 
+  describe('root-layout skip under prefix-except-default (PR H follow-up)', () => {
+    // Bisect-verified: removing the `route.isLayout && route.urlPath === '/'`
+    // skip in `expandRoutesForLocales` causes the e2e gate at
+    // /de/about to render with TWO navbars (`/_layout` and
+    // `/de/_layout` BOTH match the path), and these unit specs to
+    // fail with `expect 1 to be 3` (root layout array length).
+    it('keeps en root layout, skips /de and /cs duplicates', () => {
+      const routes = parse(['_layout.tsx', 'about.tsx'])
+      const expanded = expandRoutesForLocales(routes, {
+        locales: ['en', 'de', 'cs'],
+        defaultLocale: 'en',
+        strategy: 'prefix-except-default',
+      })
+      const layouts = expanded.filter((r) => r.isLayout)
+      // Only ONE root layout — the en/default — survives. The de and
+      // cs root-layout duplicates are skipped because the unprefixed
+      // root layout already wraps locale-prefixed children via the
+      // route tree's hierarchical matching.
+      expect(layouts.length).toBe(1)
+      expect(layouts[0]?.urlPath).toBe('/')
+      // Pages still duplicate normally.
+      const pages = expanded.filter((r) => !r.isLayout)
+      const pagePaths = pages.map((r) => r.urlPath).sort()
+      expect(pagePaths).toEqual(['/about', '/cs/about', '/de/about'])
+    })
+
+    it('still duplicates non-root layouts (skip is root-only)', () => {
+      // Companion to the skip rule — layouts at depth > 0 like
+      // /dashboard/_layout DO need duplication because the
+      // unprefixed /dashboard/_layout doesn't match
+      // /de/dashboard/users (different path prefix).
+      const routes = parse(['_layout.tsx', 'dashboard/_layout.tsx'])
+      const expanded = expandRoutesForLocales(routes, {
+        locales: ['en', 'de'],
+        defaultLocale: 'en',
+        strategy: 'prefix-except-default',
+      })
+      const layoutPaths = expanded
+        .filter((r) => r.isLayout)
+        .map((r) => r.urlPath)
+        .sort()
+      // / (en root, kept) + /dashboard (en, kept) + /de/dashboard
+      // (duplicated). NO /de root layout (skipped by the new rule).
+      expect(layoutPaths).toEqual(['/', '/dashboard', '/de/dashboard'])
+    })
+
+    it('under `prefix` strategy, root layouts ARE duplicated (no unprefixed default exists)', () => {
+      // Inverse of the skip rule. `prefix` makes EVERY locale
+      // prefixed including the default, so there's no unprefixed
+      // root to inherit from — each locale needs its own root layout
+      // or the locale subtree mounts pages without any layout wrap.
+      const routes = parse(['_layout.tsx'])
+      const expanded = expandRoutesForLocales(routes, {
+        locales: ['en', 'de', 'cs'],
+        defaultLocale: 'en',
+        strategy: 'prefix',
+      })
+      const layoutPaths = expanded
+        .filter((r) => r.isLayout)
+        .map((r) => r.urlPath)
+        .sort()
+      // Every locale gets a root layout under prefix strategy.
+      expect(layoutPaths).toEqual(['/cs', '/de', '/en'])
+    })
+  })
+
   describe('multiple routes + multi-segment paths', () => {
     it('expands an entire route tree consistently', () => {
       const routes = parse([

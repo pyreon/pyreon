@@ -429,6 +429,27 @@ const MATRIX: Cell[] = [
       // prefix-except-default — `/en/about` would be a duplicate
       // canonical URL split across two paths, hurting SEO.
       assertFileDoesNotExist(join(dist, 'en', 'about', 'index.html'))
+
+      // PR H follow-up — dynamic-route × locale CROSS-PRODUCT gate.
+      // posts/[id].ts exports `getStaticPaths()` returning 3 ids
+      // (1, 2, 3). With 3 locales (en + de + cs) under
+      // prefix-except-default, the SSG plugin must produce 9 concrete
+      // post HTML files: 3 unprefixed for `en`, 3 under `/de/posts/`,
+      // 3 under `/cs/posts/`. Locks in the contract at the dist
+      // filesystem level — the unit test in i18n-routing.test.ts
+      // covers `exports.getStaticPaths` inheritance at the function
+      // level, this gates it end-to-end through the build. A
+      // regression that truncated the cross-product to "first locale
+      // only" would fail here loudly.
+      assertFileExists(join(dist, 'posts', '1', 'index.html'))
+      assertFileExists(join(dist, 'posts', '2', 'index.html'))
+      assertFileExists(join(dist, 'posts', '3', 'index.html'))
+      assertFileExists(join(dist, 'de', 'posts', '1', 'index.html'))
+      assertFileExists(join(dist, 'de', 'posts', '2', 'index.html'))
+      assertFileExists(join(dist, 'de', 'posts', '3', 'index.html'))
+      assertFileExists(join(dist, 'cs', 'posts', '1', 'index.html'))
+      assertFileExists(join(dist, 'cs', 'posts', '2', 'index.html'))
+      assertFileExists(join(dist, 'cs', 'posts', '3', 'index.html'))
     },
   },
 

@@ -203,6 +203,33 @@ export function expandRoutesForLocales(
         continue
       }
 
+      // PR H follow-up: skip duplication of ROOT-level layouts under
+      // `prefix-except-default`. The unprefixed default-locale root
+      // `_layout.tsx` (urlPath `/`) is the parent of the matched chain
+      // for EVERY path, including locale-prefixed ones — the route
+      // tree's hierarchical matching wraps `/de/about` under `/_layout`
+      // automatically. Producing a duplicate `/de/_layout` would cause
+      // the matcher to nest BOTH layouts (`/_layout` → `/de/_layout` →
+      // page), mounting the layout component twice and rendering two
+      // navbars / two PyreonUI providers.
+      //
+      // Non-root layouts (e.g. `/dashboard/_layout` at urlPath
+      // `/dashboard`) MUST still be duplicated — `/de/dashboard/users`
+      // is NOT a child of the unprefixed `/dashboard/_layout` (the
+      // path patterns don't match), so the de-prefixed dashboard needs
+      // its own `_layout`.
+      //
+      // Under `prefix` strategy this skip does NOT apply: there is no
+      // unprefixed default to inherit from, so every locale needs its
+      // own root layout (`/en/_layout`, `/de/_layout`, …).
+      if (
+        strategy === 'prefix-except-default'
+        && route.isLayout
+        && route.urlPath === '/'
+      ) {
+        continue
+      }
+
       const newUrlPath = prefixUrlPath(route.urlPath, locale)
       // dirPath needs the locale segment too so the route-tree builder
       // groups localized siblings correctly. Original empty `dirPath`
