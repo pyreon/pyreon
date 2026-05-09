@@ -63,7 +63,17 @@ const FILES_UNDER_TEST: { layer: string; file: string; counterNames: string[] }[
   {
     layer: 'runtime-dom-template',
     file: 'packages/core/runtime-dom/src/template.ts',
-    counterNames: ['runtime.tpl'],
+    counterNames: ['runtime.tpl', 'runtime.bindText', 'runtime.bindDirect'],
+  },
+  {
+    layer: 'runtime-dom-props',
+    file: 'packages/core/runtime-dom/src/props.ts',
+    counterNames: ['runtime.applyProp', 'runtime.applyEvent'],
+  },
+  {
+    layer: 'runtime-dom-nodes',
+    file: 'packages/core/runtime-dom/src/nodes.ts',
+    counterNames: ['runtime.mountFor.lisOps', 'runtime.mountReactive', 'runtime.cleanup'],
   },
   {
     layer: 'router',

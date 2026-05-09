@@ -71,6 +71,7 @@ export function _bindText(
   source: { _v?: unknown; direct?: (fn: () => void) => () => void },
   node: Text,
 ): () => void {
+  if (__DEV__) _countSink.__pyreon_count__?.('runtime.bindText')
   // Fast path: source has .direct() (signal or computed)
   if (source.direct) {
     const textUpdate = () => {
@@ -112,6 +113,7 @@ export function _bindDirect(
   source: { _v?: unknown; direct?: (fn: () => void) => () => void },
   updater: (value: unknown) => void,
 ): () => void {
+  if (__DEV__) _countSink.__pyreon_count__?.('runtime.bindDirect')
   // Fast path: source has .direct() (signal or computed)
   if (source.direct) {
     updater(source._v)

@@ -655,4 +655,121 @@ export const journeys: Record<string, (page: PageLike) => Promise<void>> = {
       w.__pyreon_perf_query?.scanDrive(10000)
     })
   },
+
+  // ─── @pyreon/runtime-dom stress journeys (DOM rendering foundation) ────
+  //
+  // Five journeys exercising runtime-dom hot paths at production-stress
+  // scale via window.__pyreon_perf_dom helpers. Each journey isolates a
+  // counter signature so a regression bisects cleanly.
+  //
+  // Counter signatures predicted:
+  //   - domMount-1000              → ≈1000 mountChild, applyProp ≈ N×1000,
+  //                                  bindText proportional to reactive text
+  //   - domShuffleLis-1000         → mountFor.lisOps non-zero (full reversal
+  //                                  worst case for LIS at n=1000)
+  //   - domAppend-10k              → mountFor.lisOps ≈ 0 (extend tier of the
+  //                                  three-tier fast path), mountChild linear
+  //   - domConditionalToggle-1000  → mountReactive ≈ 1000 + cleanup ≈ 4000
+  //   - domEventAttach-1000        → applyEvent ≈ 1000, applyProp ≈ N×1000
+  //                                  (decoupling proof — applyEvent is
+  //                                  strict subset of applyProp)
+
+  /**
+   * **domMount-1000** — mount 1000 elements with mixed props (class, style,
+   * data-*, reactive text). Pure mount-N baseline for the rendering layer.
+   */
+  'domMount-1000': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_dom?: { clearAll: () => void; setMount: (n: number) => void }
+      }
+      w.__pyreon_perf_dom?.clearAll()
+      w.__pyreon_perf_dom?.setMount(1000)
+    })
+    await page.waitForSelector('[data-testid="dom-stress-ready"][data-mode="mount"]')
+  },
+
+  /**
+   * **domShuffleLis-1000** — 1000 keyed items, then ONE arr.reverse() on the
+   * items signal. Reversal degenerates LIS length to 1 → maximum probe count
+   * for n=1000 (~5000+ binary-search probes). Pin the worst-case
+   * mountFor.lisOps signal.
+   */
+  'domShuffleLis-1000': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_dom?: { clearAll: () => void; setShuffle: (n: number) => void }
+      }
+      w.__pyreon_perf_dom?.clearAll()
+      w.__pyreon_perf_dom?.setShuffle(1000)
+    })
+    await page.waitForSelector('[data-testid="dom-stress-ready"][data-mode="shuffle"]')
+    await page.evaluate(() => {
+      const w = window as unknown as { __pyreon_perf_dom?: { shuffleDrive: () => void } }
+      w.__pyreon_perf_dom?.shuffleDrive()
+    })
+  },
+
+  /**
+   * **domAppend-10k** — start at 0, then push 10 batches of 1000 items
+   * monotonically. Three-tier fast path's "extend" tier — `mountFor.lisOps`
+   * MUST stay 0. If it becomes non-zero, the append fast path regressed.
+   */
+  'domAppend-10k': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_dom?: { clearAll: () => void; setAppend: (start: number) => void }
+      }
+      w.__pyreon_perf_dom?.clearAll()
+      w.__pyreon_perf_dom?.setAppend(0)
+    })
+    await page.waitForSelector('[data-testid="dom-stress-ready"][data-mode="append"]')
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_dom?: { appendDrive: (batches: number, perBatch: number) => void }
+      }
+      w.__pyreon_perf_dom?.appendDrive(10, 1000)
+    })
+  },
+
+  /**
+   * **domConditionalToggle-1000** — 1000 `<Show when={signal}>` items.
+   * `toggleDrive(2)` flips ALL signals true→false→true→false (2 cycles ×
+   * 2 directions). Counter signature: mountReactive ≈ 1000 at mount,
+   * cleanup ≈ 4000 (off-cycles re-mount the subtree). Catches signal-driven
+   * mount-churn regressions (the bug shape PR #505 fixed at root).
+   */
+  'domConditionalToggle-1000': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_dom?: { clearAll: () => void; setToggle: (n: number) => void }
+      }
+      w.__pyreon_perf_dom?.clearAll()
+      w.__pyreon_perf_dom?.setToggle(1000)
+    })
+    await page.waitForSelector('[data-testid="dom-stress-ready"][data-mode="toggle"]')
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_dom?: { toggleDrive: (cycles: number) => void }
+      }
+      w.__pyreon_perf_dom?.toggleDrive(2)
+    })
+  },
+
+  /**
+   * **domEventAttach-1000** — 1000 buttons each with `onClick`. Counter
+   * signature: applyEvent ≈ 1000 (subset of applyProp ≈ N×1000). Decoupling
+   * test — proves applyProp counts ALL props (including events) and
+   * applyEvent is a strict subset, not disjoint.
+   */
+  'domEventAttach-1000': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_dom?: { clearAll: () => void; setEvents: (n: number) => void }
+      }
+      w.__pyreon_perf_dom?.clearAll()
+      w.__pyreon_perf_dom?.setEvents(1000)
+    })
+    await page.waitForSelector('[data-testid="dom-stress-ready"][data-mode="events"]')
+  },
 }

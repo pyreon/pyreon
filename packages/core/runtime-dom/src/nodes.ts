@@ -37,6 +37,11 @@ function clearBetween(start: Node, end: Node): void {
   // frag goes out of scope → nodes are GC-eligible
 }
 
+/** Emit `runtime.cleanup` once per registered mount cleanup that actually runs. */
+function _emitCleanup(): void {
+  if (__DEV__) _countSink.__pyreon_count__?.('runtime.cleanup')
+}
+
 /**
  * Mount a reactive node whose content changes over time.
  *
@@ -49,6 +54,7 @@ export function mountReactive(
   anchor: Node | null,
   mount: (child: VNodeChild, p: Node, a: Node | null) => Cleanup,
 ): Cleanup {
+  if (__DEV__) _countSink.__pyreon_count__?.('runtime.mountReactive')
   const marker = document.createComment('pyreon')
   parent.insertBefore(marker, anchor)
 
@@ -61,6 +67,9 @@ export function mountReactive(
   let currentCleanup: Cleanup = () => {
     /* noop */
   }
+  // hasCleanup gates `runtime.cleanup` so we don't count the placeholder
+  // noop on the first effect run as a "cleanup invocation".
+  let hasCleanup = false
   let generation = 0
 
   const e = effect(() => {
@@ -68,10 +77,12 @@ export function mountReactive(
     // Run cleanup outside tracking context — cleanup may write to signals
     // (e.g. onUnmount hooks), and those writes must not accidentally register
     // as dependencies of this effect, which would cause infinite recursion.
+    if (hasCleanup) _emitCleanup()
     runUntracked(() => currentCleanup())
     currentCleanup = () => {
       /* noop */
     }
+    hasCleanup = false
     const value = accessor()
     // Note: typeof value === 'function' is a VALID return from a reactive
     // accessor — it represents a nested `() => VNodeChild` accessor (the
@@ -98,7 +109,9 @@ export function mountReactive(
       // set by the re-entrant run.
       if (myGen === generation) {
         currentCleanup = cleanup
+        hasCleanup = true
       } else {
+        _emitCleanup()
         cleanup()
       }
     }
@@ -106,6 +119,7 @@ export function mountReactive(
 
   return () => {
     e.dispose()
+    if (hasCleanup) _emitCleanup()
     currentCleanup()
     marker.parentNode?.removeChild(marker)
   }
@@ -270,6 +284,7 @@ export function mountKeyedList(
   const removeStaleEntries = (newKeySet: Set<string | number>) => {
     for (const [key, entry] of cache) {
       if (newKeySet.has(key)) continue
+      _emitCleanup()
       entry.cleanup()
       entry.anchor.parentNode?.removeChild(entry.anchor)
       cache.delete(key)
@@ -297,7 +312,10 @@ export function mountKeyedList(
     // mounts via mountVNode must not re-track on this effect's run.
     runUntracked(() => {
       if (n === 0 && cache.size > 0) {
-        for (const entry of cache.values()) entry.cleanup()
+        for (const entry of cache.values()) {
+          _emitCleanup()
+          entry.cleanup()
+        }
         cache.clear()
         curPos.clear()
         currentKeyOrder = []
@@ -325,6 +343,7 @@ export function mountKeyedList(
   return () => {
     e.dispose()
     for (const entry of cache.values()) {
+      _emitCleanup()
       entry.cleanup()
       entry.anchor.parentNode?.removeChild(entry.anchor)
     }
@@ -605,7 +624,12 @@ export function mountFor<T>(
     liveParent: Node,
   ) => {
     if (cleanupCount > 0) {
-      for (const entry of cache.values()) if (entry.cleanup) entry.cleanup()
+      for (const entry of cache.values()) {
+        if (entry.cleanup) {
+          _emitCleanup()
+          entry.cleanup()
+        }
+      }
     }
     cache = new Map()
     cleanupCount = 0
@@ -637,6 +661,7 @@ export function mountFor<T>(
     for (const [key, entry] of cache) {
       if (newKeySet.has(key)) continue
       if (entry.cleanup) {
+        _emitCleanup()
         entry.cleanup()
         cleanupCount--
       }
@@ -663,7 +688,12 @@ export function mountFor<T>(
   const handleFastClear = (liveParent: Node) => {
     if (cache.size === 0) return
     if (cleanupCount > 0) {
-      for (const entry of cache.values()) if (entry.cleanup) entry.cleanup()
+      for (const entry of cache.values()) {
+        if (entry.cleanup) {
+          _emitCleanup()
+          entry.cleanup()
+        }
+      }
     }
     const pp = liveParent.parentNode
     if (pp && liveParent.firstChild === startMarker && liveParent.lastChild === tailMarker) {
@@ -753,7 +783,10 @@ export function mountFor<T>(
   return () => {
     e.dispose()
     for (const entry of cache.values()) {
-      if (cleanupCount > 0 && entry.cleanup) entry.cleanup()
+      if (cleanupCount > 0 && entry.cleanup) {
+        _emitCleanup()
+        entry.cleanup()
+      }
       entry.anchor.parentNode?.removeChild(entry.anchor)
     }
     cache = new Map()
