@@ -50,6 +50,14 @@ export function getStaticPaths() {
   return POSTS.map((p) => ({ params: { id: String(p.id) } }))
 }
 
+// PR I — build-time ISR. SSG emits each `/posts/<id>/index.html`
+// AND a `dist/_pyreon-revalidate.json` manifest entry mapping every
+// concrete post path → 60 (seconds). At deploy time the configured
+// adapter (vercel/cloudflare/netlify) wires platform ISR — Vercel
+// rebuilds the page in the background after 60s of staleness;
+// Cloudflare purges the edge cache; Netlify queues a build hook.
+export const revalidate = 60
+
 export const meta = {
   title: 'Post — SSR Showcase',
 }

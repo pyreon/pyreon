@@ -230,3 +230,239 @@ describe('static adapter build', () => {
     await cleanup()
   })
 })
+
+// ─── PR I — Adapter.revalidate ──────────────────────────────────────────────
+//
+// Build-time ISR — `Adapter.revalidate(path)` triggers platform-specific
+// rebuild-on-stale. Per-platform tests assert: (a) the no-op fallback
+// when env vars are missing returns `regenerated: false`, (b) the
+// happy-path issues the right HTTP request to the platform's
+// revalidation endpoint and surfaces `regenerated: res.ok`, (c) errors
+// don't propagate (the adapter promises a structural return type).
+//
+// Test fixture: stub `globalThis.fetch` so we can assert the request
+// URL/method/headers without hitting real Vercel/Cloudflare/Netlify
+// APIs. Restore the original after each test (vitest's `afterEach`
+// implicit when using `it` order is fine for this size).
+
+interface FetchCall {
+  url: string
+  init?: RequestInit
+}
+
+function withStubFetch<T>(
+  body: () => Promise<T> | T,
+  responder: (call: FetchCall) => Response | Promise<Response>,
+): Promise<{ result: T; calls: FetchCall[] }> {
+  const calls: FetchCall[] = []
+  const realFetch = globalThis.fetch
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+    const call: FetchCall = init !== undefined ? { url, init } : { url }
+    calls.push(call)
+    return responder(call)
+  }) as typeof fetch
+  return Promise.resolve(body()).then((result) => {
+    globalThis.fetch = realFetch
+    return { result, calls }
+  })
+}
+
+describe('staticAdapter.revalidate', () => {
+  it('returns regenerated:false (no platform-driven ISR for static hosts)', async () => {
+    const adapter = staticAdapter()
+    const result = await adapter.revalidate?.('/about')
+    expect(result).toEqual({ regenerated: false })
+  })
+})
+
+describe('nodeAdapter.revalidate', () => {
+  it('returns regenerated:false (no platform-driven ISR for self-hosted Node)', async () => {
+    const adapter = nodeAdapter()
+    const result = await adapter.revalidate?.('/posts/1')
+    expect(result).toEqual({ regenerated: false })
+  })
+})
+
+describe('bunAdapter.revalidate', () => {
+  it('returns regenerated:false (no platform-driven ISR for self-hosted Bun)', async () => {
+    const adapter = bunAdapter()
+    const result = await adapter.revalidate?.('/api/health')
+    expect(result).toEqual({ regenerated: false })
+  })
+})
+
+describe('vercelAdapter.revalidate', () => {
+  it('returns regenerated:false when VERCEL_DEPLOYMENT_URL/VERCEL_REVALIDATE_TOKEN are missing', async () => {
+    // Wipe env vars to simulate no-credential setup.
+    const before = {
+      url: process.env.VERCEL_DEPLOYMENT_URL,
+      vurl: process.env.VERCEL_URL,
+      token: process.env.VERCEL_REVALIDATE_TOKEN,
+    }
+    delete process.env.VERCEL_DEPLOYMENT_URL
+    delete process.env.VERCEL_URL
+    delete process.env.VERCEL_REVALIDATE_TOKEN
+    try {
+      const adapter = vercelAdapter()
+      const result = await adapter.revalidate?.('/posts/1')
+      expect(result).toEqual({ regenerated: false })
+    } finally {
+      if (before.url) process.env.VERCEL_DEPLOYMENT_URL = before.url
+      if (before.vurl) process.env.VERCEL_URL = before.vurl
+      if (before.token) process.env.VERCEL_REVALIDATE_TOKEN = before.token
+    }
+  })
+
+  it('issues POST to /api/_pyreon-revalidate when env vars are set, returns regenerated:true on 200', async () => {
+    const before = {
+      url: process.env.VERCEL_DEPLOYMENT_URL,
+      token: process.env.VERCEL_REVALIDATE_TOKEN,
+    }
+    process.env.VERCEL_DEPLOYMENT_URL = 'my-app.vercel.app'
+    process.env.VERCEL_REVALIDATE_TOKEN = 'secret-token-123'
+    try {
+      const adapter = vercelAdapter()
+      const { result, calls } = await withStubFetch(
+        () => adapter.revalidate!('/posts/42'),
+        () => new Response('OK', { status: 200 }),
+      )
+      expect(result).toEqual({ regenerated: true })
+      expect(calls).toHaveLength(1)
+      // URL must (a) include https:// auto-prefix, (b) URL-encode the
+      // path arg, (c) include the secret token. Asserting all three in
+      // one URL match keeps the assertion bisect-load-bearing for
+      // every part of the URL builder.
+      expect(calls[0]?.url).toBe(
+        'https://my-app.vercel.app/api/_pyreon-revalidate?path=%2Fposts%2F42&secret=secret-token-123',
+      )
+      expect(calls[0]?.init?.method).toBe('POST')
+    } finally {
+      if (before.url !== undefined) process.env.VERCEL_DEPLOYMENT_URL = before.url
+      else delete process.env.VERCEL_DEPLOYMENT_URL
+      if (before.token !== undefined) process.env.VERCEL_REVALIDATE_TOKEN = before.token
+      else delete process.env.VERCEL_REVALIDATE_TOKEN
+    }
+  })
+
+  it('returns regenerated:false on platform 4xx/5xx (Vercel rejected)', async () => {
+    const before = {
+      url: process.env.VERCEL_DEPLOYMENT_URL,
+      token: process.env.VERCEL_REVALIDATE_TOKEN,
+    }
+    process.env.VERCEL_DEPLOYMENT_URL = 'my-app.vercel.app'
+    process.env.VERCEL_REVALIDATE_TOKEN = 'wrong-token'
+    try {
+      const adapter = vercelAdapter()
+      const { result } = await withStubFetch(
+        () => adapter.revalidate!('/posts/42'),
+        () => new Response('Forbidden', { status: 403 }),
+      )
+      expect(result).toEqual({ regenerated: false })
+    } finally {
+      if (before.url !== undefined) process.env.VERCEL_DEPLOYMENT_URL = before.url
+      else delete process.env.VERCEL_DEPLOYMENT_URL
+      if (before.token !== undefined) process.env.VERCEL_REVALIDATE_TOKEN = before.token
+      else delete process.env.VERCEL_REVALIDATE_TOKEN
+    }
+  })
+})
+
+describe('cloudflareAdapter.revalidate', () => {
+  it('returns regenerated:false when env vars are missing', async () => {
+    const before = {
+      zone: process.env.CLOUDFLARE_ZONE_ID,
+      token: process.env.CLOUDFLARE_API_TOKEN,
+      site: process.env.CLOUDFLARE_SITE_URL,
+    }
+    delete process.env.CLOUDFLARE_ZONE_ID
+    delete process.env.CLOUDFLARE_API_TOKEN
+    delete process.env.CLOUDFLARE_SITE_URL
+    try {
+      const adapter = cloudflareAdapter()
+      const result = await adapter.revalidate?.('/about')
+      expect(result).toEqual({ regenerated: false })
+    } finally {
+      if (before.zone) process.env.CLOUDFLARE_ZONE_ID = before.zone
+      if (before.token) process.env.CLOUDFLARE_API_TOKEN = before.token
+      if (before.site) process.env.CLOUDFLARE_SITE_URL = before.site
+    }
+  })
+
+  it('POSTs to Cloudflare zone purge_cache endpoint with the full URL', async () => {
+    const before = {
+      zone: process.env.CLOUDFLARE_ZONE_ID,
+      token: process.env.CLOUDFLARE_API_TOKEN,
+      site: process.env.CLOUDFLARE_SITE_URL,
+    }
+    process.env.CLOUDFLARE_ZONE_ID = 'zone-abc-123'
+    process.env.CLOUDFLARE_API_TOKEN = 'cf-token-xyz'
+    process.env.CLOUDFLARE_SITE_URL = 'https://my-site.example.com'
+    try {
+      const adapter = cloudflareAdapter()
+      const { result, calls } = await withStubFetch(
+        () => adapter.revalidate!('/blog/welcome'),
+        () => new Response('{"success":true}', { status: 200 }),
+      )
+      expect(result).toEqual({ regenerated: true })
+      expect(calls).toHaveLength(1)
+      // URL must hit the zone-specific purge_cache endpoint.
+      expect(calls[0]?.url).toBe(
+        'https://api.cloudflare.com/client/v4/zones/zone-abc-123/purge_cache',
+      )
+      expect(calls[0]?.init?.method).toBe('POST')
+      const headers = calls[0]?.init?.headers as Record<string, string>
+      expect(headers?.Authorization).toBe('Bearer cf-token-xyz')
+      expect(headers?.['Content-Type']).toBe('application/json')
+      // Body must include the full URL (origin + path) — Cloudflare's
+      // purge_cache API requires absolute URLs.
+      const body = JSON.parse(calls[0]?.init?.body as string) as { files: string[] }
+      expect(body.files).toEqual(['https://my-site.example.com/blog/welcome'])
+    } finally {
+      if (before.zone !== undefined) process.env.CLOUDFLARE_ZONE_ID = before.zone
+      else delete process.env.CLOUDFLARE_ZONE_ID
+      if (before.token !== undefined) process.env.CLOUDFLARE_API_TOKEN = before.token
+      else delete process.env.CLOUDFLARE_API_TOKEN
+      if (before.site !== undefined) process.env.CLOUDFLARE_SITE_URL = before.site
+      else delete process.env.CLOUDFLARE_SITE_URL
+    }
+  })
+})
+
+describe('netlifyAdapter.revalidate', () => {
+  it('returns regenerated:false when NETLIFY_BUILD_HOOK_URL is missing', async () => {
+    const before = process.env.NETLIFY_BUILD_HOOK_URL
+    delete process.env.NETLIFY_BUILD_HOOK_URL
+    try {
+      const adapter = netlifyAdapter()
+      const result = await adapter.revalidate?.('/posts/42')
+      expect(result).toEqual({ regenerated: false })
+    } finally {
+      if (before) process.env.NETLIFY_BUILD_HOOK_URL = before
+    }
+  })
+
+  it('POSTs to the build hook URL with trigger_title=revalidate:<path>', async () => {
+    const before = process.env.NETLIFY_BUILD_HOOK_URL
+    process.env.NETLIFY_BUILD_HOOK_URL = 'https://api.netlify.com/build_hooks/abc123'
+    try {
+      const adapter = netlifyAdapter()
+      const { result, calls } = await withStubFetch(
+        () => adapter.revalidate!('/posts/42'),
+        () => new Response(null, { status: 200 }),
+      )
+      expect(result).toEqual({ regenerated: true })
+      expect(calls).toHaveLength(1)
+      // Must (a) hit the configured hook URL, (b) URL-encode the path
+      // inside the trigger_title query param so deploy-log entries
+      // round-trip cleanly.
+      expect(calls[0]?.url).toBe(
+        'https://api.netlify.com/build_hooks/abc123?trigger_title=revalidate%3A%2Fposts%2F42',
+      )
+      expect(calls[0]?.init?.method).toBe('POST')
+    } finally {
+      if (before !== undefined) process.env.NETLIFY_BUILD_HOOK_URL = before
+      else delete process.env.NETLIFY_BUILD_HOOK_URL
+    }
+  })
+})

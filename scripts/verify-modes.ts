@@ -320,18 +320,55 @@ const MATRIX: Cell[] = [
   {
     example: 'ssr-showcase',
     mode: 'ssg',
-    // No ssgPaths → triggers autodetect
+    // No ssgPaths → triggers autodetect (which now includes
+    // getStaticPaths-driven dynamic-route enumeration from PR A).
     smoke: (dist) => {
-      // Autodetect should at minimum produce / and /about (both exist
-      // as static routes in ssr-showcase). Posts has dynamic [id]
-      // segments so it's correctly skipped.
+      // Autodetect should produce static routes (/ + /about) AND the
+      // dynamic posts/[id] enumeration via getStaticPaths.
       assertFileExists(join(dist, 'index.html'))
       assertFileExists(join(dist, 'about', 'index.html'))
+      assertFileExists(join(dist, 'posts', '1', 'index.html'))
+      assertFileExists(join(dist, 'posts', '2', 'index.html'))
+      assertFileExists(join(dist, 'posts', '3', 'index.html'))
       assertFileDoesNotExist(join(dist, '.zero-ssg-server'))
       // PR C — 404 emission applies in autodetect mode too. The
       // emit404 step runs after the path loop regardless of how paths
       // were resolved.
       assertFileExists(join(dist, '404.html'))
+
+      // PR I — build-time ISR revalidate manifest. posts/[id].ts
+      // exports `revalidate = 60`; the SSG plugin emits
+      // `dist/_pyreon-revalidate.json` mapping each concrete post path
+      // to 60. Adapters consume the manifest at deploy time to wire
+      // platform-specific ISR (Vercel `output/config.json`, Cloudflare
+      // cache rules, Netlify build hooks).
+      //
+      // Bisect-verifiable: remove the `export const revalidate = 60`
+      // line from posts/[id].ts → manifest is `{}` → file isn't
+      // emitted → assertion fails. Restore → manifest contains all
+      // 3 post paths.
+      const manifestPath = join(dist, '_pyreon-revalidate.json')
+      assertFileExists(manifestPath)
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as {
+        revalidate: Record<string, number | false>
+      }
+      // posts/[id].ts has `revalidate = 60` and 3 enumerated IDs →
+      // manifest must include all three. Static routes (/, /about)
+      // have NO revalidate export → must NOT appear.
+      if (manifest.revalidate['/posts/1'] !== 60) {
+        throw new Error(
+          `expected manifest.revalidate['/posts/1'] === 60, got ${JSON.stringify(manifest.revalidate)}`,
+        )
+      }
+      if (manifest.revalidate['/posts/2'] !== 60) {
+        throw new Error(`expected /posts/2 in manifest`)
+      }
+      if (manifest.revalidate['/posts/3'] !== 60) {
+        throw new Error(`expected /posts/3 in manifest`)
+      }
+      if ('/about' in manifest.revalidate) {
+        throw new Error(`expected /about NOT in manifest (no revalidate export)`)
+      }
     },
   },
 

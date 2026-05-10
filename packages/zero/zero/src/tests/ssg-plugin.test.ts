@@ -799,4 +799,140 @@ describe('ssgPlugin', () => {
       await expect(plugin.closeBundle()).resolves.toBeUndefined()
     })
   })
+
+  // PR I — build-time ISR. The manifest emission step in `closeBundle`
+  // delegates the real work to `buildRevalidateManifest(fileRoutes,
+  // writtenPaths)` — testing that helper directly is the cleanest unit
+  // surface (no synthetic SSR build, no real route files). The
+  // closeBundle path is gated by the `verify-modes ssr-showcase ×
+  // ssg-isr` cell which builds the real ssr-showcase app + asserts
+  // `dist/_pyreon-revalidate.json`.
+  describe('buildRevalidateManifest (PR I)', () => {
+    type StubRoute = {
+      urlPath: string
+      isLayout: boolean
+      isError: boolean
+      isLoading: boolean
+      isNotFound: boolean
+      exports?: { revalidateLiteral?: string }
+    }
+    const route = (
+      urlPath: string,
+      revalidateLiteral?: string,
+      flags: Partial<Pick<StubRoute, 'isLayout' | 'isError' | 'isLoading' | 'isNotFound'>> = {},
+    ): StubRoute => ({
+      urlPath,
+      isLayout: flags.isLayout ?? false,
+      isError: flags.isError ?? false,
+      isLoading: flags.isLoading ?? false,
+      isNotFound: flags.isNotFound ?? false,
+      ...(revalidateLiteral !== undefined ? { exports: { revalidateLiteral } } : {}),
+    })
+
+    it('returns empty object when no routes have a revalidate literal', () => {
+      const result = _internal.buildRevalidateManifest([route('/about'), route('/posts')], [
+        '/about',
+        '/posts',
+      ])
+      expect(result).toEqual({})
+    })
+
+    it('static route — `/about` with `revalidate = 60` maps to manifest', () => {
+      const result = _internal.buildRevalidateManifest([route('/about', '60')], ['/about'])
+      expect(result).toEqual({ '/about': 60 })
+    })
+
+    it('parses `false` literal as the false boolean (never revalidate)', () => {
+      const result = _internal.buildRevalidateManifest([route('/legal', 'false')], ['/legal'])
+      expect(result).toEqual({ '/legal': false })
+    })
+
+    it('dynamic route — `/posts/:id` with revalidate=60 covers ALL enumerated children', () => {
+      // Real-app shape: posts/[id].tsx with `export const revalidate = 60`
+      // and `getStaticPaths` enumerating 3 IDs. The SSG plugin emits
+      // 3 concrete paths to writtenPaths; the manifest must map
+      // EACH concrete path to 60 (the source-pattern's revalidate
+      // value applies uniformly to its children — same shape that
+      // motivated PR H's i18n cross-product).
+      const result = _internal.buildRevalidateManifest(
+        [route('/posts/:id', '60')],
+        ['/posts/1', '/posts/2', '/posts/3'],
+      )
+      expect(result).toEqual({
+        '/posts/1': 60,
+        '/posts/2': 60,
+        '/posts/3': 60,
+      })
+    })
+
+    it('catch-all route — `/blog/:slug*` matches multi-segment paths', () => {
+      const result = _internal.buildRevalidateManifest(
+        [route('/blog/:slug*', '3600')],
+        ['/blog/welcome', '/blog/2025/why-signals'],
+      )
+      expect(result).toEqual({
+        '/blog/welcome': 3600,
+        '/blog/2025/why-signals': 3600,
+      })
+    })
+
+    it('skips layouts / errors / loading / notFound routes (they never appear in writtenPaths anyway)', () => {
+      // Defense-in-depth — the SSG render loop already skips these
+      // route kinds, so they shouldn't reach writtenPaths. The
+      // helper's explicit guard is the regression catcher if a
+      // future change removes the loop-side skip.
+      const result = _internal.buildRevalidateManifest(
+        [
+          route('/_layout', '60', { isLayout: true }),
+          route('/_error', '60', { isError: true }),
+          route('/_loading', '60', { isLoading: true }),
+          route('/_404', '60', { isNotFound: true }),
+          route('/about', '60'),
+        ],
+        ['/_layout', '/_error', '/_loading', '/_404', '/about'],
+      )
+      // Only `/about` survives — the others are layout/error/loading/
+      // notfound and skipped by the helper's `isLayout || isError ||
+      // isLoading || isNotFound` continue.
+      expect(result).toEqual({ '/about': 60 })
+    })
+
+    it('skips routes without a revalidate literal even if writtenPaths includes them', () => {
+      const result = _internal.buildRevalidateManifest(
+        [route('/about'), route('/posts/:id', '60')],
+        ['/about', '/posts/1'],
+      )
+      // /about has no revalidate → omitted; /posts/1 gets 60.
+      expect(result).toEqual({ '/posts/1': 60 })
+    })
+
+    it('skips concrete paths that are NOT in writtenPaths (errored or redirected pages)', () => {
+      // If a route declared `revalidate = 60` but the path errored
+      // out / redirected during render, it never lands in
+      // writtenPaths — the manifest must NOT include it. Adapters
+      // can't revalidate a page that was never prerendered.
+      const result = _internal.buildRevalidateManifest(
+        [route('/posts/:id', '60')],
+        ['/posts/1'], // /posts/2 errored, not in writtenPaths
+      )
+      expect(result).toEqual({ '/posts/1': 60 })
+      expect(result['/posts/2']).toBeUndefined()
+    })
+
+    it('drops routes whose revalidateLiteral is malformed JSON', () => {
+      // Defensive: detectRouteExports's isPureLiteral check should
+      // already filter, but the helper's JSON.parse + type guards
+      // are the second line of defense.
+      const result = _internal.buildRevalidateManifest(
+        [route('/about', 'not-a-number'), route('/posts', '60')],
+        ['/about', '/posts'],
+      )
+      expect(result).toEqual({ '/posts': 60 })
+    })
+
+    it('drops `true` (only `false` is the never-revalidate sentinel)', () => {
+      const result = _internal.buildRevalidateManifest([route('/about', 'true')], ['/about'])
+      expect(result).toEqual({})
+    })
+  })
 })

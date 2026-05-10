@@ -1,4 +1,4 @@
-import type { Adapter, AdapterBuildOptions } from '../types'
+import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
 import { validateBuildInputs } from './validate'
 
 /**
@@ -107,6 +107,21 @@ server.listen(${port}, () => {
 
       await writeFile(join(outDir, 'index.js'), serverEntry)
       await writeFile(join(outDir, 'package.json'), JSON.stringify({ type: 'module' }, null, 2))
+    },
+    async revalidate(_path: string): Promise<AdapterRevalidateResult> {
+      // Self-hosted Node has no platform-driven ISR. Real ISR support
+      // requires a reverse-proxy cache (nginx/varnish) + your own
+      // cache-purge wiring, OR mode: 'isr' for runtime LRU caching.
+      // This no-op preserves the Adapter API contract; user code that
+      // calls `adapter.revalidate(path)` against a self-hosted Node
+      // deploy gets the same `regenerated: false` shape as the static
+      // adapter, so migrating between adapters doesn't surprise.
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(
+          '[Pyreon] nodeAdapter.revalidate() is a no-op — self-hosted Node has no platform-driven ISR. Use mode: "isr" for runtime LRU caching, or vercelAdapter / cloudflareAdapter / netlifyAdapter for platform-driven build-time ISR.',
+        )
+      }
+      return { regenerated: false }
     },
   }
 }

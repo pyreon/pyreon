@@ -1,4 +1,4 @@
-import type { Adapter, AdapterBuildOptions } from '../types'
+import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
 import { validateBuildInputs } from './validate'
 
 /**
@@ -79,6 +79,49 @@ export default {
       }
 
       await writeFile(join(outDir, '_routes.json'), JSON.stringify(routesConfig, null, 2))
+    },
+    async revalidate(path: string): Promise<AdapterRevalidateResult> {
+      // Cloudflare Pages ISR via Cache API delete + zone purge.
+      // Reads `CLOUDFLARE_ZONE_ID` and `CLOUDFLARE_API_TOKEN` from env
+      // (set in Workers / Pages dashboard → Variables). The zone
+      // purge endpoint accepts a list of URLs and removes them from
+      // every PoP's edge cache; the next visitor triggers a fresh
+      // origin fetch which rebuilds the prerendered page.
+      //
+      // Reference: https://developers.cloudflare.com/api/operations/zone-purge
+      const zoneId = process.env.CLOUDFLARE_ZONE_ID
+      const apiToken = process.env.CLOUDFLARE_API_TOKEN
+      const siteUrl = process.env.CLOUDFLARE_SITE_URL
+      if (!zoneId || !apiToken || !siteUrl) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(
+            '[Pyreon] cloudflareAdapter.revalidate() needs CLOUDFLARE_ZONE_ID + CLOUDFLARE_API_TOKEN + CLOUDFLARE_SITE_URL env vars. Set them in Cloudflare Pages dashboard → Settings → Environment Variables.',
+          )
+        }
+        return { regenerated: false }
+      }
+      const fullUrl = `${siteUrl.replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`
+      try {
+        const res = await fetch(
+          `https://api.cloudflare.com/client/v4/zones/${zoneId}/purge_cache`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ files: [fullUrl] }),
+          },
+        )
+        return { regenerated: res.ok }
+      } catch (err) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(
+            `[Pyreon] cloudflareAdapter.revalidate(${path}) failed: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        }
+        return { regenerated: false }
+      }
     },
   }
 }

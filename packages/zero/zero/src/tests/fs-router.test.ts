@@ -908,4 +908,73 @@ export default function PostsPage() {
     expect(result.hasRenderMode).toBe(true)
     expect(result.hasGuard).toBe(false)
   })
+
+  // PR I — build-time ISR. `revalidate` literal capture for the
+  // `dist/_pyreon-revalidate.json` manifest. The literal flows through
+  // `RouteFileExports.revalidateLiteral` and the SSG plugin reads it
+  // WITHOUT loading the route module — so the scanner-side detection
+  // tested here is the load-bearing contract for the entire feature.
+  describe('revalidate (PR I)', () => {
+    it('detects export const revalidate = 60 (number)', () => {
+      const result = detectRouteExports('export const revalidate = 60')
+      expect(result.hasRevalidate).toBe(true)
+      expect(result.revalidateLiteral).toBe('60')
+    })
+
+    it('detects export const revalidate = false (never revalidate)', () => {
+      const result = detectRouteExports('export const revalidate = false')
+      expect(result.hasRevalidate).toBe(true)
+      expect(result.revalidateLiteral).toBe('false')
+    })
+
+    it('detects export const revalidate = 0 (always revalidate)', () => {
+      const result = detectRouteExports('export const revalidate = 0')
+      expect(result.hasRevalidate).toBe(true)
+      expect(result.revalidateLiteral).toBe('0')
+    })
+
+    it('strips `as const` type assertions from the literal', () => {
+      const result = detectRouteExports('export const revalidate = 3600 as const')
+      expect(result.hasRevalidate).toBe(true)
+      expect(result.revalidateLiteral).toBe('3600')
+    })
+
+    it('returns hasRevalidate:false for default-only file', () => {
+      const result = detectRouteExports('export default function Home() { return null }')
+      expect(result.hasRevalidate).toBe(false)
+      expect(result.revalidateLiteral).toBeUndefined()
+    })
+
+    it('detects export { revalidate } re-export but does not capture the literal (no rhs to extract)', () => {
+      // The re-export form sets `hasRevalidate: true` but
+      // `revalidateLiteral` stays undefined because the literal lives
+      // in the original `const revalidate = N` declaration, not at
+      // the re-export site. The SSG plugin treats this as "no
+      // manifest entry" — the user gets `hasRevalidate: true` for
+      // any feature gating, but the manifest skips it. Documented as
+      // a limitation; users who want the manifest entry should
+      // export inline (`export const revalidate = 60`) rather than
+      // declare-then-export.
+      const result = detectRouteExports(`
+        const revalidate = 60
+        export { revalidate }
+      `)
+      expect(result.hasRevalidate).toBe(true)
+      expect(result.revalidateLiteral).toBeUndefined()
+    })
+
+    it('does not capture non-literal expressions (function calls, references)', () => {
+      const result = detectRouteExports(`
+        const TTL = 60
+        export const revalidate = TTL
+      `)
+      // hasRevalidate is true — the export exists. But the literal is
+      // not pure (references `TTL`), so revalidateLiteral is dropped
+      // and the manifest skips this route. Same defensive shape as
+      // metaLiteral / renderModeLiteral — the SSG plugin never
+      // evaluates user code, only literals.
+      expect(result.hasRevalidate).toBe(true)
+      expect(result.revalidateLiteral).toBeUndefined()
+    })
+  })
 })
