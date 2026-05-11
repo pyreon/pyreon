@@ -44,7 +44,7 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "oxc-parser": "^0.129.0"
+    "oxc-parser": "^0.130.0"
   },
   "optionalDependencies": {
     "@pyreon/compiler-darwin-arm64": "workspace:^",
