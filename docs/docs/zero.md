@@ -285,6 +285,99 @@ export default function NotFound() {
 
 The 404 page is rendered through the same head/styler pipeline as every other path (`@pyreon/styler` tag, `@pyreon/head` meta, asset preload links all land correctly). Disable with `ssg.emit404: false`. The runtime's not-found handler short-circuits BEFORE the router for unmatched URLs and renders the component directly via `h(NotFound, null)`.
 
+**Limitation — 404 renders without layout chrome.** The not-found component is rendered standalone, NOT wrapped in the matched route chain. That means parent `_layout.tsx` components (sticky headers, footers, navigation chrome) do NOT wrap the rendered 404 HTML. If you need branded chrome on the 404 page, inline the relevant markup into `_404.tsx` itself (or import shared components and compose them inside the 404). This matches Astro/Next.js semantics — the 404 is a leaf, not a child of any layout.
+
+**Limitation — host routing required for unmatched URLs.** SSG writes `dist/404.html` but the static host (or your own reverse proxy) is responsible for SERVING it when an incoming URL doesn't match a prerendered file. Pyreon does not bundle a server for SSG output. Most managed static hosts wire this automatically:
+
+- **Netlify** — serves `dist/404.html` for any unmatched path by convention. No config needed.
+- **Cloudflare Pages** — serves `dist/404.html` for unmatched paths by convention. No config needed.
+- **GitHub Pages** — serves `dist/404.html` for unmatched paths under the user/project site by convention. No config needed.
+- **Vercel** — serves `dist/404.html` for unmatched paths by convention when deploying a static build.
+- **S3 + CloudFront** — set the CloudFront error response for HTTP 404 to point at `/404.html` with response status 404. (CloudFront has no "404 file" convention; the rule is explicit.)
+- **nginx** — add `error_page 404 /404.html;` inside the `server` block. Combine with `try_files $uri $uri/ $uri.html =404;` for directory-style routing.
+- **Caddy** — add `handle_errors { @404 expression {http.error.status_code} == 404; rewrite @404 /404.html; file_server }` to the site block.
+
+If you self-host on Node/Bun (i.e. you ARE running zero's runtime in `mode: 'ssr' | 'isr'`), the 404 routing is handled in-process by the framework — `dist/404.html` is for static-deploy scenarios only.
+
+#### Per-locale 404 (i18n)
+
+When `zero({ i18n: { locales, defaultLocale, strategy } })` is configured, SSG emits a 404 file PER LOCALE under each locale's directory prefix:
+
+```text
+dist/
+├── 404.html              # default locale (or no-i18n)
+├── de/
+│   └── 404.html          # German 404
+└── cs/
+    └── 404.html          # Czech 404
+```
+
+Drop `_404.tsx` files in the routes tree the same way you drop pages — i18n route duplication fans the not-found components into per-locale variants automatically. If you only ship one `_404.tsx` at the routes root, every locale renders the SAME component (byte-identical HTML); SSG still emits the per-locale files so the static host's per-prefix 404 routing works.
+
+**Host config for per-locale 404 routing.** The challenge is that a managed host's "convention" usually only serves `dist/404.html` at the root — it doesn't know that `/de/unknown-page` should fall through to `dist/de/404.html`. You have to wire that explicitly:
+
+- **Netlify** — add a `[[redirects]]` block per locale to `netlify.toml`:
+
+  ```toml
+  [[redirects]]
+    from = "/de/*"
+    to = "/de/404.html"
+    status = 404
+
+  [[redirects]]
+    from = "/cs/*"
+    to = "/cs/404.html"
+    status = 404
+  ```
+
+  The unprefixed `/*` fallback to `dist/404.html` is automatic; the per-locale rules need explicit declarations.
+
+- **Cloudflare Pages** — extend `_routes.json` and add a custom `errorPage` per locale via the `_redirects` shape:
+
+  ```text
+  /de/* /de/404.html 404
+  /cs/* /cs/404.html 404
+  ```
+
+  This is the same `_redirects` syntax Pyreon emits for loader-thrown redirects (PR B). The 404 entries can be appended after the loader-redirects (last-matching-rule wins, so put specific routes BEFORE the catch-all locale 404s).
+
+- **GitHub Pages** — does NOT support per-directory 404 customization out of the box. All unmatched URLs serve the root `dist/404.html`. If per-locale 404 is required, deploy via a different host or use a build-time redirect generator.
+
+- **nginx** — split locations per locale:
+
+  ```nginx
+  location /de/ {
+    try_files $uri $uri/ $uri.html /de/404.html;
+  }
+
+  location /cs/ {
+    try_files $uri $uri/ $uri.html /cs/404.html;
+  }
+
+  location / {
+    try_files $uri $uri/ $uri.html /404.html;
+  }
+  ```
+
+- **Caddy** — same pattern, per-locale matcher:
+
+  ```caddy
+  handle_errors {
+    @404_de expression {http.error.status_code} == 404 && {http.request.uri.path} startswith "/de/"
+    rewrite @404_de /de/404.html
+
+    @404_cs expression {http.error.status_code} == 404 && {http.request.uri.path} startswith "/cs/"
+    rewrite @404_cs /cs/404.html
+
+    rewrite /404.html
+    file_server
+  }
+  ```
+
+Without per-locale host routing the framework emits the right files, but unmatched URLs under `/de/...` serve the DEFAULT-locale 404 (or whatever the host's convention is for unmatched paths) — the per-locale variants exist on disk but the host never reaches them.
+
+**Why no built-in solution.** Static hosts vary widely in their routing primitives; Pyreon would either need to ship a manifest each host consumes (and stay in sync as host APIs evolve) or run its own request-time router (defeating the static-deploy model). Documenting the explicit host snippets keeps the deploy contract honest. If you want runtime per-locale 404 routing without host config, run zero in `mode: 'ssr'` instead — the framework's request handler walks the matched chain and renders the locale-aware 404 in-process.
+
 #### Redirect handling during SSG
 
 Throw `redirect(url, status?)` inside a route loader and SSG catches it during prerender:
