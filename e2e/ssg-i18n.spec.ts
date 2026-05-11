@@ -188,4 +188,77 @@ test.describe('SSG i18n route duplication runtime', () => {
     )
     expect(sentinel).toBe('preserved')
   })
+
+  test('per-locale 404: dist/de/404.html exists for unmatched /de/* paths (PR K)', async ({
+    page,
+  }) => {
+    // PR K — the SSG closeBundle walks the route tree per-locale and
+    // emits dist/{locale}/404.html alongside the default dist/404.html.
+    // Static hosts (Netlify per-directory `errors_404`, Cloudflare
+    // Pages, GitHub Pages, nginx) serve the right per-prefix 404 file
+    // for unmatched URLs under that prefix.
+    //
+    // We fetch /de/404.html directly (proves the file exists at the
+    // locale-prefixed path) and assert its rendered content matches
+    // the _404.tsx output. The directory-rewriting server
+    // (`scripts/serve-ssg.ts`) returns 200 for an existing file; the
+    // alternative production behaviour (per-host 404 fallback) is
+    // out of scope for this spec — host-config concern, not framework.
+    //
+    // Because ssr-showcase uses ONE _404.ts source (not per-locale
+    // content branching), the rendered HTML is structurally identical
+    // for all three locales — the contract is just "file exists at the
+    // locale-prefixed path." Real i18n apps with per-locale content
+    // in _404 (e.g. `<p>{t('not-found.message')}</p>`) would surface
+    // locale-specific text here.
+    await page.goto('/de/404.html')
+    await expect(page.getByTestId('not-found-page')).toBeVisible()
+
+    // Default-locale 404 still emitted at the root (no regression).
+    await page.goto('/404.html')
+    await expect(page.getByTestId('not-found-page')).toBeVisible()
+  })
+
+  test('hreflang sitemap.xml carries xhtml:link cross-references per locale (PR K)', async ({
+    page,
+  }) => {
+    // PR K — `seoPlugin({ sitemap: { hreflang: true } })` (configured
+    // in `vite.config.i18n.ts`) reads the i18n config from the SSG
+    // manifest the zero plugin writes, clusters URLs by their
+    // un-prefixed form, and emits `<xhtml:link rel="alternate"
+    // hreflang>` siblings inside each `<url>` entry plus an
+    // `x-default` entry pointing at the default-locale URL.
+    //
+    // We fetch /sitemap.xml directly (no JS / hydration involved —
+    // pure static asset served by the directory-rewriting server)
+    // and assert the hreflang shape.
+    const response = await page.goto('/sitemap.xml')
+    expect(response?.status()).toBe(200)
+    const xml = await response!.text()
+
+    // xhtml namespace declared on <urlset> (required for valid XML
+    // when using xhtml:link).
+    expect(xml).toContain('xmlns:xhtml="http://www.w3.org/1999/xhtml"')
+
+    // /about cluster — all 3 locales + x-default.
+    expect(xml).toContain(
+      '<xhtml:link rel="alternate" hreflang="en" href="https://example.com/about"/>',
+    )
+    expect(xml).toContain(
+      '<xhtml:link rel="alternate" hreflang="de" href="https://example.com/de/about"/>',
+    )
+    expect(xml).toContain(
+      '<xhtml:link rel="alternate" hreflang="cs" href="https://example.com/cs/about"/>',
+    )
+    expect(xml).toContain(
+      '<xhtml:link rel="alternate" hreflang="x-default" href="https://example.com/about"/>',
+    )
+
+    // Dynamic-route × locale cross-product — /posts/1 cluster also
+    // gets hreflang siblings (proves SSG-enumerated paths flow through
+    // hreflang clustering, not just static routes).
+    expect(xml).toContain(
+      '<xhtml:link rel="alternate" hreflang="de" href="https://example.com/de/posts/1"/>',
+    )
+  })
 })

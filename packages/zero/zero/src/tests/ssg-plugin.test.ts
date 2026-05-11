@@ -42,17 +42,17 @@ describe('ssgPlugin', () => {
       // 4. Use renderWithHead to produce HTML
       // 5. Serialize loader data for hydration
       // 6. Default-export the renderer
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('virtual:zero/routes')
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('@pyreon/zero/server')
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('createApp')
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('url: path')
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('router.preload(path)')
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('renderWithHead')
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('serializeLoaderData')
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('export default')
+      expect(_internal.renderSsrEntrySource()).toContain('virtual:zero/routes')
+      expect(_internal.renderSsrEntrySource()).toContain('@pyreon/zero/server')
+      expect(_internal.renderSsrEntrySource()).toContain('createApp')
+      expect(_internal.renderSsrEntrySource()).toContain('url: path')
+      expect(_internal.renderSsrEntrySource()).toContain('router.preload(path)')
+      expect(_internal.renderSsrEntrySource()).toContain('renderWithHead')
+      expect(_internal.renderSsrEntrySource()).toContain('serializeLoaderData')
+      expect(_internal.renderSsrEntrySource()).toContain('export default')
       // Must NOT use createServer — that's the bug we fixed (single-router
       // instance baked in at app creation, can't render different paths).
-      expect(_internal.SSR_ENTRY_SOURCE).not.toContain('createServer')
+      expect(_internal.renderSsrEntrySource()).not.toContain('createServer')
     })
   })
 
@@ -279,10 +279,10 @@ describe('ssgPlugin', () => {
       // 2. Recurse into route.children (nested layouts)
       // 3. Skip routes without a getStaticPaths function
       // 4. Use the route's `path` as the map key
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('__getStaticPathsRegistry')
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('collectStaticPathsRegistry')
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('typeof r.getStaticPaths === "function"')
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('Array.isArray(r.children)')
+      expect(_internal.renderSsrEntrySource()).toContain('__getStaticPathsRegistry')
+      expect(_internal.renderSsrEntrySource()).toContain('collectStaticPathsRegistry')
+      expect(_internal.renderSsrEntrySource()).toContain('typeof r.getStaticPaths === "function"')
+      expect(_internal.renderSsrEntrySource()).toContain('Array.isArray(r.children)')
     })
   })
 
@@ -304,41 +304,73 @@ describe('ssgPlugin', () => {
     })
   })
 
-  describe('404 emission — SSR entry source (PR C)', () => {
-    // The entry source emits an exported `__notFoundComponent` reference
-    // and an async `__renderNotFound()`. Both surface to the outer plugin's
-    // closeBundle: presence of the component gates emission, the renderer
-    // produces `{ appHtml, head, loaderScript }` matching regular paths.
-    it('exports __notFoundComponent walked from the routes tree', () => {
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('export const __notFoundComponent')
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('findNotFoundComponent(routes)')
+  describe('404 emission — SSR entry source (PR C + K)', () => {
+    // The entry source emits an exported `__notFoundComponentsByLocale`
+    // Map (PR K) plus a back-compat `__notFoundComponent` (PR C) and an
+    // async `__renderNotFound(locale?)`. The Map keys are locale strings
+    // (or `null` for the default / no-i18n case); the closeBundle iterates
+    // them to write `dist/404.html` + per-locale `dist/{locale}/404.html`.
+    it('exports __notFoundComponentsByLocale Map walked from the routes tree', () => {
+      // PR K: the new per-locale walker is the source of truth.
+      expect(_internal.renderSsrEntrySource()).toContain(
+        'export const __notFoundComponentsByLocale',
+      )
+      expect(_internal.renderSsrEntrySource()).toContain(
+        'findNotFoundComponentsByLocale(routes, null)',
+      )
+    })
+
+    it('keeps __notFoundComponent back-compat export for downstream consumers', () => {
+      // Pre-PR-K SSR entries shipped just `__notFoundComponent`. Keep it
+      // as a derived const reading from the Map (null-locale entry) so
+      // downstream code that imports it directly keeps working.
+      expect(_internal.renderSsrEntrySource()).toContain('export const __notFoundComponent')
     })
 
     it('walks recursively into route children', () => {
-      // A `_404.tsx` under a nested layout (e.g. per-locale) attaches as
-      // `notFoundComponent` on the nested layout's RouteRecord, NOT on
-      // the root. The walker must descend into `r.children`.
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('Array.isArray(r.children)')
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('findNotFoundComponent(r.children)')
+      // A `_404.tsx` under a nested layout (per-locale subtree) attaches
+      // as `notFoundComponent` on the nested record. The walker must
+      // descend into `r.children` AND track the ambient locale so the
+      // per-locale 404 lands in the right Map entry.
+      expect(_internal.renderSsrEntrySource()).toContain('Array.isArray(r.children)')
+      expect(_internal.renderSsrEntrySource()).toContain('walk(r.children, locale)')
+    })
+
+    it('bakes the configured locales into the entry source as a JSON literal', () => {
+      // PR K: per-locale 404 detection requires knowing the locales at
+      // SSG entry module-eval time. The outer plugin passes
+      // `config.i18n?.locales ?? []` as a `JSON.stringify`-d literal.
+      expect(_internal.renderSsrEntrySource(['en', 'de', 'cs'])).toContain(
+        'const __i18nLocales = ["en","de","cs"]',
+      )
+      // Empty list (no i18n configured) → empty array literal.
+      expect(_internal.renderSsrEntrySource()).toContain('const __i18nLocales = []')
     })
 
     it('exports an async __renderNotFound that uses the same head pipeline', () => {
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('export async function __renderNotFound')
+      expect(_internal.renderSsrEntrySource()).toContain(
+        'export async function __renderNotFound(locale)',
+      )
       // Reuses renderWithHead so styler tag + @pyreon/head meta land
       // on the rendered 404 page exactly like regular paths.
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('renderWithHead(vnode)')
+      expect(_internal.renderSsrEntrySource()).toContain('renderWithHead(vnode)')
     })
 
-    it('returns null when no notFoundComponent exists in the tree', () => {
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('if (!__notFoundComponent) return null')
+    it('returns null when the requested locale has no notFoundComponent', () => {
+      // PR K: the per-locale renderer returns null when the Map has no
+      // entry for the requested locale OR the entry isn't a function.
+      // Closes the gate-not-error path for apps without `_404.tsx`.
+      expect(_internal.renderSsrEntrySource()).toContain(
+        'if (typeof component !== "function") return null',
+      )
     })
 
     it('does NOT preload a router for 404 — renders the component directly', () => {
       // Mirrors the runtime's createServer wrapper which short-circuits
       // BEFORE the router for unmatched URLs and renders the not-found
       // component via h(NotFound, null). The SSG path uses the same shape.
-      const renderNotFoundBlock = _internal.SSR_ENTRY_SOURCE.slice(
-        _internal.SSR_ENTRY_SOURCE.indexOf('export async function __renderNotFound'),
+      const renderNotFoundBlock = _internal.renderSsrEntrySource().slice(
+        _internal.renderSsrEntrySource().indexOf('export async function __renderNotFound'),
       )
       expect(renderNotFoundBlock).not.toContain('router.preload')
       expect(renderNotFoundBlock).not.toContain('createApp')
@@ -416,14 +448,14 @@ describe('ssgPlugin', () => {
     // unauthenticated users — same reason `@pyreon/server`'s SSR
     // handler short-circuits on redirect-throw.
     it('imports getRedirectInfo from @pyreon/router', () => {
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('getRedirectInfo')
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('"@pyreon/router"')
+      expect(_internal.renderSsrEntrySource()).toContain('getRedirectInfo')
+      expect(_internal.renderSsrEntrySource()).toContain('"@pyreon/router"')
     })
 
     it('wraps router.preload in try/catch + extracts redirect info', () => {
       // The catch block calls getRedirectInfo(err) — non-redirect errors
       // rethrow into the existing errors[] flow.
-      const src = _internal.SSR_ENTRY_SOURCE
+      const src = _internal.renderSsrEntrySource()
       expect(src).toContain('try {')
       expect(src).toContain('await router.preload(path)')
       expect(src).toContain('getRedirectInfo(err)')
@@ -433,7 +465,7 @@ describe('ssgPlugin', () => {
     it('returns a redirect descriptor with kind="redirect" + from/to/status', () => {
       // The descriptor shape must match the closeBundle's discriminated
       // union — `kind: 'redirect'` distinguishes from the HTML branch.
-      const src = _internal.SSR_ENTRY_SOURCE
+      const src = _internal.renderSsrEntrySource()
       expect(src).toContain('kind: "redirect"')
       expect(src).toContain('from: path')
       expect(src).toContain('to: info.url')
@@ -443,7 +475,7 @@ describe('ssgPlugin', () => {
     it('marks the success branch with kind="html"', () => {
       // The non-redirect branch must explicitly tag its return shape so
       // the closeBundle's switch on `result.kind` is exhaustive.
-      expect(_internal.SSR_ENTRY_SOURCE).toContain('kind: "html"')
+      expect(_internal.renderSsrEntrySource()).toContain('kind: "html"')
     })
   })
 
