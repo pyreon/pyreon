@@ -78,6 +78,15 @@ export interface ResolvedRoute<
   search?: Record<string, unknown> | undefined
   /** Middleware data attached during navigation (populated by middleware chain) */
   _middlewareData?: Record<string, unknown> | undefined
+  /**
+   * `true` when the URL didn't match any route AND a parent record's
+   * `notFoundComponent` was used as a synthetic fallback leaf. The
+   * `matched` chain ends with a synthetic `RouteRecord` rendering the
+   * not-found component INSIDE all its ancestor layouts — so 404 pages
+   * carry the same chrome (headers, footers, navigation) as regular
+   * pages. SSR handlers read this to set HTTP status 404.
+   */
+  isNotFound?: boolean
 }
 
 // ─── Lazy component ───────────────────────────────────────────────────────────
@@ -246,6 +255,14 @@ export interface RouteRecord<TPath extends string = string> {
   gcTime?: number
   /** Component rendered when this route's loader throws an error */
   errorComponent?: ComponentFn
+  /**
+   * Component rendered when a URL doesn't match any descendant route under
+   * this record's path. Acts as a "404 within layout" — the matched chain
+   * is `[...ancestors, this, syntheticLeaf]` so the not-found component
+   * renders INSIDE this layout's chrome. fs-router attaches this when it
+   * detects a `_404.tsx` / `_not-found.tsx` file under this layout.
+   */
+  notFoundComponent?: ComponentFn
   /**
    * Component rendered while this route's loader is running.
    * Only shown after `pendingMs` (default: 0) to avoid flash on fast loads.

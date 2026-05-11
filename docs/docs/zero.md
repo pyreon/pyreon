@@ -283,9 +283,13 @@ export default function NotFound() {
 }
 ```
 
-The 404 page is rendered through the same head/styler pipeline as every other path (`@pyreon/styler` tag, `@pyreon/head` meta, asset preload links all land correctly). Disable with `ssg.emit404: false`. The runtime's not-found handler short-circuits BEFORE the router for unmatched URLs and renders the component directly via `h(NotFound, null)`.
+The 404 page is rendered through the same head/styler pipeline as every other path (`@pyreon/styler` tag, `@pyreon/head` meta, asset preload links all land correctly). Disable with `ssg.emit404: false`.
 
-**Limitation — 404 renders without layout chrome.** The not-found component is rendered standalone, NOT wrapped in the matched route chain. That means parent `_layout.tsx` components (sticky headers, footers, navigation chrome) do NOT wrap the rendered 404 HTML. If you need branded chrome on the 404 page, inline the relevant markup into `_404.tsx` itself (or import shared components and compose them inside the 404). This matches Astro/Next.js semantics — the 404 is a leaf, not a child of any layout.
+**404 pages are wrapped in their parent layout's chrome.** The SSG renderer navigates the router to a synthetic non-matching probe URL per locale. `resolveRoute` walks the route tree finding the deepest parent `_layout.tsx` that contains a `notFoundComponent` (the `_404.tsx` you dropped) AND has children. It builds a matched chain `[...ancestorLayouts, syntheticLeaf]` and renders through the normal pipeline. Result: parent `_layout.tsx` components (sticky headers, footers, navigation chrome, PyreonUI provider) wrap the 404 content automatically — your branded chrome appears on the 404 page exactly as on regular pages. Standard Next.js / Remix behavior.
+
+**Caveat — `notFoundComponent` walking requires a parent layout with `children`.** If a route record IS a leaf page (no `children` array, no inner `<RouterView />`) and yet declares `notFoundComponent`, the resolver can't insert the synthetic leaf at depth 1 — there's no `<RouterView />` slot at that depth. Such records fall back to the standalone render path (no layout wrapping). The canonical pattern (`_404.tsx` inside a `_layout.tsx` directory) always works correctly.
+
+**Caveat — layout loaders run during 404 render.** The probe-URL navigation runs `router.preload()` on the matched chain, so any parent layout `loader()` fires during 404 emission. Most layout loaders fetch public navigation data; if a layout loader requires authenticated context the build-time render doesn't have, the loader should handle `request: undefined` and return a safe fallback. Loader-thrown `redirect()` from a parent layout during 404 render is captured into the redirect manifest (existing PR B behavior).
 
 **Limitation — host routing required for unmatched URLs.** SSG writes `dist/404.html` but the static host (or your own reverse proxy) is responsible for SERVING it when an incoming URL doesn't match a prerendered file. Pyreon does not bundle a server for SSG output. Most managed static hosts wire this automatically:
 

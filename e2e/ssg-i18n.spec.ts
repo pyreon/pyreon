@@ -221,11 +221,21 @@ test.describe('SSG i18n route duplication runtime', () => {
     const localeResponse = await page.goto('/de/404.html')
     expect(localeResponse?.status()).toBe(200)
     await expect(page.getByTestId('not-found-page')).toBeVisible()
+    // PR L5 — layout chrome wraps the 404. The router-driven 404 render
+    // navigates to a synthetic non-matching probe URL per locale, so the
+    // matched chain is `[rootLayout, syntheticLeaf]`. The rendered HTML
+    // carries the layout's nav AND the 404 content. Bisect-verified at
+    // verify-modes layer (`ssr-showcase × ssg` cell asserts the same
+    // co-occurrence at the dist filesystem layer); this asserts the
+    // runtime contract (real Chromium parses + paints both).
+    await expect(page.getByTestId('nav-home')).toBeVisible()
+    await expect(page.getByTestId('nav-about')).toBeVisible()
 
     // Default-locale 404 still emitted at the root (no regression).
     const defaultResponse = await page.goto('/404.html')
     expect(defaultResponse?.status()).toBe(200)
     await expect(page.getByTestId('not-found-page')).toBeVisible()
+    await expect(page.getByTestId('nav-home')).toBeVisible()
   })
 
   test('hreflang sitemap.xml carries xhtml:link cross-references per locale (PR K)', async ({

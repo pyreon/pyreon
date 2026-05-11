@@ -257,6 +257,18 @@ const MATRIX: Cell[] = [
       // disappears.
       assertFileExists(join(dist, '404.html'))
       assertFileContains(join(dist, '404.html'), 'data-testid="not-found-page"')
+      // PR L5 — 404 layout chrome. The not-found component is rendered
+      // THROUGH the router with a synthetic non-matching probe URL, so
+      // the matched chain is `[rootLayout, syntheticLeaf]` and the
+      // rendered HTML carries the layout's chrome (nav links, header,
+      // PyreonUI provider) ALONGSIDE the 404 content. Pre-L5 the chain
+      // was just `[notFoundComponent]` standalone with no layout
+      // wrapping. Bisect-verifiable: revert `findNotFoundFallback` in
+      // `@pyreon/router/src/match.ts` AND `renderPath(probePath)` in
+      // ssg-plugin's `__renderNotFound` — the navigation links and the
+      // testid stop co-occurring.
+      assertFileContains(join(dist, '404.html'), 'data-testid="nav-home"')
+      assertFileContains(join(dist, '404.html'), 'data-testid="nav-about"')
     },
   },
   {

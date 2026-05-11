@@ -496,3 +496,188 @@ describe('parseQueryMulti — + as space', () => {
     })
   })
 })
+
+// ─── resolveRoute — notFoundComponent fallback (PR L5) ───────────────────────
+//
+// When a URL doesn't match any route AND a parent record has a
+// `notFoundComponent`, resolveRoute builds a synthetic matched chain
+// `[...ancestors, parentLayout, syntheticLeaf]` so the not-found
+// component renders INSIDE its ancestor layouts' chrome.
+
+describe('resolveRoute — notFoundComponent fallback', () => {
+  const Layout = () => null
+  const NotFoundPage = () => null
+
+  it('synthesises chain through root layout when URL is unmatched', () => {
+    const routes: RouteRecord[] = [
+      {
+        path: '/',
+        component: Layout,
+        notFoundComponent: NotFoundPage,
+        children: [
+          { path: '/', component: Home },
+          { path: '/about', component: About },
+        ],
+      },
+    ]
+
+    const r = resolveRoute('/this-does-not-exist', routes)
+    expect(r.isNotFound).toBe(true)
+    // Chain: [rootLayout, syntheticLeaf]. The synthetic leaf carries
+    // NotFoundPage as its component so the deepest RouterView resolves it.
+    expect(r.matched.length).toBe(2)
+    expect(r.matched[0]?.component).toBe(Layout)
+    expect(r.matched[1]?.component).toBe(NotFoundPage)
+    expect(r.matched[1]?.path).toBe('__pyreon_not_found_leaf__')
+  })
+
+  it('returns empty matched when no notFoundComponent anywhere', () => {
+    const routes: RouteRecord[] = [
+      { path: '/', component: Home },
+      { path: '/about', component: About },
+    ]
+
+    const r = resolveRoute('/unknown', routes)
+    expect(r.isNotFound).toBeUndefined()
+    expect(r.matched.length).toBe(0)
+  })
+
+  it('does not trigger fallback for matched routes', () => {
+    const routes: RouteRecord[] = [
+      {
+        path: '/',
+        component: Layout,
+        notFoundComponent: NotFoundPage,
+        children: [{ path: '/about', component: About }],
+      },
+    ]
+
+    const r = resolveRoute('/about', routes)
+    expect(r.isNotFound).toBeUndefined()
+    expect(r.matched).not.toContain(NotFoundPage)
+  })
+
+  it('picks the DEEPEST matching parent when nested layouts have notFoundComponent', () => {
+    const DeNotFound = () => null
+    const RootNotFound = () => null
+    const DeLayout = () => null
+    const routes: RouteRecord[] = [
+      {
+        path: '/',
+        component: Layout,
+        notFoundComponent: RootNotFound,
+        children: [
+          {
+            path: '/de',
+            component: DeLayout,
+            notFoundComponent: DeNotFound,
+            children: [{ path: '/de/about', component: About }],
+          },
+        ],
+      },
+    ]
+
+    // URL under /de prefix — should pick the DEEPER /de layout's notFound,
+    // not the root's
+    const r = resolveRoute('/de/unknown', routes)
+    expect(r.isNotFound).toBe(true)
+    expect(r.matched[r.matched.length - 1]?.component).toBe(DeNotFound)
+    // URL under root only — should fall back to root layout's notFound
+    const r2 = resolveRoute('/about-typo', routes)
+    expect(r2.isNotFound).toBe(true)
+    expect(r2.matched[r2.matched.length - 1]?.component).toBe(RootNotFound)
+  })
+
+  it('respects segment boundary in path-prefix match (no substring confusion)', () => {
+    const EnNotFound = () => null
+    const routes: RouteRecord[] = [
+      {
+        path: '/en',
+        component: Layout,
+        notFoundComponent: EnNotFound,
+        children: [],
+      },
+    ]
+
+    // `/encyclopedia` MUST NOT match `/en` as a prefix — full segment boundary required.
+    const r = resolveRoute('/encyclopedia', routes)
+    expect(r.isNotFound).toBeUndefined()
+    expect(r.matched.length).toBe(0)
+  })
+
+  it('non-matching URL under a layout prefix triggers fallback (deeper than root)', () => {
+    const routes: RouteRecord[] = [
+      {
+        path: '/admin',
+        component: Layout,
+        notFoundComponent: NotFoundPage,
+        children: [{ path: '/admin/users', component: User }],
+      },
+    ]
+
+    // `/admin/missing` doesn't match `/admin` (layout itself) OR `/admin/users`
+    // → notFoundComponent fallback applies, chain wraps the admin layout
+    const r = resolveRoute('/admin/missing', routes)
+    expect(r.isNotFound).toBe(true)
+    expect(r.matched[0]?.component).toBe(Layout)
+    expect(r.matched[r.matched.length - 1]?.component).toBe(NotFoundPage)
+  })
+
+  it('synthetic leaf has the right path marker (for runtime identification)', () => {
+    const routes: RouteRecord[] = [
+      {
+        path: '/',
+        component: Layout,
+        notFoundComponent: NotFoundPage,
+        children: [{ path: '/', component: Home }],
+      },
+    ]
+    const r = resolveRoute('/unknown', routes)
+    expect(r.matched[r.matched.length - 1]?.path).toBe('__pyreon_not_found_leaf__')
+  })
+
+  it('preserves query string on the synthetic 404 resolution', () => {
+    const routes: RouteRecord[] = [
+      {
+        path: '/',
+        component: Layout,
+        notFoundComponent: NotFoundPage,
+        children: [{ path: '/', component: Home }],
+      },
+    ]
+    const r = resolveRoute('/unknown?foo=bar', routes)
+    expect(r.isNotFound).toBe(true)
+    expect(r.query).toEqual({ foo: 'bar' })
+    expect(r.path).toBe('/unknown')
+  })
+
+  it('does NOT fire fallback when the only notFoundComponent is on a page record without children', () => {
+    // fs-router attaches `notFoundComponent` to BOTH the parent layout
+    // AND every page record under that layout. Page records have no
+    // `<RouterView />` to render a synthetic leaf at the next depth,
+    // so the resolver must filter to records with `children` (layouts).
+    // Without this filter, the chain `[Layout, Page, syntheticLeaf]`
+    // would render Layout → Page at depth 1, and Page's body has no
+    // RouterView so the synthetic leaf never appears.
+    const PageOnly = () => null
+    const routes: RouteRecord[] = [
+      { path: '/', component: PageOnly, notFoundComponent: NotFoundPage },
+    ]
+    const r = resolveRoute('/unknown', routes)
+    expect(r.isNotFound).toBeUndefined()
+    expect(r.matched.length).toBe(0)
+  })
+
+  it('does NOT fire when wildcard catch-all is configured', () => {
+    const Catchall = () => null
+    const routes: RouteRecord[] = [
+      { path: '/', component: Home, notFoundComponent: NotFoundPage },
+      { path: '(.*)', component: Catchall },
+    ]
+
+    // Wildcard catches everything first — notFoundComponent fallback never runs.
+    const r = resolveRoute('/unknown', routes)
+    expect(r.isNotFound).toBeUndefined()
+    expect(r.matched[0]?.component).toBe(Catchall)
+  })
+})
