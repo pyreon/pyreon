@@ -2,7 +2,15 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, readFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { generateRobots, generateSitemap, jsonLd, seoPlugin } from '../seo'
+import {
+  clusterPathsByLocale,
+  generateRobots,
+  generateSitemap,
+  jsonLd,
+  resolveHreflangI18n,
+  seoPlugin,
+  stripLocalePrefix,
+} from '../seo'
 
 describe('generateSitemap', () => {
   const config = { origin: 'https://example.com' }
@@ -82,6 +90,215 @@ describe('generateSitemap', () => {
 
     expect(sitemap).toContain('<changefreq>daily</changefreq>')
     expect(sitemap).toContain('<priority>1</priority>')
+  })
+})
+
+// ─── PR K — hreflang sitemap cross-references ────────────────────────────────
+
+describe('stripLocalePrefix (PR K)', () => {
+  const locales = ['en', 'de', 'cs']
+
+  it('strips a locale prefix from a non-root path', () => {
+    expect(stripLocalePrefix('/de/about', locales, 'en', 'prefix-except-default')).toEqual({
+      unPrefixed: '/about',
+      locale: 'de',
+    })
+  })
+
+  it('handles the locale root /de → /', () => {
+    expect(stripLocalePrefix('/de', locales, 'en', 'prefix-except-default')).toEqual({
+      unPrefixed: '/',
+      locale: 'de',
+    })
+  })
+
+  it('treats an unprefixed path as default-locale under prefix-except-default', () => {
+    expect(stripLocalePrefix('/about', locales, 'en', 'prefix-except-default')).toEqual({
+      unPrefixed: '/about',
+      locale: 'en',
+    })
+  })
+
+  it('treats an unprefixed path as standalone under prefix strategy', () => {
+    // Under `prefix` every locale carries an explicit prefix; an
+    // unprefixed URL doesn't belong to any locale subtree.
+    expect(stripLocalePrefix('/about', locales, 'en', 'prefix')).toEqual({
+      unPrefixed: '/about',
+      locale: null,
+    })
+  })
+
+  it('does NOT match partial locale prefixes', () => {
+    // `/encyclopedia` must NOT be detected as locale `en` — only exact
+    // `/en` or `/en/*` matches.
+    expect(stripLocalePrefix('/encyclopedia', locales, 'en', 'prefix-except-default')).toEqual({
+      unPrefixed: '/encyclopedia',
+      locale: 'en', // unprefixed → default
+    })
+  })
+})
+
+describe('clusterPathsByLocale (PR K)', () => {
+  const i18n = { locales: ['en', 'de', 'cs'], defaultLocale: 'en' } as const
+
+  it('groups variants of the same un-prefixed path into one cluster', () => {
+    const entries = [
+      { path: '/about' },
+      { path: '/de/about' },
+      { path: '/cs/about' },
+    ]
+    const clusters = clusterPathsByLocale(entries, i18n)
+    expect(clusters).toHaveLength(1)
+    const cluster = clusters[0]!
+    expect(cluster.variantsByLocale.size).toBe(3)
+    expect(cluster.variantsByLocale.get('en')).toEqual({ path: '/about' })
+    expect(cluster.variantsByLocale.get('de')).toEqual({ path: '/de/about' })
+    expect(cluster.variantsByLocale.get('cs')).toEqual({ path: '/cs/about' })
+  })
+
+  it('picks the default-locale variant as the canonical entry', () => {
+    const entries = [
+      { path: '/de/about' },
+      { path: '/about' }, // default locale (en under prefix-except-default)
+      { path: '/cs/about' },
+    ]
+    const clusters = clusterPathsByLocale(entries, i18n)
+    expect(clusters[0]?.canonical.path).toBe('/about')
+  })
+
+  it('returns single-variant clusters when i18n is undefined', () => {
+    const entries = [{ path: '/about' }, { path: '/de/about' }]
+    const clusters = clusterPathsByLocale(entries, undefined)
+    expect(clusters).toHaveLength(2)
+    expect(clusters.every((c) => c.variantsByLocale.size === 1)).toBe(true)
+  })
+
+  it('preserves cluster order from caller insertion order', () => {
+    // Insertion-order preservation matters for stable sitemap diffs
+    // across build runs.
+    const entries = [
+      { path: '/de/zebra' },
+      { path: '/zebra' },
+      { path: '/about' },
+    ]
+    const clusters = clusterPathsByLocale(entries, i18n)
+    expect(clusters[0]?.canonical.path).toBe('/zebra')
+    expect(clusters[1]?.canonical.path).toBe('/about')
+  })
+})
+
+describe('generateSitemap — hreflang (PR K)', () => {
+  const i18n = {
+    locales: ['en', 'de', 'cs'],
+    defaultLocale: 'en',
+  } as const
+  const baseConfig = { origin: 'https://example.com' }
+
+  it('emits xhtml:link siblings for each locale variant of a clustered URL', () => {
+    const config = {
+      ...baseConfig,
+      additionalPaths: [
+        { path: '/about' },
+        { path: '/de/about' },
+        { path: '/cs/about' },
+      ],
+    }
+    const sitemap = generateSitemap([], config, i18n)
+    // Clustered: 3 inputs → 1 <url> with 3 hreflang siblings + x-default.
+    expect(sitemap.match(/<url>/g) ?? []).toHaveLength(1)
+    expect(sitemap).toContain('<xhtml:link rel="alternate" hreflang="en" href="https://example.com/about"/>')
+    expect(sitemap).toContain('<xhtml:link rel="alternate" hreflang="de" href="https://example.com/de/about"/>')
+    expect(sitemap).toContain('<xhtml:link rel="alternate" hreflang="cs" href="https://example.com/cs/about"/>')
+  })
+
+  it('emits an x-default hreflang pointing at the default-locale URL', () => {
+    const config = {
+      ...baseConfig,
+      additionalPaths: [{ path: '/about' }, { path: '/de/about' }],
+    }
+    const sitemap = generateSitemap([], config, i18n)
+    expect(sitemap).toContain('<xhtml:link rel="alternate" hreflang="x-default" href="https://example.com/about"/>')
+  })
+
+  it('declares xmlns:xhtml on the urlset only when hreflang is active', () => {
+    const withI18n = generateSitemap(
+      [],
+      { ...baseConfig, additionalPaths: [{ path: '/' }, { path: '/de' }] },
+      i18n,
+    )
+    expect(withI18n).toContain('xmlns:xhtml="http://www.w3.org/1999/xhtml"')
+
+    const withoutI18n = generateSitemap([], {
+      ...baseConfig,
+      additionalPaths: [{ path: '/' }, { path: '/about' }],
+    })
+    expect(withoutI18n).not.toContain('xmlns:xhtml')
+  })
+
+  it('skips xhtml:link entries for single-variant clusters', () => {
+    // A URL that only exists in one locale (e.g. an asset-only page
+    // that didn't get duplicated) shouldn't emit hreflang siblings —
+    // there's no alternate to point at.
+    const config = {
+      ...baseConfig,
+      additionalPaths: [{ path: '/standalone' }, { path: '/de/about' }, { path: '/about' }],
+    }
+    const sitemap = generateSitemap([], config, i18n)
+    // The /standalone URL has no alternate → no xhtml:link for that <url>
+    const standaloneBlock = sitemap.slice(
+      sitemap.indexOf('<loc>https://example.com/standalone</loc>'),
+      sitemap.indexOf('</url>', sitemap.indexOf('<loc>https://example.com/standalone</loc>')),
+    )
+    expect(standaloneBlock).not.toContain('<xhtml:link')
+    // The clustered /about URL DOES emit alternates.
+    expect(sitemap).toContain('<xhtml:link rel="alternate" hreflang="de"')
+  })
+
+  it('handles locale root paths (/de → unPrefixed /)', () => {
+    const config = {
+      ...baseConfig,
+      additionalPaths: [{ path: '/' }, { path: '/de' }, { path: '/cs' }],
+    }
+    const sitemap = generateSitemap([], config, i18n)
+    // All three cluster as the "/" URL.
+    expect(sitemap.match(/<url>/g) ?? []).toHaveLength(1)
+    expect(sitemap).toContain('<loc>https://example.com</loc>')
+    expect(sitemap).toContain('<xhtml:link rel="alternate" hreflang="en" href="https://example.com"/>')
+    expect(sitemap).toContain('<xhtml:link rel="alternate" hreflang="de" href="https://example.com/de"/>')
+    expect(sitemap).toContain('<xhtml:link rel="alternate" hreflang="cs" href="https://example.com/cs"/>')
+  })
+
+  it('omits hreflang when i18n is undefined (back-compat)', () => {
+    const config = {
+      ...baseConfig,
+      additionalPaths: [{ path: '/' }, { path: '/about' }],
+    }
+    const sitemap = generateSitemap([], config)
+    expect(sitemap).not.toContain('<xhtml:link')
+    expect(sitemap).not.toContain('xmlns:xhtml')
+  })
+})
+
+describe('resolveHreflangI18n (PR K)', () => {
+  const i18nFromManifest = { locales: ['en', 'de'], defaultLocale: 'en' } as const
+  const userI18n = { locales: ['en', 'fr'], defaultLocale: 'en' } as const
+
+  it('returns undefined when hreflang is false or omitted', () => {
+    expect(resolveHreflangI18n(false, i18nFromManifest)).toBeUndefined()
+    expect(resolveHreflangI18n(undefined, i18nFromManifest)).toBeUndefined()
+  })
+
+  it('returns the manifest config when hreflang is true', () => {
+    expect(resolveHreflangI18n(true, i18nFromManifest)).toBe(i18nFromManifest)
+  })
+
+  it('returns undefined when hreflang is true but no manifest config exists', () => {
+    // File-scan path (no SSG manifest) with `hreflang: true` → no-op.
+    expect(resolveHreflangI18n(true, undefined)).toBeUndefined()
+  })
+
+  it('prefers explicit user config over manifest', () => {
+    expect(resolveHreflangI18n(userI18n, i18nFromManifest)).toBe(userI18n)
   })
 })
 

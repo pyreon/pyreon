@@ -70,7 +70,16 @@ const SSG_BUILD_FLAG = 'PYREON_ZERO_SSG_INNER_BUILD'
 // `collectStyles` option (handler.ts:84-91); the SSG path used to bypass
 // that entirely because it builds its own renderer rather than going
 // through createHandler.
-const SSR_ENTRY_SOURCE = `
+// PR K (i18n follow-up): the SSG entry needs the configured locales list
+// baked in at build time so the per-locale 404 walker can detect which
+// RouteRecord serves which locale. Locale info isn't on the runtime
+// route records (they're path patterns, not metadata), so the walker
+// has to compare paths against the known locale list. Wrapping the
+// source template in a function lets the outer plugin pass
+// `config.i18n?.locales ?? []` per build.
+const renderSsrEntrySource = (locales: readonly string[] = []): string => {
+  const i18nLocalesLiteral = JSON.stringify(locales)
+  return `
 import { routes } from "virtual:zero/routes"
 import { h } from "@pyreon/core"
 import { renderWithHead } from "@pyreon/head/ssr"
@@ -192,23 +201,55 @@ export const __getStaticPathsRegistry = collectStaticPathsRegistry(routes, new M
 
 // ─── 404 emission (PR C) ────────────────────────────────────────────────────
 //
-// Walk the route tree and return the first \`notFoundComponent\` reference
-// found. fs-router attaches \`_404.tsx\` / \`_not-found.tsx\` to its parent
-// layout's RouteRecord. Apps typically register exactly one (root-level
-// \`_404.tsx\`); if more than one is present (per-locale \`_404\`s under
-// nested layouts in the future), we pick the first via depth-first walk
-// — same component the runtime's not-found handler wrapper picks up.
-function findNotFoundComponent(rs) {
-  for (const r of rs) {
-    if (typeof r.notFoundComponent === "function") return r.notFoundComponent
-    if (Array.isArray(r.children)) {
-      const nested = findNotFoundComponent(r.children)
-      if (nested) return nested
+// Locales the build was configured for (PR H: \`zero({ i18n: { locales } })\`).
+// Injected as a JSON-literal by the outer plugin so the walker can detect
+// which RouteRecord serves which locale by matching its \`path\` against
+// the \`/\${locale}\` / \`/\${locale}/*\` prefix. Empty array = no i18n,
+// single-default-locale shape, walker collects exactly one entry keyed
+// by \`null\` and the closeBundle writes a single \`dist/404.html\`.
+const __i18nLocales = ${i18nLocalesLiteral}
+
+// Walk the route tree and return ALL \`notFoundComponent\` references,
+// keyed by which locale subtree they were found in (or \`null\` for the
+// default / no-i18n case). fs-router attaches \`_404.tsx\` to its parent
+// layout's RouteRecord (or to each page record when no wrapping layout
+// exists — which is the per-locale subtree shape under PR H's root-
+// layout-skip). The walker collects the FIRST match per locale via
+// depth-first traversal: the per-locale subtree's \`notFoundComponent\`
+// wins over the root's for that locale.
+//
+// Locale detection: a RouteRecord serves locale \`X\` if its \`path\`
+// matches \`/X\` or starts with \`/X/\`. The default-locale entry
+// (under \`prefix-except-default\` strategy) is keyed by \`null\` since
+// its path doesn't carry a locale prefix.
+function findNotFoundComponentsByLocale(rs, currentLocale) {
+  const result = new Map()
+  function walk(records, ambient) {
+    for (const r of records) {
+      const path = typeof r.path === "string" ? r.path : ""
+      let locale = ambient
+      for (const l of __i18nLocales) {
+        if (path === \`/\${l}\` || path.startsWith(\`/\${l}/\`)) {
+          locale = l
+          break
+        }
+      }
+      if (typeof r.notFoundComponent === "function") {
+        if (!result.has(locale)) result.set(locale, r.notFoundComponent)
+      }
+      if (Array.isArray(r.children)) walk(r.children, locale)
     }
   }
-  return null
+  walk(rs, currentLocale)
+  return result
 }
-export const __notFoundComponent = findNotFoundComponent(routes)
+export const __notFoundComponentsByLocale = findNotFoundComponentsByLocale(routes, null)
+
+// Back-compat: legacy single-export, picks up whatever the walker
+// classified as \`null\`-locale (default-locale or non-i18n root 404).
+// External callers (none currently in main, but downstream consumers
+// that imported this export pre-PR) keep working.
+export const __notFoundComponent = __notFoundComponentsByLocale.get(null) ?? null
 
 // Render the not-found component through the same SSR pipeline as a
 // regular path. We DON'T navigate the router to a probe path — the
@@ -216,12 +257,16 @@ export const __notFoundComponent = findNotFoundComponent(routes)
 // URLs and renders the component directly via h(NotFound, null), so
 // the SSG path mirrors that. The result flows through the same template
 // injection in the outer plugin (styler tag, @pyreon/head meta, loader
-// data — all consistent with regular pages) and lands at \`dist/404.html\`.
-export async function __renderNotFound() {
-  if (!__notFoundComponent) return null
+// data — all consistent with regular pages) and lands at \`dist/404.html\`
+// (or \`dist/\${locale}/404.html\` for per-locale 404s under PR H i18n).
+export async function __renderNotFound(locale) {
+  const component = locale == null
+    ? (__notFoundComponentsByLocale.get(null) ?? __notFoundComponent)
+    : __notFoundComponentsByLocale.get(locale)
+  if (typeof component !== "function") return null
 
   return runWithRequestContext(async () => {
-    const vnode = h(__notFoundComponent, null)
+    const vnode = h(component, null)
     const { html: appHtml, head } = await renderWithHead(vnode)
 
     const styleTag = __pyreonGetStylerTag()
@@ -232,6 +277,7 @@ export async function __renderNotFound() {
   })
 }
 `.trimStart()
+}
 
 const SSR_ENTRY_FILENAME = '__pyreon-zero-ssg-entry.js'
 
@@ -701,7 +747,11 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // plugin pick it up identically to user code. Cleaned up after the
       // build.
       const entryPath = join(root, SSR_ENTRY_FILENAME)
-      await writeFile(entryPath, SSR_ENTRY_SOURCE, 'utf-8')
+      // PR K: bake the configured locales into the SSG entry source so the
+      // per-locale 404 walker can detect which RouteRecord serves which
+      // locale at module-eval time inside the SSR sub-build.
+      const i18nLocales = config.i18n?.locales ?? []
+      await writeFile(entryPath, renderSsrEntrySource(i18nLocales), 'utf-8')
 
       // Vite's programmatic build API. Loaded lazily so the plugin doesn't
       // pull `vite` into the runtime dep graph at module-evaluation time.
@@ -793,7 +843,10 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         // before PR C just doesn't expose these and emit404 silently
         // no-ops.
         __notFoundComponent?: unknown
-        __renderNotFound?: () => Promise<{ appHtml: string; head: string; loaderScript: string } | null>
+        __notFoundComponentsByLocale?: Map<string | null, unknown>
+        __renderNotFound?: (
+          locale?: string | null,
+        ) => Promise<{ appHtml: string; head: string; loaderScript: string } | null>
       }
       const renderPath = handlerMod.default
       const registry = handlerMod.__getStaticPathsRegistry
@@ -974,9 +1027,22 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // manifest as a public asset — convention matches `_redirects` /
       // `_redirects.json`. The seoPlugin reads + cleans it up after use.
       if (writtenPaths.length > 0) {
+        // PR K (i18n follow-up): also embed the i18n config in the manifest
+        // when present so `seoPlugin({ sitemap: { useSsgPaths: true } })`
+        // can emit hreflang cross-references without duplicating the i18n
+        // declaration. Zero-config win — users opt into i18n routing via
+        // `zero({ i18n: { ... } })` once and both the route duplication
+        // (PR H) AND the sitemap hreflang automatically pick it up.
         await writeFile(
           join(distDir, '_pyreon-ssg-paths.json'),
-          `${JSON.stringify({ paths: writtenPaths }, null, 2)}\n`,
+          `${JSON.stringify(
+            {
+              paths: writtenPaths,
+              ...(config.i18n ? { i18n: config.i18n } : {}),
+            },
+            null,
+            2,
+          )}\n`,
           'utf-8',
         )
       }
@@ -1029,41 +1095,91 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       }
 
       // PR C — Auto-emit dist/404.html from _404.tsx convention.
+      // PR K (i18n follow-up) — also emit dist/{locale}/404.html for every
+      // locale subtree that has its own _404 (i.e. every non-default locale
+      // under `prefix-except-default`, every locale under `prefix`).
       //
       // fs-router scans `_404.tsx` / `_not-found.tsx` and attaches it as
-      // `notFoundComponent` on its parent layout RouteRecord. The
+      // `notFoundComponent` on its parent layout RouteRecord (or directly
+      // on the page record when no wrapping layout exists — which is the
+      // per-locale subtree shape after PR H's root-layout-skip). The
       // synthetic SSG entry walks the routes tree at module-eval time,
-      // picks up the first one, and exposes an async `__renderNotFound()`.
-      // We read it here, render through the same template injection
-      // pipeline as regular paths, and write to `dist/404.html` (NOT
-      // `dist/__pyreon_404__/index.html` — static hosts (Netlify,
-      // Cloudflare Pages, GitHub Pages, S3+CloudFront) serve `404.html`
-      // automatically for unmatched URLs, which is the convention every
-      // major SSG framework uses).
+      // collects per-locale 404 components into a Map keyed by locale
+      // (or `null` for the default / no-i18n case), and exposes an
+      // async `__renderNotFound(locale)` that renders the matching one.
+      //
+      // We iterate that map here and write each to the right path:
+      //   - `null` locale → `dist/404.html` (static-host convention —
+      //     Netlify / Cloudflare Pages / GitHub Pages / S3+CloudFront
+      //     serve this for unmatched URLs by default)
+      //   - non-null locale `de` → `dist/de/404.html` (mirrors how those
+      //     same hosts serve per-prefix 404s when configured with the
+      //     `errors_404` field per directory in `netlify.toml` / etc.)
+      //
+      // Per-locale 404 lets search engines + users see a 404 page in the
+      // right language with the right navigation chrome, not the
+      // default-locale page bolted onto a German URL.
       //
       // Gated by `config.ssg.emit404 !== false` (default true). Skipped
-      // silently when no `_404.tsx` exists (handler exposes
-      // `__notFoundComponent: null`) — the gate isn't an error, it's the
-      // "user didn't ship a 404 page" path.
-      let emitted404 = false
-      if (config.ssg?.emit404 !== false && handlerMod.__notFoundComponent && handlerMod.__renderNotFound) {
-        try {
-          const result = await Promise.race([
-            handlerMod.__renderNotFound(),
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('Prerender timeout for 404 (30s)')), 30_000),
-            ),
-          ])
-          if (result) {
-            const html = injectIntoTemplate(template, result)
-            const filePath = join(distDir, '404.html')
-            await writeFile(filePath, html, 'utf-8')
-            emitted404 = true
+      // silently when no `_404.tsx` exists anywhere — the Map is empty
+      // and the loop body never runs.
+      let emitted404Count = 0
+      const emitted404Locales: (string | null)[] = []
+      if (config.ssg?.emit404 !== false && handlerMod.__renderNotFound) {
+        // Back-compat: old SSG entries (pre-PR-K) expose only the singular
+        // `__notFoundComponent`; new entries expose the Map. Build a synthetic
+        // single-entry iterator from the singular when the Map isn't there
+        // so users with a stale SSR_ENTRY cache or downstream consumers that
+        // never rebuilt their lib/ keep emitting one 404.html.
+        const localeEntries: (string | null)[]
+          = handlerMod.__notFoundComponentsByLocale instanceof Map
+            ? [...handlerMod.__notFoundComponentsByLocale.keys()]
+            : handlerMod.__notFoundComponent
+              ? [null]
+              : []
+
+        for (const locale of localeEntries) {
+          try {
+            const result = await Promise.race([
+              handlerMod.__renderNotFound(locale),
+              new Promise<never>((_, reject) =>
+                setTimeout(
+                  () =>
+                    reject(
+                      new Error(
+                        `Prerender timeout for ${locale == null ? '404' : `${locale}/404`} (30s)`,
+                      ),
+                    ),
+                  30_000,
+                ),
+              ),
+            ])
+            if (result) {
+              const html = injectIntoTemplate(template, result)
+              const filePath
+                = locale == null
+                  ? join(distDir, '404.html')
+                  : join(distDir, locale, '404.html')
+              // Ensure the locale subdirectory exists before writeFile —
+              // dist/de/ may not have been created yet if no static pages
+              // landed under that locale, but most apps will have at
+              // least the locale-root index.html so this is usually a no-op.
+              if (locale != null) {
+                await mkdir(join(distDir, locale), { recursive: true })
+              }
+              await writeFile(filePath, html, 'utf-8')
+              emitted404Count++
+              emitted404Locales.push(locale)
+            }
+          } catch (error) {
+            errors.push({
+              path: locale == null ? '404.html' : `${locale}/404.html`,
+              error,
+            })
           }
-        } catch (error) {
-          errors.push({ path: '404.html', error })
         }
       }
+      const emitted404 = emitted404Count > 0
 
       // PR B — emit redirect manifests when loaders threw `redirect()`.
       // Both Netlify (`_redirects`) and Vercel (`_redirects.json`)
@@ -1128,7 +1244,13 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       const adapterSummary = adapter.name !== 'node' ? ` [adapter: ${adapter.name}]` : ''
       // oxlint-disable-next-line no-console
       console.log(
-        `[zero:ssg] Prerendered ${pages} page(s)${emitted404 ? ' + 404.html' : ''}${redirectsSummary} in ${elapsed}ms${concurrencySummary}${adapterSummary}` +
+        `[zero:ssg] Prerendered ${pages} page(s)${
+          emitted404Count > 0
+            ? emitted404Count === 1
+              ? ' + 404.html'
+              : ` + ${emitted404Count} 404 pages`
+            : ''
+        }${redirectsSummary} in ${elapsed}ms${concurrencySummary}${adapterSummary}` +
           (errors.length > 0 ? ` (${errors.length} error(s))` : ''),
       )
       for (const { path: errPath, error } of errors) {
@@ -1155,6 +1277,6 @@ export const _internal = {
   renderErrorArtifact,
   runWithConcurrency,
   buildRevalidateManifest,
-  SSR_ENTRY_SOURCE,
+  renderSsrEntrySource,
   SSR_ENTRY_FILENAME,
 }
