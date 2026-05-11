@@ -179,6 +179,7 @@
     "vite": "^8.0.0"
   },
   "devDependencies": {
+    "@pyreon/manifest": "workspace:*",
     "sharp": "^0.33.0"
   },
   "peerDependencies": {
