@@ -41,6 +41,7 @@ import {
   Title,
 } from './components/atoms'
 import { DomStressSection } from './components/DomStressSection'
+import { I18nStressSection } from './components/I18nStressSection'
 import { QueryStressSection } from './components/QueryStressSection'
 import { RxStressSection } from './components/RxStressSection'
 import { StoreStressSection } from './components/StoreStressSection'
@@ -632,6 +633,7 @@ export function App() {
       <WidgetGridSection />
       <LongFormSection />
       <FormStressSection />
+      <I18nStressSection />
       <ModalSection />
       <StoreStressSection />
       <RxStressSection />

@@ -1,0 +1,18 @@
+{
+  "sha": "b3fcc2db",
+  "app": "perf-dashboard",
+  "journey": "i18nT-localeFlip-100",
+  "mode": "dev",
+  "runs": 5,
+  "timestamp": "2026-05-08T08:23:14.235Z",
+  "medianWallMs": 5,
+  "medianHeapBytes": 10000000,
+  "counters": {
+    "reactivity.signalWrite": 14,
+    "reactivity.effectRun": 2,
+    "runtime.tpl": 100,
+    "i18n.t": 1100,
+    "i18n.lookupKey": 1100,
+    "i18n.interpolate": 1100
+  }
+}

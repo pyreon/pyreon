@@ -140,6 +140,11 @@ const FILES_UNDER_TEST: { layer: string; file: string; counterNames: string[] }[
       'island.prefetch',
     ],
   },
+  {
+    layer: 'i18n',
+    file: 'packages/fundamentals/i18n/src/create-i18n.ts',
+    counterNames: ['i18n.t', 'i18n.lookupKey', 'i18n.lookupKey.fallback', 'i18n.namespaceLoad'],
+  },
   // runtime-server is NOT in this list — it's a server package that keeps
   // the `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`
   // compound (server-only packages are exempt from `pyreon/no-process-dev-gate`
