@@ -1124,7 +1124,6 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // silently when no `_404.tsx` exists anywhere — the Map is empty
       // and the loop body never runs.
       let emitted404Count = 0
-      const emitted404Locales: (string | null)[] = []
       if (config.ssg?.emit404 !== false && handlerMod.__renderNotFound) {
         // Back-compat: old SSG entries (pre-PR-K) expose only the singular
         // `__notFoundComponent`; new entries expose the Map. Build a synthetic
@@ -1169,7 +1168,6 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
               }
               await writeFile(filePath, html, 'utf-8')
               emitted404Count++
-              emitted404Locales.push(locale)
             }
           } catch (error) {
             errors.push({
@@ -1179,7 +1177,6 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           }
         }
       }
-      const emitted404 = emitted404Count > 0
 
       // PR B — emit redirect manifests when loaders threw `redirect()`.
       // Both Netlify (`_redirects`) and Vercel (`_redirects.json`)
