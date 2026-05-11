@@ -20,11 +20,25 @@ import { defineConfig } from '@playwright/test'
  *     for the duplicated record, hydration under the prefixed URL,
  *     in-app navigation between locale subtrees).
  *
- * webServer chains build + preview because vite preview doesn't
- * build by itself. Pre-build runs once via `build:i18n`; preview
- * serves the result on port 5199. Same shape as the ssg-subpath
- * config (port 5198) — separate ports so both gates can run in
- * the same CI step without colliding.
+ * webServer chains build + serve. Pre-build runs once via
+ * `build:i18n`; `scripts/serve-ssg.ts` then serves the dist on port
+ * 5199. Same shape as the ssg-subpath config (port 5198) — separate
+ * ports so both gates can run in the same CI step without colliding.
+ *
+ * **Why `scripts/serve-ssg.ts` instead of `vite preview`**: `vite
+ * preview` does SPA fallback — any URL that doesn't map to a literal
+ * file in `dist/` returns `dist/index.html`. For SPA builds that's
+ * correct, but for SSG it means `/cs/posts` serves `dist/index.html`
+ * (the home page) instead of `dist/cs/posts/index.html`. PR #516's
+ * spec (c) was documented as a "loader-data hydration framework bug"
+ * but investigation revealed the bug was actually this vite-preview
+ * artifact: the inline `<script>window.__PYREON_LOADER_DATA__=…</script>`
+ * never reached the client because the served HTML was the home
+ * page, not the per-route prerendered file. `scripts/serve-ssg.ts`
+ * does directory-rewriting (`/cs/posts` → `dist/cs/posts/index.html`)
+ * matching how real static hosts (Netlify / Cloudflare Pages /
+ * GitHub Pages / S3+CloudFront) serve SSG output. Now the e2e gate
+ * tests the genuine production shape.
  *
  * Separate config (not folded into playwright.config.ts) because
  * Playwright's `webServer` array boots ALL listed servers
@@ -54,11 +68,12 @@ export default defineConfig({
   ],
   webServer: [
     {
-      // `&&` chain: build the i18n dist first, then preview it on
-      // a fixed port. Build exits; preview stays alive. Playwright
-      // considers the server "up" once the port responds.
+      // `&&` chain: build the i18n dist first, then serve it via the
+      // directory-rewriting static server. Build exits; serve stays
+      // alive. Playwright considers the server "up" once the port
+      // responds.
       command:
-        'bun run --filter=@pyreon/ssr-showcase build:i18n && bun run --filter=@pyreon/ssr-showcase preview:i18n -- --port 5199 --strictPort',
+        'bun run --filter=@pyreon/ssr-showcase build:i18n && bun scripts/serve-ssg.ts examples/ssr-showcase/dist 5199',
       port: 5199,
       timeout: 180_000,
       reuseExistingServer: !process.env.CI,
