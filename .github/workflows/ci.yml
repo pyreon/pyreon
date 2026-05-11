@@ -378,6 +378,18 @@ jobs:
         # which gates the dist filesystem; this gates the runtime
         # routing/hydration behaviour.
         run: bun run test:e2e:ssg-i18n
+      - name: Run e2e — SSG i18n prefix-strategy runtime (PR L3)
+        # Same separate-config rationale. Builds ssr-showcase with
+        # `strategy: 'prefix'` (every locale prefixed including default)
+        # then serves on port 5200 via scripts/serve-ssg.ts. 4 specs
+        # exercise the strategy-distinguishing shape: /en/about IS
+        # prefixed, unprefixed /about returns 404, dynamic-route ×
+        # locale composition works under prefix, hreflang `x-default`
+        # points at en-PREFIXED URL on the sitemap. Companion to
+        # PR L1's verify-modes ssg-i18n-prefix cell (build artifact);
+        # this gates the runtime layer that L1 deliberately left as
+        # a follow-up.
+        run: bun run test:e2e:ssg-i18n-prefix
       - name: Run e2e — perf-dashboard (useFormState selector-narrowing gate)
         # Boots perf-dashboard on port 5183. Real-Chromium gate for the
         # `useFormState(form, s => s.isValid)` selector-narrowing contract

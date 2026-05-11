@@ -2143,3 +2143,61 @@ Pyreon dev warnings are gated on `import.meta.env?.DEV`. Tree-shake behavior dep
 Vite is Pyreon's primary supported bundler. Non-Vite consumers (webpack, bunchee, raw esbuild bundles) using the chained `&&` form may retain warning strings as data, but the runtime gate (`import.meta.env?.DEV === true`) evaluates to `false` when `import.meta.env.DEV` is undefined — warnings don't fire. Only a small bundle-size cost.
 
 The runtime-dom tree-shake test bundles via Vite's `build()` API (not raw esbuild) because Vite is the consumer pipeline. Raw `esbuild --minify` cannot propagate a module-scope `const __DEV__` through chained `&&` patterns.
+
+
+## @pyreon/zero — Zero — Full-Stack Meta-Framework
+
+Pyreon's full-stack meta-framework. Single `zero({ mode, base, ssg, i18n })` plugin chooses rendering mode (`ssg` / `ssr` / `isr` / `spa`), wires file-system routing under `src/routes/`, and composes with seo / favicon / og-image / ai / i18n-routing / csp plugins. Per-route exports for `meta`, `getStaticPaths`, `revalidate`, `validateSearch`, `loader`. Deployment via per-platform adapters (Vercel / Cloudflare Pages / Netlify / Node / Bun / static).
+
+```typescript
+import { defineConfig } from 'vite'
+import pyreon from '@pyreon/vite-plugin'
+import zero from '@pyreon/zero/server'
+import { vercelAdapter, seoPlugin, aiPlugin } from '@pyreon/zero/server'
+
+// SSG + i18n + dynamic-route × locale cross-product + hreflang sitemap.
+// Single zero() call wires routing, mode, base, locales, adapter; the
+// composed plugins (seoPlugin/aiPlugin) auto-detect i18n config from the
+// SSG manifest, so consumers configure locales once.
+export default defineConfig({
+  plugins: [
+    pyreon(),
+    zero({
+      mode: 'ssg',
+      i18n: {
+        locales: ['en', 'de', 'cs'],
+        defaultLocale: 'en',
+        strategy: 'prefix-except-default',  // default-locale unprefixed for SEO
+      },
+      ssg: {
+        concurrency: 8,                     // PR D — parallel render workers
+        onProgress: ({ completed, total }) => console.log(`${completed}/${total}`),
+      },
+      adapter: vercelAdapter(),             // PR J — emits .vercel/output/config.json
+    }),
+    seoPlugin({ sitemap: { useSsgPaths: true, hreflang: true } }),
+    aiPlugin(),
+  ],
+})
+
+// src/routes/posts/[id].tsx — dynamic route with getStaticPaths
+// produces 3 IDs × 3 locales = 9 prerendered HTML files under SSG+i18n.
+import type { GetStaticPaths } from '@pyreon/zero/server'
+
+export const getStaticPaths: GetStaticPaths<{ id: string }> = () =>
+  POSTS.map((p) => ({ params: { id: String(p.id) } }))
+
+export const revalidate = 60  // PR I — wires platform ISR per-route (Vercel/Cloudflare/Netlify)
+
+export default function PostPage() { /* component body */ }
+```
+
+> **Note**: mode: 'ssg' returns Plugin[] (the SSG plugin auto-attaches a companion `ssgPlugin()`); Vite's plugins array flattens nested arrays so `plugins: [pyreon(), zero()]` works as-is.
+>
+> **i18n strategies**: `prefix-except-default` (default) keeps the default locale unprefixed (SEO-canonical for primary-locale apps). `prefix` prefixes every locale including default (best when no locale is primary). Switching strategies changes the dist filesystem layout — plan migration paths if you flip mid-product.
+>
+> **getStaticPaths × i18n cardinality**: 3 IDs × 3 locales × 2 strategies of accidents = bigger SSG output than you expected. Use `ssg.concurrency` to parallelize the render; use `ssg.onProgress` to surface heartbeat lines on long builds (CI silent-stretches look hung otherwise).
+>
+> **Adapter.build invocation**: Auto-invoked in SSG `closeBundle` AFTER path render. SSR-mode auto-invoke is NOT yet wired — SSR consumers handle their own server bundle.
+>
+> **Locale-aware RouterLink — not yet shipped**: RouterLinks under i18n duplication emit LITERAL hrefs from their `to` prop. Cross-locale navigation falls through to the default-locale route. A locale-aware-link feature is a future PR; for now, write per-locale hrefs explicitly or use the router's programmatic navigation in handlers.
