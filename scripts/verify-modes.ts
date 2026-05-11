@@ -556,6 +556,128 @@ const MATRIX: Cell[] = [
     },
   },
 
+  // ssr-showcase × ssg-i18n-prefix — PR L1 follow-up. Same example,
+  // different i18n strategy.
+  //
+  // PR H + K shipped with `prefix-except-default` exercised end-to-end
+  // (the canonical strategy for primary-locale SEO apps). The other
+  // strategy — `prefix` — has unit coverage only (the strategy branch in
+  // `expandRoutesForLocales` is asserted via the i18n-routing.test.ts
+  // unit suite). Without a real-app build at this strategy, a regression
+  // in path emission, root-layout handling, or hreflang clustering could
+  // ship to users running `strategy: 'prefix'` and nothing in the gate
+  // would catch it.
+  //
+  // This cell asserts the prefix-strategy contract end-to-end:
+  //   - Every locale (including default `en`) gets prefixed paths
+  //     (`/en/about`, `/de/about`, `/cs/about`).
+  //   - The root index emits per locale (`/en/index.html`, `/de`, `/cs`)
+  //     — NO unprefixed `/index.html` because under `prefix` there is
+  //     no default-locale unprefixed shape.
+  //   - Per-locale 404 emits for EVERY locale including `en`
+  //     (`dist/en/404.html`, `dist/de/404.html`, `dist/cs/404.html`) —
+  //     plus `dist/404.html` from the unprefixed root walker still fires
+  //     because the route tree's root subtree carries `notFoundComponent`
+  //     even under `prefix` strategy (it just has no unprefixed children).
+  //   - hreflang sitemap clusters paths correctly under the new
+  //     strategy. The `x-default` entry under `prefix` points at the
+  //     `en`-prefixed URL (the default locale's URL, which is itself
+  //     prefixed under this strategy).
+  {
+    example: 'ssr-showcase',
+    mode: 'ssg',
+    i18n: {
+      locales: ['en', 'de', 'cs'],
+      defaultLocale: 'en',
+      strategy: 'prefix',
+    },
+    sitemap: {
+      origin: 'https://example.com',
+      useSsgPaths: true,
+      hreflang: true,
+    },
+    smoke: (dist) => {
+      // Under `prefix` strategy, every locale (including default `en`)
+      // gets prefixed paths. NO unprefixed `/about` / `/posts`.
+      assertFileExists(join(dist, 'en', 'about', 'index.html'))
+      assertFileExists(join(dist, 'de', 'about', 'index.html'))
+      assertFileExists(join(dist, 'cs', 'about', 'index.html'))
+      assertFileExists(join(dist, 'en', 'posts', 'index.html'))
+      assertFileExists(join(dist, 'de', 'posts', 'index.html'))
+      assertFileExists(join(dist, 'cs', 'posts', 'index.html'))
+
+      // Root indexes per locale — `/en/index.html` exists under `prefix`
+      // (unlike `prefix-except-default` where `en` keeps unprefixed `/`).
+      assertFileExists(join(dist, 'en', 'index.html'))
+      assertFileExists(join(dist, 'de', 'index.html'))
+      assertFileExists(join(dist, 'cs', 'index.html'))
+
+      // No unprefixed top-level pages (under `prefix`, every URL must
+      // carry a locale prefix — `/about` would be a route that doesn't
+      // belong to any locale subtree). The `about/index.html` at
+      // top-level being absent proves the duplication ran for ALL
+      // locales (including default), not just non-default.
+      assertFileDoesNotExist(join(dist, 'about', 'index.html'))
+      assertFileDoesNotExist(join(dist, 'posts', 'index.html'))
+
+      // Dynamic-route × locale cross-product under prefix. /posts/[id]
+      // exports getStaticPaths returning 3 ids. With 3 locales (all
+      // prefixed under this strategy), 9 concrete post HTML files
+      // (3 ids × 3 locales).
+      assertFileExists(join(dist, 'en', 'posts', '1', 'index.html'))
+      assertFileExists(join(dist, 'en', 'posts', '2', 'index.html'))
+      assertFileExists(join(dist, 'en', 'posts', '3', 'index.html'))
+      assertFileExists(join(dist, 'de', 'posts', '1', 'index.html'))
+      assertFileExists(join(dist, 'de', 'posts', '2', 'index.html'))
+      assertFileExists(join(dist, 'de', 'posts', '3', 'index.html'))
+      assertFileExists(join(dist, 'cs', 'posts', '1', 'index.html'))
+      assertFileExists(join(dist, 'cs', 'posts', '2', 'index.html'))
+      assertFileExists(join(dist, 'cs', 'posts', '3', 'index.html'))
+
+      // Per-locale 404 for every locale (including default `en`).
+      // Under `prefix` strategy, the en-locale duplicate IS emitted —
+      // unlike `prefix-except-default` where only non-default locales
+      // get a per-locale 404. The unprefixed `dist/404.html` ALSO
+      // emits because the route tree's root subtree (where _404.tsx
+      // lives at file-scan time) still classifies as null-locale at
+      // the walker, then the per-locale duplicates land at /en /de /cs.
+      assertFileExists(join(dist, 'en', '404.html'))
+      assertFileExists(join(dist, 'de', '404.html'))
+      assertFileExists(join(dist, 'cs', '404.html'))
+
+      // hreflang sitemap under `prefix` strategy. The clustering still
+      // groups by un-prefixed path, but every variant URL is locale-
+      // prefixed. `x-default` points at the EN-prefixed URL (the
+      // defaultLocale's URL, which is itself prefixed under prefix).
+      const sitemapPath = join(dist, 'sitemap.xml')
+      assertFileExists(sitemapPath)
+      assertFileContains(sitemapPath, 'xmlns:xhtml="http://www.w3.org/1999/xhtml"')
+      // /about cluster — 3 locale variants + x-default. ALL urls
+      // are prefixed (no unprefixed /about under this strategy).
+      assertFileContains(
+        sitemapPath,
+        '<xhtml:link rel="alternate" hreflang="en" href="https://example.com/en/about"/>',
+      )
+      assertFileContains(
+        sitemapPath,
+        '<xhtml:link rel="alternate" hreflang="de" href="https://example.com/de/about"/>',
+      )
+      assertFileContains(
+        sitemapPath,
+        '<xhtml:link rel="alternate" hreflang="cs" href="https://example.com/cs/about"/>',
+      )
+      // x-default points at the default locale's URL — UNDER PREFIX
+      // strategy this is the EN-prefixed URL, not an unprefixed one.
+      assertFileContains(
+        sitemapPath,
+        '<xhtml:link rel="alternate" hreflang="x-default" href="https://example.com/en/about"/>',
+      )
+
+      // PR F cleanup — manifest is internal, MUST NOT ship.
+      assertFileDoesNotExist(join(dist, '_pyreon-ssg-paths.json'))
+    },
+  },
+
   // cpa-pw-blog × ssg — exercises the full SSG roadmap stack:
   //   PR A: getStaticPaths enumerates blog post slugs
   //   PR C: _404.tsx emits dist/404.html

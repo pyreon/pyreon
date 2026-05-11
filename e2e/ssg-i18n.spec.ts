@@ -198,24 +198,33 @@ test.describe('SSG i18n route duplication runtime', () => {
     // Pages, GitHub Pages, nginx) serve the right per-prefix 404 file
     // for unmatched URLs under that prefix.
     //
-    // We fetch /de/404.html directly (proves the file exists at the
-    // locale-prefixed path) and assert its rendered content matches
-    // the _404.tsx output. The directory-rewriting server
-    // (`scripts/serve-ssg.ts`) returns 200 for an existing file; the
-    // alternative production behaviour (per-host 404 fallback) is
-    // out of scope for this spec — host-config concern, not framework.
+    // **Bisect-verified at L1.** Reverting the per-locale walker in
+    // `ssg-plugin.ts` to single-shot mode (only `dist/404.html`
+    // emitted) → this test FAILS with `Expected response.status to be
+    // 200, got 404` because `scripts/serve-ssg.ts` falls back to
+    // `dist/404.html` (status 404) when the per-locale file doesn't
+    // exist. The HTTP-status assertion is what makes the spec load-
+    // bearing: ssr-showcase's `_404.ts` is the SAME source for all
+    // locales (renders byte-identical HTML), so a simple "testid
+    // visible" assertion would FALSE-POSITIVE — both the missing-
+    // file fallback AND the real per-locale file render the same
+    // not-found-page DOM. Restored → spec passes (200 response from
+    // the actual `dist/de/404.html` file).
     //
-    // Because ssr-showcase uses ONE _404.ts source (not per-locale
-    // content branching), the rendered HTML is structurally identical
-    // for all three locales — the contract is just "file exists at the
-    // locale-prefixed path." Real i18n apps with per-locale content
-    // in _404 (e.g. `<p>{t('not-found.message')}</p>`) would surface
-    // locale-specific text here.
-    await page.goto('/de/404.html')
+    // Real i18n apps with `useI18n()` in `_404` would also be able to
+    // assert locale-specific text, but the framework's contract today
+    // is "file exists at the locale-prefixed path with the same
+    // _404.tsx output, host serves it under that prefix." Per-locale
+    // CONTENT (German text in `/de/404.html`) requires server-side
+    // i18n context in the 404 renderer — separate concern, tracked
+    // in PR L5.
+    const localeResponse = await page.goto('/de/404.html')
+    expect(localeResponse?.status()).toBe(200)
     await expect(page.getByTestId('not-found-page')).toBeVisible()
 
     // Default-locale 404 still emitted at the root (no regression).
-    await page.goto('/404.html')
+    const defaultResponse = await page.goto('/404.html')
+    expect(defaultResponse?.status()).toBe(200)
     await expect(page.getByTestId('not-found-page')).toBeVisible()
   })
 
@@ -228,6 +237,16 @@ test.describe('SSG i18n route duplication runtime', () => {
     // un-prefixed form, and emits `<xhtml:link rel="alternate"
     // hreflang>` siblings inside each `<url>` entry plus an
     // `x-default` entry pointing at the default-locale URL.
+    //
+    // **Bisect-verified at L1.** Reverting the SSG plugin's manifest
+    // emit to omit the `i18n` field (line ~1041 of `ssg-plugin.ts`)
+    // → this spec FAILS with `Expected substring "xmlns:xhtml=..."
+    // not in sitemap` because `seoPlugin`'s `hreflang: true` auto-
+    // detect path returns undefined when the manifest doesn't carry
+    // i18n, and `generateSitemap` then emits the plain-sitemap form
+    // (no xmlns:xhtml namespace, no xhtml:link siblings). Restored
+    // → spec passes. This makes the manifest-i18n-emit codepath
+    // load-bearing, not decorative.
     //
     // We fetch /sitemap.xml directly (no JS / hydration involved —
     // pure static asset served by the directory-rewriting server)
