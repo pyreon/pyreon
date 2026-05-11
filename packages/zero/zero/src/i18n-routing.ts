@@ -185,6 +185,31 @@ export function expandRoutesForLocales(
   // Cheap no-op guards. Empty `locales` would otherwise produce an empty
   // route array, killing the app silently.
   if (locales.length === 0) return routes
+
+  // PR L2 — Validate every locale string before they reach the filesystem.
+  // The locales drive both URL pattern emission (`/${locale}/...`) AND
+  // filesystem writes (`mkdir(dist/${locale})` in ssg-plugin.ts's per-
+  // locale 404 emit). User-supplied input with `/`, `..`, `\`, NUL, or
+  // leading dots could write outside dist OR produce broken URLs.
+  // Validate at the single entry point so every downstream consumer
+  // (vite-plugin's virtual-routes load AND ssg-plugin's path expansion)
+  // benefits from one check.
+  //
+  // Reject:
+  //   - empty string (kills the app silently with no usable URLs)
+  //   - leading/trailing whitespace (URL-malformed)
+  //   - `/` or `\` (path traversal AND structurally invalid as a URL
+  //     segment — `/de/sub/about` would split into nested directories)
+  //   - `..` or `.` whole-string (path traversal)
+  //   - NUL char (system-call boundary breaks)
+  //   - leading `.` (hidden directory; macOS/Linux dotfile pattern that
+  //     would create `dist/.locale/` invisible to most ls outputs)
+  //
+  // Runs AFTER the empty-locales no-op guard so apps temporarily
+  // toggling to `i18n: { locales: [], ... }` (mid-migration shape)
+  // don't trip on an unused defaultLocale.
+  for (const locale of locales) validateLocale(locale)
+  validateLocale(defaultLocale)
   if (
     strategy === 'prefix-except-default'
     && locales.length === 1
@@ -264,6 +289,55 @@ export function expandRoutesForLocales(
 function prefixUrlPath(urlPath: string, locale: string): string {
   if (urlPath === '/') return `/${locale}`
   return `/${locale}${urlPath}`
+}
+
+/**
+ * Validate a locale string (PR L2).
+ *
+ * The locale drives both URL pattern emission AND filesystem writes
+ * (see `expandRoutesForLocales` for full rationale). Reject input that
+ * would either:
+ *   - break path-traversal boundaries (`..`, `/`, `\`)
+ *   - produce invalid URL segments (whitespace, NUL)
+ *   - create hidden-file artifacts (`.` leading)
+ *   - silently kill the app (empty string)
+ *
+ * Throws with an actionable `[Pyreon]` error message. Called per-locale
+ * by `expandRoutesForLocales` after the empty-locales no-op guard.
+ *
+ * @internal — exported for unit testing.
+ */
+export function validateLocale(locale: string): void {
+  if (typeof locale !== 'string' || locale === '') {
+    throw new Error(
+      `[Pyreon] Invalid i18n locale: ${JSON.stringify(locale)}. Locales must be non-empty strings (e.g. "en", "de", "en-US").`,
+    )
+  }
+  if (locale.trim() !== locale) {
+    throw new Error(
+      `[Pyreon] Invalid i18n locale: ${JSON.stringify(locale)}. Leading or trailing whitespace not allowed.`,
+    )
+  }
+  if (locale.includes('/') || locale.includes('\\')) {
+    throw new Error(
+      `[Pyreon] Invalid i18n locale: ${JSON.stringify(locale)}. Path separators ("/", "\\\\") not allowed — they would break URL emission and could write outside the dist directory.`,
+    )
+  }
+  if (locale === '..' || locale === '.') {
+    throw new Error(
+      `[Pyreon] Invalid i18n locale: ${JSON.stringify(locale)}. Path-traversal segments not allowed.`,
+    )
+  }
+  if (locale.startsWith('.')) {
+    throw new Error(
+      `[Pyreon] Invalid i18n locale: ${JSON.stringify(locale)}. Leading dot not allowed — it would create a hidden-file directory (\`dist/.${locale.slice(1)}/\`) invisible to most file listings.`,
+    )
+  }
+  if (locale.includes('\0')) {
+    throw new Error(
+      `[Pyreon] Invalid i18n locale: ${JSON.stringify(locale)}. NUL characters not allowed.`,
+    )
+  }
 }
 
 /**

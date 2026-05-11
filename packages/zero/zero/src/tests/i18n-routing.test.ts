@@ -6,6 +6,7 @@ import {
   detectLocaleFromHeader,
   expandRoutesForLocales,
   extractLocaleFromPath,
+  validateLocale,
 } from '../i18n-routing'
 import type { FileRoute } from '../types'
 
@@ -442,5 +443,137 @@ describe('expandRoutesForLocales', () => {
         '/users/:id',
       ])
     })
+  })
+})
+
+// ─── PR L2 — Locale validation (path-traversal guard) ──────────────────────
+
+describe('validateLocale (PR L2)', () => {
+  // Happy paths — common BCP-47 locale shapes must all pass.
+  it('accepts conventional BCP-47 locale tags', () => {
+    expect(() => validateLocale('en')).not.toThrow()
+    expect(() => validateLocale('de')).not.toThrow()
+    expect(() => validateLocale('cs')).not.toThrow()
+    expect(() => validateLocale('en-US')).not.toThrow()
+    expect(() => validateLocale('zh-Hans')).not.toThrow()
+    expect(() => validateLocale('pt-BR')).not.toThrow()
+    // Three-letter and longer locale codes (Filipino, Chichewa, etc.).
+    expect(() => validateLocale('fil')).not.toThrow()
+    expect(() => validateLocale('nya')).not.toThrow()
+  })
+
+  // ── Rejection cases — each maps to a real security or correctness concern.
+
+  it('rejects empty string', () => {
+    expect(() => validateLocale('')).toThrow(/Invalid i18n locale/)
+    expect(() => validateLocale('')).toThrow(/non-empty/)
+  })
+
+  it('rejects forward slash (path traversal + URL split)', () => {
+    // The shape: `mkdir(join(distDir, 'de/sub'))` writes to `dist/de/sub`
+    // — confusing layout; could collide with a real route subtree.
+    expect(() => validateLocale('de/sub')).toThrow(/Path separators/)
+    expect(() => validateLocale('/de')).toThrow(/Path separators/)
+    expect(() => validateLocale('de/')).toThrow(/Path separators/)
+  })
+
+  it('rejects backslash (Windows path traversal)', () => {
+    expect(() => validateLocale('de\\sub')).toThrow(/Path separators/)
+  })
+
+  it('rejects ".." path-traversal whole-string', () => {
+    // Real attack surface: `i18n: { locales: ['..'] }` → `mkdir('dist/..')`
+    // → writes outside dist. This is the headline bug L2 prevents.
+    expect(() => validateLocale('..')).toThrow(/Path-traversal segments/)
+    expect(() => validateLocale('.')).toThrow(/Path-traversal segments/)
+  })
+
+  it('rejects leading dot (hidden directory)', () => {
+    // `.hidden` locale would create `dist/.hidden/` — not visible in
+    // most file listings, surprising deploy behaviour.
+    expect(() => validateLocale('.hidden')).toThrow(/Leading dot/)
+    expect(() => validateLocale('.en')).toThrow(/Leading dot/)
+  })
+
+  it('rejects leading/trailing whitespace', () => {
+    // Typos that would silently break URL emission.
+    expect(() => validateLocale(' en')).toThrow(/whitespace/)
+    expect(() => validateLocale('en ')).toThrow(/whitespace/)
+    expect(() => validateLocale('en\n')).toThrow(/whitespace/)
+    expect(() => validateLocale('\ten')).toThrow(/whitespace/)
+  })
+
+  it('rejects NUL characters', () => {
+    // System-call boundary corruption. Real platform code paths
+    // (mkdir, writeFile) misbehave when paths contain NUL.
+    expect(() => validateLocale('de\0sub')).toThrow(/NUL/)
+  })
+})
+
+describe('expandRoutesForLocales — validation guards (PR L2)', () => {
+  const sampleRoute: FileRoute = {
+    filePath: 'about.tsx',
+    urlPath: '/about',
+    dirPath: '',
+    depth: 0,
+    isLayout: false,
+    isError: false,
+    isLoading: false,
+    isNotFound: false,
+    exports: {
+      hasLoader: false,
+      hasMeta: false,
+      hasGuard: false,
+      hasError: false,
+      hasLoading: false,
+      hasMiddleware: false,
+      hasGetStaticPaths: false,
+      hasRevalidate: false,
+      hasRenderMode: false,
+      hasLoaderKey: false,
+      hasGcTime: false,
+    },
+  }
+
+  it('throws on a path-traversal locale in the locales array', () => {
+    expect(() =>
+      expandRoutesForLocales([sampleRoute], {
+        locales: ['en', '..', 'de'],
+        defaultLocale: 'en',
+      }),
+    ).toThrow(/Invalid i18n locale: ".."/)
+  })
+
+  it('throws on a slash-containing locale', () => {
+    expect(() =>
+      expandRoutesForLocales([sampleRoute], {
+        locales: ['en', 'de/sub'],
+        defaultLocale: 'en',
+      }),
+    ).toThrow(/Path separators/)
+  })
+
+  it('throws on an empty defaultLocale even with valid locales array', () => {
+    expect(() =>
+      expandRoutesForLocales([sampleRoute], {
+        locales: ['en', 'de'],
+        defaultLocale: '',
+      }),
+    ).toThrow(/Invalid i18n locale: ""/)
+  })
+
+  it('does NOT throw when locales array is empty (no-op guard runs first)', () => {
+    // Apps mid-migration to/from i18n routing may temporarily land at
+    // `{ locales: [], defaultLocale: 'en' }`. The no-op guard short-
+    // circuits before validation, so an unused defaultLocale doesn't
+    // need to satisfy the validator either (it wouldn't be reached).
+    // Use a non-empty defaultLocale here so we're testing the empty-
+    // locales no-op, not the validator's defaultLocale check.
+    expect(() =>
+      expandRoutesForLocales([sampleRoute], {
+        locales: [],
+        defaultLocale: 'en',
+      }),
+    ).not.toThrow()
   })
 })
