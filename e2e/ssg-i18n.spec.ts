@@ -102,28 +102,53 @@ test.describe('SSG i18n route duplication runtime', () => {
     expect(errors).toEqual([])
   })
 
-  test('third-locale path /cs/posts renders — multi-locale duplication holds', async ({
+  test('third-locale path /cs/posts renders with hydrated loader data — multi-locale duplication holds', async ({
     page,
   }) => {
     // Three-locale config means the third locale gets its full
     // subtree too. If something narrows the duplication to "default
     // + first non-default" by accident, this spec catches it.
     //
-    // Note on scope: the SSG'd HTML at /cs/posts includes 3
-    // `data-testid="post-item"` elements (rendered from the loader
-    // at SSG time — verify-modes asserts this at the dist filesystem
-    // level). What this spec gates is the runtime contract: the
-    // route exists, hydration succeeds, the page mounts. Asserting
-    // post-item count post-hydration would also exercise zero's
-    // dehydrated loader-data flow under locale-prefixed URLs, which
-    // is a separate concern — the existing e2e for `/posts` covers
-    // it for the unprefixed default. The locale-prefixed loader-data
-    // flow has a known hydration gap (the dehydrated cache key
-    // doesn't include the locale prefix, so post-hydration the
-    // duplicated-route loader returns undefined). Documented as a
-    // follow-up; out of scope for the route-duplication PR.
+    // Loader-data hydration. The SSG'd HTML at /cs/posts includes 3
+    // `data-testid="post-item"` elements rendered from the loader at
+    // SSG time (`prefetchLoaderData` runs during the synthetic SSR
+    // build), AND embeds the data as `window.__PYREON_LOADER_DATA__=
+    // {"/cs/posts":[...]}` for the client to pick up.
+    //
+    // On the client, `hydrateLoaderData(router, serialized)` walks
+    // the matched chain for the current path and sets each record's
+    // data by `record.path`. For the duplicated /cs/posts route,
+    // `record.path === '/cs/posts'` (PR H sets urlPath to the
+    // locale-prefixed pattern), so the lookup succeeds and the
+    // hydrated page renders with the 3 SSG-emitted post-items.
+    //
+    // PR #516 originally documented this assertion as a "known gap"
+    // — `useLoaderData()` was returning undefined post-hydration.
+    // Investigation in PR #519 traced the root cause: `vite preview`
+    // does SPA fallback (serves `dist/index.html` for every URL), so
+    // /cs/posts was actually served the HOME page HTML — which has
+    // no loader data inline script. The framework hydration was
+    // correct all along; the test was running against a server that
+    // wasn't honoring the per-route HTML SSG produced. The
+    // playwright config now uses `scripts/serve-ssg.ts` which does
+    // directory rewriting like real static hosts, so this assertion
+    // can now actually run.
     await page.goto('/cs/posts')
     await expect(page.getByTestId('posts-page')).toBeVisible()
+    // Post-hydration item count — must remain at 3. A regression
+    // where loader-data hydration drops the duplicated-route data
+    // would fail with "expected 3, received 0".
+    const items = page.getByTestId('post-item')
+    await expect(items).toHaveCount(3)
+    await expect(items.first()).toContainText('Getting Started with Pyreon')
+    // Window global must carry the dehydrated payload so consumers
+    // that read it post-mount (e.g. analytics, devtools) see the
+    // same shape SSR produced.
+    const loaderData = await page.evaluate(() => {
+      const data = (window as unknown as Record<string, unknown>).__PYREON_LOADER_DATA__
+      return data && typeof data === 'object' ? Object.keys(data) : null
+    })
+    expect(loaderData).toEqual(['/cs/posts'])
   })
 
   test('RouterLink click from /de/about does client-side push (not full reload)', async ({
