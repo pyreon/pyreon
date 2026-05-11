@@ -28,6 +28,34 @@ export function cloudflareAdapter(): Adapter {
   return {
     name: 'cloudflare',
     async build(options: AdapterBuildOptions) {
+      if (options.kind === 'ssg') {
+        // PR J — SSG branch. Emit Cloudflare Pages `_routes.json` with
+        // `include: []` + `exclude: ['/*']` — i.e. "every URL is a
+        // static asset, never invoke a Pages Function". Without this
+        // file, Pages defaults to running the worker on every request,
+        // which is wasteful for prerendered SSG output (and incurs
+        // function-invocation costs on paid plans).
+        //
+        // Reference: https://developers.cloudflare.com/pages/functions/routing/
+        // — `version: 1`, `include` lists URL globs that DO invoke the
+        // function, `exclude` lists globs that bypass it. Setting
+        // `include: []` makes the function unreachable; the result is
+        // a pure-static deploy.
+        //
+        // Deploy with: `npx wrangler pages deploy ./dist`
+        const { writeFile } = await import('node:fs/promises')
+        const { join } = await import('node:path')
+        const routesConfig = {
+          version: 1,
+          include: [] as string[],
+          exclude: ['/*'],
+        }
+        await writeFile(
+          join(options.outDir, '_routes.json'),
+          JSON.stringify(routesConfig, null, 2),
+        )
+        return
+      }
       await validateBuildInputs(options)
       const { writeFile, cp, mkdir } = await import('node:fs/promises')
       const { join } = await import('node:path')

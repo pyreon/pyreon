@@ -223,8 +223,17 @@ export interface ZeroConfig {
   /** ISR config — only used when mode is "isr". */
   isr?: ISRConfig
 
-  /** Deploy adapter. Default: "node" */
-  adapter?: 'node' | 'bun' | 'static' | 'vercel' | 'cloudflare' | 'netlify'
+  /**
+   * Deploy adapter. Default: `"node"`.
+   *
+   * Accepts either a built-in adapter name (string) OR a constructed
+   * `Adapter` instance (e.g. `vercelAdapter()`). The scaffolded templates
+   * emit the instance form (`adapter: vercelAdapter()`) by convention.
+   * `resolveAdapter` (see `adapters/index.ts`) accepts both shapes —
+   * strings go through a switch lookup, instances pass through
+   * unchanged.
+   */
+  adapter?: 'node' | 'bun' | 'static' | 'vercel' | 'cloudflare' | 'netlify' | Adapter
 
   /** Base URL path. Default: "/" */
   base?: string
@@ -421,12 +430,42 @@ export interface AdapterRevalidateResult {
   regenerated: boolean
 }
 
-export interface AdapterBuildOptions {
-  /** Path to the built server entry. */
-  serverEntry: string
-  /** Path to the client build output. */
-  clientOutDir: string
-  /** Final output directory. */
-  outDir: string
-  config: ZeroConfig
-}
+/**
+ * Inputs the build pipeline passes to an adapter's `build()` method.
+ *
+ * The `kind` field discriminates the two shapes. **SSR mode** (`'ssr'`)
+ * carries `serverEntry` + `clientOutDir` so adapters can wrap the user's
+ * server bundle as a serverless function. **SSG mode** (`'ssg'`) carries
+ * only `outDir` (which IS the rendered dist/) — no serverEntry exists
+ * because every page is already prerendered. SSG-mode adapters write
+ * platform-specific routing config so the host knows the deploy is
+ * fully-static (no function invocation per request).
+ *
+ * Pre-PR-J this was a single SSR-shaped struct; the SSG path had no way
+ * to invoke `adapter.build()` because it couldn't supply `serverEntry`.
+ * Adding `kind` (with TS-narrowing per branch) lets `ssgPlugin`
+ * `closeBundle` call `adapter.build({ kind: 'ssg', outDir, config })`
+ * cleanly, AND keeps the SSR-mode adapter implementations unchanged.
+ */
+export type AdapterBuildOptions =
+  | {
+      kind: 'ssr'
+      /** Path to the built server entry. */
+      serverEntry: string
+      /** Path to the client build output. */
+      clientOutDir: string
+      /** Final output directory. */
+      outDir: string
+      config: ZeroConfig
+    }
+  | {
+      kind: 'ssg'
+      /**
+       * The rendered dist directory. For SSG, this directory IS the
+       * publishable output — adapters write platform-specific routing
+       * config alongside (e.g. `.vercel/output/config.json`,
+       * `_routes.json`, `netlify.toml`) but generally don't move files.
+       */
+      outDir: string
+      config: ZeroConfig
+    }

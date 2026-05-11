@@ -29,6 +29,7 @@ describe('adapters/validateBuildInputs', () => {
   it('resolves when both client outDir and server entry exist', async () => {
     await expect(
       validateBuildInputs({
+        kind: 'ssr',
         clientOutDir: tmp,
         serverEntry: join(tmp, 'server-entry.js'),
       } as any),
@@ -38,6 +39,7 @@ describe('adapters/validateBuildInputs', () => {
   it('throws with actionable message when client outDir is missing', async () => {
     await expect(
       validateBuildInputs({
+        kind: 'ssr',
         clientOutDir: '/nonexistent-pyreon-test-path-XYZ',
         serverEntry: join(tmp, 'server-entry.js'),
       } as any),
@@ -47,6 +49,7 @@ describe('adapters/validateBuildInputs', () => {
   it('throws with actionable message when server entry is missing', async () => {
     await expect(
       validateBuildInputs({
+        kind: 'ssr',
         clientOutDir: tmp,
         serverEntry: '/nonexistent-pyreon-test-path-XYZ.js',
       } as any),
@@ -57,6 +60,7 @@ describe('adapters/validateBuildInputs', () => {
     const path = '/some-very-specific-missing-path/dist'
     await expect(
       validateBuildInputs({
+        kind: 'ssr',
         clientOutDir: path,
         serverEntry: join(tmp, 'server-entry.js'),
       } as any),
@@ -66,9 +70,22 @@ describe('adapters/validateBuildInputs', () => {
   it('error message hints at the right vite command', async () => {
     await expect(
       validateBuildInputs({
+        kind: 'ssr',
         clientOutDir: '/nonexistent-XYZ',
         serverEntry: '/nonexistent-XYZ.js',
       } as any),
     ).rejects.toThrow(/vite build/)
+  })
+
+  it('SSG kind passes through without validating SSR-only fields (PR J)', async () => {
+    // SSG mode doesn't have a serverEntry — every page is prerendered.
+    // validateBuildInputs MUST early-return for kind: 'ssg' so SSG-mode
+    // adapters don't see misleading "server entry not found" errors.
+    await expect(
+      validateBuildInputs({
+        kind: 'ssg',
+        outDir: '/nonexistent-this-is-fine-ssg-mode',
+      } as any),
+    ).resolves.toBeUndefined()
   })
 })

@@ -26,6 +26,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { Plugin } from 'vite'
+import { resolveAdapter } from './adapters'
 import { resolveConfig } from './config'
 import { parseFileRoutes, scanRouteFiles, scanRouteFilesWithExports } from './fs-router'
 import { expandRoutesForLocales, type I18nRoutingConfig } from './i18n-routing'
@@ -1094,6 +1095,29 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         )
       }
 
+      // PR J — adapter.build() invocation for SSG mode. Each platform
+      // adapter (vercel/cloudflare/netlify) writes its routing config
+      // for the prerendered dist; static / node / bun adapters no-op
+      // for SSG (they're SSR runners or trivial).
+      //
+      // Pre-PR-J: Adapter.build() was implemented per-platform but
+      // never invoked from any build pipeline — the methods existed
+      // but no production code path called them. SSG is the natural
+      // first hook because the dist/ shape is final at this point
+      // (all paths rendered, redirects + sitemap manifests written).
+      // Adapter throws are caught here so a buggy adapter can't take
+      // down the rest of the build (sitemap, error artifact, summary
+      // log all already ran). The error lands in the error log + the
+      // _pyreon-ssg-errors.json if errorArtifact was set, but we
+      // emit it AFTER the artifact write so the path-render errors
+      // already in the file aren't displaced.
+      const adapter = resolveAdapter(config)
+      try {
+        await adapter.build({ kind: 'ssg', outDir: distDir, config })
+      } catch (adapterError) {
+        errors.push({ path: `(adapter:${adapter.name})`, error: adapterError })
+      }
+
       // Cleanup the SSR build artifacts — they're an implementation detail
       // and shouldn't ship to the static host.
       await rm(ssrOutDir, { recursive: true, force: true })
@@ -1101,9 +1125,10 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       const elapsed = Date.now() - start
       const redirectsSummary = redirects.length > 0 ? ` + ${redirects.length} redirect(s)` : ''
       const concurrencySummary = concurrency > 1 ? ` (concurrency: ${concurrency})` : ''
+      const adapterSummary = adapter.name !== 'node' ? ` [adapter: ${adapter.name}]` : ''
       // oxlint-disable-next-line no-console
       console.log(
-        `[zero:ssg] Prerendered ${pages} page(s)${emitted404 ? ' + 404.html' : ''}${redirectsSummary} in ${elapsed}ms${concurrencySummary}` +
+        `[zero:ssg] Prerendered ${pages} page(s)${emitted404 ? ' + 404.html' : ''}${redirectsSummary} in ${elapsed}ms${concurrencySummary}${adapterSummary}` +
           (errors.length > 0 ? ` (${errors.length} error(s))` : ''),
       )
       for (const { path: errPath, error } of errors) {

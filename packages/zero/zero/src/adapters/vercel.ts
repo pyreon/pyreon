@@ -23,6 +23,36 @@ export function vercelAdapter(): Adapter {
   return {
     name: 'vercel',
     async build(options: AdapterBuildOptions) {
+      if (options.kind === 'ssg') {
+        // PR J — SSG branch. Emit Vercel Build Output API v3 STATIC
+        // variant: `.vercel/output/config.json` listing routes config
+        // for the prerendered dist; no functions (every page is
+        // already static). Vercel's deployer reads this config + the
+        // built dist content as the static asset root — no runtime SSR.
+        //
+        // We do NOT copy files into `.vercel/output/static/` — the
+        // standard Vercel CLI deploy flow detects the dist root
+        // automatically. Adapters that move files break user-side
+        // post-build steps (sourcemap upload, perf scripts, custom
+        // asset handling). Writing config.json alone is the
+        // minimum-impact signal "this is a prerendered site".
+        const { writeFile, mkdir } = await import('node:fs/promises')
+        const { join } = await import('node:path')
+        const vercelDir = join(options.outDir, '.vercel', 'output')
+        await mkdir(vercelDir, { recursive: true })
+        const config = {
+          version: 3,
+          routes: [
+            // Long-cache hashed assets; mirrors the SSR config above.
+            {
+              src: '/assets/(.*)',
+              headers: { 'Cache-Control': 'public, max-age=31536000, immutable' },
+            },
+          ],
+        }
+        await writeFile(join(vercelDir, 'config.json'), JSON.stringify(config, null, 2))
+        return
+      }
       await validateBuildInputs(options)
       const { writeFile, cp, mkdir } = await import('node:fs/promises')
       const { join } = await import('node:path')

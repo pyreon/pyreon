@@ -3,11 +3,20 @@ import { validateBuildInputs } from './validate'
 
 /**
  * Node.js adapter — generates a standalone server entry using node:http.
+ *
+ * **SSG mode (PR J)**: no-op. Node adapter exists for serving the SSR
+ * runtime; SSG output is already complete static HTML — serve it with
+ * any static-file server (`bun preview` / nginx / Caddy / `npx serve`).
+ * Use `staticAdapter()` if you want explicit SSG semantics.
  */
 export function nodeAdapter(): Adapter {
   return {
     name: 'node',
     async build(options: AdapterBuildOptions) {
+      if (options.kind === 'ssg') {
+        // Node runner has nothing to add for prerendered SSG dist.
+        return
+      }
       await validateBuildInputs(options)
       const { writeFile, cp, mkdir } = await import('node:fs/promises')
       const { join } = await import('node:path')

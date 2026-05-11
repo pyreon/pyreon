@@ -71,6 +71,7 @@ async function runAdapter(projectRoot: string, zeroConfig: Record<string, unknow
     const { resolveAdapter } = await import('@pyreon/zero/server')
     const adapter = resolveAdapter(zeroConfig)
     await adapter.build({
+      kind: 'ssr',
       serverEntry: join(projectRoot, 'dist/server/entry-server.js'),
       clientOutDir: join(projectRoot, 'dist/client'),
       outDir: join(projectRoot, 'dist/output'),
