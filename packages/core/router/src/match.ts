@@ -1,4 +1,4 @@
-import type { ResolvedRoute, RouteMeta, RouteRecord } from './types'
+import type { ResolvedRoute, RouteComponent, RouteMeta, RouteRecord } from './types'
 
 // ─── Query string ─────────────────────────────────────────────────────────────
 
@@ -630,7 +630,130 @@ export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRo
     }
   }
 
+  // Fallback: notFoundComponent walk. When the URL doesn't match any
+  // descendant route, look for the deepest parent `notFoundComponent`
+  // whose path is a prefix of this URL. Build a synthetic chain that
+  // renders the not-found component INSIDE its ancestor layouts so the
+  // 404 page carries the same chrome (headers, footers, navigation) as
+  // regular pages. Without this, SSG/SSR returns `matched: []` and the
+  // caller has to render the not-found component standalone, losing
+  // layout wrapping.
+  const nfb = findNotFoundFallback(routes, cleanPath)
+  if (nfb) {
+    return {
+      path: cleanPath,
+      params: {},
+      query,
+      hash,
+      matched: nfb,
+      meta: mergeMeta(nfb),
+      search: {},
+      isNotFound: true,
+    }
+  }
+
   return { path: cleanPath, params: {}, query, hash, matched: [], meta: {}, search: {} }
+}
+
+// ─── notFoundComponent walking ───────────────────────────────────────────────
+
+/** Synthetic leaf RouteRecord used by the 404 fallback. Carries no real
+ * path matching — the resolver inserts it at the end of the chain when
+ * a parent `notFoundComponent` is the closest fallback for the URL. */
+const SYNTHETIC_NOT_FOUND_PATH = '__pyreon_not_found_leaf__'
+
+/**
+ * Walk the route tree finding records with `notFoundComponent`. Return
+ * the chain `[...ancestors, parentWithNotFound, syntheticLeaf]` for the
+ * DEEPEST record whose URL path is a prefix of `urlPath`.
+ *
+ * The path-prefix check: a record at `'/de'` applies to `/de/unknown`
+ * and `/de` itself but NOT to `/about` or `/encyclopedia` (full-segment
+ * boundary required, not substring). A record at `'/'` (root layout)
+ * applies to every URL. Deeper matches win — `/de` layout takes
+ * precedence over root layout for URLs under `/de/...`.
+ *
+ * Returns `null` when no record has `notFoundComponent`.
+ */
+function findNotFoundFallback(routes: RouteRecord[], urlPath: string): RouteRecord[] | null {
+  let best: { chain: RouteRecord[]; record: RouteRecord; depth: number; specificity: number } | null = null
+
+  function walk(records: RouteRecord[], parentChain: RouteRecord[], parentPath: string): void {
+    for (const r of records) {
+      const rawPath = typeof r.path === 'string' ? r.path : ''
+      // fs-router emits absolute paths for nested routes (e.g. `/de/about`);
+      // relative paths inherit parent's path via concat. Mirror flattenOne's
+      // logic so synthesised paths track real URL prefixes.
+      const fullPath = rawPath.startsWith('/')
+        ? rawPath
+        : `${parentPath}/${rawPath}`.replace(/\/+/g, '/')
+      const chain = [...parentChain, r]
+
+      // Filter to LAYOUT records (records with non-empty `children`).
+      // fs-router attaches `notFoundComponent` to BOTH the parent layout
+      // AND every page record under that layout. Page records have no
+      // `<RouterView />` to render the synthetic leaf at the next depth,
+      // so picking a page as the fallback parent produces a chain
+      // `[Layout, Page, syntheticLeaf]` where `Page` swallows the leaf.
+      // Filtering to records with children ensures the synthetic leaf
+      // lands at a depth a `<RouterView />` will actually render.
+      const isLayout = Array.isArray(r.children) && r.children.length > 0
+
+      if (isLayout && typeof r.notFoundComponent === 'function') {
+        const applies = pathPrefixApplies(fullPath, urlPath)
+        if (applies) {
+          // Prefer (a) the deepest record (longest chain), then (b) the
+          // most specific path-prefix when chains tie. Specificity =
+          // number of path segments in `fullPath`. `/` has 0; `/de` has 1.
+          const specificity = countSegments(fullPath)
+          if (
+            !best ||
+            chain.length > best.depth ||
+            (chain.length === best.depth && specificity > best.specificity)
+          ) {
+            best = { chain, record: r, depth: chain.length, specificity }
+          }
+        }
+      }
+
+      if (Array.isArray(r.children)) {
+        walk(r.children, chain, fullPath)
+      }
+    }
+  }
+
+  walk(routes, [], '')
+
+  if (!best) return null
+
+  // TypeScript widening: `best` is inferred as `null` inside the closure
+  // when not narrowed, even though we asserted it's non-null above.
+  const found: { chain: RouteRecord[]; record: RouteRecord; depth: number; specificity: number } =
+    best
+
+  const syntheticLeaf: RouteRecord = {
+    path: SYNTHETIC_NOT_FOUND_PATH,
+    component: found.record.notFoundComponent as RouteComponent,
+  }
+
+  return [...found.chain, syntheticLeaf]
+}
+
+/** Check whether `prefixPath` is a path-prefix of `urlPath` at segment boundaries. */
+function pathPrefixApplies(prefixPath: string, urlPath: string): boolean {
+  if (prefixPath === '/' || prefixPath === '') return true
+  if (urlPath === prefixPath) return true
+  // Require a `/` boundary after the prefix to avoid `/de` matching `/encyclopedia`.
+  return urlPath.startsWith(`${prefixPath}/`)
+}
+
+/** Count `/`-separated path segments. `/` → 0; `/de` → 1; `/de/about` → 2. */
+function countSegments(path: string): number {
+  let count = 0
+  for (let i = 0; i < path.length; i++) {
+    if (path.charCodeAt(i) === 47 /* / */ && i + 1 < path.length) count++
+  }
+  return count
 }
 
 /** Run validateSearch from the deepest matched route that has one. */

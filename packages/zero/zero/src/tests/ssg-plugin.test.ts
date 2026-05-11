@@ -365,15 +365,42 @@ describe('ssgPlugin', () => {
       )
     })
 
-    it('does NOT preload a router for 404 — renders the component directly', () => {
-      // Mirrors the runtime's createServer wrapper which short-circuits
-      // BEFORE the router for unmatched URLs and renders the not-found
-      // component via h(NotFound, null). The SSG path uses the same shape.
-      const renderNotFoundBlock = _internal.renderSsrEntrySource().slice(
-        _internal.renderSsrEntrySource().indexOf('export async function __renderNotFound'),
+    it('routes the 404 render through the SAME renderPath as regular pages (PR L5)', () => {
+      // Pre-L5: __renderNotFound called h(NotFound, null) standalone — the
+      // matched chain was empty, so parent layouts didn't wrap the
+      // rendered 404. Post-L5: __renderNotFound navigates the router to
+      // a synthetic non-matching probe URL per locale. resolveRoute's
+      // notFoundComponent walker (in @pyreon/router) builds a chain
+      // [...ancestorLayouts, syntheticLeaf] for the probe URL, and the
+      // normal renderPath pipeline produces 404 HTML wrapped in layout
+      // chrome.
+      const source = _internal.renderSsrEntrySource()
+      const renderNotFoundBlock = source.slice(
+        source.indexOf('export async function __renderNotFound'),
       )
-      expect(renderNotFoundBlock).not.toContain('router.preload')
-      expect(renderNotFoundBlock).not.toContain('createApp')
+      // Probe URL is the marker the resolver looks for non-matching paths.
+      expect(renderNotFoundBlock).toContain('__pyreon_not_found_probe__')
+      // Calls renderPath (the regular-path SSG renderer in the same module).
+      expect(renderNotFoundBlock).toContain('renderPath(probePath)')
+      // Standalone h(component, null) is preserved as a fallback for
+      // tree shapes where no notFoundComponent is reachable from the
+      // probe URL (rare — primarily back-compat for old SSR entries).
+      expect(renderNotFoundBlock).toContain('renderWithHead(vnode)')
+    })
+
+    it('locale-aware probe URL prefix for per-locale 404 fallback (PR L5)', () => {
+      // Per-locale 404 in i18n apps: the probe URL must carry the locale
+      // prefix so resolveRoute matches the locale's layout subtree.
+      // `/de/__pyreon_not_found_probe__` matches the `/de` layout's
+      // notFoundComponent; `/__pyreon_not_found_probe__` matches the
+      // root layout's.
+      const source = _internal.renderSsrEntrySource()
+      const renderNotFoundBlock = source.slice(
+        source.indexOf('export async function __renderNotFound'),
+      )
+      expect(renderNotFoundBlock).toMatch(/locale == null[\s\S]*__pyreon_not_found_probe__/)
+      // Per-locale path uses the locale variable.
+      expect(renderNotFoundBlock).toContain('/${locale}/__pyreon_not_found_probe__')
     })
   })
 

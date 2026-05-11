@@ -251,15 +251,46 @@ export const __notFoundComponentsByLocale = findNotFoundComponentsByLocale(route
 // that imported this export pre-PR) keep working.
 export const __notFoundComponent = __notFoundComponentsByLocale.get(null) ?? null
 
-// Render the not-found component through the same SSR pipeline as a
-// regular path. We DON'T navigate the router to a probe path — the
-// runtime's 404 wrapper short-circuits BEFORE the router for unmatched
-// URLs and renders the component directly via h(NotFound, null), so
-// the SSG path mirrors that. The result flows through the same template
-// injection in the outer plugin (styler tag, @pyreon/head meta, loader
-// data — all consistent with regular pages) and lands at \`dist/404.html\`
-// (or \`dist/\${locale}/404.html\` for per-locale 404s under PR H i18n).
+// Render the not-found component THROUGH the router (PR L5). We navigate
+// to a synthetic non-matching probe URL per locale — \`resolveRoute\`
+// (post-L5) walks the route tree finding the deepest parent
+// \`notFoundComponent\` and builds a matched chain
+// \`[...ancestorLayouts, syntheticLeaf]\`. The leaf carries the
+// not-found component; rendering through the normal pipeline produces
+// HTML WITH layout chrome — same headers, footers, navigation as
+// regular pages. The locale prefix in the probe URL ensures the right
+// per-locale layout subtree matches (under PR H's prefix strategy).
+//
+// Pre-L5 behavior (\`h(component, null)\` standalone) is preserved as a
+// fallback when the route tree has \`notFoundComponent\` at the root
+// but no \`isNotFound\` chain forms (older route shapes). The outer
+// plugin checks \`__notFoundComponentsByLocale\` first to gate emission
+// — if no notFoundComponent exists anywhere, \`__renderNotFound\` is
+// never called.
 export async function __renderNotFound(locale) {
+  // Probe URL chosen to be highly improbable as a real route. The
+  // suffix is deliberately literal (no \`Math.random\`) so build
+  // outputs are deterministic across runs.
+  const probePath = locale == null
+    ? "/__pyreon_not_found_probe__"
+    : \`/\${locale}/__pyreon_not_found_probe__\`
+
+  // Try the router-driven path first. If the route tree has a parent
+  // \`notFoundComponent\` reachable from the probe URL, resolveRoute's
+  // fallback builds the chain through the layout and the normal render
+  // pipeline produces 404 HTML wrapped in layout chrome.
+  const result = await renderPath(probePath)
+  if (result && result.kind === "html") {
+    return {
+      appHtml: result.appHtml,
+      head: result.head,
+      loaderScript: result.loaderScript,
+    }
+  }
+
+  // Fallback for tree shapes where the resolver returns empty matched
+  // (no notFoundComponent walkable from this probe path). Render the
+  // component standalone — same shape pre-L5.
   const component = locale == null
     ? (__notFoundComponentsByLocale.get(null) ?? __notFoundComponent)
     : __notFoundComponentsByLocale.get(locale)
