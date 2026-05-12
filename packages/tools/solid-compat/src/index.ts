@@ -546,9 +546,9 @@ export function createContext<T>(defaultValue?: T): SolidContext<T> {
   // Provider is a NATIVE Pyreon component — not compat-wrapped.
   // It calls provide() once during setup to push onto the context stack.
   const Provider = (props: Record<string, unknown>) => {
-    const { value, children } = props as { value: T; children?: VNodeChild }
+    const { value, children: kids } = props as { value: T; children?: VNodeChild }
     pyreonProvide(pyreonCtx, value)
-    return children ?? null
+    return kids ?? null
   }
   nativeCompat(Provider)
 

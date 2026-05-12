@@ -153,21 +153,21 @@ export function buildTextOverlaySvg(
     let currentLine = ''
 
     const estimateWidth = (s: string): number => {
-      let width = 0
+      let w = 0
       for (let i = 0; i < s.length; i++) {
         const code = s.charCodeAt(i)
         if (code >= 0x3000 && code <= 0x9FFF) {
           // CJK characters — full width
-          width += fontSize * 1.0
+          w += fontSize * 1.0
         } else if (code <= 0x7E && 'iljft!|:;.,\''.includes(s[i]!)) {
           // Narrow Latin characters
-          width += fontSize * 0.35
+          w += fontSize * 0.35
         } else {
           // Regular Latin characters
-          width += fontSize * 0.55
+          w += fontSize * 0.55
         }
       }
-      return width
+      return w
     }
 
     for (const word of words) {
