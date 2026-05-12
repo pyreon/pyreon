@@ -4,6 +4,22 @@ test.describe('DOM interactions', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
     await page.waitForSelector('nav.sidebar')
+    // CI flake guard — three tests in this file (`keyboard events`,
+    // `pointer events`, `wheel events`) use the
+    // `page.evaluate(() => new Promise(resolve => listener))` shape: a
+    // long-lived promise inside the page's JS context that's only
+    // resolved by a future event. If Vite's dev server fires an HMR
+    // reload between `waitForSelector` and the next `page.evaluate`,
+    // the JS context dies mid-promise and the test fails with
+    // "Execution context was destroyed, most likely because of a
+    // navigation." Same root cause as the storage.spec.ts flake fixed
+    // by M3.B (#535). `networkidle` blocks until 500ms of zero
+    // in-flight requests — after that, HMR cannot fire without a
+    // fresh user-driven navigation. Hasn't been observed flaking in
+    // CI yet (the long-lived-promise tests have short windows ~50ms),
+    // but the SHAPE is the same as the storage spec's pre-fix
+    // version, so this is preventive hardening, not reactive.
+    await page.waitForLoadState('networkidle')
   })
 
   test('keyboard events fire on the page', async ({ page }) => {
