@@ -764,19 +764,19 @@ export function transformJSX_JS(
   if (replacements.length === 0 && hoists.length === 0) return { code, warnings }
 
   replacements.sort((a, b) => a.start - b.start)
-  const parts: string[] = []
-  let lastPos = 0
+  const outParts: string[] = []
+  let outPos = 0
   for (const r of replacements) {
-    parts.push(code.slice(lastPos, r.start))
-    parts.push(r.text)
-    lastPos = r.end
+    outParts.push(code.slice(outPos, r.start))
+    outParts.push(r.text)
+    outPos = r.end
   }
-  parts.push(code.slice(lastPos))
-  let result = parts.join('')
+  outParts.push(code.slice(outPos))
+  let output = outParts.join('')
 
   if (hoists.length > 0) {
     const preamble = hoists.map((h) => `const ${h.name} = /*@__PURE__*/ ${h.text}\n`).join('')
-    result = preamble + result
+    output = preamble + output
   }
 
   if (needsTplImport) {
@@ -788,16 +788,16 @@ export function transformJSX_JS(
     const reactivityImports = needsBindImportGlobal
       ? `\nimport { _bind } from "@pyreon/reactivity";`
       : ''
-    result =
+    output =
       `import { ${runtimeDomImports.join(', ')} } from "@pyreon/runtime-dom";${reactivityImports}\n` +
-      result
+      output
   }
 
   if (needsRpImport) {
-    result = `import { _rp } from "@pyreon/core";\n` + result
+    output = `import { _rp } from "@pyreon/core";\n` + output
   }
 
-  return { code: result, usesTemplates: needsTplImport, warnings }
+  return { code: output, usesTemplates: needsTplImport, warnings }
 
   // ── Template emission helpers ─────────────────────────────────────────────
 

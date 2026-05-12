@@ -548,9 +548,9 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   ): FieldRegisterProps<TValues[K]>
   function register<K extends keyof TValues & string>(
     field: K,
-    opts?: { type?: 'checkbox' | 'number' },
+    fieldOpts?: { type?: 'checkbox' | 'number' },
   ): FieldRegisterProps<TValues[K]> | FieldRegisterCheckboxProps {
-    const cacheKey = `${field}:${opts?.type ?? 'text'}`
+    const cacheKey = `${field}:${fieldOpts?.type ?? 'text'}`
     const cached = registerCache.get(cacheKey)
     if (cached) {
       return cached as FieldRegisterProps<TValues[K]> | FieldRegisterCheckboxProps
@@ -559,9 +559,9 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     const fieldState = fields[field]
     const onInput = (e: Event) => {
       const target = e.target as HTMLInputElement
-      if (opts?.type === 'checkbox') {
+      if (fieldOpts?.type === 'checkbox') {
         fieldState.setValue(target.checked as TValues[K])
-      } else if (opts?.type === 'number') {
+      } else if (fieldOpts?.type === 'number') {
         const num = target.valueAsNumber
         fieldState.setValue((Number.isNaN(num) ? target.value : num) as TValues[K])
       } else {
@@ -575,7 +575,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     const disabled = computed(() => formDisabled() || fieldState.disabled())
     const readOnly = computed(() => formReadOnly() || fieldState.readOnly())
 
-    if (opts?.type === 'checkbox') {
+    if (fieldOpts?.type === 'checkbox') {
       // Omit `value` for checkbox — HTML's checkbox `value` attribute is
       // arbitrary metadata, not the form-level value. The `<input
       // type="checkbox" {...register(field, { type: 'checkbox' })}>` spread

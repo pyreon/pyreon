@@ -244,14 +244,14 @@ type InferEnvSchema<T> = {
  * ```
  */
 export function validateEnv<T extends Record<string, SchemaEntry>>(
-  schema: T,
+  envSchema: T,
   source?: Record<string, string | undefined>,
 ): InferEnvSchema<T> {
   const env = source ?? (typeof process !== 'undefined' ? process.env : {})
   const result: Record<string, unknown> = {}
   const errors: string[] = []
 
-  for (const [key, entry] of Object.entries(schema)) {
+  for (const [key, entry] of Object.entries(envSchema)) {
     const validator = toValidator(entry)
     try {
       result[key] = validator.parse(env[key], key)
@@ -284,12 +284,12 @@ export function validateEnv<T extends Record<string, SchemaEntry>>(
  * ```
  */
 export function publicEnv(): Record<string, string>
-export function publicEnv<T extends Record<string, SchemaEntry>>(schema: T): InferEnvSchema<T>
-export function publicEnv(schema?: Record<string, SchemaEntry>): Record<string, unknown> {
+export function publicEnv<T extends Record<string, SchemaEntry>>(envSchema: T): InferEnvSchema<T>
+export function publicEnv(envSchema?: Record<string, SchemaEntry>): Record<string, unknown> {
   const prefix = 'ZERO_PUBLIC_'
   const env = typeof process !== 'undefined' ? process.env : {}
 
-  if (!schema) {
+  if (!envSchema) {
     const result: Record<string, string> = {}
     for (const [key, value] of Object.entries(env)) {
       if (key.startsWith(prefix) && value !== undefined) {
@@ -300,10 +300,10 @@ export function publicEnv(schema?: Record<string, SchemaEntry>): Record<string, 
   }
 
   const prefixedSource: Record<string, string | undefined> = {}
-  for (const key of Object.keys(schema)) {
+  for (const key of Object.keys(envSchema)) {
     prefixedSource[key] = env[`${prefix}${key}`]
   }
-  return validateEnv(schema, prefixedSource)
+  return validateEnv(envSchema, prefixedSource)
 }
 
 // ─── Custom validator escape hatch ──────────────────────────────────────────

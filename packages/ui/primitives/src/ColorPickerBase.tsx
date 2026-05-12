@@ -124,8 +124,8 @@ export const ColorPickerBase: ComponentFn<ColorPickerBaseProps> = (props) => {
   const _alpha = signal(1)
 
   function updateFromHSB(h: number, s: number, b: number) {
-    const rgb = hsbToRgb(h, s, b)
-    const newHex = rgbToHex(rgb.r, rgb.g, rgb.b)
+    const c = hsbToRgb(h, s, b)
+    const newHex = rgbToHex(c.r, c.g, c.b)
     _hue.set(h)
     _saturation.set(s)
     _brightness.set(b)
@@ -138,8 +138,8 @@ export const ColorPickerBase: ComponentFn<ColorPickerBaseProps> = (props) => {
     hex,
     setHex: (h) => {
       setHex(h)
-      const rgb = hexToRgb(h)
-      const hsb = rgbToHsb(rgb.r, rgb.g, rgb.b)
+      const c = hexToRgb(h)
+      const hsb = rgbToHsb(c.r, c.g, c.b)
       _hue.set(hsb.h)
       _saturation.set(hsb.s)
       _brightness.set(hsb.b)

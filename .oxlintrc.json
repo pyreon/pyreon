@@ -72,6 +72,12 @@
         "no-useless-escape": "off",
         "no-template-curly-in-string": "off"
       }
+    },
+    {
+      "files": ["packages/core/compiler/src/jsx.ts"],
+      "rules": {
+        "no-shadow": "off"
+      }
     }
   ],
   "settings": {

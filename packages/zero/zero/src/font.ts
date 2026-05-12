@@ -159,11 +159,11 @@ export function parseGoogleFamily(input: string): ResolvedFont {
       for (const entry of entries) {
         if (entry.includes(',')) {
           // Tuple format: "0,300" or "1,500" — last value is the weight
-          const parts = entry.split(',')
-          const weight = Number(parts[parts.length - 1])
+          const tuple = entry.split(',')
+          const weight = Number(tuple[tuple.length - 1])
           if (weight > 0) weights.add(weight)
           // Detect italic from tuple: "1,xxx" means italic
-          if (parts[0] === '1') italic = true
+          if (tuple[0] === '1') italic = true
         } else if (entry.includes('..')) {
           // Variable range already handled above — skip
         } else {

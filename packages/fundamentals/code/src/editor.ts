@@ -199,12 +199,12 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
       this.markerClass = opts.class ?? ''
     }
 
-    override toDOM(view: EditorView): HTMLElement {
+    override toDOM(hostView: EditorView): HTMLElement {
       // Use the host EditorView's ownerDocument instead of the global —
       // this is both SSR-safe (no `document` global access) and more
       // correct (multi-document scenarios like iframes / shadow roots use
       // their own document instance).
-      const el = view.dom.ownerDocument.createElement('span')
+      const el = hostView.dom.ownerDocument.createElement('span')
       el.textContent = this.markerText
       el.title = this.markerTitle
       if (this.markerClass) el.className = this.markerClass

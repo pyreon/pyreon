@@ -355,15 +355,15 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 			// Discover all @pyreon/* packages installed in node_modules.
 			// The "bun" export condition points to TS source — esbuild's
 			// dep optimizer would compile them with the wrong JSX runtime.
-			const root = viteUserConfig.root ?? process.cwd()
-			const pyreonExclude = scanPyreonPackages(root)
+			const cwd = viteUserConfig.root ?? process.cwd()
+			const pyreonExclude = scanPyreonPackages(cwd)
 
 			// `@pyreon/runtime-server` is only imported by zero's dev SSR
 			// middleware and the production server entry — apps rarely list it
 			// as a direct dep. Resolve it to the copy nested under zero so
 			// `ssrLoadModule("@pyreon/runtime-server")` works uniformly.
 			const runtimeServerAlias = resolveNestedPackage(
-				root,
+				cwd,
 				"@pyreon/runtime-server",
 			)
 

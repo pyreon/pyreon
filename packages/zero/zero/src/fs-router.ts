@@ -1411,7 +1411,6 @@ export function generateRouteModuleFromRoutes(
  * skipping no-middleware files keeps both paths working.
  */
 export function generateMiddlewareModule(files: string[], routesDir: string): string {
-  const { readFileSync } = require('node:fs') as typeof import('node:fs')
   const routes = parseFileRoutes(files)
   const imports: string[] = []
   const entries: string[] = []

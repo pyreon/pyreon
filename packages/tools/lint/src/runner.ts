@@ -161,8 +161,8 @@ export function lintFile(
     // Validate options against the rule's declared schema. Cached per
     // (rule, options) pair — config doesn't change within a run.
     const cacheKey = `${rule.meta.id}::${JSON.stringify(options)}`
-    let cached = VALIDATION_CACHE.get(cacheKey)
-    if (!cached) {
+    let validation = VALIDATION_CACHE.get(cacheKey)
+    if (!validation) {
       const { errors, warnings } = validateRuleOptions(rule, options)
       const configDiags: ConfigDiagnostic[] = []
       for (const message of warnings) {
@@ -171,17 +171,17 @@ export function lintFile(
       for (const message of errors) {
         configDiags.push({ ruleId: rule.meta.id, severity: 'error', message })
       }
-      cached = { ok: errors.length === 0, diagnostics: configDiags }
-      VALIDATION_CACHE.set(cacheKey, cached)
+      validation = { ok: errors.length === 0, diagnostics: configDiags }
+      VALIDATION_CACHE.set(cacheKey, validation)
     }
     // Surface config diagnostics once per (rule, options) pair: prefer
     // the caller-supplied sink (so `lint()` can put them on LintResult);
     // fall back to stderr for standalone `lintFile` usage.
-    if (cached.diagnostics.length > 0) {
+    if (validation.diagnostics.length > 0) {
       if (configDiagnosticsSink) {
         // Dedupe within the sink by (ruleId, message) so two different rules
         // that happen to produce an identical message don't collapse.
-        for (const d of cached.diagnostics) {
+        for (const d of validation.diagnostics) {
           if (
             !configDiagnosticsSink.some(
               (x) => x.ruleId === d.ruleId && x.message === d.message,
@@ -191,7 +191,7 @@ export function lintFile(
           }
         }
       } else {
-        for (const d of cached.diagnostics) {
+        for (const d of validation.diagnostics) {
           // oxlint-disable-next-line no-console
           const emit = d.severity === 'error' ? console.error : console.warn
           emit(`[pyreon-lint] ${d.message}`)
@@ -199,7 +199,7 @@ export function lintFile(
       }
     }
     // Hard error in options → skip this rule entirely for the run.
-    if (!cached.ok) continue
+    if (!validation.ok) continue
 
     const ctx = createRuleContext(
       rule,

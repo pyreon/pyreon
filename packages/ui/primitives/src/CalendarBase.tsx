@@ -165,9 +165,9 @@ export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
 
     // How many days from previous month to show
     const startOffset = (firstDayOfMonth - firstDay + 7) % 7
-    const prevMonth = month === 0 ? 11 : month - 1
-    const prevYear = month === 0 ? year - 1 : year
-    const daysInPrevMonth = getDaysInMonth(prevYear, prevMonth)
+    const pMonth = month === 0 ? 11 : month - 1
+    const pYear = month === 0 ? year - 1 : year
+    const daysInPrevMonth = getDaysInMonth(pYear, pMonth)
 
     const grid: CalendarDay[][] = []
     let week: CalendarDay[] = []
@@ -175,7 +175,7 @@ export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
     // Previous month trailing days
     for (let i = startOffset - 1; i >= 0; i--) {
       const day = daysInPrevMonth - i
-      const date: CalendarDate = { year: prevYear, month: prevMonth, day }
+      const date: CalendarDate = { year: pYear, month: pMonth, day }
       week.push(makeDay(date, false, year, month))
     }
 
@@ -191,11 +191,11 @@ export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
 
     // Next month leading days
     if (week.length > 0) {
-      const nextMonth = month === 11 ? 0 : month + 1
-      const nextYear = month === 11 ? year + 1 : year
+      const nMonth = month === 11 ? 0 : month + 1
+      const nYear = month === 11 ? year + 1 : year
       let day = 1
       while (week.length < 7) {
-        const date: CalendarDate = { year: nextYear, month: nextMonth, day: day++ }
+        const date: CalendarDate = { year: nYear, month: nMonth, day: day++ }
         week.push(makeDay(date, false, year, month))
       }
       grid.push(week)
