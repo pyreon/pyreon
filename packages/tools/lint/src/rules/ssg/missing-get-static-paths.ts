@@ -13,6 +13,15 @@
  * `src/routes/` because the dynamic-route convention is fs-router-
  * specific.
  *
+ * **Skips API routes.** Files under `src/routes/api/` AND any file
+ * that doesn't export a `default` page component are API handlers —
+ * they're runtime-only by definition (fs-router invokes them per
+ * request, never prerenders them), so `getStaticPaths` doesn't apply.
+ * Caught originally in M3.B against `examples/cpa-pw-blog`'s
+ * `api/echo/[...path].ts`. Both checks fire together as defense in
+ * depth: the path check catches the convention, the export-shape
+ * check catches anyone who puts an API route outside `api/`.
+ *
  * Fires `warn` because dynamic routes that intentionally run as SSR
  * (mode: 'ssr' / 'isr') don't need `getStaticPaths` — the rule can't
  * read `vite.config.ts` to know which mode the app uses. The warn
@@ -22,6 +31,7 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 
 const ROUTES_PATH_RE = /[/\\]routes[/\\]/
+const API_PATH_RE = /[/\\]routes[/\\]api[/\\]/
 const DYNAMIC_FILENAME_RE = /\[.+\]\.(tsx?|jsx?)$/
 const SPECIAL_ROUTE_RE = /[/\\]_(layout|error|loading|404|not-found)\./
 
@@ -37,10 +47,14 @@ export const missingGetStaticPaths: Rule = {
   create(context) {
     const filePath = context.getFilePath()
     if (!ROUTES_PATH_RE.test(filePath)) return {}
+    // Skip API routes (`src/routes/api/`) — they're runtime handlers,
+    // never prerendered. Page-vs-API by file-system convention.
+    if (API_PATH_RE.test(filePath)) return {}
     if (!DYNAMIC_FILENAME_RE.test(filePath)) return {}
     if (SPECIAL_ROUTE_RE.test(filePath)) return {}
 
     let hasGetStaticPaths = false
+    let hasDefaultExport = false
     let programSpan: { start: number; end: number } | null = null
 
     const callbacks: VisitorCallbacks = {
@@ -64,7 +78,16 @@ export const missingGetStaticPaths: Rule = {
           }
         }
       },
+      ExportDefaultDeclaration() {
+        hasDefaultExport = true
+      },
       'Program:exit'() {
+        // No `export default` → it's an API route by structure. Skip.
+        // Page routes structurally require a default-exported component
+        // (the fs-router renders `route.component`). Files exporting only
+        // method handlers (`GET` / `POST` / etc.) without a default are
+        // API routes wherever they sit in the tree.
+        if (!hasDefaultExport) return
         if (hasGetStaticPaths || !programSpan) return
         context.report({
           message:

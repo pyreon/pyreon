@@ -695,6 +695,8 @@ const MATRIX: Cell[] = [
   //   PR C: _404.tsx emits dist/404.html
   //   PR F: seoPlugin({ useSsgPaths: true }) reads the resolved-paths
   //         manifest and includes dynamic blog post URLs in sitemap.xml
+  //   PR I (M3.B follow-up): `revalidate = 3600` on `[slug].tsx` produces
+  //         per-route ISR manifest entries for every prerendered post URL
   // Uses the example's own vite.config.ts (which wires getStaticPaths +
   // seoPlugin + fontPlugin together) — see useExampleConfig: true.
   {
@@ -707,6 +709,11 @@ const MATRIX: Cell[] = [
       assertFileExists(join(dist, 'about', 'index.html'))
       assertFileExists(join(dist, 'blog', 'index.html'))
       assertFileExists(join(dist, '404.html'))
+
+      // PR A — dynamic blog posts prerendered into dist/blog/<slug>/index.html.
+      assertFileExists(join(dist, 'blog', 'welcome', 'index.html'))
+      assertFileExists(join(dist, 'blog', 'why-signals', 'index.html'))
+      assertFileExists(join(dist, 'blog', 'static-vs-ssr', 'index.html'))
 
       // PR F — sitemap.xml emitted by seoPlugin AFTER the SSG manifest
       // exists. Must contain the static routes AND the dynamic blog
@@ -723,6 +730,18 @@ const MATRIX: Cell[] = [
       assertFileContains(sitemapPath, '/blog/welcome')
       assertFileContains(sitemapPath, '/blog/why-signals')
       assertFileContains(sitemapPath, '/blog/static-vs-ssr')
+
+      // PR I (M3.B) — `revalidate = 3600` on [slug].tsx produces a
+      // manifest entry per prerendered post. The `vercelRevalidateHandler`
+      // at `api/_pyreon-revalidate.ts` validates incoming webhook
+      // requests against this manifest (it's the path allowlist).
+      // Pre-fix (no `revalidate` export): manifest is absent OR empty.
+      // Post-fix: every dynamic blog post URL gets a 3600s TTL entry.
+      const revalidatePath = join(dist, '_pyreon-revalidate.json')
+      assertFileExists(revalidatePath)
+      assertFileContains(revalidatePath, '"/blog/welcome": 3600')
+      assertFileContains(revalidatePath, '"/blog/why-signals": 3600')
+      assertFileContains(revalidatePath, '"/blog/static-vs-ssr": 3600')
 
       // PR F cleanup — the manifest is an internal artifact and must
       // NOT ship to the static host (no `_pyreon-ssg-paths.json` in dist).
