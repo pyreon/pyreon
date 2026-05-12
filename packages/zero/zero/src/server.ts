@@ -67,7 +67,7 @@ export { compose, getContext } from "./middleware";
 
 // ─── Vite plugins ───────────────────────────────────────────────────────────
 
-export { zeroPlugin as default } from "./vite-plugin";
+export { zeroPlugin as default, getZeroPluginConfig } from "./vite-plugin";
 export type { FaviconPluginConfig, FaviconLocaleConfig } from "./favicon";
 export { faviconPlugin, faviconLinks } from "./favicon";
 export type { SeoPluginConfig, SitemapConfig, RobotsConfig } from "./seo";

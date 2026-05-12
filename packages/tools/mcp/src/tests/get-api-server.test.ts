@@ -1,6 +1,4 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { createServer } from '../index'
+import { callTool, newClient } from './helpers'
 
 // Real MCP server <-> client round-trip for the `get_api` tool. The
 // unit-level coverage of `API_REFERENCE` itself lives in
@@ -10,33 +8,6 @@ import { createServer } from '../index'
 // against the merged manifest output, and the formatter assembles the
 // markdown response. Pairs with the manifest-driven docs pipeline
 // (T2.5.1) — every entry in `api-reference.ts` flows through this tool.
-
-async function newClient(): Promise<{ client: Client; close: () => Promise<void> }> {
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
-  const server = createServer()
-  await server.connect(serverTransport)
-  const client = new Client({ name: 'test', version: '0.0.0' })
-  await client.connect(clientTransport)
-  return {
-    client,
-    close: async () => {
-      await client.close()
-      await server.close()
-    },
-  }
-}
-
-async function callTool(
-  client: Client,
-  name: string,
-  args: Record<string, unknown>,
-): Promise<string> {
-  const result = (await client.callTool({ name, arguments: args })) as {
-    content: Array<{ type: string; text: string }>
-  }
-  expect(result.content[0]!.type).toBe('text')
-  return result.content[0]!.text
-}
 
 describe('MCP server — get_api tool', () => {
   it('returns signature + usage for a known symbol', async () => {

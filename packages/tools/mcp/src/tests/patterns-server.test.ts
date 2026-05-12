@@ -1,39 +1,10 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { createServer } from '../index'
+import { callTool, newClient } from './helpers'
 
 // Real MCP server <-> client round-trip for the T2.5.3 (`get_pattern`)
 // and T2.5.4 (`get_anti_patterns`) tools. Same setup as the validate
 // integration test — linked in-memory transports + the SDK's Client —
 // so we exercise tool registration, JSON-RPC framing, and the formatter
 // response shape in one pass.
-
-async function newClient(): Promise<{ client: Client; close: () => Promise<void> }> {
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
-  const server = createServer()
-  await server.connect(serverTransport)
-  const client = new Client({ name: 'test', version: '0.0.0' })
-  await client.connect(clientTransport)
-  return {
-    client,
-    close: async () => {
-      await client.close()
-      await server.close()
-    },
-  }
-}
-
-async function callTool(
-  client: Client,
-  name: string,
-  args: Record<string, unknown>,
-): Promise<string> {
-  const result = (await client.callTool({ name, arguments: args })) as {
-    content: Array<{ type: string; text: string }>
-  }
-  expect(result.content[0]!.type).toBe('text')
-  return result.content[0]!.text
-}
 
 describe('MCP server — get_pattern tool', () => {
   it('lists available patterns when called with no arg', async () => {

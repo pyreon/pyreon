@@ -1,8 +1,6 @@
+import { callTool, newClient } from './helpers'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { createServer } from '../index'
 
 // Real MCP server <-> client round-trip for the `get_browser_smoke_status`
 // tool. The tool walks `<cwd>/packages` looking for browser-categorised
@@ -23,33 +21,6 @@ const _filename = fileURLToPath(import.meta.url)
 const _dirname = path.dirname(_filename)
 // .../packages/tools/mcp/src/tests → walk up 4 levels to the repo root.
 const REPO_ROOT = path.resolve(_dirname, '..', '..', '..', '..', '..')
-
-async function newClient(): Promise<{ client: Client; close: () => Promise<void> }> {
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
-  const server = createServer()
-  await server.connect(serverTransport)
-  const client = new Client({ name: 'test', version: '0.0.0' })
-  await client.connect(clientTransport)
-  return {
-    client,
-    close: async () => {
-      await client.close()
-      await server.close()
-    },
-  }
-}
-
-async function callTool(
-  client: Client,
-  name: string,
-  args: Record<string, unknown>,
-): Promise<string> {
-  const result = (await client.callTool({ name, arguments: args })) as {
-    content: Array<{ type: string; text: string }>
-  }
-  expect(result.content[0]!.type).toBe('text')
-  return result.content[0]!.text
-}
 
 describe('MCP server — get_browser_smoke_status tool', () => {
   it('emits the coverage header (covered / total)', async () => {

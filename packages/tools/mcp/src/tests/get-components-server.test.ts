@@ -1,6 +1,4 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { createServer } from '../index'
+import { callTool, newClient } from './helpers'
 
 // Real MCP server <-> client round-trip for the `get_components` tool.
 // Pairs with `get-routes-server.test.ts` — both flow through the
@@ -9,33 +7,6 @@ import { createServer } from '../index'
 // `compiler/src/tests/project-scanner.test.ts`; this proves the
 // JSON-RPC wiring + the formatter that renders each `ComponentInfo`
 // (name, file path, `props: { ... }`, `signals: [ ... ]`).
-
-async function newClient(): Promise<{ client: Client; close: () => Promise<void> }> {
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
-  const server = createServer()
-  await server.connect(serverTransport)
-  const client = new Client({ name: 'test', version: '0.0.0' })
-  await client.connect(clientTransport)
-  return {
-    client,
-    close: async () => {
-      await client.close()
-      await server.close()
-    },
-  }
-}
-
-async function callTool(
-  client: Client,
-  name: string,
-  args: Record<string, unknown>,
-): Promise<string> {
-  const result = (await client.callTool({ name, arguments: args })) as {
-    content: Array<{ type: string; text: string }>
-  }
-  expect(result.content[0]!.type).toBe('text')
-  return result.content[0]!.text
-}
 
 describe('MCP server — get_components tool', () => {
   it('emits the components header with count and at least one entry', async () => {

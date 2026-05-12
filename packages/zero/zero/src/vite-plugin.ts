@@ -14,6 +14,7 @@ import { resolveConfig } from './config'
 // Used in the dev-mode SSR catch handler to convert loader-thrown
 // `redirect()` errors into real HTTP redirects (302/307/308).
 import { getRedirectInfo } from '@pyreon/router'
+import { matchPattern } from './entry-server'
 
 /**
  * Scan node_modules/@pyreon/ to discover all installed Pyreon packages.
@@ -46,7 +47,6 @@ function resolveNestedPackage(root: string, name: string): string | undefined {
   if (existsSync(nested)) return nested
   return undefined
 }
-import { matchPattern } from "./entry-server";
 import { renderErrorOverlay } from "./error-overlay";
 import {
 	generateMiddlewareModule,
@@ -69,6 +69,28 @@ const VIRTUAL_API_ROUTES_ID = "virtual:zero/api-routes";
 const RESOLVED_VIRTUAL_API_ROUTES_ID = `\0${VIRTUAL_API_ROUTES_ID}`;
 
 /**
+ * Per-plugin-instance storage for the user-supplied ZeroConfig. Lets
+ * downstream consumers (e.g. `@pyreon/zero-cli`'s `build` command, which
+ * loads the user's `vite.config.ts` and inspects its plugin list)
+ * recover the original config without us attaching internal state to
+ * the public Plugin object via an underscore-prefixed property.
+ *
+ * Exported via `getZeroPluginConfig(plugin)` so the WeakMap itself
+ * stays an implementation detail — callers can't enumerate or mutate
+ * the table, only read by Plugin identity.
+ */
+const zeroPluginConfigMap = new WeakMap<Plugin, ZeroConfig>();
+
+/**
+ * Retrieve the `ZeroConfig` that was passed to `zeroPlugin(userConfig)`
+ * when the plugin was created. Returns `undefined` if the argument
+ * isn't a recognized pyreon-zero main plugin instance.
+ */
+export function getZeroPluginConfig(plugin: Plugin): ZeroConfig | undefined {
+	return zeroPluginConfigMap.get(plugin);
+}
+
+/**
  * Zero Vite plugin — adds file-based routing and zero-config conventions
  * on top of @pyreon/vite-plugin.
  *
@@ -86,10 +108,9 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 	let routesDir: string;
 	let root: string;
 
-	const mainPlugin: Plugin & { _zeroConfig: ZeroConfig } = {
+	const mainPlugin: Plugin = {
 		name: "pyreon-zero",
 		enforce: "pre",
-		_zeroConfig: userConfig,
 
 		configResolved(resolvedConfig) {
 			root = resolvedConfig.root;
@@ -404,6 +425,12 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 			};
 		},
 	};
+
+	// Stash the original user config keyed by plugin identity so the CLI
+	// (which loads vite.config.ts and inspects the plugin list) can
+	// recover it via `getZeroPluginConfig(plugin)` without us hanging a
+	// `_`-prefixed property off the public Plugin object.
+	zeroPluginConfigMap.set(mainPlugin, userConfig);
 
 	// SSG mode auto-wires the static-site generation hook. Other modes get
 	// just the main plugin. The SSG plugin internally no-ops when

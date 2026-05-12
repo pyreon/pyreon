@@ -35,7 +35,7 @@ import { rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { spawn } from 'node:child_process'
 
-type Mode = 'ssr' | 'ssg' | 'spa'
+type Mode = 'ssr' | 'ssg' | 'spa' | 'isr'
 
 interface Cell {
   /** Example dir name under `examples/` */
@@ -77,6 +77,10 @@ interface Cell {
    * sitemap content (PR F) and hreflang xhtml:link entries (PR K)
    * end-to-end through a real build. Without this field, the auto-
    * generated config skips seoPlugin entirely.
+   *
+   * Keep this inline shape aligned with the canonical sitemap config
+   * type in `@pyreon/zero` (`SeoSitemapConfig` in `seo.ts`) — if the
+   * canonical shape grows a new field, this matrix needs to opt in.
    */
   sitemap?: {
     origin: string
