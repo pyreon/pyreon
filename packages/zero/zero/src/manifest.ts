@@ -370,6 +370,288 @@ async function authMiddleware(ctx, next) {
 const { user } = useRequestLocals<{ user: User | null }>()`,
       seeAlso: ['cspMiddleware'],
     },
+
+    // ─── Three-layer extensibility: Link / Image / Script ──────────────
+    // Each component ships THREE layers: a `useX(props)` hook for full
+    // control, a `createX(Component)` HOC for wrapping any component
+    // with the optimization behavior, and a default `X` component that
+    // covers the 90% case. Same pattern across all three so consumers
+    // build mental model once. Reference: link.tsx, image.tsx, script.tsx.
+
+    {
+      name: 'Link',
+      kind: 'component',
+      signature:
+        '<Link href={path} prefetch="hover" activeClass={cls}>{children}</Link>',
+      summary:
+        "Default navigation link built on an `<a>` tag — client-side push via `router.push()`, hover/viewport prefetch, `aria-current=\"page\"` on exact match, `activeClass` / `exactActiveClass` for nav-state styling. Built on `createLink` so consumers can swap the rendered element via `createLink(MyCustomLink)` without losing the prefetch + active-state behavior.",
+      example: `import { Link } from '@pyreon/zero/link'
+
+<Link href="/about" prefetch="viewport" activeClass="nav-active">About</Link>
+<Link href="/external" external>External</Link>  // target="_blank" rel="noopener noreferrer"`,
+      mistakes: [
+        "Using `<a href={path} onClick={() => router.push(path)}>` instead of `<Link>` — manual approach skips prefetch, active-state class merging, and the keyboard-modifier guard (Cmd+click should open new tab, not navigate in-place)",
+        "Setting `prefetch=\"hover\"` (default) and expecting prefetch on mobile — mobile devices don't fire mouseenter; use `prefetch=\"viewport\"` for IntersectionObserver-based prefetch (or accept that touchstart triggers prefetch too)",
+        "Passing `class` AND `activeClass` — both are MERGED via `cx` (not overridden); the user-provided `class` always applies, `activeClass` is appended when `isActive()` is true",
+        "`<Link to={...}>` — Link uses `href`, NOT `to` (RouterLink from `@pyreon/router` uses `to`; Link from `@pyreon/zero/link` uses `href` to match HTML anchor convention)",
+        "Expecting `external: true` to skip prefetch — `external` controls click handling (opens in new tab via `target=\"_blank\"`), not prefetch. Use `prefetch=\"none\"` if you want to skip prefetch for an internal link",
+        "Building a custom anchor wrapper from scratch instead of using `createLink` or `useLink` — the prefetch cache, keyboard-modifier guard, active-state class composition, and SSR-safe document.head injection are non-trivial",
+      ],
+      seeAlso: ['useLink', 'createLink', 'prefetchRoute'],
+    },
+    {
+      name: 'useLink',
+      kind: 'hook',
+      signature: 'function useLink(props: LinkProps): UseLinkReturn',
+      summary:
+        'Composable that returns all link behavior — `{ ref, handleClick, handleMouseEnter, handleTouchStart, isActive, isExactActive, classes }`. Use when `createLink` is too opinionated (e.g. you need a `<button>` link, a card-shaped link, or want to compose with another framework primitive). Internals: hover/viewport prefetch via IntersectionObserver, keyboard-modifier guard (Cmd+click opens new tab), active/exact-active path matching, class-string composition.',
+      example: `import { useLink } from '@pyreon/zero/link'
+
+function CardLink(props: LinkProps) {
+  const link = useLink(props)
+  return (
+    <div
+      ref={link.ref}
+      class={() => \`card \${link.classes()}\`}
+      onClick={link.handleClick}
+      onMouseEnter={link.handleMouseEnter}
+      onTouchStart={link.handleTouchStart}
+    >
+      {props.children}
+    </div>
+  )
+}`,
+      mistakes: [
+        "Reading `link.classes` as a plain string — it's a `() => string` accessor. Call it inside reactive scopes (JSX expression thunks, `class={link.classes}`) so the active class updates on route change",
+        "Forgetting to wire `link.ref` to the root element under `prefetch=\"viewport\"` — without the ref the IntersectionObserver has nothing to observe; viewport-based prefetch never fires",
+        "Calling `link.handleClick(e)` synchronously in the component body — handlers are meant to be JSX event props (`onClick={link.handleClick}`); synchronous invocation in the render body triggers `router.push` during render which the lint rule `no-imperative-navigate-in-render` flags",
+        "Mixing `useLink` + a router instance from a different `RouterProvider` — `useLink` reads the nearest router context; multi-router apps need explicit context boundaries",
+        "Treating `useLink` as setup-only (calling it conditionally inside an effect) — like all hooks, call it at the top of the component body. The ref / handlers are stable across re-renders",
+        "Forgetting that `external: true` bypasses the click handler entirely — `useLink` still returns handlers but `handleClick`'s body short-circuits when `props.external` is true; the wrapped element should let the native anchor `target=\"_blank\"` semantics handle the rest",
+      ],
+      seeAlso: ['Link', 'createLink', 'UseLinkReturn'],
+    },
+    {
+      name: 'createLink',
+      kind: 'function',
+      signature:
+        'function createLink(Component: (p: LinkRenderProps) => any): (props: LinkProps) => any',
+      summary:
+        'HOC that wraps any component with link behavior. The wrapped component receives `LinkRenderProps` with all handlers + state pre-wired (`href`, `ref`, `onClick`, `onMouseEnter`, `onTouchStart`, `isActive`, `isExactActive`, `class`, `target`, `rel`). Use this to build styled link variants (button-links, card-links, design-system anchors) without re-implementing the prefetch + active-state machine.',
+      example: `import { createLink } from '@pyreon/zero/link'
+
+const ButtonLink = createLink((props) => (
+  <button
+    ref={props.ref}
+    class={props.class}
+    onClick={props.onClick}
+    onMouseEnter={props.onMouseEnter}
+  >
+    {props.children}
+  </button>
+))
+
+<ButtonLink href="/dashboard" activeClass="active">Dashboard</ButtonLink>`,
+      mistakes: [
+        "Not forwarding `props.ref` to the rendered element — the prefetch IntersectionObserver and active-state observer both need a real DOM ref to attach to",
+        "Calling the user-provided `props.class` as a function in JSX (`class={props.class()}`) — `class` is a string-or-accessor union; pass it directly (`class={props.class}`) and let the renderer call it if needed",
+        "Forgetting `onTouchStart` — mobile devices don't fire mouseenter; without `onTouchStart` mobile users get no prefetch benefit",
+        "Re-rendering the wrapped component on every router event — the HOC calls `useLink` ONCE per component instance, returns stable handlers, and the route signal is reactive at the granularity of `isActive` / `classes`. Don't memoize the wrapper output manually",
+        "Building separate wrappers for `<button>` vs `<a>` vs `<div>` instead of having ONE styled wrapper that accepts a `tag` prop — `createLink` only handles the link logic; the rendered tag choice is the consumer's structural decision",
+        "Expecting `createLink` to handle `external: true` semantics on a non-anchor component — `target` and `rel` are forwarded as RenderProps but `<button target=\"_blank\">` does nothing; for external links rendered as buttons, the consumer must handle `window.open()` explicitly",
+      ],
+      seeAlso: ['Link', 'useLink', 'LinkRenderProps'],
+    },
+    {
+      name: 'prefetchRoute',
+      kind: 'function',
+      signature: 'function prefetchRoute(href: string): void',
+      summary:
+        'Imperatively prefetch a route\'s JS chunk by injecting `<link rel="prefetch">` + `<link rel="modulepreload">` into `document.head`. Deduplicates — calling twice with the same `href` is a no-op. Backed by an LRU cache (MAX 200 entries) that evicts oldest entries AND removes their DOM nodes to prevent head-bloat across long SPA sessions.',
+      example: `import { prefetchRoute } from '@pyreon/zero/link'
+
+// On user hovering a card, prefetch the linked route's chunk
+<Card onMouseEnter={() => prefetchRoute('/posts/' + post.id)}>...</Card>`,
+      seeAlso: ['Link', 'useLink'],
+    },
+
+    {
+      name: 'Image',
+      kind: 'component',
+      signature:
+        '<Image src={url} alt={alt} width={w} height={h} priority={false} loading="lazy" placeholder={blurUrl} />',
+      summary:
+        "Default optimized image — lazy loading via IntersectionObserver, automatic width/height for CLS prevention, responsive srcset, multi-format via `<picture>`, blur-up placeholder, `fetchPriority=\"high\"` for LCP images. Built on `createImage` so consumers can layer rocketstyle / custom wrappers on top via `createImage(MyStyledImage)` without losing the optimization pipeline. The `raw: true` escape hatch returns a bare `<img>` (no container, no lazy load, no aspect-ratio enforcement).",
+      example: `import { Image } from '@pyreon/zero/image'
+import hero from './hero.jpg?optimize'
+
+// With imagePlugin — spreads optimized srcset + formats + dimensions
+<Image {...hero} alt="Hero" priority />
+
+// Manual
+<Image src="/hero.jpg" alt="Hero" width={1200} height={630} />
+
+// Raw mode — skip all optimization wrappers (custom layout)
+<Image src="/bg.jpg" alt="" width={400} height={300} raw />`,
+      mistakes: [
+        "Forgetting `width` + `height` — both are REQUIRED for CLS prevention. The `aspect-ratio` CSS is computed from these; omitting them produces layout shift when the image loads",
+        "Setting `priority` on below-the-fold images — `priority` disables lazy loading AND adds `fetchPriority=\"high\"`. Reserve it for the LCP image only (typically the hero)",
+        "Setting `loading=\"eager\"` AND `priority` — they're redundant; `priority` already implies eager. Pick one (`priority` is the LCP-marker; `loading=\"eager\"` is the no-priority eager hint)",
+        "Using `placeholder` as a full-resolution image — it should be a tiny base64 data URI or a /placeholder.jpg (~1-2 KB). Large placeholders defeat the purpose by blocking initial paint",
+        "Spreading `imagePlugin` output (`{...hero}`) WITHOUT `alt` — `alt` is required for accessibility AND not auto-derived by the plugin. The TypeScript type enforces this",
+        "Wrapping `<Image>` in a `<picture>` manually for WebP/AVIF — `formats` already does this via `imagePlugin`. Manual `<picture>` defeats the optimization",
+      ],
+      seeAlso: ['useImage', 'createImage', 'ImageProps', 'ImageRenderProps'],
+    },
+    {
+      name: 'useImage',
+      kind: 'hook',
+      signature: 'function useImage(props: ImageProps): UseImageReturn',
+      summary:
+        "Composable that returns resolved image attributes + signals — `{ containerRef, inView, loaded, src, srcSet, sizes, aspectRatio, containerStyle, imageStyle, placeholderStyle, loading, fetchPriority, handleLoad, formats, hasFormats }`. Use for full control when `createImage`'s default `<div><img/></div>` structure is wrong (e.g. `<figure>` + `<figcaption>`, custom container layouts, overlay elements). Reactive accessors (`src`, `srcSet`, `imageStyle`, `placeholderStyle`) re-evaluate on `inView()` flip — wire them as JSX expressions for fine-grained updates.",
+      example: `import { useImage } from '@pyreon/zero/image'
+
+function FigureImage(props: ImageProps) {
+  const img = useImage(props)
+  return (
+    <figure ref={img.containerRef} style={img.containerStyle}>
+      <img
+        src={img.src}
+        srcSet={img.srcSet}
+        sizes={img.sizes}
+        alt={props.alt}
+        width={props.width}
+        height={props.height}
+        loading={img.loading}
+        onLoad={img.handleLoad}
+        style={img.imageStyle}
+      />
+      <figcaption>{props.alt}</figcaption>
+    </figure>
+  )
+}`,
+      mistakes: [
+        "Reading `img.src` as a plain string — it's a `() => string` accessor that returns empty string until `inView()` triggers. Pass it as a JSX attribute (`src={img.src}`) so the renderer wraps it in a reactive binding",
+        "Forgetting to wire `img.containerRef` — without the ref, IntersectionObserver has nothing to observe; lazy images never enter view, never load",
+        "Calling `img.handleLoad()` from your own code — `handleLoad` is the `<img>`'s `onLoad` handler. Wire it as `onLoad={img.handleLoad}`; calling it manually marks the image as loaded prematurely (placeholder fades out before the image arrives)",
+        "Spreading `useImage` return on the `<img>` directly (`<img {...img}/>`) — most fields aren't `<img>` attributes (`containerRef`, `aspectRatio`, `imageStyle`, `placeholderStyle`, `hasFormats`). Pick the fields you need",
+        "Ignoring `img.hasFormats` — if `formats` is set, you should render a `<picture>` with per-format `<source>` elements; `img.srcSet()` returns empty string under formats mode (the format-specific srcsets live on `<source>`)",
+        "Treating `useImage` as setup-only — like all Pyreon hooks, call it at the top of the component body. The container ref + signals are stable across re-renders",
+      ],
+      seeAlso: ['Image', 'createImage', 'UseImageReturn'],
+    },
+    {
+      name: 'createImage',
+      kind: 'function',
+      signature:
+        'function createImage(Component: (p: ImageRenderProps) => any): (props: ImageProps) => any',
+      summary:
+        'HOC that wraps any component with image optimization. The wrapped component receives `ImageRenderProps` with pre-rendered `placeholder` JSX (null when no placeholder set) + pre-rendered `image` JSX (bare `<img>` OR `<picture>` tree depending on formats), the container ref, container styles, and class. Consumer composes those pieces with whatever wrapper element / extra layout (overlay, badge, caption).',
+      example: `import { createImage } from '@pyreon/zero/image'
+
+const FigureImage = createImage((props) => (
+  <figure ref={props.containerRef} class={props.class} style={props.containerStyle}>
+    {props.placeholder}
+    {props.image}
+    <figcaption>Caption</figcaption>
+  </figure>
+))
+
+<FigureImage src="/hero.jpg" alt="Hero" width={1200} height={630} placeholder="/blur.jpg" />`,
+      mistakes: [
+        "Forgetting to render `props.image` — without it, the actual `<img>` never appears in the DOM. The HOC pre-renders the bare `<img>` or `<picture>` tree; the consumer just needs to place it",
+        "Conditionally rendering `props.placeholder` — it's already conditional (null when no `placeholder` prop set). Always render it; React/Pyreon ignore null children",
+        "Forwarding `props.containerStyle` to a child instead of the container — the styles (aspect-ratio, position: relative, overflow: hidden) MUST apply to the element holding `props.containerRef`. Otherwise CLS prevention breaks AND IntersectionObserver observes the wrong element",
+        "Building `placeholder` JSX from scratch — `createImage` already constructs the blur-up `<img>` with the right styles. Just render `{props.placeholder}`; don't reach into `useImage().placeholderStyle()` manually",
+        "Passing `raw: true` to a `createImage`-wrapped component — `raw` short-circuits BEFORE `createImage`'s wrapped component runs (returns bare `<img>`). The wrapped component never receives `ImageRenderProps` in raw mode. Documented as the no-optimization escape hatch",
+        "Re-implementing the `<picture>` switch — `props.image` already handles the formats branch. Wrapping `props.image` in another `<picture>` produces nested `<picture>` which browsers ignore (the outer wins)",
+      ],
+      seeAlso: ['Image', 'useImage', 'ImageRenderProps'],
+    },
+
+    {
+      name: 'Script',
+      kind: 'component',
+      signature:
+        '<Script src={url} strategy="afterHydration" id={uniqueId} async={true} onLoad={cb} onError={cb} />',
+      summary:
+        "Default optimized third-party script loader. Strategies: `beforeHydration` (in HTML already), `afterHydration` (inject on mount — default), `onIdle` (via `requestIdleCallback`), `onInteraction` (on first click/scroll/keydown/touchstart), `onViewport` (when sentinel enters viewport). Built on `createScript` — consumers can render loading indicators, retry buttons, or analytics-readiness gates via `createScript(MyCustom)` without re-implementing the strategy machine. Returns a 0×0 sentinel `<div>` for `onViewport` strategy, `null` otherwise.",
+      example: `import { Script } from '@pyreon/zero/script'
+
+// Load analytics after page is interactive
+<Script src="https://analytics.example.com/script.js" strategy="onIdle" id="analytics" />
+
+// Load chat widget when scrolled into view
+<Script src="/chat-widget.js" strategy="onViewport" />
+
+// Inline script with deferred execution
+<Script strategy="afterHydration">{\`console.log("App hydrated!")\`}</Script>`,
+      mistakes: [
+        "Setting `strategy=\"onInteraction\"` for analytics that needs first-paint metrics — by definition, onInteraction loads AFTER the first user interaction; first-paint metrics from such a script are useless. Use `onIdle` for analytics that needs LCP / FCP capture",
+        "Forgetting `id` for scripts that might mount in multiple places — without `id`, dedup doesn't fire and the script loads twice. Always provide `id` for analytics / tracking / third-party widgets",
+        "Mixing `src` + `children` — `children` is the inline script body; `src` is the URL. If BOTH are set, `src` wins and `children` is ignored (the dom script.src takes precedence). Use one or the other",
+        "`strategy=\"beforeHydration\"` without actually putting the `<script>` in the HTML — beforeHydration is a NO-OP marker; the script must already exist in the SSR-emitted HTML. Use SSR `<script>` tag injection in your entry-server, not `<Script>`",
+        "Setting `async={false}` for non-critical scripts — `async={false}` blocks parser; reserve for scripts that MUST execute in order (rare for third-party). Default is true",
+        "Expecting `onError` to fire for inline scripts — only `src`-based scripts trigger onerror via the browser. Inline scripts (`children`) execute synchronously; runtime exceptions don't propagate to `onError`",
+      ],
+      seeAlso: ['useScript', 'createScript', 'ScriptProps', 'ScriptStrategy'],
+    },
+    {
+      name: 'useScript',
+      kind: 'hook',
+      signature: 'function useScript(props: ScriptProps): UseScriptReturn',
+      summary:
+        "Composable returning script load-state signals + sentinel ref — `{ sentinelRef, loaded, errored, pending, needsSentinel, load }`. Reactive signals (`loaded`, `errored`, `pending`) let consumers render loading indicators, retry buttons, or analytics-readiness gates without re-implementing the strategy machine. `needsSentinel` is true ONLY for `onViewport` strategy. `load()` is the imperative escape hatch (strategy normally triggers it; rarely needed).",
+      example: `import { useScript } from '@pyreon/zero/script'
+
+function TrackedScript(props: ScriptProps) {
+  const s = useScript(props)
+  return (
+    <>
+      {() => s.pending() && <Spinner />}
+      {() => s.errored() && <button onClick={() => location.reload()}>Retry</button>}
+      {s.needsSentinel && <div ref={s.sentinelRef} style="width:0;height:0" />}
+    </>
+  )
+}`,
+      mistakes: [
+        "Reading `s.loaded` / `s.errored` / `s.pending` as booleans — they're `() => boolean` accessors. Call them inside reactive scopes (JSX thunks, `effect()`) so the UI updates when state changes",
+        "Forgetting `s.needsSentinel` and always rendering a sentinel — non-onViewport strategies don't need one; rendering a div anyway is harmless but reads as wrong",
+        "Calling `s.load()` in the component body — the strategy already calls it (afterHydration runs it on mount, onInteraction on first interaction, etc.). Manual `load()` typically duplicates the request (unless `id` is set for dedup)",
+        "Wiring `s.sentinelRef` to a non-DOM element — IntersectionObserver needs a real Element. A `null` or detached ref means viewport-based load never fires",
+        "Expecting `s.pending()` to start true for `afterHydration` — it doesn't. `afterHydration` is the synchronous-load strategy; pending only starts true for `onIdle` / `onInteraction` / `onViewport` (where the load is deferred)",
+        "Using `s.errored()` to suppress retry-on-mount — `errored` is set when the script's onerror fires, NOT when a previous mount errored. Multi-mount apps need their own retry budget tracking",
+      ],
+      seeAlso: ['Script', 'createScript', 'UseScriptReturn'],
+    },
+    {
+      name: 'createScript',
+      kind: 'function',
+      signature:
+        'function createScript(Component: (p: ScriptRenderProps) => any): (props: ScriptProps) => any',
+      summary:
+        "HOC that wraps any component with script load behavior. The wrapped component receives `ScriptRenderProps` with the sentinel ref, load-state signals (`loaded`, `errored`, `pending`), and `needsSentinel` flag. Use this to render loading indicators, retry UI, or analytics-readiness gates around the script load lifecycle.",
+      example: `import { createScript } from '@pyreon/zero/script'
+
+const StatusScript = createScript((props) => (
+  <div>
+    {() => props.pending() && <span>Loading analytics...</span>}
+    {() => props.errored() && <span>Analytics failed to load</span>}
+    {props.needsSentinel && <div ref={props.sentinelRef} style="width:0;height:0" />}
+  </div>
+))
+
+<StatusScript src="/analytics.js" strategy="onIdle" id="analytics" />`,
+      mistakes: [
+        "Always rendering `<div ref={props.sentinelRef} .../>` regardless of `needsSentinel` — for non-onViewport strategies the ref is `undefined`. Gate the sentinel render on `props.needsSentinel`",
+        "Calling `props.loaded()` / `props.errored()` / `props.pending()` outside reactive scopes — they're accessors; outside JSX thunks they capture the value at setup time and never update",
+        "Forgetting that the wrapped component's render output doesn't affect script loading — the script load fires in `useScript`'s `onMount` regardless of what the wrapped component returns (null, div, fragment). The wrapper is purely a UI surface",
+        "Building a custom strategy machine in the wrapped component — the strategy is already resolved by `useScript`. The wrapped component just observes the resulting signals",
+        "Forwarding `props.sentinelRef` to multiple elements — `useIntersectionObserver` observes ONE element. Multi-ref forwarding produces undefined behavior (the last-attached element wins)",
+        "Expecting the wrapped component to fire `onLoad` / `onError` — those callbacks are on the `ScriptProps` (passed to the OUTER component), not on the wrapped component. The wrapped component reads `props.loaded()` / `props.errored()` signals to react to the same events",
+      ],
+      seeAlso: ['Script', 'useScript', 'ScriptRenderProps'],
+    },
   ],
   gotchas: [
     'mode: \'ssg\' returns Plugin[] (the SSG plugin auto-attaches a companion `ssgPlugin()`); Vite\'s plugins array flattens nested arrays so `plugins: [pyreon(), zero()]` works as-is.',
