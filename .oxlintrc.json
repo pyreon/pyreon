@@ -5,7 +5,15 @@
     "correctness": "warn"
   },
   "rules": {
-    "no-unused-vars": "warn",
+    "no-unused-vars": [
+      "warn",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_",
+        "destructuredArrayIgnorePattern": "^_"
+      }
+    ],
     "no-shadow": "warn",
     "no-empty": "warn",
     "no-console": "warn",
@@ -22,7 +30,8 @@
         "no-empty": "off",
         "no-shadow": "off",
         "no-template-curly-in-string": "off",
-        "typescript/no-non-null-assertion": "off"
+        "typescript/no-non-null-assertion": "off",
+        "no-unused-vars": "off"
       }
     },
     {
@@ -55,6 +64,13 @@
       "files": ["packages/fundamentals/flow/src/**", "packages/fundamentals/code/src/**"],
       "rules": {
         "jsx-a11y/alt-text": "off"
+      }
+    },
+    {
+      "files": ["packages/tools/mcp/src/api-reference.ts"],
+      "rules": {
+        "no-useless-escape": "off",
+        "no-template-curly-in-string": "off"
       }
     }
   ],

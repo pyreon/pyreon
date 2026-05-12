@@ -13,7 +13,7 @@ GlobalRegistrator.register()
 
 const [
   { h, For },
-  { signal, createSelector, renderEffect, ...reactivityRest },
+  { signal, createSelector, renderEffect: _renderEffect, ...reactivityRest },
   { mount, ...runtimeDomRest },
   React,
   ReactDOM,

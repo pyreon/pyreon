@@ -107,15 +107,6 @@ export interface PyreonPluginOptions {
   islands?: boolean
 }
 
-// ── Compat JSX import sources ─────────────────────────────────────────────────
-
-const COMPAT_JSX_SOURCE: Record<CompatFramework, string> = {
-  react: '@pyreon/react-compat',
-  preact: '@pyreon/preact-compat',
-  vue: '@pyreon/vue-compat',
-  solid: '@pyreon/solid-compat',
-}
-
 // ── Compat alias maps ─────────────────────────────────────────────────────────
 
 const COMPAT_ALIASES: Record<CompatFramework, Record<string, string>> = {
@@ -252,9 +243,9 @@ function scanPyreonDeps(root: string): string[] {
       peerDependencies?: Record<string, string>
     }
     const all = {
-      ...(pkg.dependencies ?? {}),
-      ...(pkg.devDependencies ?? {}),
-      ...(pkg.peerDependencies ?? {}),
+      ...pkg.dependencies,
+      ...pkg.devDependencies,
+      ...pkg.peerDependencies,
     }
     return Object.keys(all).filter((name) => name.startsWith('@pyreon/'))
   } catch {

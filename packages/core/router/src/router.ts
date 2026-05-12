@@ -13,7 +13,6 @@ import {
   type NavigationGuard,
   type NavigationGuardResult,
   type ResolvedRoute,
-  type RouteMiddleware,
   type RouteMiddlewareContext,
   type RouteRecord,
   type Router,

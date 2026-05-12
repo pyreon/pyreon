@@ -85,7 +85,7 @@ function assertPackageDep(projectDir: string, depName: string): void {
     dependencies?: Record<string, string>
     devDependencies?: Record<string, string>
   }
-  const all = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) }
+  const all = { ...pkg.dependencies, ...pkg.devDependencies }
   if (!(depName in all)) {
     throw new Error(
       `expected ${pkgPath} to declare dependency "${depName}". Got: ${Object.keys(all).join(', ')}`,
@@ -237,7 +237,7 @@ function runScaffolder(cell: Cell, cwd: string): void {
   }
 }
 
-function runBunInstall(cwd: string): void {
+function runBunInstall(_cwd: string): void {
   // Run from the repo root so the new workspace member is picked up.
   const result = spawnSync('bun', ['install'], { cwd: REPO_ROOT, stdio: 'inherit' })
   if (result.status !== 0) {

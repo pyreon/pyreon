@@ -15,7 +15,6 @@ import {
   findManifests,
   formatLineDiff,
   type LoadedManifest,
-  type PackageManifest,
   renderApiReferenceBlock,
   renderLlmsFullSection,
   renderLlmsTxtLine,

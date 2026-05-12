@@ -624,7 +624,7 @@ async function renderSsr(
 	// `@pyreon/runtime-server` isn't a direct dep of most apps, so zero's
 	// `config()` hook registers an alias that points it at the copy under
 	// zero's own `node_modules` — same path → same Vite module → same instance.
-	const [core, headPkg, headSsr, routerPkg, runtimeServer] = await Promise.all(
+	const [core, _headPkg, headSsr, routerPkg, runtimeServer] = await Promise.all(
 		[
 			server.ssrLoadModule("@pyreon/core") as Promise<
 				typeof import("@pyreon/core")

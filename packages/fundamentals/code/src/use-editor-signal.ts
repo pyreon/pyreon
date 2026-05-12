@@ -1,10 +1,6 @@
 import { onUnmount } from '@pyreon/core'
 import { bindEditorToSignal } from './bind-signal'
-import type {
-  BindEditorToSignalOptions,
-  SignalLike,
-} from './bind-signal'
-import type { EditorInstance } from './types'
+import type { BindEditorToSignalOptions } from './bind-signal'
 
 /**
  * Reactive hook for binding an editor instance to a signal with automatic

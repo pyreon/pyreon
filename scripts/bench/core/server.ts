@@ -9,7 +9,7 @@
  * Usage: bun scripts/bench/core/server.ts
  */
 
-import type { ComponentFn, VNode } from '../../../packages/core/core/src/index'
+import type { ComponentFn } from '../../../packages/core/core/src/index'
 import { h } from '../../../packages/core/core/src/index'
 import { RouterView } from '../../../packages/core/router/src/components'
 import type { RouteRecord } from '../../../packages/core/router/src/types'

@@ -15,7 +15,7 @@ const path = require('node:path')
 /** @type {import('vscode-languageclient/node').LanguageClient | undefined} */
 let client
 
-function activate(context) {
+function activate(_context) {
   const config = require('vscode').workspace.getConfiguration('pyreonLint')
   if (!config.get('enable', true)) return
 
