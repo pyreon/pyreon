@@ -18,10 +18,12 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import {
   auditIslands,
+  auditSsg,
   auditTestEnvironment,
   type AuditRisk,
   detectReactPatterns,
   formatIslandAudit,
+  formatSsgAudit,
   formatTestAudit,
   hasReactPatterns,
   migrateReactCode,
@@ -52,6 +54,21 @@ export interface DoctorOptions {
    * authors, multi-package projects). Default false.
    */
   checkIslands?: boolean | undefined
+  /**
+   * When true, run the project-wide SSG / ISR audit (M3.4) and append
+   * the result to the doctor output. Catches:
+   *  - `_404.tsx` not co-located with `_layout.tsx` (PR L5 carve-out)
+   *  - dynamic routes (`[id].tsx`) without `getStaticPaths` (PR A
+   *    silently skips them under `mode: 'ssg'`)
+   *  - `export const revalidate = X` where X isn't a numeric literal
+   *    (PR I's extractor silently drops non-literal forms)
+   *
+   * Like the islands audit, this is a "should review" signal — the exit
+   * code is unaffected (the build doesn't break) but CI can pipe
+   * `--check-ssg --json` and grep for findings.length > 0 to gate on
+   * it. Default false.
+   */
+  checkSsg?: boolean | undefined
 }
 
 interface FileResult {
@@ -114,6 +131,23 @@ export async function doctor(options: DoctorOptions): Promise<number> {
     } else {
       console.log('')
       console.log(formatIslandAudit(islandsResult))
+      console.log('')
+    }
+  }
+
+  // M3.4 — SSG audit. Catches `_404.tsx` placement (PR L5 carve-out),
+  // dynamic-route enumerators (PR A silent skip), and non-literal
+  // revalidate exports (PR I's extractor limitation). Exit code
+  // unaffected — same "should review" treatment as islands / test
+  // audits; CI gates via `--json | jq '.ssgAudit.findings | length'`.
+  if (options.checkSsg) {
+    const ssgResult = auditSsg(options.cwd)
+    if (options.json) {
+      console.log('')
+      console.log(JSON.stringify({ ssgAudit: ssgResult }, null, 2))
+    } else {
+      console.log('')
+      console.log(formatSsgAudit(ssgResult))
       console.log('')
     }
   }

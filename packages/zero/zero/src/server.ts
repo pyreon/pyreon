@@ -37,6 +37,14 @@ export {
 
 export { createISRHandler } from "./isr";
 
+// ─── Vercel revalidate handler (M3.1) ───────────────────────────────────────
+
+export type { VercelRevalidateHandlerOptions } from "./vercel-revalidate-handler";
+export {
+	_resetVercelRevalidateHandlerCache,
+	vercelRevalidateHandler,
+} from "./vercel-revalidate-handler";
+
 // ─── Adapters ───────────────────────────────────────────────────────────────
 
 export {

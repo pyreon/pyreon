@@ -19,13 +19,16 @@ function printUsage(): void {
   pyreon <command> [options]
 
   Commands:
-    doctor [--fix] [--json] [--ci] [--audit-tests] [--audit-min-risk <level>] [--check-islands]
+    doctor [--fix] [--json] [--ci] [--audit-tests] [--audit-min-risk <level>] [--check-islands] [--check-ssg]
                                      Scan for React patterns, bad imports, common mistakes.
                                      --audit-tests appends mock-vnode test-audit (PR #197 class).
                                      --audit-min-risk is high|medium|low (default medium).
                                      --check-islands appends project-wide islands audit
                                      (duplicate names, dead islands, registry drift, nested,
                                      never-with-registry).
+                                     --check-ssg appends project-wide SSG / ISR audit
+                                     (_404.tsx placement, dynamic routes missing
+                                     getStaticPaths, non-literal revalidate exports).
     context [--out <path>]           Generate .pyreon/context.json for AI tools
 
   Options:
@@ -60,6 +63,7 @@ async function main(): Promise<void> {
       auditTests: args.includes('--audit-tests'),
       auditMinRisk: rawRisk as DoctorOptions['auditMinRisk'],
       checkIslands: args.includes('--check-islands'),
+      checkSsg: args.includes('--check-ssg'),
     }
     const exitCode = await doctor(options)
     if (options.ci && exitCode > 0) {

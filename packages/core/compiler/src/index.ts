@@ -34,3 +34,12 @@ export type {
   IslandLocation,
 } from './island-audit'
 export { auditIslands, formatIslandAudit } from './island-audit'
+// M3.4 — `pyreon doctor --check-ssg` audit.
+export type {
+  SsgAuditFormatOptions,
+  SsgAuditResult,
+  SsgFinding,
+  SsgFindingCode,
+  SsgLocation,
+} from './ssg-audit'
+export { auditSsg, formatSsgAudit } from './ssg-audit'
