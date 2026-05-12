@@ -60,16 +60,44 @@ describe('gen-docs — zero snapshot', () => {
     expect(keys).toContain('zero/cspMiddleware')
     expect(keys).toContain('zero/useRequestLocals')
 
+    // Three-layer extensibility surface — Link / Image / Script each
+    // expose a hook + HOC + default component. AI agents need every
+    // entry to discover the extensibility pattern (otherwise they'll
+    // only find the default component and miss the customization path).
+    expect(keys).toContain('zero/Link')
+    expect(keys).toContain('zero/useLink')
+    expect(keys).toContain('zero/createLink')
+    expect(keys).toContain('zero/prefetchRoute')
+    expect(keys).toContain('zero/Image')
+    expect(keys).toContain('zero/useImage')
+    expect(keys).toContain('zero/createImage')
+    expect(keys).toContain('zero/Script')
+    expect(keys).toContain('zero/useScript')
+    expect(keys).toContain('zero/createScript')
+
     // Total entry count — locks the count so an accidental delete shows
     // up as a snapshot failure. Bump intentionally when adding a new
     // API entry. The `gen-docs --check` CI gate catches the same drift
     // from the OTHER direction (rendered file out of sync with source).
-    expect(keys.length).toBe(15)
+    expect(keys.length).toBe(25)
 
     // Flagship APIs MUST carry MCP-density mistakes lists — drop one
     // and the snapshot fails loudly. The 6+ mistakes convention is
     // documented in CLAUDE.md (manifest-driven docs pipeline).
-    const flagship = ['zero/zero', 'zero/I18nRoutingConfig', 'zero/expandRoutesForLocales']
+    const flagship = [
+      'zero/zero',
+      'zero/I18nRoutingConfig',
+      'zero/expandRoutesForLocales',
+      'zero/Link',
+      'zero/useLink',
+      'zero/createLink',
+      'zero/Image',
+      'zero/useImage',
+      'zero/createImage',
+      'zero/Script',
+      'zero/useScript',
+      'zero/createScript',
+    ]
     for (const key of flagship) {
       expect(record[key]?.mistakes).toBeDefined()
       expect(record[key]?.mistakes?.length).toBeGreaterThan(0)
