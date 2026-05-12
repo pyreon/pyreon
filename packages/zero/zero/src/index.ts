@@ -13,12 +13,12 @@
 
 // ─── Components (browser-safe) ──────────────────────────────────────────────
 
-export type { ImageProps, ImageSource } from "./image";
-export { Image } from "./image";
+export type { ImageProps, ImageRenderProps, ImageSource, UseImageReturn } from "./image";
+export { createImage, Image, useImage } from "./image";
 export type { LinkProps, LinkRenderProps, UseLinkReturn } from "./link";
 export { createLink, Link, prefetchRoute, useLink } from "./link";
-export type { ScriptProps, ScriptStrategy } from "./script";
-export { Script } from "./script";
+export type { ScriptProps, ScriptRenderProps, ScriptStrategy, UseScriptReturn } from "./script";
+export { createScript, Script, useScript } from "./script";
 export type { MetaProps } from "./meta";
 export { buildMetaTags, Meta } from "./meta";
 

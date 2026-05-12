@@ -40,6 +40,15 @@ export default mergeConfig(
           'src/seo.ts',
           // JSX components (browser-tested):
           'src/link.tsx',
+          // Image + Script have happy-dom real-mount tests in
+          // packages/zero/zero/src/tests/{image,script}.test.ts (covering
+          // ~97% / ~87% of their respective files), but a few paths
+          // (IntersectionObserver-driven lazy load, requestIdleCallback
+          // setTimeout fallback, onUnmount cleanup of interaction handlers)
+          // are env-dependent and only fully exercise in a real browser.
+          // Same exemption category as link.tsx.
+          'src/image.tsx',
+          'src/script.tsx',
           // Browser-only utility:
           'src/utils/intersection-observer.ts',
         ],
