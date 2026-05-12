@@ -1,6 +1,7 @@
 import { useHead } from "@pyreon/head"
 import { useLoaderData } from "@pyreon/router"
 import type { LoaderContext } from "@pyreon/zero"
+import type { GetStaticPaths } from "@pyreon/zero/server"
 import { Link } from "@pyreon/zero/link"
 
 interface Post {
@@ -54,6 +55,19 @@ const POSTS: Record<string, Post> = {
     date: "2026-03-12",
   },
 }
+
+/**
+ * Enumerate the dynamic `:id` values for SSG prerendering. Required when
+ * the app is built with `mode: 'ssg'` (otherwise `pyreon doctor --check-ssg`
+ * warns and the SSG plugin silently skips this route). Harmless under
+ * `mode: 'ssr' | 'isr'` — the loader below still drives the per-request
+ * render in those modes.
+ *
+ * Replace this with your real enumeration (CMS fetch / DB query /
+ * filesystem walk) once you've wired up the data source.
+ */
+export const getStaticPaths: GetStaticPaths<{ id: string }> = () =>
+  Object.keys(POSTS).map((id) => ({ params: { id } }))
 
 export async function loader(ctx: LoaderContext) {
   await new Promise((r) => setTimeout(r, 50))

@@ -2,6 +2,7 @@ import { signal } from "@pyreon/reactivity"
 import { onMount } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { useRoute } from "@pyreon/router"
+import type { GetStaticPaths } from "@pyreon/zero/server"
 import { Link } from "@pyreon/zero/link"
 import {
   DocDocument,
@@ -18,6 +19,22 @@ import { render } from "@pyreon/document"
 import { type Invoice, invoiceById, invoiceTotal } from "../../../lib/db"
 
 export const meta = { title: "Invoice" }
+
+/**
+ * Enumerate the dynamic `:id` values for SSG prerendering. The dashboard
+ * scaffolds in `mode: 'ssr'` by default (invoices are tenant-scoped and
+ * fetched per-request), so this export is unused at runtime. It exists
+ * so that `pyreon doctor --check-ssg` doesn't warn AND so the route still
+ * works under `mode: 'ssg'` if you swap to a fully-static deploy with
+ * known invoice IDs.
+ *
+ * Replace the placeholder IDs with your real invoice enumeration (DB
+ * query / API fetch) when configuring SSG deploys.
+ */
+export const getStaticPaths: GetStaticPaths<{ id: string }> = () => [
+  { params: { id: "demo-001" } },
+  { params: { id: "demo-002" } },
+]
 
 /**
  * The headline demo of `@pyreon/document-primitives`: this template renders

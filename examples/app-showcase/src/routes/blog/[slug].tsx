@@ -1,8 +1,9 @@
 import { useHead } from '@pyreon/head'
 import { useLoaderData } from '@pyreon/router'
 import type { LoaderContext } from '@pyreon/zero'
+import type { GetStaticPaths } from '@pyreon/zero/server'
 import { BlockRenderer } from '../../sections/blog/BlockRenderer'
-import { findPost } from '../../sections/blog/content/posts'
+import { findPost, posts } from '../../sections/blog/content/posts'
 import type { Post } from '../../sections/blog/content/types'
 import { formatDate } from '../../sections/blog/format'
 import {
@@ -25,6 +26,19 @@ interface PostData {
   /** Slug from the URL — used for the og:url and the not-found message. */
   slug: string
 }
+
+/**
+ * Enumerate the dynamic `:slug` values at build time. The SSG plugin
+ * expands `/blog/:slug` × this list into one prerendered HTML file per
+ * post. Without this export the route is silently skipped during SSG
+ * auto-detect — `pyreon doctor --check-ssg` warns about it.
+ *
+ * The slugs come from `posts` exported by `../../sections/blog/content/posts`,
+ * which is the same source the loader reads — keeping prerender and
+ * runtime in lockstep.
+ */
+export const getStaticPaths: GetStaticPaths<{ slug: string }> = () =>
+  posts.map((post) => ({ params: { slug: post.slug } }))
 
 /**
  * Loader runs at SSR/SSG time on the server and again on client-side
