@@ -1,5 +1,6 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
 import { validateBuildInputs } from './validate'
+import { warnMissingEnv } from './warn-missing-env'
 
 /**
  * Netlify adapter — generates output for Netlify Functions (v2).
@@ -120,12 +121,13 @@ export const config = {
       // Reference: https://docs.netlify.com/configure-builds/build-hooks/
       const hookUrl = process.env.NETLIFY_BUILD_HOOK_URL
       if (!hookUrl) {
-        if (process.env.NODE_ENV !== 'production') {
-          console.warn(
-            '[Pyreon] netlifyAdapter.revalidate() needs NETLIFY_BUILD_HOOK_URL env var. Create a build hook in Site settings → Build & deploy → Build hooks → Add build hook.',
-          )
-        }
-        return { regenerated: false }
+        // M2.4 — warn even in production (dedupe per process). See vercel.ts
+        // for the rationale.
+        return warnMissingEnv(
+          'netlify',
+          ['NETLIFY_BUILD_HOOK_URL'],
+          'Create a build hook in Site settings → Build & deploy → Build hooks → Add build hook. Note: Netlify Build Hooks trigger a FULL site rebuild — the path arg is recorded as `trigger_title` for audit traceability but Netlify doesn\'t support per-page ISR natively.',
+        )
       }
       try {
         const triggerTitle = `revalidate:${path}`

@@ -1,5 +1,6 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
 import { validateBuildInputs } from './validate'
+import { warnMissingEnv } from './warn-missing-env'
 
 /**
  * Vercel adapter — generates output for Vercel's Build Output API v3.
@@ -129,12 +130,18 @@ export default async function handler(req) {
       const deploymentUrl = process.env.VERCEL_DEPLOYMENT_URL ?? process.env.VERCEL_URL
       const token = process.env.VERCEL_REVALIDATE_TOKEN
       if (!deploymentUrl || !token) {
-        if (process.env.NODE_ENV !== 'production') {
-          console.warn(
-            '[Pyreon] vercelAdapter.revalidate() needs VERCEL_DEPLOYMENT_URL (or VERCEL_URL) AND VERCEL_REVALIDATE_TOKEN env vars. Set the token in Vercel project settings → Environment Variables.',
-          )
-        }
-        return { regenerated: false }
+        // M2.4 — warn even in production (dedupe per process). Pre-fix the
+        // warn was DEV-gated, but production is exactly where missing env
+        // vars surface — CMS triggers revalidate, nothing happens, no
+        // signal. Now the FIRST call always warns; subsequent calls dedupe.
+        const missing: string[] = []
+        if (!deploymentUrl) missing.push('VERCEL_DEPLOYMENT_URL (or VERCEL_URL)')
+        if (!token) missing.push('VERCEL_REVALIDATE_TOKEN')
+        return warnMissingEnv(
+          'vercel',
+          missing,
+          'Set the token in Vercel project settings → Environment Variables. VERCEL_DEPLOYMENT_URL / VERCEL_URL is auto-injected by the Vercel runtime.',
+        )
       }
       const protocol = deploymentUrl.startsWith('http') ? '' : 'https://'
       const url = `${protocol}${deploymentUrl}/api/_pyreon-revalidate?path=${encodeURIComponent(path)}&secret=${encodeURIComponent(token)}`

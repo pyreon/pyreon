@@ -44,6 +44,9 @@ const INSTRUMENTED_PACKAGE_ROOTS = [
   'packages/fundamentals/rx/src',
   'packages/fundamentals/query/src',
   'packages/fundamentals/i18n/src',
+  // M2.3 — SSG perf counters live on the zero plugin (build-time, not
+  // runtime); the package emits under the `ssg.*` namespace.
+  'packages/zero/zero/src',
 ]
 
 // Some packages emit counters under a namespace that doesn't match the package
@@ -54,6 +57,7 @@ const INSTRUMENTED_PACKAGE_ROOTS = [
 const LAYER_PREFIX_OVERRIDE: Record<string, string> = {
   'runtime-dom': 'runtime',
   server: 'island',
+  zero: 'ssg',
 }
 
 // Matches any `<ident>.__pyreon_count__?.('<name>')` call.

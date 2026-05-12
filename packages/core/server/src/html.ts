@@ -6,6 +6,7 @@
  *   <!--pyreon-app-->      — replaced with rendered application HTML
  *   <!--pyreon-scripts-->  — replaced with client entry script + inline loader data
  */
+import { stringifyLoaderData } from '@pyreon/router'
 
 export const DEFAULT_TEMPLATE = `<!DOCTYPE html>
 <html lang="en">
@@ -78,8 +79,10 @@ export function buildScripts(
   const parts: string[] = []
 
   if (loaderData && Object.keys(loaderData).length > 0) {
-    // Escape </script> inside JSON to prevent premature tag close
-    const json = JSON.stringify(loaderData).replace(/<\//g, '<\\/')
+    // M2.2 — safe serializer: strips function/symbol values silently,
+    // throws a Pyreon-prefixed error on circular refs naming the offending
+    // key, and escapes </script> for safe inline embedding.
+    const json = stringifyLoaderData(loaderData)
     parts.push(`<script>window.__PYREON_LOADER_DATA__=${json}</script>`)
   }
 
@@ -99,7 +102,8 @@ export function buildScriptsFast(
   loaderData: Record<string, unknown> | null,
 ): string {
   if (loaderData && Object.keys(loaderData).length > 0) {
-    const json = JSON.stringify(loaderData).replace(/<\//g, '<\\/')
+    // M2.2 — safe serializer (same contract as `buildScripts`).
+    const json = stringifyLoaderData(loaderData)
     return `<script>window.__PYREON_LOADER_DATA__=${json}</script>\n  ${clientEntryTag}`
   }
   return clientEntryTag
