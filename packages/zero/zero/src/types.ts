@@ -58,6 +58,42 @@ export interface ISRConfig {
    * space (e.g. `/user/:id` where `:id` is free-form).
    */
   maxEntries?: number
+  /**
+   * Cache-key derivation function. The default keys cache entries by
+   * `url.pathname` ONLY — query strings, cookies, and headers are
+   * stripped.
+   *
+   * **⚠️ Auth-gated incompatibility.** The default behavior is
+   * unsafe for request-dependent loaders. A loader that reads
+   * `request.headers.get('cookie')` to gate auth will render ONCE
+   * with the first user's cookie, then serve that HTML to every
+   * subsequent user. To use ISR with personalized / auth-gated
+   * pages, supply a `cacheKey` that varies on the auth identifier
+   * (session cookie, user-id header, etc.), OR don't use ISR for
+   * such routes — use SSR instead.
+   *
+   * @example
+   * // Vary cache by session cookie:
+   * isr: {
+   *   revalidate: 60,
+   *   cacheKey: (req) => {
+   *     const url = new URL(req.url)
+   *     const session = req.headers.get('cookie')?.match(/session=([^;]+)/)?.[1] ?? 'anon'
+   *     return `${url.pathname}::${session}`
+   *   },
+   * }
+   *
+   * @example
+   * // Vary by a query parameter:
+   * isr: {
+   *   revalidate: 60,
+   *   cacheKey: (req) => {
+   *     const url = new URL(req.url)
+   *     return `${url.pathname}?sort=${url.searchParams.get('sort') ?? ''}`
+   *   },
+   * }
+   */
+  cacheKey?: (req: Request) => string
 }
 
 // ─── Zero config ─────────────────────────────────────────────────────────────

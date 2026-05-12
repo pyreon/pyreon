@@ -139,18 +139,40 @@ export function createServer(options: CreateServerOptions) {
 		...(options.clientEntry ? { clientEntry: options.clientEntry } : {}),
 	});
 
-	// Wrap handler with 404 detection when a notFoundComponent is provided
+	// M1.2 — Runtime SSR 404 routes through the router (PR L5).
+	// When a URL doesn't match any leaf, @pyreon/router's resolveRoute
+	// walks up to the closest parent `notFoundComponent` and builds a
+	// synthetic chain `[...ancestorLayouts, syntheticLeaf]`. The handler
+	// renders that chain, producing 404 HTML INSIDE the layout's chrome,
+	// and reads `resolved.isNotFound` to set HTTP status 404. This
+	// replaces the pre-M1 URL-pattern wrapper that bypassed the router
+	// for unmatched URLs and rendered the not-found component standalone
+	// (no layout wrapping).
+	//
+	// `options.notFoundComponent` is a legacy fallback for apps that
+	// don't carry `_404.tsx` in their routes tree. When set AND the
+	// routes tree has no reachable `notFoundComponent`, we render the
+	// standalone shape as a final fallback. The canonical pattern is
+	// `_404.tsx` inside a `_layout.tsx` directory — that goes through
+	// PR L5's router-driven path and gets layout chrome for free.
 	if (!options.notFoundComponent) return handler;
 
 	const NotFound = options.notFoundComponent;
-	const routePatterns = flattenRoutePatterns(options.routes);
+	const hasRouteTreeNotFound = routeTreeHasNotFound(options.routes);
 
 	return async (req: Request) => {
+		// Route-tree notFoundComponent present → handler handles 404 via
+		// resolveRoute's `isNotFound` fallback (PR L5). Skip the legacy
+		// wrapper entirely — handler.ts sets status 404 + renders layout
+		// chrome correctly.
+		if (hasRouteTreeNotFound) return handler(req);
+
+		// Legacy fallback: routes tree has no notFoundComponent but the
+		// caller passed `options.notFoundComponent`. Run the URL-pattern
+		// check + standalone render for backward compat.
 		const url = new URL(req.url);
 		const pathname = url.pathname;
-
-		// Check if any defined route matches this path
-		if (!routePatterns.some((pattern) => matchPattern(pattern, pathname))) {
+		if (!routePatternsCache(options.routes).some((p) => matchPattern(p, pathname))) {
 			const fullHtml = await render404Page(NotFound, options.template);
 			return new Response(fullHtml, {
 				status: 404,
@@ -160,6 +182,29 @@ export function createServer(options: CreateServerOptions) {
 
 		return handler(req);
 	};
+}
+
+/** Walk the route tree looking for any record with a `notFoundComponent`. */
+function routeTreeHasNotFound(routes: RouteRecord[]): boolean {
+	for (const r of routes) {
+		if (typeof (r as { notFoundComponent?: unknown }).notFoundComponent === "function") {
+			return true;
+		}
+		if (r.children && routeTreeHasNotFound(r.children as RouteRecord[])) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/** Lazy cache of flattened patterns — only computed if legacy fallback fires. */
+const _routePatternsCache = new WeakMap<RouteRecord[], string[]>();
+function routePatternsCache(routes: RouteRecord[]): string[] {
+	const cached = _routePatternsCache.get(routes);
+	if (cached) return cached;
+	const out = flattenRoutePatterns(routes);
+	_routePatternsCache.set(routes, out);
+	return out;
 }
 
 /** Extract all URL patterns from a nested route tree. */

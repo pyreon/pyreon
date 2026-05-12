@@ -678,6 +678,59 @@ describe('ssgPlugin', () => {
     })
   })
 
+  describe('detectPathCollisions (M1.4)', () => {
+    // Bisect-load-bearing: a static route + getStaticPaths overlap, or
+    // two enumerators producing the same URL, would silently last-wins
+    // pre-fix. The render loop's `writtenPaths.push(p)` accepts dupes
+    // and the second HTML overwrites the first with zero signal. The
+    // pre-render check surfaces the collision with the duplicate URL
+    // listed so users fix the source conflict.
+
+    it('returns empty array when paths are unique', () => {
+      expect(_internal.detectPathCollisions(['/', '/about', '/posts/1'])).toEqual([])
+    })
+
+    it('returns duplicates sorted + de-duplicated', () => {
+      const result = _internal.detectPathCollisions([
+        '/about',
+        '/posts/1',
+        '/about',
+        '/posts/1',
+        '/about',
+      ])
+      // Each duplicate URL listed ONCE (set-based dedup), sorted alphabetically.
+      expect(result).toEqual(['/about', '/posts/1'])
+    })
+
+    it('handles the canonical collision shape: static + getStaticPaths overlap', () => {
+      // Real-app shape: `routes/posts/foo.tsx` (static) +
+      // `routes/posts/[id].tsx` with `getStaticPaths: [{id:'foo'}]` →
+      // BOTH produce `/posts/foo` in the resolved paths array.
+      const paths = ['/', '/posts/foo', '/posts/bar', '/posts/foo']
+      expect(_internal.detectPathCollisions(paths)).toEqual(['/posts/foo'])
+    })
+
+    it('error message names every duplicate path with actionable guidance', () => {
+      const msg = _internal.formatPathCollisionError(['/posts/foo', '/about'])
+      expect(msg).toContain('[Pyreon]')
+      expect(msg).toContain('SSG path collision')
+      expect(msg).toContain('2 URL(s)')
+      expect(msg).toContain('/posts/foo')
+      expect(msg).toContain('/about')
+      // Actionable: tells user where to look.
+      expect(msg).toMatch(/getStaticPaths/)
+      expect(msg).toMatch(/routes tree/)
+    })
+
+    it('empty input returns empty (no false-positive on empty paths)', () => {
+      expect(_internal.detectPathCollisions([])).toEqual([])
+    })
+
+    it('single-element input returns empty', () => {
+      expect(_internal.detectPathCollisions(['/'])).toEqual([])
+    })
+  })
+
   describe('runWithConcurrency (PR D)', () => {
     it('processes every item exactly once', async () => {
       const items = ['a', 'b', 'c', 'd', 'e']

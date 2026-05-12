@@ -445,16 +445,120 @@ defineConfig({
 
 ### ISR (Incremental Static Regeneration)
 
-Combines SSG with stale-while-revalidate caching. Pages are served from cache and regenerated in the background after the revalidation window.
+Pyreon ships ISR in **two complementary layers**: a runtime in-memory cache (when you self-host on Node/Bun) and a build-time manifest that drives platform ISR on managed hosts (Vercel / Cloudflare / Netlify). They can coexist or you can use either alone.
+
+#### Runtime ISR — `mode: 'isr'`
+
+In-memory LRU cache with stale-while-revalidate semantics. The handler renders on first request, caches the response, serves stale + revalidates in the background after the revalidation window.
 
 ```ts
 defineConfig({
   mode: 'isr',
   isr: {
     revalidate: 60, // seconds
+    maxEntries: 1000, // LRU cap (default)
   },
 })
 ```
+
+The cache is **bounded by `maxEntries`** (default 1000) with oldest-first LRU eviction so unbounded URL spaces like `/user/:id` don't grow memory without limit.
+
+##### ⚠️ Auth-gated routes need a custom `cacheKey`
+
+The default cache key is `url.pathname` ONLY — query strings, cookies, and request headers are stripped. **This is unsafe for personalized content.** A loader that reads `request.headers.get('cookie')` to gate auth will render ONCE with the first user's cookie, then serve that same HTML to every subsequent user.
+
+Use `cacheKey` to vary by cookies / query / headers:
+
+```ts
+defineConfig({
+  mode: 'isr',
+  isr: {
+    revalidate: 60,
+    // Vary cache by session cookie — each user gets their own cache entry
+    cacheKey: (req) => {
+      const url = new URL(req.url)
+      const session = req.headers.get('cookie')?.match(/session=([^;]+)/)?.[1] ?? 'anon'
+      return `${url.pathname}::${session}`
+    },
+  },
+})
+```
+
+```ts
+// Or vary by a query parameter:
+isr: {
+  revalidate: 60,
+  cacheKey: (req) => {
+    const url = new URL(req.url)
+    return `${url.pathname}?sort=${url.searchParams.get('sort') ?? ''}`
+  },
+}
+```
+
+If you can't safely derive a cache key for personalized content, use `mode: 'ssr'` for those routes instead.
+
+#### Build-time ISR — per-route `revalidate` exports
+
+For managed static hosts (Vercel / Cloudflare Pages / Netlify), declare per-route revalidation intervals via the `revalidate` export. The SSG plugin emits `dist/_pyreon-revalidate.json` mapping `{ concretePath: revalidateSeconds }` for every prerendered path:
+
+```ts
+// src/routes/posts/[id].tsx
+export const revalidate = 60 // revalidate every 60 seconds
+
+export const getStaticPaths = async () => {
+  const posts = await fetchPosts()
+  return posts.map((p) => ({ params: { id: p.slug } }))
+}
+
+export default function Post({ params }) {
+  return <article>Post {params.id}</article>
+}
+```
+
+Or disable revalidation explicitly:
+
+```ts
+export const revalidate = false // never revalidate
+```
+
+The literal value (`60` or `false`) is captured at build time. **Non-literal expressions are silently omitted** — `export const revalidate = TTL` (where `TTL` is a const elsewhere) won't reach the manifest. Always export inline literals.
+
+The manifest produced at `dist/_pyreon-revalidate.json` looks like:
+
+```json
+{
+  "/posts/1": 60,
+  "/posts/2": 60,
+  "/posts/3": 60
+}
+```
+
+#### `Adapter.revalidate(path)` — platform integration
+
+Deploy adapters consume the manifest and integrate with each platform's ISR API:
+
+| Adapter | Mechanism | Env vars |
+| --- | --- | --- |
+| `vercelAdapter` | POST to `<deployment>/api/_pyreon-revalidate?path=…&secret=…` | `VERCEL_DEPLOYMENT_URL`, `VERCEL_REVALIDATE_TOKEN` |
+| `cloudflareAdapter` | POST to `zones/{id}/purge_cache` (edge cache invalidation) | `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_SITE_URL` |
+| `netlifyAdapter` | POST to Build Hook URL (full-site rebuild, path in audit log) | `NETLIFY_BUILD_HOOK_URL` |
+| `staticAdapter` / `nodeAdapter` / `bunAdapter` | no-op (use runtime ISR for self-hosted) | — |
+
+**Vercel** requires a user-side webhook handler at `/api/_pyreon-revalidate`. You write that endpoint, validate the secret, and call Vercel's `res.revalidate()` API. (A future `@pyreon/zero/vercel-revalidate-handler` helper will scaffold this — track in the roadmap.)
+
+**Cloudflare** has a rate limit: ~1000 purges per 24h per zone. High-volume revalidation can hit the cap; the adapter returns `{ regenerated: false }` on 429 responses but doesn't surface the underlying reason — monitor your CMS publish frequency.
+
+**Netlify's** build hook triggers a FULL site rebuild, not per-page ISR. The `path` argument flows into the `trigger_title` field for audit-log traceability only.
+
+If required env vars are missing, the adapter returns `{ regenerated: false }` and warns in dev mode. **Production deployments do not currently warn on missing env vars** — verify your env config before deploying.
+
+#### Combining the two layers
+
+You can use BOTH runtime ISR (`mode: 'isr'`) AND per-route `revalidate` exports on the same app. The runtime layer caches in-memory; the build-time layer drives platform ISR rebuilds. Both layers can coexist correctly:
+
+- **Self-hosted (Node / Bun)** → `mode: 'isr'` for in-process caching; `revalidate` exports unused (no platform to call)
+- **Vercel / Cloudflare / Netlify (static)** → per-route `revalidate` + adapter; runtime cache typically not needed
+- **Hybrid SSR + ISR** → `mode: 'isr'` runtime cache + per-route `revalidate` for platform rebuild signals when a CMS publishes
 
 ## Components
 

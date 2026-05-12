@@ -433,6 +433,34 @@ async function resolvePaths(
   return autoDetectStaticPaths(routesDir, registry, errors, config.i18n)
 }
 
+/**
+ * Detect duplicate URLs in the resolved-paths list. Returns the duplicates
+ * (sorted, unique). Empty array = no collisions.
+ *
+ * The render loop's `writtenPaths.push(p)` would silently last-wins on
+ * duplicates — two routes producing the same URL would have one's HTML
+ * overwrite the other's with no error. Catching the collision before
+ * render makes the conflict visible at the source-of-truth (the routes
+ * tree), not at the symptom (mysterious HTML drift between rebuilds).
+ *
+ * @internal Exposed via `_internal.detectPathCollisions` for unit tests.
+ */
+function detectPathCollisions(paths: readonly string[]): string[] {
+  const seen = new Set<string>()
+  const duplicates = new Set<string>()
+  for (const p of paths) {
+    if (seen.has(p)) duplicates.add(p)
+    seen.add(p)
+  }
+  return [...duplicates].sort()
+}
+
+/** Format a path-collision error message with actionable guidance. */
+function formatPathCollisionError(duplicates: readonly string[]): string {
+  const list = duplicates.map((p) => `  - ${p}`).join('\n')
+  return `[Pyreon] SSG path collision — ${duplicates.length} URL(s) resolved by multiple routes:\n${list}\nThis happens when a static route + getStaticPaths return overlap, or two getStaticPaths enumerators produce the same URL. Inspect your routes tree and ensure each URL is produced by exactly one route.`
+}
+
 function resolveOutputPath(distDir: string, path: string): string {
   if (path === '/') return join(distDir, 'index.html')
   if (path.endsWith('.html')) return join(distDir, path)
@@ -907,6 +935,20 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         return
       }
 
+      // M1.4 — Detect duplicate paths BEFORE the render loop. Two routes
+      // producing the same URL (a static `/posts/foo.tsx` + a dynamic
+      // `[id].tsx` with `getStaticPaths: [{id:'foo'}]`) would silently
+      // last-wins under `writtenPaths.push(p)`. Surface as an actionable
+      // error with the duplicate URL listed so users can fix the source
+      // route conflict instead of wondering why HTML mysteriously changes
+      // between rebuilds. Bisect-verifiable: removing this check + a
+      // dual-path fixture → render proceeds and one HTML silently
+      // overwrites the other.
+      const collisions = detectPathCollisions(paths)
+      if (collisions.length > 0) {
+        throw new Error(formatPathCollisionError(collisions))
+      }
+
       let pages = 0
       // PR B — collect redirects from loader-throws so the post-render
       // step can write `_redirects` / `_redirects.json` / meta-refresh
@@ -1307,4 +1349,6 @@ export const _internal = {
   buildRevalidateManifest,
   renderSsrEntrySource,
   SSR_ENTRY_FILENAME,
+  detectPathCollisions,
+  formatPathCollisionError,
 }

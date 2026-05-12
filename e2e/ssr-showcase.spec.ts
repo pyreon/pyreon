@@ -113,10 +113,41 @@ test.describe('navigation', () => {
 
   test('404 page for unknown route', async ({ page }) => {
     await page.goto('/this-page-does-not-exist')
-    // Should show 404 content (either SSR 404 or client-side 404)
-    await expect(
-      page.locator('[data-testid="not-found-page"]').or(page.locator('text=404')),
-    ).toBeVisible()
+    // M1.2 — the runtime SSR 404 path now renders the `_404.tsx` component
+    // through the router (see the M1.2 spec below), so the canonical signal
+    // is the component's testid. The earlier `.or('text=404')` fallback was
+    // for the pre-M1 static 404 page from `render404Page(undefined)` and is
+    // no longer needed.
+    await expect(page.getByTestId('not-found-page')).toBeVisible()
+  })
+
+  test('runtime SSR 404 wraps not-found in layout chrome (M1.2)', async ({ page }) => {
+    // M1.2 — Pre-M1, runtime SSR's `entry-server.ts` (prod) and
+    // `vite-plugin.ts:renderSsr` (dev) both bypassed the router for
+    // unmatched URLs and rendered the 404 component standalone with
+    // no layout wrapping. With PR L5's `findNotFoundFallback` in
+    // resolveRoute + M1.2's three call-site changes (handler.ts reads
+    // `resolved.isNotFound` → status 404; entry-server.ts defers to
+    // handler when routes tree has `notFoundComponent`; vite-plugin.ts
+    // drops URL-pattern bailout + returns `{ html, status }`), unmatched
+    // URLs route through the router-driven path that produces a chain
+    // `[rootLayout, syntheticLeaf]` — the layout's chrome (nav links +
+    // PyreonUI) wraps the 404 content.
+    //
+    // Bisect-verified at the dev-e2e layer: reverting vite-plugin.ts's
+    // pattern-bailout removal makes `getByTestId('not-found-page')`
+    // assertion fail with "element(s) not found" — handle404's static
+    // `render404Page(undefined)` fallback (no 404 component, no layout
+    // chrome) fires instead. Recipe: stash src/vite-plugin.ts → rebuild
+    // `bun run --filter='@pyreon/zero' build` → kill dev server → re-run.
+    const response = await page.goto('/this-runtime-ssr-route-also-does-not-exist')
+    // HTTP status 404 (from handler reading resolved.isNotFound).
+    expect(response?.status()).toBe(404)
+    // 404 component visible
+    await expect(page.getByTestId('not-found-page')).toBeVisible()
+    // Layout chrome co-occurs (the win that M1.2 brings to runtime SSR)
+    await expect(page.getByTestId('nav-home')).toBeVisible()
+    await expect(page.getByTestId('nav-about')).toBeVisible()
   })
 })
 

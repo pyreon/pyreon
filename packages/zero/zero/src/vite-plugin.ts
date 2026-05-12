@@ -210,10 +210,10 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 					renderSsr(server, root, req.originalUrl ?? pathname, pathname, webReq).then(
 						(result) => {
 							if (result === null) return next();
-							res.statusCode = 200;
+							res.statusCode = result.status;
 							res.setHeader("Content-Type", "text/html; charset=utf-8");
-							res.setHeader("Content-Length", Buffer.byteLength(result));
-							res.end(result);
+							res.setHeader("Content-Length", Buffer.byteLength(result.html));
+							res.end(result.html);
 						},
 						(err: unknown) => {
 							// Loader-thrown `redirect()` — convert to a real HTTP redirect
@@ -567,18 +567,12 @@ async function renderSsr(
 	originalUrl: string,
 	pathname: string,
 	req?: Request,
-): Promise<string | null> {
-	// Pattern check FIRST — otherwise SSR would try (and likely crash) on
-	// asset paths that happened to accept text/html (e.g. curl-style).
+): Promise<{ html: string; status: number } | null> {
 	const routesMod = await server.ssrLoadModule(VIRTUAL_ROUTES_ID);
 	const routes = routesMod.routes as Array<{
 		path?: string;
 		children?: unknown[];
 	}>;
-	const patterns = flattenRoutePatterns(routes);
-	if (!patterns.some((pattern) => matchPattern(pattern, pathname))) {
-		return null;
-	}
 
 	// Read + transform index.html (Vite injects the HMR client / JSX prelude).
 	let template = await readFile(join(root, "index.html"), "utf-8");
@@ -646,7 +640,24 @@ async function renderSsr(
 	// `preload` loads lazy route components AND runs loaders for `pathname` so
 	// the synchronous render pass produces final HTML — no loading fallbacks,
 	// no `useLoaderData() === undefined`.
+	//
+	// M1.2 — Unmatched URLs no longer bail to a static 404 page. The router's
+	// `resolveRoute` (PR L5) walks the route tree and, if a parent layout has
+	// `notFoundComponent` AND the URL is under that layout's prefix, builds a
+	// synthetic chain `[...ancestorLayouts, syntheticLeaf]` with
+	// `isNotFound: true`. The render then produces 404 HTML INSIDE the
+	// layout's chrome. If the routes tree has no reachable `notFoundComponent`,
+	// `matched` stays empty — fall through to `handle404` for the static
+	// fallback (preserves backward compat for apps without `_404.tsx`).
 	await routerInst.preload(pathname, req);
+
+	const resolved = routerInst.currentRoute() as
+		| { matched?: unknown[]; isNotFound?: boolean }
+		| undefined;
+	if (!resolved?.matched || resolved.matched.length === 0) {
+		return null;
+	}
+	const status = resolved.isNotFound === true ? 404 : 200;
 
 	return runtimeServer.runWithRequestContext(async () => {
 		const app = core.h(App as Parameters<typeof core.h>[0], null);
@@ -660,10 +671,11 @@ async function renderSsr(
 			? `<script>window.__PYREON_LOADER_DATA__=${JSON.stringify(loaderData).replace(/<\//g, "<\\/")}</script>`
 			: "";
 
-		return template
+		const html = template
 			.replace("<!--pyreon-head-->", head)
 			.replace("<!--pyreon-app-->", appHtml)
 			.replace("<!--pyreon-scripts-->", loaderScript);
+		return { html, status };
 	});
 }
 

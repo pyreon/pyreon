@@ -160,7 +160,16 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
         const headWithStyles = styleTag ? `${styleTag}\n${head}` : head
         const fullHtml = processCompiledTemplate(compiled, { head: headWithStyles, app: appHtml, scripts })
 
-        return new Response(fullHtml, { status: 200, headers: ctx.headers })
+        // M1.2 — Status 404 when the matched chain resolved via the
+        // `notFoundComponent` fallback (PR L5). The router's
+        // `resolveRoute` sets `isNotFound: true` when no leaf matched
+        // and a parent layout's `notFoundComponent` was used as a
+        // synthetic leaf. Reading the flag after render lets the
+        // handler emit a real HTTP 404 while still serving the
+        // chrome-wrapped 404 HTML.
+        const resolved = router.currentRoute() as { isNotFound?: boolean }
+        const status = resolved?.isNotFound === true ? 404 : 200
+        return new Response(fullHtml, { status, headers: ctx.headers })
       } catch (err) {
         // `redirect()` thrown from a loader — convert to a real HTTP redirect
         // before the SSR error path runs. Done inside the runWithRequestContext
