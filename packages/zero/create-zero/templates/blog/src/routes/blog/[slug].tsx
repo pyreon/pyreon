@@ -1,13 +1,19 @@
+import type { GetStaticPaths } from "@pyreon/zero/server"
 import { useHead } from "@pyreon/head"
 import { Link } from "@pyreon/zero/link"
 import { useRoute } from "@pyreon/router"
 import { postBySlug, postSlugs } from "../../lib/posts"
 
 /**
- * Tells the SSG plugin which slugs to pre-render. Without this, the dynamic
- * route would only be reachable client-side at build time.
+ * Enumerate the dynamic `:slug` values at build time. The SSG plugin expands
+ * `/blog/:slug` × this list into one prerendered HTML file per post
+ * (`dist/blog/<slug>/index.html`). Without this export the dynamic route
+ * is silently skipped during SSG auto-detect — only the static `/blog`
+ * index would be prerendered, and `pyreon doctor --check-ssg` warns
+ * about it.
  */
-export const ssgPaths = () => postSlugs().map((slug) => `/blog/${slug}`)
+export const getStaticPaths: GetStaticPaths<{ slug: string }> = () =>
+  postSlugs().map((slug) => ({ params: { slug } }))
 
 export default function PostPage() {
   // useRoute() returns an accessor — call it to read the resolved route.

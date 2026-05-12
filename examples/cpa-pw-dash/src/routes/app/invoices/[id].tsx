@@ -2,6 +2,7 @@ import { signal } from "@pyreon/reactivity"
 import { onMount } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { useRoute } from "@pyreon/router"
+import type { GetStaticPaths } from "@pyreon/zero/server"
 import { Link } from "@pyreon/zero/link"
 import {
   DocDocument,
@@ -18,6 +19,23 @@ import { render } from "@pyreon/document"
 import { type Invoice, invoiceById, invoiceTotal } from "../../../lib/db"
 
 export const meta = { title: "Invoice" }
+
+/**
+ * Enumerate the dynamic `:id` values for SSG prerendering. cpa-pw-dash
+ * runs in `mode: 'ssr'` (invoices are tenant-scoped runtime data), so
+ * this export is unused at runtime. It exists so `pyreon doctor
+ * --check-ssg` reports 0 findings against the example AND so users
+ * cloning this as a starting point have a working SSG path if they
+ * switch modes.
+ *
+ * In a real app: replace the placeholders with your invoice ID
+ * enumeration (DB query / API fetch) keyed by what your SSG deploy
+ * needs prerendered.
+ */
+export const getStaticPaths: GetStaticPaths<{ id: string }> = () => [
+  { params: { id: "demo-001" } },
+  { params: { id: "demo-002" } },
+]
 
 /**
  * The headline demo of `@pyreon/document-primitives`: this template renders
