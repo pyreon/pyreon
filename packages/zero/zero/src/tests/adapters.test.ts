@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { existsSync } from 'node:fs'
 import { readFile, rm, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -618,5 +618,115 @@ describe('static / node / bun adapters — SSG mode no-op (PR J)', () => {
     expect(existsSync(join(ssgDist, 'index.ts'))).toBe(false)
     expect(existsSync(join(ssgDist, 'server'))).toBe(false)
     await cleanup()
+  })
+})
+
+// ─── M2.4 — adapter env-var warnings in production ──────────────────────────
+//
+// Pre-M2.4 the env-var-missing warn was DEV-gated, so production silently
+// returned `{ regenerated: false }` when a CMS triggered `revalidate(path)`.
+// M2.4 makes the warning fire regardless of NODE_ENV, deduped per process
+// per `(adapterName + missingVarSet)` combination.
+//
+// Bisect-load-bearing: re-gate the warn on `process.env.NODE_ENV !==
+// 'production'` AND set NODE_ENV=production for the test → "warns even in
+// production" spec fails (no console.warn call recorded).
+
+describe('warnMissingEnv (M2.4)', () => {
+  let warnCalls: string[] = []
+  let originalWarn: typeof console.warn
+  let originalNodeEnv: string | undefined
+
+  beforeEach(async () => {
+    warnCalls = []
+    originalWarn = console.warn
+    console.warn = (...args: unknown[]) => {
+      warnCalls.push(args.map(String).join(' '))
+    }
+    originalNodeEnv = process.env.NODE_ENV
+    // Reset the dedup Set between tests so warn fires on first call each test.
+    const mod = await import('../adapters/warn-missing-env')
+    mod._resetWarnedKeys()
+  })
+
+  afterEach(() => {
+    console.warn = originalWarn
+    if (originalNodeEnv === undefined) delete process.env.NODE_ENV
+    else process.env.NODE_ENV = originalNodeEnv
+  })
+
+  it('warns even when NODE_ENV=production (the bug M2.4 fixes)', async () => {
+    process.env.NODE_ENV = 'production'
+    const before = {
+      url: process.env.VERCEL_DEPLOYMENT_URL,
+      vurl: process.env.VERCEL_URL,
+      token: process.env.VERCEL_REVALIDATE_TOKEN,
+    }
+    delete process.env.VERCEL_DEPLOYMENT_URL
+    delete process.env.VERCEL_URL
+    delete process.env.VERCEL_REVALIDATE_TOKEN
+    try {
+      const adapter = vercelAdapter()
+      await adapter.revalidate?.('/posts/1')
+      expect(warnCalls.some((c) => c.includes('[Pyreon] vercelAdapter.revalidate()'))).toBe(true)
+      expect(warnCalls.some((c) => c.includes('VERCEL_REVALIDATE_TOKEN'))).toBe(true)
+    } finally {
+      if (before.url) process.env.VERCEL_DEPLOYMENT_URL = before.url
+      if (before.vurl) process.env.VERCEL_URL = before.vurl
+      if (before.token) process.env.VERCEL_REVALIDATE_TOKEN = before.token
+    }
+  })
+
+  it('dedupes — multiple calls with the same missing env produce ONE warn', async () => {
+    const before = process.env.NETLIFY_BUILD_HOOK_URL
+    delete process.env.NETLIFY_BUILD_HOOK_URL
+    try {
+      const adapter = netlifyAdapter()
+      await adapter.revalidate?.('/a')
+      await adapter.revalidate?.('/b')
+      await adapter.revalidate?.('/c')
+      const matchingWarns = warnCalls.filter((c) =>
+        c.includes('[Pyreon] netlifyAdapter.revalidate()'),
+      )
+      expect(matchingWarns).toHaveLength(1)
+    } finally {
+      if (before) process.env.NETLIFY_BUILD_HOOK_URL = before
+    }
+  })
+
+  it('warning text names every missing env var (cloudflare case — 3 vars)', async () => {
+    const before = {
+      zone: process.env.CLOUDFLARE_ZONE_ID,
+      token: process.env.CLOUDFLARE_API_TOKEN,
+      url: process.env.CLOUDFLARE_SITE_URL,
+    }
+    delete process.env.CLOUDFLARE_ZONE_ID
+    delete process.env.CLOUDFLARE_API_TOKEN
+    delete process.env.CLOUDFLARE_SITE_URL
+    try {
+      const adapter = cloudflareAdapter()
+      await adapter.revalidate?.('/about')
+      const warn = warnCalls.find((c) => c.includes('cloudflareAdapter.revalidate()'))
+      expect(warn).toBeDefined()
+      expect(warn).toContain('CLOUDFLARE_ZONE_ID')
+      expect(warn).toContain('CLOUDFLARE_API_TOKEN')
+      expect(warn).toContain('CLOUDFLARE_SITE_URL')
+    } finally {
+      if (before.zone) process.env.CLOUDFLARE_ZONE_ID = before.zone
+      if (before.token) process.env.CLOUDFLARE_API_TOKEN = before.token
+      if (before.url) process.env.CLOUDFLARE_SITE_URL = before.url
+    }
+  })
+
+  it('returns regenerated:false (revalidation cannot succeed without env)', async () => {
+    const before = process.env.NETLIFY_BUILD_HOOK_URL
+    delete process.env.NETLIFY_BUILD_HOOK_URL
+    try {
+      const adapter = netlifyAdapter()
+      const result = await adapter.revalidate?.('/anything')
+      expect(result).toEqual({ regenerated: false })
+    } finally {
+      if (before) process.env.NETLIFY_BUILD_HOOK_URL = before
+    }
   })
 })

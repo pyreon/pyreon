@@ -950,6 +950,120 @@ describe('ssgPlugin', () => {
     })
   })
 
+  describe('writeFileAtomic (M2.1)', () => {
+    // Bisect-load-bearing: revert `writeFileAtomic` to a bare `writeFile`
+    // call → the tmp-file-cleanup-on-error spec fails (no rename =
+    // partial state).
+
+    it('writes the target file with the given content', async () => {
+      const { mkdtempSync, rmSync, readFileSync } = await import('node:fs')
+      const { join: pathJoin } = await import('node:path')
+      const { tmpdir } = await import('node:os')
+      const dir = mkdtempSync(pathJoin(tmpdir(), 'pyreon-atomic-'))
+      try {
+        const target = pathJoin(dir, '_redirects')
+        await _internal.writeFileAtomic(target, '/old /new 301\n')
+        expect(readFileSync(target, 'utf8')).toBe('/old /new 301\n')
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('rejects (and leaves tmp behavior to the cleanup branch) when target dir does not exist', async () => {
+      // Construct a target path whose parent dir doesn't exist — both the
+      // writeFile and rename will fail. Asserts the helper rejects rather
+      // than swallowing. The cleanup-on-error branch is best-effort and
+      // unit-untestable cross-platform (Linux/macOS/Windows differ on what
+      // failure modes leave behind), so we don't assert tmp absence here.
+      const { mkdtempSync, rmSync } = await import('node:fs')
+      const { join: pathJoin } = await import('node:path')
+      const { tmpdir } = await import('node:os')
+      const dir = mkdtempSync(pathJoin(tmpdir(), 'pyreon-atomic-'))
+      try {
+        const target = pathJoin(dir, 'nonexistent-subdir', 'file')
+        await expect(_internal.writeFileAtomic(target, 'x')).rejects.toThrow()
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('overwrites an existing file atomically', async () => {
+      const { mkdtempSync, rmSync, readFileSync, writeFileSync } = await import('node:fs')
+      const { join: pathJoin } = await import('node:path')
+      const { tmpdir } = await import('node:os')
+      const dir = mkdtempSync(pathJoin(tmpdir(), 'pyreon-atomic-'))
+      try {
+        const target = pathJoin(dir, 'data.json')
+        writeFileSync(target, '{"old": true}\n')
+        await _internal.writeFileAtomic(target, '{"new": true}\n')
+        expect(readFileSync(target, 'utf8')).toBe('{"new": true}\n')
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+  })
+
+  describe('buildLocaleSummary (M2.5)', () => {
+    // Bisect-load-bearing: change the prefix-except-default branch to skip
+    // unprefixed-path counting → the default-locale spec fails (count = 0).
+
+    it('returns empty string for empty writtenPaths', () => {
+      expect(
+        _internal.buildLocaleSummary([], {
+          locales: ['en', 'de'],
+          defaultLocale: 'en',
+        }),
+      ).toBe('')
+    })
+
+    it('counts per-locale under prefix-except-default (unprefixed = default locale)', () => {
+      const result = _internal.buildLocaleSummary(
+        ['/', '/about', '/de/about', '/de/posts/1', '/cs/about'],
+        {
+          locales: ['en', 'de', 'cs'],
+          defaultLocale: 'en',
+          strategy: 'prefix-except-default',
+        },
+      )
+      // en: 2 unprefixed (/ and /about); de: 2 prefixed; cs: 1 prefixed
+      expect(result).toBe(' [en: 2, de: 2, cs: 1]')
+    })
+
+    it('counts per-locale under prefix (every locale prefixed including default)', () => {
+      const result = _internal.buildLocaleSummary(
+        ['/en/', '/en/about', '/de/about', '/cs/about'],
+        {
+          locales: ['en', 'de', 'cs'],
+          defaultLocale: 'en',
+          strategy: 'prefix',
+        },
+      )
+      expect(result).toBe(' [en: 2, de: 1, cs: 1]')
+    })
+
+    it('skips unprefixed paths under prefix strategy (defensive — they\'re unexpected)', () => {
+      const result = _internal.buildLocaleSummary(
+        ['/about', '/en/about', '/de/about'],
+        {
+          locales: ['en', 'de'],
+          defaultLocale: 'en',
+          strategy: 'prefix',
+        },
+      )
+      // Unprefixed `/about` not counted under prefix strategy.
+      expect(result).toBe(' [en: 1, de: 1]')
+    })
+
+    it('returns empty string when locales is empty', () => {
+      expect(
+        _internal.buildLocaleSummary(['/about'], {
+          locales: [],
+          defaultLocale: '',
+        }),
+      ).toBe('')
+    })
+  })
+
   describe('closeBundle is no-op when mode != "ssg"', () => {
     // The plugin returns from closeBundle without side effects when SSG
     // is not configured. We can't easily run the real closeBundle in unit

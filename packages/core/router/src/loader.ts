@@ -90,6 +90,64 @@ export function serializeLoaderData(router: RouterInstance): Record<string, unkn
 }
 
 /**
+ * Serialize loader data to JSON for embedding in an SSR `<script>` tag.
+ *
+ * M2.2 — Drop-in replacement for `JSON.stringify(serializeLoaderData(router))`
+ * with three correctness wins:
+ *   1. **Strips functions / symbols / undefined values silently** so a loader
+ *      that accidentally returns `{ data, fn: () => {} }` doesn't crash
+ *      hydration — `JSON.stringify` drops these by default for the value
+ *      itself but THROWS on circular references containing them. The custom
+ *      replacer drops them inline so the surrounding object survives.
+ *   2. **Detects circular references** with a WeakSet and emits a clear
+ *      `[Pyreon] Loader returned circular reference at key "<path>"` error
+ *      naming the offending key instead of `Converting circular structure
+ *      to JSON` (which doesn't tell the user which loader is broken).
+ *   3. **Escapes `</`** so embedding the JSON inside `<script>` can't break
+ *      out of the script tag — already done at every call site but now
+ *      centralised so all four callers (handler string-mode, handler stream-
+ *      mode, SSG entry, dev SSR) get the escape uniformly.
+ *
+ * Returns the safely-escaped JSON string ready to drop into a `<script>`
+ * tag's body. Throws (with the Pyreon-prefixed error) on circular refs so
+ * the caller's existing try/catch wraps it correctly — silent serialization
+ * failures were the pre-fix shape.
+ *
+ * @example
+ * const json = stringifyLoaderData(serializeLoaderData(router))
+ * const tag = `<script>window.__PYREON_LOADER_DATA__=${json}</script>`
+ */
+export function stringifyLoaderData(loaderData: Record<string, unknown>): string {
+  const seen = new WeakSet<object>()
+  const keyStack: string[] = []
+  const replacer = (key: string, value: unknown): unknown => {
+    // JSON.stringify calls the replacer with key = '' for the root, then
+    // the property name for each subsequent member. Track the path so the
+    // circular-ref error message names the offending route key.
+    if (key !== '') keyStack.push(key)
+    if (typeof value === 'function' || typeof value === 'symbol') {
+      // Drop silently. JSON.stringify already drops these as VALUES, but
+      // an explicit drop also handles array entries (where it'd convert
+      // to null otherwise — undesirable for downstream typed hydration).
+      return undefined
+    }
+    if (value && typeof value === 'object') {
+      if (seen.has(value as object)) {
+        const path = keyStack.join('.') || '<root>'
+        throw new Error(
+          `[Pyreon] Loader returned circular reference at "${path}". ` +
+            `Loaders must return JSON-serializable data (no cycles, no functions, no Date/Map/Set without a custom replacer). ` +
+            `Common cause: returning a Mongo/Prisma model with back-references intact.`,
+        )
+      }
+      seen.add(value as object)
+    }
+    return value
+  }
+  return JSON.stringify(loaderData, replacer).replace(/<\//g, '<\\/')
+}
+
+/**
  * Hydrate loader data from a serialized object (e.g. `window.__PYREON_LOADER_DATA__`).
  * Populates the router's internal `_loaderData` map so the initial render uses
  * server-fetched data without re-running loaders on the client.

@@ -48,7 +48,13 @@ export type { NotFoundBoundaryProps } from './not-found'
 export { isNotFoundError, NotFoundBoundary, notFound } from './not-found'
 export type { RedirectStatus } from './redirect'
 export { getRedirectInfo, isRedirectError, redirect } from './redirect'
-export { hydrateLoaderData, prefetchLoaderData, serializeLoaderData, useLoaderData } from './loader'
+export {
+  hydrateLoaderData,
+  prefetchLoaderData,
+  serializeLoaderData,
+  stringifyLoaderData,
+  useLoaderData,
+} from './loader'
 // Match utilities (useful for SSR route pre-fetching)
 export {
   buildPath,

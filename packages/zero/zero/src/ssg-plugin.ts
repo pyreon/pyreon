@@ -22,7 +22,7 @@
  */
 
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { Plugin } from 'vite'
@@ -31,6 +31,19 @@ import { resolveConfig } from './config'
 import { parseFileRoutes, scanRouteFiles, scanRouteFilesWithExports } from './fs-router'
 import { expandRoutesForLocales, type I18nRoutingConfig } from './i18n-routing'
 import type { ZeroConfig } from './types'
+
+// M2.3 — Server-side perf-harness counter sink (same shape as
+// runtime-server). `__DEV__` is gated at the call site so prod builds with
+// `NODE_ENV=production` skip the optional-chain entirely. Counter strings
+// remain in the bundle (few bytes) but the runtime cost is zero.
+//
+// Consumers run the build under a process that has installed a sink via
+// `@pyreon/perf-harness`'s `install()` / `enable()` API. Without a sink
+// installed, the optional chaining short-circuits and emission is free.
+// Useful for: CI plugins tracking SSG perf over time, dev profiling, or
+// the future `vite build --profile` flag.
+const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 // Marker env var used to skip the SSG hook on the recursive SSR sub-build —
 // the SSR pass loads the same vite config + same plugin chain, so without
@@ -83,7 +96,7 @@ const renderSsrEntrySource = (locales: readonly string[] = []): string => {
 import { routes } from "virtual:zero/routes"
 import { h } from "@pyreon/core"
 import { renderWithHead } from "@pyreon/head/ssr"
-import { getRedirectInfo, serializeLoaderData } from "@pyreon/router"
+import { getRedirectInfo, serializeLoaderData, stringifyLoaderData } from "@pyreon/router"
 import { runWithRequestContext } from "@pyreon/runtime-server"
 import { createApp } from "@pyreon/zero/server"
 
@@ -165,8 +178,10 @@ export default async function renderPath(path) {
 
     const loaderData = serializeLoaderData(router)
     const hasData = loaderData && Object.keys(loaderData).length > 0
+    // M2.2 — safe serializer drops function/symbol values, throws a clear
+    // Pyreon-prefixed error on circular refs, escapes </script> uniformly.
     const loaderScript = hasData
-      ? \`<script>window.__PYREON_LOADER_DATA__=\${JSON.stringify(loaderData).replace(/<\\//g, "<\\\\/")}</script>\`
+      ? \`<script>window.__PYREON_LOADER_DATA__=\${stringifyLoaderData(loaderData)}</script>\`
       : ""
     return { kind: "html", appHtml, head: finalHead, loaderScript }
   })
@@ -431,6 +446,91 @@ async function resolvePaths(
   }
   if (Array.isArray(explicit)) return explicit
   return autoDetectStaticPaths(routesDir, registry, errors, config.i18n)
+}
+
+/**
+ * Write `content` to `target` atomically: write to a sibling temp file first,
+ * then `rename` into place. Rename is an atomic syscall on POSIX (and Windows
+ * for same-volume renames) — readers either see the OLD content or the FULL
+ * new content, never a half-written file.
+ *
+ * M2.1 — Use this for manifests that adapters consume (`_redirects`,
+ * `_pyreon-ssg-paths.json`, `_pyreon-revalidate.json`, etc.). A SIGINT during
+ * a sequential plain-`writeFile` chain in `closeBundle` would leave partial
+ * state: half the manifests pointing at the new render, half the old. Atomic
+ * writes mean each manifest is independently consistent — readers see either
+ * the old build's manifest or the new build's, never a mix.
+ *
+ * Per-page HTML writes (`dist/<path>/index.html`) intentionally do NOT use
+ * this — they're individually-readable files (no cross-file invariants), and
+ * the rename-per-page cost on 10k-path sites would be significant.
+ *
+ * Temp filename embeds `pid + perf-counter` so concurrent runs (e.g. CI
+ * pipelines that fight over the same dist) don't collide. The tmp file is
+ * cleaned up in a finally block — even if the rename fails, no orphaned
+ * `.tmp.*` files leak.
+ *
+ * @internal Exposed via `_internal.writeFileAtomic` for unit tests.
+ */
+let _atomicSeq = 0
+async function writeFileAtomic(target: string, content: string | Uint8Array): Promise<void> {
+  const tmp = `${target}.tmp.${process.pid}.${++_atomicSeq}`
+  try {
+    await writeFile(tmp, content)
+    await rename(tmp, target)
+  } catch (err) {
+    // Best-effort cleanup — if rename succeeded the tmp file is gone; if it
+    // failed (or writeFile failed), unlink it. unlink-on-missing is fine.
+    try {
+      await unlink(tmp)
+    } catch {
+      // Already gone (rename succeeded, or writeFile never produced it).
+    }
+    throw err
+  }
+}
+
+/**
+ * Build the per-locale breakdown summary string for the closeBundle log.
+ *
+ * M2.5 — Computes per-locale path counts from `writtenPaths` by checking
+ * each path's leading segment against the configured locale list. Paths
+ * with no locale prefix go to the default locale (under
+ * `prefix-except-default`) or are skipped (under `prefix`, where every
+ * locale carries an explicit prefix — unprefixed paths are unexpected).
+ *
+ * Returns `` ` [en: 100, de: 100, cs: 100]` `` (with leading space) for
+ * pretty concatenation into the summary line, or empty string when i18n
+ * is unconfigured / writtenPaths is empty.
+ *
+ * @internal Exposed via `_internal.buildLocaleSummary` for unit tests.
+ */
+function buildLocaleSummary(
+  writtenPaths: readonly string[],
+  i18n: I18nRoutingConfig,
+): string {
+  if (writtenPaths.length === 0 || i18n.locales.length === 0) return ''
+  const counts = new Map<string, number>()
+  for (const locale of i18n.locales) counts.set(locale, 0)
+  const defaultLocale = i18n.defaultLocale ?? i18n.locales[0] ?? ''
+  const strategy = i18n.strategy ?? 'prefix-except-default'
+  for (const p of writtenPaths) {
+    // Split on '/' — `/de/about` → ['', 'de', 'about']; `/about` → ['', 'about']
+    const firstSeg = p.split('/')[1]
+    if (firstSeg && counts.has(firstSeg)) {
+      counts.set(firstSeg, (counts.get(firstSeg) ?? 0) + 1)
+    } else if (strategy === 'prefix-except-default' && defaultLocale) {
+      // Unprefixed path under prefix-except-default belongs to the default locale.
+      counts.set(defaultLocale, (counts.get(defaultLocale) ?? 0) + 1)
+    }
+    // Under `prefix` strategy: unprefixed paths are unexpected (every
+    // locale should carry an explicit prefix). Silently skip — the
+    // path-collision detector (M1.4) would have caught structurally
+    // invalid duplicates anyway.
+  }
+  const parts: string[] = []
+  for (const locale of i18n.locales) parts.push(`${locale}: ${counts.get(locale) ?? 0}`)
+  return ` [${parts.join(', ')}]`
 }
 
 /**
@@ -991,6 +1091,10 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // it. Throws are NOT propagated — they're caught here and recorded
       // in `errors[]`, so a single failed path can't take down the worker.
       const renderOne = async (p: string): Promise<void> => {
+        // M2.3 — emit `ssg.pathRender` per attempted render. Pair with
+        // `ssg.pathWrite` / `ssg.pathRedirect` / `ssg.pathError` to see
+        // per-path settle distribution.
+        if (__DEV__) _countSink.__pyreon_count__?.('ssg.pathRender')
         try {
           const result = await Promise.race([
             renderPath(p),
@@ -1000,6 +1104,8 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           ])
 
           if (result.kind === 'redirect') {
+            // M2.3 — track redirect outcomes separately from successful renders.
+            if (__DEV__) _countSink.__pyreon_count__?.('ssg.pathRedirect')
             // PR B — loader threw `redirect()`. Record for the manifest;
             // optionally emit a meta-refresh HTML stub at the source path.
             redirects.push({ from: result.from, to: result.to, status: result.status })
@@ -1032,7 +1138,13 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           await writeFile(filePath, html, 'utf-8')
           pages++
           writtenPaths.push(p)
+          // M2.3 — track successful HTML emits. `ssg.pathRender - ssg.pathWrite
+          // - ssg.pathRedirect - ssg.pathError` should sum to roughly zero;
+          // non-zero residual = paths swallowed silently somewhere.
+          if (__DEV__) _countSink.__pyreon_count__?.('ssg.pathWrite')
         } catch (error) {
+          // M2.3 — track render-error outcomes.
+          if (__DEV__) _countSink.__pyreon_count__?.('ssg.pathError')
           errors.push({ path: p, error })
           // PR G — onPathError fallback hook. The user-supplied callback
           // can return HTML to write at the path's URL, OR null to skip.
@@ -1119,7 +1231,9 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         // declaration. Zero-config win — users opt into i18n routing via
         // `zero({ i18n: { ... } })` once and both the route duplication
         // (PR H) AND the sitemap hreflang automatically pick it up.
-        await writeFile(
+        // M2.1 — atomic write so the seoPlugin (or any consumer) never reads
+        // a half-written manifest if the build is interrupted mid-flush.
+        await writeFileAtomic(
           join(distDir, '_pyreon-ssg-paths.json'),
           `${JSON.stringify(
             {
@@ -1129,7 +1243,6 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
             null,
             2,
           )}\n`,
-          'utf-8',
         )
       }
 
@@ -1158,6 +1271,8 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // empty manifests aren't useful, and absence is a meaningful
       // signal to adapters ("no per-route ISR config, fall through to
       // platform defaults").
+      // M2.5 — track the count for the build summary breakdown.
+      let revalidateCount = 0
       if (existsSync(routesDir)) {
         try {
           const fileRoutesWithExports = await scanRouteFilesWithExports(routesDir, config.mode)
@@ -1165,11 +1280,13 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
             fileRoutesWithExports,
             writtenPaths,
           )
-          if (Object.keys(revalidateManifest).length > 0) {
-            await writeFile(
+          revalidateCount = Object.keys(revalidateManifest).length
+          if (revalidateCount > 0) {
+            // M2.1 — atomic write. Adapters polling for the manifest at
+            // deploy time should see the full document or nothing.
+            await writeFileAtomic(
               join(distDir, '_pyreon-revalidate.json'),
               `${JSON.stringify({ revalidate: revalidateManifest }, null, 2)}\n`,
-              'utf-8',
             )
           }
         } catch (err) {
@@ -1254,6 +1371,8 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
               }
               await writeFile(filePath, html, 'utf-8')
               emitted404Count++
+              // M2.3 — track per-locale 404 emits.
+              if (__DEV__) _countSink.__pyreon_count__?.('ssg.404Emit')
             }
           } catch (error) {
             errors.push({
@@ -1269,11 +1388,15 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // formats ship together so the user doesn't have to pick at SSG
       // time. The file is empty / absent when no redirects fired.
       if (redirects.length > 0 && config.ssg?.emitRedirects !== false) {
-        await writeFile(join(distDir, '_redirects'), renderNetlifyRedirects(redirects), 'utf-8')
-        await writeFile(
+        // M2.1 — atomic so an interrupted build doesn't leave a half-
+        // written `_redirects` file that adapters / static hosts misparse.
+        await writeFileAtomic(
+          join(distDir, '_redirects'),
+          renderNetlifyRedirects(redirects),
+        )
+        await writeFileAtomic(
           join(distDir, '_redirects.json'),
           renderVercelRedirectsJson(redirects),
-          'utf-8',
         )
       }
 
@@ -1287,10 +1410,11 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // Default: 'json' (write the artifact). Set `errorArtifact: 'none'`
       // to opt out — errors stay console-only, matching pre-PR-G behaviour.
       if (errors.length > 0 && config.ssg?.errorArtifact !== 'none') {
-        await writeFile(
+        // M2.1 — atomic so CI that reads this manifest (`jq '.errors | length'`)
+        // never sees a partial-JSON parse error from an interrupted build.
+        await writeFileAtomic(
           join(distDir, '_pyreon-ssg-errors.json'),
           renderErrorArtifact(errors),
-          'utf-8',
         )
       }
 
@@ -1325,6 +1449,19 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       const redirectsSummary = redirects.length > 0 ? ` + ${redirects.length} redirect(s)` : ''
       const concurrencySummary = concurrency > 1 ? ` (concurrency: ${concurrency})` : ''
       const adapterSummary = adapter.name !== 'node' ? ` [adapter: ${adapter.name}]` : ''
+      // M2.5 — revalidate-manifest entry count surfaces in the summary so
+      // users see at a glance whether per-route ISR config landed in
+      // `_pyreon-revalidate.json` (vs silently empty because no route
+      // exported a `revalidate` literal).
+      const revalidateSummary =
+        revalidateCount > 0 ? ` + ${revalidateCount} revalidate path(s)` : ''
+      // M2.5 — per-locale breakdown when i18n config is active. The
+      // breakdown is computed from `writtenPaths` — each path either has a
+      // locale prefix (`/de/...`) or belongs to the default locale (under
+      // `prefix-except-default`) / is locale-less (no i18n). Surfaces
+      // shape mismatches: `[en: 100, de: 90, cs: 100]` flags that de had
+      // 10 paths skipped relative to the others.
+      const localeSummary = config.i18n ? buildLocaleSummary(writtenPaths, config.i18n) : ''
       // oxlint-disable-next-line no-console
       console.log(
         `[zero:ssg] Prerendered ${pages} page(s)${
@@ -1333,7 +1470,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
               ? ' + 404.html'
               : ` + ${emitted404Count} 404 pages`
             : ''
-        }${redirectsSummary} in ${elapsed}ms${concurrencySummary}${adapterSummary}` +
+        }${redirectsSummary}${revalidateSummary} in ${elapsed}ms${concurrencySummary}${adapterSummary}${localeSummary}` +
           (errors.length > 0 ? ` (${errors.length} error(s))` : ''),
       )
       for (const { path: errPath, error } of errors) {
@@ -1365,4 +1502,6 @@ export const _internal = {
   detectPathCollisions,
   formatPathCollisionError,
   assertNoPathCollisions,
+  writeFileAtomic,
+  buildLocaleSummary,
 }

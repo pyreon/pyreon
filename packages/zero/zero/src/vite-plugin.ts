@@ -679,8 +679,9 @@ async function renderSsr(
 			routerInst as Parameters<typeof routerPkg.serializeLoaderData>[0],
 		);
 		const hasData = loaderData && Object.keys(loaderData).length > 0;
+		// M2.2 — safe serializer (parity with production handler / SSG entry).
 		const loaderScript = hasData
-			? `<script>window.__PYREON_LOADER_DATA__=${JSON.stringify(loaderData).replace(/<\//g, "<\\/")}</script>`
+			? `<script>window.__PYREON_LOADER_DATA__=${routerPkg.stringifyLoaderData(loaderData)}</script>`
 			: "";
 
 		const html = template

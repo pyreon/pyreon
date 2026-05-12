@@ -1,5 +1,6 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
 import { validateBuildInputs } from './validate'
+import { warnMissingEnv } from './warn-missing-env'
 
 /**
  * Cloudflare Pages adapter — generates output for Cloudflare Pages with Functions.
@@ -121,12 +122,17 @@ export default {
       const apiToken = process.env.CLOUDFLARE_API_TOKEN
       const siteUrl = process.env.CLOUDFLARE_SITE_URL
       if (!zoneId || !apiToken || !siteUrl) {
-        if (process.env.NODE_ENV !== 'production') {
-          console.warn(
-            '[Pyreon] cloudflareAdapter.revalidate() needs CLOUDFLARE_ZONE_ID + CLOUDFLARE_API_TOKEN + CLOUDFLARE_SITE_URL env vars. Set them in Cloudflare Pages dashboard → Settings → Environment Variables.',
-          )
-        }
-        return { regenerated: false }
+        // M2.4 — warn even in production (dedupe per process). See vercel.ts
+        // for the rationale.
+        const missing: string[] = []
+        if (!zoneId) missing.push('CLOUDFLARE_ZONE_ID')
+        if (!apiToken) missing.push('CLOUDFLARE_API_TOKEN')
+        if (!siteUrl) missing.push('CLOUDFLARE_SITE_URL')
+        return warnMissingEnv(
+          'cloudflare',
+          missing,
+          'Set them in Cloudflare Pages dashboard → Settings → Environment Variables. Note: Cloudflare imposes a 1000-purge-per-24h rate limit per zone — high-frequency revalidation will hit it.',
+        )
       }
       const fullUrl = `${siteUrl.replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`
       try {
