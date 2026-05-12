@@ -729,6 +729,64 @@ describe('ssgPlugin', () => {
     it('single-element input returns empty', () => {
       expect(_internal.detectPathCollisions(['/'])).toEqual([])
     })
+
+    // ─── Wiring integration ──────────────────────────────────────────────────
+    //
+    // The helpers above prove the detector + formatter work in isolation. The
+    // following specs prove the CLOSEBUNDLE WIRING calls through them. The
+    // closeBundle handler at `ssg-plugin.ts:closeBundle` runs
+    // `assertNoPathCollisions(paths)` between `resolvePaths` and the render
+    // loop. Removing that single call → the build silently last-wins on dupes
+    // (one HTML overwrites the other with zero signal).
+    //
+    // Bisect-load-bearing: replace `assertNoPathCollisions(paths)` in
+    // closeBundle with `void paths` → these specs would still pass (they call
+    // the helper directly). The real CI guard for the call-site comes from
+    // `verify-modes` + the audit-types check. The unit specs here lock the
+    // CONTRACT of `assertNoPathCollisions` itself.
+
+    it('assertNoPathCollisions throws on duplicates (wiring contract)', () => {
+      expect(() =>
+        _internal.assertNoPathCollisions(['/about', '/posts/1', '/about', '/posts/1']),
+      ).toThrow(/\[Pyreon\] SSG path collision/)
+      expect(() =>
+        _internal.assertNoPathCollisions(['/about', '/posts/1', '/about', '/posts/1']),
+      ).toThrow(/2 URL\(s\)/)
+      expect(() => _internal.assertNoPathCollisions(['/about', '/about'])).toThrow(/\/about/)
+    })
+
+    it('assertNoPathCollisions is a no-op on unique paths', () => {
+      expect(() => _internal.assertNoPathCollisions(['/', '/about', '/posts/1'])).not.toThrow()
+      expect(() => _internal.assertNoPathCollisions([])).not.toThrow()
+      expect(() => _internal.assertNoPathCollisions(['/'])).not.toThrow()
+    })
+
+    it('resolvePaths forwards explicit-array dupes verbatim (wiring step 1)', async () => {
+      // `config.ssg.paths` accepts a user-supplied array. When it contains
+      // dupes (operator error: same path listed twice), `resolvePaths`
+      // returns them as-is — `assertNoPathCollisions` is what catches it.
+      const result = await _internal.resolvePaths(
+        { ssg: { paths: ['/about', '/posts/1', '/about', '/posts/1'] } },
+        '/dev/null',
+      )
+      expect(result).toEqual(['/about', '/posts/1', '/about', '/posts/1'])
+      // Closing the wiring: feed the result through the gate.
+      expect(() => _internal.assertNoPathCollisions(result)).toThrow(
+        /SSG path collision/,
+      )
+    })
+
+    it('resolvePaths forwards async-function dupes verbatim (wiring step 1, async)', async () => {
+      // `config.ssg.paths` also accepts `() => Promise<string[]>`. Same
+      // wiring contract — dupes returned by the user's enumerator surface
+      // at `assertNoPathCollisions`.
+      const result = await _internal.resolvePaths(
+        { ssg: { paths: async () => ['/blog/foo', '/blog/foo'] } },
+        '/dev/null',
+      )
+      expect(result).toEqual(['/blog/foo', '/blog/foo'])
+      expect(() => _internal.assertNoPathCollisions(result)).toThrow(/\/blog\/foo/)
+    })
   })
 
   describe('runWithConcurrency (PR D)', () => {

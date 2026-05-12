@@ -514,13 +514,24 @@ async function dispatchApiRoute(
 }
 
 /**
- * Check if the requested path matches any route. If not, render a 404 page.
- * Returns true if the 404 was handled (response sent), false otherwise.
+ * Static-page 404 fallback for apps WITHOUT `_404.tsx` in the routes tree.
  *
- * In dev mode, the _404.tsx component cannot be SSR-rendered because
- * the compiler emits _tpl() calls that require `document`. Instead,
- * we return a static 404 page. The actual component rendering happens
- * on the client side when the SPA loads.
+ * For `mode: 'ssr'` apps with `_404.tsx`, the SSR middleware's `renderSsr`
+ * routes unmatched URLs through the router-driven path (PR L5 + M1.2) — that
+ * produces a layout-wrapped 404 with HTTP status 404, never reaching here.
+ * This function is the LEGACY fallback that fires only when:
+ *   - The app is in `mode: 'spa'` / `mode: 'ssg'` (no dev SSR middleware), OR
+ *   - The app has no reachable `notFoundComponent` in its routes tree (so the
+ *     SSR middleware's `resolveRoute` returns matched: [] and falls through).
+ *
+ * Returns true if the 404 was handled (response sent), false if the path
+ * actually matches a route (caller continues to next middleware).
+ *
+ * Pre-M1.2 a stale comment claimed `_404.tsx` "cannot be SSR-rendered because
+ * the compiler emits _tpl() calls that require document". That was wrong — the
+ * SSR runtime renders compiler-emitted components fine via `renderToString`
+ * (no document needed). The static fallback exists for backward compat with
+ * apps that don't ship `_404.tsx`, not because SSR-rendering it is impossible.
  */
 async function handle404(
 	server: import("vite").ViteDevServer,
@@ -536,10 +547,11 @@ async function handle404(
 		return false; // Route matches — not a 404
 	}
 
-	// No route matched — return a 404.
-	// In dev, we return a static page since the compiler emits _tpl() calls
-	// that require document (unavailable in SSR). The _404.tsx component
-	// renders on the client side after hydration.
+	// No route matched + no `_404.tsx` reachable — emit a minimal static page
+	// so the user gets SOMETHING. Apps that want branded 404s should add
+	// `_404.tsx` to their routes tree (canonical pattern); the SSR middleware
+	// then routes through the router-driven path with layout chrome instead
+	// of landing here.
 	const html = await render404Page(undefined);
 
 	res.statusCode = 404;

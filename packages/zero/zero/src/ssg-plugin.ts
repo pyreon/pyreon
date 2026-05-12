@@ -456,6 +456,21 @@ function detectPathCollisions(paths: readonly string[]): string[] {
 }
 
 /** Format a path-collision error message with actionable guidance. */
+/**
+ * Wiring helper: run the collision detector + throw with the formatted error
+ * when any collisions are found. The closeBundle handler calls this between
+ * `resolvePaths` and the render loop. Factored out so unit tests can exercise
+ * the full "detect → throw" path without spinning up a Vite SSR sub-build.
+ *
+ * @internal Exposed via `_internal.assertNoPathCollisions` for unit tests.
+ */
+function assertNoPathCollisions(paths: readonly string[]): void {
+  const collisions = detectPathCollisions(paths)
+  if (collisions.length > 0) {
+    throw new Error(formatPathCollisionError(collisions))
+  }
+}
+
 function formatPathCollisionError(duplicates: readonly string[]): string {
   const list = duplicates.map((p) => `  - ${p}`).join('\n')
   return `[Pyreon] SSG path collision — ${duplicates.length} URL(s) resolved by multiple routes:\n${list}\nThis happens when a static route + getStaticPaths return overlap, or two getStaticPaths enumerators produce the same URL. Inspect your routes tree and ensure each URL is produced by exactly one route.`
@@ -941,13 +956,11 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // last-wins under `writtenPaths.push(p)`. Surface as an actionable
       // error with the duplicate URL listed so users can fix the source
       // route conflict instead of wondering why HTML mysteriously changes
-      // between rebuilds. Bisect-verifiable: removing this check + a
-      // dual-path fixture → render proceeds and one HTML silently
-      // overwrites the other.
-      const collisions = detectPathCollisions(paths)
-      if (collisions.length > 0) {
-        throw new Error(formatPathCollisionError(collisions))
-      }
+      // between rebuilds. Bisect-verified via `assertNoPathCollisions` unit
+      // tests: removing the call → fixture with dupes proceeds to render
+      // and silently overwrites; restoring → throws with the formatted
+      // error listing every duplicate URL.
+      assertNoPathCollisions(paths)
 
       let pages = 0
       // PR B — collect redirects from loader-throws so the post-render
@@ -1351,4 +1364,5 @@ export const _internal = {
   SSR_ENTRY_FILENAME,
   detectPathCollisions,
   formatPathCollisionError,
+  assertNoPathCollisions,
 }
