@@ -1,4 +1,4 @@
-import type { computed, signal } from '@pyreon/reactivity'
+import type { computed } from '@pyreon/reactivity'
 
 /** A readable signal — any callable that returns a value and tracks subscribers. */
 export type ReadableSignal<T> = (() => T) & { peek?: () => T }

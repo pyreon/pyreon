@@ -20,7 +20,7 @@
  */
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { chromium, type Page } from 'playwright'
+import { chromium } from 'playwright'
 import { startServer as startViteServer } from './server'
 
 const HERE = dirname(fileURLToPath(import.meta.url))

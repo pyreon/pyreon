@@ -3023,7 +3023,7 @@ describe('config-file round-trip', () => {
       const base = getPreset('recommended')
       const runtimeCfg: LintConfig = {
         ...base,
-        rules: { ...base.rules, ...(loaded?.rules ?? {}) },
+        rules: { ...base.rules, ...loaded?.rules },
       }
 
       // In an exempt path — rule silent.

@@ -177,16 +177,16 @@ export function parseChangelog(body: string): ChangelogEntry[] {
 
     // `### Patch Changes` / `### Minor Changes` / `### Major Changes` — ignore
     // the heading itself but keep reading bullets under it.
-    if (/^### /.test(line)) {
+    if (line.startsWith('### ')) {
       flushBullet()
       continue
     }
 
     // Start of a new top-level bullet.
-    if (/^- /.test(line)) {
+    if (line.startsWith('- ')) {
       flushBullet()
       currentBuf = [line.replace(/^- /, '')]
-      bufKind = /^- Updated dependencies/.test(line) ? 'dep' : 'change'
+      bufKind = line.startsWith('- Updated dependencies') ? 'dep' : 'change'
       continue
     }
 

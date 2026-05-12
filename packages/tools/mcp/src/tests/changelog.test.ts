@@ -168,7 +168,7 @@ describe('formatChangelog', () => {
   it('respects the limit option', () => {
     const q = findChangelog(registry, 'query')!
     const limited = formatChangelog(q, { limit: 1 })
-    const versionHeadings = limited.split('\n').filter((l) => /^## /.test(l))
+    const versionHeadings = limited.split('\n').filter((l) => l.startsWith('## '))
     expect(versionHeadings).toHaveLength(1)
   })
 

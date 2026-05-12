@@ -446,7 +446,7 @@ count.set(10)  // no log — effect was disposed`,
   // ws.close() runs when scope.stop() is called
 })`,
       mistakes: [
-        'Calling outside any scope — silently no-ops in production, dev warns. The callback is dropped on the floor; verify with \`getCurrentScope()\` before calling if scope is uncertain',
+        'Calling outside any scope — silently no-ops in production, dev warns. The callback is dropped on the floor; verify with `getCurrentScope()` before calling if scope is uncertain',
         'Expecting the callback to run on EFFECT cleanup — `onScopeDispose` fires only on `scope.stop()`. For per-effect cleanup, use `onCleanup()` inside the effect body or return a cleanup function from it',
         'Using outside `runInScope` and inside an effect callback — the effect captures whatever scope was ambient when the effect SET UP, not when the registration runs. Effects re-run later may see a different ambient scope; register at setup, not in the body',
       ],

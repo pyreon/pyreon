@@ -1611,7 +1611,7 @@ describe('mount — edge cases', () => {
 
   test('mounting array of children', () => {
     const el = container()
-    mount(h('div', null, ...[h('span', null, 'a'), h('span', null, 'b'), h('span', null, 'c')]), el)
+    mount(h('div', null, h('span', null, 'a'), h('span', null, 'b'), h('span', null, 'c')), el)
     expect(el.querySelectorAll('span').length).toBe(3)
   })
 

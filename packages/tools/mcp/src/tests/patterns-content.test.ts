@@ -53,7 +53,7 @@ describe('patterns content — structural shape', () => {
     '%s has exactly one top-level # heading',
     (_name, path) => {
       const body = readFileSync(path, 'utf8')
-      const h1Count = body.split('\n').filter((l) => /^# /.test(l)).length
+      const h1Count = body.split('\n').filter((l) => l.startsWith('# ')).length
       expect(h1Count).toBe(1)
     },
   )

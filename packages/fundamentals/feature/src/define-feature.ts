@@ -189,7 +189,7 @@ export function defineFeature<TValues extends Record<string, unknown>>(
         const pageSize = options?.pageSize ?? 20
 
         const params: Record<string, string | number | boolean> = {
-          ...(options?.params ?? {}),
+          ...options?.params,
         }
 
         if (pageValue !== undefined) {
@@ -288,7 +288,7 @@ export function defineFeature<TValues extends Record<string, unknown>>(
       const mode = options?.mode ?? 'create'
       const mergedInitial = {
         ...initialValues,
-        ...(options?.initialValues ?? {}),
+        ...options?.initialValues,
       } as TValues
 
       const form = _useForm<TValues>({
@@ -345,7 +345,7 @@ export function defineFeature<TValues extends Record<string, unknown>>(
       const columns: ColumnDef<TValues, unknown>[] = visibleFields.map((field) => ({
         accessorKey: field.name,
         header: field.label,
-        ...(options?.columnOverrides?.[field.name as keyof TValues & string] ?? {}),
+        ...options?.columnOverrides?.[field.name as keyof TValues & string],
       }))
 
       const sorting = signal<SortingState>([])

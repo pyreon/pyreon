@@ -4,7 +4,7 @@ import type { TObj } from './utils'
 
 export interface StylesDefault {}
 
-export type Styles<S = unknown> = StylesDefault
+export type Styles<_S = unknown> = StylesDefault
 
 export type Css = typeof config.css
 export type Style = ReturnType<Css>

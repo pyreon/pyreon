@@ -96,7 +96,7 @@ function splitBullets(sectionBody: string): string[] {
   const bullets: string[] = []
   let current: string[] = []
   for (const line of lines) {
-    if (/^- \*\*/.test(line)) {
+    if (line.startsWith('- **')) {
       if (current.length > 0) bullets.push(current.join('\n').trim())
       current = [line]
     } else if (current.length > 0) {
@@ -123,7 +123,7 @@ function parseBullet(bullet: string): {
   // Pull out the detector tag if present. It can appear as:
   //   ` [detector: code]`
   //   ` \`[detector: code]\``
-  const detectorMatch = /`?\[detector:\s*([a-z0-9\-\/ ]+)\]`?/i.exec(afterName)
+  const detectorMatch = /`?\[detector:\s*([a-z0-9\-/ ]+)\]`?/i.exec(afterName)
   const detectorCodes: string[] = []
   if (detectorMatch) {
     for (const code of detectorMatch[1]!.split('/')) {

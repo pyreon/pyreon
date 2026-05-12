@@ -14,7 +14,7 @@
  * Rules without `meta.schema` accept any options (no validation).
  */
 
-import type { OptionType, Rule, RuleOptions, RuleOptionsSchema } from '../types'
+import type { OptionType, Rule, RuleOptions } from '../types'
 
 export interface ValidationResult {
   errors: string[]
