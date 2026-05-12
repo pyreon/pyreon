@@ -1,39 +1,10 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { createServer } from '../index'
+import { callTool, newClient } from './helpers'
 
 // Real MCP server <-> client round-trip for the `diagnose` tool. The
 // `ERROR_PATTERNS` catalog itself is unit-tested in the compiler's
 // `react-intercept.test.ts`; this test pins the JSON-RPC wiring +
 // the formatter that splits cause / fix / fixCode / related into
 // markdown sections.
-
-async function newClient(): Promise<{ client: Client; close: () => Promise<void> }> {
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
-  const server = createServer()
-  await server.connect(serverTransport)
-  const client = new Client({ name: 'test', version: '0.0.0' })
-  await client.connect(clientTransport)
-  return {
-    client,
-    close: async () => {
-      await client.close()
-      await server.close()
-    },
-  }
-}
-
-async function callTool(
-  client: Client,
-  name: string,
-  args: Record<string, unknown>,
-): Promise<string> {
-  const result = (await client.callTool({ name, arguments: args })) as {
-    content: Array<{ type: string; text: string }>
-  }
-  expect(result.content[0]!.type).toBe('text')
-  return result.content[0]!.text
-}
 
 describe('MCP server — diagnose tool', () => {
   it('matches a known pattern and emits cause + fix + code sections', async () => {

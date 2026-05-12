@@ -173,7 +173,7 @@ export function createServeHandler(
     if (hit) {
       return new Response(null, {
         status: hit.status,
-        headers: { location: hit.to },
+        headers: { Location: hit.to },
       })
     }
 
@@ -227,7 +227,7 @@ if (import.meta.main) {
   const root = resolve(DIST_ARG)
   const port = Number(PORT_ARG)
 
-  if (!Number.isFinite(port) || port <= 0 || port > 65535) {
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
     console.error(`[serve-ssg] Invalid port: ${PORT_ARG}`)
     process.exit(1)
   }

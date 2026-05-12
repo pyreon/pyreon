@@ -1,3 +1,4 @@
+import type { Plugin } from 'vite'
 import { describe, expect, it } from 'vitest'
 import { parseFileRoutes } from '../fs-router'
 import {
@@ -161,7 +162,7 @@ describe('useLocale', () => {
 describe('i18nRouting plugin', () => {
   it('returns a Vite plugin with correct name', async () => {
     const { i18nRouting: routing } = await import('../i18n-routing')
-    const plugin = routing({ locales: ['en', 'de'], defaultLocale: 'en' }) as any
+    const plugin = routing({ locales: ['en', 'de'], defaultLocale: 'en' }) as Plugin
     expect(plugin.name).toBe('pyreon-zero-i18n-routing')
   })
 })

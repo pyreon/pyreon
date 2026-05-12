@@ -10,19 +10,21 @@ export interface BuildOptions {
 async function loadZeroConfig(configPath: string): Promise<Record<string, unknown> | undefined> {
   try {
     const { loadConfigFromFile } = await import('vite')
+    const { getZeroPluginConfig } = await import('@pyreon/zero/server')
     const loaded = await loadConfigFromFile({ command: 'build', mode: 'production' }, configPath)
     if (!loaded) return undefined
 
-    const plugins = (loaded.config.plugins ?? []) as Array<{
-      name?: string
-      _zeroConfig?: Record<string, unknown>
-    }>
+    const plugins = (loaded.config.plugins ?? []) as Array<{ name?: string }>
     const zeroPlugin = plugins.find(
       (p) => p && typeof p === 'object' && 'name' in p && p.name === 'pyreon-zero',
     )
-    if (zeroPlugin && '_zeroConfig' in zeroPlugin) {
-      return zeroPlugin._zeroConfig as Record<string, unknown>
-    }
+    if (!zeroPlugin) return undefined
+    // `getZeroPluginConfig` reads from a WeakMap keyed by plugin
+    // identity (set inside `zeroPlugin()` when the user constructed it).
+    // No `_zeroConfig` property reflection — internal coordination state
+    // doesn't leak onto the public Plugin object.
+    const config = getZeroPluginConfig(zeroPlugin as Parameters<typeof getZeroPluginConfig>[0])
+    return config as Record<string, unknown> | undefined
   } catch {
     // Config loading is optional — fall back to defaults
   }

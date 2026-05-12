@@ -1,6 +1,4 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { createServer } from '../index'
+import { callTool, newClient } from './helpers'
 
 // MCP server <-> client round-trip for the PR C `audit_islands` tool.
 // Same InMemoryTransport shape as `test-audit-server.test.ts`, so we
@@ -9,33 +7,6 @@ import { createServer } from '../index'
 // compiler package (`island-audit.test.ts`) — those test the
 // underlying `auditIslands()` function directly; this one proves the
 // MCP wiring.
-
-async function newClient(): Promise<{ client: Client; close: () => Promise<void> }> {
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
-  const server = createServer()
-  await server.connect(serverTransport)
-  const client = new Client({ name: 'test', version: '0.0.0' })
-  await client.connect(clientTransport)
-  return {
-    client,
-    close: async () => {
-      await client.close()
-      await server.close()
-    },
-  }
-}
-
-async function callTool(
-  client: Client,
-  name: string,
-  args: Record<string, unknown>,
-): Promise<string> {
-  const result = (await client.callTool({ name, arguments: args })) as {
-    content: Array<{ type: string; text: string }>
-  }
-  expect(result.content[0]!.type).toBe('text')
-  return result.content[0]!.text
-}
 
 // `audit_islands` walks the real repo (packages/ + examples/) — under CI's
 // parallel test load that can exceed vitest's 5s default. 30s per call is
