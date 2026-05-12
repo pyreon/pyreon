@@ -60,6 +60,10 @@ import { noHrefNavigation } from './router/no-href-navigation'
 import { noImperativeNavigateInRender } from './router/no-imperative-navigate-in-render'
 import { noMissingFallback } from './router/no-missing-fallback'
 import { preferUseIsActive } from './router/prefer-use-is-active'
+// SSG (M3.5)
+import { invalidLoaderExport } from './ssg/invalid-loader-export'
+import { missingGetStaticPaths } from './ssg/missing-get-static-paths'
+import { revalidateNotPureLiteral } from './ssg/revalidate-not-pure-literal'
 import { noMismatchRisk } from './ssr/no-mismatch-risk'
 // SSR
 import { noWindowInSsr } from './ssr/no-window-in-ssr'
@@ -149,6 +153,10 @@ export const allRules: Rule[] = [
   noImperativeNavigateInRender,
   noMissingFallback,
   preferUseIsActive,
+  // SSG (3) — M3.5
+  invalidLoaderExport,
+  missingGetStaticPaths,
+  revalidateNotPureLiteral,
 ]
 
 // Re-export all rules individually
@@ -223,6 +231,10 @@ export {
   preferRequestContext,
   preferShowOverDisplay,
   preferUseIsActive,
+  // SSG (M3.5)
+  invalidLoaderExport,
+  missingGetStaticPaths,
+  revalidateNotPureLiteral,
   // Accessibility
   toastA11y,
   useByNotKey,

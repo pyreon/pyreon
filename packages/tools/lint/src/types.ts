@@ -41,6 +41,7 @@ export type RuleCategory =
   | 'hooks'
   | 'accessibility'
   | 'router'
+  | 'ssg'
 
 /**
  * Declared type of an option slot. Minimal on purpose — sufficient for
