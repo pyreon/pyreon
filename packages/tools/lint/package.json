@@ -13,9 +13,10 @@
     "directory": "packages/tools/lint"
   },
   "bin": {
-    "pyreon-lint": "./lib/cli.js"
+    "pyreon-lint": "./bin/pyreon-lint.js"
   },
   "files": [
+    "bin",
     "lib",
     "!lib/**/*.map",
     "src",
