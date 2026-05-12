@@ -19,6 +19,22 @@ test.describe('Storage — browser APIs', () => {
     })
     await page.goto('/')
     await page.waitForSelector('nav.sidebar')
+    // CI flake guard — `waitForSelector` returns as soon as the sidebar
+    // is mounted, but Vite's dev server can still be streaming async
+    // chunks / re-prebundling under slow CI load. A late-arriving HMR
+    // reload then destroys the execution context the moment the test
+    // body calls `page.evaluate(...)` ("Execution context was destroyed,
+    // most likely because of a navigation"). `networkidle` blocks until
+    // 500ms of zero in-flight requests, after which HMR cannot fire
+    // without a fresh user-driven navigation. Both `cross-tab
+    // localStorage sync fires storage event` (line 58) and
+    // `localStorage.clear removes all items` (line 81) flaked at the
+    // first `page.evaluate` in CI on three consecutive main-branch runs
+    // (#25728248892 / M3.A merge, plus PR #535's initial run + rerun)
+    // before this guard was added — load-dependent, not specific to one
+    // test. Bisect: removing this line reproduces both flake shapes on
+    // GitHub-hosted ubuntu-latest runners under typical CI concurrency.
+    await page.waitForLoadState('networkidle')
   })
 
   test('localStorage persists and reads back', async ({ page }) => {
@@ -56,25 +72,34 @@ test.describe('Storage — browser APIs', () => {
   })
 
   test('cross-tab localStorage sync fires storage event', async ({ page, context }) => {
-    // Set up listener on first page — filter for our specific key
-    const storageEventPromise = page.evaluate(() => {
-      return new Promise<string>((resolve) => {
-        window.addEventListener('storage', (e) => {
-          if (e.key === 'cross-tab-test') resolve(e.key)
-        })
+    // Set up listener on first page — filter for our specific key.
+    // Storing the result on a global lets us poll for it via
+    // `waitForFunction` instead of awaiting a long-lived
+    // `page.evaluate(() => new Promise(...))` — the polling form is
+    // robust to a transient HMR reload that would otherwise leave the
+    // outer Promise un-resolved.
+    await page.evaluate(() => {
+      const w = window as typeof window & { __storageSync?: string }
+      w.__storageSync = undefined
+      window.addEventListener('storage', (e) => {
+        if (e.key === 'cross-tab-test') w.__storageSync = e.key ?? ''
       })
     })
 
     // Write from second tab
     const page2 = await context.newPage()
     await page2.goto('/')
-    await page2.waitForTimeout(500)
+    await page2.waitForLoadState('networkidle')
     await page2.evaluate(() => {
       localStorage.setItem('cross-tab-test', 'synced')
     })
 
-    const eventKey = await storageEventPromise
-    expect(eventKey).toBe('cross-tab-test')
+    const eventKey = await page.waitForFunction(
+      () => (window as typeof window & { __storageSync?: string }).__storageSync,
+      undefined,
+      { timeout: 5000 },
+    )
+    expect(await eventKey.jsonValue()).toBe('cross-tab-test')
     await page2.close()
   })
 

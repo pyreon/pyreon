@@ -115,6 +115,45 @@ export default function Post() { return null }`
     const result = lintRoute(source, 'src/components/[fake].tsx')
     expect(diagIds(result)).not.toContain('pyreon/missing-get-static-paths')
   })
+
+  // M3.B follow-up — false-positive class surfaced by cpa-pw-blog's
+  // `api/echo/[...path].ts` (real-world API route with bracket
+  // filename). API routes are runtime-only by definition; getStaticPaths
+  // doesn't apply.
+  it('does NOT fire on API routes under src/routes/api/ (path-based skip)', () => {
+    const source = `export function GET({ params }) {
+      return new Response(\`segments: \${params.path}\`)
+    }`
+    const result = lintRoute(source, 'src/routes/api/echo/[...path].ts')
+    expect(diagIds(result)).not.toContain('pyreon/missing-get-static-paths')
+  })
+
+  it('does NOT fire on API routes (POST handler)', () => {
+    const source = `export async function POST({ request }) {
+      return new Response('ok')
+    }`
+    const result = lintRoute(source, 'src/routes/api/posts/[id].ts')
+    expect(diagIds(result)).not.toContain('pyreon/missing-get-static-paths')
+  })
+
+  it('does NOT fire on files without `export default` even outside api/ (export-shape skip)', () => {
+    // Method-handler-only file outside api/ — covers users who put API
+    // routes somewhere non-conventional. Page routes structurally
+    // require a default export, so absence is a reliable signal.
+    const source = `export function GET() { return new Response('ok') }
+export function POST() { return new Response('ok') }`
+    const result = lintRoute(source, 'src/routes/webhook/[id].ts')
+    expect(diagIds(result)).not.toContain('pyreon/missing-get-static-paths')
+  })
+
+  it('STILL fires on page routes (with default export) without getStaticPaths', () => {
+    // Sanity — make sure the export-shape skip doesn't accidentally
+    // silence the rule on legitimate page routes.
+    const source = `export const someHelper = 1
+export default function Page() { return null }`
+    const result = lintRoute(source, 'src/routes/posts/[id].tsx')
+    expect(diagIds(result)).toContain('pyreon/missing-get-static-paths')
+  })
 })
 
 // ─── 3) pyreon/invalid-loader-export ───────────────────────────────────────

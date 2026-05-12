@@ -282,11 +282,17 @@ function detectDynamicRouteMissingGetStaticPaths(
     if (!/\[.+\]/.test(base)) continue
     // Skip layouts / errors / 404s — only PAGE files take getStaticPaths.
     if (/^_(layout|error|loading|404|not-found)\./.test(base)) continue
+    // Skip API routes under `routes/api/` (path-based convention).
+    // fs-router treats `api/` as the runtime-handler namespace; pages
+    // are everything else. Caught originally in M3.B against cpa-pw-blog's
+    // `api/echo/[...path].ts`.
+    if (/[/\\]routes[/\\]api[/\\]/.test(file)) continue
     const source = parseSourceFile(file)
     if (!source) continue
     let hasGetStaticPaths = false
+    let hasDefaultExport = false
     function visit(node: ts.Node): void {
-      if (hasGetStaticPaths) return
+      if (hasGetStaticPaths && hasDefaultExport) return
       if (ts.isVariableStatement(node)) {
         const hasExport = node.modifiers?.some(
           (m) => m.kind === ts.SyntaxKind.ExportKeyword,
@@ -295,7 +301,6 @@ function detectDynamicRouteMissingGetStaticPaths(
           for (const decl of node.declarationList.declarations) {
             if (ts.isIdentifier(decl.name) && decl.name.text === 'getStaticPaths') {
               hasGetStaticPaths = true
-              return
             }
           }
         }
@@ -304,14 +309,29 @@ function detectDynamicRouteMissingGetStaticPaths(
         const hasExport = node.modifiers?.some(
           (m) => m.kind === ts.SyntaxKind.ExportKeyword,
         )
+        const isDefault = node.modifiers?.some(
+          (m) => m.kind === ts.SyntaxKind.DefaultKeyword,
+        )
         if (hasExport && node.name?.text === 'getStaticPaths') {
           hasGetStaticPaths = true
-          return
         }
+        if (hasExport && isDefault) {
+          hasDefaultExport = true
+        }
+      }
+      if (ts.isExportAssignment(node) && !node.isExportEquals) {
+        // `export default <expr>`
+        hasDefaultExport = true
       }
       ts.forEachChild(node, visit)
     }
     visit(source)
+    // Files without `export default` are API routes by structure. Skip.
+    // Page routes require a default-exported component (fs-router renders
+    // `route.component`); files exporting only method handlers
+    // (`GET` / `POST` / etc.) without a default are API routes wherever
+    // they sit in the tree.
+    if (!hasDefaultExport) continue
     if (!hasGetStaticPaths) {
       findings.push({
         code: 'dynamic-route-missing-get-static-paths',

@@ -216,7 +216,7 @@ defineConfig({
 
 ### SSG (Static Site Generation)
 
-Pages are prerendered at build time. Ideal for content that rarely changes.
+Pages are prerendered at build time. Ideal for content that rarely changes — marketing sites, blogs, docs, anything where the HTML is identical for every visitor.
 
 ```ts
 defineConfig({
@@ -226,6 +226,8 @@ defineConfig({
   },
 })
 ```
+
+**See the dedicated [Static Site Generation](/docs/ssg) page** for the full reference — dynamic routes via `getStaticPaths`, build-time ISR via `revalidate` exports, per-locale 404 + hreflang sitemap, the `vercelRevalidateHandler` scaffold, deployment per platform, and the `pyreon doctor --check-ssg` audit. The summary below covers the quick-start surface only.
 
 When `mode: "ssg"` is set, `vite build` runs the regular client build, then triggers a programmatic SSR sub-build, loads the resulting handler, and writes one HTML file per path:
 

@@ -219,6 +219,61 @@ export default () => null`,
       fixture.cleanup()
     }
   })
+
+  // M3.B follow-up — false-positive class surfaced by cpa-pw-blog's
+  // `api/echo/[...path].ts` (real-world API route with bracket
+  // filename). API routes are runtime-only by definition.
+  it('does NOT fire for API routes under routes/api/ (path-based skip)', () => {
+    const fixture = makeFixture()
+    try {
+      fixture.write(
+        'examples/myapp/src/routes/api/echo/[...path].ts',
+        `export function GET({ params }) {
+  return new Response(\`segments: \${params.path}\`)
+}`,
+      )
+      const result = auditSsg(fixture.root)
+      expect(findingCodes(result)).not.toContain('dynamic-route-missing-get-static-paths')
+    } finally {
+      fixture.cleanup()
+    }
+  })
+
+  it('does NOT fire for files without `export default` outside api/ (export-shape skip)', () => {
+    // Method-handler-only file outside api/ — covers users who put API
+    // routes somewhere non-conventional. Page routes structurally
+    // require a default export, so absence is a reliable signal.
+    const fixture = makeFixture()
+    try {
+      fixture.write(
+        'examples/myapp/src/routes/webhook/[id].ts',
+        `export function POST({ request }) {
+  return new Response('ok')
+}`,
+      )
+      const result = auditSsg(fixture.root)
+      expect(findingCodes(result)).not.toContain('dynamic-route-missing-get-static-paths')
+    } finally {
+      fixture.cleanup()
+    }
+  })
+
+  it('STILL fires on page routes (with default export) missing getStaticPaths', () => {
+    // Sanity — the export-shape skip doesn't accidentally silence the
+    // rule on legitimate page routes.
+    const fixture = makeFixture()
+    try {
+      fixture.write(
+        'examples/myapp/src/routes/posts/[id].tsx',
+        `export const someHelper = 1
+export default function Post() { return null }`,
+      )
+      const result = auditSsg(fixture.root)
+      expect(findingCodes(result)).toContain('dynamic-route-missing-get-static-paths')
+    } finally {
+      fixture.cleanup()
+    }
+  })
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
