@@ -29,6 +29,14 @@ export function createISRHandler(
   const revalidating = new Set<string>()
   const revalidateMs = config.revalidate * 1000
   const maxEntries = Math.max(1, config.maxEntries ?? 1000)
+  // M1.1 — cache-key derivation. Default keys by pathname only (the
+  // pre-M1 behaviour). User-supplied `cacheKey` opts in to varying
+  // by cookies / query / headers — required for auth-gated pages.
+  // See `ISRConfig.cacheKey` JSDoc for the auth-incompatibility caveat.
+  const deriveKey: (req: Request, url: URL) => string
+    = typeof config.cacheKey === 'function'
+      ? (req, _url) => (config.cacheKey as (r: Request) => string)(req)
+      : (_req, url) => url.pathname
 
   function set(key: string, entry: CacheEntry): void {
     // LRU: re-inserting moves the key to the newest position. Then if we're
@@ -51,13 +59,23 @@ export function createISRHandler(
     return entry
   }
 
-  async function revalidate(url: URL) {
-    const key = url.pathname
+  async function revalidate(url: URL, originalReq: Request) {
+    // Re-derive key from the ORIGINAL request so cookies / headers /
+    // query that varied the cache entry are preserved across revalidation.
+    // Without this, a user-supplied `cacheKey` that reads cookies would
+    // re-render against a no-cookie request and stomp the cached entry
+    // with the wrong-user content.
+    const key = deriveKey(originalReq, url)
     if (revalidating.has(key)) return
     revalidating.add(key)
 
     try {
-      const req = new Request(url.href, { method: 'GET' })
+      // Forward the original request shape (headers + method) so the
+      // re-render sees the same auth context as the user's read.
+      const req = new Request(url.href, {
+        method: 'GET',
+        headers: originalReq.headers,
+      })
       const res = await handler(req)
       const html = await res.text()
       const headers: Record<string, string> = {}
@@ -80,7 +98,7 @@ export function createISRHandler(
     }
 
     const url = new URL(req.url)
-    const key = url.pathname
+    const key = deriveKey(req, url)
     // `touch` moves the entry to the newest LRU position on read so
     // hot paths survive eviction even when the cap is small. `get`
     // wouldn't update ordering.
@@ -91,7 +109,7 @@ export function createISRHandler(
 
       if (age > revalidateMs) {
         // Stale — serve cached but revalidate in background
-        revalidate(url)
+        revalidate(url, req)
       }
 
       return new Response(entry.html, {
@@ -113,7 +131,7 @@ export function createISRHandler(
       headers[k] = v
     })
 
-    cache.set(key, { html, headers, timestamp: Date.now() })
+    set(key, { html, headers, timestamp: Date.now() })
 
     return new Response(html, {
       status: 200,

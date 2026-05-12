@@ -1,5 +1,6 @@
 import type { ComponentFn, VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
+import { RouterView } from '@pyreon/router'
 import { createHandler } from '../handler'
 import {
   buildClientEntryTag,
@@ -222,6 +223,82 @@ describe('createHandler', () => {
     expect(res.status).toBe(200)
     const html = await res.text()
     expect(html).toContain('<h1>Home</h1>')
+  })
+})
+
+// ─── M1.2 — runtime SSR 404 layout chrome ─────────────────────────────────────
+//
+// PR L5 added `findNotFoundFallback` to the router's `resolveRoute` so an
+// unmatched URL produces a synthetic chain `[...ancestorLayouts, syntheticLeaf]`
+// with `isNotFound: true`. M1.2 wires the handler to read that flag and emit
+// HTTP 404 instead of 200 — while still serving the layout-wrapped 404 HTML.
+//
+// Without M1.2, the synthetic chain still rendered (so the HTML body was
+// correct under L5) but the response status stayed at 200 — broken contract
+// for static-host CDNs, search engines, and curl-driven monitoring.
+//
+// Bisect: remove the `resolved?.isNotFound === true ? 404 : 200` ternary in
+// `handler.ts` (replace with `200`) → both specs below fail with
+// `expected 200 to be 404`.
+
+describe('createHandler — M1.2 runtime SSR 404 layout chrome', () => {
+  const HomePage: ComponentFn = () => h('h1', { 'data-testid': 'home' }, 'Home')
+  const NotFound: ComponentFn = () => h('h1', { 'data-testid': 'not-found' }, 'Page Not Found')
+  const Layout: ComponentFn = () =>
+    h(
+      'div',
+      { 'data-testid': 'layout' },
+      h('nav', { 'data-testid': 'nav' }, 'NAV'),
+      h(RouterView, {}),
+    )
+
+  // Routes tree shape mirrors fs-router's `_404.tsx` convention:
+  //   - parent layout has `notFoundComponent` attached
+  //   - matched children render normally
+  const routes = [
+    {
+      path: '/',
+      component: Layout,
+      notFoundComponent: NotFound,
+      children: [{ path: '/', component: HomePage }],
+    },
+  ]
+
+  test('matched URL renders normally with status 200', async () => {
+    const handler = createHandler({ App: RouterView, routes })
+    const res = await handler(new Request('http://localhost/'))
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain('data-testid="home"')
+    expect(html).toContain('data-testid="layout"') // chrome wraps page
+  })
+
+  test('unmatched URL emits HTTP 404 with layout chrome + not-found body', async () => {
+    const handler = createHandler({ App: RouterView, routes })
+    const res = await handler(new Request('http://localhost/this-page-does-not-exist'))
+
+    // M1.2 — status 404 sourced from router.currentRoute().isNotFound.
+    expect(res.status).toBe(404)
+
+    const html = await res.text()
+    // The 404 component renders.
+    expect(html).toContain('data-testid="not-found"')
+    expect(html).toContain('Page Not Found')
+    // PR L5 — the parent layout wraps the 404 (the win that started with L5,
+    // M1.2 just adds the HTTP status).
+    expect(html).toContain('data-testid="layout"')
+    expect(html).toContain('data-testid="nav"')
+  })
+
+  test('legacy routes tree without notFoundComponent emits 200 (no synthetic chain)', async () => {
+    // Backward-compat: apps without `_404.tsx` in the routes tree fall through
+    // to whatever the App renders (typically empty RouterView). The handler
+    // doesn't synthesize a 404 status out of thin air — it requires the
+    // router's `findNotFoundFallback` to produce the synthetic chain first.
+    const plainRoutes = [{ path: '/specific', component: HomePage }]
+    const handler = createHandler({ App: RouterView, routes: plainRoutes })
+    const res = await handler(new Request('http://localhost/unrelated'))
+    expect(res.status).toBe(200)
   })
 })
 
