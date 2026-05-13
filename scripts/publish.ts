@@ -3,7 +3,12 @@
  * Resolves workspace:^ → ^X.Y.Z before publish, restores after.
  * Skips already-published versions.
  *
- * Usage: bun run scripts/publish.ts [--dry-run]
+ * Usage: bun run scripts/publish.ts [--dry-run] [--tag <tag>] [--otp=<code>]
+ *
+ *   --tag <tag>   npm dist-tag for the published version. Defaults to
+ *                 `latest`. Used by the prerelease workflow to publish
+ *                 snapshot builds (e.g. 0.15.1-alpha-XXXX) under the
+ *                 `next` tag so consumers can opt in via `@pkg@next`.
  */
 
 import { readdir, readFile, writeFile } from 'node:fs/promises'
@@ -13,6 +18,8 @@ const PACKAGES_DIR = join(import.meta.dirname, '..', 'packages')
 const dryRun = process.argv.includes('--dry-run')
 const otpArg = process.argv.find((a) => a.startsWith('--otp='))
 const otp = otpArg?.split('=')[1]
+const tagFlagIndex = process.argv.indexOf('--tag')
+const tag = tagFlagIndex >= 0 ? process.argv[tagFlagIndex + 1] : undefined
 
 // Per-platform npm stub packages — published exclusively by
 // .github/workflows/release-native.yml on tag push (the workflow downloads
@@ -111,6 +118,7 @@ for (const dir of packageDirs) {
     if (isCI) args.push('--provenance')
     if (otp) args.push(`--otp=${otp}`)
     if (dryRun) args.push('--dry-run')
+    if (tag) args.push('--tag', tag)
     const result = Bun.spawnSync(args, {
       cwd: dir.path,
       stdout: 'inherit',
