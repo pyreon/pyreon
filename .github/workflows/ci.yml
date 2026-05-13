@@ -80,6 +80,12 @@ jobs:
       # Save under the per-run key so downstream jobs in THIS run get the
       # exact lib/ that THIS run's bootstrap produced — no cross-run
       # corruption.
+      - name: Debug — list zero lib/ before save
+        run: |
+          echo "=== packages/zero/zero/lib/ contents (filtered) ==="
+          ls -la packages/zero/zero/lib/ | grep -E "(fs-router|seo)" || echo "no fs-router or seo files"
+          echo "=== fs-router chunk count ==="
+          ls packages/zero/zero/lib/fs-router-*.js 2>/dev/null | wc -l
       - name: Save bootstrap for this run
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
@@ -435,6 +441,12 @@ jobs:
         with:
           path: packages/*/*/lib
           key: ${{ env.BOOTSTRAP_KEY }}
+      - name: Debug — list zero lib/ after cache restore
+        run: |
+          echo "=== packages/zero/zero/lib/ fs-router + seo files ==="
+          ls -la packages/zero/zero/lib/ | grep -E "(fs-router|seo)" || echo "no matching files"
+          echo "=== fs-router chunk count ==="
+          ls packages/zero/zero/lib/fs-router-*.js 2>/dev/null | wc -l
       - name: Run build
         run: |
           FILTER="${{ needs.install.outputs.affected-filter }}"
