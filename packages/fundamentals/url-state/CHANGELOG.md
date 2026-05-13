@@ -1,5 +1,12 @@
 # @pyreon/url-state
 
+## 1.0.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/reactivity@1.0.0
+
 ## 0.14.0
 
 ### Patch Changes

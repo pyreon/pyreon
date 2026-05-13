@@ -1,5 +1,38 @@
 # @pyreon/meta
 
+## 1.0.0
+
+### Patch Changes
+
+- Updated dependencies [[`a4a4255`](https://github.com/pyreon/pyreon/commit/a4a42550835cb2706b99beed8ea582037d338ea8), [`1e0ba46`](https://github.com/pyreon/pyreon/commit/1e0ba46b8f4a234be4a6739b6b35d5280e8c824a), [`df3a379`](https://github.com/pyreon/pyreon/commit/df3a3797704e54414ce40553458b8d00fbe5c6be), [`7f26cd7`](https://github.com/pyreon/pyreon/commit/7f26cd78d74db8237aa6261a11965325d944f1ca), [`b1d8742`](https://github.com/pyreon/pyreon/commit/b1d8742b68b9787e92916c7a88964c4c80b409ed), [`21ccd15`](https://github.com/pyreon/pyreon/commit/21ccd153f29fff8ed629a2761a0c33cf33ae0ebe)]:
+  - @pyreon/elements@1.0.0
+  - @pyreon/attrs@1.0.0
+  - @pyreon/rocketstyle@1.0.0
+  - @pyreon/storage@1.0.0
+  - @pyreon/form@1.0.0
+  - @pyreon/feature@1.0.0
+  - @pyreon/validation@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/charts@1.0.0
+  - @pyreon/code@1.0.0
+  - @pyreon/flow@1.0.0
+  - @pyreon/hooks@1.0.0
+  - @pyreon/hotkeys@1.0.0
+  - @pyreon/i18n@1.0.0
+  - @pyreon/machine@1.0.0
+  - @pyreon/permissions@1.0.0
+  - @pyreon/query@1.0.0
+  - @pyreon/state-tree@1.0.0
+  - @pyreon/store@1.0.0
+  - @pyreon/table@1.0.0
+  - @pyreon/virtual@1.0.0
+  - @pyreon/coolgrid@1.0.0
+  - @pyreon/kinetic-presets@1.0.0
+  - @pyreon/kinetic@1.0.0
+  - @pyreon/styler@1.0.0
+  - @pyreon/ui-core@1.0.0
+  - @pyreon/unistyle@1.0.0
+
 ## 0.14.0
 
 ### Patch Changes

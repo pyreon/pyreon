@@ -1,5 +1,0 @@
----
-'@pyreon/router': minor
----
-
-Auto-wrap layout-less `_404.tsx` in default chrome. Apps that ship a page-level `notFoundComponent` (e.g. `_404.tsx` at the route root without a wrapping `_layout.tsx`) used to render the not-found component bare — the documented "no chrome" limitation in CLAUDE.md. `findNotFoundFallback` now runs a two-pass walk: first the original layout-with-`notFoundComponent` pass (precedence preserved), then a fallback for page records with `notFoundComponent`. When the page-record pass fires, the resolver synthesizes a chain `[DefaultChromeLayout, syntheticLeaf]`. `DefaultChromeLayout` is a new built-in component rendering `<main data-pyreon-default-chrome><RouterView /></main>` — semantic-HTML landmark for accessibility / SEO + a `data-pyreon-default-chrome` attribute for users to target via CSS if they want to customize. No prescribed visual design. Graceful degradation: if `components.tsx` isn't imported (unit-test isolation), the setter doesn't fire and the fallback returns null, falling back to the standalone-render path. Bisect-verified across 4 layout-less specs in `match.test.ts`.
