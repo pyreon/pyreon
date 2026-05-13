@@ -1,0 +1,23 @@
+{
+  "sha": "1e0ba46b",
+  "app": "perf-dashboard",
+  "journey": "modalCycle",
+  "mode": "dev",
+  "runs": 5,
+  "timestamp": "2026-05-13T11:18:16.137Z",
+  "medianWallMs": 33,
+  "medianHeapBytes": 10000000,
+  "counters": {
+    "reactivity.signalWrite": 2,
+    "reactivity.effectRun": 3,
+    "runtime.mountChild": 21,
+    "runtime.tpl": 2,
+    "runtime.mountReactive": 1,
+    "runtime.applyProp": 12,
+    "runtime.applyEvent": 3,
+    "styler.resolve": 4,
+    "styler.sheet.insert": 4,
+    "styler.sheet.insert.hit": 4,
+    "runtime.cleanup": 2
+  }
+}
