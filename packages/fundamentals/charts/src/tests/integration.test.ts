@@ -1,5 +1,11 @@
 import { _resetLoader, ensureModules, getCore, getCoreSync } from '../loader'
 
+// ECharts loads dynamically and is heavy (~2-3 MB compiled, slow first-load on CI).
+// Default 5000 ms timeout was tight even locally; CI runners under load
+// regularly hit 5400-6000 ms on the per-key tests. Bump to 30 s globally so
+// flake-prone tests have headroom without per-test annotations everywhere.
+vi.setConfig({ testTimeout: 30_000 })
+
 afterEach(() => {
   _resetLoader()
 })

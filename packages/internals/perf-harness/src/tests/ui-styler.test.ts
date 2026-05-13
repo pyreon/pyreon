@@ -81,7 +81,10 @@ describe('styler — identical-mount cache', () => {
     )
   })
 
-  it('dynamic styled × 1000 mounts — linear scaling on resolve + sheet ops', async () => {
+  // 1000 mount cycles take ~3-4s locally but can stretch to 5-6s on slow CI
+  // runners. Bump from default 5000ms to give headroom without hiding real
+  // perf regressions (a true regression would be 10s+, well past the bound).
+  it('dynamic styled × 1000 mounts — linear scaling on resolve + sheet ops', { timeout: 15_000 }, async () => {
     const theme = { bg: '#fff' }
     const Card = styled('div')<{ theme: { bg: string } }>`
       background: ${(p) => p.theme.bg};
