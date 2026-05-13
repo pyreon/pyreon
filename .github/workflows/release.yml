@@ -39,9 +39,50 @@ jobs:
         with:
           bun-version: latest
 
+      # Speed up release runs by ~1 min on warm cache. The `bun.lock` hash
+      # invalidates the cache when deps change, so we never publish against
+      # a stale snapshot. restore-keys allows a near-miss fallback while
+      # full match stays preferred.
+      - name: Cache bun dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
       - run: bun install --frozen-lockfile
 
+      # Pyreon's pre-push hook (installed by `scripts/bootstrap.ts` postinstall,
+      # configured via `core.hooksPath`) runs lint + affected typecheck + tests
+      # on every `git push`. Inside this workflow, `changesets/action` pushes
+      # the Version PR commit AND (on publish path) the npm tags — each of
+      # those `git push` calls would re-trigger the hook, burning minutes
+      # of compute and risking SIGTERM mid-publish.
+      #
+      # The explicit Lint / Typecheck / Test steps below cover the same
+      # ground at workflow level. Suppressing the hook removes pure
+      # redundancy — not safety.
+      #
+      # Reference: vitus-labs/ui-system hit this on their 2.2.1 publish
+      # (npm publish succeeded, GitHub Release step SIGTERM'd because the
+      # pre-push hook ate the remaining time budget).
+      - name: Disable local git hooks for the publish flow
+        run: git config core.hooksPath /dev/null
+
+      # Pre-publish validation. Catches broken main builds before the artifact
+      # ships to npm. Each step exits the workflow on failure — `changesets/action`
+      # below only runs if all four pass.
+      - name: Lint
+        run: bun run lint
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test
+        run: bun run test
+
       - name: Create Release PR or Publish
+        id: changesets
         uses: changesets/action@6a0a831ff30acef54f2c6aa1cbbc1096b066edaf # v1.7.0
         with:
           version: bun run version-packages
@@ -49,4 +90,11 @@ jobs:
           title: 'chore: version packages'
           commit: 'chore: version packages'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Prefer a fine-grained PAT (`RELEASE_PAT`) when present so commits
+          # the action pushes to the Version PR branch trigger downstream
+          # workflows (CI on the Version PR). The default `GITHUB_TOKEN`
+          # works for everything except trigger propagation — Version PRs
+          # opened with it have a blank CI status until someone pushes a
+          # follow-up commit. Fallback to `GITHUB_TOKEN` keeps the workflow
+          # functional without PAT setup. See CONTRIBUTING.md → Releases.
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
