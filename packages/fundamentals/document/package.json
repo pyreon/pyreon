@@ -53,14 +53,14 @@
     "pdfmake": "^0.3.7",
     "pptxgenjs": "^4.0.1"
   },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
-  },
   "optionalDependencies": {
     "docx": "^9.6.0",
     "exceljs": "^4.4.0",
     "pdfmake": "^0.3.7",
     "pptxgenjs": "^4.0.1"
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
   }
 }

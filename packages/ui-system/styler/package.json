@@ -47,11 +47,11 @@
     "@vitest/browser-playwright": "^4.1.4",
     "@vitus-labs/tools-rolldown": "^2.3.0"
   },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
-  },
   "engines": {
     "node": ">= 22"
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
   }
 }

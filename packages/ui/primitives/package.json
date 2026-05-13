@@ -40,7 +40,7 @@
     "@pyreon/typescript": "workspace:^",
     "@vitest/browser-playwright": "^4.1.4"
   },
-  "peerDependencies": {
+  "dependencies": {
     "@pyreon/core": "workspace:^",
     "@pyreon/elements": "workspace:^",
     "@pyreon/hooks": "workspace:^",

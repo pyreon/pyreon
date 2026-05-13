@@ -42,7 +42,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@pyreon/connector-document": "workspace:^"
+    "@pyreon/connector-document": "workspace:^",
+    "@pyreon/core": "workspace:^",
+    "@pyreon/document": "workspace:^",
+    "@pyreon/elements": "workspace:^",
+    "@pyreon/rocketstyle": "workspace:^",
+    "@pyreon/styler": "workspace:^",
+    "@pyreon/ui-core": "workspace:^"
   },
   "devDependencies": {
     "@pyreon/core": "workspace:^",
@@ -57,14 +63,6 @@
     "@pyreon/ui-core": "workspace:^",
     "@vitest/browser-playwright": "^4.1.4",
     "@vitus-labs/tools-rolldown": "^2.3.0"
-  },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/document": "workspace:^",
-    "@pyreon/elements": "workspace:^",
-    "@pyreon/rocketstyle": "workspace:^",
-    "@pyreon/styler": "workspace:^",
-    "@pyreon/ui-core": "workspace:^"
   },
   "engines": {
     "node": ">= 22"

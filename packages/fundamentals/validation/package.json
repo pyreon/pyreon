@@ -67,9 +67,6 @@
     "valibot": "^1.2.0",
     "zod": "^4.3.6"
   },
-  "peerDependencies": {
-    "@pyreon/form": "workspace:^"
-  },
   "peerDependenciesMeta": {
     "zod": {
       "optional": true
@@ -80,5 +77,8 @@
     "arktype": {
       "optional": true
     }
+  },
+  "dependencies": {
+    "@pyreon/form": "workspace:^"
   }
 }

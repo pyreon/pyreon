@@ -60,7 +60,8 @@
   },
   "dependencies": {
     "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-server": "workspace:^"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.8.9",
@@ -69,9 +70,6 @@
     "@pyreon/runtime-server": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@vitest/browser-playwright": "^4.1.4"
-  },
-  "peerDependencies": {
-    "@pyreon/runtime-server": "workspace:^"
   },
   "peerDependenciesMeta": {
     "@pyreon/runtime-server": {

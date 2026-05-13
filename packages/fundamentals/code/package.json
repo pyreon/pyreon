@@ -51,6 +51,9 @@
     "@codemirror/search": "^6.6.0",
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "6.40.0",
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^",
     "codemirror": "^6.0.2"
   },
   "devDependencies": {
@@ -62,11 +65,6 @@
     "@pyreon/test-utils": "workspace:^",
     "@vitest/browser-playwright": "^4.1.4",
     "@vitus-labs/tools-lint": "^2.3.0"
-  },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^",
-    "@pyreon/runtime-dom": "workspace:^"
   },
   "optionalDependencies": {
     "@codemirror/lang-cpp": "^6.0.2",
