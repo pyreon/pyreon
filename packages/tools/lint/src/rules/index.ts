@@ -55,6 +55,7 @@ import { noSignalInProps } from './reactivity/no-signal-in-props'
 import { noSignalLeak } from './reactivity/no-signal-leak'
 import { noUnbatchedUpdates } from './reactivity/no-unbatched-updates'
 import { preferComputed } from './reactivity/prefer-computed'
+import { storageSignalVForwarding } from './reactivity/storage-signal-v-forwarding'
 // Router
 import { noHrefNavigation } from './router/no-href-navigation'
 import { noImperativeNavigateInRender } from './router/no-imperative-navigate-in-render'
@@ -79,7 +80,7 @@ import { noThemeOutsideProvider } from './styling/no-theme-outside-provider'
 import { preferCx } from './styling/prefer-cx'
 
 export const allRules: Rule[] = [
-  // Reactivity (12)
+  // Reactivity (13)
   noAsyncEffect,
   noBareSignalInJsx,
   noContextDestructure,
@@ -92,6 +93,7 @@ export const allRules: Rule[] = [
   noEffectAssignment,
   noSignalLeak,
   noSignalCallWrite,
+  storageSignalVForwarding,
   // JSX (11)
   noMapInJsx,
   useByNotKey,
