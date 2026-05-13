@@ -410,6 +410,106 @@ dist/cs/404.html           # Czech 404
 
 Real static hosts only serve the ROOT `dist/404.html` by convention — per-prefix 404 routing under `/de/...` needs explicit declarations (Netlify `[[redirects]]`, Cloudflare `_redirects`, nginx `try_files` per-location, Caddy `handle_errors` matcher).
 
+#### Per-locale 404 body text
+
+A single `_404.tsx` source produces byte-identical body content across all per-locale outputs — Pyreon doesn't auto-translate the not-found text. If you want per-locale 404 messages (e.g. "Page not found" / "Seite nicht gefunden" / "Stránka nenalezena"), wire `@pyreon/i18n` through your `_layout.tsx` and read `useI18n()` inside `_404.tsx`. The SSG build's per-locale render path runs through the layout's `<I18nProvider>`, so the right messages serialize into each locale's `dist/<locale>/404.html`.
+
+Minimal setup:
+
+```tsx
+// src/routes/_layout.tsx
+import { createI18n, I18nProvider } from '@pyreon/i18n'
+import { useLocale } from '@pyreon/zero'
+import { RouterView } from '@pyreon/router'
+import en from '../locales/en.json'
+import de from '../locales/de.json'
+import cs from '../locales/cs.json'
+
+const messages = { en, de, cs } as const
+
+export default function Layout() {
+  // `useLocale()` returns the locale matched from the URL prefix —
+  // `'de'` for `/de/...`, `'cs'` for `/cs/...`, default otherwise.
+  // The SSG sub-build calls `__renderNotFound(locale)` per locale,
+  // and the matched layout chain for `/de/__probe__` resolves to
+  // the de-prefixed layout subtree, so `useLocale()` returns `'de'`
+  // when rendering `dist/de/404.html`.
+  const i18n = createI18n({
+    locale: useLocale() as keyof typeof messages,
+    messages,
+  })
+  return (
+    <I18nProvider value={i18n}>
+      <nav>...</nav>
+      <main>
+        <RouterView />
+      </main>
+      <footer>...</footer>
+    </I18nProvider>
+  )
+}
+```
+
+```tsx
+// src/routes/_404.tsx
+import { useI18n } from '@pyreon/i18n'
+
+export default function NotFound() {
+  const { t } = useI18n()
+  return (
+    <div data-testid="not-found-page">
+      <h1>{() => t('notFound.title')}</h1>
+      <p>{() => t('notFound.body')}</p>
+      <a href={() => t('notFound.homeHref')}>{() => t('notFound.homeLabel')}</a>
+    </div>
+  )
+}
+```
+
+```json
+// src/locales/en.json
+{
+  "notFound": {
+    "title": "Page not found",
+    "body": "The page you requested does not exist.",
+    "homeHref": "/",
+    "homeLabel": "Back to home"
+  }
+}
+
+// src/locales/de.json
+{
+  "notFound": {
+    "title": "Seite nicht gefunden",
+    "body": "Die angeforderte Seite existiert nicht.",
+    "homeHref": "/de",
+    "homeLabel": "Zur Startseite"
+  }
+}
+
+// src/locales/cs.json
+{
+  "notFound": {
+    "title": "Stránka nenalezena",
+    "body": "Požadovaná stránka neexistuje.",
+    "homeHref": "/cs",
+    "homeLabel": "Zpět na hlavní stránku"
+  }
+}
+```
+
+After build, each locale's 404 file carries its own body text:
+
+```text
+dist/404.html      → <h1>Page not found</h1>
+dist/de/404.html   → <h1>Seite nicht gefunden</h1>
+dist/cs/404.html   → <h1>Stránka nenalezena</h1>
+```
+
+The `homeHref` field is per-locale on purpose — sending German users back to `/` would drop them into the default locale's home page. Mirror your i18n routing strategy: under `prefix-except-default` the default is `/`, non-default locales are `/de`, `/cs`, etc.; under `prefix`, every locale gets its own prefix including the default.
+
+**Loader interaction (PR C, 2026-05-13)**: parent-layout loaders ARE skipped during the SSG 404 build (`router.preload(probePath, undefined, { skipLoaders: true })`), so a layout `loader: () => fetchUser()` won't fire while generating 404 pages. The i18n setup above runs in the layout's component body, not its loader, so `useI18n()` still resolves correctly during 404 emission. If you load translations via a layout `loader` instead (e.g. lazy-loaded message bundles), keep a synchronous fallback in the component body for the 404 path: `const messages = useLoaderData() ?? FALLBACK_MESSAGES`.
+
 ### hreflang sitemap
 
 Enable `<xhtml:link rel="alternate" hreflang>` cross-references in the sitemap by composing `seoPlugin` with the i18n config:
