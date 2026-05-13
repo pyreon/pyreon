@@ -2,6 +2,7 @@ import { signal } from '@pyreon/reactivity'
 import { getEntry, removeEntry, setEntry } from './registry'
 import type { StorageBackend, StorageOptions, StorageSignal } from './types'
 import { deserialize, serialize } from './utils'
+import { wrapBaseSignal } from './wrap-base-signal'
 
 // ─── createStorage ───────────────────────────────────────────────────────────
 
@@ -48,29 +49,8 @@ export function createStorage(
 
     const sig = signal<T>(initialValue)
 
-    // Build the storage signal
-    const storageSig = (() => sig()) as unknown as StorageSignal<T>
-
-    storageSig.peek = () => sig.peek()
-    storageSig.subscribe = (listener: () => void) => sig.subscribe(listener)
-    storageSig.direct = (updater: () => void) => sig.direct(updater)
-    storageSig.debug = () => sig.debug()
-
-    // Forward the internal `_v` field so `_bindText` / `_bindDirect`
-    // fast paths read the current value through this wrapper. See the
-    // matching comment in `local.ts:createStorageSignal` for the bug
-    // shape this prevents.
-    Object.defineProperty(storageSig, '_v', {
-      get: () => (sig as unknown as { _v: T })._v,
-      configurable: true,
-    })
-
-    Object.defineProperty(storageSig, 'label', {
-      get: () => sig.label,
-      set: (v: string | undefined) => {
-        sig.label = v
-      },
-    })
+    // Shared base wrapper — see `wrap-base-signal.ts` for the full contract.
+    const storageSig = wrapBaseSignal(sig) as unknown as StorageSignal<T>
 
     storageSig.set = (value: T) => {
       sig.set(value)

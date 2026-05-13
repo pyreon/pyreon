@@ -2,6 +2,7 @@ import { signal } from '@pyreon/reactivity'
 import { getEntry, removeEntry, setEntry } from './registry'
 import type { StorageOptions, StorageSignal } from './types'
 import { deserialize, getWebStorage, isBrowser, serialize } from './utils'
+import { wrapBaseSignal } from './wrap-base-signal'
 
 // ─── Cross-tab sync ──────────────────────────────────────────────────────────
 
@@ -119,36 +120,11 @@ export function createStorageSignal<T>(
 ): StorageSignal<T> {
   const storage = getWebStorage(backend)
 
-  // The callable signal function (read)
-  const storageSig = (() => sig()) as unknown as StorageSignal<T>
-
-  // Delegate all signal methods
-  storageSig.peek = () => sig.peek()
-  storageSig.subscribe = (listener: () => void) => sig.subscribe(listener)
-  storageSig.direct = (updater: () => void) => sig.direct(updater)
-  storageSig.debug = () => sig.debug()
-
-  // Forward the internal `_v` field that `_bindText` / `_bindDirect` read
-  // for the fast path. Without this, the compiler-emitted fast-path
-  // optimization (`_bindText(theme, textNode)` for `{() => theme()}`)
-  // reads `theme._v` which was undefined on the storage signal — the
-  // text binding got initialized to `''` and never updated even when
-  // subscribers fired (the `.direct` handler also reads `source._v`).
-  // Symptom: SSR renders `<strong>light</strong>` correctly but post-
-  // hydration the textNode goes empty, and `theme.set('dark')` writes
-  // localStorage without updating the DOM. Storage signals delegate
-  // every other method on `sig` already — `_v` is the missing piece.
-  Object.defineProperty(storageSig, '_v', {
-    get: () => (sig as unknown as { _v: T })._v,
-    configurable: true,
-  })
-
-  Object.defineProperty(storageSig, 'label', {
-    get: () => sig.label,
-    set: (v: string | undefined) => {
-      sig.label = v
-    },
-  })
+  // Shared base wrapper — callable + `.peek` / `.subscribe` / `.direct` /
+  // `.debug` / `.label` / forwarded `_v`. See `wrap-base-signal.ts` for
+  // the full contract (including why `_v` forwarding is load-bearing for
+  // the compiler-emitted `_bindText` fast path).
+  const storageSig = wrapBaseSignal(sig) as unknown as StorageSignal<T>
 
   // Override set to persist
   storageSig.set = (value: T) => {
