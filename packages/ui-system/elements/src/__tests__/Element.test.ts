@@ -1,5 +1,6 @@
 import type { VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
+import { mount } from '@pyreon/runtime-dom'
 import { describe, expect, it } from 'vitest'
 import { Element } from '../Element'
 import Content from '../helpers/Content/component'
