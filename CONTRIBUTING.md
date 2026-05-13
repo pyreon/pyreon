@@ -109,6 +109,41 @@ test(core): add coverage for Suspense timeout
 docs(head): update SSR examples
 ```
 
+## Releases
+
+Pyreon ships via [changesets](https://github.com/changesets/changesets). Every PR that touches `packages/` should include a changeset (`bun changeset`) describing the change.
+
+### Release workflow
+
+`.github/workflows/release.yml` runs on every push to `main`:
+
+1. Validates the merged state (`bun run lint` → `typecheck` → `test`)
+2. If unreleased changesets exist → opens / updates a "Version Packages" PR collecting them
+3. When that PR is merged → publishes to npm with provenance + creates a GitHub Release
+
+### Setup: `RELEASE_PAT` (recommended)
+
+The default `GITHUB_TOKEN` issued to workflows is forbidden from triggering downstream workflows when it pushes commits. The practical effect: the Version Packages PR opens with a **blank CI status** because CI doesn't fire on the commit `changesets/action` pushes. Merging a Version PR with no CI checks is awkward — you can't know if `bun.lock` got regenerated correctly, etc.
+
+**Fix**: create a fine-grained PAT and store it as the repo secret `RELEASE_PAT`. The release workflow uses `${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}` and falls back to the default token if `RELEASE_PAT` is missing.
+
+PAT scope (fine-grained):
+
+- Repository access: `pyreon/pyreon` only
+- Repository permissions:
+  - **Contents**: Read and write
+  - **Pull requests**: Read and write
+  - **Workflows**: Read and write
+- Expiry: 90 days (rotate via GitHub UI)
+
+After creating the PAT, add it as a repository secret named `RELEASE_PAT` under Settings → Secrets and variables → Actions.
+
+Without `RELEASE_PAT` the workflow still works — just expect blank CI on the Version PR.
+
+### Required GitHub Actions permission
+
+Settings → Actions → General → Workflow permissions → check **"Allow GitHub Actions to create and approve pull requests"**. Without this, `changesets/action` cannot open the Version PR and the workflow fails with `GitHub Actions is not permitted to create or approve pull requests`.
+
 ## Architecture Notes
 
 - **Signals** are the foundation — one closure per signal, subscribers tracked via `Set<() => void>`.
