@@ -21,7 +21,7 @@ import { computed, renderEffect, runUntracked } from '@pyreon/reactivity'
 import { buildProps } from './forward'
 import { type Interpolation, normalizeCSS, resolve } from './resolve'
 import { isDynamic } from './shared'
-import { sheet } from './sheet'
+import { onSheetClear, sheet } from './sheet'
 import { useThemeAccessor } from './ThemeProvider'
 
 // Dev-time counter sink — see packages/internals/perf-harness/COUNTERS.md.
@@ -50,12 +50,33 @@ const getDisplayName = (tag: Tag): string =>
 
 // Component cache: same template literal + tag + no options → same component.
 // WeakMap on `strings` (TemplateStringsArray is object-identity per source location).
-const staticComponentCache = new WeakMap<TemplateStringsArray, Map<Tag, ComponentFn>>()
+// `let` so `sheet.clearAll()` (HMR / dev reload) can drop stale entries by
+// swapping the WeakMap reference — WeakMap has no `.clear()` method, and stale
+// `StaticStyled` ComponentFns left behind would keep returning class names the
+// sheet just deleted from the DOM.
+let staticComponentCache = new WeakMap<TemplateStringsArray, Map<Tag, ComponentFn>>()
 
-// Single-entry hot cache — just 3 reference comparisons, no Map/WeakMap overhead.
-let _hotStrings: TemplateStringsArray | null = null
-let _hotTag: Tag | null = null
-let _hotComponent: ComponentFn | null = null
+// Single-entry hot cache — 3 reference comparisons, no Map/WeakMap overhead.
+// All 3 fields move atomically (consolidated into one object so `clearAll`
+// resets them together — pre-fix, partial state was possible if a reset
+// path forgot one field).
+const _hotCache: {
+  strings: TemplateStringsArray | null
+  tag: Tag | null
+  component: ComponentFn | null
+} = { strings: null, tag: null, component: null }
+
+// Subscribe to `sheet.clearAll()` (HMR / dev-time reset). Drops both the
+// WeakMap and the hot-cache slots so subsequent `styled()` calls produce
+// fresh components with up-to-date class names. Static class names emitted
+// before `clearAll` are stale by the time the user observes them — the rule
+// they pointed at has been deleted from the DOM.
+onSheetClear(() => {
+  staticComponentCache = new WeakMap()
+  _hotCache.strings = null
+  _hotCache.tag = null
+  _hotCache.component = null
+})
 
 const createStyledComponent = (
   tag: Tag,
@@ -65,16 +86,17 @@ const createStyledComponent = (
 ): ComponentFn => {
   // Ultra-fast hot cache: 3 reference comparisons → return immediately
   if (values.length === 0 && !options) {
-    if (strings === _hotStrings && tag === _hotTag) return _hotComponent as ComponentFn
+    if (strings === _hotCache.strings && tag === _hotCache.tag)
+      return _hotCache.component as ComponentFn
 
     // WeakMap fallback for alternating patterns
     const tagMap = staticComponentCache.get(strings)
     if (tagMap) {
       const cached = tagMap.get(tag)
       if (cached) {
-        _hotStrings = strings
-        _hotTag = tag
-        _hotComponent = cached
+        _hotCache.strings = strings
+        _hotCache.tag = tag
+        _hotCache.component = cached
         return cached
       }
     }
@@ -168,9 +190,9 @@ const createStyledComponent = (
         staticComponentCache.set(strings, tagMap)
       }
       tagMap.set(tag, StaticStyled)
-      _hotStrings = strings
-      _hotTag = tag
-      _hotComponent = StaticStyled
+      _hotCache.strings = strings
+      _hotCache.tag = tag
+      _hotCache.component = StaticStyled
     }
 
     return StaticStyled

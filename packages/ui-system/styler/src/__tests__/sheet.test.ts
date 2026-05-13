@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hash } from '../hash'
-import { sheet, StyleSheet } from '../sheet'
+import { onSheetClear, sheet, StyleSheet } from '../sheet'
 
 describe('StyleSheet', () => {
   beforeEach(() => {
@@ -149,6 +149,47 @@ describe('StyleSheet', () => {
       sheet.clearAll()
       expect(sheet.cacheSize).toBe(0)
       expect(sheet.getStyles()).toBe('')
+    })
+  })
+
+  describe('onSheetClear', () => {
+    // Subscriber registry used by `styled.tsx` to drop its static-component
+    // cache when the singleton sheet is cleared. Without this, stale
+    // `StaticStyled` ComponentFns survive HMR and continue returning class
+    // names the sheet just deleted from the DOM.
+    it('fires subscribers after clearAll', () => {
+      const cb = vi.fn()
+      const dispose = onSheetClear(cb)
+      sheet.clearAll()
+      expect(cb).toHaveBeenCalledTimes(1)
+      dispose()
+    })
+
+    it('does NOT fire subscribers on clearCache (partial cleanup)', () => {
+      const cb = vi.fn()
+      const dispose = onSheetClear(cb)
+      sheet.insert('color: red;')
+      sheet.clearCache()
+      expect(cb).not.toHaveBeenCalled()
+      dispose()
+    })
+
+    it('disposer removes the subscriber', () => {
+      const cb = vi.fn()
+      const dispose = onSheetClear(cb)
+      dispose()
+      sheet.clearAll()
+      expect(cb).not.toHaveBeenCalled()
+    })
+
+    it('fires multiple subscribers in registration order', () => {
+      const order: number[] = []
+      const dispose1 = onSheetClear(() => order.push(1))
+      const dispose2 = onSheetClear(() => order.push(2))
+      sheet.clearAll()
+      expect(order).toEqual([1, 2])
+      dispose1()
+      dispose2()
     })
   })
 
