@@ -101,6 +101,37 @@ export type MergeTypes<A extends readonly [...any]> =
 
 // ─── ExtractProps ─────────────────────────────────────────────
 
-/** Extracts the props type from a Pyreon component function. */
-export type ExtractProps<TComponentOrTProps> =
-  TComponentOrTProps extends ComponentFn<infer TProps> ? TProps : TComponentOrTProps
+/**
+ * Extracts the props type from a Pyreon component function — or passes
+ * through the input unchanged when it's already a props type.
+ *
+ * Multi-overload aware: matches up to 4 call signatures and produces the
+ * UNION of their first-argument types. Iterator / List / Element are
+ * 3-overload primitives — without overload-aware extraction, wrapping
+ * them through `attrs()` silently downgraded their public prop surface
+ * to the LAST (loosest) overload. Mirrors vitus-labs PR #222.
+ *
+ * See `@pyreon/rocketstyle` `ExtractProps` for the canonical shape — kept
+ * in sync across the 4 copies in core / elements / attrs / rocketstyle.
+ */
+export type ExtractProps<TComponentOrTProps> = TComponentOrTProps extends {
+  (props: infer P1, ...args: any): any
+  (props: infer P2, ...args: any): any
+  (props: infer P3, ...args: any): any
+  (props: infer P4, ...args: any): any
+}
+  ? P1 | P2 | P3 | P4
+  : TComponentOrTProps extends {
+        (props: infer P1, ...args: any): any
+        (props: infer P2, ...args: any): any
+        (props: infer P3, ...args: any): any
+      }
+    ? P1 | P2 | P3
+    : TComponentOrTProps extends {
+          (props: infer P1, ...args: any): any
+          (props: infer P2, ...args: any): any
+        }
+      ? P1 | P2
+      : TComponentOrTProps extends ComponentFn<infer TProps>
+        ? TProps
+        : TComponentOrTProps

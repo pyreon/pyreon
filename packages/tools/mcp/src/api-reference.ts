@@ -752,10 +752,15 @@ return wrapCompatComponent(type)(props)`,
   },
 
   'core/ExtractProps': {
-    signature: 'type ExtractProps<T> = T extends ComponentFn<infer P> ? P : T',
-    example: `const Greet: ComponentFn<{ name: string }> = ({ name }) => <h1>{name}</h1>
-type Props = ExtractProps<typeof Greet>  // { name: string }`,
-    notes: `Extracts the props type from a \`ComponentFn\`. Passes through unchanged if \`T\` is not a \`ComponentFn\`. Useful for HOC patterns and typed wrappers that need to infer the wrapped component's prop interface. See also: HigherOrderComponent.`,
+    signature: 'type ExtractProps<T> = /* matches up to 4 overloads, unions the props */ T extends ComponentFn<infer P> ? P : T',
+    example: `function Iterator<T extends SimpleValue>(p: { data: T[]; valueName?: string }): VNodeChild
+function Iterator<T extends ObjectValue>(p: { data: T[]; component: ComponentFn<T> }): VNodeChild
+type Props = ExtractProps<typeof Iterator>
+// → { data: SimpleValue[]; valueName?: string }
+//  | { data: ObjectValue[]; component: ComponentFn<ObjectValue> }`,
+    notes: 'Extracts the props type from a `ComponentFn`. Passes through unchanged if `T` is not a `ComponentFn`. **Multi-overload aware** — matches up to 4 call signatures and produces the UNION of their first-argument types. Critical for multi-overload primitives (Iterator, List, Element) whose loosest overload is last; without overload-aware extraction, HOC wrapping (`rocketstyle()`, `attrs()`) silently downgraded their public prop surface. Single-overload functions still work — the union of 4 copies of the same props type dedupes back to the single shape. See also: HigherOrderComponent.',
+    mistakes: `- Assuming \`ExtractProps<T>\` returns only the LAST overload — pre-fix it did, post-fix it returns the UNION of up to 4 overloads. Functions with more than 4 overloads still drop the extras.
+- Using \`T extends (props: infer P) => any ? P : never\` directly in user code — that pattern captures only the LAST overload of a multi-overload function. Use \`ExtractProps<T>\` to get the full union.`,
   },
 
   'core/HigherOrderComponent': {
