@@ -1191,7 +1191,7 @@
       "name": "@pyreon/lint",
       "version": "0.15.0",
       "bin": {
-        "pyreon-lint": "./lib/cli.js",
+        "pyreon-lint": "./bin/pyreon-lint.js",
       },
       "dependencies": {
         "@oxc-project/types": "^0.123.0",
