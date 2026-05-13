@@ -1,7 +1,30 @@
 import { expect, test } from '@playwright/test'
 
 test.describe('Storage — browser APIs', () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, context }) => {
+    // Kill Vite's HMR client for every page in this context. The browser
+    // primitives these tests exercise (localStorage / sessionStorage /
+    // document.cookie) are not Pyreon code paths, but they run inside the
+    // fundamentals-playground Vite dev server because Playwright needs a
+    // same-origin document to fire `storage` events cross-tab. Without HMR
+    // suppression, a second tab's `page2.goto('/')` re-triggers Vite's
+    // pre-bundle / module-graph traversal on the dev server, which sends
+    // an HMR update to ALL connected clients (including tab 1) via the
+    // websocket connection established by `@vite/client`. Tab 1's reload
+    // then destroys any `addEventListener('storage', …)` callbacks that
+    // had been registered in the test body — and `cross-tab localStorage
+    // sync fires storage event` times out at `waitForFunction`. Four
+    // consecutive main-branch CI failures before this fix (run IDs
+    // 25745360432 / 25728248892 / 25725838841 / 25723298232) all hit the
+    // same shape; PR #535's `networkidle` + `window.__storageSync` poll
+    // added defenses but the listener itself was the casualty.
+    //
+    // `context.route` propagates to every page created from the context,
+    // including the second tab in the cross-tab test. Without `@vite/client`,
+    // the page never opens the HMR websocket → no HMR updates → no reloads.
+    // The dev server still serves the rest of the bundle normally.
+    await context.route('**/@vite/client*', (route) => route.fulfill({ status: 204, body: '' }))
+
     // Clear storage BEFORE the page loads — `addInitScript` runs in every
     // new document context before any user code executes. Avoids the race
     // where `page.evaluate` after `waitForSelector` lands mid-navigation and
@@ -19,21 +42,10 @@ test.describe('Storage — browser APIs', () => {
     })
     await page.goto('/')
     await page.waitForSelector('nav.sidebar')
-    // CI flake guard — `waitForSelector` returns as soon as the sidebar
-    // is mounted, but Vite's dev server can still be streaming async
-    // chunks / re-prebundling under slow CI load. A late-arriving HMR
-    // reload then destroys the execution context the moment the test
-    // body calls `page.evaluate(...)` ("Execution context was destroyed,
-    // most likely because of a navigation"). `networkidle` blocks until
-    // 500ms of zero in-flight requests, after which HMR cannot fire
-    // without a fresh user-driven navigation. Both `cross-tab
-    // localStorage sync fires storage event` (line 58) and
-    // `localStorage.clear removes all items` (line 81) flaked at the
-    // first `page.evaluate` in CI on three consecutive main-branch runs
-    // (#25728248892 / M3.A merge, plus PR #535's initial run + rerun)
-    // before this guard was added — load-dependent, not specific to one
-    // test. Bisect: removing this line reproduces both flake shapes on
-    // GitHub-hosted ubuntu-latest runners under typical CI concurrency.
+    // Preserved from PR #535. With the HMR client suppressed above, the
+    // dev server still streams JS chunks during initial mount, so blocking
+    // on networkidle (500ms of zero in-flight requests) keeps the post-
+    // mount evaluate calls from racing the last bundler request.
     await page.waitForLoadState('networkidle')
   })
 
@@ -86,7 +98,9 @@ test.describe('Storage — browser APIs', () => {
       })
     })
 
-    // Write from second tab
+    // Write from second tab. The HMR-suppression route in beforeEach
+    // applies to this page too (`context.route` covers every page in the
+    // context), so this goto can't trigger an HMR reload on tab 1.
     const page2 = await context.newPage()
     await page2.goto('/')
     await page2.waitForLoadState('networkidle')
