@@ -239,6 +239,30 @@ clearStorage('session') // all managed sessionStorage entries
 clearStorage('all') // everything
 ```
 
+## SSR & Hydration
+
+`@pyreon/storage` works in both SSR and SPA modes.
+
+**During SSR**, storage backends that have no server equivalent (`localStorage`, `sessionStorage`, `IndexedDB`, `memory`) initialize the signal to the `defaultValue` you passed — `isBrowser()` returns false, the read path bails, and the rendered output uses the default. Cookies are different: `useCookie` reads from the request via `setCookieSource(request.headers.get('cookie'))`, so the SSR markup reflects the client's actual cookie state.
+
+```tsx
+const theme = useStorage('theme', 'light')
+// Server: theme() → 'light' (default — no localStorage on server)
+// SSR HTML: <strong>light</strong>
+```
+
+**On client hydration**, the signal re-reads the actual stored value and updates the DOM if it differs from the SSR-rendered default. A user with `localStorage.theme = 'dark'` sees a brief `light` → `dark` flash on initial load. For preferences that change rendering critically (theme, language), the canonical solution is to mirror the choice into a cookie so SSR can read it via `setCookieSource()` — no flash.
+
+```tsx
+// Companion cookie writes alongside the localStorage signal
+const themeCookie = useCookie('theme', 'light', { maxAge: 60 * 60 * 24 * 365 })
+const theme = useStorage('theme', themeCookie())
+// SSR reads the cookie, renders the right theme on first paint.
+// Client hydrates with the matching value from localStorage.
+```
+
+**Reactive bindings** through storage signals are wired through the compiler's `_bindText` fast path, same as base `signal()` and `computed()`. `<strong>{() => theme()}</strong>` patches in place when `theme.set(…)` fires — no re-render, no re-mount. This is the standard contract; not specific to storage. See `@pyreon/runtime-dom` for the binding implementation.
+
 ## StorageSignal Type
 
 All hooks return `StorageSignal<T>` — a full `Signal<T>` with an added `.remove()` method:
@@ -249,4 +273,4 @@ interface StorageSignal<T> extends Signal<T> {
 }
 ```
 
-Works everywhere signals work: effects, computeds, JSX, stores.
+Works everywhere signals work: effects, computeds, JSX, stores. The signal's `.peek()`, `.subscribe()`, `.direct()`, and internal `_v` field are all delegated to / forwarded from an underlying `signal()` — full participation in Pyreon's reactivity, including the compiler-emitted DOM-binding fast paths.
