@@ -268,15 +268,28 @@ const Component = (props: LooseProps) => {
 //   <Iterator>{...}</Iterator>            → ChildrenProps overload selected
 // ---------------------------------------------------------------------------
 export interface IteratorComponent {
-  // T is inferred from the `data` prop at the JSX site — no explicit generic
-  // argument needed. SimpleProps first (matches `data: SimpleValue[]`), then
-  // ObjectProps (object[]), then ChildrenProps. The narrow overloads enforce
-  // per-mode constraints (valueName required for primitive arrays, forbidden
-  // for object arrays, etc.) — there is intentionally no loose fallback
-  // overload at the public surface.
+  // T is inferred from the `data` prop at the JSX site — no explicit
+  // generic argument needed. Order matters: SimpleProps first (matches
+  // `data: SimpleValue[]`), then ObjectProps (object[]), then ChildrenProps,
+  // then a LooseProps fallback.
+  //
+  // The narrow overloads (Simple / Object / Children) drive per-mode T
+  // inference and stricter compile-time errors for direct callers (e.g.
+  // `valueName` required for primitive arrays, forbidden for object arrays).
+  // The LooseProps fallback exists for forwarding patterns where the props
+  // type is a wide union that doesn't bind to any single narrow overload —
+  // notably `Partial<(typeof Wrapper)['$$types']>` spread back into the JSX
+  // site after `@pyreon/rocketstyle`'s 4-overload-aware `ExtractProps`
+  // distributes the union across all of Iterator's call signatures. Without
+  // the loose binding home, the wide union has nowhere to land and TS
+  // reports "no overload matches this call" at every forwarding site.
+  //
+  // Direct callers still see the strict per-mode errors — the loose fallback
+  // only fires when none of the three narrow overloads match.
   <T extends SimpleValue>(props: SimpleProps<T>): VNodeChild
   <T extends ObjectValue>(props: ObjectProps<T>): VNodeChild
   (props: ChildrenProps): VNodeChild
+  (props: LooseProps): VNodeChild
   isIterator: true
   RESERVED_PROPS: typeof RESERVED_PROPS
   displayName?: string
