@@ -570,8 +570,8 @@ const rocketComponent: RocketComponent = (options) => {
         {
           render,
           mode,
-          isDark: mode === 'light',
-          isLight: mode === 'dark',
+          isDark: mode === 'dark',
+          isLight: mode === 'light',
         },
       ]),
   })
