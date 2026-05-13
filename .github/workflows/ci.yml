@@ -70,24 +70,21 @@ jobs:
             examples/*/node_modules
             docs/node_modules
           key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-      # Bootstrap builds lib/ for all packages
-      - name: Restore bootstrap
-        id: bs-restore
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: packages/*/*/lib
-          key: bootstrap-${{ runner.os }}-${{ hashFiles('packages/**/src/**', 'packages/**/package.json', 'packages/**/tsconfig.json') }}
+      # bun install above ran the postinstall bootstrap, which built lib/
+      # fresh from current source. We DON'T restore a previous lib/ here —
+      # cross-run lib/ caching was the source of "stale chunk hash" build
+      # failures: rolldown's chunk filenames are content-hashed, and even
+      # a stale lib/ that nominally matches the current source might
+      # reference chunk filenames that no longer exist (e.g., dropped
+      # files in the cache, divergent chunk-split decisions between runs).
+      # Save under the per-run key so downstream jobs in THIS run get the
+      # exact lib/ that THIS run's bootstrap produced — no cross-run
+      # corruption.
       - name: Save bootstrap for this run
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: packages/*/*/lib
           key: ${{ env.BOOTSTRAP_KEY }}
-      - name: Save bootstrap (content key)
-        if: steps.bs-restore.outputs.cache-hit != 'true'
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: packages/*/*/lib
-          key: bootstrap-${{ runner.os }}-${{ hashFiles('packages/**/src/**', 'packages/**/package.json', 'packages/**/tsconfig.json') }}
       # Compute affected filter once — shared via output to all downstream jobs
       - name: Compute affected filter
         id: affected
