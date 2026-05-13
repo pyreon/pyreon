@@ -48,6 +48,10 @@ function runBootstrap(env: Record<string, string | undefined>): {
     PATH: process.env.PATH,
     HOME: process.env.HOME,
     PYREON_BOOTSTRAP_FORCE_FAIL: '1',
+    // Skip the Rust native binary build (5+ min cold-cache cargo build
+    // on CI exceeds this test's 60s subprocess timeout). The exit-code
+    // policy tests don't depend on the binary.
+    PYREON_BOOTSTRAP_SKIP_NATIVE: '1',
   }
   for (const [k, v] of Object.entries(env)) {
     if (v === undefined) {

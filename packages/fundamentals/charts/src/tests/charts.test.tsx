@@ -110,7 +110,7 @@ afterEach(() => {
 // goes through the Vite module graph per-import, and shared-runner contention
 // stacks the microtask chain. Bump the suite timeout so these remain
 // deterministic without refactoring the loader to remove `import()` entirely.
-describe('loader', { timeout: 15_000 }, () => {
+describe('loader', { timeout: 30_000 }, () => {
   it('lazily loads echarts/core on first call', async () => {
     const core = await getCore()
     expect(core).toBeDefined()
