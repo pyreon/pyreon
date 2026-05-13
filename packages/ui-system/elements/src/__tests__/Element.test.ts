@@ -1,9 +1,17 @@
 import type { VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
+import * as runtimeDom from '@pyreon/runtime-dom'
 import { describe, expect, it } from 'vitest'
 import { Element } from '../Element'
 import Content from '../helpers/Content/component'
 import Wrapper from '../helpers/Wrapper/component'
+
+// Namespace-import + destructure defeats CodeQL Autofix's `js/unused-import`
+// false-positive — `mount` is referenced inside `it()` callbacks far below,
+// which the bot's static analyzer fails to trace, causing it to remove the
+// import in a loop on every push. The namespace import is unambiguously
+// referenced on the next line, so the rule cannot fire.
+const { mount } = runtimeDom
 
 const asVNode = (v: unknown) => v as VNode
 
