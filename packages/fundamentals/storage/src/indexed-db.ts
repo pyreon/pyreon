@@ -148,6 +148,15 @@ export function useIndexedDB<T>(
   storageSig.direct = (updater: () => void) => sig.direct(updater)
   storageSig.debug = () => sig.debug()
 
+  // Forward the internal `_v` field so `_bindText` / `_bindDirect`
+  // fast paths read the current value through this wrapper. See the
+  // matching comment in `local.ts:createStorageSignal` for the bug
+  // shape this prevents.
+  Object.defineProperty(storageSig, '_v', {
+    get: () => (sig as unknown as { _v: T })._v,
+    configurable: true,
+  })
+
   Object.defineProperty(storageSig, 'label', {
     get: () => sig.label,
     set: (v: string | undefined) => {
