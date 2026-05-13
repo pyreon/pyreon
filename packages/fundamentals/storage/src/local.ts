@@ -128,6 +128,21 @@ export function createStorageSignal<T>(
   storageSig.direct = (updater: () => void) => sig.direct(updater)
   storageSig.debug = () => sig.debug()
 
+  // Forward the internal `_v` field that `_bindText` / `_bindDirect` read
+  // for the fast path. Without this, the compiler-emitted fast-path
+  // optimization (`_bindText(theme, textNode)` for `{() => theme()}`)
+  // reads `theme._v` which was undefined on the storage signal — the
+  // text binding got initialized to `''` and never updated even when
+  // subscribers fired (the `.direct` handler also reads `source._v`).
+  // Symptom: SSR renders `<strong>light</strong>` correctly but post-
+  // hydration the textNode goes empty, and `theme.set('dark')` writes
+  // localStorage without updating the DOM. Storage signals delegate
+  // every other method on `sig` already — `_v` is the missing piece.
+  Object.defineProperty(storageSig, '_v', {
+    get: () => (sig as unknown as { _v: T })._v,
+    configurable: true,
+  })
+
   Object.defineProperty(storageSig, 'label', {
     get: () => sig.label,
     set: (v: string | undefined) => {
