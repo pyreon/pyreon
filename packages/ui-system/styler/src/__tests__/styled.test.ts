@@ -398,4 +398,64 @@ describe('styled.tag (Proxy)', () => {
     const vnode = Comp({}) as VNode
     expect(vnode.type).toBe('section')
   })
+
+  describe('empty-rawProps static VNode cache', () => {
+    // Hot path for `<MyStyled />` with no props: pre-built VNode returned
+    // from the StaticStyled closure verbatim. Skips `buildProps` + `h()` +
+    // children-array construction per render. Mirrors vitus-labs PR #228.
+    it('returns the SAME VNode identity across renders when rawProps is empty', () => {
+      const Comp = styled('div')`
+        color: red;
+      `
+      const v1 = Comp({}) as VNode
+      const v2 = Comp({}) as VNode
+      // Same VNode object — proves the pre-built cache fires.
+      expect(v1).toBe(v2)
+      expect(v1.type).toBe('div')
+      expect((v1.props as Record<string, string>).class).toMatch(/^pyr-/)
+    })
+
+    it('falls through to the full path when ANY prop is provided', () => {
+      const Comp = styled('div')`
+        color: red;
+      `
+      const v1 = Comp({}) as VNode
+      const v2 = Comp({ 'data-x': '1' }) as VNode
+      // Different identity — the second call bypassed the cache because
+      // `for (const _k in rawProps) hasExtraProps = true` fires.
+      expect(v1).not.toBe(v2)
+      // Both still produce the correct className.
+      expect((v1.props as Record<string, unknown>).class).toMatch(/^pyr-/)
+      expect((v2.props as Record<string, unknown>).class).toMatch(/^pyr-/)
+      // Second VNode carries the extra prop forwarded through buildProps.
+      expect((v2.props as Record<string, unknown>)['data-x']).toBe('1')
+    })
+
+    it('falls through to the full path when `as` overrides the tag', () => {
+      const Comp = styled('div')`
+        color: red;
+      `
+      const v1 = Comp({}) as VNode
+      const v2 = Comp({ as: 'span' }) as VNode
+      // `as` is enumerable → `hasExtraProps = true` → bypasses cache.
+      // Output tag is the override.
+      expect(v2.type).toBe('span')
+      expect(v1).not.toBe(v2)
+    })
+
+    it('falls through to the full path when a ref is provided', () => {
+      const Comp = styled('div')`
+        color: red;
+      `
+      const refCb = () => {}
+      const v1 = Comp({}) as VNode
+      const v2 = Comp({ ref: refCb }) as VNode
+      // `ref` is enumerable in JS, so `hasExtraProps = true` already fires.
+      // The explicit `rawProps.ref == null` guard is defense-in-depth for
+      // any future call site that uses Object.defineProperty(rawProps, 'ref',
+      // { enumerable: false, ... }) — that shape would otherwise return the
+      // cached no-ref VNode and silently drop the user's callback.
+      expect(v1).not.toBe(v2)
+    })
+  })
 })
