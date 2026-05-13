@@ -8,6 +8,12 @@ import {
   resolveRoute,
   stringifyQuery,
 } from '../match'
+// Importing from components.tsx triggers the module-load side-effect that
+// registers DefaultChromeLayout with match.ts (via _setDefaultChromeLayout).
+// Without this import, the layout-less fallback in findNotFoundFallback
+// returns null because no chrome layout is registered. Tests below verify
+// the registered layout is used as the synthetic chain's first entry.
+import { DefaultChromeLayout } from '../components'
 import type { RouteRecord } from '../types'
 
 const Home = () => null
@@ -651,21 +657,27 @@ describe('resolveRoute — notFoundComponent fallback', () => {
     expect(r.path).toBe('/unknown')
   })
 
-  it('does NOT fire fallback when the only notFoundComponent is on a page record without children', () => {
-    // fs-router attaches `notFoundComponent` to BOTH the parent layout
-    // AND every page record under that layout. Page records have no
-    // `<RouterView />` to render a synthetic leaf at the next depth,
-    // so the resolver must filter to records with `children` (layouts).
-    // Without this filter, the chain `[Layout, Page, syntheticLeaf]`
-    // would render Layout → Page at depth 1, and Page's body has no
-    // RouterView so the synthetic leaf never appears.
+  it('fires fallback via DefaultChromeLayout when the only notFoundComponent is on a page record without children', () => {
+    // PR B (layout-less app fallback): page-level `notFoundComponent` now
+    // gets wrapped in a synthetic `DefaultChromeLayout` (`<main data-
+    // pyreon-default-chrome>`) so the render pipeline produces semantic-
+    // HTML output instead of bare component markup. Pre-PR-B the resolver
+    // returned an empty chain here — the standalone-render path in the
+    // SSG plugin / runtime handler would render the component bare with
+    // no wrapping (the documented "no chrome" limitation).
+    //
+    // Tests in the `layout-less app fallback (PR B)` describe block
+    // below cover the synthetic chain shape in detail.
     const PageOnly = () => null
     const routes: RouteRecord[] = [
       { path: '/', component: PageOnly, notFoundComponent: NotFoundPage },
     ]
     const r = resolveRoute('/unknown', routes)
-    expect(r.isNotFound).toBeUndefined()
-    expect(r.matched.length).toBe(0)
+    expect(r.isNotFound).toBe(true)
+    // Synthetic chain: [DefaultChromeLayout, syntheticLeaf]
+    expect(r.matched).toHaveLength(2)
+    expect(r.matched[0]?.component).toBe(DefaultChromeLayout)
+    expect(r.matched[1]?.component).toBe(NotFoundPage)
   })
 
   it('does NOT fire when wildcard catch-all is configured', () => {
@@ -679,5 +691,92 @@ describe('resolveRoute — notFoundComponent fallback', () => {
     const r = resolveRoute('/unknown', routes)
     expect(r.isNotFound).toBeUndefined()
     expect(r.matched[0]?.component).toBe(Catchall)
+  })
+
+  // ─── Layout-less app fallback (PR B) ───────────────────────────────────────
+  //
+  // When the user has a page-level `notFoundComponent` (`_404.tsx` at the
+  // route root without a wrapping `_layout.tsx`), the resolver synthesizes
+  // a chain `[DefaultChromeLayout, syntheticLeaf]` so the render pipeline
+  // produces 404 HTML wrapped in `<main data-pyreon-default-chrome>`.
+  //
+  // These tests import `./components` so the setter call at the bottom of
+  // components.tsx runs and registers `DefaultChromeLayout` with match.ts.
+  // Without that import, `_defaultChromeLayout` would be null and the
+  // fallback returns null (graceful degradation to the standalone-render
+  // path). The import happens at the top of the test file via the
+  // top-level `import` chain — describe block doesn't need to do anything.
+  describe('layout-less app fallback (PR B)', () => {
+    it('synthesizes a [DefaultChromeLayout, syntheticLeaf] chain when only a page record has notFoundComponent', () => {
+      const Index = () => null
+      const NotFound = () => null
+      const routes: RouteRecord[] = [
+        { path: '/', component: Index, notFoundComponent: NotFound },
+      ]
+      const r = resolveRoute('/missing', routes)
+      expect(r.isNotFound).toBe(true)
+      // Chain shape: [synthetic chrome layout, synthetic leaf]
+      expect(r.matched).toHaveLength(2)
+      // First entry is the synthetic chrome layout (with the
+      // page's `fullPath` carried for downstream identification).
+      expect(r.matched[0]?.path).toBe('/')
+      expect(typeof r.matched[0]?.component).toBe('function')
+      // Second entry is the synthetic leaf with the user's notFoundComponent.
+      expect(r.matched[1]?.component).toBe(NotFound)
+    })
+
+    it('the synthetic chrome layout wraps the leaf in <main data-pyreon-default-chrome>', () => {
+      // Render the chain through the actual default chrome component to
+      // confirm the `<main>` wrapper materializes. The component reads
+      // RouterContext to render its inner RouterView, so we need a
+      // minimal harness — easiest path is to verify it's the DefaultChromeLayout
+      // we exported from components.tsx (identity check).
+      const NotFound = () => null
+      const routes: RouteRecord[] = [
+        { path: '/', component: () => null, notFoundComponent: NotFound },
+      ]
+      const r = resolveRoute('/missing', routes)
+      // Identity-check: the synthetic layout's component IS the registered
+      // DefaultChromeLayout. Avoids re-rendering — the runtime render path
+      // is covered by the verify-modes / e2e cells.
+      expect(r.matched[0]?.component).toBe(DefaultChromeLayout)
+    })
+
+    it('layout-with-notFoundComponent still wins over a page-level one (same urlPath)', () => {
+      // Both layout AND page have notFoundComponent. The layout-first
+      // logic from PR L5 still applies — page-level is ONLY the fallback.
+      const PageNotFound = () => null
+      const LayoutNotFound = () => null
+      const routes: RouteRecord[] = [
+        {
+          path: '/',
+          component: () => null,
+          notFoundComponent: LayoutNotFound,
+          children: [
+            { path: '/page', component: () => null, notFoundComponent: PageNotFound },
+          ],
+        },
+      ]
+      const r = resolveRoute('/missing', routes)
+      expect(r.isNotFound).toBe(true)
+      // Should pick the layout, not the page — layout has children so
+      // the layout pass matches and wins.
+      const leaf = r.matched[r.matched.length - 1]
+      expect(leaf?.component).toBe(LayoutNotFound)
+    })
+
+    it('does NOT wrap when there is a wildcard catch-all (wildcard always wins)', () => {
+      // The wildcard route matches the URL directly, so the fallback never
+      // fires. Same precedence as the existing wildcard test above.
+      const Catchall = () => null
+      const NotFound = () => null
+      const routes: RouteRecord[] = [
+        { path: '/', component: () => null, notFoundComponent: NotFound },
+        { path: '(.*)', component: Catchall },
+      ]
+      const r = resolveRoute('/missing', routes)
+      expect(r.isNotFound).toBeUndefined()
+      expect(r.matched[0]?.component).toBe(Catchall)
+    })
   })
 })
