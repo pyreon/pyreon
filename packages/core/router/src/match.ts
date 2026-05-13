@@ -1,5 +1,39 @@
 import type { ResolvedRoute, RouteComponent, RouteMeta, RouteRecord } from './types'
 
+// ─── Default chrome layout registration ──────────────────────────────────────
+//
+// Late-bound registration for the synthetic layout used by the
+// layout-less-app 404 fallback in `findNotFoundFallback` below. The
+// component itself lives in `./components.tsx` (it needs JSX + the
+// `RouterView` it imports), but `match.ts` is below `components.tsx` in
+// the dependency graph (router.ts imports match.ts; components.tsx
+// imports router.ts) — directly importing `components.tsx` from here
+// would create a cycle. Instead, `components.tsx` calls
+// `_setDefaultChromeLayout(DefaultChromeLayout)` at module load. As
+// long as the consumer's app imports anything from `@pyreon/router`
+// that touches `components.tsx` (which every app does via
+// `RouterProvider` / `RouterView` / `RouterLink`), the registration
+// runs before any `resolveRoute()` call.
+//
+// When the setter hasn't been called (e.g. unit tests that exercise
+// `resolveRoute` in isolation without ever importing `components.tsx`),
+// `findNotFoundFallback` returns `null` for the layout-less case — the
+// standalone-render path in the SSG plugin / runtime handler picks up
+// from there. So the fix degrades gracefully.
+let _defaultChromeLayout: RouteComponent | null = null
+
+/**
+ * Register the synthetic "default chrome" layout used when a page-level
+ * `notFoundComponent` is the closest fallback (layout-less single-page-
+ * app shape). Called once at module load from `./components.tsx`. Pyreon
+ * apps shouldn't need to call this themselves.
+ *
+ * @internal
+ */
+export function _setDefaultChromeLayout(component: RouteComponent): void {
+  _defaultChromeLayout = component
+}
+
 // ─── Query string ─────────────────────────────────────────────────────────────
 
 /**
@@ -677,6 +711,18 @@ const SYNTHETIC_NOT_FOUND_PATH = '__pyreon_not_found_leaf__'
  */
 function findNotFoundFallback(routes: RouteRecord[], urlPath: string): RouteRecord[] | null {
   let best: { chain: RouteRecord[]; record: RouteRecord; depth: number; specificity: number } | null = null
+  // Second-pass fallback: collect the BEST page-level notFoundComponent
+  // (no children) in case the layout pass finds nothing. Applies to the
+  // layout-less single-page-app case where `_404.tsx` is emitted without
+  // a parent `_layout.tsx`. The layout pass intentionally skips this
+  // shape (page records have no `<RouterView />` to wrap the leaf); the
+  // synthetic default-chrome layout fills that gap below.
+  let pageBest: {
+    record: RouteRecord
+    depth: number
+    specificity: number
+    fullPath: string
+  } | null = null
 
   function walk(records: RouteRecord[], parentChain: RouteRecord[], parentPath: string): void {
     for (const r of records) {
@@ -699,19 +745,27 @@ function findNotFoundFallback(routes: RouteRecord[], urlPath: string): RouteReco
       // lands at a depth a `<RouterView />` will actually render.
       const isLayout = Array.isArray(r.children) && r.children.length > 0
 
-      if (isLayout && typeof r.notFoundComponent === 'function') {
+      if (typeof r.notFoundComponent === 'function') {
         const applies = pathPrefixApplies(fullPath, urlPath)
         if (applies) {
           // Prefer (a) the deepest record (longest chain), then (b) the
           // most specific path-prefix when chains tie. Specificity =
           // number of path segments in `fullPath`. `/` has 0; `/de` has 1.
           const specificity = countSegments(fullPath)
-          if (
-            !best ||
-            chain.length > best.depth ||
-            (chain.length === best.depth && specificity > best.specificity)
+          if (isLayout) {
+            if (
+              !best ||
+              chain.length > best.depth ||
+              (chain.length === best.depth && specificity > best.specificity)
+            ) {
+              best = { chain, record: r, depth: chain.length, specificity }
+            }
+          } else if (
+            !pageBest ||
+            chain.length > pageBest.depth ||
+            (chain.length === pageBest.depth && specificity > pageBest.specificity)
           ) {
-            best = { chain, record: r, depth: chain.length, specificity }
+            pageBest = { record: r, depth: chain.length, specificity, fullPath }
           }
         }
       }
@@ -724,19 +778,56 @@ function findNotFoundFallback(routes: RouteRecord[], urlPath: string): RouteReco
 
   walk(routes, [], '')
 
-  if (!best) return null
+  if (best) {
+    // TypeScript widening: `best` is inferred as `null` inside the closure
+    // when not narrowed, even though we asserted it's non-null above.
+    const found: { chain: RouteRecord[]; record: RouteRecord; depth: number; specificity: number } =
+      best
 
-  // TypeScript widening: `best` is inferred as `null` inside the closure
-  // when not narrowed, even though we asserted it's non-null above.
-  const found: { chain: RouteRecord[]; record: RouteRecord; depth: number; specificity: number } =
-    best
+    const syntheticLeaf: RouteRecord = {
+      path: SYNTHETIC_NOT_FOUND_PATH,
+      component: found.record.notFoundComponent as RouteComponent,
+    }
 
-  const syntheticLeaf: RouteRecord = {
-    path: SYNTHETIC_NOT_FOUND_PATH,
-    component: found.record.notFoundComponent as RouteComponent,
+    return [...found.chain, syntheticLeaf]
   }
 
-  return [...found.chain, syntheticLeaf]
+  // Layout-less fallback. The user has a page-level `notFoundComponent`
+  // (e.g. `_404.tsx` at the route root with no `_layout.tsx`). Without
+  // a parent layout to wrap the leaf, we synthesize ONE: a minimal
+  // "default chrome" layout that renders `<main data-pyreon-default-chrome>
+  // <RouterView /></main>`. This provides a semantic-HTML landmark for
+  // accessibility + a hook for users to target the wrapper via CSS, while
+  // routing the render through the normal `<RouterView />` pipeline (so
+  // `isNotFound` propagation and runtime SSR status-404 still work).
+  //
+  // The DefaultChromeLayout component is registered by `components.tsx`
+  // at module load time via `_setDefaultChromeLayout()` (setter pattern
+  // to avoid the components.tsx → match.ts circular import). If the
+  // setter hasn't been called yet (consumer never imported anything
+  // from `@pyreon/router` that triggers components.tsx's side effects),
+  // we fall back to returning null — the standalone-render path in the
+  // SSG plugin / runtime handler picks up from there.
+  if (pageBest && _defaultChromeLayout) {
+    const found: {
+      record: RouteRecord
+      depth: number
+      specificity: number
+      fullPath: string
+    } = pageBest
+
+    const syntheticChromeLayout: RouteRecord = {
+      path: found.fullPath,
+      component: _defaultChromeLayout,
+    }
+    const syntheticLeaf: RouteRecord = {
+      path: SYNTHETIC_NOT_FOUND_PATH,
+      component: found.record.notFoundComponent as RouteComponent,
+    }
+    return [syntheticChromeLayout, syntheticLeaf]
+  }
+
+  return null
 }
 
 /** Check whether `prefixPath` is a path-prefix of `urlPath` at segment boundaries. */

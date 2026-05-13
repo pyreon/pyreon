@@ -11,6 +11,7 @@ import {
 } from '@pyreon/core'
 import { computed, signal } from '@pyreon/reactivity'
 import { LoaderDataContext, prefetchLoaderData } from './loader'
+import { _setDefaultChromeLayout } from './match'
 import { isLazy, RouterContext, setActiveRouter } from './router'
 import type { LazyComponent, ResolvedRoute, RouteRecord, Router, RouterInstance } from './types'
 
@@ -590,3 +591,32 @@ function isStaleChunk(err: unknown): boolean {
 nativeCompat(RouterProvider)
 nativeCompat(RouterView)
 nativeCompat(RouterLink)
+
+// ─── DefaultChromeLayout ─────────────────────────────────────────────────────
+//
+// Synthetic layout used by the layout-less-app 404 fallback. When the user
+// has a page-level `notFoundComponent` (`_404.tsx` at the route root without
+// a wrapping `_layout.tsx`), `findNotFoundFallback` in match.ts synthesizes
+// a chain `[DefaultChromeLayout, syntheticLeaf]` and the render pipeline
+// produces 404 HTML wrapped in `<main data-pyreon-default-chrome>` instead
+// of the bare component output.
+//
+// The wrapper is intentionally minimal:
+//   - `<main>` provides a semantic landmark for accessibility and SEO.
+//   - The `data-pyreon-default-chrome` attribute lets users target the
+//     wrapper from CSS if they want to customize spacing / centering.
+//   - No prescribed visual styling — the framework can't know the user's
+//     design system, so we ship semantics only.
+//
+// Registered via the setter pattern (`_setDefaultChromeLayout`) instead of
+// directly imported into match.ts to avoid a circular dependency: components.tsx
+// depends transitively on match.ts (via router.ts), so match.ts can't import
+// components.tsx without a cycle. The setter call runs at module load —
+// every Pyreon app imports something from `./components.tsx` (RouterProvider,
+// RouterView, RouterLink), which triggers the setter before any resolveRoute
+// call can fire.
+export const DefaultChromeLayout: ComponentFn = () =>
+  h('main', { 'data-pyreon-default-chrome': '' }, h(RouterView, null))
+
+nativeCompat(DefaultChromeLayout)
+_setDefaultChromeLayout(DefaultChromeLayout)
