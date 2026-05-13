@@ -1,15 +1,14 @@
 {
-  "sha": "c2b42c90",
+  "sha": "1e0ba46b",
   "app": "perf-dashboard",
   "journey": "form",
   "mode": "dev",
   "runs": 5,
-  "timestamp": "2026-04-26T06:34:52.755Z",
-  "medianWallMs": 48,
+  "timestamp": "2026-05-13T11:18:54.371Z",
+  "medianWallMs": 37,
   "medianHeapBytes": 10000000,
   "counters": {
     "reactivity.signalWrite": 60,
-    "reactivity.effectRun": 56,
     "reactivity.computedRecompute": 4
   }
 }

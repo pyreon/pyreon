@@ -1,12 +1,12 @@
 {
-  "sha": "cbb776c7",
+  "sha": "1e0ba46b",
   "app": "perf-dashboard",
   "journey": "formMount-10k",
   "mode": "dev",
-  "runs": 3,
-  "timestamp": "2026-05-07T18:32:18.796Z",
-  "medianWallMs": 218,
-  "medianHeapBytes": 53500000,
+  "runs": 5,
+  "timestamp": "2026-05-13T10:41:33.412Z",
+  "medianWallMs": 213,
+  "medianHeapBytes": 37300000,
   "counters": {
     "reactivity.signalWrite": 2,
     "reactivity.effectRun": 10003,
@@ -17,6 +17,9 @@
     "runtime.tpl": 1,
     "styler.resolve": 20002,
     "styler.sheet.insert": 20002,
-    "styler.sheet.insert.hit": 20002
+    "styler.sheet.insert.hit": 20002,
+    "runtime.applyProp": 50003,
+    "runtime.applyEvent": 10000,
+    "runtime.cleanup": 10001
   }
 }

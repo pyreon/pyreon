@@ -1,0 +1,14 @@
+{
+  "sha": "1e0ba46b",
+  "app": "perf-dashboard",
+  "journey": "themeThrash",
+  "mode": "dev",
+  "runs": 5,
+  "timestamp": "2026-05-13T11:18:03.904Z",
+  "medianWallMs": 166,
+  "medianHeapBytes": 10000000,
+  "counters": {
+    "reactivity.signalWrite": 10,
+    "reactivity.computedRecompute": 10
+  }
+}

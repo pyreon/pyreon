@@ -1,0 +1,15 @@
+{
+  "sha": "1e0ba46b",
+  "app": "perf-dashboard",
+  "journey": "shuffleRows",
+  "mode": "dev",
+  "runs": 5,
+  "timestamp": "2026-05-13T11:18:07.938Z",
+  "medianWallMs": 23,
+  "medianHeapBytes": 10000000,
+  "counters": {
+    "reactivity.signalWrite": 1,
+    "reactivity.effectRun": 1,
+    "runtime.mountFor.lisOps": 193
+  }
+}
