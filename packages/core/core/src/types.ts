@@ -30,8 +30,49 @@ export type ComponentFn<P extends Props = Props> = (props: P) => VNodeChild
 
 // ─── Utility types ───────────────────────────────────────────────────────────
 
-/** Extract the props type from a component function, or pass through if already a props type. */
-export type ExtractProps<T> = T extends ComponentFn<infer P> ? P : T
+/**
+ * Extract the props type from a component function, or pass through if already
+ * a props type. **Multi-overload aware** — matches up to 4 call signatures and
+ * produces the UNION of their first-argument types. A single-overload function
+ * still works (the union of 4 copies of the same props type dedupes back to
+ * the single shape).
+ *
+ * **Why this shape**. `T extends (props: infer P) => any ? P : never` only
+ * captures the LAST overload of a multi-overload function — TS's overload-
+ * resolution-against-conditional-types semantics. Multi-overload primitives
+ * (Iterator, List, Element, etc.) need the union of every overload's props
+ * to survive HOC wrapping (`rocketstyle()`, `attrs()`) without silently
+ * downgrading the public prop surface to the loosest overload. Mirrors
+ * vitus-labs PR #222.
+ *
+ * @example
+ * function Iterator<T extends SimpleValue>(p: { data: T[]; valueName?: string }): VNodeChild
+ * function Iterator<T extends ObjectValue>(p: { data: T[]; component: ComponentFn<T> }): VNodeChild
+ * type Props = ExtractProps<typeof Iterator>
+ * // → { data: SimpleValue[]; valueName?: string }
+ * //  | { data: ObjectValue[]; component: ComponentFn<ObjectValue> }
+ */
+export type ExtractProps<T> = T extends {
+  (props: infer P1, ...args: any): any
+  (props: infer P2, ...args: any): any
+  (props: infer P3, ...args: any): any
+  (props: infer P4, ...args: any): any
+}
+  ? P1 | P2 | P3 | P4
+  : T extends {
+        (props: infer P1, ...args: any): any
+        (props: infer P2, ...args: any): any
+        (props: infer P3, ...args: any): any
+      }
+    ? P1 | P2 | P3
+    : T extends {
+          (props: infer P1, ...args: any): any
+          (props: infer P2, ...args: any): any
+        }
+      ? P1 | P2
+      : T extends ComponentFn<infer P>
+        ? P
+        : T
 
 /** A higher-order component that wraps a component, optionally transforming its props. */
 export type HigherOrderComponent<HOP extends Props, P extends Props | undefined = undefined> = (

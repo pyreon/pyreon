@@ -69,8 +69,39 @@ export type Responsive =
 
 export type ExtendCss = Css | Css[] | Partial<Record<BreakpointKeys, Css>>
 
-export type ExtractProps<TComponentOrTProps> =
-  TComponentOrTProps extends ComponentFn<infer TProps> ? TProps : TComponentOrTProps
+/**
+ * Extracts the props type from a Pyreon component function — multi-overload
+ * aware. Matches up to 4 call signatures and produces the UNION of their
+ * first-argument types. Iterator / List ship 3-overload primitives whose
+ * LAST overload is `ChildrenProps` (the loosest); without overload-aware
+ * extraction, `ExtractProps<Iterator>` returned just `ChildrenProps` and
+ * lost `SimpleProps<T>` / `ObjectProps<T>` shapes. Mirrors vitus-labs
+ * PR #222.
+ *
+ * Kept in sync with the copies in `@pyreon/core` / `@pyreon/attrs` /
+ * `@pyreon/rocketstyle`.
+ */
+export type ExtractProps<TComponentOrTProps> = TComponentOrTProps extends {
+  (props: infer P1, ...args: any): any
+  (props: infer P2, ...args: any): any
+  (props: infer P3, ...args: any): any
+  (props: infer P4, ...args: any): any
+}
+  ? P1 | P2 | P3 | P4
+  : TComponentOrTProps extends {
+        (props: infer P1, ...args: any): any
+        (props: infer P2, ...args: any): any
+        (props: infer P3, ...args: any): any
+      }
+    ? P1 | P2 | P3
+    : TComponentOrTProps extends {
+          (props: infer P1, ...args: any): any
+          (props: infer P2, ...args: any): any
+        }
+      ? P1 | P2
+      : TComponentOrTProps extends ComponentFn<infer TProps>
+        ? TProps
+        : TComponentOrTProps
 
 export type PyreonComponent<P extends Record<string, any> = {}> = ComponentFn<P> & PyreonStatic
 
