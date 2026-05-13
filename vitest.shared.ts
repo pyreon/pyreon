@@ -138,6 +138,20 @@ for (const pkg of zeroPackages) {
 
 export const sharedConfig: VitestUserConfig = {
   resolve: { alias, conditions: ['bun'] },
+  test: {
+    // Vitest's default 5000ms is too tight for tests that do
+    // `await import(...)` on Pyreon's transitively-deep module graphs
+    // (rocketstyle + attrs + styler + unistyle chain, ECharts dynamic
+    // chunks, document/PDF renderers, etc.). Cold first-load on shared
+    // CI runners regularly hits 5-15s. Bump default to 20s — accommodates
+    // typical CI variance while still surfacing real perf regressions
+    // (a true regression would be 30s+).
+    //
+    // Tests that legitimately need more (PDF renderer, ECharts) keep
+    // their per-test `{ timeout: 30_000 }` / `{ timeout: 60_000 }`
+    // overrides — those overrides win against this default.
+    testTimeout: 20_000,
+  },
 }
 
 // Packages that also run browser tests via `vitest.browser.config.ts` must
