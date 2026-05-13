@@ -4,7 +4,7 @@ import type { Rocketstyle } from './init'
 import rocketstyle from './init'
 import type { IsRocketComponent } from './isRocketComponent'
 import isRocketComponent from './isRocketComponent'
-import type { AttrsCb } from './types/attrs'
+import type { AttrsCb, AttrsHelpers } from './types/attrs'
 import type {
   ConfigAttrs,
   ConsumerCb,
@@ -37,6 +37,7 @@ import type { ComponentFn, ElementType, ExtractProps, MergeTypes, TObj } from '.
 
 export type {
   AttrsCb,
+  AttrsHelpers,
   ComponentFn,
   ComposeParam,
   ConfigAttrs,
