@@ -94,9 +94,56 @@ const createStyledComponent = (
 
     const staticClassName = hasCss ? sheet.insert(cssText, false, insertLayer) : ''
 
+    // Hoisted out of the render fn: `tag` is known at component-creation time,
+    // and `tag` matches `rawProps.as ?? tag` whenever rawProps is empty (the
+    // common case for `<MyStyled />` without any props). The DOM-ness check
+    // doesn't change between renders for the same `tag`.
+    const tagIsDOM = typeof tag === 'string'
+
+    // Pre-built VNode for the no-extra-props hot path (`<MyStyled />`). Same
+    // shape `h(tag, { class })` would produce per render, but allocated once
+    // at component-creation time. Mount.ts spreads `vnode.props` into a new
+    // object before invoking the component (mount.ts:404-418 doesn't mutate
+    // the source vnode), so sharing the same VNode across mount sites is
+    // safe. `vnode.children` is empty here because the empty-rawProps branch
+    // also implies no children were passed — `rawProps.children` would be
+    // `undefined` and the `Array.isArray ? : ?? : []` chain produces `[]`.
+    //
+    // **Cache lifetime**: this VNode references `staticClassName`, which is
+    // the className the sheet just inserted. If `sheet.clearAll()` runs
+    // (HMR / dev reload), the className becomes stale BUT the outer
+    // `staticComponentCache` (and `_hot*` caches) ALSO survive that path —
+    // so consumers continue to receive the stale className regardless. The
+    // companion fix to wire `onSheetClear` and reset both caches is tracked
+    // separately (see PR #561). This optimization is correct under the
+    // existing cache lifetime contract; the HMR-staleness issue is broader
+    // than the VNode cache.
+    const cachedEmptyVNode = h(
+      tag as string,
+      staticClassName ? { class: staticClassName } : {},
+    )
+
     const StaticStyled: ComponentFn = (rawProps: Record<string, any>): VNode | null => {
+      // Hot path: no extra props beyond what's empty AND no `ref` / `as`.
+      // `for ... in` over an empty object is O(0); the `break` exits on the
+      // first key. Skipping the cache when `ref` is present is necessary
+      // because the user expects their callback to fire on the mounted DOM
+      // node — the pre-built VNode has no `ref` in its props.
+      let hasExtraProps = false
+      for (const _k in rawProps) {
+        hasExtraProps = true
+        break
+      }
+      if (!hasExtraProps && rawProps.ref == null) {
+        if (process.env.NODE_ENV !== 'production')
+          _countSink.__pyreon_count__?.('styler.staticVNode.hit')
+        return cachedEmptyVNode
+      }
+
       const finalTag = rawProps.as || tag
-      const isDOM = typeof finalTag === 'string'
+      // Fast `isDOM` when the user didn't pass `as` — reuses the closure-time
+      // check. Only `typeof` is needed when `as` overrides the tag.
+      const isDOM = finalTag === tag ? tagIsDOM : typeof finalTag === 'string'
       const finalProps = buildProps(rawProps, staticClassName, isDOM, customFilter)
 
       return h(
