@@ -412,7 +412,7 @@ describe('document metadata pass-through (PR #197)', () => {
   // slow CI runners (the default 5000ms timeout fails reliably). The
   // existing renderer-coverage tests in renderers-coverage.test.ts don't
   // hit this because they run after the lazy load is already warm.
-  it('PDF renderer writes metadata to the /Info dictionary (binary verified)', { timeout: 30_000 }, async () => {
+  it('PDF renderer writes metadata to the /Info dictionary (binary verified)', { timeout: 60_000 }, async () => {
     // End-to-end binary verification. The PDF renderer was already
     // correct (it consumed these fields before PR #197), but we
     // never proved it by actually inspecting a generated PDF.

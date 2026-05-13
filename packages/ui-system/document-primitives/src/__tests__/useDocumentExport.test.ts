@@ -217,7 +217,7 @@ describe('DocDocument reactive metadata (D1 integration)', () => {
   // compilation, rocketstyle wrapping, etc.) which takes 5+
   // seconds on slow CI runners on first hit. The default 5000ms
   // timeout fails reliably on CI.
-  it('DocDocument with accessor title produces live values across multiple extractions', { timeout: 30_000 }, async () => {
+  it('DocDocument with accessor title produces live values across multiple extractions', { timeout: 60_000 }, async () => {
     // Use happy-dom + initTestConfig like the rest of the test suite
     const { initTestConfig } = await import('@pyreon/test-utils')
     const { h } = await import('@pyreon/core')
