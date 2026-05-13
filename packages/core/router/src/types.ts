@@ -415,7 +415,11 @@ export interface Router<TNames extends string = string> {
    * separately when creating the router (`createRouter({ url, ... })`) or
    * call this for the same `url` you initialised the router with.
    */
-  preload(path: string, request?: Request): Promise<void>
+  preload(
+    path: string,
+    request?: Request,
+    options?: { skipLoaders?: boolean },
+  ): Promise<void>
   /**
    * Invalidate cached loader data. Forces loaders to re-run on next navigation.
    * - No args: invalidate ALL cached loader data

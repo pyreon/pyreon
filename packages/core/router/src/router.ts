@@ -1096,7 +1096,11 @@ export function createRouter<TNames extends string = string>(
       return router._readyPromise
     },
 
-    async preload(path: string, request?: Request) {
+    async preload(
+      path: string,
+      request?: Request,
+      options?: { skipLoaders?: boolean },
+    ) {
       const resolved = resolveRoute(path, routes)
       // Load lazy components in parallel and populate the component cache so
       // the synchronous render pass finds ready components instead of kicking
@@ -1114,6 +1118,13 @@ export function createRouter<TNames extends string = string>(
           componentCache.set(record, comp)
         }),
       )
+      // Skip the loader-running step when the caller explicitly opts out
+      // (used by the SSG plugin's 404 build path — parent-layout loaders
+      // that hit auth resources or external APIs shouldn't fire when
+      // generating a static 404 page). Lazy components above DO still
+      // resolve so the synthetic chain renders cleanly; only the
+      // `r.loader()` invocations are skipped.
+      if (options?.skipLoaders) return
       // Run loaders for the matched path — uses the same code path SSR
       // already relied on, so loader data ends up in `_loaderData` under the
       // matched route records. Uses a LOCAL AbortController: `preload` is

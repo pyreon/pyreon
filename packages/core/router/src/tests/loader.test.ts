@@ -655,6 +655,107 @@ describe('router.preload', () => {
     expect(lazyLoadCalls).toBe(1)
     expect(router._componentCache.get(routes[1] as RouteRecord)).toBe(Lazy)
   })
+
+  // ─── PR C — skipLoaders option for 404 build paths ──────────────────────
+  //
+  // The SSG plugin's `__renderNotFound` opts out of loader execution
+  // when generating a static 404 page — parent-layout loaders that hit
+  // auth resources / external APIs shouldn't fire when there's no real
+  // request context to drive them. `skipLoaders: true` skips the loader
+  // step entirely while keeping the lazy-component resolution intact
+  // (so the synthetic chain still renders cleanly).
+  test('skipLoaders: true skips loader execution', async () => {
+    let calls = 0
+    const routes: RouteRecord[] = [
+      { path: '/', component: Home },
+      {
+        path: '/u/:id',
+        component: User,
+        loader: async ({ params }) => {
+          calls++
+          return { id: params.id }
+        },
+      },
+    ]
+    const router = createRouter({ routes, url: '/' }) as RouterInstance
+
+    await router.preload('/u/7', undefined, { skipLoaders: true })
+
+    expect(calls).toBe(0)
+    expect(router._loaderData.get(routes[1] as RouteRecord)).toBeUndefined()
+  })
+
+  test('skipLoaders: false (default) still runs loaders', async () => {
+    let calls = 0
+    const routes: RouteRecord[] = [
+      { path: '/', component: Home },
+      {
+        path: '/u/:id',
+        component: User,
+        loader: async () => {
+          calls++
+          return null
+        },
+      },
+    ]
+    const router = createRouter({ routes, url: '/' }) as RouterInstance
+
+    // No options arg
+    await router.preload('/u/7')
+    expect(calls).toBe(1)
+
+    // Explicit false
+    await router.preload('/u/7', undefined, { skipLoaders: false })
+    expect(calls).toBe(2)
+  })
+
+  test('skipLoaders: true still loads lazy components (preserves render readiness)', async () => {
+    // The 404 build path needs the synthetic-chain components resolved
+    // so the render pass doesn't fall back to loadingComponent. Only
+    // the data-fetching `r.loader()` calls are skipped.
+    let lazyLoadCalls = 0
+    let loaderCalls = 0
+    const Lazy = () => null
+    const routes: RouteRecord[] = [
+      { path: '/', component: Home },
+      {
+        path: '/lazy',
+        component: lazy(async () => {
+          lazyLoadCalls++
+          return Lazy
+        }),
+        loader: async () => {
+          loaderCalls++
+          return null
+        },
+      },
+    ]
+    const router = createRouter({ routes, url: '/' }) as RouterInstance
+
+    await router.preload('/lazy', undefined, { skipLoaders: true })
+
+    // Lazy component IS resolved (needed for render readiness).
+    expect(lazyLoadCalls).toBe(1)
+    expect(router._componentCache.get(routes[1] as RouteRecord)).toBe(Lazy)
+    // Loader was NOT called.
+    expect(loaderCalls).toBe(0)
+  })
+
+  test('skipLoaders: true preserves currentRoute (preload is non-navigational)', async () => {
+    const routes: RouteRecord[] = [
+      { path: '/', component: Home },
+      {
+        path: '/u/:id',
+        component: User,
+        loader: async () => null,
+      },
+    ]
+    const router = createRouter({ routes, url: '/' }) as RouterInstance
+
+    await router.preload('/u/7', undefined, { skipLoaders: true })
+
+    expect(router.currentRoute().path).toBe('/')
+  })
 })
 
 // ─── _loaderCache LRU cap (regression for missing _maxCacheSize wiring) ────
