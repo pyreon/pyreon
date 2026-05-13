@@ -1,5 +1,18 @@
 # @pyreon/feature
 
+## 1.0.0
+
+### Patch Changes
+
+- Updated dependencies [[`a4a4255`](https://github.com/pyreon/pyreon/commit/a4a42550835cb2706b99beed8ea582037d338ea8), [`7f26cd7`](https://github.com/pyreon/pyreon/commit/7f26cd78d74db8237aa6261a11965325d944f1ca)]:
+  - @pyreon/core@1.0.0
+  - @pyreon/form@1.0.0
+  - @pyreon/validation@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/query@1.0.0
+  - @pyreon/store@1.0.0
+  - @pyreon/table@1.0.0
+
 ## 0.14.0
 
 ### Patch Changes

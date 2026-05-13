@@ -1,5 +1,20 @@
 # @pyreon/router
 
+## 1.0.0
+
+### Minor Changes
+
+- [#554](https://github.com/pyreon/pyreon/pull/554) [`321bac0`](https://github.com/pyreon/pyreon/commit/321bac062b68cabf66357f0362385384a96b5692) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Auto-wrap layout-less `_404.tsx` in default chrome. Apps that ship a page-level `notFoundComponent` (e.g. `_404.tsx` at the route root without a wrapping `_layout.tsx`) used to render the not-found component bare — the documented "no chrome" limitation in CLAUDE.md. `findNotFoundFallback` now runs a two-pass walk: first the original layout-with-`notFoundComponent` pass (precedence preserved), then a fallback for page records with `notFoundComponent`. When the page-record pass fires, the resolver synthesizes a chain `[DefaultChromeLayout, syntheticLeaf]`. `DefaultChromeLayout` is a new built-in component rendering `<main data-pyreon-default-chrome><RouterView /></main>` — semantic-HTML landmark for accessibility / SEO + a `data-pyreon-default-chrome` attribute for users to target via CSS if they want to customize. No prescribed visual design. Graceful degradation: if `components.tsx` isn't imported (unit-test isolation), the setter doesn't fire and the fallback returns null, falling back to the standalone-render path. Bisect-verified across 4 layout-less specs in `match.test.ts`.
+
+- [#555](https://github.com/pyreon/pyreon/pull/555) [`f82584b`](https://github.com/pyreon/pyreon/commit/f82584b3dfb1362d376065354d023647fdbdfa02) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `router.preload(path, request?, options?)` gains an optional third `options` argument with `skipLoaders: true` — bypasses the loader-running step while keeping lazy-component resolution intact (so the synthetic chain still renders cleanly). The SSG plugin's `__renderNotFound` now passes `{ isNotFound: true }` through `renderPath` → `router.preload(probePath, undefined, { skipLoaders: true })`, so auth-touching parent-layout loaders (`fetchUser`, session reads, private APIs) no longer fire during static 404 generation. Closes the documented "Loaders on parent layouts run during 404 render" limitation. Runtime SSR intentionally still runs loaders for 404 — analytics / audit-logging hooks that fire per-request should keep firing even when the request resolves to a not-found. Bisect-verified at the unit layer (4 new specs in `router.preload — PR C — skipLoaders`). Back-compat: the new arg is positional and optional, so 2-arg callers (`router.preload(path, request)`) continue to work unchanged.
+
+### Patch Changes
+
+- Updated dependencies [[`a4a4255`](https://github.com/pyreon/pyreon/commit/a4a42550835cb2706b99beed8ea582037d338ea8)]:
+  - @pyreon/core@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+
 ## 0.14.0
 
 ### Patch Changes

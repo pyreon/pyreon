@@ -1,5 +1,7 @@
 # @pyreon/typescript
 
+## 1.0.0
+
 ## 0.14.0
 
 ### Patch Changes

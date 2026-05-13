@@ -1,5 +1,7 @@
 # @pyreon/compiler
 
+## 1.0.0
+
 ## 0.14.0
 
 ### Minor Changes
