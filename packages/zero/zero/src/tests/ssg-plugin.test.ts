@@ -46,7 +46,10 @@ describe('ssgPlugin', () => {
       expect(_internal.renderSsrEntrySource()).toContain('@pyreon/zero/server')
       expect(_internal.renderSsrEntrySource()).toContain('createApp')
       expect(_internal.renderSsrEntrySource()).toContain('url: path')
-      expect(_internal.renderSsrEntrySource()).toContain('router.preload(path)')
+      // PR C — preload now takes a 3rd `options` arg with `skipLoaders` for
+      // the 404 build path. Existing 2-arg shape is preserved as the prefix
+      // of the call.
+      expect(_internal.renderSsrEntrySource()).toContain('router.preload(path, undefined,')
       expect(_internal.renderSsrEntrySource()).toContain('renderWithHead')
       expect(_internal.renderSsrEntrySource()).toContain('serializeLoaderData')
       expect(_internal.renderSsrEntrySource()).toContain('export default')
@@ -381,7 +384,9 @@ describe('ssgPlugin', () => {
       // Probe URL is the marker the resolver looks for non-matching paths.
       expect(renderNotFoundBlock).toContain('__pyreon_not_found_probe__')
       // Calls renderPath (the regular-path SSG renderer in the same module).
-      expect(renderNotFoundBlock).toContain('renderPath(probePath)')
+      // PR C — passes `{ isNotFound: true }` so parent-layout loaders are
+      // skipped during the 404 build.
+      expect(renderNotFoundBlock).toContain('renderPath(probePath, { isNotFound: true })')
       // Standalone h(component, null) is preserved as a fallback for
       // tree shapes where no notFoundComponent is reachable from the
       // probe URL (rare — primarily back-compat for old SSR entries).
@@ -482,9 +487,15 @@ describe('ssgPlugin', () => {
     it('wraps router.preload in try/catch + extracts redirect info', () => {
       // The catch block calls getRedirectInfo(err) — non-redirect errors
       // rethrow into the existing errors[] flow.
+      //
+      // PR C — preload's 3rd `options` arg with `skipLoaders` is forwarded
+      // from `renderPath(path, options)`. The call shape became
+      // `await router.preload(path, undefined, { skipLoaders: ... })`,
+      // still wrapped in the same try/catch.
       const src = _internal.renderSsrEntrySource()
       expect(src).toContain('try {')
-      expect(src).toContain('await router.preload(path)')
+      expect(src).toContain('await router.preload(path, undefined,')
+      expect(src).toContain('skipLoaders:')
       expect(src).toContain('getRedirectInfo(err)')
       expect(src).toContain('throw err')
     })

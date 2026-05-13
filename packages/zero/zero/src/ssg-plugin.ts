@@ -134,7 +134,7 @@ const __ssgBase = typeof __ZERO_BASE__ !== "undefined" && __ZERO_BASE__ !== "/"
   ? __ZERO_BASE__
   : undefined
 
-export default async function renderPath(path) {
+export default async function renderPath(path, options) {
   const { App, router } = createApp({
     routes,
     routerMode: "history",
@@ -153,8 +153,18 @@ export default async function renderPath(path) {
   // outer plugin emits a redirect manifest entry instead of an
   // \`index.html\`. Any non-redirect error rethrows and lands in the
   // existing \`errors[]\` collection.
+  //
+  // PR C — \`isNotFound\` skips parent-layout loaders during the 404 build.
+  // Layout loaders that hit auth resources (cookies, session tokens,
+  // private APIs) shouldn't fire when generating a static 404 page —
+  // the build has no real request context. Lazy components still
+  // resolve so the synthetic chain renders cleanly; only the
+  // \`r.loader()\` invocations are skipped. \`__renderNotFound\` below
+  // forwards \`{ isNotFound: true }\` for this path.
   try {
-    await router.preload(path)
+    await router.preload(path, undefined, {
+      skipLoaders: options?.isNotFound === true,
+    })
   } catch (err) {
     const info = getRedirectInfo(err)
     if (info) {
@@ -294,7 +304,13 @@ export async function __renderNotFound(locale) {
   // \`notFoundComponent\` reachable from the probe URL, resolveRoute's
   // fallback builds the chain through the layout and the normal render
   // pipeline produces 404 HTML wrapped in layout chrome.
-  const result = await renderPath(probePath)
+  //
+  // PR C — pass \`isNotFound: true\` so renderPath skips parent-layout
+  // loaders. Layout loaders that hit auth resources / external APIs
+  // shouldn't fire when generating a static 404 page (the build has
+  // no real request context). Lazy components still resolve; only
+  // \`r.loader()\` invocations are skipped.
+  const result = await renderPath(probePath, { isNotFound: true })
   if (result && result.kind === "html") {
     return {
       appHtml: result.appHtml,
