@@ -22,6 +22,67 @@ type ChunkResult<P extends Props> = { default: ComponentFn<P> } | ComponentFn<P>
  */
 type DeferTrigger = { when: () => boolean } | { on: 'visible' | 'idle' }
 
+/**
+ * Set up the `on="idle"` trigger. Returns a teardown function the
+ * caller must invoke on unmount. Browser-API access is gated by
+ * `typeof` checks so SSR / jsdom environments fall back to a
+ * `setTimeout(1)` shim. Extracted as a standalone helper so it's
+ * directly testable without going through `onMount` (core tests
+ * don't run in happy-dom; runtime-dom is where the lifecycle hooks
+ * live).
+ *
+ * @internal Exported for tests; not part of the stable public API.
+ */
+export function _setupIdleTrigger(startLoad: () => void): () => void {
+  const ric = (
+    globalThis as { requestIdleCallback?: (cb: () => void) => number }
+  ).requestIdleCallback
+  const cic = (
+    globalThis as { cancelIdleCallback?: (id: number) => void }
+  ).cancelIdleCallback
+  if (typeof ric === 'function') {
+    const id = ric(startLoad)
+    return () => cic?.(id)
+  }
+  const t = setTimeout(startLoad, 1)
+  return () => clearTimeout(t)
+}
+
+/**
+ * Set up the `on="visible"` trigger. Observes `el` via an
+ * `IntersectionObserver` and fires `startLoad` once on the first
+ * intersection. If `IntersectionObserver` is unavailable (jsdom)
+ * or `el` is null (SSR), falls back to loading immediately.
+ *
+ * Returns a teardown function — call to disconnect the observer.
+ *
+ * @internal Exported for tests; not part of the stable public API.
+ */
+export function _setupVisibleTrigger(
+  el: HTMLElement | null,
+  startLoad: () => void,
+  rootMargin: string,
+): () => void {
+  if (!el || typeof IntersectionObserver === 'undefined') {
+    // Observer unavailable or no DOM target — load eagerly so the
+    // user still sees the component in environments where the
+    // viewport-detection mechanism can't run.
+    startLoad()
+    return () => {}
+  }
+  const obs = new IntersectionObserver(
+    (entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        startLoad()
+        obs.disconnect()
+      }
+    },
+    { rootMargin },
+  )
+  obs.observe(el)
+  return () => obs.disconnect()
+}
+
 export type DeferProps<P extends Props> = DeferTrigger & {
   /**
    * Dynamic import to lazy-load. The literal `import('./X')` is what
@@ -120,23 +181,10 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
       if (props.when() && !loadStarted) startLoad()
     })
   } else if (props.on === 'idle') {
-    // Idle-driven. Gate browser API access behind `onMount` so SSR / non-
-    // browser environments don't crash. Fall back to `setTimeout(1)` when
-    // `requestIdleCallback` is unavailable (Safari < 16.4, jsdom, etc.).
-    onMount(() => {
-      const ric = (
-        globalThis as { requestIdleCallback?: (cb: () => void) => number }
-      ).requestIdleCallback
-      const cic = (
-        globalThis as { cancelIdleCallback?: (id: number) => void }
-      ).cancelIdleCallback
-      if (typeof ric === 'function') {
-        const id = ric(startLoad)
-        return () => cic?.(id)
-      }
-      const t = setTimeout(startLoad, 1)
-      return () => clearTimeout(t)
-    })
+    // Idle-driven. Delegated to `_setupIdleTrigger` so the browser-API
+    // branching is testable as a pure function. Wrapped in onMount so
+    // SSR / non-browser environments don't fire the callback at all.
+    onMount(() => _setupIdleTrigger(startLoad))
   }
   // Note: `on === 'visible'` is wired below alongside the wrapper element
   // because it needs a DOM target to observe.
@@ -161,27 +209,17 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
     // fallback / loaded component render as direct children of Defer's
     // parent).
     const containerRef = createRef<HTMLElement>()
-    onMount(() => {
-      const el = containerRef.current
-      if (!el || typeof IntersectionObserver === 'undefined') {
-        // Fallback when observer is unavailable (SSR fall-through, jsdom):
-        // load immediately on mount so non-browser environments still see
-        // the component eventually.
-        startLoad()
-        return
-      }
-      const obs = new IntersectionObserver(
-        (entries) => {
-          if (entries.some((e) => e.isIntersecting)) {
-            startLoad()
-            obs.disconnect()
-          }
-        },
-        { rootMargin: props.rootMargin ?? '200px' },
-      )
-      obs.observe(el)
-      return () => obs.disconnect()
-    })
+    // Visible-mode trigger is wired via `_setupVisibleTrigger` so the
+    // observer-construction + intersection-detection logic is
+    // independently testable. onMount keeps the browser-API access
+    // out of the SSR path.
+    onMount(() =>
+      _setupVisibleTrigger(
+        containerRef.current,
+        startLoad,
+        props.rootMargin ?? '200px',
+      ),
+    )
     // Cast renderContent to VNodeChildAccessor — its inferred return type
     // is `VNodeChild` (broader than the accessor's `atom | atom[]`) because
     // `props.children` itself may return any VNodeChild. The runtime
