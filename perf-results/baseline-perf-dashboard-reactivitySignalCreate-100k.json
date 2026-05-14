@@ -1,0 +1,14 @@
+{
+  "sha": "9dd10d90",
+  "app": "perf-dashboard",
+  "journey": "reactivitySignalCreate-100k",
+  "mode": "dev",
+  "runs": 5,
+  "timestamp": "2026-05-14T10:13:16.608Z",
+  "medianWallMs": 7,
+  "medianHeapBytes": 17100000,
+  "counters": {
+    "reactivity.signalCreate": 100000,
+    "reactivity.signalWrite": 0
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "sha": "9dd10d90",
+  "app": "perf-dashboard",
+  "journey": "reactivityEffectFanout-1k",
+  "mode": "dev",
+  "runs": 5,
+  "timestamp": "2026-05-14T10:12:56.922Z",
+  "medianWallMs": 3,
+  "medianHeapBytes": 10000000,
+  "counters": {
+    "reactivity.signalCreate": 1,
+    "reactivity.effectRun": 11000,
+    "reactivity.signalWrite": 10
+  }
+}
