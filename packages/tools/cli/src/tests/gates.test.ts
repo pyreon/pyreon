@@ -12,6 +12,7 @@ import {
 } from '../doctor/gates'
 import { _parseAuditTypesOutput } from '../doctor/gates/audit-types'
 import { _parseBundleBudgetsOutput } from '../doctor/gates/bundle-budgets'
+import { _detectMapsInPackOutput } from '../doctor/gates/distribution'
 import type { Finding, GateResult, Severity } from '../doctor/types'
 import { finding } from '../doctor/types'
 
@@ -54,22 +55,52 @@ const REPO_ROOT = path.resolve(
 )
 
 describe('runDistributionGate', () => {
-  it(
-    'returns clean GateResult shape against real repo (live npm pack probe)',
-    async () => {
-      // Run with the live `npm pack --dry-run` probe enabled — this is
-      // load-bearing for coverage: lines 145-166 of distribution.ts
-      // (the probe try-block) are otherwise unreachable, and dropping
-      // them takes statement coverage from 91.9% → 88.4% (< 90% gate).
-      // Under CI parallel load the probe takes ~5-15s; bumped per-test
-      // timeout to 90s to absorb runner variance.
-      const result = await runDistributionGate({ cwd: REPO_ROOT })
-      assertGateResultShape(result, 'distribution')
-      expect(result.category).toBe('architecture')
-      expect(result.meta.scanned).toBeGreaterThan(0)
-    },
-    90_000,
-  )
+  it('returns clean GateResult shape against real repo', async () => {
+    // skipPackProbe: true — the live `npm pack --dry-run` is slow
+    // under CI parallel load (100s+ vs ~5s standalone). The probe's
+    // .map-detection logic is covered separately by the
+    // _detectMapsInPackOutput unit tests below; coverage for the
+    // execFileSync invocation itself isn't worth the timeout risk.
+    const result = await runDistributionGate({
+      cwd: REPO_ROOT,
+      skipPackProbe: true,
+    })
+    assertGateResultShape(result, 'distribution')
+    expect(result.category).toBe('architecture')
+    expect(result.meta.scanned).toBeGreaterThan(0)
+  })
+
+  it('runs the probe block but no-ops when probePackage is missing', async () => {
+    // skipPackProbe: false (default-on path) + probePackage that
+    // doesn't exist in the synthetic repo → `packages.find(...)`
+    // returns undefined → the inner try block is skipped without
+    // spawning npm. Covers the `if (!opts.skipPackProbe)` +
+    // `const probe = packages.find(...)` + `if (probe)` branches
+    // without depending on the npm subprocess (which times out on
+    // CI parallel load).
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-dist-probe-'))
+    fs.mkdirSync(path.join(tmp, 'packages', 'fundamentals', 'ok'), {
+      recursive: true,
+    })
+    fs.writeFileSync(
+      path.join(tmp, 'packages', 'fundamentals', 'ok', 'package.json'),
+      JSON.stringify({
+        name: '@pyreon/ok',
+        sideEffects: false,
+        files: ['lib', '!lib/**/*.map'],
+      }),
+    )
+
+    const result = await runDistributionGate({
+      cwd: tmp,
+      probePackage: '@pyreon/does-not-exist',
+      // skipPackProbe omitted → defaults to false
+    })
+    assertGateResultShape(result, 'distribution')
+    expect(result.findings).toEqual([])
+
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
 
   it('emits findings with the expected code prefixes when invariants fail', async () => {
     // Create a synthetic broken package: published (no `private`),
@@ -359,6 +390,87 @@ describe('runDistributionGate — findPackages error paths', () => {
     expect(result.findings).toEqual([])
 
     fs.rmSync(tmp, { recursive: true, force: true })
+  })
+})
+
+describe('_detectMapsInPackOutput', () => {
+  const probe = { dir: '/repo/packages/core/reactivity' }
+  const cwd = '/repo'
+
+  it('returns null when the tarball has no .map files', () => {
+    const raw = JSON.stringify([
+      {
+        files: [
+          { path: 'package.json' },
+          { path: 'lib/index.js' },
+          { path: 'lib/index.d.ts' },
+        ],
+      },
+    ])
+    const result = _detectMapsInPackOutput(
+      raw,
+      cwd,
+      probe,
+      '@pyreon/reactivity',
+    )
+    expect(result).toBeNull()
+  })
+
+  it('emits tarball-contains-map finding when .map files leak in', () => {
+    const raw = JSON.stringify([
+      {
+        files: [
+          { path: 'lib/index.js' },
+          { path: 'lib/index.js.map' },
+          { path: 'lib/types/index.d.ts.map' },
+        ],
+      },
+    ])
+    const result = _detectMapsInPackOutput(
+      raw,
+      cwd,
+      probe,
+      '@pyreon/reactivity',
+    )
+    expect(result).not.toBeNull()
+    expect(result!.code).toBe('distribution/tarball-contains-map')
+    expect(result!.severity).toBe('error')
+    expect(result!.gate).toBe('distribution')
+    expect(result!.message).toContain('@pyreon/reactivity')
+    expect(result!.message).toContain('2 .map file(s)')
+    expect(result!.message).toContain('lib/index.js.map')
+    expect(result!.location?.relPath).toBe(
+      'packages/core/reactivity/package.json',
+    )
+  })
+
+  it('truncates the listed maps to the first 3 with an ellipsis', () => {
+    const raw = JSON.stringify([
+      {
+        files: [
+          { path: 'a.js.map' },
+          { path: 'b.js.map' },
+          { path: 'c.js.map' },
+          { path: 'd.js.map' },
+        ],
+      },
+    ])
+    const result = _detectMapsInPackOutput(
+      raw,
+      cwd,
+      probe,
+      '@pyreon/reactivity',
+    )!
+    expect(result.message).toContain('a.js.map, b.js.map, c.js.map')
+    expect(result.message).toContain('…')
+    expect(result.message).not.toContain('d.js.map')
+  })
+
+  it('handles npm pack output with no files entry gracefully', () => {
+    // Some npm versions / edge cases emit an empty array; the gate
+    // shouldn't crash.
+    const result = _detectMapsInPackOutput('[]', cwd, probe, '@pyreon/x')
+    expect(result).toBeNull()
   })
 })
 

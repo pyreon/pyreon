@@ -65,6 +65,37 @@ const findPackages = (repoRoot: string): PackageInfo[] => {
   return result
 }
 
+/**
+ * Pure parse-and-emit function for the `npm pack --dry-run` JSON
+ * output. Exported as `_internal` so tests can exercise the .map-
+ * detection + finding emission path without spawning the live npm
+ * subprocess — under CI parallel load the real probe runs 100s+,
+ * tripping the per-test timeout. Returns the finding (if any) for
+ * the caller to push onto the gate's findings array.
+ */
+export const _detectMapsInPackOutput = (
+  raw: string,
+  cwd: string,
+  probe: { dir: string },
+  probePackage: string,
+): Finding | null => {
+  const result = JSON.parse(raw) as Array<{ files: Array<{ path: string }> }>
+  const tarballFiles = result[0]?.files.map((f) => f.path) ?? []
+  const maps = tarballFiles.filter((f) => f.endsWith('.map'))
+  if (maps.length === 0) return null
+  return {
+    category: 'architecture',
+    severity: 'error',
+    code: 'distribution/tarball-contains-map',
+    gate: 'distribution',
+    message: `${probePackage}: npm pack --dry-run reported ${maps.length} .map file(s) in the would-be-published tarball: ${maps.slice(0, 3).join(', ')}${maps.length > 3 ? ', …' : ''}`,
+    location: {
+      path: join(probe.dir, 'package.json'),
+      relPath: relative(cwd, join(probe.dir, 'package.json')),
+    },
+  }
+}
+
 export interface DistributionGateOptions {
   /**
    * Repository root directory. The gate walks `<cwd>/packages/*` and
@@ -148,22 +179,13 @@ export const runDistributionGate = async (
           encoding: 'utf8',
           stdio: ['pipe', 'pipe', 'pipe'],
         })
-        const result = JSON.parse(out) as Array<{ files: Array<{ path: string }> }>
-        const tarballFiles = result[0]?.files.map((f) => f.path) ?? []
-        const maps = tarballFiles.filter((f) => f.endsWith('.map'))
-        if (maps.length > 0) {
-          findings.push({
-            category: 'architecture',
-            severity: 'error',
-            code: 'distribution/tarball-contains-map',
-            gate: 'distribution',
-            message: `${probePackage}: npm pack --dry-run reported ${maps.length} .map file(s) in the would-be-published tarball: ${maps.slice(0, 3).join(', ')}${maps.length > 3 ? ', …' : ''}`,
-            location: {
-              path: join(probe.dir, 'package.json'),
-              relPath: relative(opts.cwd, join(probe.dir, 'package.json')),
-            },
-          })
-        }
+        const finding = _detectMapsInPackOutput(
+          out,
+          opts.cwd,
+          probe,
+          probePackage,
+        )
+        if (finding) findings.push(finding)
       } catch {
         // npm not available or pack failed — silently skip. Locally
         // this might run in an environment where npm isn't on PATH
