@@ -233,7 +233,15 @@ jobs:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'
       - name: Download platform artifact
-        uses: actions/download-artifact@cc20338822e95a0fb5ef76d27cd4cd5ca3dfdc87 # v5.0.0
+        # SHA must match the real v5.0.0 tag (634f93cb…). The prior pin
+        # (cc20338…) was a transcription error that GitHub rejected as
+        # an unknown ref — every Publish job in run 25873293958 (the
+        # v0.18.0 release-native trigger) failed at "Set up job" with
+        # `Unable to resolve action ... unable to find version <SHA>`.
+        # No prior release exercised this code path (every previous
+        # release-native run was workflow_dispatch with the default
+        # `publish: 'false'` input, which skips the publish matrix).
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
           name: pyreon-compiler-${{ matrix.target }}
           path: packages/core/compiler/npm/${{ matrix.npm }}
