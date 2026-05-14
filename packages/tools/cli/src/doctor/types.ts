@@ -63,38 +63,42 @@ export interface Finding {
   message: string
 
   /** Where the finding surfaces. Optional for project-wide findings. */
-  location?: {
-    /** Absolute path */
-    path: string
-    /** Path relative to the repo root for readable reporting */
-    relPath: string
-    /** 1-based line number */
-    line?: number
-    /** 1-based column number */
-    column?: number
-  }
+  location?:
+    | {
+        /** Absolute path */
+        path: string
+        /** Path relative to the repo root for readable reporting */
+        relPath: string
+        /** 1-based line number */
+        line?: number | undefined
+        /** 1-based column number */
+        column?: number | undefined
+      }
+    | undefined
 
   /**
    * Companion locations for cross-file findings (e.g. duplicate-island-
    * name lists the second occurrence). Surfaces in human output below
    * the primary location with an `↳` marker.
    */
-  relatedLocations?: Array<{
-    path: string
-    relPath: string
-    line?: number
-    column?: number
-    label?: string
-  }>
+  relatedLocations?:
+    | Array<{
+        path: string
+        relPath: string
+        line?: number | undefined
+        column?: number | undefined
+        label?: string | undefined
+      }>
+    | undefined
 
   /** Optional short fix hint shown under the message in human output. */
-  fix?: string
+  fix?: string | undefined
 
   /**
    * `true` if `pyreon doctor --fix` can auto-resolve this. Currently
    * limited to lint findings whose rule has an auto-fixer.
    */
-  fixable?: boolean
+  fixable?: boolean | undefined
 }
 
 /**
@@ -119,7 +123,7 @@ export interface GateResult {
   /** Per-gate metadata for the human + JSON reports. */
   meta: {
     /** Number of files / packages / records the gate scanned. */
-    scanned?: number
+    scanned?: number | undefined
     /** Wall-clock duration in milliseconds. */
     elapsedMs: number
     /**
@@ -128,13 +132,65 @@ export interface GateResult {
      * skipped gates from the score and surfaces them in a "skipped"
      * footer.
      */
-    skipped?: boolean
+    skipped?: boolean | undefined
     /**
      * Why the gate was skipped (only meaningful when `skipped: true`).
      */
-    skipReason?: string
+    skipReason?: string | undefined
   }
 }
 
 /** Convenience constructor for in-source readability. */
 export const finding = (f: Finding): Finding => f
+
+// ─── DoctorReport (PR 2 — aggregation + score) ──────────────────────────
+
+/**
+ * Per-category subscore + raw counts. The aggregator builds one
+ * `CategoryScore` per `FindingCategory`, then averages them into the
+ * overall score. Categories with no findings AND no contributing gates
+ * (skipped or filtered out) get `included: false` and are excluded
+ * from the mean — keeping a perfect 100 for an unmeasured category
+ * would be misleading.
+ */
+export interface CategoryScore {
+  category: FindingCategory
+  /** 0-100 subscore for this bucket */
+  score: number
+  errors: number
+  warnings: number
+  infos: number
+  /** Letter grade derived from `score` (A/B/C/D/F) */
+  grade: Grade
+  /** False if no gate covered this category — drop from mean */
+  included: boolean
+}
+
+export type Grade = 'A' | 'B' | 'C' | 'D' | 'F'
+
+/**
+ * Final aggregated report `pyreon doctor` produces. The renderer
+ * (text / json / gha) consumes this; gate orchestration is upstream.
+ */
+export interface DoctorReport {
+  /** 0-100 weighted mean of included `categories[].score` */
+  score: number
+  /** Letter grade for `score` */
+  grade: Grade
+  /** Per-category breakdown (always 5 entries — `included` flags coverage) */
+  categories: CategoryScore[]
+  /** Every gate that ran (or was skipped, with `meta.skipped: true`) */
+  gates: GateResult[]
+  /** Flat list of all findings across gates, ordered by severity then category */
+  findings: Finding[]
+  /** Aggregate counts across all findings */
+  totals: {
+    errors: number
+    warnings: number
+    infos: number
+  }
+  /** Top-level wall-clock — sum of gates' elapsedMs (parallel sum, not max) */
+  elapsedMs: number
+  /** ISO timestamp of when the report was produced (for diffing across runs) */
+  timestamp: string
+}

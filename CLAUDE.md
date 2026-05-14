@@ -1127,6 +1127,49 @@ oxfmt --check .                       # check formatting
 Every package and example must have `"lint": "oxlint ."` and `"typecheck": "tsc --noEmit"` in scripts.
 Examples use `noEmit: true` in tsconfig (not `rootDir`) since they include vite.config.ts.
 
+## pyreon doctor — unified project health audit
+
+`pyreon doctor` is the single entry point for every gate Pyreon ships. PR 1 (#570) extracted a `Finding[]` / `GateResult` shape from the standalone scripts; PR 2 (#XXX) added the aggregator, 0-100 score formula, and beautiful CLI output. Modeled after [react.doctor](https://www.react.doctor/) — banner + per-category bars + top-N findings.
+
+```bash
+pyreon doctor                # default: 8 fast gates (~2-5s), scored output
+pyreon doctor --full         # adds 2 slow gates: audit-types, bundle-budgets
+pyreon doctor --fix          # auto-fix lint + react-patterns where possible
+pyreon doctor --json         # full DoctorReport for AI agents / dashboards
+pyreon doctor --gha          # GitHub Actions annotation lines (one per finding)
+pyreon doctor --ci           # exit nonzero on errors only
+pyreon doctor --only lint,doc-claims      # restrict to listed gates
+pyreon doctor --skip pyreon-patterns      # exclude from default set
+pyreon doctor --audit-min-risk high       # tighten test-environment audit
+```
+
+**Gates (10 total, 8 fast + 2 slow)**:
+
+| Gate              | Default category | Speed | Coverage                                                    |
+| ----------------- | ---------------- | ----- | ----------------------------------------------------------- |
+| `react-patterns`  | correctness      | fast  | `useState` / `useEffect` / `className` / React imports      |
+| `pyreon-patterns` | correctness      | fast  | 12 Pyreon-specific anti-patterns (signal-write-as-call, …)  |
+| `lint`            | correctness      | fast  | All 66 `@pyreon/lint` rules                                 |
+| `distribution`    | architecture     | fast  | `sideEffects` + `!lib/**/*.map` in published packages       |
+| `doc-claims`      | documentation    | fast  | Hand-quoted numeric claims in docs match the source         |
+| `audit-tests`     | testing          | fast  | Mock-vnode test patterns (PR #197 bug class)                |
+| `islands-audit`   | architecture     | fast  | Cross-file island foot-guns (5 detector codes)              |
+| `ssg-audit`       | architecture     | fast  | `_404.tsx` placement, `getStaticPaths`, revalidate literals |
+| `audit-types`     | architecture     | slow  | Typed-but-unimplemented public-interface fields             |
+| `bundle-budgets`  | performance      | slow  | Gzipped main-entry size vs locked budget                    |
+
+**Score formula**: per-finding penalty `error=10 / warning=3 / info=1`. Per-category subscore = `max(0, 100 - sum)`. Overall = mean of _included_ category subscores. Letter grades A ≥ 90, B ≥ 80, C ≥ 70, D ≥ 60, F otherwise. Categories with no gate coverage are excluded from the mean (an unmeasured category shouldn't pull the average up).
+
+**Output formats**:
+
+- `text` (default): big-score banner + per-category bars + top-N findings + skipped-gates footer. Uses ANSI colors when stdout is a TTY (respects `NO_COLOR` / `FORCE_COLOR`). OSC-8 hyperlinks on file paths so terminals that support them (iTerm2, WezTerm, kitty, VSCode) render clickable links.
+- `--json`: full `DoctorReport` — score, grade, per-category scores, findings array, gates array with meta, totals, elapsedMs, timestamp.
+- `--gha`: GitHub Actions annotation lines (`::error file=X,line=Y,col=Z::message`). Severity map: error → error, warning → warning, info → notice.
+
+**Architecture**: `packages/tools/cli/src/doctor/` ships the orchestrator (parallel `Promise.all` over selected gates), score module (pure scorer), aggregator (`buildReport(gates) → DoctorReport`), three renderers (`text` / `json` / `gha`). Each gate is a thin adapter — pure-function ports (distribution, doc-claims) or subprocess-adapters (audit-types, bundle-budgets) over the existing standalone scripts.
+
+**Legacy flags**: `--audit-tests`, `--check-islands`, `--check-ssg` still work — they map to `--only <gate>` shortcuts so existing CI scripts continue to function unchanged.
+
 ## Audit Types — typed-but-unimplemented detector
 
 `scripts/audit-types.ts` walks every public interface field in a package's `src/` and counts non-type references across the package. Fields with zero references are flagged as HIGH (likely typed-but-unimplemented). Catches the bug class where a feature is documented and typed but the runtime never reads the configured value — exactly what shipped in 0.14.0 with `mode: "ssg"` / `ssg.paths` / `ISRConfig.revalidate` / every `Adapter.build()`.
