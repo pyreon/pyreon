@@ -50,6 +50,7 @@ Lifecycle hook arrays are lazy-allocated -- `LifecycleHooks.mount`/`.unmount`/`.
 
 - **`makeReactiveProps(raw)`** -- Converts compiler-emitted `_rp()` wrappers into getter properties. Uses a scan-first strategy: checks for any branded reactive prop before allocating the result object. Static-only components return `raw` immediately with no allocation.
 - **`_rp(fn)`** -- Brands a function as a reactive prop wrapper (compiler-emitted, not user-facing).
+- **`_wrapSpread(source)`** -- Compiler-emitted helper that makes JSX spread on a component reactivity-safe. For `<Comp {...source}>`, the compiler emits `<Comp {..._wrapSpread(source)}>`. `_wrapSpread` walks `source`'s own keys without firing getters and re-brands each getter-shaped value as an `_rp` thunk pointing back at the live source. JS spread then carries the brands as plain data properties; `makeReactiveProps` converts them back to getters on the consumer side -- so reactive props survive the spread end-to-end. Fast path: when `source` has no getter descriptors, returns the source unchanged (zero cost). Not user-facing; emitted automatically by `@pyreon/compiler` for any component JSX with a spread. See `docs/patterns/reactive-spread.md` for the full contract.
 
 ### Context
 
