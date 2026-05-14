@@ -44,11 +44,11 @@
     "@pyreon/typescript": "workspace:^",
     "@vitus-labs/tools-rolldown": "^2.3.0"
   },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/ui-core": "workspace:^"
-  },
   "engines": {
     "node": ">= 22"
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/ui-core": "workspace:^"
   }
 }

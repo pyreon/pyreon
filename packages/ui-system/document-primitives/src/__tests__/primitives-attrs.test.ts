@@ -1,5 +1,11 @@
 import { initTestConfig, renderProps } from '@pyreon/test-utils'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+
+// Each test dynamically imports a primitive module which transitively
+// pulls in @pyreon/rocketstyle + @pyreon/attrs + @pyreon/styler chain.
+// First-load on slow CI runners takes 5-30s per primitive. The default
+// 5000ms timeout was hitting these on every cold load.
+vi.setConfig({ testTimeout: 60_000 })
 
 let cleanup: () => void
 beforeAll(() => {

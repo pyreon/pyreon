@@ -36,15 +36,6 @@
     "lint": "oxlint ."
   },
   "dependencies": {
-    "@pyreon/ui-primitives": "workspace:^",
-    "@pyreon/ui-theme": "workspace:^"
-  },
-  "devDependencies": {
-    "@pyreon/test-utils": "workspace:^",
-    "@pyreon/typescript": "workspace:^",
-    "@vitest/browser-playwright": "^4.1.4"
-  },
-  "peerDependencies": {
     "@pyreon/coolgrid": "workspace:^",
     "@pyreon/core": "workspace:^",
     "@pyreon/elements": "workspace:^",
@@ -53,6 +44,13 @@
     "@pyreon/rocketstyle": "workspace:^",
     "@pyreon/styler": "workspace:^",
     "@pyreon/ui-core": "workspace:^",
+    "@pyreon/ui-primitives": "workspace:^",
+    "@pyreon/ui-theme": "workspace:^",
     "@pyreon/unistyle": "workspace:^"
+  },
+  "devDependencies": {
+    "@pyreon/test-utils": "workspace:^",
+    "@pyreon/typescript": "workspace:^",
+    "@vitest/browser-playwright": "^4.1.4"
   }
 }

@@ -1,5 +1,11 @@
 import { _resetLoader, ensureModules, getCore, getCoreSync } from '../loader'
 
+// ECharts loads dynamically and is heavy (~2-3 MB compiled, slow first-load on CI).
+// Default 5000 ms timeout was tight even locally; CI runners under load
+// regularly hit 5400-6000 ms on the per-key tests. Bump to 30 s globally so
+// flake-prone tests have headroom without per-test annotations everywhere.
+vi.setConfig({ testTimeout: 30_000 })
+
 afterEach(() => {
   _resetLoader()
 })
@@ -7,7 +13,7 @@ afterEach(() => {
 // ─── Chart type detection ────────────────────────────────────────────────────
 
 describe('chart type detection', () => {
-  it('detects single chart type from series', { timeout: 15000 }, async () => {
+  it('detects single chart type from series', { timeout: 30000 }, async () => {
     const core = await ensureModules({
       series: [{ type: 'bar', data: [1, 2, 3] }],
     })
@@ -15,7 +21,7 @@ describe('chart type detection', () => {
     expect(typeof core.init).toBe('function')
   })
 
-  it('detects multiple chart types from series array', { timeout: 15000 }, async () => {
+  it('detects multiple chart types from series array', { timeout: 30000 }, async () => {
     const core = await ensureModules({
       series: [
         { type: 'bar', data: [1] },
@@ -26,7 +32,7 @@ describe('chart type detection', () => {
     expect(core).toBeDefined()
   })
 
-  it('detects all 22 chart types without error', { timeout: 15000 }, async () => {
+  it('detects all 22 chart types without error', { timeout: 30000 }, async () => {
     const types = [
       'bar',
       'line',

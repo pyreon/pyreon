@@ -41,7 +41,7 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/typescript": "workspace:^"
   },
-  "peerDependencies": {
+  "dependencies": {
     "@pyreon/reactivity": "workspace:^"
   }
 }

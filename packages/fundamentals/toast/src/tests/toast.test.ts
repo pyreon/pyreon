@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { _pauseAll, _reset, _resumeAll, _toasts, toast } from '../toast'
+import { Toaster } from '../toaster'
 
 /** Helper — get toast at index with non-null assertion (tests verify length first). */
 function at(index: number) {
@@ -587,8 +588,7 @@ describe('toast initial state', () => {
 })
 
 describe('Toaster renders', () => {
-  it('Toaster is a function component', async () => {
-    const { Toaster } = await import('../toaster')
+  it('Toaster is a function component', () => {
     expect(typeof Toaster).toBe('function')
   })
 })

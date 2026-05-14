@@ -222,17 +222,24 @@ const forceFail = process.env.PYREON_BOOTSTRAP_FORCE_FAIL === '1'
 // below (bun install must never abort over an optional perf artifact).
 // Reference: packages/core/compiler/scripts/build-native.ts (cargo
 // bare-repo workaround, platform extension mapping).
-try {
-  execSync('bun packages/core/compiler/scripts/build-native.ts', {
-    cwd: ROOT,
-    stdio: 'inherit',
-    timeout: 300_000, // matches the script's internal cargo timeout
-  })
-} catch {
-  // oxlint-disable-next-line no-console
-  console.warn(
-    '[bootstrap] @pyreon/compiler native build skipped (cargo missing or build failed). JS fallback will be used.',
-  )
+// Test-only escape hatch: subprocess tests of bootstrap exit codes
+// (packages/internals/test-utils/src/tests/bootstrap-exit-codes.test.ts)
+// don't care about the Rust binary and can't tolerate its ~5 min cold-
+// cache cargo build under the test's 60s subprocess timeout. Honoured
+// only via env var so it can't accidentally skip in production.
+if (process.env.PYREON_BOOTSTRAP_SKIP_NATIVE !== '1') {
+  try {
+    execSync('bun packages/core/compiler/scripts/build-native.ts', {
+      cwd: ROOT,
+      stdio: 'inherit',
+      timeout: 300_000, // matches the script's internal cargo timeout
+    })
+  } catch {
+    // oxlint-disable-next-line no-console
+    console.warn(
+      '[bootstrap] @pyreon/compiler native build skipped (cargo missing or build failed). JS fallback will be used.',
+    )
+  }
 }
 
 if (dirty.length === 0 && !forceFail) {

@@ -42,6 +42,8 @@
     "lint": "oxlint ."
   },
   "dependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
     "@tanstack/query-core": "^5.96.1"
   },
   "devDependencies": {
@@ -50,9 +52,5 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^"
-  },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
   }
 }

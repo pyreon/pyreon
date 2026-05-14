@@ -41,15 +41,13 @@
   "dependencies": {
     "@atlaskit/pragmatic-drag-and-drop": "^1.7.10",
     "@atlaskit/pragmatic-drag-and-drop-auto-scroll": "^2.0.0",
-    "@atlaskit/pragmatic-drag-and-drop-hitbox": "^1.0.0"
+    "@atlaskit/pragmatic-drag-and-drop-hitbox": "^1.0.0",
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
   },
   "devDependencies": {
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/typescript": "workspace:^",
     "@vitest/browser-playwright": "^4.1.4"
-  },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
   }
 }

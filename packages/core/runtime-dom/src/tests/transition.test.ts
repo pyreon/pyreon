@@ -118,7 +118,11 @@ describe('Transition', () => {
     const target = el.querySelector('.lifecycle') as HTMLElement
     if (target) {
       target.dispatchEvent(new Event('transitionend'))
-      await new Promise<void>((r) => setTimeout(r, 10))
+      // 10ms was too tight under CI scheduling pressure — the dispatched
+      // event's listener callback runs on next-tick + microtask flush,
+      // and shared CI runners can have 10-30ms scheduling latency. 50ms
+      // gives enough headroom without slowing the test meaningfully.
+      await new Promise<void>((r) => setTimeout(r, 50))
       expect(onAfterEnter).toHaveBeenCalled()
     }
   })

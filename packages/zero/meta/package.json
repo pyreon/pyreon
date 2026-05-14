@@ -53,6 +53,7 @@
     "@pyreon/machine": "workspace:^",
     "@pyreon/permissions": "workspace:^",
     "@pyreon/query": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
     "@pyreon/rocketstyle": "workspace:^",
     "@pyreon/state-tree": "workspace:^",
     "@pyreon/storage": "workspace:^",
@@ -63,8 +64,5 @@
     "@pyreon/unistyle": "workspace:^",
     "@pyreon/validation": "workspace:^",
     "@pyreon/virtual": "workspace:^"
-  },
-  "peerDependencies": {
-    "@pyreon/reactivity": "workspace:^"
   }
 }
