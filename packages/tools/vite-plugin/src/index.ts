@@ -34,7 +34,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join as pathJoin } from 'node:path'
-import { generateContext, transformJSX } from '@pyreon/compiler'
+import { generateContext, transformDeferInline, transformJSX } from '@pyreon/compiler'
 import type { Plugin, ViteDevServer } from 'vite'
 
 // Virtual module ID for the HMR runtime
@@ -429,16 +429,31 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       // next dev-server module reload.
       if (islandsEnabled) scanIslandDeclarations(code, id, islandRegistry)
 
+      // ── Inline-Defer pre-pass ──────────────────────────────────────────
+      // Rewrites `<Defer when={x}><Modal /></Defer>` into the explicit
+      // chunk-prop form so Rolldown emits a proper per-Defer chunk and
+      // the main bundle drops the static `import { Modal } from ...`
+      // when it's exclusively used inside this Defer's subtree. Runs
+      // BEFORE the JSX→runtime transform so the downstream pipeline
+      // sees an already-explicit `<Defer chunk={...}>` shape with no
+      // special-casing needed in `transformJSX`. See
+      // `@pyreon/compiler/defer-inline` for the rewrite contract.
+      const deferResult = transformDeferInline(code, id)
+      const sourceForJsx = deferResult.changed ? deferResult.code : code
+      for (const w of deferResult.warnings) {
+        this.warn(`${w.message} (${id}:${w.line}:${w.column})`)
+      }
+
       // ── Resolve imported signals from the registry ─────────────────────
       // Check each import in this file: if the imported module has signal
       // exports in the registry, pass them as knownSignals to the compiler.
-      const knownSignals = await resolveImportedSignals(code, id, signalExportRegistry, this, resolveCache)
+      const knownSignals = await resolveImportedSignals(sourceForJsx, id, signalExportRegistry, this, resolveCache)
 
       // Vite passes `ssr: true` when transforming for the SSR module graph
       // (both build --ssr and dev `ssrLoadModule`). The compiler emits plain
       // `h()` calls in that mode so `runtime-server` can render to a string.
       const isSsr = transformOptions?.ssr === true
-      const result = transformJSX(code, id, { ssr: isSsr, knownSignals })
+      const result = transformJSX(sourceForJsx, id, { ssr: isSsr, knownSignals })
       // Surface compiler warnings in the terminal
       for (const w of result.warnings) {
         this.warn(`${w.message} (${id}:${w.line}:${w.column})`)
