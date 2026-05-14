@@ -59,7 +59,7 @@
     "check-mcp-docs": "bun scripts/check-mcp-docs.ts",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "bun run build && bun run scripts/publish.ts"
+    "release": "bun run --filter='./packages/*/*' build && bun run scripts/publish.ts"
   },
   "devDependencies": {
     "@babel/core": "^7.29.0",
