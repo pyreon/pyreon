@@ -11,7 +11,11 @@ const cli = cac('zero')
 cli
   .command('[root]', 'Start dev server')
   .alias('dev')
-  .option('--port <port>', 'Server port', { default: 3000 })
+  // No CAC default — the command resolves precedence at runtime:
+  // CLI flag > zero({ port }) from vite.config.ts > 3000 framework default.
+  // A CAC default here would make `options.port` always defined and skip
+  // the config-file fallback.
+  .option('--port <port>', 'Server port (default: 3000)')
   .option('--host [host]', 'Server host')
   .option('--open', 'Open browser on start')
   .action(dev)
@@ -23,7 +27,8 @@ cli
 
 cli
   .command('preview [root]', 'Preview production build')
-  .option('--port <port>', 'Server port', { default: 3000 })
+  // See `dev` for rationale — no CAC default; runtime precedence applies.
+  .option('--port <port>', 'Server port (default: 3000)')
   .option('--host [host]', 'Server host')
   .action(preview)
 
