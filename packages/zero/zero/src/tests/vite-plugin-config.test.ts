@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 // `zeroPlugin()` returns Plugin[] — `[mainPlugin]` for non-SSG modes,
 // `[mainPlugin, ssgPlugin]` for `mode: "ssg"`. The first entry is always
@@ -47,6 +47,109 @@ describe('zero vite-plugin config', () => {
     const config = plugin.config({ root: process.cwd() })
     expect(config.define.__ZERO_MODE__).toBeDefined()
     expect(config.define.__ZERO_BASE__).toBeDefined()
+  })
+
+  // Port handling — zero-canonical default is 3000 (matches `zero dev`,
+  // adapter, and Next.js / Remix / Astro convention). Precedence:
+  //   1. Vite CLI `--port N` (argv detection skips plugin default)
+  //   2. User `vite.config.ts server: { port: N }` (user beats plugin)
+  //   3. `zero({ port: N })` (resolved into config.port)
+  //   4. Default 3000
+  // The argv-detection layer is load-bearing: PR #579 proved that
+  // returning `server.port: 3000` unconditionally clobbered `vite
+  // --port 517N --strictPort` in the e2e webServer (memory: vite cli
+  // port doesnt override plugin).
+  describe('port defaults', () => {
+    const originalArgv = process.argv
+    afterEach(() => {
+      process.argv = originalArgv
+    })
+
+    it('defaults to 3000 when no user port and no CLI flag', async () => {
+      process.argv = ['/usr/bin/bun', 'vite']
+      const { zeroPlugin } = await import('../vite-plugin')
+      const plugin = getMainPlugin(zeroPlugin())
+      const config = plugin.config({ root: process.cwd() })
+      expect(config.server.port).toBe(3000)
+    })
+
+    it('honours zero({ port: N }) override', async () => {
+      process.argv = ['/usr/bin/bun', 'vite']
+      const { zeroPlugin } = await import('../vite-plugin')
+      const plugin = getMainPlugin(zeroPlugin({ port: 4242 }))
+      const config = plugin.config({ root: process.cwd() })
+      expect(config.server.port).toBe(4242)
+    })
+
+    it('skips default when CLI passes --port (so CLI value wins)', async () => {
+      process.argv = ['/usr/bin/bun', 'vite', '--port', '5173']
+      const { zeroPlugin } = await import('../vite-plugin')
+      const plugin = getMainPlugin(zeroPlugin())
+      const config = plugin.config({ root: process.cwd() })
+      expect(config.server).toBeUndefined()
+    })
+
+    it('skips default for --port=N form', async () => {
+      process.argv = ['/usr/bin/bun', 'vite', '--port=5173']
+      const { zeroPlugin } = await import('../vite-plugin')
+      const plugin = getMainPlugin(zeroPlugin())
+      const config = plugin.config({ root: process.cwd() })
+      expect(config.server).toBeUndefined()
+    })
+
+    it('skips default for -p short flag', async () => {
+      process.argv = ['/usr/bin/bun', 'vite', '-p', '5173']
+      const { zeroPlugin } = await import('../vite-plugin')
+      const plugin = getMainPlugin(zeroPlugin())
+      const config = plugin.config({ root: process.cwd() })
+      expect(config.server).toBeUndefined()
+    })
+
+    it('explicit zero({ port }) still applies even when CLI has --port', async () => {
+      // If the user set port via zero({}), they want plugin to apply it
+      // (Vite's merge still lets user vite.config.ts server.port and
+      // CLI override on top — this assertion only locks the plugin's
+      // OWN return, not the final merged config).
+      process.argv = ['/usr/bin/bun', 'vite', '--port', '5173']
+      const { zeroPlugin } = await import('../vite-plugin')
+      const plugin = getMainPlugin(zeroPlugin({ port: 4242 }))
+      const config = plugin.config({ root: process.cwd() })
+      expect(config.server.port).toBe(4242)
+    })
+  })
+
+  describe('argvHasPortFlag helper', () => {
+    it('detects --port flag', async () => {
+      const { argvHasPortFlag } = await import('../vite-plugin')
+      expect(argvHasPortFlag(['node', 'vite', '--port', '5173'])).toBe(true)
+    })
+
+    it('detects --port=N form', async () => {
+      const { argvHasPortFlag } = await import('../vite-plugin')
+      expect(argvHasPortFlag(['node', 'vite', '--port=5173'])).toBe(true)
+    })
+
+    it('detects -p short flag', async () => {
+      const { argvHasPortFlag } = await import('../vite-plugin')
+      expect(argvHasPortFlag(['node', 'vite', '-p', '5173'])).toBe(true)
+    })
+
+    it('detects -p=N form', async () => {
+      const { argvHasPortFlag } = await import('../vite-plugin')
+      expect(argvHasPortFlag(['node', 'vite', '-p=5173'])).toBe(true)
+    })
+
+    it('returns false when no port flag present', async () => {
+      const { argvHasPortFlag } = await import('../vite-plugin')
+      expect(argvHasPortFlag(['node', 'vite', '--mode', 'development'])).toBe(false)
+    })
+
+    it('does not match unrelated flags containing "port"', async () => {
+      // Defensive: ensure we don't accidentally match `--portfolio`
+      // or similar long-form flags that happen to share a prefix.
+      const { argvHasPortFlag } = await import('../vite-plugin')
+      expect(argvHasPortFlag(['node', 'vite', '--portfolio'])).toBe(false)
+    })
   })
 
   // SSG mode auto-wires `ssgPlugin` into the plugin chain alongside the
