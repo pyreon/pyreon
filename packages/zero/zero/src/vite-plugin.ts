@@ -138,8 +138,23 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 					const routes = config.i18n
 						? expandRoutesForLocales(baseRoutes, config.i18n)
 						: baseRoutes;
+					// SSG mode: lazy() route splitting by default (parity with
+					// SSR/SPA). Opt-out via `ssg.splitChunks: false` for tiny
+					// sites that prefer single-chunk + instant navigation.
+					//
+					// Pre-2026-Q3: SSG was hardcoded to `staticImports: true`
+					// (bundle everything). Trade-off was instant post-hydration
+					// nav, but the initial bundle grew linearly with route
+					// count — a 50-route docs site shipped all 50 route
+					// components on first paint. Lazy splitting (now the
+					// default for SSG) fixes that: only the landing route +
+					// deps load up front, the rest fetch on navigation. See
+					// `ssg.splitChunks` JSDoc in types.ts for the crossover-
+					// point rationale.
+					const ssgSplitDisabled =
+						config.mode === "ssg" && config.ssg?.splitChunks === false;
 					return generateRouteModuleFromRoutes(routes, routesDir, {
-						staticImports: config.mode === 'ssg',
+						staticImports: ssgSplitDisabled,
 					});
 				} catch (_err) {
 					return `export const routes = []`;
