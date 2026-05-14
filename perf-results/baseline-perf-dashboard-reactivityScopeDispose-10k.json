@@ -1,0 +1,15 @@
+{
+  "sha": "9dd10d90",
+  "app": "perf-dashboard",
+  "journey": "reactivityScopeDispose-10k",
+  "mode": "dev",
+  "runs": 5,
+  "timestamp": "2026-05-14T10:13:10.024Z",
+  "medianWallMs": 2,
+  "medianHeapBytes": 10600000,
+  "counters": {
+    "reactivity.signalCreate": 1,
+    "reactivity.effectRun": 10000,
+    "reactivity.signalWrite": 1
+  }
+}
