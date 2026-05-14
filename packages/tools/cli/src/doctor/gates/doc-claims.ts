@@ -141,6 +141,30 @@ export const runDocClaimsGate = async (
   const start = Date.now()
   const findings: Finding[] = []
 
+  // The claim sites are Pyreon-monorepo-specific paths (hooks README,
+  // CLAUDE.md, docs/docs/index.md, etc.). In a downstream consumer
+  // project NONE of them exist — firing the gate would emit a flood of
+  // spurious file-missing errors that don't reflect any real problem.
+  // Skip when zero claim files are present: signal that the gate
+  // doesn't apply rather than blame the user for not being Pyreon.
+  const anyClaimExists = checks.some((c) =>
+    c.claims.some((cl) => existsSync(join(opts.cwd, cl.file))),
+  )
+  if (!anyClaimExists) {
+    return {
+      gate: 'doc-claims',
+      category: 'documentation',
+      findings: [],
+      meta: {
+        scanned: 0,
+        elapsedMs: Date.now() - start,
+        skipped: true,
+        skipReason:
+          'no claim sites found in this project (gate targets Pyreon monorepo paths)',
+      },
+    }
+  }
+
   for (const check of checks) {
     const actual = check.actual(opts.cwd)
     for (const claim of check.claims) {
