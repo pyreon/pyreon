@@ -1,3 +1,16 @@
+import { Defer } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
+import { DeferredFixture } from '../components/DeferredFixture'
+
+// Inline <Defer> usage — the compiler should:
+//   1. Rewrite to <Defer chunk={() => import('./DeferredFixture').then(...)} when={...}>
+//   2. Remove the static import of DeferredFixture
+//   3. Rolldown then emits DeferredFixture as a separate chunk
+// verify-modes cell `playground × spa (defer-inline)` asserts the
+// DeferredFixture's unique fingerprint string appears in a per-chunk
+// file BUT NOT in the entry chunk.
+const _open = signal(false)
+
 export function About() {
   return (
     <div class="card">
@@ -12,6 +25,9 @@ export function About() {
         <li>🖥️ SSR / SSG via renderToString</li>
         <li>📦 Zero runtime VDOM overhead</li>
       </ul>
+      <Defer when={_open}>
+        <DeferredFixture />
+      </Defer>
     </div>
   )
 }
