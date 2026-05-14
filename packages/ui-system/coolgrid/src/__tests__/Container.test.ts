@@ -29,7 +29,7 @@ describe('Container', () => {
     mockUseContext.mockReturnValue({ theme: {} })
   })
 
-  it('returns a VNode', { timeout: 30_000 }, async () => {
+  it('returns a VNode', { timeout: 60_000 }, async () => {
     // Long timeout: this test dynamic-imports Container on first run,
     // which cold-loads the full styler → unistyle chain. On slow CI
     // runners it consistently hits ~13-14s, flaking against the
