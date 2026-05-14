@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-perf-dashboard",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "Stress-test dashboard for perf-harness development. Real-app-shape reproduction of the bokisch.com failure class.",
   "type": "module",

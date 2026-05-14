@@ -1,5 +1,28 @@
 # cpa-pw-dash
 
+## 0.0.4
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/runtime-dom@0.18.0
+  - @pyreon/zero@0.18.0
+  - @pyreon/core@0.18.0
+  - @pyreon/head@0.18.0
+  - @pyreon/reactivity@0.18.0
+  - @pyreon/router@0.18.0
+  - @pyreon/runtime-server@0.18.0
+  - @pyreon/server@0.18.0
+  - @pyreon/document@0.18.0
+  - @pyreon/form@0.18.0
+  - @pyreon/query@0.18.0
+  - @pyreon/store@0.18.0
+  - @pyreon/table@0.18.0
+  - @pyreon/validation@0.18.0
+  - @pyreon/connector-document@0.18.0
+  - @pyreon/document-primitives@0.18.0
+  - @pyreon/meta@0.18.0
+
 ## 0.0.3
 
 ### Patch Changes
