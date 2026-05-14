@@ -121,22 +121,10 @@ export function App() {
 }
 `
     const result = transformDeferInline(input, 'app.tsx')
-    // No transform fires (multi-child shape doesn't match the inline-eligible
-    // single-component-child pattern). No warning either — v1 just leaves it
-    // alone; downstream Defer's runtime behaviour handles the malformed shape.
+    // v2 now emits a `multiple-children` warning so the author knows to use
+    // the explicit `chunk` form. v1 was silent — that was a footgun.
     expect(result.changed).toBe(false)
-  })
-
-  test('skips Defer whose child has props (multi-prop closure capture)', () => {
-    const input = `
-import { Defer } from '@pyreon/core'
-import { Modal } from './Modal'
-export function App() {
-  return <Defer when={() => true}><Modal title="hi" /></Defer>
-}
-`
-    const result = transformDeferInline(input, 'app.tsx')
-    expect(result.changed).toBe(false)
+    expect(result.warnings[0]?.code).toBe('defer-inline/multiple-children')
   })
 
   test('fast-path: no Defer in source returns unchanged', () => {
@@ -157,7 +145,74 @@ export const count = signal(0)
     expect(result.code).toBe(input)
   })
 
-  test('skips renamed imports — { Modal as M } not handled in v1', () => {
+  // v1 bailed on `{ Modal as M }`. v2 handles renamed imports — the
+  // local name in JSX is `M`, but the chunk extracts `__m.Modal` (the
+  // original exported name). See the positive test in the v2 section.
+})
+
+describe('transformDeferInline — v2 capabilities', () => {
+  test('preserves props on inline child', () => {
+    const input = `
+import { Defer } from '@pyreon/core'
+import { Modal } from './Modal'
+export function App() {
+  return <Defer when={() => true}><Modal title="Confirm" size="md" /></Defer>
+}
+`
+    const result = transformDeferInline(input, 'app.tsx')
+    expect(result.changed).toBe(true)
+    expect(result.code).not.toContain("import { Modal }")
+    // Props pass through verbatim. Only the component name is replaced.
+    expect(result.code).toContain('{(__C) => <__C title="Confirm" size="md" />}')
+  })
+
+  test('preserves nested children on inline child (non-self-closing)', () => {
+    const input = `
+import { Defer } from '@pyreon/core'
+import { Modal } from './Modal'
+export function App() {
+  return (
+    <Defer when={() => true}>
+      <Modal title="Hello">
+        <p>nested content</p>
+      </Modal>
+    </Defer>
+  )
+}
+`
+    const result = transformDeferInline(input, 'app.tsx')
+    expect(result.changed).toBe(true)
+    // Both opening AND closing tag names replaced with __C; nested JSX intact.
+    expect(result.code).toContain('<__C title="Hello">')
+    expect(result.code).toContain('</__C>')
+    expect(result.code).toContain('<p>nested content</p>')
+  })
+
+  test('captures closure variables via render-prop scope (signal in handler)', () => {
+    const input = `
+import { Defer } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
+import { Modal } from './Modal'
+
+export function App() {
+  const open = signal(false)
+  const count = signal(0)
+  return (
+    <Defer when={open}>
+      <Modal count={count} onClose={() => open.set(false)} />
+    </Defer>
+  )
+}
+`
+    const result = transformDeferInline(input, 'app.tsx')
+    expect(result.changed).toBe(true)
+    // The render-prop arrow naturally captures `count` + `open.set` from
+    // the App function's scope — no closure-tracking pass needed, JS
+    // lexical scope just works.
+    expect(result.code).toContain('<__C count={count} onClose={() => open.set(false)} />')
+  })
+
+  test('handles renamed imports — { Modal as M }', () => {
     const input = `
 import { Defer } from '@pyreon/core'
 import { Modal as M } from './Modal'
@@ -166,11 +221,32 @@ export function App() {
 }
 `
     const result = transformDeferInline(input, 'app.tsx')
-    expect(result.changed).toBe(false)
-    // Renamed-import case is not yet supported — falls through to the
-    // import-not-found warning (no specifier whose `local.name === 'M'`
-    // AND `imported.name === local.name` matches).
-    expect(result.warnings[0]?.code).toBe('defer-inline/import-not-found')
+    expect(result.changed).toBe(true)
+    // Local name `M` is used at the JSX site, but the chunk extracts
+    // `__m.Modal` (the original exported name from './Modal').
+    expect(result.code).toContain(`chunk={() => import('./Modal').then((__m) => ({ default: __m.Modal }))}`)
+    expect(result.code).not.toContain("import { Modal as M }")
+    expect(result.code).toContain('{(__C) => <__C />}')
+  })
+
+  test('multi-specifier import: drops only the Defer-targeted binding', () => {
+    const input = `
+import { Defer } from '@pyreon/core'
+import { Modal, OtherThing } from './shared'
+export function App() {
+  const use = OtherThing
+  return <Defer when={() => true}><Modal /></Defer>
+}
+`
+    const result = transformDeferInline(input, 'app.tsx')
+    expect(result.changed).toBe(true)
+    // OtherThing is referenced elsewhere — its import must survive.
+    expect(result.code).toContain("OtherThing")
+    expect(result.code).toMatch(/import \{\s*OtherThing\s*\} from '\.\/shared'/)
+    // Modal binding is gone from the import declaration.
+    expect(result.code).not.toMatch(/import \{[^}]*\bModal\b[^}]*\}/)
+    // ...but the dynamic chunk pulls Modal from './shared' (same source).
+    expect(result.code).toContain(`chunk={() => import('./shared').then((__m) => ({ default: __m.Modal }))}`)
   })
 })
 

@@ -421,6 +421,23 @@ const MATRIX: Cell[] = [
         'DEFER_INLINE_FIXTURE_MARKER_XYZ123',
         'DeferredFixture',
       )
+
+      // v2 prop-preservation gate. About.tsx passes
+      // `<DeferredFixture label="DEFER_INLINE_FIXTURE_PROP_LABEL_ABC987" />` —
+      // the compiler rewrites the inline child into a render-prop body
+      // `{(__C) => <__C label="..." />}` that lives in the route chunk
+      // (`about-*.js`), NOT the fixture chunk. If v2 prop-preservation
+      // regressed, the prop literal would be dropped — the fingerprint
+      // would appear in ZERO chunks and this cell would fail with
+      // `expected prop fingerprint in about chunk`.
+      //
+      // Bisect-verifiable: remove the `buildRenderPropBody` call (revert
+      // to `{(__C) => <__C />}` constant) and this assertion fails.
+      assertStringInExactlyOneChunk(
+        dist,
+        'DEFER_INLINE_FIXTURE_PROP_LABEL_ABC987',
+        'about',
+      )
     },
   },
 

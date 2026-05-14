@@ -26,7 +26,7 @@ export function About() {
         <li>📦 Zero runtime VDOM overhead</li>
       </ul>
       <Defer when={_open}>
-        <DeferredFixture />
+        <DeferredFixture label="DEFER_INLINE_FIXTURE_PROP_LABEL_ABC987" />
       </Defer>
     </div>
   )
