@@ -1,5 +1,77 @@
 # @pyreon/core
 
+## 0.17.0
+
+### Minor Changes
+
+- [#585](https://github.com/pyreon/pyreon/pull/585) [`35af0e2`](https://github.com/pyreon/pyreon/commit/35af0e22b670151052e0b1df5006977fca759128) Thanks [@vitbokisch](https://github.com/vitbokisch)! - New `<Defer>` primitive — lazy-load a chunk when a trigger fires. Replaces the `lazy()` + `<Suspense>` + observer boilerplate with one component.
+
+  Three trigger modes:
+
+  ```tsx
+  import { Defer } from '@pyreon/core'
+
+  // Signal-driven (modal pattern)
+  <Defer chunk={() => import('./ConfirmModal')} when={open}>
+    {Modal => <Modal onClose={() => setOpen(false)} />}
+  </Defer>
+
+  // Viewport-driven (below-fold content)
+  <Defer chunk={() => import('./Comments')} on="visible" rootMargin="200px">
+    {Comments => <Comments postId={id} />}
+  </Defer>
+
+  // Idle-driven (non-critical, prefetch when CPU is free)
+  <Defer chunk={() => import('./Analytics')} on="idle">
+    {Dashboard => <Dashboard />}
+  </Defer>
+  ```
+
+  Why this exists: `<Show when={open()}><Modal /></Show>` ships the modal code in the main bundle unconditionally. `<Defer>` defers the import (Rolldown sees `import('./X')` as a literal and chunks it) and only fires the trigger when the condition is met.
+
+  API details:
+
+  - `chunk: () => Promise<{ default: ComponentFn<P> } | ComponentFn<P>>` — dynamic import. The literal `import('./X')` is what enables chunk splitting.
+  - `when?: () => boolean` — signal accessor. Load when truthy. Repeated truthy emissions are no-ops (chunk loads exactly once per Defer instance).
+  - `on?: 'visible' | 'idle'` — alternative triggers. Mutually exclusive with `when`.
+  - `children?: (Component) => VNodeChild` — render-prop for prop forwarding. Optional; defaults to `<Component />` with no props.
+  - `fallback?: VNodeChild` — shown while the chunk is loading. Defaults to `null`.
+  - `rootMargin?: string` — IntersectionObserver `rootMargin` for `on="visible"` mode. Default `'200px'`.
+
+  SSR-safe: browser APIs (`IntersectionObserver`, `requestIdleCallback`) are gated behind `onMount` so server rendering doesn't crash. `requestIdleCallback` falls back to `setTimeout(1)` when unavailable (Safari < 16.4, jsdom).
+
+  Error handling: a rejected `chunk()` throws synchronously at the next render. Wrap `<Defer>` in `<ErrorBoundary>` (or let it propagate to a parent boundary) to recover.
+
+  This is v1 — explicit `chunk` prop, runtime-only. A v2 compiler-driven inline shape is planned: `<Defer when={x}><Heavy /></Defer>` where the compiler extracts the subtree to a synthetic chunk, no `chunk` prop or file extraction needed.
+
+### Patch Changes
+
+- [#584](https://github.com/pyreon/pyreon/pull/584) [`8b1a982`](https://github.com/pyreon/pyreon/commit/8b1a982faa140e7e646293a47d6a4fbe70cac67c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Preserve reactive props through component-JSX spread + framework prop pipelines.
+
+  **Bug class.** Pyreon's reactive-prop contract is that `<Comp prop={signal()}>` compiles to `h(Comp, { prop: _rp(() => signal()) })` and `mount.ts:makeReactiveProps` converts `_rp`-branded thunks into property GETTERS on the props object. Any prop-pipeline step that VALUE-COPIES `props[key]` (plain assignment, spread, or `Object.assign`) fires the getter at HOC setup time — outside any tracking scope — and stores the resolved value as a static data property. Every downstream JSX accessor reading `props.x` then sees the captured-once value, never re-subscribing to the underlying signal.
+
+  **Two layers of fix:**
+
+  1. **Compiler-level (closes the bug class for all consumers, including user code).** Both the JS compiler (`src/jsx.ts`) and the Rust native binary (`native/src/lib.rs`) now wrap component-JSX spread arguments with the new `_wrapSpread(...)` helper from `@pyreon/core`. `<Comp {...source}>` compiles to `jsx(Comp, { ..._wrapSpread(source) })` — `_wrapSpread` replaces getter descriptors with `_rp`-branded thunks, so the JS-level spread carries function values (no getters fire), and `makeReactiveProps` converts them back to getters on the consumer side. Fast path: when `source` has no getter descriptors, `_wrapSpread` returns the source unchanged — zero overhead for the 99% of spread sources that don't carry reactive props. Lowercase-tag (DOM) spreads route through the template path's `_applyProps` (already reactive) and skip the wrap.
+
+  2. **Framework-level (closes every observed leak site in shipped packages):**
+     - `@pyreon/rocketstyle` — `removeUndefinedProps` + `mergeDescriptors` (new helper in `utils/attrs.ts`) replace 3 spread sites in `rocketstyleAttrsHoc.ts` and `rocketstyle.ts`'s `mergeProps`. `finalProps.ref` / `$rocketstyle` / `$rocketstate` writes use `Object.defineProperty` (handles getter-only descriptors).
+     - `@pyreon/styler` — `buildProps` in `forward.ts` copies descriptors via `copyDescriptor` instead of value-reads.
+     - `@pyreon/ui-core` — `omit` / `pick` in `utils.ts` copy descriptors.
+     - `@pyreon/elements` — Wrapper's `buildStyledProps` builds props via descriptor-preserving copy and forwards `ref` / `as` / extras via `Object.defineProperty`.
+     - `@pyreon/core` — `jsx-runtime.ts`'s `jsx()` has a slow path that preserves descriptors when `props` arrives with getters (for direct `h()` callers).
+     - `@pyreon/runtime-dom` — `applyProps` in `props.ts` detects getter descriptors and wraps the write in `renderEffect`.
+
+  **Bisect-verified at TWO layers:**
+
+  - **Unit / browser**: `packages/ui-system/rocketstyle/src/__tests__/reactive-props-preservation.test.ts` (9 specs) + the new `rocketstyle.browser.test.tsx` spec covering the full pipeline. Reverting any of the 4 leak-site fixes individually fails the relevant spec with `expected 'count: 1' to be 'count: 0'`.
+  - **Real-Chromium e2e**: `e2e/ui-showcase-regression.spec.ts:793 — signal-driven prop on Button updates the DOM on flip` exercises a rocketstyle Button with a `title={\`count: \${count()}\`}` prop fed by a signal. Reverting the compiler-level fix (`packages/core/compiler/src/jsx.ts`+`native/src/lib.rs`+ rebuilding the Rust binary) → spec fails with`unexpected value "count: 0"` after click — proving the spread reactivity contract holds end-to-end through the entire prop pipeline (rocketstyle attrs HOC → styler buildProps → Element Wrapper → runtime-dom applyProps).
+
+  **No public API breakage.** `_wrapSpread` is an internal compiler-emitted helper; users never call it directly. Framework-internal helpers (`mergeDescriptors` in rocketstyle, `copyDescriptor` in styler, etc.) are not exported. The only public surface change is that getter-shaped reactive props now survive every framework boundary — i.e. the reactive-prop contract finally works as documented.
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.17.0
+
 ## 0.16.0
 
 ### Patch Changes

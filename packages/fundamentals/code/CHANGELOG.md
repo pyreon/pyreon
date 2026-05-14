@@ -1,5 +1,14 @@
 # @pyreon/code
 
+## 0.17.0
+
+### Patch Changes
+
+- Updated dependencies [[`35af0e2`](https://github.com/pyreon/pyreon/commit/35af0e22b670151052e0b1df5006977fca759128), [`8b1a982`](https://github.com/pyreon/pyreon/commit/8b1a982faa140e7e646293a47d6a4fbe70cac67c)]:
+  - @pyreon/core@0.17.0
+  - @pyreon/runtime-dom@0.17.0
+  - @pyreon/reactivity@0.17.0
+
 ## 0.16.0
 
 ### Patch Changes
