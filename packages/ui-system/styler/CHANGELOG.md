@@ -1,5 +1,17 @@
 # @pyreon/styler
 
+## 0.16.0
+
+### Patch Changes
+
+- [#561](https://github.com/pyreon/pyreon/pull/561) [`53b230c`](https://github.com/pyreon/pyreon/commit/53b230cc9715129af0088da516f572e6572a2117) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `sheet.clearAll()` now resets `styled()`'s `staticComponentCache` (WeakMap of cached `ComponentFn` references) and `_hotCache` (single-entry hot ComponentFn slot) via the new `onSheetClear` subscriber registry. Pre-fix, `clearAll()` flushed the CSSOM rules + dedup cache but left the per-template `StaticStyled` ComponentFn references alive — those closures still returned the OLD class names (now deleted from the DOM), so post-`clearAll()` renders produced markup with class attributes that pointed at nothing. The leak was invisible in normal app shape (apps don't call `clearAll()` in production) but bit HMR cycles + test suites that reset the sheet between cases. Mirrors vitus-labs commit. Scoped to the singleton sheet — `createSheet()` instances don't fire the hook (per-request SSR isolation has no shared subscribers to invalidate).
+
+- [#562](https://github.com/pyreon/pyreon/pull/562) [`3b61ea9`](https://github.com/pyreon/pyreon/commit/3b61ea986e45fa5c4560d766532123276033abb8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Pre-build a cached VNode for `StaticStyled` renders that pass no extra runtime props. The empty-`rawProps` + `ref == null` fast path skips the per-render `h()` allocation and prop spread by returning a shared VNode object. Companion to the `onSheetClear`-driven cache reset (separate PR): the cached VNode is invalidated whenever the underlying stylesheet is cleared, so HMR cycles + test resets don't serve stale class names. Mirrors vitus-labs commit. New `styler.staticVNode.hit` perf counter tracks cache utilization.
+
+- Updated dependencies [[`a4a4255`](https://github.com/pyreon/pyreon/commit/a4a42550835cb2706b99beed8ea582037d338ea8)]:
+  - @pyreon/core@0.16.0
+  - @pyreon/reactivity@0.16.0
+
 ## 0.14.0
 
 ### Patch Changes

@@ -1,5 +1,14 @@
 # @pyreon/storybook
 
+## 0.16.0
+
+### Patch Changes
+
+- Updated dependencies [[`a4a4255`](https://github.com/pyreon/pyreon/commit/a4a42550835cb2706b99beed8ea582037d338ea8)]:
+  - @pyreon/core@0.16.0
+  - @pyreon/reactivity@0.16.0
+  - @pyreon/runtime-dom@0.16.0
+
 ## 0.14.0
 
 ### Patch Changes

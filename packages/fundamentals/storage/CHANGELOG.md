@@ -1,5 +1,18 @@
 # @pyreon/storage
 
+## 0.16.0
+
+### Patch Changes
+
+- [#546](https://github.com/pyreon/pyreon/pull/546) [`1e0ba46`](https://github.com/pyreon/pyreon/commit/1e0ba46b8f4a234be4a6739b6b35d5280e8c824a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix `useStorage` / `useSessionStorage` / `useCookie` / `useMemoryStorage` / `useIndexedDB` post-hydration rendering. Storage signals delegate `.direct` / `.subscribe` / `.peek` to a base signal but never forwarded the internal `_v` field that the compiler-emitted `_bindText` fast path reads. Result: JSX `<strong>{() => theme()}</strong>` rendered `<strong>light</strong>` correctly during SSR but the strong went empty post-hydration and stayed empty even after `.set()` calls — localStorage was updated, the DOM was not. Now forwards `_v` via getter so the fast path reads the live value from the underlying signal on every read. Bisect-verified at unit (6 specs) and real-Chromium e2e (4 specs).
+
+- [#550](https://github.com/pyreon/pyreon/pull/550) [`b1d8742`](https://github.com/pyreon/pyreon/commit/b1d8742b68b9787e92916c7a88964c4c80b409ed) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Extract the shared signal-wrapper pattern from the 4 storage factories (`createStorageSignal` shared by local + session, `useCookie`, `createStorage`, `useIndexedDB`) into a single `wrapBaseSignal(sig)` helper. The helper handles the callable shape, delegated `.peek` / `.subscribe` / `.direct` / `.debug` / `.label`, and the forwarded `_v` getter that the compiler-emitted `_bindText` fast path requires. Each factory keeps its own `.set` / `.update` / `.remove` for persistence — only the shared protocol is centralized.
+
+  No API change, no behavior change. Net -99 / +15 LOC across the 4 sites; the new helper file (~80 LOC including JSDoc) keeps the wrapper contract single-source so a future 5th backend (or extracted helper) can't forget a field. Bisect-verified at the helper layer: removing `_v` forwarding inside `wrap-base-signal.ts` fails all 6 `bind-text-compat` specs across every backend simultaneously.
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.16.0
+
 ## 0.14.0
 
 ### Patch Changes

@@ -1,5 +1,15 @@
 # @pyreon/unistyle
 
+## 0.16.0
+
+### Patch Changes
+
+- Updated dependencies [[`a4a4255`](https://github.com/pyreon/pyreon/commit/a4a42550835cb2706b99beed8ea582037d338ea8), [`53b230c`](https://github.com/pyreon/pyreon/commit/53b230cc9715129af0088da516f572e6572a2117), [`3b61ea9`](https://github.com/pyreon/pyreon/commit/3b61ea986e45fa5c4560d766532123276033abb8)]:
+  - @pyreon/core@0.16.0
+  - @pyreon/styler@0.16.0
+  - @pyreon/reactivity@0.16.0
+  - @pyreon/ui-core@0.16.0
+
 ## 0.14.0
 
 ### Patch Changes

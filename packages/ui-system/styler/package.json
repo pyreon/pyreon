@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/styler",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "Lightweight CSS-in-JS engine for Pyreon",
   "license": "MIT",
   "repository": {
