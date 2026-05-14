@@ -4,7 +4,7 @@
  * fix (parent + child Styled) because these HTML elements do not natively
  * support `display: flex` consistently across browsers.
  */
-import { splitProps } from '@pyreon/core'
+import { h, splitProps } from '@pyreon/core'
 import { getShouldBeEmpty } from '../../Element/utils'
 import { IS_DEVELOPMENT } from '../../utils'
 import { internElementBundle } from '../internElementBundle'
@@ -13,6 +13,46 @@ import type { Props } from './types'
 import { isWebFixNeeded } from './utils'
 
 const DEV_PROPS: Record<string, string> = IS_DEVELOPMENT ? { 'data-pyr-element': 'Element' } : {}
+
+/**
+ * Build a props object for `h(Styled, ...)` by copying own property
+ * DESCRIPTORS from `rest`, then layering the additional fields. Compiler-
+ * emitted reactive props (`_rp(() => signal())` converted to getters by
+ * `makeReactiveProps`) survive end-to-end with their getter intact.
+ *
+ * Why we bypass JSX spread here: the standard JSX automatic-runtime
+ * compilation lowers `<Styled {...rest} foo={x}>` to roughly
+ * `jsx(Styled, { ...rest, foo: x })`. That `{...rest, foo: x}` object
+ * literal is evaluated at JS level — it fires every getter on `rest` and
+ * stores the resolved value before `jsx()` ever sees the object. No
+ * amount of in-runtime descriptor preservation can recover the getters
+ * once they've been collapsed by the surface-level spread. The fix is
+ * structural: don't use JSX spread for reactive-prop forwarding. Build
+ * the props object with descriptor preservation and pass it to `h()`
+ * directly — `h()` stores props as-is on the vnode, no copy, getters
+ * survive into mount.
+ */
+const buildStyledProps = (
+  rest: Record<string, unknown>,
+  refValue: unknown,
+  asTag: unknown,
+  extras: Record<string, unknown>,
+): Record<string, unknown> => {
+  const result: Record<string, unknown> = {}
+  const descriptors = Object.getOwnPropertyDescriptors(rest)
+  for (const key in descriptors) {
+    Object.defineProperty(result, key, descriptors[key]!)
+  }
+  for (const key in DEV_PROPS) {
+    result[key] = DEV_PROPS[key]
+  }
+  result.ref = refValue
+  result.as = asTag
+  for (const key in extras) {
+    result[key] = extras[key]
+  }
+  return result
+}
 
 // Layout / ref keys consumed by Wrapper itself. Everything else is forwarded
 // onto the underlying DOM node. Listed as a tuple so `splitProps` narrows
@@ -33,13 +73,6 @@ const OWN_KEYS: Array<keyof Props | 'ref'> = [
 
 const Component = (props: Partial<Props> & { ref?: unknown }) => {
   const [own, rest] = splitProps(props, OWN_KEYS)
-
-  const commonProps = {
-    ...rest,
-    ...DEV_PROPS,
-    ref: own.ref,
-    as: own.tag,
-  }
 
   const needsFix = !own.dangerouslySetInnerHTML && isWebFixNeeded(own.tag)
 
@@ -69,15 +102,28 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
       extraStyles: own.extendCss,
     })
     if (isVoidTag) {
-      return <Styled {...commonProps} $element={bundle} />
+      return h(
+        Styled,
+        buildStyledProps(rest as unknown as Record<string, unknown>, own.ref, own.tag, {
+          $element: bundle,
+        }),
+      )
     }
     if (innerHTML) {
-      return <Styled {...commonProps} $element={bundle} dangerouslySetInnerHTML={innerHTML} />
+      return h(
+        Styled,
+        buildStyledProps(rest as unknown as Record<string, unknown>, own.ref, own.tag, {
+          $element: bundle,
+          dangerouslySetInnerHTML: innerHTML,
+        }),
+      )
     }
-    return (
-      <Styled {...commonProps} $element={bundle}>
-        {own.children}
-      </Styled>
+    return h(
+      Styled,
+      buildStyledProps(rest as unknown as Record<string, unknown>, own.ref, own.tag, {
+        $element: bundle,
+        children: own.children,
+      }),
     )
   }
 
@@ -103,24 +149,31 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
   // the defensive forwarding so the contract is robust against future
   // refactors of the needsFix gate.
   if (innerHTML) {
-    return (
-      <Styled {...commonProps} $element={parentBundle}>
-        <Styled
-          as={asTag}
-          $childFix
-          $element={childBundle}
-          dangerouslySetInnerHTML={innerHTML}
-        />
-      </Styled>
+    return h(
+      Styled,
+      buildStyledProps(rest as unknown as Record<string, unknown>, own.ref, own.tag, {
+        $element: parentBundle,
+        children: h(Styled, {
+          as: asTag,
+          $childFix: true,
+          $element: childBundle,
+          dangerouslySetInnerHTML: innerHTML,
+        }),
+      }),
     )
   }
 
-  return (
-    <Styled {...commonProps} $element={parentBundle}>
-      <Styled as={asTag} $childFix $element={childBundle}>
-        {own.children}
-      </Styled>
-    </Styled>
+  return h(
+    Styled,
+    buildStyledProps(rest as unknown as Record<string, unknown>, own.ref, own.tag, {
+      $element: parentBundle,
+      children: h(Styled, {
+        as: asTag,
+        $childFix: true,
+        $element: childBundle,
+        children: own.children,
+      }),
+    }),
   )
 }
 

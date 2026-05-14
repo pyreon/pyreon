@@ -786,3 +786,32 @@ test.describe('ui-showcase — dark mode', () => {
     }
   })
 })
+
+// ─── Reactive prop preservation through rocketstyle ────────────────────────
+
+test.describe('ui-showcase — rocketstyle reactive prop preservation', () => {
+  test('signal-driven prop on Button updates the DOM on flip', async ({ page }) => {
+    // Catches the bug class where rocketstyle's HOC + EnhancedComponent +
+    // styler's `buildProps` value-copied getter-shaped reactive props
+    // (compiler-emitted `_rp(() => signal())` converted to getters by
+    // `makeReactiveProps`), collapsing the reactive subscription to a
+    // static value before the wrapped DOM ever saw it. Every signal-
+    // driven prop on every rocketstyle-wrapped component silently broke
+    // signal-driven updates.
+    //
+    // The ButtonDemo's "Reactive Props" section feeds the `title` prop
+    // with a signal-derived string. Clicking the button flips the signal;
+    // the title attribute must update reactively.
+    await page.goto('/button')
+    const btn = page.locator('[data-testid="reactive-prop-button"]')
+    await expect(btn).toBeVisible()
+    await expect(btn).toHaveAttribute('title', 'count: 0')
+
+    await btn.click()
+    await expect(btn).toHaveAttribute('title', 'count: 1')
+
+    await btn.click()
+    await btn.click()
+    await expect(btn).toHaveAttribute('title', 'count: 3')
+  })
+})

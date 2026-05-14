@@ -225,6 +225,14 @@ export const filterProps = (props: Record<string, unknown>): Record<string, unkn
  * Build final props for a styled component in a single pass.
  * Combines className merging, ref injection, and prop filtering into one
  * allocation and one iteration.
+ *
+ * Copies own property DESCRIPTORS rather than values for forwarded
+ * props — getter-shaped reactive props (compiler-emitted `_rp(() =>
+ * signal())` converted to getters by `makeReactiveProps`) survive the
+ * copy with their reactive subscription intact. A bare `result[key] =
+ * rawProps[key]` fires the getter at setup time and stores a static
+ * value, breaking signal-driven reactivity for any consumer that reads
+ * `props.x` in a reactive scope downstream.
  */
 export const buildProps = (
   rawProps: Record<string, any>,
@@ -234,7 +242,11 @@ export const buildProps = (
 ): Record<string, any> => {
   const result: Record<string, any> = {}
 
-  // Merge generated + user className
+  // Merge generated + user className. Reading `rawProps.class` /
+  // `.className` synchronously is fine — `class` is consumed at this
+  // boundary (merged with the generated class), never forwarded
+  // reactively. The string we write is consumed by the DOM at apply
+  // time, not stored as a getter.
   const userCls = rawProps.class || rawProps.className
   if (generatedCls) {
     result.class = userCls ? `${generatedCls} ${userCls}` : generatedCls
@@ -242,12 +254,19 @@ export const buildProps = (
     result.class = userCls
   }
 
+  // Helper: copy a prop's OWN descriptor (preserves getters) into result.
+  // Falls back to a no-op if the source has no own descriptor for the key.
+  const copyDescriptor = (key: string): void => {
+    const d = Object.getOwnPropertyDescriptor(rawProps, key)
+    if (d) Object.defineProperty(result, key, d)
+  }
+
   // Component target — forward all props except as/className/class and $-prefixed
   if (!isDOM) {
     for (const key in rawProps) {
       if (key === 'as' || key === 'className' || key === 'class') continue
       if (key.charCodeAt(0) === 36) continue // $-prefixed transient
-      result[key] = rawProps[key]
+      copyDescriptor(key)
     }
     return result
   }
@@ -256,7 +275,7 @@ export const buildProps = (
   if (customFilter) {
     for (const key in rawProps) {
       if (key === 'as' || key === 'className' || key === 'class') continue
-      if (customFilter(key)) result[key] = rawProps[key]
+      if (customFilter(key)) copyDescriptor(key)
     }
     return result
   }
@@ -266,10 +285,10 @@ export const buildProps = (
     if (key === 'as' || key === 'className' || key === 'class') continue
     if (key.charCodeAt(0) === 36) continue // $-prefixed transient
     if (key.startsWith('data-') || key.startsWith('aria-')) {
-      result[key] = rawProps[key]
+      copyDescriptor(key)
       continue
     }
-    if (HTML_PROPS.has(key)) result[key] = rawProps[key]
+    if (HTML_PROPS.has(key)) copyDescriptor(key)
   }
   return result
 }

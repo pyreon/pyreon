@@ -3,13 +3,60 @@ import type { MultiKeys } from '../types/dimensions'
 // --------------------------------------------------------
 // remove undefined props
 // --------------------------------------------------------
-/** Strips keys with `undefined` values so they don't shadow default props during merging. */
+/**
+ * Strips keys with `undefined` values so they don't shadow default props during merging.
+ *
+ * Copies own property DESCRIPTORS rather than values so that reactive
+ * getter-shaped props (compiler-emitted `_rp(() => signal())` converted
+ * to getters by `makeReactiveProps`) survive the pipeline with their
+ * subscription intact. Reading `props[key]` here would fire the getter
+ * at HOC setup time (outside any tracking scope) and collapse the prop
+ * to a static value — every downstream JSX accessor that reads
+ * `props.x` would see the captured-once value, not the live signal.
+ *
+ * For getter descriptors we keep the descriptor as-is (the
+ * undefined-filter doesn't apply — we can't peek into the getter
+ * without firing it). For data descriptors we drop entries whose
+ * value is `undefined` to preserve the original merge semantics.
+ */
 type RemoveUndefinedProps = <T extends Record<string, any>>(props: T) => Partial<T>
 
 export const removeUndefinedProps: RemoveUndefinedProps = (props) => {
   const result: Partial<typeof props> = {}
-  for (const key in props) {
-    if (props[key] !== undefined) result[key] = props[key]
+  const descriptors = Object.getOwnPropertyDescriptors(props)
+  for (const key of Object.keys(descriptors)) {
+    const d = descriptors[key]!
+    if (d.get || d.value !== undefined) {
+      Object.defineProperty(result, key, d)
+    }
+  }
+  return result
+}
+
+// --------------------------------------------------------
+// merge descriptors
+// --------------------------------------------------------
+/**
+ * Like `Object.assign(target, ...sources)` but copies own property
+ * DESCRIPTORS instead of reading + writing values. Later sources
+ * override earlier ones (same semantics as spread / Object.assign).
+ *
+ * Required for reactive-prop preservation through the rocketstyle
+ * pipeline: a plain `{ ...A, ...B }` spread fires every getter on A
+ * and B and stores the resolved value, breaking the reactive
+ * subscription. This helper copies descriptors so getters survive
+ * the merge.
+ */
+export const mergeDescriptors = (
+  ...sources: ReadonlyArray<Record<string, any> | null | undefined>
+): Record<string, any> => {
+  const result: Record<string, any> = {}
+  for (const source of sources) {
+    if (!source) continue
+    const descriptors = Object.getOwnPropertyDescriptors(source)
+    for (const key of Object.keys(descriptors)) {
+      Object.defineProperty(result, key, descriptors[key]!)
+    }
   }
   return result
 }

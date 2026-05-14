@@ -9,7 +9,12 @@ import type { Configuration, ExtendedConfiguration } from './types/configuration
 import type { RocketComponent } from './types/rocketComponent'
 import type { InnerComponentProps, RocketStyleComponent } from './types/rocketstyle'
 import type { ComponentFn } from './types/utils'
-import { calculateChainOptions, calculateStylingAttrs, pickStyledAttrs } from './utils/attrs'
+import {
+  calculateChainOptions,
+  calculateStylingAttrs,
+  mergeDescriptors,
+  pickStyledAttrs,
+} from './utils/attrs'
 import { chainOptions, chainOrOptions, chainReservedKeyOptions } from './utils/chaining'
 import { calculateHocsFuncs } from './utils/compose'
 import { getDimensionsMap } from './utils/dimensions'
@@ -416,30 +421,68 @@ const rocketComponent: RocketComponent = (options) => {
       _omitSetCache.set(RESERVED_STYLING_PROPS_KEYS, omitSet)
     }
 
-    // Merge localCtx + props without an intermediate spread object.
-    // omit() handles 'pseudo' removal (included in STATIC_OMIT_KEYS).
-    const mergeProps = localCtx ? { ...localCtx, ...props } : props
+    // Merge localCtx + props via descriptor-copy so reactive getter
+    // props on `props` (compiler-emitted `_rp(() => signal())` wrappers
+    // converted to getters by `makeReactiveProps`) survive the merge.
+    // A plain `{ ...localCtx, ...props }` spread would fire every getter
+    // and collapse to static values, defeating reactivity for any
+    // downstream JSX accessor reading `props.x`.
+    const mergeProps = localCtx ? mergeDescriptors(localCtx, props) : props
 
-    // omit() already returns a fresh object — assign directly onto it
-    // instead of spreading into another {} (saves one object allocation).
+    // omit() preserves descriptors (since ui-core's omit was updated to
+    // copy descriptors), so reactive getters carry through to finalProps.
     const finalProps = omit(mergeProps as Record<string, unknown>, omitSet) as Record<string, any>
 
     if (options.passProps) {
       const passed = pick(mergeProps, options.passProps)
-      for (const k in passed) finalProps[k] = passed[k]
+      // Copy descriptors so any reactive getters in passProps survive.
+      // Plain `finalProps[k] = passed[k]` would fire getters at setup time
+      // AND silently fail when finalProps[k] is already a getter-only
+      // descriptor (assignment to a getter-only property is a no-op in
+      // non-strict mode, throws in strict mode).
+      const passedDescriptors = Object.getOwnPropertyDescriptors(passed)
+      for (const k of Object.keys(passedDescriptors)) {
+        Object.defineProperty(finalProps, k, passedDescriptors[k]!)
+      }
     }
 
-    finalProps.ref = props.ref
+    // Use defineProperty for these last writes too — if props.ref or
+    // an existing finalProps slot happened to carry a getter-only
+    // descriptor, plain assignment would silently fail. defineProperty
+    // explicitly replaces the descriptor regardless of shape.
+    const refDescriptor = Object.getOwnPropertyDescriptor(props, 'ref')
+    if (refDescriptor) {
+      Object.defineProperty(finalProps, 'ref', refDescriptor)
+    }
     // Function accessors — DynamicStyled wraps them in a computed() so
     // mode/dimension changes produce a new CSS class reactively. The
     // computed tracks only these two accessors; the resolve itself runs
     // untracked to prevent exponential cascade from theme deep-reads.
-    finalProps.$rocketstyle = $rocketstyleAccessor
-    finalProps.$rocketstate = $rocketstateAccessor
+    Object.defineProperty(finalProps, '$rocketstyle', {
+      value: $rocketstyleAccessor,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    })
+    Object.defineProperty(finalProps, '$rocketstate', {
+      value: $rocketstateAccessor,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    })
 
     // development debugging — tree-shaken in production via import.meta.env.DEV
     if (__DEV__) {
-      finalProps['data-rocketstyle'] = componentName
+      // defineProperty rather than `=` to be safe against any preserved
+      // descriptor in this slot (defense-in-depth — `data-rocketstyle`
+      // is unlikely to be passed as a user prop, but the writes above
+      // use defineProperty for the same reason).
+      Object.defineProperty(finalProps, 'data-rocketstyle', {
+        value: componentName,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      })
 
       if (options.DEBUG) {
         const debugPayload = {

@@ -4,34 +4,57 @@
  * Accepts either an array of keys (builds a Set internally) or a
  * pre-built `Set<string>` for hot paths where the same key list is
  * reused across many calls (avoids per-call Set allocation).
+ *
+ * Copies own property DESCRIPTORS (not values) so that getter-shaped
+ * properties — produced by `makeReactiveProps` in `@pyreon/core` for
+ * compiler-emitted `<Comp prop={signal()}>` — survive the copy with
+ * their reactive subscription intact. For data properties the
+ * behaviour is identical to value-copying.
  */
 export const omit = <T extends Record<string, any>>(
   obj: T | null | undefined,
   keys?: readonly (string | keyof T)[] | Set<string>,
 ): Partial<T> => {
   if (obj == null) return {} as Partial<T>
-  if (!keys || (keys instanceof Set ? keys.size === 0 : keys.length === 0)) return { ...obj }
+  const descriptors = Object.getOwnPropertyDescriptors(obj)
+  if (!keys || (keys instanceof Set ? keys.size === 0 : keys.length === 0)) {
+    return Object.defineProperties({} as Partial<T>, descriptors)
+  }
   const keysSet = keys instanceof Set ? keys : new Set(keys as readonly string[])
   const result: Record<string, any> = {}
-  for (const key in obj) {
-    if (Object.hasOwn(obj, key) && !keysSet.has(key)) {
-      result[key] = obj[key]
+  for (const key of Object.keys(descriptors)) {
+    if (!keysSet.has(key)) {
+      Object.defineProperty(result, key, descriptors[key]!)
     }
   }
   return result as Partial<T>
 }
 
+/**
+ * Returns a copy of `obj` containing only the specified keys.
+ *
+ * See `omit` above — same descriptor-preserving semantics: getter-
+ * shaped properties survive the copy with reactive subscription
+ * intact. For data properties the behaviour is identical to
+ * value-copying.
+ */
 export const pick = <T extends Record<string, any>>(
   obj: T | null | undefined,
   keys?: readonly (string | keyof T)[],
 ): Partial<T> => {
   if (obj == null) return {} as Partial<T>
-  if (!keys || keys.length === 0) return { ...obj }
+  if (!keys || keys.length === 0) {
+    return Object.defineProperties(
+      {} as Partial<T>,
+      Object.getOwnPropertyDescriptors(obj),
+    )
+  }
   const result: Record<string, any> = {}
   for (const key of keys) {
     const k = key as string
-    if (Object.hasOwn(obj, k)) {
-      result[k] = obj[k]
+    const descriptor = Object.getOwnPropertyDescriptor(obj, k)
+    if (descriptor) {
+      Object.defineProperty(result, k, descriptor)
     }
   }
   return result as Partial<T>

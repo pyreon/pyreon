@@ -283,12 +283,32 @@ describe('JSX transform — component elements', () => {
     expect(result).toContain('_rp(')
   })
 
-  test('spread props on component pass through without _rp wrapping', () => {
+  test('spread props on component are wrapped with _wrapSpread to preserve reactivity', () => {
     const result = t('<Comp {...getProps()} label="hi" />')
-    // Spread should remain as-is
-    expect(result).toContain('{...getProps()}')
+    // Spread argument is wrapped so getter-shaped reactive props survive
+    // esbuild's JS-level object spread in the automatic JSX runtime.
+    expect(result).toContain('{..._wrapSpread(getProps())}')
     // Static label should not be wrapped
     expect(result).not.toContain('_rp(() => "hi")')
+  })
+
+  test('spread props on DOM elements are NOT wrapped (handled by template path)', () => {
+    const result = t('<div {...rest} class="x" />')
+    // DOM-element spreads go through the template path's _applyProps.
+    expect(result).toContain('{...rest}')
+    expect(result).not.toContain('_wrapSpread')
+  })
+
+  test('multiple spread sources on a component each get wrapped independently', () => {
+    const result = t('<Comp {...a} {...b} foo="x" />')
+    expect(result).toContain('{..._wrapSpread(a)}')
+    expect(result).toContain('{..._wrapSpread(b)}')
+  })
+
+  test('_wrapSpread emission is idempotent on re-compilation', () => {
+    const result = t('<Comp {..._wrapSpread(rest)} />')
+    // Should not double-wrap.
+    expect(result).not.toContain('_wrapSpread(_wrapSpread(')
   })
 })
 

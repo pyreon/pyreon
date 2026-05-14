@@ -141,6 +141,65 @@ export function _rp<T>(fn: () => T): () => T {
 }
 
 /**
+ * Wrap a JSX spread source so its getter-shaped reactive props survive
+ * the JS-level object spread that esbuild's automatic JSX runtime emits
+ * for `<Comp {...source}>`.
+ *
+ * Without this wrapper, esbuild compiles `<Comp {...source}>` to
+ * `jsx(Comp, { ...source })` — and JS spread fires every getter on
+ * `source`, storing the resolved values as plain data properties. Any
+ * compiler-emitted reactive prop (`_rp(() => signal())` converted to a
+ * getter by `makeReactiveProps`) on `source` is collapsed to its
+ * initial value before the receiving component ever sees it.
+ *
+ * `_wrapSpread(source)` walks `source`'s own keys via `Reflect.ownKeys`
+ * (no getter firing) and returns a new object whose values are
+ * `_rp`-branded thunks `() => source[key]`. When `{ ..._wrapSpread(s) }`
+ * is spread by esbuild, the thunks are stored as plain data property
+ * values (no getters to fire), then `makeReactiveProps` in `mount.ts`
+ * converts the brands back into getters that lazily read from the
+ * original `source` — preserving the reactive subscription end-to-end.
+ *
+ * Fast path: when `source` has no getter descriptors, return the
+ * source object unchanged. JS spread will work correctly in that case
+ * because there's nothing reactive to preserve. Saves N thunk
+ * allocations per component render in the 99% case.
+ *
+ * Emitted by the compiler — not generally meant for hand-written code.
+ */
+export function _wrapSpread(
+  source: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | null | undefined {
+  if (!source || typeof source !== 'object') return source
+  const descriptors = Object.getOwnPropertyDescriptors(source)
+  let hasGetter = false
+  for (const k in descriptors) {
+    if (descriptors[k]!.get) {
+      hasGetter = true
+      break
+    }
+  }
+  if (!hasGetter) return source
+
+  const result: Record<string, unknown> = {}
+  // Reflect.ownKeys covers symbol keys too — REACTIVE_PROP brands and
+  // other framework symbols must round-trip through the wrap.
+  for (const key of Reflect.ownKeys(source)) {
+    const desc = descriptors[key as string]
+    if (!desc) continue
+    if (desc.get) {
+      const fn: () => unknown = () => source[key as string]
+      ;(fn as unknown as Record<symbol, boolean>)[REACTIVE_PROP] = true
+      result[key as string] = fn
+    } else {
+      // Static data property — copy through as-is.
+      result[key as string] = desc.value
+    }
+  }
+  return result
+}
+
+/**
  * Convert compiler-emitted `_rp(() => expr)` prop values into getter properties.
  *
  * Only converts functions branded with REACTIVE_PROP — user-written accessor

@@ -424,4 +424,58 @@ describe('@pyreon/rocketstyle in real browser', () => {
 
     for (const inst of instances) inst.unmount()
   })
+
+  it('reactive prop flips reach the rendered DOM through the rocketstyle pipeline', async () => {
+    // The bug class this catches: rocketstyle's HOC + EnhancedComponent
+    // used to value-copy props (via spread + omit/pick + the
+    // value-iteration removeUndefinedProps), collapsing getter-shaped
+    // reactive props to a static value before the wrapped component
+    // saw them. Downstream JSX accessors then read the captured-once
+    // value, breaking signal-driven updates on every prop on every
+    // rocketstyle-wrapped component (the whole of @pyreon/ui-components,
+    // plus user-defined ones).
+    //
+    // Test mirrors the real-app shape: a signal feeds an `id` prop on a
+    // rocketstyle-wrapped Base; the wrapped component renders a child
+    // that reads `props.id` reactively. Flipping the signal must patch
+    // the DOM.
+    //
+    // We can't drive this through the user-side compiler in tests, so
+    // we manually `_rp`-brand the function + run `makeReactiveProps` —
+    // exactly what the compiler + mount pipeline do for a real consumer.
+    const { _rp } = await import('@pyreon/core')
+    const labelSig = signal('initial')
+
+    // Base renders the label prop as DOM text so we can assert reactivity
+    // observably in the rendered tree.
+    const ReactiveBase: ComponentFn<{ label?: string; children?: VNodeChild }> = (
+      props,
+    ) => h('div', { 'data-testid': 'reactive' }, () => props.label)
+    ;(ReactiveBase as ComponentFn & { displayName?: string }).displayName = 'ReactiveBase'
+
+    const Box: any = rocketstyle()({ name: 'ReactivePropBox', component: ReactiveBase })
+
+    // Brand the prop like the compiler does (`_rp(() => signal())`) —
+    // mount.ts's `makeReactiveProps` then converts the brand to a getter
+    // property. If the rocketstyle pipeline preserves the descriptor, the
+    // inner component sees a getter; if it value-copies (the broken
+    // shape this test catches), it sees the resolved-once string 'initial'
+    // and the DOM never updates on signal flip.
+    const rawProps = { label: _rp(() => labelSig()) }
+
+    const { container, unmount } = mountInBrowser(h(Box, rawProps))
+    const el = container.querySelector<HTMLElement>('[data-testid="reactive"]')!
+    expect(el.textContent).toBe('initial')
+
+    labelSig.set('updated')
+    // Microtask flush — Pyreon's renderEffect commits synchronously after batch.
+    await Promise.resolve()
+    expect(el.textContent).toBe('updated')
+
+    labelSig.set('third')
+    await Promise.resolve()
+    expect(el.textContent).toBe('third')
+
+    unmount()
+  })
 })

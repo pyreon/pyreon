@@ -179,7 +179,23 @@ export function applyProps(el: Element, props: Props): Cleanup | null {
   let cleanups: Cleanup[] | null = null
   for (const key in props) {
     if (key === 'key' || key === 'ref' || key === 'children') continue
-    const c = applyProp(el, key, props[key])
+    // Getter-shaped descriptors are produced by `makeReactiveProps` from
+    // compiler-emitted `_rp(() => signal())` wrappers. A plain
+    // `props[key]` read fires the getter once at mount time and stores
+    // the resolved value — breaking signal-driven reactivity. Detecting
+    // the descriptor and wrapping the read in `renderEffect` here is
+    // equivalent to applyProp's existing function-value branch (line 322),
+    // routed through the descriptor instead of the value. Other prop
+    // pipelines (`splitProps`, `mergeProps`, rocketstyle's
+    // descriptor-preserving merges) keep the getter intact end-to-end;
+    // this is the final consumer that closes the loop.
+    const descriptor = Object.getOwnPropertyDescriptor(props, key)
+    let c: Cleanup | null
+    if (descriptor?.get) {
+      c = renderEffect(() => applyStaticProp(el, key, (props as Record<string, unknown>)[key]))
+    } else {
+      c = applyProp(el, key, props[key])
+    }
     if (c) {
       if (!first) {
         first = c

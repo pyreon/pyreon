@@ -40,7 +40,15 @@ export { onErrorCaptured, onMount, onUnmount, onUpdate } from './lifecycle'
 export { mapArray } from './map-array'
 export type { PortalProps } from './portal'
 export { Portal, PortalSymbol } from './portal'
-export { _rp, createUniqueId, makeReactiveProps, mergeProps, REACTIVE_PROP, splitProps } from './props'
+export {
+  _rp,
+  _wrapSpread,
+  createUniqueId,
+  makeReactiveProps,
+  mergeProps,
+  REACTIVE_PROP,
+  splitProps,
+} from './props'
 export type { Ref, RefCallback, RefProp } from './ref'
 export { createRef } from './ref'
 export type { MatchProps, ShowProps, SwitchProps } from './show'
