@@ -85,8 +85,8 @@ function getLang(filename: string): 'ts' | 'tsx' | 'js' | 'jsx' {
 /**
  * Returns the JSX tag name as a string when the opening element's name
  * is a simple identifier (`<Modal />`). Member-expression names
- * (`<obj.X />`) and namespaced names (`<svg:rect />`) return null — the
- * caller treats those as non-matches.
+ * (`<M.Modal />`) and namespaced names (`<svg:rect />`) return null —
+ * use `getJsxMemberName()` for the namespace-import case.
  */
 function getJsxName(node: Node): string | null {
   const open = node.openingElement as Node | undefined
@@ -97,46 +97,119 @@ function getJsxName(node: Node): string | null {
 }
 
 /**
+ * For `<M.Modal />` — returns `{ object: 'M', property: 'Modal' }` when
+ * the JSX name is a depth-1 JSXMemberExpression. Returns null for any
+ * other shape (deeper nesting like `<M.Sub.X />`, JSXNamespacedName,
+ * non-identifier). The depth-1 restriction keeps the rewrite simple:
+ * `M.Modal` is replaced with `__C` in the source.
+ */
+function getJsxMemberName(node: Node): { object: string; property: string } | null {
+  const open = node.openingElement as Node | undefined
+  if (!open) return null
+  const name = open.name as Node | undefined
+  if (!name || name.type !== 'JSXMemberExpression') return null
+  const obj = name.object as Node | undefined
+  const prop = name.property as Node | undefined
+  if (!obj || obj.type !== 'JSXIdentifier') return null
+  if (!prop || prop.type !== 'JSXIdentifier') return null
+  return { object: obj.name as string, property: prop.name as string }
+}
+
+/**
  * Info needed to rewrite a JSX child element into a render-prop body.
- * `openNameRange` / `closeNameRange` give the exact source positions of
- * the JSXIdentifier that names the component — we replace those with
- * `__C` (the render-prop binding) and preserve everything else (attrs,
- * children, whitespace) verbatim from the original source.
+ *
+ * - `kind: 'identifier'` — `<Modal />`. `lookupName` = `'Modal'` (the
+ *   JSX identifier that we look up in the file's imports).
+ * - `kind: 'member'` — `<M.Modal />`. `lookupName` = `'M'` (the
+ *   namespace identifier we look up). `propertyName` = `'Modal'` (the
+ *   export name to extract from the loaded chunk).
+ *
+ * `openNameRange` / `closeNameRange` span the WHOLE name expression —
+ * for identifiers, just the identifier itself; for member expressions,
+ * the whole `M.Modal`. The rewrite replaces this range with `__C`.
  */
 interface ChildAnalysis {
-  /** Component identifier name as written in JSX (the LOCAL binding name). */
-  name: string
-  /** Range of the component name in the opening tag. */
+  kind: 'identifier' | 'member'
+  /** The identifier we look up in the file's import declarations. */
+  lookupName: string
+  /**
+   * For `kind: 'member'` — the property name (`Modal` in `<M.Modal />`).
+   * Used as the export name when building the chunk's `.then((__m) => ({
+   * default: __m.X }))` clause. Empty string for `kind: 'identifier'`
+   * (in that case `findImportFor` resolves the export name).
+   */
+  propertyName: string
+  /** Source range of the FULL name expression in the opening tag. */
   openNameRange: { start: number; end: number }
-  /** Range of the component name in the closing tag, if not self-closing. */
+  /** Source range in closing tag, null if self-closing. */
   closeNameRange: { start: number; end: number } | null
 }
 
 /**
  * Verify a JSX child node is a single component-element we can rewrite.
- * v2 allows props — the no-attributes restriction from v1 is gone. Still
- * requires a capitalised JSXIdentifier name (component, not HTML tag).
+ * Handles two shapes:
+ *   1. `<Modal />` — identifier name, capitalised (component, not HTML).
+ *   2. `<M.Modal />` — depth-1 member expression with capitalised
+ *      property name. The object (`M`) is the local binding to look up;
+ *      the property (`Modal`) is the actual export to extract.
+ *
+ * Both shapes allow props (post-v2). Deeper nesting (`<M.Sub.X />`),
+ * JSXNamespacedName (`<svg:rect />`), and non-component lowercase names
+ * return null.
  */
 function analyzeChildElement(node: Node): ChildAnalysis | null {
   if (node.type !== 'JSXElement') return null
-  const tag = getJsxName(node)
-  if (!tag || !/^[A-Z]/.test(tag)) return null
   const open = node.openingElement as Node
   const openName = open.name as Node
   const close = node.closingElement as Node | undefined
-  return {
-    name: tag,
-    openNameRange: {
-      start: openName.start as number,
-      end: openName.end as number,
-    },
-    closeNameRange: close
-      ? {
-          start: (close.name as Node).start as number,
-          end: (close.name as Node).end as number,
-        }
-      : null,
+
+  const identName = getJsxName(node)
+  if (identName) {
+    if (!/^[A-Z]/.test(identName)) return null
+    return {
+      kind: 'identifier',
+      lookupName: identName,
+      propertyName: '',
+      openNameRange: {
+        start: openName.start as number,
+        end: openName.end as number,
+      },
+      closeNameRange: close
+        ? {
+            start: (close.name as Node).start as number,
+            end: (close.name as Node).end as number,
+          }
+        : null,
+    }
   }
+
+  const memberName = getJsxMemberName(node)
+  if (memberName) {
+    // The PROPERTY must be capitalised (the actual component name). The
+    // object case is irrelevant — namespace bindings are conventionally
+    // any casing (`React.Fragment` has uppercase object; `lodash.map`
+    // has lowercase). Skip if property isn't a component.
+    if (!/^[A-Z]/.test(memberName.property)) return null
+    // The opening name node IS the JSXMemberExpression — its
+    // start..end span the whole `M.Modal` expression.
+    return {
+      kind: 'member',
+      lookupName: memberName.object,
+      propertyName: memberName.property,
+      openNameRange: {
+        start: openName.start as number,
+        end: openName.end as number,
+      },
+      closeNameRange: close
+        ? {
+            start: (close.name as Node).start as number,
+            end: (close.name as Node).end as number,
+          }
+        : null,
+    }
+  }
+
+  return null
 }
 
 /** Filter whitespace-only JSXText nodes (formatting noise between JSX elements). */
@@ -243,20 +316,34 @@ function findDeferMatches(program: Node, warnings: DeferInlineWarning[], code: s
 interface ImportInfo {
   /** ImportDeclaration AST node containing the specifier. */
   declaration: Node
-  /** The specific specifier node (ImportDefaultSpecifier, ImportSpecifier). */
+  /** The specific specifier node (Default, Named, Namespace). */
   specifier: Node
   /** Module source string (without quotes). */
   source: string
-  /** 'default' → `import('./x')`. 'named' → `.then(__m => ({ default: __m.X }))`. */
-  kind: 'default' | 'named'
+  /**
+   * - `default` → `import('./x')`.
+   * - `named` → `.then((__m) => ({ default: __m.X }))` with X from `importedName`.
+   * - `namespace` → same as `named`, but X comes from the JSX member-expression
+   *   property (`<M.Modal />` → `__m.Modal`), supplied by the caller.
+   */
+  kind: 'default' | 'named' | 'namespace'
   /**
    * Export name on the SOURCE module's side. For `{ Modal as M }`,
    * `localName='M'` (JSX side) but `importedName='Modal'` (chunk side).
-   * For default imports this is unused.
+   * Unused for `default` imports. Empty for `namespace` (caller supplies
+   * via member-expression property).
    */
   importedName: string
 }
 
+/**
+ * Locate the import declaration that binds `localName`.
+ *
+ * For namespace imports (`import * as M`), `localName` is the namespace
+ * identifier (`M`). The caller's `propertyName` provides the actual
+ * export name to extract — `findImportFor` returns `importedName: ''`
+ * for the namespace case and the caller substitutes its own property.
+ */
 function findImportFor(program: Node, localName: string): ImportInfo | null {
   const body = (program.body as Node[] | undefined) ?? []
   for (const stmt of body) {
@@ -288,10 +375,21 @@ function findImportFor(program: Node, localName: string): ImportInfo | null {
             importedName: iname,
           }
         }
+      } else if (spec.type === 'ImportNamespaceSpecifier') {
+        // `import * as M from './mod'` — `local.name === 'M'`. Caller's
+        // `propertyName` supplies the actual export to extract (e.g.
+        // `Modal` from `<M.Modal />`).
+        const lname = (spec.local as Node).name as string
+        if (lname === localName) {
+          return {
+            declaration: stmt,
+            specifier: spec,
+            source: (stmt.source as Node).value as string,
+            kind: 'namespace',
+            importedName: '', // caller provides via propertyName
+          }
+        }
       }
-      // ImportNamespaceSpecifier (`import * as M`) — still not handled.
-      // Would need to match JSXMemberExpression children (`<M.X />`)
-      // which is significantly more involved.
     }
   }
   return null
@@ -343,16 +441,22 @@ function countReferencesOutside(
 }
 
 /**
- * Build the chunk={...} attribute string. For named imports we extract
- * the ORIGINAL exported name (`importedName`) from the loaded module,
- * not the local alias — `import { Modal as M }` produces a chunk that
- * resolves `__m.Modal`, not `__m.M`.
+ * Build the chunk={...} attribute string.
+ *
+ * - `default` → `chunk={() => import('./x')}`. The default export IS the
+ *   component; no re-wrapping needed.
+ * - `named` / `namespace` → `chunk={() => import('./x').then((__m) => ({
+ *   default: __m.X }))}`. The `default` slot points at the named export
+ *   (for `named`) or the member-expression property (for `namespace`).
+ *
+ * The caller picks `exportName` — for `named`, it's `info.importedName`;
+ * for `namespace`, it's the JSX member-expression property.
  */
-function buildChunkAttr(source: string, kind: 'default' | 'named', importedName: string): string {
+function buildChunkAttr(source: string, kind: 'default' | 'named' | 'namespace', exportName: string): string {
   if (kind === 'default') {
     return ` chunk={() => import('${source}')}`
   }
-  return ` chunk={() => import('${source}').then((__m) => ({ default: __m.${importedName} }))}`
+  return ` chunk={() => import('${source}').then((__m) => ({ default: __m.${exportName} }))}`
 }
 
 /**
@@ -464,11 +568,20 @@ export function transformDeferInline(
   let changed = false
 
   for (const m of matches) {
-    const importInfo = findImportFor(program, m.childAnalysis.name)
+    // For identifier children (`<Modal />`), the JSX-display name and
+    // import-lookup name are the same (`Modal`). For member-expression
+    // children (`<M.Modal />`), JSX-display is `M.Modal` but we look up
+    // the namespace binding `M` in imports.
+    const displayName =
+      m.childAnalysis.kind === 'member'
+        ? `${m.childAnalysis.lookupName}.${m.childAnalysis.propertyName}`
+        : m.childAnalysis.lookupName
+
+    const importInfo = findImportFor(program, m.childAnalysis.lookupName)
     if (!importInfo) {
       const loc = getLoc(code, (m.child.start as number) ?? 0)
       warnings.push({
-        message: `<Defer>'s inline child <${m.childAnalysis.name} /> isn't imported — can't resolve a chunk source. Use the explicit \`chunk\` prop, or import ${m.childAnalysis.name} from a module.`,
+        message: `<Defer>'s inline child <${displayName} /> isn't imported — can't resolve a chunk source. Use the explicit \`chunk\` prop, or import ${m.childAnalysis.lookupName} from a module.`,
         line: loc.line,
         column: loc.column,
         code: 'defer-inline/import-not-found',
@@ -476,16 +589,43 @@ export function transformDeferInline(
       continue
     }
 
+    // Sanity check: if the JSX is a member expression but the import
+    // isn't a namespace import (e.g. `import M from './x'; <M.Modal />`),
+    // bail. The semantics are ambiguous — `M` is a default-export
+    // component, not a module bag, so `M.Modal` is a member access on
+    // the component itself. Out of scope for inline-Defer.
+    if (m.childAnalysis.kind === 'member' && importInfo.kind !== 'namespace') {
+      const loc = getLoc(code, (m.child.start as number) ?? 0)
+      warnings.push({
+        message: `<Defer>'s inline child <${displayName} /> uses a member expression but \`${m.childAnalysis.lookupName}\` isn't a namespace import. Inline form requires \`import * as ${m.childAnalysis.lookupName} from '...'\`. Use the explicit \`chunk\` prop for other shapes.`,
+        line: loc.line,
+        column: loc.column,
+        code: 'defer-inline/unsupported-import-shape',
+      })
+      continue
+    }
+    // Inverse: namespace import but identifier child (`import * as M;
+    // <Modal />`). The Modal identifier doesn't reference the
+    // namespace at all — leave to import-not-found which fires above.
+    if (m.childAnalysis.kind === 'identifier' && importInfo.kind === 'namespace') {
+      // Shouldn't be reachable — findImportFor only returns namespace
+      // when localName matches the namespace identifier. If we got
+      // here, the namespace was imported with the same name as a
+      // separate component (impossible — would be a JS scope error
+      // upstream). Defensive bail.
+      continue
+    }
+
     const outsideUses = countReferencesOutside(
       program,
-      m.childAnalysis.name,
+      m.childAnalysis.lookupName,
       m.node,
       importInfo.declaration,
     )
     if (outsideUses > 0) {
       const loc = getLoc(code, (m.node.start as number) ?? 0)
       warnings.push({
-        message: `<Defer>'s inline child <${m.childAnalysis.name} /> is also referenced elsewhere in this file. Inline form requires the import to be used exclusively inside this Defer. Use the explicit \`chunk\` prop form to split despite shared usage.`,
+        message: `<Defer>'s inline child <${displayName} /> is also referenced elsewhere in this file. Inline form requires the import to be used exclusively inside this Defer. Use the explicit \`chunk\` prop form to split despite shared usage.`,
         line: loc.line,
         column: loc.column,
         code: 'defer-inline/import-used-elsewhere',
@@ -493,11 +633,20 @@ export function transformDeferInline(
       continue
     }
 
+    // For namespace imports, the export name to extract comes from the
+    // JSX member-expression property (`Modal` in `<M.Modal />`). For
+    // named imports it comes from `importInfo.importedName` (handles
+    // the renamed-import case). For default imports it's unused.
+    const exportName =
+      importInfo.kind === 'namespace'
+        ? m.childAnalysis.propertyName
+        : importInfo.importedName
+
     // 1. Insert chunk attribute just before the opening tag's `>`.
     edits.push({
       start: m.insertChunkAt,
       end: m.insertChunkAt,
-      replacement: buildChunkAttr(importInfo.source, importInfo.kind, importInfo.importedName),
+      replacement: buildChunkAttr(importInfo.source, importInfo.kind, exportName),
     })
 
     // 2. Replace the inline children with a render-prop body. The body

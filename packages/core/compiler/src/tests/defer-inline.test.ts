@@ -273,3 +273,115 @@ export function App() {
     expect(result.code).toContain(`chunk={() => import('./Comments').then((__m) => ({ default: __m.Comments }))}`)
   })
 })
+
+// Gap 4 from the v2 follow-up roadmap. Namespace imports were the last
+// inline-Defer shape that fell back to the explicit form — closing this
+// gap means EVERY common import shape is supported by the inline form.
+describe('transformDeferInline — namespace imports (v3)', () => {
+  test('rewrites <M.Modal /> with namespace import — chunk extracts __m.Modal', () => {
+    const input = `
+import { Defer } from '@pyreon/core'
+import * as M from './Modal'
+export function App() {
+  return <Defer when={() => true}><M.Modal /></Defer>
+}
+`
+    const result = transformDeferInline(input, 'app.tsx')
+    expect(result.changed).toBe(true)
+    expect(result.code).toContain(`chunk={() => import('./Modal').then((__m) => ({ default: __m.Modal }))}`)
+    // M.Modal in the JSX replaced with __C (the whole member expression
+    // is the "name" range that gets substituted).
+    expect(result.code).toContain('{(__C) => <__C />}')
+    expect(result.code).not.toContain('import * as M from')
+  })
+
+  test('rewrites with props on member-expression child', () => {
+    const input = `
+import { Defer } from '@pyreon/core'
+import * as M from './Modal'
+export function App() {
+  return <Defer when={() => true}><M.Modal title="hi" /></Defer>
+}
+`
+    const result = transformDeferInline(input, 'app.tsx')
+    expect(result.changed).toBe(true)
+    expect(result.code).toContain('{(__C) => <__C title="hi" />}')
+  })
+
+  test('non-self-closing member-expression child preserves opening + closing replacement', () => {
+    const input = `
+import { Defer } from '@pyreon/core'
+import * as M from './Modal'
+export function App() {
+  return <Defer when={() => true}><M.Modal title="hi"><span>body</span></M.Modal></Defer>
+}
+`
+    const result = transformDeferInline(input, 'app.tsx')
+    expect(result.changed).toBe(true)
+    expect(result.code).toContain('{(__C) => <__C title="hi"><span>body</span></__C>}')
+  })
+
+  test('bails when namespace is referenced elsewhere in the file', () => {
+    // `M` is used for multiple components. Removing the static import
+    // would break the other usage AND the dynamic import becomes a
+    // no-op (Rolldown bundles the module statically when ANY part is
+    // referenced).
+    const input = `
+import { Defer } from '@pyreon/core'
+import * as M from './Modal'
+export function App() {
+  void M.Settings
+  return <Defer when={() => true}><M.Modal /></Defer>
+}
+`
+    const result = transformDeferInline(input, 'app.tsx')
+    expect(result.changed).toBe(false)
+    expect(result.warnings).toHaveLength(1)
+    expect(result.warnings[0]!.code).toBe('defer-inline/import-used-elsewhere')
+  })
+
+  test('bails on deeper member expression — <M.Sub.X /> not supported', () => {
+    const input = `
+import { Defer } from '@pyreon/core'
+import * as M from './Modal'
+export function App() {
+  return <Defer when={() => true}><M.Sub.Modal /></Defer>
+}
+`
+    const result = transformDeferInline(input, 'app.tsx')
+    // analyzeChildElement returns null for non-depth-1 member
+    // expressions → no match in findDeferMatches → no warning. The
+    // Defer is left alone; runtime errors with "missing chunk".
+    expect(result.changed).toBe(false)
+  })
+
+  test('bails when member property is lowercase — <M.helper /> is not a component', () => {
+    const input = `
+import { Defer } from '@pyreon/core'
+import * as M from './lib'
+export function App() {
+  return <Defer when={() => true}><M.helper /></Defer>
+}
+`
+    const result = transformDeferInline(input, 'app.tsx')
+    expect(result.changed).toBe(false)
+  })
+
+  test('bails when member expression but import is default (not namespace)', () => {
+    // `import M from './X'` (default) followed by `<M.Modal />` is a
+    // member access on the default-exported component itself, not a
+    // namespace lookup. Different semantics; out of scope. Compiler
+    // emits `unsupported-import-shape` so the author knows why.
+    const input = `
+import { Defer } from '@pyreon/core'
+import M from './Modal'
+export function App() {
+  return <Defer when={() => true}><M.Modal /></Defer>
+}
+`
+    const result = transformDeferInline(input, 'app.tsx')
+    expect(result.changed).toBe(false)
+    expect(result.warnings).toHaveLength(1)
+    expect(result.warnings[0]!.code).toBe('defer-inline/unsupported-import-shape')
+  })
+})

@@ -438,6 +438,25 @@ const MATRIX: Cell[] = [
         'DEFER_INLINE_FIXTURE_PROP_LABEL_ABC987',
         'about',
       )
+
+      // v3 namespace-import gate. About.tsx also uses
+      // `import * as NS from '../components/NamespaceFixture'` +
+      // `<Defer when={...}><NS.NamespaceFixture /></Defer>` — the
+      // compiler should rewrite the JSXMemberExpression child + remove
+      // the `import * as NS` static import. If gap 4 regressed, the
+      // namespace import would survive → Rolldown would static-bundle
+      // the fixture → the fingerprint would appear in `about-*.js`
+      // (the route chunk) instead of `NamespaceFixture-*.js`.
+      //
+      // Bisect-verifiable: revert the namespace branches in
+      // `analyzeChildElement` / `findImportFor` / the main loop, and
+      // this assertion fails with `expected fingerprint in
+      // NamespaceFixture chunk`.
+      assertStringInExactlyOneChunk(
+        dist,
+        'DEFER_NAMESPACE_FIXTURE_MARKER_QRS456',
+        'NamespaceFixture',
+      )
     },
   },
 
