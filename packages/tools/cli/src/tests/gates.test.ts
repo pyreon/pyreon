@@ -54,21 +54,22 @@ const REPO_ROOT = path.resolve(
 )
 
 describe('runDistributionGate', () => {
-  it('returns clean GateResult shape against real repo', async () => {
-    const result = await runDistributionGate({
-      cwd: REPO_ROOT,
-      // Skip the live `npm pack --dry-run` probe — CI runs it against
-      // the real @pyreon/reactivity package which takes 30s+ under
-      // parallel load (tripping the per-test timeout). The standalone
-      // `Check Distribution` CI job exercises the live probe path; the
-      // coverage gate enforces statement coverage only (passes at
-      // 91.9%), so the few uncovered npm-probe branches are acceptable.
-      skipPackProbe: true,
-    })
-    assertGateResultShape(result, 'distribution')
-    expect(result.category).toBe('architecture')
-    expect(result.meta.scanned).toBeGreaterThan(0)
-  })
+  it(
+    'returns clean GateResult shape against real repo (live npm pack probe)',
+    async () => {
+      // Run with the live `npm pack --dry-run` probe enabled — this is
+      // load-bearing for coverage: lines 145-166 of distribution.ts
+      // (the probe try-block) are otherwise unreachable, and dropping
+      // them takes statement coverage from 91.9% → 88.4% (< 90% gate).
+      // Under CI parallel load the probe takes ~5-15s; bumped per-test
+      // timeout to 90s to absorb runner variance.
+      const result = await runDistributionGate({ cwd: REPO_ROOT })
+      assertGateResultShape(result, 'distribution')
+      expect(result.category).toBe('architecture')
+      expect(result.meta.scanned).toBeGreaterThan(0)
+    },
+    90_000,
+  )
 
   it('emits findings with the expected code prefixes when invariants fail', async () => {
     // Create a synthetic broken package: published (no `private`),
