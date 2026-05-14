@@ -35,6 +35,8 @@ export type {
   TargetedEvent,
   TextareaAttributes,
 } from './jsx-runtime'
+export type { DeferProps } from './defer'
+export { Defer } from './defer'
 export { lazy } from './lazy'
 export { onErrorCaptured, onMount, onUnmount, onUpdate } from './lifecycle'
 export { mapArray } from './map-array'
