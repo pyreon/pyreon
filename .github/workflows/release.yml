@@ -85,6 +85,18 @@ jobs:
       - name: Disable local git hooks for the publish flow
         run: git config core.hooksPath /dev/null
 
+      # 0.x cap: rewrite any `: major` → `: minor` in `.changeset/*.md`
+      # BEFORE `changesets/action` runs `version-packages`. Pyreon is 0.x;
+      # a stray major changeset would otherwise produce a 1.0.0 cascade
+      # across the `fixed` group of 60+ packages. CI's `check-no-major`
+      # job catches `: major` at PR time so this is belt + suspenders —
+      # but the safety net belongs at release time too, in case `: major`
+      # ever lands on main via a workflow path that bypasses the PR check.
+      # When Pyreon goes 1.0 someday, remove this step AND the CI guard
+      # as a deliberate gate (the removal is the explicit signal).
+      - name: Cap changeset bumps at minor (0.x policy)
+        run: bun scripts/cap-changeset-bumps.ts
+
       - name: Create Release PR or Publish
         id: changesets
         uses: changesets/action@6a0a831ff30acef54f2c6aa1cbbc1096b066edaf # v1.7.0
