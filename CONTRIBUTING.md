@@ -113,13 +113,28 @@ docs(head): update SSR examples
 
 Pyreon ships via [changesets](https://github.com/changesets/changesets). Every PR that touches `packages/` should include a changeset (`bun changeset`) describing the change.
 
+### 0.x version policy — no `major` changesets
+
+Pyreon is currently 0.x. **All changesets must be `minor` or `patch`** — never `major`. A `major` changeset on a 0.x package produces a 1.0.0 cascade across the `fixed` group of 60+ packages, which is not appropriate for the current pre-1.0 stability commitment.
+
+Two layers enforce this:
+
+1. **CI guard (`Check No Major Changesets`)** — runs on every PR via `scripts/check-no-major-changesets.ts`. Fails with a clear error if any `.changeset/*.md` contains `: major`. Caught at PR time so contributors fix it before merging.
+2. **Release-time cap (`scripts/cap-changeset-bumps.ts`)** — defense-in-depth. If a `: major` ever lands on `main` (e.g. via a workflow path that bypasses the PR check), the release workflow rewrites it to `: minor` BEFORE `changesets/action` runs `version-packages`. Logs the downgrade so it's visible in the release run.
+
+**Breaking changes are still allowed** in 0.x — write the changeset as `minor` and call out the breaking change explicitly in the prose. Consumers who track minor bumps get the right signal from the changelog.
+
+When Pyreon goes 1.0 someday, **remove BOTH the CI guard and the release-time cap in a single deliberate PR**. That removal IS the explicit signal "we're going 1.0 now" — it's intentionally a manual step so it can't happen by accident.
+
 ### Release workflow
 
 `.github/workflows/release.yml` runs on every push to `main`:
 
-1. Validates the merged state (`bun run lint` → `typecheck` → `test`)
-2. If unreleased changesets exist → opens / updates a "Version Packages" PR collecting them
-3. When that PR is merged → publishes to npm with provenance + creates a GitHub Release
+1. (No pre-validation — CI on the merge commit gates this; the release job is lean.)
+2. **Cap any `: major` → `: minor`** in changesets via `scripts/cap-changeset-bumps.ts` (see 0.x policy above).
+3. If unreleased changesets exist → opens / updates a "Version Packages" PR collecting them.
+4. When that PR is merged → `scripts/publish.ts` publishes each package to npm with provenance, emits `New tag: <name>@<version>` lines per success so `changesets/action` populates `outputs.published='true'`.
+5. The umbrella GitHub Release step (gated on `outputs.published`) creates the `v<version>` git tag + GitHub Release, which triggers `release-native.yml` to cross-compile + publish the Rust compiler binaries for all 7 platform triples.
 
 ### Setup: `RELEASE_PAT` (recommended)
 

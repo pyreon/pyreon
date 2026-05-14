@@ -595,6 +595,25 @@ jobs:
       - name: Verify doc-claim numbers match source of truth
         run: bun run check-doc-claims
 
+  # ── No-major-changesets: 0.x version cap at PR time ───────────────────
+  # Pyreon is 0.x; `major` changesets would produce a 1.0.0 cascade across
+  # the `fixed` group of 60+ packages. Companion to `scripts/cap-changeset-
+  # bumps.ts` (release-time downgrade) — the CI guard surfaces the violation
+  # at PR time so contributors see a clear error instead of a silent release-
+  # time downgrade. When Pyreon goes 1.0, remove BOTH this job and the
+  # release-time cap step as a deliberate gate (the removal IS the signal).
+  check-no-major-changesets:
+    name: Check No Major Changesets
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - name: 'Verify no major changesets (0.x policy)'
+        run: bun scripts/check-no-major-changesets.ts
+
   # ── Verify modes: real-app build matrix ────────────────────────────────
   # Builds every example × mode cell defined in scripts/verify-modes.ts and
   # asserts the dist/ has actual rendered content. This is the structural

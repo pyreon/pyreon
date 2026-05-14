@@ -128,6 +128,15 @@ for (const dir of packageDirs) {
       console.error(`❌ Failed to publish ${pkg.name}`)
       failed.push(pkg.name)
     } else {
+      // Emit the line format changesets/action parses to populate
+      // outputs.published + outputs.publishedPackages. The action's
+      // src/run.ts matches /New tag:\s+(@[^/]+\/[^@]+|[^/]+)@([^\s]+)/
+      // per-line; without this, outputs.published stays 'false' and the
+      // umbrella GitHub Release step (gated on it) silently skips — which
+      // means no v<version> tag → release-native.yml never triggers →
+      // Rust native binaries never publish to consumers. Single console.log
+      // unlocks the whole downstream chain.
+      console.log(`New tag: ${pkg.name}@${pkg.version}`)
       published.push(pkg.name)
     }
   } finally {
