@@ -71,27 +71,19 @@ jobs:
       # those `git push` calls would re-trigger the hook, burning minutes
       # of compute and risking SIGTERM mid-publish.
       #
-      # The explicit Lint / Typecheck / Test steps below cover the same
-      # ground at workflow level. Suppressing the hook removes pure
-      # redundancy — not safety.
+      # CI runs full Lint / Typecheck / Test / Verify Modes / E2E on every
+      # push to main as required checks — by the time this workflow runs,
+      # main is known-green. Re-validating here is redundant and structurally
+      # too heavy: `bun run typecheck` (unfiltered) runs `--filter='*'` across
+      # 60+ packages sequentially, which has repeatedly exceeded the 45-min
+      # job timeout (vs CI's typecheck which uses an affected-filter and
+      # completes in <10 min). Removed in favor of trusting CI.
       #
-      # Reference: vitus-labs/ui-system hit this on their 2.2.1 publish
-      # (npm publish succeeded, GitHub Release step SIGTERM'd because the
-      # pre-push hook ate the remaining time budget).
+      # Reference: vitus-labs/ui-system hit a similar SIGTERM mid-publish
+      # issue on 2.2.1 — the underlying lesson is the same: keep the release
+      # job lean, let CI gate quality.
       - name: Disable local git hooks for the publish flow
         run: git config core.hooksPath /dev/null
-
-      # Pre-publish validation. Catches broken main builds before the artifact
-      # ships to npm. Each step exits the workflow on failure — `changesets/action`
-      # below only runs if all four pass.
-      - name: Lint
-        run: bun run lint
-
-      - name: Typecheck
-        run: bun run typecheck
-
-      - name: Test
-        run: bun run test
 
       - name: Create Release PR or Publish
         id: changesets
@@ -208,18 +200,11 @@ jobs:
 
       # Same reason as the stable job — the local pre-push hook would
       # re-run on every `git push` and could cancel the action mid-publish.
+      # Pre-validation (Lint / Typecheck) also removed — CI on the release/**
+      # branch gates these on every push before this workflow runs, and the
+      # unfiltered `bun run typecheck` was timing out at 45 min.
       - name: Disable local git hooks for the publish flow
         run: git config core.hooksPath /dev/null
-
-      # Light validation on prereleases (lint + typecheck only — full test
-      # suite is heavy, and prereleases are explicitly "for testing"). If
-      # something deeper breaks, the next stable release will catch it
-      # via the full validation chain.
-      - name: Lint
-        run: bun run lint
-
-      - name: Typecheck
-        run: bun run typecheck
 
       - name: Publish snapshot
         env:
