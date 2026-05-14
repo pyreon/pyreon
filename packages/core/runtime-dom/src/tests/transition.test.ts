@@ -118,12 +118,16 @@ describe('Transition', () => {
     const target = el.querySelector('.lifecycle') as HTMLElement
     if (target) {
       target.dispatchEvent(new Event('transitionend'))
-      // 10ms was too tight under CI scheduling pressure — the dispatched
-      // event's listener callback runs on next-tick + microtask flush,
-      // and shared CI runners can have 10-30ms scheduling latency. 50ms
-      // gives enough headroom without slowing the test meaningfully.
-      await new Promise<void>((r) => setTimeout(r, 50))
-      expect(onAfterEnter).toHaveBeenCalled()
+      // Poll for the assertion instead of fixed sleep. Fixed setTimeout
+      // is structurally flaky on shared CI runners: scheduling latency
+      // between dispatchEvent's callback queue and the next tick can
+      // exceed any reasonable fixed wait (we tried 10ms then 50ms, both
+      // flaked). `vi.waitFor` polls every 10ms up to the timeout, so it
+      // settles as soon as the assertion holds while still bounding the
+      // worst case.
+      await vi.waitFor(() => expect(onAfterEnter).toHaveBeenCalled(), {
+        timeout: 2000,
+      })
     }
   })
 
