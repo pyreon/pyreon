@@ -91,6 +91,27 @@ export function getZeroPluginConfig(plugin: Plugin): ZeroConfig | undefined {
 }
 
 /**
+ * Detects `--port` / `--port=N` / `-p N` / `-p=N` in `process.argv`.
+ * Used by the plugin's `config()` hook to decide whether to apply the
+ * default port — when the CLI was invoked with `--port`, the plugin
+ * must skip its default so the CLI flag wins (see the comment at the
+ * port-handling block in `zeroPlugin()` for the full precedence model).
+ *
+ * Exported for testing only (the plugin uses it internally).
+ *
+ * @internal
+ */
+export function argvHasPortFlag(argv: readonly string[] = process.argv): boolean {
+	for (let i = 0; i < argv.length; i++) {
+		const a = argv[i];
+		if (a === "--port" || a === "-p") return true;
+		if (a !== undefined && (a.startsWith("--port=") || a.startsWith("-p=")))
+			return true;
+	}
+	return false;
+}
+
+/**
  * Zero Vite plugin — adds file-based routing and zero-config conventions
  * on top of @pyreon/vite-plugin.
  *
@@ -389,16 +410,32 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 				optimizeDeps: {
 					exclude: pyreonExclude,
 				},
-				// Only set the port when the user explicitly provided one in
-				// `zero({ port: N })`. Without this guard, the plugin always
-				// returned `server: { port: 3000 }` which overrode Vite's CLI
-				// `--port` flag and made multi-example dev impossible — every
-				// example tried to bind 3000 even when launched with
-				// `vite --port 5173`. Surfaced when wiring up the playwright
-				// e2e suite.
-				...(userConfig.port !== undefined
-					? { server: { port: config.port } }
-					: {}),
+				// Port handling — the zero-canonical default is 3000 (matches
+				// `zero dev` / `zero preview` / the runtime adapter, and
+				// matches Next.js / Remix / Astro convention).
+				//
+				// Apply the default UNLESS Vite's CLI was invoked with
+				// `--port`/`-p` (in which case the CLI flag must win — see
+				// memory: vite cli port doesnt override plugin). PR #579
+				// proved this empirically: returning `server: { port: 3000 }`
+				// unconditionally clobbered `vite --port 517N --strictPort`
+				// in the e2e playwright config and every webServer timed
+				// out. argv detection here lets the CLI win at the source.
+				//
+				// Precedence (CLI > user vite.config > zero({port}) > 3000):
+				//   1. `vite --port N` → argvHasPortFlag() === true → plugin
+				//      omits `server.port` entirely → CLI value wins
+				//   2. User `vite.config.ts server: { port: N }` → user
+				//      config beats plugin in Vite's merge order
+				//   3. `zero({ port: N })` → resolved into `config.port`
+				//   4. Default 3000 — when no other source set a port
+				//
+				// `process.argv` is populated by the time Vite invokes the
+				// plugin's config() hook (Vite calls plugins synchronously
+				// during CLI bootstrap before applying inline overrides).
+				...(userConfig.port === undefined && argvHasPortFlag()
+					? {}
+					: { server: { port: config.port } }),
 				// Propagate `zero({ base })` to Vite's `base` config — that's
 				// what controls asset URL rewriting in the built HTML/JS
 				// (`<script src="/blog/assets/…">`). Pre-fix this was a
