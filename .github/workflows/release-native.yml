@@ -59,10 +59,19 @@ jobs:
             ext: dylib
             prefix: lib
             npm: darwin-arm64
-          # macOS Intel — uses macos-13 (last Intel runner before
-          # GitHub deprecated x86_64 macos-latest in favour of arm64).
+          # macOS Intel — cross-compile from a macos-latest (arm64) runner.
+          # macos-13 is the only Intel-native GitHub runner since macos-latest
+          # moved to Apple Silicon, but its pool is heavily constrained — we
+          # saw 2+ hour queue waits during validation. Apple's clang on arm64
+          # hosts ships cross-compile support for x86_64-apple-darwin out of
+          # the box (`rustup target add x86_64-apple-darwin` + `cargo build
+          # --target x86_64-apple-darwin` Just Works), so we sidestep the
+          # macos-13 pool entirely by running on macos-latest. `host: native`
+          # because the cross-compile is invisible to cargo — no zigbuild or
+          # docker needed; the rust toolchain action's `targets:` parameter
+          # installs the right target via rustup.
           - target: x86_64-apple-darwin
-            os: macos-13
+            os: macos-latest
             host: native
             ext: dylib
             prefix: lib
