@@ -262,8 +262,32 @@ jobs:
             echo "::error::Binary too small ($SIZE bytes) — corrupted artifact"
             exit 1
           fi
-      - name: Publish to npm
+      - name: Publish to npm (OIDC trusted publishing)
+        # No NODE_AUTH_TOKEN — Pyreon uses npm OIDC trusted publishing
+        # (no long-lived secrets). npm 11+ (shipped with Node 24) handles
+        # the OIDC token exchange automatically when:
+        #   1. `id-token: write` workflow permission is granted (set at
+        #      file scope above — line 37).
+        #   2. The package is registered as a trusted-publisher target
+        #      for THIS workflow on npmjs.com.
+        #
+        # Setting `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` (the prior
+        # shape) resolves to empty string when NPM_TOKEN isn't a repo
+        # secret. setup-node then writes
+        # `//registry.npmjs.org/:_authToken=` (empty) into .npmrc, and
+        # npm tries to use the empty token → ENEEDAUTH instead of
+        # falling back to OIDC. Pyreon's main release flow works without
+        # NODE_AUTH_TOKEN because changesets/action does the OIDC
+        # exchange internally; this raw `npm publish` path relies on
+        # npm CLI's native OIDC support and needs the env line removed.
+        #
+        # Pre-registration required (one-time, per package) for the 7
+        # platform packages:
+        #   1. npmjs.com → Settings → Publishing access → "Add new"
+        #   2. Package: @pyreon/compiler-<short> (one form per triple)
+        #   3. Repository: pyreon/pyreon
+        #   4. Workflow filename: release-native.yml
+        # See CONTRIBUTING.md → "Releases → Native binary publishing"
+        # for the full checklist.
         working-directory: packages/core/compiler/npm/${{ matrix.npm }}
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

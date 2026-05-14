@@ -136,6 +136,27 @@ When Pyreon goes 1.0 someday, **remove BOTH the CI guard and the release-time ca
 4. When that PR is merged → `scripts/publish.ts` publishes each package to npm with provenance, emits `New tag: <name>@<version>` lines per success so `changesets/action` populates `outputs.published='true'`.
 5. The umbrella GitHub Release step (gated on `outputs.published`) creates the `v<version>` git tag + GitHub Release, which triggers `release-native.yml` to cross-compile + publish the Rust compiler binaries for all 7 platform triples.
 
+### Native binary publishing (OIDC trusted publishing)
+
+The 7 platform packages (`@pyreon/compiler-darwin-arm64`, `darwin-x64`, `linux-x64-gnu`, `linux-arm64-gnu`, `linux-x64-musl`, `linux-arm64-musl`, `win32-x64-msvc`) ship via `release-native.yml` triggered by tag push. The workflow uses **npm OIDC trusted publishing** — no long-lived `NPM_TOKEN` secret stored in the repo.
+
+**One-time pre-registration (required before the first publish for each package).** npm trusted publishing supports configuring a publisher BEFORE the package exists; the first publish via the configured workflow creates the package. For each of the 7 platform packages above:
+
+1. Sign in to npmjs.com with an account that has publish rights to `@pyreon`.
+2. Open `https://www.npmjs.com/settings/<your-username-or-pyreon-org>/publishing/oidc/new` (Settings → Publishing access → "Add new").
+3. Fill in:
+   - **Package name**: `@pyreon/compiler-<short>` (e.g. `@pyreon/compiler-darwin-arm64`)
+   - **Repository**: `pyreon/pyreon`
+   - **Workflow filename**: `release-native.yml`
+   - **Environment**: (leave blank — workflow doesn't use GitHub Environments)
+4. Save. Repeat for the other 6 packages.
+
+After all 7 are registered, the next `release-native.yml` run on a `v*.*.*` tag will publish all 7 successfully via OIDC — the workflow's `id-token: write` permission lets npm 11+ (Node 24) exchange a short-lived OIDC token for a per-publish npm token, scoped to this workflow + package + commit SHA.
+
+**Why no `NPM_TOKEN`**: long-lived tokens are an exfil surface during publish (they have full publish scope). OIDC trusted publishing replaces that with per-deploy attestation; the published tarballs also gain a `provenance` field that consumers can verify against the GitHub workflow run.
+
+**Recovery**: if all 7 are registered correctly and the workflow still fails with `ENEEDAUTH`, check the workflow file does NOT set `NODE_AUTH_TOKEN` on the Publish step — even an empty-string token (which `${{ secrets.NPM_TOKEN }}` resolves to when the secret is unset) prevents npm from falling back to OIDC. See the comment on the Publish step in `release-native.yml`.
+
 ### Setup: `RELEASE_PAT` (recommended)
 
 The default `GITHUB_TOKEN` issued to workflows is forbidden from triggering downstream workflows when it pushes commits. The practical effect: the Version Packages PR opens with a **blank CI status** because CI doesn't fire on the commit `changesets/action` pushes. Merging a Version PR with no CI checks is awkward — you can't know if `bun.lock` got regenerated correctly, etc.
