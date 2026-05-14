@@ -389,16 +389,23 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 				optimizeDeps: {
 					exclude: pyreonExclude,
 				},
-				// Only set the port when the user explicitly provided one in
-				// `zero({ port: N })`. Without this guard, the plugin always
-				// returned `server: { port: 3000 }` which overrode Vite's CLI
-				// `--port` flag and made multi-example dev impossible — every
-				// example tried to bind 3000 even when launched with
-				// `vite --port 5173`. Surfaced when wiring up the playwright
-				// e2e suite.
-				...(userConfig.port !== undefined
-					? { server: { port: config.port } }
-					: {}),
+				// Apply the zero-canonical default port (3000) via the plugin's
+				// `config()` hook. Vite's config-merge semantics: plugin-
+				// returned config is the BASE — user's `vite.config.ts`
+				// `server.port` overrides, and CLI `--port` flag (inline
+				// config) overrides above that. So `zero({ port: 4000 })` is
+				// honoured (resolved into `config.port`), an explicit
+				// `vite.config.ts server: { port: 5800 }` wins over zero's
+				// default, and `vite --port 5173` (CLI) wins over all of
+				// them. The original guard (`userConfig.port !== undefined`)
+				// was added because an earlier zero version returned
+				// `server: { port: 3000 }` from a different hook that ran
+				// AFTER inline-config merge and clobbered CLI `--port`.
+				// `config()` hook returns are the lowest-precedence layer,
+				// so unconditional emission is safe — confirmed by the cpa
+				// playwright suite running `zero dev --port 519N` (inline
+				// createServer config), which still binds 519N not 3000.
+				server: { port: config.port },
 				// Propagate `zero({ base })` to Vite's `base` config — that's
 				// what controls asset URL rewriting in the built HTML/JS
 				// (`<script src="/blog/assets/…">`). Pre-fix this was a

@@ -49,6 +49,26 @@ describe('zero vite-plugin config', () => {
     expect(config.define.__ZERO_BASE__).toBeDefined()
   })
 
+  // Port handling — `zero({})` defaults to 3000 (the canonical meta-
+  // framework port, same as Next.js / Remix / Astro). Vite merge order
+  // makes user vite.config.ts `server.port` and CLI `--port` flag still
+  // override because plugin config() is the lowest-precedence layer.
+  describe('port defaults', () => {
+    it('defaults to 3000 when no user port provided', async () => {
+      const { zeroPlugin } = await import('../vite-plugin')
+      const plugin = getMainPlugin(zeroPlugin())
+      const config = plugin.config({ root: process.cwd() })
+      expect(config.server.port).toBe(3000)
+    })
+
+    it('honours zero({ port: N }) override', async () => {
+      const { zeroPlugin } = await import('../vite-plugin')
+      const plugin = getMainPlugin(zeroPlugin({ port: 4242 }))
+      const config = plugin.config({ root: process.cwd() })
+      expect(config.server.port).toBe(4242)
+    })
+  })
+
   // SSG mode auto-wires `ssgPlugin` into the plugin chain alongside the
   // main plugin. Without it, `mode: "ssg"` was types-only — `ssg.paths`
   // never reached a build hook and no per-route HTML was emitted.
