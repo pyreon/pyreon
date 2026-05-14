@@ -88,14 +88,27 @@ export type DeferProps<P extends Props> = DeferTrigger & {
    * Dynamic import to lazy-load. The literal `import('./X')` is what
    * Rolldown / Vite see when emitting chunks — using a variable here
    * defeats code splitting.
+   *
+   * Typed as optional ONLY because the compiler-driven inline form
+   * (`<Defer when={x}><Modal /></Defer>`) doesn't include a `chunk`
+   * prop at source level — `@pyreon/compiler`'s `transformDeferInline`
+   * synthesizes it before runtime. Authors using the explicit form
+   * must pass `chunk` — runtime throws a clear dev-mode error when
+   * the trigger fires and `chunk` is missing.
    */
-  chunk: () => Promise<ChunkResult<P>>
+  chunk?: () => Promise<ChunkResult<P>>
   /**
-   * Render-prop for the loaded component. Receives the resolved component
-   * and returns its JSX with whatever props the parent needs to pass.
-   * Optional — omitting it renders `<Comp />` with no props.
+   * Children accept TWO shapes:
+   *   1. Render-prop `(Component) => VNodeChild` — the explicit form.
+   *      Receives the loaded component, lets the author pass props.
+   *   2. Inline JSX (`<Defer when={x}><Modal /></Defer>`) — the compiler-
+   *      driven form. The compiler extracts the subtree into a chunk
+   *      and rewrites this to the render-prop form before runtime.
+   *
+   * Type widening is necessary because TypeScript checks the raw source
+   * BEFORE the compiler pass runs — both shapes must typecheck.
    */
-  children?: (Component: ComponentFn<P>) => VNodeChild
+  children?: ((Component: ComponentFn<P>) => VNodeChild) | VNodeChild
   /** Shown while the chunk is loading. Default: `null`. */
   fallback?: VNodeChild
   /**
@@ -146,6 +159,20 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
   const startLoad = (): void => {
     if (loadStarted) return
     loadStarted = true
+    if (!props.chunk) {
+      // Missing chunk = either the user is hand-writing the inline form
+      // without the compiler pass running, or they wrote the explicit
+      // form and forgot to pass chunk. Either way, error early with an
+      // actionable message instead of crashing later inside the `.then`.
+      const err = new Error(
+        '[Pyreon] <Defer> has no `chunk` prop. Either pass `chunk={() => import("...")}` ' +
+          '(explicit form), or use the inline form `<Defer when={...}><Component /></Defer>` ' +
+          'with `@pyreon/vite-plugin` enabled — the compiler rewrites inline JSX to ' +
+          'an explicit chunk-prop call.',
+      )
+      Failed.set(err)
+      return
+    }
     props
       .chunk()
       .then((mod) => {
@@ -199,7 +226,18 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
     if (err) throw err
     const Comp = Loaded()
     if (!Comp) return props.fallback ?? null
-    return props.children ? props.children(Comp) : h(Comp as ComponentFn, {})
+    // children is widened to `VNodeChild | render-prop` so the compiler-
+    // driven inline form (where author writes `<Defer ...><Modal /></Defer>`)
+    // typechecks at source level. At RUNTIME children is always either
+    // undefined OR the render-prop — the compiler rewrites the inline
+    // form's JSX children to a render-prop before this code runs.
+    // A non-function children at runtime means the user is invoking the
+    // inline form without the compiler pass (e.g. running tests through
+    // a bundler that doesn't include `@pyreon/vite-plugin`) — in that
+    // case we render `<Comp />` with no props as a best-effort fallback.
+    const ch = props.children
+    if (typeof ch === 'function') return ch(Comp)
+    return h(Comp as ComponentFn, {})
   }
 
   if ('on' in props && props.on === 'visible') {
