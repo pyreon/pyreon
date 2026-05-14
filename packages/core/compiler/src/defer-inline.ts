@@ -402,8 +402,7 @@ function applyEdits(source: string, edits: Edit[]): string {
  */
 function buildImportRemovalEdit(code: string, info: ImportInfo): Edit {
   const specifiers = (info.declaration.specifiers as Node[]) ?? []
-  // TEMP BISECT: always remove whole declaration (v1 buggy behaviour)
-  if (specifiers.length >= 1) {
+  if (specifiers.length === 1) {
     // Whole declaration goes. Eat trailing newline so we don't leave a blank line.
     const start = info.declaration.start as number
     let end = info.declaration.end as number
