@@ -116,7 +116,7 @@ describe('_wrapSpread', () => {
 
     const wrappedX = result.x as () => unknown
     expect(typeof wrappedX).toBe('function')
-    expect((wrappedX as { [k: symbol]: unknown })[REACTIVE_PROP]).toBe(true)
+    expect((wrappedX as unknown as Record<symbol, unknown>)[REACTIVE_PROP]).toBe(true)
 
     // Lazy read — each call reads the current source[x] getter value
     expect(wrappedX()).toBe('a')
