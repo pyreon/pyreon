@@ -15,6 +15,8 @@
  * shape).
  */
 
+import * as path from 'node:path'
+
 import { lint, allRules } from '@pyreon/lint'
 
 import type {
@@ -92,7 +94,7 @@ export const runLintGate = async (
         message: diag.message,
         location: {
           path: fileResult.filePath,
-          relPath: fileResult.filePath,
+          relPath: path.relative(opts.cwd, fileResult.filePath),
           line: diag.loc.line,
           column: diag.loc.column,
         },

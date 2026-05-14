@@ -269,9 +269,11 @@ describe('runDocClaimsGate', () => {
     fs.rmSync(tmp, { recursive: true, force: true })
   })
 
-  it('emits file-missing finding when a claim file is absent', async () => {
-    // Build a minimal fake repo without the claim files. The gate
-    // walks the configured claims[] and emits file-missing for each.
+  it('emits file-missing finding when a claim file is absent (but at least one exists)', async () => {
+    // Build a minimal fake repo with the source-of-truth file AND at
+    // least one claim file present — that's the "this IS a Pyreon
+    // project, but some claim sites have been deleted/moved" shape.
+    // Gate walks claims[] and emits file-missing for each absent one.
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-gate-'))
     fs.mkdirSync(
       path.join(tmp, 'packages', 'fundamentals', 'hooks', 'src'),
@@ -281,9 +283,15 @@ describe('runDocClaimsGate', () => {
       path.join(tmp, 'packages', 'fundamentals', 'hooks', 'src', 'index.ts'),
       '',
     )
+    // Plant one claim file (CLAUDE.md) so the gate doesn't skip.
+    // Content is empty so its claims trigger pattern-miss (warning),
+    // not file-missing. All OTHER claim files remain absent and
+    // produce file-missing (error) findings.
+    fs.writeFileSync(path.join(tmp, 'CLAUDE.md'), '')
 
     const result = await runDocClaimsGate({ cwd: tmp })
     assertGateResultShape(result, 'doc-claims')
+    expect(result.meta.skipped).not.toBe(true)
     const fileMissing = result.findings.filter((f) =>
       f.code.endsWith('-file-missing'),
     )
@@ -292,6 +300,26 @@ describe('runDocClaimsGate', () => {
       expect(f.severity).toBe('error')
       expect(f.location?.relPath).toBeTruthy()
     }
+
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it('skips the gate when no claim files exist (non-Pyreon project)', async () => {
+    // A downstream consumer app has none of the Pyreon-monorepo claim
+    // sites (CLAUDE.md, hooks README, docs/docs/index.md, …). The gate
+    // recognises this and returns skipped:true rather than flooding
+    // findings with spurious file-missing errors for paths that don't
+    // apply to the user's project.
+    const tmp = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'pyreon-claims-gate-skip-'),
+    )
+    // Tmp dir is empty — no Pyreon-shaped files anywhere.
+
+    const result = await runDocClaimsGate({ cwd: tmp })
+    assertGateResultShape(result, 'doc-claims')
+    expect(result.meta.skipped).toBe(true)
+    expect(result.meta.skipReason).toContain('no claim sites')
+    expect(result.findings).toHaveLength(0)
 
     fs.rmSync(tmp, { recursive: true, force: true })
   })
