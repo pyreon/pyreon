@@ -139,8 +139,19 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Build (cargo-zigbuild)
+        # Linux musl targets need `-C target-feature=-crt-static` to produce
+        # a cdylib (.so). Default Rust musl behaviour statically links libc,
+        # which only supports `staticlib`, not the dynamic library napi-rs
+        # consumers expect — produces: `error: cannot produce cdylib for
+        # ... as the target X-musl does not support these crate types`.
+        # Standard napi-rs workaround (used by oxc-parser, swc, esbuild's
+        # Rust binding, etc.). Linux gnu targets ignore the flag (they're
+        # already dynamic by default), so applying it unconditionally to
+        # the zigbuild path is safe — no per-target branching needed.
         if: matrix.host == 'zigbuild'
         working-directory: packages/core/compiler/native
+        env:
+          RUSTFLAGS: '-C target-feature=-crt-static'
         run: cargo zigbuild --release --target ${{ matrix.target }}
 
       - name: Stage artifact
