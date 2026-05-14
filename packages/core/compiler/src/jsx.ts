@@ -273,6 +273,7 @@ export function transformJSX_JS(
   let hoistIdx = 0
   let needsTplImport = false
   let needsRpImport = false
+  let needsWrapSpreadImport = false
   let needsBindTextImportGlobal = false
   let needsBindDirectImportGlobal = false
   let needsBindImportGlobal = false
@@ -342,6 +343,46 @@ export function transformJSX_JS(
         'missing-key-on-for',
       )
     }
+  }
+
+  /**
+   * Wrap component-JSX spread arguments with `_wrapSpread(...)` so
+   * getter-shaped reactive props survive esbuild's JS-level spread emit.
+   *
+   * esbuild compiles `<Comp {...source}>` to `jsx(Comp, { ...source })`.
+   * The JS spread fires every getter on `source` and stores the resolved
+   * values — collapsing compiler-emitted reactive props (`_rp` thunks
+   * later converted to getters by `makeReactiveProps`) to static values
+   * before the receiving component sees them.
+   *
+   * `_wrapSpread` replaces getter descriptors with `_rp`-branded thunks,
+   * so the JS-level spread carries function values instead. The runtime
+   * `makeReactiveProps` step converts them back to getters on the
+   * component's props object — preserving the live signal subscription.
+   *
+   * Lowercase tags (DOM elements) go through the template path's
+   * `_applyProps` which already handles spread reactively — no need to
+   * wrap there.
+   */
+  function handleJsxSpreadAttribute(attr: N, parentElement: N): void {
+    const tagName = jsxTagName(parentElement)
+    const isComponent =
+      tagName.length > 0 && tagName.charAt(0) !== tagName.charAt(0).toLowerCase()
+    if (!isComponent) return
+    const arg = attr.argument
+    if (!arg) return
+    // Skip already-wrapped sources (idempotent compilation guard).
+    if (
+      arg.type === 'CallExpression' &&
+      arg.callee?.type === 'Identifier' &&
+      arg.callee.name === '_wrapSpread'
+    )
+      return
+    const start = arg.start as number
+    const end = arg.end as number
+    const sliced = sliceExpr(arg)
+    replacements.push({ start, end, text: `_wrapSpread(${sliced})` })
+    needsWrapSpreadImport = true
   }
 
   function handleJsxAttribute(node: N, parentElement: N): void {
@@ -733,6 +774,7 @@ export function transformJSX_JS(
       checkForWarnings(node)
       for (const attr of jsxAttrs(node)) {
         if (attr.type === 'JSXAttribute') handleJsxAttribute(attr, node)
+        else if (attr.type === 'JSXSpreadAttribute') handleJsxSpreadAttribute(attr, node)
       }
       for (const child of jsxChildren(node)) {
         if (child.type === 'JSXExpressionContainer') handleJsxExpression(child)
@@ -793,8 +835,11 @@ export function transformJSX_JS(
       output
   }
 
-  if (needsRpImport) {
-    output = `import { _rp } from "@pyreon/core";\n` + output
+  if (needsRpImport || needsWrapSpreadImport) {
+    const coreImports: string[] = []
+    if (needsRpImport) coreImports.push('_rp')
+    if (needsWrapSpreadImport) coreImports.push('_wrapSpread')
+    output = `import { ${coreImports.join(', ')} } from "@pyreon/core";\n` + output
   }
 
   return { code: output, usesTemplates: needsTplImport, warnings }

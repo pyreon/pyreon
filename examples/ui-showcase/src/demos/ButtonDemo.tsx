@@ -50,6 +50,24 @@ export function ButtonDemo() {
         <CloseButton size="small">x</CloseButton>
         <CloseButton size="medium">x</CloseButton>
       </div>
+
+      {/* Reactive-prop regression — a signal feeds the `title` prop on
+          a rocketstyle Button. Pre-fix, the rocketstyle pipeline value-
+          copied the prop at HOC setup time, collapsing the getter to a
+          static value and breaking signal-driven DOM updates. The
+          rendered title attribute must update when the counter clicks
+          fire. See e2e/ui-showcase-regression.spec.ts. */}
+      <Title size="h3" style="margin-bottom: 12px">Reactive Props</Title>
+      <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 24px;">
+        <Button
+          data-testid="reactive-prop-button"
+          state="primary"
+          title={`count: ${count()}`}
+          onClick={() => count.update((n) => n + 1)}
+        >
+          Click to bump signal
+        </Button>
+      </div>
     </div>
   )
 }
