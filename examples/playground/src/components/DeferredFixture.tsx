@@ -1,16 +1,24 @@
 /**
  * Fixture component used by the inline-Defer verify-modes cell.
  *
- * The string `DEFER_INLINE_FIXTURE_MARKER_XYZ123` is a unique fingerprint
- * — verify-modes greps for it in `dist/assets/*.js` to confirm:
- *   1. It DOES appear in exactly one chunk (the deferred chunk that the
- *      inline-Defer compiler pass extracted)
- *   2. It does NOT appear in the entry chunk (otherwise the compiler
- *      didn't actually split — it would be a no-op transform)
+ * Two fingerprints live here:
+ *   - `DEFER_INLINE_FIXTURE_MARKER_XYZ123` — chunk-extraction proof. Must
+ *     appear in `DeferredFixture-*.js` only.
+ *   - `DEFER_INLINE_FIXTURE_PROP_LABEL_ABC987` — the prop literal passed
+ *     from `About.tsx`'s call site. Must appear in the route chunk
+ *     (`about-*.js`) because the render-prop body lives in the caller —
+ *     `{(__C) => <__C label="DEFER_INLINE_FIXTURE_PROP_LABEL_ABC987" />}`.
  *
- * The component itself is intentionally minimal — only the fingerprint
- * matters for the bundle-graph assertion.
+ * The two-fingerprint shape proves v2's prop-preservation works at
+ * build-time: if the compiler rewrote the inline child but DROPPED the
+ * prop, the prop-fingerprint would land neither in the route chunk
+ * (rendered body has no `label` literal) nor in the fixture chunk
+ * (component doesn't carry the literal). verify-modes catches that.
  */
-export function DeferredFixture(): JSX.Element {
-  return <div data-testid="deferred-fixture">DEFER_INLINE_FIXTURE_MARKER_XYZ123</div>
+export function DeferredFixture(props: { label: string }): JSX.Element {
+  return (
+    <div data-testid="deferred-fixture">
+      DEFER_INLINE_FIXTURE_MARKER_XYZ123: <span data-testid="deferred-label">{props.label}</span>
+    </div>
+  )
 }
