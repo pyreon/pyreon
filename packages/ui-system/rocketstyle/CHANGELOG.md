@@ -1,5 +1,37 @@
 # @pyreon/rocketstyle
 
+## 0.16.0
+
+### Minor Changes
+
+- [#564](https://github.com/pyreon/pyreon/pull/564) [`6cda881`](https://github.com/pyreon/pyreon/commit/6cda8819d4c3cb7b1b5a4904aadc3e417524795c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Split `.attrs()` into two explicit overloads (callback form first, object form second) AND widen the DFP (calculated final props) type so JSX call sites with EA (extended-attrs) generics don't require redundant prop annotations.
+
+  **Overload split**: `attrs(callback, config?)` and `attrs(object, config?)` were one polymorphic signature. TS picked the wrong one for `<P>`-typed object literals (the callback overload distributes `Partial<DFP & P>` over the callback's props arg; the object overload binds `P` directly to the literal). Splitting into two declarations lets TS pick the structurally-correct overload at the call site.
+
+  **Asymmetric callback shape** (Pyreon-specific): callback PROPS narrow to `Partial<DFP & P>`, callback RETURN stays loose as `Partial<P> & Record<string, unknown>`. This preserves the convention where `.attrs()` callbacks return runtime-only fields like `_documentProps` / `tag: 'a'` overrides that aren't on the user's `<P>` generic.
+
+  **DFP widening with `OA extends infer O` distribution**: `MergeTypes<[OA, EA, DefaultProps, ExtractDimensionProps<...>]>` now distributes over each branch of `OA` (when `OA` is a union, e.g. from a multi-overload base component). Pairs with PR [#565](https://github.com/pyreon/pyreon/issues/565) (`ExtractProps` overload narrowing) — DFP now correctly fans out across every overload's props instead of collapsing to the last one.
+
+  **`NoInfer<DFP>` on the object form** (TS 5.4+): prevents TS from inferring `P` from `DFP` in the second overload — `P` must come from the user's literal or stays at its `TObj` default. Fixes "no overload matches this call" errors at consumer call sites in `document-primitives`, `ui-components`, `ui-primitives`. Mirrors vitus-labs commit.
+
+### Patch Changes
+
+- [#565](https://github.com/pyreon/pyreon/pull/565) [`a4a4255`](https://github.com/pyreon/pyreon/commit/a4a42550835cb2706b99beed8ea582037d338ea8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Multi-overload-aware `ExtractProps<T>`. Pattern-matches up to 4 call signatures and returns the UNION of their first-argument types instead of capturing only the LAST overload (TS's overload-resolution-against-conditional-types default). Multi-overload primitives like `Iterator` / `List` / `Element` ship 3 overloads where the LAST one is the loosest (`ChildrenProps`); pre-fix `ExtractProps<Iterator>` returned just `ChildrenProps` and lost `SimpleProps<T>` + `ObjectProps<T>` — wrapping Iterator through `rocketstyle()` / `attrs()` silently downgraded the public prop surface to the loose children-only form.
+
+  Single-overload functions still work — TS fills missing slots by repeating the last overload, so the union of 4 copies of the same shape dedupes back to one.
+
+  Kept in sync across the 4 copies in `@pyreon/core`, `@pyreon/elements`, `@pyreon/attrs`, `@pyreon/rocketstyle`. Pairs with the upcoming Iterator/List `LooseProps` fallback overload (separate PR), which gives the now-wider union a binding home at the JSX site.
+
+  Mirrors vitus-labs PR [#222](https://github.com/pyreon/pyreon/issues/222).
+
+- [#560](https://github.com/pyreon/pyreon/pull/560) [`21ccd15`](https://github.com/pyreon/pyreon/commit/21ccd153f29fff8ed629a2761a0c33cf33ae0ebe) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix `isDark`/`isLight` helper swap in `rocketstyle`'s `getDefaultAttrs`. The attrs callback received `isDark: mode === 'light'` and `isLight: mode === 'dark'` — exact inverse of the documented semantics. Any user code reading `helpers.isDark` / `helpers.isLight` from `.attrs(callback)` got the wrong flag for both light and dark mode. Inversed mode (`inversed: true`) was also affected since it flows through the same helper. Mirrors vitus-labs commit.
+
+- Updated dependencies [[`a4a4255`](https://github.com/pyreon/pyreon/commit/a4a42550835cb2706b99beed8ea582037d338ea8), [`53b230c`](https://github.com/pyreon/pyreon/commit/53b230cc9715129af0088da516f572e6572a2117), [`3b61ea9`](https://github.com/pyreon/pyreon/commit/3b61ea986e45fa5c4560d766532123276033abb8)]:
+  - @pyreon/core@0.16.0
+  - @pyreon/styler@0.16.0
+  - @pyreon/reactivity@0.16.0
+  - @pyreon/ui-core@0.16.0
+
 ## 0.14.0
 
 ### Patch Changes
