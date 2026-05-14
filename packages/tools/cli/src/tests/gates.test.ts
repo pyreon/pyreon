@@ -10,7 +10,10 @@ import {
   runDistributionGate,
   runDocClaimsGate,
 } from '../doctor/gates'
+import { _parseAuditTypesOutput } from '../doctor/gates/audit-types'
+import { _parseBundleBudgetsOutput } from '../doctor/gates/bundle-budgets'
 import type { Finding, GateResult, Severity } from '../doctor/types'
+import { finding } from '../doctor/types'
 
 /**
  * Shape contract for every doctor gate. These tests assert the
@@ -51,18 +54,18 @@ const REPO_ROOT = path.resolve(
 )
 
 describe('runDistributionGate', () => {
-  it('returns clean GateResult shape against real repo', async () => {
+  it('returns clean GateResult shape against real repo (live npm pack probe)', async () => {
     const result = await runDistributionGate({
       cwd: REPO_ROOT,
-      // Skip the live npm pack probe in tests — slow and depends on
-      // npm being on PATH. The static rule checks (sideEffects +
-      // !lib/**/*.map exclusion) still fire and exercise the gate.
-      skipPackProbe: true,
+      // skipPackProbe: false (default) — exercise the live `npm pack
+      // --dry-run` path against @pyreon/reactivity so coverage hits
+      // those branches. The probe internally try/catches missing-npm
+      // so this is safe on bun-only local setups too.
     })
     assertGateResultShape(result, 'distribution')
     expect(result.category).toBe('architecture')
     expect(result.meta.scanned).toBeGreaterThan(0)
-  })
+  }, 30_000)
 
   it('emits findings with the expected code prefixes when invariants fail', async () => {
     // Create a synthetic broken package: published (no `private`),
@@ -100,6 +103,135 @@ describe('runDocClaimsGate', () => {
     // scanner found them all (any missing files would surface as
     // file-missing findings, scanned count stays stable).
     expect(result.meta.scanned).toBe(7)
+  })
+
+  // Helpers to build a tmp repo with the hooks claim sources the
+  // doc-claims gate walks. Used by the drift / hedged / pattern-miss
+  // path-covering tests below.
+  function buildHooksRepo(
+    tmp: string,
+    opts: {
+      hookCount: number
+      readmeClaim?: string | null
+      manifestTagline?: string | null
+      claudeMdRow?: string | null
+      claudeMdArch?: string | null
+      docsIndex?: string | null
+    },
+  ): void {
+    const hooksDir = path.join(tmp, 'packages', 'fundamentals', 'hooks')
+    fs.mkdirSync(path.join(hooksDir, 'src'), { recursive: true })
+
+    // Generate an index.ts with N `export { useX }` lines so the
+    // gate's countHookExports() returns hookCount. The regex requires
+    // `use[A-Z][a-zA-Z]+` so use letter-only suffixes (no digits).
+    const letters = 'abcdefghijklmnopqrstuvwxyz'
+    const exports = Array.from(
+      { length: opts.hookCount },
+      (_, i) => {
+        const name = (letters[i] ?? `Z${i}`).toUpperCase() + letters[i] + 'ook'
+        return `export { useH${name} }`
+      },
+    ).join('\n')
+    fs.writeFileSync(
+      path.join(hooksDir, 'src', 'index.ts'),
+      exports + '\n',
+    )
+
+    if (opts.readmeClaim !== null) {
+      fs.writeFileSync(
+        path.join(hooksDir, 'README.md'),
+        opts.readmeClaim ?? `${opts.hookCount} signal-based reactive utilities\n`,
+      )
+    }
+
+    if (opts.manifestTagline !== null) {
+      fs.writeFileSync(
+        path.join(hooksDir, 'src', 'manifest.ts'),
+        opts.manifestTagline ??
+          `tagline: '${opts.hookCount} signal-based hooks: foo'\nSignal-based hooks for Pyreon — ${opts.hookCount} reactive primitives\n`,
+      )
+    }
+
+    // CLAUDE.md carries TWO claim sites (table row + arch section)
+    fs.writeFileSync(
+      path.join(tmp, 'CLAUDE.md'),
+      `${opts.claudeMdRow ?? `| \`@pyreon/hooks\` | ${opts.hookCount} signal-based hooks for stuff |`}\n${
+        opts.claudeMdArch ?? `- ${opts.hookCount} signal-based hooks across 6 categories`
+      }\n3 doc pages covering all packages\n`,
+    )
+
+    // docs/docs/index.md carries one
+    fs.mkdirSync(path.join(tmp, 'docs', 'docs'), { recursive: true })
+    fs.writeFileSync(
+      path.join(tmp, 'docs', 'docs', 'index.md'),
+      opts.docsIndex ?? `| ${opts.hookCount} signal-based hooks for common UI patterns\n`,
+    )
+  }
+
+  it('emits drift finding when claim count diverges from actual', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-drift-'))
+    // Actual export count is 3, but the README hard-codes 99.
+    buildHooksRepo(tmp, {
+      hookCount: 3,
+      readmeClaim: '99 signal-based reactive utilities\n',
+    })
+
+    const result = await runDocClaimsGate({ cwd: tmp })
+    assertGateResultShape(result, 'doc-claims')
+    const drift = result.findings.find((f) =>
+      f.code.endsWith('-drift'),
+    )!
+    expect(drift).toBeDefined()
+    expect(drift.severity).toBe('error')
+    expect(drift.message).toContain('claims 99')
+    expect(drift.message).toContain('actual 3')
+    expect(drift.fix).toContain('99 to 3')
+
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it('emits hedged finding when CLAUDE.md uses "N+" form', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-hedged-'))
+    // 3 actual exports; CLAUDE.md row uses the rejected hedged form.
+    buildHooksRepo(tmp, {
+      hookCount: 3,
+      claudeMdRow:
+        '| `@pyreon/hooks` | 3+ signal-based hooks for stuff |',
+    })
+
+    const result = await runDocClaimsGate({ cwd: tmp })
+    assertGateResultShape(result, 'doc-claims')
+    const hedged = result.findings.find((f) =>
+      f.code.endsWith('-hedged'),
+    )!
+    expect(hedged).toBeDefined()
+    expect(hedged.severity).toBe('error')
+    expect(hedged.message).toContain('hedged claim')
+    expect(hedged.fix).toContain('"3+"')
+
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it('emits pattern-miss warning when the claim file lost its pattern', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-miss-'))
+    // Build a repo where the README exists but doesn't contain the
+    // pattern at all — claim was rephrased / removed.
+    buildHooksRepo(tmp, {
+      hookCount: 3,
+      readmeClaim: 'Hooks library for Pyreon. No numeric claim here.\n',
+    })
+
+    const result = await runDocClaimsGate({ cwd: tmp })
+    assertGateResultShape(result, 'doc-claims')
+    const miss = result.findings.find((f) =>
+      f.code === 'doc-claims/hook-count-pattern-miss',
+    )!
+    expect(miss).toBeDefined()
+    expect(miss.severity).toBe('warning')
+    expect(miss.message).toContain('pattern not found')
+
+    fs.rmSync(tmp, { recursive: true, force: true })
   })
 
   it('emits file-missing finding when a claim file is absent', async () => {
@@ -154,6 +286,224 @@ describe('runAuditTypesGate', () => {
     expect(failed).toBeDefined()
     expect(failed?.severity).toBe('error')
     fs.rmSync(tmp, { recursive: true, force: true })
+  })
+})
+
+describe('finding() helper', () => {
+  it('returns the passed Finding unchanged (identity helper for readability)', () => {
+    const f = finding({
+      category: 'correctness',
+      severity: 'error',
+      code: 'test/example',
+      gate: 'test',
+      message: 'example',
+    })
+    expect(f.category).toBe('correctness')
+    expect(f.severity).toBe('error')
+    expect(f.code).toBe('test/example')
+  })
+})
+
+describe('runDistributionGate — findPackages error paths', () => {
+  it('tolerates non-directory entries under packages/* (unreadable catDir)', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-dist-dirread-'))
+    fs.mkdirSync(path.join(tmp, 'packages'), { recursive: true })
+    // Put a regular file where readdirSync(packages/file) would fail.
+    fs.writeFileSync(path.join(tmp, 'packages', 'notadir'), '')
+
+    // Should NOT throw — the catch wraps readdirSync(catDir) so the
+    // walker just skips the non-directory entry.
+    const result = await runDistributionGate({ cwd: tmp, skipPackProbe: true })
+    assertGateResultShape(result, 'distribution')
+    expect(result.meta.scanned).toBe(0)
+
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it('skips packages with invalid JSON package.json', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-dist-badpj-'))
+    fs.mkdirSync(path.join(tmp, 'packages', 'fundamentals', 'bad'), {
+      recursive: true,
+    })
+    fs.writeFileSync(
+      path.join(tmp, 'packages', 'fundamentals', 'bad', 'package.json'),
+      'NOT JSON{{{',
+    )
+
+    const result = await runDistributionGate({ cwd: tmp, skipPackProbe: true })
+    assertGateResultShape(result, 'distribution')
+    expect(result.meta.scanned).toBe(0)
+
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it('skips private packages', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-dist-private-'))
+    fs.mkdirSync(path.join(tmp, 'packages', 'internals', 'priv'), {
+      recursive: true,
+    })
+    fs.writeFileSync(
+      path.join(tmp, 'packages', 'internals', 'priv', 'package.json'),
+      JSON.stringify({ name: '@pyreon/priv', private: true }),
+    )
+
+    const result = await runDistributionGate({ cwd: tmp, skipPackProbe: true })
+    assertGateResultShape(result, 'distribution')
+    // Private package is excluded from the scanned count + emits no
+    // findings (the gate only walks published packages).
+    expect(result.meta.scanned).toBe(0)
+    expect(result.findings).toEqual([])
+
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+})
+
+describe('_parseAuditTypesOutput', () => {
+  it('maps HIGH/MEDIUM/LOW to error/warning/info and suppresses OK', () => {
+    const raw = JSON.stringify([
+      {
+        package: '@pyreon/zero',
+        packageDir: '/repo/packages/zero/zero',
+        findings: [
+          {
+            package: '@pyreon/zero',
+            interface: 'ZeroConfig',
+            field: 'mode',
+            declaredIn: 'packages/zero/zero/src/types.ts',
+            declaredLine: 42,
+            refCount: 0,
+            severity: 'HIGH',
+          },
+          {
+            package: '@pyreon/zero',
+            interface: 'ZeroConfig',
+            field: 'maybeUsed',
+            declaredIn: 'packages/zero/zero/src/types.ts',
+            declaredLine: 50,
+            refCount: 1,
+            severity: 'MEDIUM',
+          },
+          {
+            package: '@pyreon/zero',
+            interface: 'ZeroConfig',
+            field: 'rarelyUsed',
+            declaredIn: 'packages/zero/zero/src/types.ts',
+            declaredLine: 55,
+            refCount: 2,
+            severity: 'LOW',
+          },
+          {
+            package: '@pyreon/zero',
+            interface: 'ZeroConfig',
+            field: 'reallyUsed',
+            declaredIn: 'packages/zero/zero/src/types.ts',
+            declaredLine: 60,
+            refCount: 20,
+            severity: 'OK',
+          },
+        ],
+      },
+    ])
+    const { findings, scanned } = _parseAuditTypesOutput(raw, '/repo')
+    expect(scanned).toBe(1)
+    // OK is suppressed → 3 findings, not 4
+    expect(findings).toHaveLength(3)
+    expect(findings.map((f) => f.severity).sort()).toEqual([
+      'error',
+      'info',
+      'warning',
+    ])
+    const high = findings.find((f) => f.severity === 'error')!
+    expect(high.code).toBe('audit-types/typed-but-unimplemented-high')
+    expect(high.gate).toBe('audit-types')
+    expect(high.category).toBe('architecture')
+    expect(high.message).toContain('@pyreon/zero')
+    expect(high.message).toContain('ZeroConfig.mode')
+    expect(high.location?.line).toBe(42)
+    expect(high.location?.relPath).toBe(
+      'packages/zero/zero/src/types.ts',
+    )
+    expect(high.location?.path).toBe(
+      '/repo/packages/zero/zero/src/types.ts',
+    )
+  })
+
+  it('handles empty results array', () => {
+    const { findings, scanned } = _parseAuditTypesOutput('[]', '/repo')
+    expect(findings).toEqual([])
+    expect(scanned).toBe(0)
+  })
+
+  it('handles a package with no findings', () => {
+    const raw = JSON.stringify([
+      { package: '@pyreon/router', packageDir: '/repo/p', findings: [] },
+    ])
+    const { findings, scanned } = _parseAuditTypesOutput(raw, '/repo')
+    expect(findings).toEqual([])
+    expect(scanned).toBe(1)
+  })
+})
+
+describe('_parseBundleBudgetsOutput', () => {
+  it('emits over-budget, missing-budget, bundle-failed findings', () => {
+    const raw = JSON.stringify({
+      violations: [
+        {
+          name: '@pyreon/big',
+          current: 5120,
+          budget: 4096,
+          overBy: 1024,
+          overByPct: 25,
+        },
+      ],
+      missing: [{ name: '@pyreon/new', current: 2048 }],
+      failures: [{ name: '@pyreon/broken', error: 'cannot resolve foo\nstack' }],
+      measured: [
+        { name: '@pyreon/big', raw: 10240, gzip: 5120 },
+        { name: '@pyreon/new', raw: 4096, gzip: 2048 },
+        { name: '@pyreon/fine', raw: 1024, gzip: 512 },
+      ],
+    })
+    const { findings, scanned } = _parseBundleBudgetsOutput(raw, '/repo')
+
+    // 3 measured + 1 failure → 4 scanned
+    expect(scanned).toBe(4)
+    expect(findings).toHaveLength(3)
+
+    const over = findings.find((f) => f.code === 'bundle-budgets/over-budget')!
+    expect(over.severity).toBe('error')
+    expect(over.message).toContain('@pyreon/big')
+    expect(over.message).toContain('+25.0%')
+    expect(over.location?.relPath).toBe('scripts/bundle-budgets.json')
+    expect(over.fix).toContain('--update')
+
+    const missing = findings.find(
+      (f) => f.code === 'bundle-budgets/missing-budget',
+    )!
+    expect(missing.severity).toBe('warning')
+    expect(missing.message).toContain('@pyreon/new')
+
+    const failed = findings.find(
+      (f) => f.code === 'bundle-budgets/bundle-failed',
+    )!
+    expect(failed.severity).toBe('error')
+    expect(failed.message).toContain('@pyreon/broken')
+    // Only the FIRST line of the error message is surfaced — the
+    // stack trace below the first \n is dropped.
+    expect(failed.message).toContain('cannot resolve foo')
+    expect(failed.message).not.toContain('stack')
+  })
+
+  it('returns empty findings on clean output', () => {
+    const raw = JSON.stringify({
+      violations: [],
+      missing: [],
+      failures: [],
+      measured: [{ name: '@pyreon/fine', raw: 1024, gzip: 512 }],
+    })
+    const { findings, scanned } = _parseBundleBudgetsOutput(raw, '/repo')
+    expect(findings).toEqual([])
+    expect(scanned).toBe(1)
   })
 })
 

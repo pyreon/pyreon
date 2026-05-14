@@ -50,6 +50,40 @@ const mapSeverity = (s: ScriptFieldFinding['severity']): Severity | null => {
   }
 }
 
+/**
+ * Pure parse-and-map function — public so tests can exercise the JSON
+ * → `Finding[]` translation without spawning a subprocess. Returns the
+ * findings plus the count of packages scanned. Exported as `_internal`
+ * (unstable API surface — may move when PR 2 lands the aggregator).
+ */
+export const _parseAuditTypesOutput = (
+  raw: string,
+  cwd: string,
+): { findings: Finding[]; scanned: number } => {
+  const results = JSON.parse(raw) as ScriptAuditResult[]
+  const findings: Finding[] = []
+  for (const r of results) {
+    for (const f of r.findings) {
+      const severity = mapSeverity(f.severity)
+      if (severity === null) continue
+
+      findings.push({
+        category: 'architecture',
+        severity,
+        code: `audit-types/typed-but-unimplemented-${f.severity.toLowerCase()}`,
+        gate: 'audit-types',
+        message: `${f.package}: \`${f.interface}.${f.field}\` is typed in the public API but has ${f.refCount} non-type reference(s) in the package — likely typed-but-unimplemented.`,
+        location: {
+          path: join(cwd, f.declaredIn),
+          relPath: f.declaredIn,
+          line: f.declaredLine,
+        },
+      })
+    }
+  }
+  return { findings, scanned: results.length }
+}
+
 export interface AuditTypesGateOptions {
   /** Repository root directory */
   cwd: string
@@ -84,28 +118,9 @@ export const runAuditTypesGate = async (
       stdio: ['pipe', 'pipe', 'pipe'],
       maxBuffer: 16 * 1024 * 1024, // 16MB — audit can produce large output
     })
-    const results = JSON.parse(out) as ScriptAuditResult[]
-    scannedPackages = results.length
-
-    for (const r of results) {
-      for (const f of r.findings) {
-        const severity = mapSeverity(f.severity)
-        if (severity === null) continue
-
-        findings.push({
-          category: 'architecture',
-          severity,
-          code: `audit-types/typed-but-unimplemented-${f.severity.toLowerCase()}`,
-          gate: 'audit-types',
-          message: `${f.package}: \`${f.interface}.${f.field}\` is typed in the public API but has ${f.refCount} non-type reference(s) in the package — likely typed-but-unimplemented.`,
-          location: {
-            path: join(opts.cwd, f.declaredIn),
-            relPath: f.declaredIn,
-            line: f.declaredLine,
-          },
-        })
-      }
-    }
+    const parsed = _parseAuditTypesOutput(out, opts.cwd)
+    findings.push(...parsed.findings)
+    scannedPackages = parsed.scanned
   } catch (err) {
     // Script failure — surface as a single ERROR finding so the
     // gate doesn't silently skip. Captures "script not found",

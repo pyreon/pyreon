@@ -66,6 +66,62 @@ interface ScriptOutput {
 
 const formatKB = (bytes: number): string => `${(bytes / 1024).toFixed(2)} KB`
 
+/**
+ * Pure parse-and-map function — public so tests can exercise the JSON
+ * → `Finding[]` translation without spawning a subprocess. Returns the
+ * findings plus the count of packages scanned (measured + failures).
+ * Exported as `_internal` (unstable API surface — may move when PR 2
+ * lands the aggregator).
+ */
+export const _parseBundleBudgetsOutput = (
+  raw: string,
+  cwd: string,
+): { findings: Finding[]; scanned: number } => {
+  const result = JSON.parse(raw) as ScriptOutput
+  const findings: Finding[] = []
+  const budgetsRelPath = 'scripts/bundle-budgets.json'
+  const budgetsPath = join(cwd, budgetsRelPath)
+
+  for (const v of result.violations) {
+    findings.push({
+      category: 'performance',
+      severity: 'error',
+      code: 'bundle-budgets/over-budget',
+      gate: 'bundle-budgets',
+      message: `${v.name}: ${formatKB(v.current)} > budget ${formatKB(v.budget)} (over by ${formatKB(v.overBy)}, +${v.overByPct.toFixed(1)}%). If growth is intentional, bump the value in scripts/bundle-budgets.json — the bump itself is the PR signal.`,
+      location: { path: budgetsPath, relPath: budgetsRelPath },
+      fix: `Run \`bun run check-bundle-budgets --update\` to regenerate budgets after intentional growth.`,
+    })
+  }
+
+  for (const m of result.missing) {
+    findings.push({
+      category: 'performance',
+      severity: 'warning',
+      code: 'bundle-budgets/missing-budget',
+      gate: 'bundle-budgets',
+      message: `${m.name}: ${formatKB(m.current)} (no budget entry). New published package?`,
+      location: { path: budgetsPath, relPath: budgetsRelPath },
+      fix: `Run \`bun run check-bundle-budgets --update\` and review the diff.`,
+    })
+  }
+
+  for (const f of result.failures) {
+    findings.push({
+      category: 'performance',
+      severity: 'error',
+      code: 'bundle-budgets/bundle-failed',
+      gate: 'bundle-budgets',
+      message: `${f.name}: bundle failed — ${f.error.split('\n')[0]}. Likely an unresolved third-party dep that the auto-external scan missed.`,
+    })
+  }
+
+  return {
+    findings,
+    scanned: result.measured.length + result.failures.length,
+  }
+}
+
 export interface BundleBudgetsGateOptions {
   /** Repository root directory */
   cwd: string
@@ -103,49 +159,9 @@ export const runBundleBudgetsGate = async (
       }
     }
 
-    const result = JSON.parse(out) as ScriptOutput
-    scannedPackages =
-      result.measured.length + result.failures.length
-
-    for (const v of result.violations) {
-      findings.push({
-        category: 'performance',
-        severity: 'error',
-        code: 'bundle-budgets/over-budget',
-        gate: 'bundle-budgets',
-        message: `${v.name}: ${formatKB(v.current)} > budget ${formatKB(v.budget)} (over by ${formatKB(v.overBy)}, +${v.overByPct.toFixed(1)}%). If growth is intentional, bump the value in scripts/bundle-budgets.json — the bump itself is the PR signal.`,
-        location: {
-          path: join(opts.cwd, 'scripts/bundle-budgets.json'),
-          relPath: 'scripts/bundle-budgets.json',
-        },
-        fix: `Run \`bun run check-bundle-budgets --update\` to regenerate budgets after intentional growth.`,
-      })
-    }
-
-    for (const m of result.missing) {
-      findings.push({
-        category: 'performance',
-        severity: 'warning',
-        code: 'bundle-budgets/missing-budget',
-        gate: 'bundle-budgets',
-        message: `${m.name}: ${formatKB(m.current)} (no budget entry). New published package?`,
-        location: {
-          path: join(opts.cwd, 'scripts/bundle-budgets.json'),
-          relPath: 'scripts/bundle-budgets.json',
-        },
-        fix: `Run \`bun run check-bundle-budgets --update\` and review the diff.`,
-      })
-    }
-
-    for (const f of result.failures) {
-      findings.push({
-        category: 'performance',
-        severity: 'error',
-        code: 'bundle-budgets/bundle-failed',
-        gate: 'bundle-budgets',
-        message: `${f.name}: bundle failed — ${f.error.split('\n')[0]}. Likely an unresolved third-party dep that the auto-external scan missed.`,
-      })
-    }
+    const parsed = _parseBundleBudgetsOutput(out, opts.cwd)
+    findings.push(...parsed.findings)
+    scannedPackages = parsed.scanned
   } catch (err) {
     // Script failure — surface as a single ERROR finding so the
     // gate doesn't silently skip. Captures parse errors, script-not-
