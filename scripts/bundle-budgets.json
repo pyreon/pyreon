@@ -3,7 +3,7 @@
   "_units": "bytes (gzipped)",
   "@pyreon/attrs": 1280,
   "@pyreon/charts": 2048,
-  "@pyreon/cli": 3072,
+  "@pyreon/cli": 10752,
   "@pyreon/code": 7168,
   "@pyreon/compiler": 29952,
   "@pyreon/connector-document": 2304,
