@@ -1,343 +1,114 @@
 /**
- * pyreon doctor — project-wide health check for AI-friendly development
+ * `pyreon doctor` — project-wide health audit.
  *
- * Runs a pipeline of checks:
- *  1. React pattern detection (imports, hooks, JSX attributes)
- *  2. Import source validation (@pyreon/* vs react/vue)
- *  3. Common Pyreon mistakes (signal without call, key vs by, etc.)
+ * PR 2 rewrites this entrypoint around the unified gate API
+ * (`packages/tools/cli/src/doctor/`). The orchestrator runs every
+ * gate in parallel, the aggregator builds a `DoctorReport` with a
+ * 0-100 score, the renderer formats it for text / JSON / GHA.
+ *
+ * The legacy single-purpose flags (`--audit-tests`, `--check-islands`,
+ * `--check-ssg`) are interpreted as `--only <gate>` shortcuts so any
+ * existing CI script that relied on the old shape keeps working.
+ * Without those flags, doctor runs the full fast-gate set + computes
+ * a score — the new default behaviour.
  *
  * Output modes:
- *  - Human-readable (default): colored terminal output
- *  - JSON (--json): structured output for AI agent consumption
- *  - CI (--ci): exits with code 1 on any error
+ *   - text (default): big-score banner + per-category bars + top-N findings
+ *   - --json: full `DoctorReport` as JSON
+ *   - --gha:  GitHub Actions annotation lines (one per finding)
  *
- * Fix mode (--fix): auto-applies safe transforms via migrateReactCode
+ * Modes:
+ *   - --full: enable slow gates (audit-types, bundle-budgets)
+ *   - --only <gates>: run ONLY the listed comma-separated gates
+ *   - --skip <gates>: exclude these gates
+ *   - --fix: auto-fix where possible (lint + react-patterns)
+ *   - --ci: exit non-zero on any error finding
  */
 
-import * as fs from 'node:fs'
-import * as path from 'node:path'
 import {
-  auditIslands,
-  auditSsg,
-  auditTestEnvironment,
-  type AuditRisk,
-  detectReactPatterns,
-  formatIslandAudit,
-  formatSsgAudit,
-  formatTestAudit,
-  hasReactPatterns,
-  migrateReactCode,
-  type ReactDiagnostic,
-} from '@pyreon/compiler'
+  runDoctor,
+  type GateName,
+  type OrchestratorOptions,
+} from './doctor/orchestrator'
+import { renderGha, renderJson, renderText } from './doctor/render'
+import type { DoctorReport } from './doctor/types'
+
+export type DoctorFormat = 'text' | 'json' | 'gha'
 
 export interface DoctorOptions {
   fix: boolean
+  /** Legacy boolean — interpreted as `format = 'json'` if true. */
   json: boolean
   ci: boolean
   cwd: string
+  /** Explicit format override (wins over `json` boolean). */
+  format?: DoctorFormat | undefined
+  /** Enable slow gates (audit-types, bundle-budgets). */
+  full?: boolean | undefined
+  /** Run ONLY these gates. */
+  only?: GateName[] | undefined
+  /** Skip these gates. */
+  skip?: GateName[] | undefined
+
+  // ── Legacy flags (mapped to --only shortcuts for back-compat) ────
   /**
-   * When true, run the test-environment audit (mock-vnode pattern
-   * detection) and append the result to the doctor output. Default
-   * false — the audit is scoped to test files only and isn't part of
-   * the React-migration check pipeline, so we gate it to avoid noise
-   * in the typical "is my migration done?" call.
+   * @deprecated Prefer `--only audit-tests`. Both forms behave
+   * identically: include the test-environment audit gate in the
+   * report. Kept so existing CI scripts continue to work.
    */
   auditTests?: boolean | undefined
-  /** Minimum risk level to include in the test-audit report. Default 'medium'. */
-  auditMinRisk?: AuditRisk | undefined
-  /**
-   * When true, run the project-wide islands audit and append the result
-   * to the doctor output. Catches cross-file foot-guns (duplicate names,
-   * dead islands, registry drift, nested islands, never-with-registry)
-   * that PR G's per-file detector and PR B's auto-registry can't reach
-   * (manual `hydrateIslands({...})` for non-Vite consumers, library
-   * authors, multi-package projects). Default false.
-   */
+  /** Minimum risk for the test-environment audit. Default 'medium'. */
+  auditMinRisk?: 'high' | 'medium' | 'low' | undefined
+  /** @deprecated Prefer `--only islands-audit`. */
   checkIslands?: boolean | undefined
-  /**
-   * When true, run the project-wide SSG / ISR audit (M3.4) and append
-   * the result to the doctor output. Catches:
-   *  - `_404.tsx` not co-located with `_layout.tsx` (PR L5 carve-out)
-   *  - dynamic routes (`[id].tsx`) without `getStaticPaths` (PR A
-   *    silently skips them under `mode: 'ssg'`)
-   *  - `export const revalidate = X` where X isn't a numeric literal
-   *    (PR I's extractor silently drops non-literal forms)
-   *
-   * Like the islands audit, this is a "should review" signal — the exit
-   * code is unaffected (the build doesn't break) but CI can pipe
-   * `--check-ssg --json` and grep for findings.length > 0 to gate on
-   * it. Default false.
-   */
+  /** @deprecated Prefer `--only ssg-audit`. */
   checkSsg?: boolean | undefined
 }
 
-interface FileResult {
-  file: string
-  diagnostics: ReactDiagnostic[]
-  fixed: boolean
+const resolveFormat = (options: DoctorOptions): DoctorFormat => {
+  if (options.format) return options.format
+  if (options.json) return 'json'
+  return 'text'
 }
 
-interface DoctorResult {
-  passed: boolean
-  files: FileResult[]
-  summary: {
-    filesScanned: number
-    filesWithIssues: number
-    totalErrors: number
-    totalFixable: number
-    totalFixed: number
+const resolveOnly = (options: DoctorOptions): GateName[] | undefined => {
+  if (options.only && options.only.length > 0) return options.only
+  // Legacy single-purpose flags → `--only` shortcuts.
+  const legacyOnly: GateName[] = []
+  if (options.auditTests) legacyOnly.push('audit-tests')
+  if (options.checkIslands) legacyOnly.push('islands-audit')
+  if (options.checkSsg) legacyOnly.push('ssg-audit')
+  return legacyOnly.length > 0 ? legacyOnly : undefined
+}
+
+export const doctor = async (options: DoctorOptions): Promise<number> => {
+  const orchestratorOpts: OrchestratorOptions = {
+    cwd: options.cwd,
+    full: options.full,
+    only: resolveOnly(options),
+    skip: options.skip,
+    fix: options.fix,
+    auditMinRisk: options.auditMinRisk,
   }
-}
 
-export async function doctor(options: DoctorOptions): Promise<number> {
-  const startTime = performance.now()
-  const files = collectSourceFiles(options.cwd)
-  const result = runChecks(files, options)
-  const elapsed = Math.round(performance.now() - startTime)
+  const report = await runDoctor(orchestratorOpts)
+  const format = resolveFormat(options)
 
-  if (options.json) {
-    printJson(result)
+  if (format === 'json') {
+    console.log(renderJson(report))
+  } else if (format === 'gha') {
+    console.log(renderGha(report))
   } else {
-    printHuman(result, elapsed)
+    console.log(renderText(report, { cwd: options.cwd }))
   }
 
-  // Test-environment audit — optional follow-on pass. We run AFTER the
-  // main React-migration output so a migration-focused run isn't
-  // contaminated; pass `--audit-tests` to see it. The exit code is
-  // unaffected since mock-vnode test risk is a "should review" signal,
-  // not a "broken build" signal.
-  if (options.auditTests) {
-    const auditResult = auditTestEnvironment(options.cwd)
-    if (options.json) {
-      console.log('')
-      console.log(JSON.stringify({ testAudit: auditResult }, null, 2))
-    } else {
-      console.log('')
-      console.log(formatTestAudit(auditResult, { minRisk: options.auditMinRisk ?? 'medium' }))
-      console.log('')
-    }
-  }
-
-  // Islands audit — optional follow-on pass (PR C of the islands DX
-  // roadmap). Runs the project-wide cross-file scan. Like the
-  // test-audit, this is a "should review" signal — exit code unaffected
-  // (the build doesn't break) but in CI you can pipe `--check-islands
-  // --json` and grep for findings.length > 0 to gate on it.
-  if (options.checkIslands) {
-    const islandsResult = auditIslands(options.cwd)
-    if (options.json) {
-      console.log('')
-      console.log(JSON.stringify({ islandAudit: islandsResult }, null, 2))
-    } else {
-      console.log('')
-      console.log(formatIslandAudit(islandsResult))
-      console.log('')
-    }
-  }
-
-  // M3.4 — SSG audit. Catches `_404.tsx` placement (PR L5 carve-out),
-  // dynamic-route enumerators (PR A silent skip), and non-literal
-  // revalidate exports (PR I's extractor limitation). Exit code
-  // unaffected — same "should review" treatment as islands / test
-  // audits; CI gates via `--json | jq '.ssgAudit.findings | length'`.
-  if (options.checkSsg) {
-    const ssgResult = auditSsg(options.cwd)
-    if (options.json) {
-      console.log('')
-      console.log(JSON.stringify({ ssgAudit: ssgResult }, null, 2))
-    } else {
-      console.log('')
-      console.log(formatSsgAudit(ssgResult))
-      console.log('')
-    }
-  }
-
-  return result.summary.totalErrors
+  // Exit code: in --ci mode, any error finding fails. Otherwise, only
+  // a non-zero is returned when there are findings AT ALL — so
+  // `pyreon doctor && echo green` works as a quick gate.
+  if (options.ci) return report.totals.errors
+  return report.totals.errors + report.totals.warnings + report.totals.infos
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// File collection
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const sourceExtensions = new Set(['.tsx', '.jsx', '.ts', '.js'])
-const sourceIgnoreDirs = new Set([
-  'node_modules',
-  'dist',
-  'lib',
-  '.pyreon',
-  '.git',
-  '.next',
-  'build',
-])
-
-function shouldSkipDirEntry(entry: fs.Dirent): boolean {
-  if (!entry.isDirectory()) return false
-  return entry.name.startsWith('.') || sourceIgnoreDirs.has(entry.name)
-}
-
-function walkSourceFiles(dir: string, results: string[]): void {
-  let entries: fs.Dirent[]
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true })
-  } catch {
-    return
-  }
-
-  for (const entry of entries) {
-    if (shouldSkipDirEntry(entry)) continue
-
-    const fullPath = path.join(dir, entry.name)
-    if (entry.isDirectory()) {
-      walkSourceFiles(fullPath, results)
-    } else if (entry.isFile() && sourceExtensions.has(path.extname(entry.name))) {
-      results.push(fullPath)
-    }
-  }
-}
-
-function collectSourceFiles(cwd: string): string[] {
-  const results: string[] = []
-  walkSourceFiles(cwd, results)
-  return results
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Check pipeline
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function checkFileWithFix(
-  file: string,
-  relPath: string,
-): { result: FileResult | null; fixCount: number } {
-  let code: string
-  try {
-    code = fs.readFileSync(file, 'utf-8')
-  } catch {
-    return { result: null, fixCount: 0 }
-  }
-
-  if (!hasReactPatterns(code)) return { result: null, fixCount: 0 }
-
-  const migrated = migrateReactCode(code, relPath)
-  if (migrated.changes.length > 0) {
-    fs.writeFileSync(file, migrated.code, 'utf-8')
-  }
-  const remaining = detectReactPatterns(migrated.code, relPath)
-  if (remaining.length > 0 || migrated.changes.length > 0) {
-    return {
-      result: { file: relPath, diagnostics: remaining, fixed: migrated.changes.length > 0 },
-      fixCount: migrated.changes.length,
-    }
-  }
-  return { result: null, fixCount: 0 }
-}
-
-function checkFileDetectOnly(file: string, relPath: string): FileResult | null {
-  let code: string
-  try {
-    code = fs.readFileSync(file, 'utf-8')
-  } catch {
-    return null
-  }
-
-  if (!hasReactPatterns(code)) return null
-
-  const diagnostics = detectReactPatterns(code, relPath)
-  if (diagnostics.length > 0) {
-    return { file: relPath, diagnostics, fixed: false }
-  }
-  return null
-}
-
-function runChecks(files: string[], options: DoctorOptions): DoctorResult {
-  const fileResults: FileResult[] = []
-  let totalFixed = 0
-
-  for (const file of files) {
-    const relPath = path.relative(options.cwd, file)
-
-    if (options.fix) {
-      const { result, fixCount } = checkFileWithFix(file, relPath)
-      totalFixed += fixCount
-      if (result) fileResults.push(result)
-    } else {
-      const result = checkFileDetectOnly(file, relPath)
-      if (result) fileResults.push(result)
-    }
-  }
-
-  const totalErrors = fileResults.reduce((sum, f) => sum + f.diagnostics.length, 0)
-  const totalFixable = fileResults.reduce(
-    (sum, f) => sum + f.diagnostics.filter((d) => d.fixable).length,
-    0,
-  )
-
-  return {
-    passed: totalErrors === 0,
-    files: fileResults,
-    summary: {
-      filesScanned: files.length,
-      filesWithIssues: fileResults.length,
-      totalErrors,
-      totalFixable,
-      totalFixed,
-    },
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Output formatters
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function printJson(result: DoctorResult): void {
-  console.log(JSON.stringify(result, null, 2))
-}
-
-function printFileResult(fileResult: FileResult): void {
-  if (fileResult.diagnostics.length === 0) return
-
-  console.log(`  ${fileResult.file}${fileResult.fixed ? ' (partially fixed)' : ''}`)
-
-  for (const diag of fileResult.diagnostics) {
-    const fixTag = diag.fixable ? ' [fixable]' : ''
-    console.log(`    ${diag.line}:${diag.column} — ${diag.message}${fixTag}`)
-    console.log(`      Current:   ${diag.current}`)
-    console.log(`      Suggested: ${diag.suggested}`)
-    console.log('')
-  }
-}
-
-function printSummary(summary: DoctorResult['summary']): void {
-  console.log(
-    `  ${summary.totalErrors} issue${summary.totalErrors === 1 ? '' : 's'} in ${summary.filesWithIssues} file${summary.filesWithIssues === 1 ? '' : 's'}`,
-  )
-  if (summary.totalFixable > 0) {
-    console.log(`  ${summary.totalFixable} auto-fixable — run 'pyreon doctor --fix' to apply`)
-  }
-  console.log('')
-}
-
-function printHuman(result: DoctorResult, elapsed: number): void {
-  const { summary } = result
-
-  console.log('')
-  console.log(`  Pyreon Doctor — scanned ${summary.filesScanned} files in ${elapsed}ms`)
-  console.log('')
-
-  if (result.passed && summary.totalFixed === 0) {
-    console.log('  ✓ No issues found. Your code is Pyreon-native!')
-    console.log('')
-    return
-  }
-
-  if (summary.totalFixed > 0) {
-    console.log(`  ✓ Auto-fixed ${summary.totalFixed} issue${summary.totalFixed === 1 ? '' : 's'}`)
-    console.log('')
-  }
-
-  for (const fileResult of result.files) {
-    printFileResult(fileResult)
-  }
-
-  printSummary(summary)
-}
+// Re-export the report types for external consumers (CI integrations,
+// AI agents, dashboards).
+export type { DoctorReport, GateName }
