@@ -1,5 +1,21 @@
 # @pyreon/example-perf-dashboard
 
+## 0.1.3
+
+### Patch Changes
+
+- Updated dependencies [[`35af0e2`](https://github.com/pyreon/pyreon/commit/35af0e22b670151052e0b1df5006977fca759128), [`8b1a982`](https://github.com/pyreon/pyreon/commit/8b1a982faa140e7e646293a47d6a4fbe70cac67c)]:
+  - @pyreon/core@0.17.0
+  - @pyreon/styler@0.17.0
+  - @pyreon/runtime-dom@0.17.0
+  - @pyreon/form@0.17.0
+  - @pyreon/i18n@0.17.0
+  - @pyreon/query@0.17.0
+  - @pyreon/perf-harness@0.13.1
+  - @pyreon/reactivity@0.17.0
+  - @pyreon/rx@0.17.0
+  - @pyreon/store@0.17.0
+
 ## 0.1.2
 
 ### Patch Changes
