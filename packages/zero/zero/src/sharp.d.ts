@@ -9,6 +9,12 @@ declare module 'sharp' {
     toFile(path: string): Promise<void>
     toBuffer(): Promise<Buffer>
     metadata(): Promise<{ width?: number; height?: number; format?: string }>
+    /**
+     * Image statistics. `dominant` is the histogram-mode RGB swatch —
+     * the basis of the `'color'` / `'dominant-color'` placeholder
+     * strategy (a flat-fill SVG, not a muddy channel average).
+     */
+    stats(): Promise<{ dominant: { r: number; g: number; b: number } }>
   }
 
   function sharp(input: string | Buffer): SharpInstance
