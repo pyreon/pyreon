@@ -100,17 +100,29 @@ export interface LazyComponent {
   readonly loadingComponent?: ComponentFn
   /** Optional component shown after all retries have failed */
   readonly errorComponent?: ComponentFn
+  /**
+   * Dev-only module id, emitted by `@pyreon/zero`'s fs-router codegen as
+   * `lazy(() => import("/abs/X"), { hmrId: "/abs/X" })`. The HMR coordinator
+   * keys the active route's matched records by this id so a hot-updated
+   * module can be swapped IN PLACE (no page reload) using the fresh module
+   * Vite hands the `import.meta.hot.accept` callback — sidestepping the
+   * stale-`?t=` problem where re-running the dynamic-import thunk inside a
+   * non-invalidated virtual routes module would return the OLD module.
+   * Inert in production (no coordinator is registered when not in dev).
+   */
+  readonly _hmrId?: string
 }
 
 export function lazy(
   loader: () => Promise<ComponentFn | { default: ComponentFn }>,
-  options?: { loading?: ComponentFn; error?: ComponentFn },
+  options?: { loading?: ComponentFn; error?: ComponentFn; hmrId?: string },
 ): LazyComponent {
   return {
     [LAZY_SYMBOL]: true,
     loader,
     ...(options?.loading ? { loadingComponent: options.loading } : {}),
     ...(options?.error ? { errorComponent: options.error } : {}),
+    ...(options?.hmrId ? { _hmrId: options.hmrId } : {}),
   }
 }
 
@@ -480,4 +492,26 @@ export interface RouterInstance extends Router {
    * nav-1's aborted fetch).
    */
   _loaderInflight: Map<string, { promise: Promise<unknown>; signal: AbortSignal }>
+  /**
+   * Dev-only HMR coordinator. Given a hot-updated module's id and the FRESH
+   * module namespace Vite handed `import.meta.hot.accept`, swaps the new
+   * component into every matched record whose lazy `_hmrId` equals `id`,
+   * then bumps `_loadingSignal` so `RouterView` re-renders ONLY that subtree
+   * in place — no page reload, so `__pyreon_hmr_registry__` (module-scope
+   * signal values) survives and `__hmr_signal` restores them.
+   *
+   * Using the namespace Vite passed (not a re-run of the lazy thunk)
+   * sidesteps the stale-`?t=` trap: the dynamic-import thunk lives in the
+   * virtual routes module, which is NOT invalidated when a leaf route
+   * self-accepts, so re-importing it would return the OLD module.
+   *
+   * Returns `true` when at least one matched component was swapped. `false`
+   * tells `@pyreon/vite-plugin`'s accept handler the edit was outside the
+   * active route tree (a nested non-route component, an unrelated route, a
+   * signal-only module) so it falls back to `import.meta.hot.invalidate()`
+   * → an automatic full reload (no manual refresh either way).
+   *
+   * Present only when the router is created in a dev browser context.
+   */
+  _hmrSwap?: (id: string, mod: unknown) => boolean
 }

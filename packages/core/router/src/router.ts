@@ -1193,9 +1193,48 @@ export function createRouter<TNames extends string = string>(
       router._abortController = null
       // Clear global ref so stale router doesn't survive in SSR or re-creation
       if (_activeRouter === router) _activeRouter = null
+      if (__DEV__ && _isBrowser) {
+        const g = globalThis as Record<string, unknown>
+        if (g.__pyreon_hmr_swap__ === router._hmrSwap) {
+          delete g.__pyreon_hmr_swap__
+        }
+      }
     },
 
     _resolve: (rawPath: string) => resolveRoute(rawPath, routes),
+
+    // Dev-only HMR coordinator — see RouterInstance._hmrSwap JSDoc.
+    // Gated to dev+browser so it's tree-shaken from production bundles.
+    ...(__DEV__ && _isBrowser
+      ? {
+          _hmrSwap(id: string, mod: unknown): boolean {
+            const m = mod as { default?: ComponentFn } | ComponentFn | null
+            const next: ComponentFn | undefined =
+              typeof m === 'function' ? m : (m?.default ?? undefined)
+            // No default export in the fresh namespace (named-only edit, or
+            // the module no longer exports a component) — let the plugin
+            // fall back to an automatic reload rather than blank the route.
+            if (typeof next !== 'function') return false
+
+            const matched = currentRoute().matched
+            let changed = false
+            for (const record of matched) {
+              const raw = record.component
+              if (!isLazy(raw) || !raw._hmrId) continue
+              if (!_hmrIdMatches(raw._hmrId, id)) continue
+              componentCache.set(record, next)
+              router._erroredChunks.delete(record)
+              changed = true
+            }
+            // Bump `_loadingSignal` so `RouterView`'s `depthEntry` computed
+            // re-emits; its `equals` compares `comp` identity, so only the
+            // depth whose component actually changed re-renders — every
+            // other depth (layout, siblings) stays mounted, signals intact.
+            if (changed) loadingSignal.update((n) => n + 1)
+            return changed
+          },
+        }
+      : {}),
   }
 
   // Initial route is resolved synchronously — mark ready on next microtask
@@ -1207,10 +1246,41 @@ export function createRouter<TNames extends string = string>(
     }
   })
 
+  // Expose the HMR coordinator on globalThis so `@pyreon/vite-plugin`'s
+  // injected `import.meta.hot.accept` handler can reach it WITHOUT importing
+  // `@pyreon/router` (zero import coupling — same pattern as the perf-harness
+  // counter sink). Last router wins; single-router apps (the norm, every
+  // `@pyreon/zero` app) are unaffected. Dev+browser only.
+  if (__DEV__ && _isBrowser && router._hmrSwap) {
+    // `_hmrSwap` closes over `currentRoute`/`componentCache`/`loadingSignal`
+    // (not `this`), so the raw reference is safe to expose and to compare by
+    // identity on `destroy()`.
+    ;(globalThis as Record<string, unknown>).__pyreon_hmr_swap__ =
+      router._hmrSwap
+  }
+
   return router as unknown as Router<TNames>
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Match a lazy route's `_hmrId` (emitted by `@pyreon/zero`'s fs-router as the
+ * absolute route-file path) against the module id `@pyreon/vite-plugin`'s
+ * accept handler reports. Both are absolute paths to the same file but may
+ * differ in query suffix (`?t=…`, `?v=…`) or, in some Vite setups, a `/@fs`
+ * prefix. Strip queries, then accept exact equality OR a suffix match on the
+ * longer path — route-file paths are unique within an app so suffix matching
+ * can't cross-fire. A miss makes `_hmrSwap` return false → the plugin falls
+ * back to an automatic reload (correct, just not in-place), so a too-strict
+ * match degrades safely rather than swapping the wrong component.
+ */
+function _hmrIdMatches(recordId: string, incomingId: string): boolean {
+  const a = recordId.split('?')[0] ?? recordId
+  const b = incomingId.split('?')[0] ?? incomingId
+  if (a === b) return true
+  return a.length >= b.length ? a.endsWith(b) : b.endsWith(a)
+}
 
 async function runGuard(
   guard: NavigationGuard,

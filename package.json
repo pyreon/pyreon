@@ -41,6 +41,7 @@
     "test:e2e:ssg-subpath": "bunx playwright test --config=playwright.ssg-subpath.config.ts",
     "test:e2e:ssg-i18n": "bunx playwright test --config=playwright.ssg-i18n.config.ts",
     "test:e2e:ssg-i18n-prefix": "bunx playwright test --config=playwright.ssg-i18n-prefix.config.ts",
+    "test:e2e:zero-hmr": "bunx playwright test --config=playwright.zero-hmr.config.ts",
     "test:e2e:cpa": "bunx playwright test --config=playwright.cpa.config.ts",
     "test:e2e:perf-dashboard": "bunx playwright test --config=playwright.perf-dashboard.config.ts",
     "visual-test:capture": "bunx playwright test --project=visual",
