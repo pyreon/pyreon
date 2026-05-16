@@ -387,6 +387,20 @@ jobs:
         # this gates the runtime layer that L1 deliberately left as
         # a follow-up.
         run: bun run test:e2e:ssg-i18n-prefix
+      - name: Run e2e — Zero component-HMR (in-place, no reload, signal preserved)
+        # Same separate-config rationale (own playwright.zero-hmr.config.ts,
+        # ssr-showcase dev boot on port 5201). Edits
+        # examples/ssr-showcase/src/routes/hmr-probe.tsx mid-test and
+        # asserts the route component hot-updates the DOM IN PLACE: the
+        # marker text reflects the new source, a window sentinel survives
+        # (no page reload), and the module-scope `count` signal keeps its
+        # value across the swap. Gates the bare-`import.meta.hot.accept()`
+        # → `__pyreon_hmr_swap__(id, freshModule)` fix. Bisect-verified:
+        # reverting to bare accept() times out with the marker stuck at
+        # its pre-edit value (the reported "manual refresh" bug). Only a
+        # real dev server + real Chromium + a real file edit exercises
+        # this — unit tests can't.
+        run: bun run test:e2e:zero-hmr
       - name: Run e2e — perf-dashboard (useFormState selector-narrowing gate)
         # Boots perf-dashboard on port 5183. Real-Chromium gate for the
         # `useFormState(form, s => s.isValid)` selector-narrowing contract
