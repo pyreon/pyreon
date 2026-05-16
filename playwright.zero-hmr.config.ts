@@ -51,6 +51,18 @@ export default defineConfig({
       port: 5201,
       timeout: 180_000,
       reuseExistingServer: !process.env.CI,
+      // Force Vite's chokidar watcher to poll. On GitHub Actions' Linux
+      // runners, native inotify events for a programmatic `writeFileSync`
+      // (the spec's mid-test edit) are unreliable on the overlay
+      // filesystem — the watch event never fires, so Vite never sends the
+      // HMR update, and the spec sees a permanently-stale MARKER_V1 with
+      // neither an in-place swap NOR an `invalidate()` reload. Local
+      // macOS fsevents are reliable, which is why this only failed in CI.
+      // `CHOKIDAR_USEPOLLING=true` is chokidar's documented CI/Docker
+      // escape hatch (Vite reads it via its chokidar watcher); 300ms
+      // interval keeps the post-edit latency well inside the 30s budget.
+      // Scoped to THIS gate's dev server only — no app/framework change.
+      env: { CHOKIDAR_USEPOLLING: 'true', CHOKIDAR_INTERVAL: '300' },
     },
   ],
 })
