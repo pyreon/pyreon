@@ -58,8 +58,36 @@ export const cdnProviders = {
     `https://${pullZone}.b-cdn.net/${src}?width=${width}&quality=${quality}`,
 } as const
 
-/** Placeholder generation strategy. */
-export type PlaceholderStrategy = 'blur' | 'dominant-color' | 'none'
+/**
+ * Placeholder generation strategy.
+ *
+ * - `'blur'` — tiny downscaled + blurred WebP data URI (a few hundred bytes).
+ *   The richest preview; faithfully previews the image's content.
+ * - `'color'` — the image's dominant colour as a ~200-byte flat SVG data
+ *   URI. Constant size regardless of source complexity (a blurred WebP
+ *   grows with image content; this doesn't), zero decode, instant paint,
+ *   zero layout shift. For real photos it's far smaller than `'blur'`; for
+ *   trivial/solid sources `'blur'` can be the smaller of the two. Best when
+ *   you want a clean solid backdrop rather than a blurry preview.
+ * - `'none'` — no placeholder (`placeholder: ''`). Skips all placeholder work.
+ *
+ * `'dominant-color'` is a deprecated alias of `'color'` — it was typed from
+ * the plugin's inception but never implemented (the build + dev paths always
+ * fell through to blur). It now resolves to `'color'`; prefer the shorter
+ * name in new code.
+ */
+export type PlaceholderStrategy = 'blur' | 'color' | 'dominant-color' | 'none'
+
+/** Quality per output format (1-100), or a single number applied to all. */
+export type ImageQuality = number | Partial<Record<ImageFormat, number>>
+
+/**
+ * Normalize the public {@link PlaceholderStrategy} to an internal kind.
+ * @internal Exported for testing.
+ */
+export function normalizePlaceholder(s: PlaceholderStrategy): 'blur' | 'color' | 'none' {
+  return s === 'dominant-color' ? 'color' : s
+}
 
 /** SVG processing options for ?component imports. */
 export interface SvgOptions {
@@ -76,11 +104,23 @@ export interface ImagePluginConfig {
   widths?: number[]
   /** Output formats. Default: ["webp"] */
   formats?: ImageFormat[]
-  /** Quality for lossy formats (1-100). Default: 80 */
-  quality?: number
-  /** Blur placeholder size in px. Default: 16 */
+  /**
+   * Quality for lossy formats (1-100). Default: 80.
+   *
+   * Accepts a single number applied to every format, OR a per-format map so
+   * you can tune each codec independently — AVIF tolerates a much lower
+   * number than WebP/JPEG for the same perceived quality:
+   *
+   * ```ts
+   * imagePlugin({ formats: ['avif', 'webp'], quality: { avif: 55, webp: 75 } })
+   * ```
+   *
+   * Formats omitted from the map fall back to 80.
+   */
+  quality?: ImageQuality
+  /** Blur placeholder size in px (only used by the `'blur'` strategy). Default: 16 */
   placeholderSize?: number
-  /** Placeholder strategy. Default: "blur" */
+  /** Placeholder strategy. Default: `"blur"`. See {@link PlaceholderStrategy}. */
   placeholder?: PlaceholderStrategy
   /** File patterns to process. Default: /\.(jpe?g|png|webp|avif)$/i */
   include?: RegExp
@@ -163,9 +203,9 @@ const IMAGE_EXT_RE = /\.(jpe?g|png|webp|avif)$/i
 export function imagePlugin(config: ImagePluginConfig = {}): Plugin {
   const defaultWidths = config.widths ?? [640, 1024, 1920]
   const defaultFormats = config.formats ?? ['webp']
-  const quality = config.quality ?? 80
+  const qualityFor = resolveQuality(config.quality)
   const placeholderSize = config.placeholderSize ?? 16
-  const placeholderStrategy = config.placeholder ?? 'blur'
+  const placeholderStrategy = normalizePlaceholder(config.placeholder ?? 'blur')
   const outSubDir = config.outDir ?? 'assets/img'
   const include = config.include ?? IMAGE_EXT_RE
   const cdn = config.cdn
@@ -253,7 +293,12 @@ export default function SvgComponent(props) {
       if (cdn) {
         const metadata = await getImageMetadata(absPath)
         const sources = defaultWidths.map((w) => ({
-          src: cdn(rawPath, { width: w, quality, format: defaultFormats[0]! }) ?? rawPath,
+          src:
+            cdn(rawPath, {
+              width: w,
+              quality: qualityFor(defaultFormats[0]!),
+              format: defaultFormats[0]!,
+            }) ?? rawPath,
           width: w,
           format: defaultFormats[0]! as string,
         }))
@@ -263,12 +308,14 @@ export default function SvgComponent(props) {
           srcset,
           width: metadata.width,
           height: metadata.height,
-          placeholder: placeholderStrategy === 'none' ? ''
-            : await generateBlurPlaceholder(absPath, placeholderSize),
+          placeholder: await generatePlaceholder(absPath, placeholderStrategy, placeholderSize),
           formats: defaultFormats.map((fmt) => ({
             type: `image/${fmt}`,
             srcset: defaultWidths
-              .map((w) => `${cdn(rawPath, { width: w, quality, format: fmt }) ?? rawPath} ${w}w`)
+              .map(
+                (w) =>
+                  `${cdn(rawPath, { width: w, quality: qualityFor(fmt), format: fmt }) ?? rawPath} ${w}w`,
+              )
               .join(', '),
           })),
           sources,
@@ -277,14 +324,20 @@ export default function SvgComponent(props) {
       }
 
       if (!isBuild) {
-        const result = await loadDevImage(absPath, rawPath, placeholderSize)
+        const result = await loadDevImage(
+          absPath,
+          rawPath,
+          placeholderStrategy,
+          placeholderSize,
+        )
         return `export default ${JSON.stringify(result)}`
       }
 
       const processed = await processImage(absPath, {
         widths: defaultWidths,
         formats: defaultFormats,
-        quality,
+        qualityFor,
+        placeholderStrategy,
         placeholderSize,
         outSubDir,
         outDir: join(root, outDir),
@@ -301,6 +354,7 @@ export default function SvgComponent(props) {
 async function loadDevImage(
   absPath: string,
   rawPath: string,
+  strategy: 'blur' | 'color' | 'none',
   placeholderSize: number,
 ): Promise<ProcessedImage> {
   const metadata = await getImageMetadata(absPath)
@@ -311,7 +365,7 @@ async function loadDevImage(
     srcset: '',
     width: metadata.width,
     height: metadata.height,
-    placeholder: await generateBlurPlaceholder(absPath, placeholderSize),
+    placeholder: await generatePlaceholder(absPath, strategy, placeholderSize),
     formats: [],
     sources: [{ src: publicPath, width: metadata.width, format: 'original' }],
   }
@@ -357,7 +411,8 @@ function rebuildFormatSrcsets(processed: ProcessedImage, fallbackPath: string) {
 interface ProcessOptions {
   widths: number[]
   formats: ImageFormat[]
-  quality: number
+  qualityFor: (format: ImageFormat) => number
+  placeholderStrategy: 'blur' | 'color' | 'none'
   placeholderSize: number
   outSubDir: string
   outDir: string
@@ -383,7 +438,7 @@ async function processImage(absPath: string, opts: ProcessOptions): Promise<Proc
       const outName = `${name}-${width}.${format}`
       const outPath = join(processedDir, outName)
 
-      await resizeImage(absPath, outPath, width, format, opts.quality)
+      await resizeImage(absPath, outPath, width, format, opts.qualityFor(format))
       sources.push({ src: outPath, width, format })
     }
   }
@@ -408,8 +463,14 @@ async function processImage(absPath: string, opts: ProcessOptions): Promise<Proc
   const fallbackFormat = formats[formats.length - 1]
   const fallbackSources = formatGroups.get([...formatGroups.keys()].pop()!)!
 
-  // Generate blur placeholder
-  const placeholder = await generateBlurPlaceholder(absPath, opts.placeholderSize)
+  // Generate the placeholder per the configured strategy. Pre-fix this
+  // hard-coded `generateBlurPlaceholder`, so `placeholder: 'none'` was
+  // ignored in build mode and `'dominant-color'` never resolved anywhere.
+  const placeholder = await generatePlaceholder(
+    absPath,
+    opts.placeholderStrategy,
+    opts.placeholderSize,
+  )
 
   return {
     src: fallbackSources[fallbackSources.length - 1]?.src ?? absPath,
@@ -564,6 +625,82 @@ async function generateBlurPlaceholder(input: string, size: number): Promise<str
     return `data:image/webp;base64,${buffer.toString('base64')}`
   } catch {
     // sharp not available — return a transparent placeholder
-    return "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3C/svg%3E"
+    return TRANSPARENT_PLACEHOLDER
+  }
+}
+
+/** 1×1 transparent SVG — the no-sharp fallback for every strategy. */
+const TRANSPARENT_PLACEHOLDER =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3C/svg%3E"
+
+const DEFAULT_QUALITY = 80
+
+/**
+ * Resolve the public {@link ImageQuality} config into a per-format lookup.
+ *
+ * - `undefined` → every format gets {@link DEFAULT_QUALITY}.
+ * - `number` → that number for every format (backward-compatible).
+ * - `Partial<Record<ImageFormat, number>>` → per-format; formats omitted
+ *   from the map fall back to {@link DEFAULT_QUALITY}.
+ *
+ * @internal Exported for testing.
+ */
+export function resolveQuality(
+  q: ImageQuality | undefined,
+): (format: ImageFormat) => number {
+  if (q === undefined) return () => DEFAULT_QUALITY
+  if (typeof q === 'number') return () => q
+  return (format) => q[format] ?? DEFAULT_QUALITY
+}
+
+/**
+ * Dispatch placeholder generation by strategy. Single source of truth used
+ * by every code path (CDN / dev / build) — pre-fix each path open-coded
+ * `generateBlurPlaceholder`, so `'none'` was honoured only in the CDN path
+ * and `'dominant-color'` (typed since the plugin's inception) was never
+ * implemented anywhere — the exact typed-but-unimplemented bug class the
+ * `audit-types` gate exists to catch.
+ *
+ * @internal Exported for testing.
+ */
+export async function generatePlaceholder(
+  input: string,
+  strategy: 'blur' | 'color' | 'none',
+  size: number,
+): Promise<string> {
+  if (strategy === 'none') return ''
+  if (strategy === 'color') return generateColorPlaceholder(input)
+  return generateBlurPlaceholder(input, size)
+}
+
+/**
+ * Generate a dominant-colour placeholder: a ~70-byte flat-fill SVG data URI.
+ *
+ * Uses sharp's `.stats()` `dominant` swatch — a histogram-binned colour,
+ * not a naive average (averaging a photo trends muddy grey). Note the
+ * swatch is approximate by design: a pure-red source resolves to ~#f80808,
+ * not #ff0000. The SVG is a constant ~200 bytes regardless of source
+ * complexity and needs zero image decode, at the cost of showing a solid
+ * colour instead of a blurry preview of the content.
+ */
+async function generateColorPlaceholder(input: string): Promise<string> {
+  try {
+    const sharp = await import('sharp').then((m) => m.default ?? m)
+    const { dominant } = await sharp(input).stats()
+    const hex =
+      '#' +
+      [dominant.r, dominant.g, dominant.b]
+        .map((c) => Math.max(0, Math.min(255, c)).toString(16).padStart(2, '0'))
+        .join('')
+    // Inline SVG with the colour as a single rect — URL-encoded so it needs
+    // no base64 inflation. preserveAspectRatio + viewBox let it scale to any
+    // container the way an <img> placeholder is expected to.
+    const svg =
+      `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1' preserveAspectRatio='none'>` +
+      `<rect width='1' height='1' fill='${hex}'/></svg>`
+    return `data:image/svg+xml,${encodeURIComponent(svg)}`
+  } catch {
+    // sharp not available — transparent fallback (same as the blur path).
+    return TRANSPARENT_PLACEHOLDER
   }
 }
