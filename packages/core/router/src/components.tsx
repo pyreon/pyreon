@@ -275,18 +275,46 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
 
   const ariaCurrent = (): string | undefined => isExactMatch() ? 'page' : undefined
 
-  // Viewport prefetching — observe link visibility with IntersectionObserver
+  // Viewport prefetching — observe link visibility with IntersectionObserver.
+  //
+  // Two refinements over the naive "fire prefetch the instant the link
+  // intersects" shape:
+  //
+  //   1. `rootMargin: '200px'` — start the prefetch BEFORE the link is
+  //      fully on screen. By the time the user scrolls to it and clicks,
+  //      the loader data is typically already resolved. Matches the
+  //      margin instant.page / Astro use; 0px (the previous default)
+  //      only started the fetch once the link was already visible,
+  //      leaving a window where a fast scroll-then-click still waited.
+  //   2. Schedule the prefetch via `requestIdleCallback` so it never
+  //      contends with active scrolling / paint. Prefetch is best-effort
+  //      background work — running it in an idle slice keeps the main
+  //      thread free for the scroll the user is actively performing.
+  //      Falls back to a 1ms `setTimeout` where rIC is unavailable
+  //      (Safari < 16.4, jsdom) so the behaviour degrades, not breaks.
   const ref = createRef<Element>()
   if (prefetchMode === 'viewport' && router && typeof IntersectionObserver !== 'undefined') {
-    const observer = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.isIntersecting) {
-          prefetchRoute(router as RouterInstance, props.to)
-          observer.disconnect()
-          break
+    const ric = (
+      globalThis as { requestIdleCallback?: (cb: () => void) => number }
+    ).requestIdleCallback
+    const scheduleIdle = (fn: () => void): void => {
+      if (typeof ric === 'function') ric(fn)
+      else setTimeout(fn, 1)
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            // Disconnect synchronously so a re-intersection (scroll
+            // jitter) before the idle callback runs can't double-schedule.
+            observer.disconnect()
+            scheduleIdle(() => prefetchRoute(router as RouterInstance, props.to))
+            break
+          }
         }
-      }
-    })
+      },
+      { rootMargin: '200px' },
+    )
     // Observe after mount — the ref will be populated once the element is in the DOM
     queueMicrotask(() => {
       observer.observe(ref.current as Element)
