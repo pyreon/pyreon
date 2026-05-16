@@ -11,12 +11,14 @@ import { expect, test } from '@playwright/test'
  * self-accept suppressed Vite's full-reload fallback — so a component/JSX
  * edit produced a silently-stale UI until the user pressed refresh BY HAND.
  *
- * Fix: the plugin now emits a coordinator-driven accept that calls
- * `globalThis.__pyreon_hmr_reload__` (registered by `@pyreon/router`),
- * which re-resolves the active route's lazy component. The identity
- * changes → `RouterView` re-renders that subtree IN PLACE — no page
- * reload, so the module-scope signal's value survives via
- * `__pyreon_hmr_registry__`.
+ * Fix: the plugin's accept callback hands the FRESH module Vite already
+ * re-evaluated to `globalThis.__pyreon_hmr_swap__` (registered by
+ * `@pyreon/router`), keyed by the module id. The coordinator swaps the
+ * new component into every matched route record whose lazy `_hmrId`
+ * matches and bumps `_loadingSignal` → `RouterView` re-renders that
+ * subtree IN PLACE — no page reload, so the module-scope signal's value
+ * survives via `__pyreon_hmr_registry__`. No match / no coordinator →
+ * `import.meta.hot.invalidate()` → automatic reload (never manual).
  *
  * This spec proves all three at once against a real zero dev server in
  * real Chromium:
@@ -60,13 +62,38 @@ test('editing a route component hot-updates the DOM in place, no reload, signal 
     await page.getByTestId('hmr-inc').click()
     await expect(page.getByTestId('hmr-count')).toHaveText('3')
 
+    // ── HMR-readiness gate (closes the cold-boot race) ───────────────────
+    // CI's first failure: the file was edited BEFORE Vite's HMR WebSocket
+    // had connected and BEFORE the router registered its swap coordinator,
+    // so Vite's module-update never reached a handler — neither the
+    // in-place swap NOR the `invalidate()` reload fired, leaving the page
+    // stuck at MARKER_V1. Locally the dev server is warm enough that the
+    // race is never lost; a cold loaded CI runner loses it. Gate the edit
+    // on BOTH preconditions being demonstrably true:
+    //   • `networkidle` — Vite finished its initial transform/optimize and
+    //     the `@vite/client` HMR socket handshake has completed.
+    //   • `__pyreon_hmr_swap__` is a function — `@pyreon/router`'s
+    //     createRouter ran in the browser and registered the coordinator
+    //     the injected `accept` callback dispatches to.
+    await page.waitForLoadState('networkidle')
+    await page.waitForFunction(
+      () =>
+        typeof (window as unknown as Record<string, unknown>)
+          .__pyreon_hmr_swap__ === 'function',
+      undefined,
+      { timeout: 15_000 },
+    )
+
     // ── The edit ────────────────────────────────────────────────────────
     writeFileSync(PROBE, original.replace('MARKER_V1', 'MARKER_V2'), 'utf8')
 
     // (1) HMR actually fires — the marker reflects the NEW source.
     //     Pre-fix this never happens (bare accept → stale) and times out.
+    //     30s budget: a cold CI runner's FIRST post-boot HMR round-trip
+    //     (fs-watch debounce → invalidate → WS push → accept → coordinator
+    //     → RouterView re-render) is far slower than the ~1s local path.
     await expect(page.getByTestId('hmr-marker')).toHaveText('MARKER_V2', {
-      timeout: 15_000,
+      timeout: 30_000,
     })
 
     // (2) No page reload — the window sentinel survived the swap.
