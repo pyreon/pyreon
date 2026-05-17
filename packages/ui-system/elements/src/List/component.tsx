@@ -89,11 +89,14 @@ const name = `${PKG_NAME}/List` as const
 // inference flows through without callers having to spell out `<T>`.
 // ---------------------------------------------------------------------------
 export interface ListComponent {
-  // T inferred from `data` — strict per-mode constraints, no loose fallback.
-  // See Iterator's IteratorComponent for the same rationale.
+  // T inferred from `data`. Order: SimpleProps, ObjectProps, ChildrenProps,
+  // then a LooseProps fallback for forwarding patterns where derived
+  // `$$types['data']` is a wide union that doesn't bind to any narrow
+  // overload. See Iterator's IteratorComponent for the full rationale.
   <T extends SimpleValue>(props: IteratorSimpleProps<T> & ListExtras): VNodeChild
   <T extends ObjectValue>(props: IteratorObjectProps<T> & ListExtras): VNodeChild
   (props: IteratorChildrenProps & ListExtras): VNodeChild
+  (props: IteratorLooseProps & ListExtras): VNodeChild
   displayName?: string
   pkgName?: string
   PYREON__COMPONENT?: string

@@ -214,6 +214,36 @@ describe('chaining methods', () => {
     const result = WithAttrs.getDefaultAttrs({}, {}, 'light')
     expect(result.label).toBe('default')
   })
+
+  it('.getDefaultAttrs() passes isDark/isLight helpers matching the requested mode', () => {
+    // Regression: pre-fix the helpers were inverted in `getDefaultAttrs`
+    // (isDark: mode === 'light', isLight: mode === 'dark') so introspection
+    // callers (rocketstories-style story generators, devtools) saw the
+    // OPPOSITE of what the runtime renders. Runtime via `useTheme` derives
+    // helpers correctly from context (and handles `inversed` by flipping
+    // the mode at the Provider level — see context.test.ts), so the bug
+    // only surfaced for callers that read the helpers via `getDefaultAttrs`.
+    //
+    // Contract: `mode` is the EFFECTIVE mode (post-`inversed` resolution).
+    // Callers wanting "inversed light" pass `'dark'`; this function takes
+    // the resolved value, so testing both light/dark covers both the
+    // un-inversed and inversed cases.
+    const captured: Array<{ mode: any; isDark: any; isLight: any }> = []
+    const Probe = Button.attrs((_props: any, _theme: any, helpers: any) => {
+      captured.push({
+        mode: helpers.mode,
+        isDark: helpers.isDark,
+        isLight: helpers.isLight,
+      })
+      return {}
+    })
+
+    Probe.getDefaultAttrs({}, {}, 'light')
+    Probe.getDefaultAttrs({}, {}, 'dark')
+
+    expect(captured[0]).toEqual({ mode: 'light', isDark: false, isLight: true })
+    expect(captured[1]).toEqual({ mode: 'dark', isDark: true, isLight: false })
+  })
 })
 
 // --------------------------------------------------------

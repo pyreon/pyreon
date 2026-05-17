@@ -128,6 +128,31 @@ for (const dir of packageDirs) {
       console.error(`❌ Failed to publish ${pkg.name}`)
       failed.push(pkg.name)
     } else {
+      // Create the local git tag for this package@version. changesets/action
+      // parses every `New tag: …` line below, populates outputs.published +
+      // outputs.publishedPackages, AND issues `git push origin <name>@<ver>`
+      // per parsed entry — expecting the local tag to already exist (this is
+      // what `changeset publish` from the CLI does natively). Without the
+      // local tag, push fails with `src refspec X does not match any`, the
+      // changesets/action step exits non-zero, and the gated umbrella
+      // GitHub Release step (which creates v<version> tag → release-native.yml)
+      // silently skips. Skip the create if the tag already exists locally
+      // (retried run, etc.) — push of an existing tag with the same target
+      // is a no-op anyway. Annotated tag (-a -m) so it carries a timestamp
+      // and a clear release message, matching the per-package tag style
+      // `changesets/cli` emits.
+      const tagName = `${pkg.name}@${pkg.version}`
+      const exists = Bun.spawnSync(['git', 'tag', '-l', tagName], { stdout: 'pipe' })
+      if (exists.stdout.toString().trim() === '') {
+        Bun.spawnSync(['git', 'tag', '-a', tagName, '-m', `Release ${tagName}`])
+      }
+
+      // Emit the line format changesets/action parses to populate
+      // outputs.published + outputs.publishedPackages. The action's
+      // src/run.ts matches /New tag:\s+(@[^/]+\/[^@]+|[^/]+)@([^\s]+)/
+      // per-line; without this, outputs.published stays 'false' and the
+      // umbrella GitHub Release step (gated on it) silently skips.
+      console.log(`New tag: ${pkg.name}@${pkg.version}`)
       published.push(pkg.name)
     }
   } finally {

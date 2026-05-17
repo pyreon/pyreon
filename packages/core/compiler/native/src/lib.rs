@@ -299,6 +299,7 @@ struct Ctx<'a> {
 
     needs_tpl_import: bool,
     needs_rp_import: bool,
+    needs_wrap_spread_import: bool,
     needs_bind_text_import: bool,
     needs_bind_direct_import: bool,
     needs_bind_import: bool,
@@ -336,6 +337,7 @@ impl<'a> Ctx<'a> {
             hoist_idx: 0,
             needs_tpl_import: false,
             needs_rp_import: false,
+            needs_wrap_spread_import: false,
             needs_bind_text_import: false,
             needs_bind_direct_import: false,
             needs_bind_import: false,
@@ -435,8 +437,19 @@ impl<'a> Ctx<'a> {
             );
         }
 
-        if self.needs_rp_import {
-            result = format!("import {{ _rp }} from \"@pyreon/core\";\n{}", result);
+        if self.needs_rp_import || self.needs_wrap_spread_import {
+            let mut core_imports: Vec<&str> = Vec::new();
+            if self.needs_rp_import {
+                core_imports.push("_rp");
+            }
+            if self.needs_wrap_spread_import {
+                core_imports.push("_wrapSpread");
+            }
+            result = format!(
+                "import {{ {} }} from \"@pyreon/core\";\n{}",
+                core_imports.join(", "),
+                result
+            );
         }
 
         TransformResult {
@@ -2339,7 +2352,12 @@ fn handle_jsx_element(el: &JSXElement, ctx: &mut Ctx) {
                 handle_jsx_attribute(a, el, is_component, ctx);
             }
             JSXAttributeItem::SpreadAttribute(spread) => {
+                // Walk the spread argument FIRST so any nested JSX / signal
+                // accesses get their own transformations applied.
                 walk_expression(&spread.argument, ctx);
+                if is_component {
+                    handle_jsx_spread_attribute(spread, ctx);
+                }
             }
         }
     }
@@ -2446,6 +2464,44 @@ fn handle_jsx_attribute(
         // DOM prop: hoist or wrap with () =>
         hoist_or_wrap(expr, ctx);
     }
+}
+
+/// Handle `{...spreadExpr}` attributes on COMPONENT JSX (DOM elements use
+/// the template path's `_applyProps` instead).
+///
+/// Bug class this closes: esbuild's automatic JSX runtime compiles
+/// `<Comp {...a} foo={x}>` to `jsx(Comp, { ...a, foo: x })`. The JS-level
+/// object spread fires every getter on `a` and stores the resolved value
+/// — so any reactive prop on `a` (e.g. `splitProps` result carrying
+/// compiler-emitted `_rp` getters from a parent component) is collapsed
+/// to its initial value before `Comp` sees it.
+///
+/// Fix: wrap each spread source with `_wrapSpread(...)` so its getters
+/// are re-branded as `_rp` thunks pointing back at the original. JS
+/// spread copies the brands as plain data property values; later in the
+/// mount pipeline, `makeReactiveProps` converts the brands back into
+/// getters that lazily read from the live source — preserving the
+/// reactive subscription end-to-end.
+///
+/// Idempotent: skip when the argument is already a `_wrapSpread(...)`
+/// call so multi-pass / re-run compilation doesn't double-wrap.
+fn handle_jsx_spread_attribute(spread: &JSXSpreadAttribute, ctx: &mut Ctx) {
+    let arg = &spread.argument;
+    // Idempotent guard: don't double-wrap on re-compilation.
+    if let Expression::CallExpression(call) = arg {
+        if let Expression::Identifier(id) = &call.callee {
+            if id.name.as_str() == "_wrapSpread" {
+                return;
+            }
+        }
+    }
+    let sliced = slice_expr(arg, ctx);
+    ctx.add_replacement(
+        arg.span().start,
+        arg.span().end,
+        format!("_wrapSpread({})", sliced),
+    );
+    ctx.needs_wrap_spread_import = true;
 }
 
 fn handle_jsx_expression_child(container: &JSXExpressionContainer, ctx: &mut Ctx) {

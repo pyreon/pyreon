@@ -59,10 +59,19 @@ jobs:
             ext: dylib
             prefix: lib
             npm: darwin-arm64
-          # macOS Intel — uses macos-13 (last Intel runner before
-          # GitHub deprecated x86_64 macos-latest in favour of arm64).
+          # macOS Intel — cross-compile from a macos-latest (arm64) runner.
+          # macos-13 is the only Intel-native GitHub runner since macos-latest
+          # moved to Apple Silicon, but its pool is heavily constrained — we
+          # saw 2+ hour queue waits during validation. Apple's clang on arm64
+          # hosts ships cross-compile support for x86_64-apple-darwin out of
+          # the box (`rustup target add x86_64-apple-darwin` + `cargo build
+          # --target x86_64-apple-darwin` Just Works), so we sidestep the
+          # macos-13 pool entirely by running on macos-latest. `host: native`
+          # because the cross-compile is invisible to cargo — no zigbuild or
+          # docker needed; the rust toolchain action's `targets:` parameter
+          # installs the right target via rustup.
           - target: x86_64-apple-darwin
-            os: macos-13
+            os: macos-latest
             host: native
             ext: dylib
             prefix: lib
@@ -139,8 +148,19 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Build (cargo-zigbuild)
+        # Linux musl targets need `-C target-feature=-crt-static` to produce
+        # a cdylib (.so). Default Rust musl behaviour statically links libc,
+        # which only supports `staticlib`, not the dynamic library napi-rs
+        # consumers expect — produces: `error: cannot produce cdylib for
+        # ... as the target X-musl does not support these crate types`.
+        # Standard napi-rs workaround (used by oxc-parser, swc, esbuild's
+        # Rust binding, etc.). Linux gnu targets ignore the flag (they're
+        # already dynamic by default), so applying it unconditionally to
+        # the zigbuild path is safe — no per-target branching needed.
         if: matrix.host == 'zigbuild'
         working-directory: packages/core/compiler/native
+        env:
+          RUSTFLAGS: '-C target-feature=-crt-static'
         run: cargo zigbuild --release --target ${{ matrix.target }}
 
       - name: Stage artifact
@@ -213,7 +233,15 @@ jobs:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'
       - name: Download platform artifact
-        uses: actions/download-artifact@cc20338822e95a0fb5ef76d27cd4cd5ca3dfdc87 # v5.0.0
+        # SHA must match the real v5.0.0 tag (634f93cb…). The prior pin
+        # (cc20338…) was a transcription error that GitHub rejected as
+        # an unknown ref — every Publish job in run 25873293958 (the
+        # v0.18.0 release-native trigger) failed at "Set up job" with
+        # `Unable to resolve action ... unable to find version <SHA>`.
+        # No prior release exercised this code path (every previous
+        # release-native run was workflow_dispatch with the default
+        # `publish: 'false'` input, which skips the publish matrix).
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
           name: pyreon-compiler-${{ matrix.target }}
           path: packages/core/compiler/npm/${{ matrix.npm }}
@@ -234,8 +262,32 @@ jobs:
             echo "::error::Binary too small ($SIZE bytes) — corrupted artifact"
             exit 1
           fi
-      - name: Publish to npm
+      - name: Publish to npm (OIDC trusted publishing)
+        # No NODE_AUTH_TOKEN — Pyreon uses npm OIDC trusted publishing
+        # (no long-lived secrets). npm 11+ (shipped with Node 24) handles
+        # the OIDC token exchange automatically when:
+        #   1. `id-token: write` workflow permission is granted (set at
+        #      file scope above — line 37).
+        #   2. The package is registered as a trusted-publisher target
+        #      for THIS workflow on npmjs.com.
+        #
+        # Setting `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` (the prior
+        # shape) resolves to empty string when NPM_TOKEN isn't a repo
+        # secret. setup-node then writes
+        # `//registry.npmjs.org/:_authToken=` (empty) into .npmrc, and
+        # npm tries to use the empty token → ENEEDAUTH instead of
+        # falling back to OIDC. Pyreon's main release flow works without
+        # NODE_AUTH_TOKEN because changesets/action does the OIDC
+        # exchange internally; this raw `npm publish` path relies on
+        # npm CLI's native OIDC support and needs the env line removed.
+        #
+        # Pre-registration required (one-time, per package) for the 7
+        # platform packages:
+        #   1. npmjs.com → Settings → Publishing access → "Add new"
+        #   2. Package: @pyreon/compiler-<short> (one form per triple)
+        #   3. Repository: pyreon/pyreon
+        #   4. Workflow filename: release-native.yml
+        # See CONTRIBUTING.md → "Releases → Native binary publishing"
+        # for the full checklist.
         working-directory: packages/core/compiler/npm/${{ matrix.npm }}
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -51,5 +51,48 @@ export type Spread<A extends readonly [...any]> = A extends [infer L, ...infer R
 export type MergeTypes<A extends readonly [...any]> = ExtractNullableKeys<Spread<A>>
 
 // ─── ExtractProps ─────────────────────────────────────────────
-export type ExtractProps<TComponentOrTProps> =
-  TComponentOrTProps extends ComponentFn<infer TProps> ? TProps : TComponentOrTProps
+/**
+ * Extracts the props type from a Pyreon component function — or passes
+ * through the input unchanged when it's already a props type.
+ *
+ * Multi-overload aware: matches up to 4 call signatures and produces the
+ * UNION of their first-argument types. A single-overload function still
+ * works (the union of 4 copies of the same props type dedupes back to
+ * the single shape).
+ *
+ * **Why this shape**. `T extends (props: infer P) => any ? P : never` only
+ * captures the LAST overload of a multi-overload function — TS's overload-
+ * resolution-against-conditional-types semantics. Iterator / List / Element
+ * are 3-overload primitives where the LAST overload (`ChildrenProps`) is the
+ * loosest; without overload-aware extraction, `ExtractProps<Iterator>`
+ * returned just `ChildrenProps` and lost both `SimpleProps<T>` and
+ * `ObjectProps<T>` — wrapping Iterator through `rocketstyle()` /
+ * `attrs()` silently downgraded the public prop surface.
+ *
+ * The pattern-match shape `T extends { (props: infer P1, ...args: any): any;
+ * (props: infer P2, ...args: any): any; ... }` is the canonical TS trick
+ * for extracting overload sets — see also `Parameters<T>` semantics.
+ *
+ * Mirrors vitus-labs PR #222.
+ */
+export type ExtractProps<TComponentOrTProps> = TComponentOrTProps extends {
+  (props: infer P1, ...args: any): any
+  (props: infer P2, ...args: any): any
+  (props: infer P3, ...args: any): any
+  (props: infer P4, ...args: any): any
+}
+  ? P1 | P2 | P3 | P4
+  : TComponentOrTProps extends {
+        (props: infer P1, ...args: any): any
+        (props: infer P2, ...args: any): any
+        (props: infer P3, ...args: any): any
+      }
+    ? P1 | P2 | P3
+    : TComponentOrTProps extends {
+          (props: infer P1, ...args: any): any
+          (props: infer P2, ...args: any): any
+        }
+      ? P1 | P2
+      : TComponentOrTProps extends ComponentFn<infer TProps>
+        ? TProps
+        : TComponentOrTProps

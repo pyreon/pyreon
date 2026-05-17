@@ -60,15 +60,67 @@ describe('MCP server — get_pattern tool', () => {
 })
 
 describe('MCP server — get_anti_patterns tool', () => {
-  it('returns all categories when called with no arg', async () => {
+  it('returns the COMPACT INDEX (not full bodies) when called with no arg', async () => {
+    // Behaviour change (PR: mcp token slim): the default response is now
+    // the ~3.3K-token index, not the ~14K full dump. The index keeps the
+    // per-category `## <Heading>` markers (so category discovery still
+    // works in one call) and the inline detector tags, but elides the
+    // prose body in favour of a one-line hook.
     const { client, close } = await newClient()
     try {
       const text = await callTool(client, 'get_anti_patterns', {})
-      expect(text).toMatch(/^# Pyreon Anti-Patterns \(\d+ total, \d+ categor(y|ies)\)/)
-      // Multiple categories rendered.
+      expect(text).toMatch(/^# Pyreon Anti-Patterns — index \(\d+ total, \d+ categor(y|ies)\)/)
       expect(text).toContain('## Reactivity Mistakes')
       expect(text).toContain('## JSX Mistakes')
       expect(text).toContain('## Architecture Mistakes')
+      // The index tells the agent how to drill in.
+      expect(text).toContain('get_anti_patterns({ name:')
+      expect(text).toContain('get_anti_patterns({ full: true })')
+      // Token budget: the index must stay far under the old full dump.
+      // ~4 chars/token; old default was ≈13,976 tokens. Lock it < 5,000.
+      expect(Math.round(text.length / 4)).toBeLessThan(5000)
+    } finally {
+      await close()
+    }
+  })
+
+  it('full:true returns the entire catalog (explicit expensive opt-in)', async () => {
+    const { client, close } = await newClient()
+    try {
+      const text = await callTool(client, 'get_anti_patterns', { full: true })
+      // The old full-dump header shape, restored only on explicit opt-in.
+      expect(text).toMatch(/^# Pyreon Anti-Patterns \(\d+ total, \d+ categor(y|ies)\)/)
+      expect(text).toContain('## Reactivity Mistakes')
+      // Full bodies are present → materially larger than the index.
+      const indexText = await callTool(client, 'get_anti_patterns', {})
+      expect(text.length).toBeGreaterThan(indexText.length * 2)
+    } finally {
+      await close()
+    }
+  })
+
+  it('name returns one entry full body (token-frugal "I need THIS one")', async () => {
+    const { client, close } = await newClient()
+    try {
+      // 'Destructuring props' is a stable reactivity entry title.
+      const text = await callTool(client, 'get_anti_patterns', { name: 'Destructuring props' })
+      expect(text).toContain('Destructuring props')
+      // It's a full body, not the index line — the index footer hint
+      // ("get_anti_patterns({ full: true })") must NOT be present.
+      expect(text).not.toContain('get_anti_patterns({ full: true })')
+      // Far cheaper than even the index.
+      expect(Math.round(text.length / 4)).toBeLessThan(1500)
+    } finally {
+      await close()
+    }
+  })
+
+  it('name with no match returns a not-found message + index pointer', async () => {
+    const { client, close } = await newClient()
+    try {
+      const text = await callTool(client, 'get_anti_patterns', { name: 'zzz-nonexistent-zzz' })
+      expect(text).toContain('No anti-pattern title matches')
+      expect(text).toContain('get_anti_patterns()')
     } finally {
       await close()
     }

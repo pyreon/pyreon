@@ -2531,6 +2531,96 @@ describe('RouterLink viewport prefetch', () => {
 
     globalThis.IntersectionObserver = origIO
   })
+
+  // Regression — the viewport-prefetch polish (PR: prefetch DX):
+  //   (a) IntersectionObserver is constructed with rootMargin '200px' so
+  //       the prefetch starts BEFORE the link is fully on screen.
+  //   (b) The prefetch is scheduled via requestIdleCallback, NOT called
+  //       synchronously inside the observer callback — so it never
+  //       contends with the scroll the user is actively performing.
+  test('viewport prefetch uses 200px rootMargin + idle scheduling', async () => {
+    const el = container()
+    let loaderCalled = false
+    const prefetchRoutes: RouteRecord[] = [
+      { path: '/', component: Home },
+      {
+        path: '/idle',
+        component: About,
+        loader: async () => {
+          loaderCalled = true
+          return 'data'
+        },
+      },
+    ]
+    const router = createRouter({ routes: prefetchRoutes, url: '/' })
+
+    const origIO = globalThis.IntersectionObserver
+    const origRic = (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback
+    let capturedRootMargin: string | undefined
+    let idleCb: (() => void) | null = null
+    ;(globalThis as { requestIdleCallback?: unknown }).requestIdleCallback = (
+      cb: () => void,
+    ): number => {
+      idleCb = cb
+      return 1
+    }
+    globalThis.IntersectionObserver = class {
+      constructor(
+        private cb: IntersectionObserverCallback,
+        opts?: IntersectionObserverInit,
+      ) {
+        capturedRootMargin = opts?.rootMargin
+      }
+      observe(observedEl: Element) {
+        this.cb(
+          [{ isIntersecting: true, target: observedEl } as IntersectionObserverEntry],
+          this as unknown as IntersectionObserver,
+        )
+      }
+      disconnect() {}
+      unobserve() {}
+      takeRecords() {
+        return []
+      }
+      get root() {
+        return null
+      }
+      get rootMargin() {
+        return ''
+      }
+      get thresholds() {
+        return []
+      }
+    } as unknown as typeof IntersectionObserver
+
+    mount(
+      h(
+        RouterProvider,
+        { router },
+        h(RouterLink, { to: '/idle', prefetch: 'viewport' }, 'Idle'),
+      ),
+      el,
+    )
+
+    await new Promise<void>((r) => setTimeout(r, 50))
+
+    // (a) Constructed with the 200px margin.
+    expect(capturedRootMargin).toBe('200px')
+    // (b) The prefetch was DEFERRED to the idle callback — it must NOT
+    //     have run synchronously inside the observer callback.
+    expect(idleCb).not.toBeNull()
+    expect(loaderCalled).toBe(false)
+
+    // Fire the idle slice — now the prefetch runs.
+    idleCb!()
+    await new Promise<void>((r) => setTimeout(r, 50))
+    expect(loaderCalled).toBe(true)
+
+    globalThis.IntersectionObserver = origIO
+    if (origRic === undefined)
+      delete (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback
+    else (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback = origRic
+  })
 })
 
 // ─── matchPath additional branches (match.ts) ────────────────────────────────

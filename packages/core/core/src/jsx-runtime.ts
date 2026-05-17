@@ -25,19 +25,57 @@ export function jsx(
   props: Props & { children?: VNodeChild | VNodeChild[] },
   key?: string | number | null,
 ): VNode {
-  const { children, ...rest } = props
-  const propsWithKey = (key != null ? { ...rest, key } : rest) as Props
+  // Build the destructured props object by copying own property
+  // DESCRIPTORS, not values. Compiler-emitted reactive props (`_rp(() =>
+  // signal())` wrappers converted to getter properties by
+  // `makeReactiveProps` in mount.ts) MUST survive the destructure with
+  // their getters intact. A plain `{ children, ...rest } = props`
+  // destructure fires every getter on `props` and stores the resolved
+  // value, breaking signal-driven reactivity for any downstream
+  // consumer that reads `props.x` in a tracking scope.
+  //
+  // Fast path: if `props` has no own property descriptors with `get`
+  // accessors, we can use the original value-copy shape (cheap object
+  // literal allocation). This is the 99% case — only framework wrappers
+  // (rocketstyle attrs HOC, Wrapper, styled) and direct signal props
+  // produce getter-shaped descriptors.
+  const descriptors = Object.getOwnPropertyDescriptors(props)
+  let hasGetter = false
+  for (const k in descriptors) {
+    if (descriptors[k]!.get) {
+      hasGetter = true
+      break
+    }
+  }
+  const children = props.children
 
-  if (typeof type === 'function') {
-    // Component: keep children in props.children so the component function can access them.
-    // Children must NOT be spread as h() rest args because mountComponent only passes vnode.props.
-    const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey
-    return h(type, componentProps)
+  if (!hasGetter) {
+    const { children: _ignored, ...rest } = props
+    const propsWithKey = (key != null ? { ...rest, key } : rest) as Props
+    if (typeof type === 'function') {
+      const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey
+      return h(type, componentProps)
+    }
+    const childArray = children === undefined ? [] : Array.isArray(children) ? children : [children]
+    return h(type, propsWithKey, ...(childArray as VNodeChild[]))
   }
 
-  // DOM element or symbol (Fragment, ForSymbol): children go in vnode.children
+  // Slow path: at least one getter descriptor present — preserve
+  // descriptors during the destructure.
+  const propsWithKey: Record<string, unknown> = {}
+  for (const k in descriptors) {
+    if (k === 'children') continue
+    Object.defineProperty(propsWithKey, k, descriptors[k]!)
+  }
+  if (key != null) propsWithKey.key = key as unknown
+
+  if (typeof type === 'function') {
+    if (children !== undefined) propsWithKey.children = children
+    return h(type, propsWithKey as Props)
+  }
+
   const childArray = children === undefined ? [] : Array.isArray(children) ? children : [children]
-  return h(type, propsWithKey, ...(childArray as VNodeChild[]))
+  return h(type, propsWithKey as Props, ...(childArray as VNodeChild[]))
 }
 
 // jsxs is called when there are multiple static children — same signature

@@ -4,12 +4,12 @@ export default defineManifest({
   name: '@pyreon/lint',
   title: 'Pyreon-specific Linter',
   tagline:
-    'Pyreon-specific linter — 62 rules across 12 categories, config files, watch mode, AST cache, CLI + LSP',
+    'Pyreon-specific linter — 67 rules across 13 categories, config files, watch mode, AST cache, CLI + LSP',
   description:
-    'Pyreon-specific lint rules powered by `oxc-parser`. Covers reactivity (12), JSX (11), lifecycle (5), performance (4), SSR (3), architecture (7), store (3), form (3), styling (4), hooks (3), accessibility (3), router (4) — 62 rules total. Programmatic API (`lint`, `lintFile`), CLI (`pyreon-lint`), watch mode (fs.watch + 100ms debounce + AstCache), LSP server, and `.pyreonlintrc.json` config with per-rule options via ESLint-style tuple form. Notable rules: `pyreon/no-process-dev-gate` (auto-fixable; replaces dead-in-browser `typeof process` gates with `import.meta.env?.DEV`), `pyreon/require-browser-smoke-test` (locks in T1.1 browser-test durability).',
+    'Pyreon-specific lint rules powered by `oxc-parser`. Covers reactivity (13), JSX (11), lifecycle (5), performance (5), SSR (3), architecture (7), store (3), form (3), styling (4), hooks (3), accessibility (3), router (4), SSG (3) — 67 rules total. Programmatic API (`lint`, `lintFile`), CLI (`pyreon-lint`), watch mode (fs.watch + 100ms debounce + AstCache), LSP server, and `.pyreonlintrc.json` config with per-rule options via ESLint-style tuple form. Notable rules: `pyreon/no-process-dev-gate` (auto-fixable; replaces dead-in-browser `typeof process` gates with the bundler-agnostic `process.env.NODE_ENV` convention), `pyreon/no-heavy-import-only-in-handler` (flags a statically-imported heavy module used only in deferred scopes — convert to a dynamic `import()`).',
   category: 'server',
   features: [
-    '62 rules across 12 categories',
+    '67 rules across 13 categories',
     'lint(options) programmatic API + lintFile() low-level entry',
     'CLI: pyreon-lint with --preset / --fix / --watch / --format / --rule-options',
     '4 presets: recommended, strict, app, lib',
@@ -51,7 +51,7 @@ const fileResult = lintFile('app.tsx', source, allRules, config, cache)
       kind: 'function',
       signature: 'lint(options?: LintOptions): LintResult',
       summary:
-        '62 rules across 12 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. Wrong-typed options surface on `result.configDiagnostics`. Uses `oxc-parser` with AST caching.',
+        '67 rules across 13 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. Wrong-typed options surface on `result.configDiagnostics`. Uses `oxc-parser` with AST caching.',
       example: `import { lint } from "@pyreon/lint"
 
 const result = lint({ paths: ["src/"], preset: "recommended" })

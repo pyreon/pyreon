@@ -1,5 +1,7 @@
 // @pyreon/compiler — JSX reactive transform for Pyreon
 
+export type { DeferInlineResult, DeferInlineWarning } from './defer-inline'
+export { transformDeferInline } from './defer-inline'
 export type {
   CompilerWarning,
   ReactivityKind,

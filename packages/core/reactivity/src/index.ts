@@ -5,6 +5,8 @@ export { Cell, cell } from './cell'
 export { type Computed, type ComputedOptions, computed } from './computed'
 export { createSelector } from './createSelector'
 export { inspectSignal, onSignalUpdate, why } from './debug'
+export type { ReactiveTraceEntry } from './reactive-trace'
+export { clearReactiveTrace, getReactiveTrace } from './reactive-trace'
 export {
   _bind,
   type Effect,

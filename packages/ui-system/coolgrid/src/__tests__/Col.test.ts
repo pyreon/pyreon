@@ -44,7 +44,7 @@ describe('Col', () => {
   // Per-test timeout bump — subsequent tests in the file reuse the cached
   // module and run in 0ms, so the global 15s budget stays strict everywhere
   // else.
-  it('returns a VNode', { timeout: 30000 }, async () => {
+  it('returns a VNode', { timeout: 60000 }, async () => {
     const Col = (await import('../Col')).default
     const result = asVNode(Col({ children: 'test' }))
     expect(result).toBeDefined()

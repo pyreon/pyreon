@@ -12,19 +12,48 @@ bun add -d @pyreon/cli
 
 ### `pyreon doctor`
 
-Scans your project for React patterns and auto-fixes them to Pyreon equivalents.
+Project-wide health audit — runs every check Pyreon ships across 5 categories
+(`correctness`, `performance`, `architecture`, `testing`, `documentation`) and
+returns a unified 0-100 score with per-category breakdown.
 
 ```bash
-pyreon doctor              # human-readable output
-pyreon doctor --fix        # auto-fix safe transforms
-pyreon doctor --json       # structured JSON output for AI tools
-pyreon doctor --ci         # exit code 1 on any error (for CI)
-
-# Test-environment audit (mock-vnode patterns — the PR #197 bug class)
-pyreon doctor --audit-tests                     # appends test-audit with minRisk=medium
-pyreon doctor --audit-tests --audit-min-risk high  # only HIGH-risk files
-pyreon doctor --json --audit-tests              # audit emitted as a second JSON blob
+pyreon doctor              # default: 8 fast gates, ~2-5s, scored output
+pyreon doctor --full       # adds 2 slow gates (audit-types, bundle-budgets)
+pyreon doctor --fix        # auto-fix what we can (lint + react-patterns)
+pyreon doctor --json       # full DoctorReport as JSON
+pyreon doctor --gha        # GitHub Actions annotation format
+pyreon doctor --ci         # exit non-zero on error findings only
+pyreon doctor --only lint,distribution         # ONLY these gates
+pyreon doctor --skip pyreon-patterns           # exclude these gates
+pyreon doctor --audit-min-risk high            # tighten test-environment audit
 ```
+
+#### Gates
+
+| Gate              | Category       | Speed | What it catches                                            |
+| ----------------- | -------------- | ----- | ---------------------------------------------------------- |
+| `react-patterns`  | correctness    | fast  | useState/useEffect/className/React imports (auto-fixable)  |
+| `pyreon-patterns` | correctness    | fast  | Pyreon-specific anti-patterns (12 detector codes)          |
+| `lint`            | varies         | fast  | All 66 `@pyreon/lint` rules                                |
+| `distribution`    | architecture   | fast  | `sideEffects` field, source-map exclusion in published pkg |
+| `doc-claims`      | documentation  | fast  | Numeric claims in docs match the source of truth           |
+| `audit-tests`     | testing        | fast  | Mock-vnode test patterns (PR #197 bug class)               |
+| `islands-audit`   | architecture   | fast  | Cross-file islands foot-guns (duplicate names, dead, ...)  |
+| `ssg-audit`       | architecture   | fast  | `_404.tsx` placement, missing `getStaticPaths`, ...        |
+| `audit-types`     | architecture   | slow  | Typed-but-unimplemented public-interface fields            |
+| `bundle-budgets`  | performance    | slow  | Gzipped main-entry size > locked budget                    |
+
+#### Score formula
+
+- Per-finding penalty: `error=10, warning=3, info=1` points.
+- Per-category subscore: `max(0, 100 - sum(penalties))` (saturates at 0).
+- Overall score: mean of *included* category subscores (skipped categories drop out).
+- Letter grades: A ≥ 90, B ≥ 80, C ≥ 70, D ≥ 60, F otherwise.
+
+#### Legacy flags (still work)
+
+`--audit-tests`, `--check-islands`, `--check-ssg` are still accepted — they map
+to `--only <gate>` shortcuts so existing CI scripts keep working.
 
 #### What it detects and suggests
 
@@ -95,36 +124,46 @@ function Counter() {
   run: bunx @pyreon/cli doctor --ci
 ```
 
-#### JSON output format
+#### JSON output format (`--json`)
 
 ```json
 {
-  "passed": false,
-  "files": [
+  "score": 92,
+  "grade": "A",
+  "categories": [
+    { "category": "correctness",   "score": 87, "errors": 1, "warnings": 1, "infos": 0, "grade": "B", "included": true },
+    { "category": "performance",   "score": 100, "errors": 0, "warnings": 0, "infos": 0, "grade": "A", "included": true },
+    { "category": "architecture",  "score": 100, "errors": 0, "warnings": 0, "infos": 0, "grade": "A", "included": true },
+    { "category": "testing",       "score": 100, "errors": 0, "warnings": 0, "infos": 0, "grade": "A", "included": true },
+    { "category": "documentation", "score": 100, "errors": 0, "warnings": 0, "infos": 0, "grade": "A", "included": true }
+  ],
+  "findings": [
     {
-      "file": "src/App.tsx",
-      "diagnostics": [
-        {
-          "code": "react-import",
-          "line": 1,
-          "message": "React import detected",
-          "current": "import React from \"react\"",
-          "suggested": "import { h } from \"@pyreon/core\"",
-          "fixable": false
-        }
-      ],
-      "fixed": false
+      "category": "correctness",
+      "severity": "error",
+      "code": "react-patterns/use-state-import",
+      "gate": "react-patterns",
+      "message": "useState imported from React. Use signal() from @pyreon/reactivity.",
+      "location": { "path": "/abs/src/App.tsx", "relPath": "src/App.tsx", "line": 1, "column": 9 },
+      "fix": "import { signal } from \"@pyreon/reactivity\""
     }
   ],
-  "summary": {
-    "filesScanned": 12,
-    "filesWithIssues": 1,
-    "totalErrors": 1,
-    "totalFixable": 0,
-    "totalFixed": 0
-  }
+  "gates": [ /* one entry per gate, with meta.elapsedMs + meta.skipped */ ],
+  "totals": { "errors": 1, "warnings": 1, "infos": 0 },
+  "elapsedMs": 2300,
+  "timestamp": "2026-05-14T12:00:00.000Z"
 }
 ```
+
+#### GitHub Actions annotations (`--gha`)
+
+```text
+::notice::pyreon doctor score: 92/100 (A) — 1 errors, 1 warnings, 0 info
+::error title=react-patterns/use-state-import,file=src/App.tsx,line=1,col=9::useState imported from React. — import { signal } from "@pyreon/reactivity"
+```
+
+GitHub Actions parses these into inline PR annotations (clickable in the
+"Files changed" tab).
 
 ### `pyreon context`
 

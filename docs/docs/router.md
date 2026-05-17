@@ -621,7 +621,7 @@ interface RouterLinkProps {
   activeClass?: string
   exactActiveClass?: string
   exact?: boolean
-  prefetch?: 'hover' | 'viewport' | 'none'
+  prefetch?: 'intent' | 'hover' | 'viewport' | 'none'
   children?: VNodeChild | null
 }
 ```
@@ -654,7 +654,7 @@ interface RouterLinkProps {
 | `activeClass`      | `string`                          | `"router-link-active"`       | Class when link is active (current path starts with link target) |
 | `exactActiveClass` | `string`                          | `"router-link-exact-active"` | Class on exact path match                                        |
 | `exact`            | `boolean`                         | `false`                      | Only apply activeClass on exact match                            |
-| `prefetch`         | `"hover" \| "viewport" \| "none"` | `"hover"`                    | Prefetch strategy for loader data                                |
+| `prefetch`         | `"intent" \| "hover" \| "viewport" \| "none"` | `"intent"`       | Prefetch strategy for loader data (default prefetches on hover **and** keyboard focus) |
 
 **Active class behavior:**
 
@@ -682,20 +682,30 @@ The active class is segment-aware. `/admin` is a prefix of `/admin/users` but NO
 
 #### Prefetch Strategies
 
-Prefetching runs the target route's loader in advance so data is ready when the user navigates.
+Prefetching runs the target route's loader in advance so data is ready the moment the user navigates. **This is on by default** — every `<RouterLink>` prefetches on hover *and* keyboard focus unless you opt out. You do not need to do anything to get instant-feeling navigation; the table below is for tuning, not enabling.
 
-- **`"hover"`** (default) -- prefetch loader data when the user hovers over the link. Best for navigation menus.
-- **`"viewport"`** -- prefetch when the link scrolls into the viewport (via IntersectionObserver). Best for content lists.
-- **`"none"`** -- no prefetching. Use for links the user is unlikely to click.
+| Strategy             | Trigger                                              | Use for                                                                 |
+| -------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------- |
+| `"intent"` (default) | pointer hover **and** keyboard focus                 | Everything by default. Focus coverage means keyboard + screen-reader users get the same head-start as mouse users — no extra work. |
+| `"hover"`            | pointer hover only                                   | Niche: when you specifically want to exclude focus (rare).              |
+| `"viewport"`         | link scrolls within 200px of the viewport, fetched in an idle slice | Long content lists / feeds where most links are never hovered (infinite scroll, search results). |
+| `"none"`             | never                                                | Links the user is unlikely to click (legal/footer), or where the loader is expensive and speculative fetching wastes server load. |
 
 ```tsx
-// Main navigation -- prefetch on hover
+// Default — no prefetch prop needed. Hover OR keyboard-focus this link
+// and its loader data is already resolving before the click lands.
+<RouterLink to="/about">About</RouterLink>
+
+// Explicit intent (same as the default — shown for clarity)
 <nav>
-  <RouterLink to="/" prefetch="hover">Home</RouterLink>
-  <RouterLink to="/about" prefetch="hover">About</RouterLink>
+  <RouterLink to="/" prefetch="intent">Home</RouterLink>
+  <RouterLink to="/dashboard" prefetch="intent">Dashboard</RouterLink>
 </nav>
 
-// Content list -- prefetch when visible
+// Content feed — prefetch as links scroll near the viewport. The
+// observer uses a 200px rootMargin so the fetch starts BEFORE the link
+// is fully on screen, and runs in a requestIdleCallback slice so it
+// never competes with the scroll the user is performing.
 <ul>
   {posts.map(post => (
     <li>
@@ -706,11 +716,13 @@ Prefetching runs the target route's loader in advance so data is ready when the 
   ))}
 </ul>
 
-// Rarely-used link -- no prefetch
+// Opt out for a link the user rarely clicks
 <RouterLink to="/terms" prefetch="none">Terms of Service</RouterLink>
 ```
 
-Prefetching is deduplicated per router instance: each path is only prefetched once.
+**Why `"intent"` is the default (and why it matters for accessibility):** hover-only prefetch silently excludes keyboard and screen-reader users — they `focus` a link before activating it, never `hover` it. `"intent"` covers both, so the perceived-latency win (typically 100-300ms off the next navigation) is delivered to *all* users, not just mouse users, with zero configuration.
+
+Prefetching is deduplicated per router instance and bounded: each path is prefetched at most once, and the prefetch set is capped (oldest-evicted) so a long-lived SPA navigating across many routes can't grow it unboundedly. Prefetch is best-effort — a failed prefetch is silently dropped and the real navigation re-runs the loader normally.
 
 ## Hooks
 

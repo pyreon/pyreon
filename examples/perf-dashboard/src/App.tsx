@@ -43,6 +43,7 @@ import {
 import { DomStressSection } from './components/DomStressSection'
 import { I18nStressSection } from './components/I18nStressSection'
 import { QueryStressSection } from './components/QueryStressSection'
+import { ReactivityStressSection } from './components/ReactivityStressSection'
 import { RxStressSection } from './components/RxStressSection'
 import { StoreStressSection } from './components/StoreStressSection'
 import { darkTheme, lightTheme, type Theme } from './theme'
@@ -635,6 +636,7 @@ export function App() {
       <FormStressSection />
       <I18nStressSection />
       <ModalSection />
+      <ReactivityStressSection />
       <StoreStressSection />
       <RxStressSection />
       <QueryStressSection />

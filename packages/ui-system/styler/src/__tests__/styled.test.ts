@@ -398,4 +398,114 @@ describe('styled.tag (Proxy)', () => {
     const vnode = Comp({}) as VNode
     expect(vnode.type).toBe('section')
   })
+
+  describe('empty-rawProps static VNode cache', () => {
+    // Hot path for `<MyStyled />` with no props: pre-built VNode returned
+    // from the StaticStyled closure verbatim. Skips `buildProps` + `h()` +
+    // children-array construction per render. Mirrors vitus-labs PR #228.
+    it('returns the SAME VNode identity across renders when rawProps is empty', () => {
+      const Comp = styled('div')`
+        color: red;
+      `
+      const v1 = Comp({}) as VNode
+      const v2 = Comp({}) as VNode
+      // Same VNode object — proves the pre-built cache fires.
+      expect(v1).toBe(v2)
+      expect(v1.type).toBe('div')
+      expect((v1.props as Record<string, string>).class).toMatch(/^pyr-/)
+    })
+
+    it('falls through to the full path when ANY prop is provided', () => {
+      const Comp = styled('div')`
+        color: red;
+      `
+      const v1 = Comp({}) as VNode
+      const v2 = Comp({ 'data-x': '1' }) as VNode
+      // Different identity — the second call bypassed the cache because
+      // `for (const _k in rawProps) hasExtraProps = true` fires.
+      expect(v1).not.toBe(v2)
+      // Both still produce the correct className.
+      expect((v1.props as Record<string, unknown>).class).toMatch(/^pyr-/)
+      expect((v2.props as Record<string, unknown>).class).toMatch(/^pyr-/)
+      // Second VNode carries the extra prop forwarded through buildProps.
+      expect((v2.props as Record<string, unknown>)['data-x']).toBe('1')
+    })
+
+    it('falls through to the full path when `as` overrides the tag', () => {
+      const Comp = styled('div')`
+        color: red;
+      `
+      const v1 = Comp({}) as VNode
+      const v2 = Comp({ as: 'span' }) as VNode
+      // `as` is enumerable → `hasExtraProps = true` → bypasses cache.
+      // Output tag is the override.
+      expect(v2.type).toBe('span')
+      expect(v1).not.toBe(v2)
+    })
+
+    it('falls through to the full path when a ref is provided', () => {
+      const Comp = styled('div')`
+        color: red;
+      `
+      const refCb = () => {}
+      const v1 = Comp({}) as VNode
+      const v2 = Comp({ ref: refCb }) as VNode
+      // `ref` is enumerable in JS, so `hasExtraProps = true` already fires.
+      // The explicit `rawProps.ref == null` guard is defense-in-depth for
+      // any future call site that uses Object.defineProperty(rawProps, 'ref',
+      // { enumerable: false, ... }) — that shape would otherwise return the
+      // cached no-ref VNode and silently drop the user's callback.
+      expect(v1).not.toBe(v2)
+    })
+  })
+
+  describe('clearAll resets static-component cache', () => {
+    // Regression: pre-fix, `staticComponentCache` (WeakMap) and the
+    // single-entry hot cache (`_hotStrings` / `_hotTag` / `_hotComponent`)
+    // survived `sheet.clearAll()`. After HMR / dev reload, the same
+    // template-literal call site re-invoked `styled('div')\`...\`` and got
+    // back the SAME ComponentFn instance — but the class name that
+    // component returns was deleted from the DOM by `clearAll`. End-user
+    // symptom: every hot reload silently broke styles for any static
+    // styled component until full page refresh.
+    //
+    // Fix wires `onSheetClear` so styled.tsx subscribes at module load
+    // and resets both caches alongside the sheet.
+    it('producing a new component after clearAll, with a fresh class name', () => {
+      // First mount: get baseline component + className.
+      const tag = 'div'
+      const literal: TemplateStringsArray = Object.assign(
+        ['color: red;'] as unknown as TemplateStringsArray,
+        { raw: ['color: red;'] },
+      )
+      const Comp1 = (styled(tag) as (s: TemplateStringsArray) => any)(literal)
+      const vnode1 = Comp1({}) as VNode
+      const class1 = (vnode1.props as Record<string, string>).class
+
+      // Same call, no clear: hot cache returns the SAME function identity.
+      const Comp1Again = (styled(tag) as (s: TemplateStringsArray) => any)(literal)
+      expect(Comp1Again).toBe(Comp1)
+
+      // Clear the sheet (HMR simulation).
+      sheet.clearAll()
+
+      // After clear: same template-literal identity should produce a NEW
+      // component (caches were dropped). Its className resolves against
+      // the now-empty sheet, so the new className IS re-inserted into
+      // the DOM and the class is observable.
+      const Comp2 = (styled(tag) as (s: TemplateStringsArray) => any)(literal)
+      expect(Comp2).not.toBe(Comp1)
+      const vnode2 = Comp2({}) as VNode
+      const class2 = (vnode2.props as Record<string, string>).class
+      // FNV-1a hashing is content-deterministic, so class names are
+      // structurally equal — but the sheet has freshly re-inserted the
+      // rule. Asserting non-empty + same format is the load-bearing
+      // observation: pre-fix, Comp2 === Comp1 and class2 would also have
+      // been `''` if the user had run `clearAll` between insertions
+      // (cache stale, sheet empty).
+      expect(class1).toMatch(/^pyr-/)
+      expect(class2).toMatch(/^pyr-/)
+      expect(sheet.has(class2!)).toBe(true)
+    })
+  })
 })

@@ -136,6 +136,66 @@ interface ChunkGraphSpec {
   mustNotHaveChunks: string[]
 }
 
+/**
+ * Assert that a unique fingerprint string appears in EXACTLY ONE chunk
+ * file under `dist/assets/`, and that the chunk's basename starts with
+ * the expected prefix. Used by the inline-Defer cell to prove the
+ * compiler pass extracted the subtree into its own chunk (rather than
+ * inlining it into the entry bundle).
+ *
+ * Throws when:
+ *   - The fingerprint appears in 0 chunks → transform didn't fire or
+ *     the static import wasn't removed; component never lazy-loaded.
+ *   - The fingerprint appears in 2+ chunks → suspicious; usually means
+ *     the entry chunk ALSO has the component (split didn't actually
+ *     happen, only duplicated).
+ *   - The single matching chunk's basename doesn't start with the
+ *     expected prefix → unexpected chunk shape (e.g. Rolldown grouped
+ *     it under a shared name).
+ */
+function assertStringInExactlyOneChunk(
+  distDir: string,
+  fingerprint: string,
+  expectedChunkPrefix: string,
+): void {
+  const assetsDir = join(distDir, 'assets')
+  if (!existsSync(assetsDir)) {
+    throw new Error(`expected ${assetsDir} to exist`)
+  }
+  const allFiles = readdirSync(assetsDir).filter((f) => f.endsWith('.js'))
+  const matches: string[] = []
+  for (const file of allFiles) {
+    const content = readFileSync(join(assetsDir, file), 'utf-8')
+    if (content.includes(fingerprint)) matches.push(file)
+  }
+  if (matches.length === 0) {
+    throw new Error(
+      `fingerprint "${fingerprint}" found in 0 chunks under ${assetsDir}.\n` +
+        `Got: ${allFiles.join(', ')}.\n` +
+        `This means the inline-Defer compiler pass didn't extract the ` +
+        `component into its own chunk — either the transform didn't fire, ` +
+        `or the static import wasn't removed.`,
+    )
+  }
+  if (matches.length > 1) {
+    throw new Error(
+      `fingerprint "${fingerprint}" found in ${matches.length} chunks: ${matches.join(', ')}.\n` +
+        `Expected exactly one. Two+ matches usually mean the entry bundle ` +
+        `ALSO contains the deferred component (the split didn't separate, ` +
+        `just duplicated).`,
+    )
+  }
+  const onlyMatch = matches[0]!
+  if (!onlyMatch.startsWith(`${expectedChunkPrefix}-`)) {
+    throw new Error(
+      `fingerprint "${fingerprint}" found in chunk "${onlyMatch}" but ` +
+        `expected basename to start with "${expectedChunkPrefix}-". ` +
+        `Got: ${onlyMatch}.\nRolldown may have grouped the chunk under a ` +
+        `shared name; investigate before adjusting the prefix.`,
+    )
+  }
+}
+
 function assertChunkGraph(distDir: string, spec: ChunkGraphSpec): void {
   const assetsDir = join(distDir, 'assets')
   if (!existsSync(assetsDir)) {
@@ -339,6 +399,64 @@ const MATRIX: Cell[] = [
     mode: 'spa',
     smoke: (dist) => {
       assertFileContains(join(dist, 'index.html'), 'id="app"')
+
+      // Inline-Defer regression gate. examples/playground/src/pages/About.tsx
+      // uses `<Defer when={open}><DeferredFixture /></Defer>` — the compiler
+      // pass (`@pyreon/compiler` `transformDeferInline`) should:
+      //   1. Rewrite the JSX to `<Defer chunk={() => import(...)} ...>`.
+      //   2. Remove the static `import { DeferredFixture } from '...'`.
+      //   3. Rolldown then emits `DeferredFixture-*.js` as a separate chunk.
+      //
+      // The fingerprint `DEFER_INLINE_FIXTURE_MARKER_XYZ123` lives ONLY
+      // inside that component's source. If the compiler transform regressed
+      // (e.g. didn't fire, didn't remove the static import, emitted a
+      // broken chunk-prop), the fingerprint would land in the entry
+      // bundle (`index-*.js`) instead — making this assertion fail.
+      //
+      // Bisect-verifiable: revert the `transformDeferInline` call in
+      // `@pyreon/vite-plugin`'s `transform()` hook and this cell fails
+      // with `expected fingerprint in DeferredFixture chunk`.
+      assertStringInExactlyOneChunk(
+        dist,
+        'DEFER_INLINE_FIXTURE_MARKER_XYZ123',
+        'DeferredFixture',
+      )
+
+      // v2 prop-preservation gate. About.tsx passes
+      // `<DeferredFixture label="DEFER_INLINE_FIXTURE_PROP_LABEL_ABC987" />` —
+      // the compiler rewrites the inline child into a render-prop body
+      // `{(__C) => <__C label="..." />}` that lives in the route chunk
+      // (`about-*.js`), NOT the fixture chunk. If v2 prop-preservation
+      // regressed, the prop literal would be dropped — the fingerprint
+      // would appear in ZERO chunks and this cell would fail with
+      // `expected prop fingerprint in about chunk`.
+      //
+      // Bisect-verifiable: remove the `buildRenderPropBody` call (revert
+      // to `{(__C) => <__C />}` constant) and this assertion fails.
+      assertStringInExactlyOneChunk(
+        dist,
+        'DEFER_INLINE_FIXTURE_PROP_LABEL_ABC987',
+        'about',
+      )
+
+      // v3 namespace-import gate. About.tsx also uses
+      // `import * as NS from '../components/NamespaceFixture'` +
+      // `<Defer when={...}><NS.NamespaceFixture /></Defer>` — the
+      // compiler should rewrite the JSXMemberExpression child + remove
+      // the `import * as NS` static import. If gap 4 regressed, the
+      // namespace import would survive → Rolldown would static-bundle
+      // the fixture → the fingerprint would appear in `about-*.js`
+      // (the route chunk) instead of `NamespaceFixture-*.js`.
+      //
+      // Bisect-verifiable: revert the namespace branches in
+      // `analyzeChildElement` / `findImportFor` / the main loop, and
+      // this assertion fails with `expected fingerprint in
+      // NamespaceFixture chunk`.
+      assertStringInExactlyOneChunk(
+        dist,
+        'DEFER_NAMESPACE_FIXTURE_MARKER_QRS456',
+        'NamespaceFixture',
+      )
     },
   },
 

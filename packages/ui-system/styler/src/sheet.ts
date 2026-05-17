@@ -391,6 +391,12 @@ export class StyleSheet {
   /**
    * Full cleanup: clear cache and remove all CSS rules from the DOM.
    * Intended for HMR / dev-time reloads where stale styles must be purged.
+   *
+   * Also fires `onSheetClear` subscribers so downstream caches (e.g.
+   * `styled.tsx`'s static-component cache) reset alongside the sheet.
+   * Without this, stale `StaticStyled` ComponentFn references survive HMR
+   * and continue to apply CSS class names that were just deleted from
+   * the DOM — observable as missing styles after every hot reload.
    */
   clearAll(): void {
     this.cache.clear()
@@ -402,6 +408,7 @@ export class StyleSheet {
         this.sheet.deleteRule(0)
       }
     }
+    fireSheetClearSubscribers()
   }
 
   /**
@@ -447,3 +454,29 @@ export const sheet = new StyleSheet()
  * Use in SSR to get per-request isolation.
  */
 export const createSheet = (options?: StyleSheetOptions): StyleSheet => new StyleSheet(options)
+
+// ─── onSheetClear subscriber registry ─────────────────────────────────────
+//
+// Used by `styled.tsx` to reset its static-component cache when the
+// singleton sheet is cleared via `clearAll()`. Module-level Set so the
+// subscription survives between calls; ports the vitus-labs pattern from
+// `connector-styler/sheet.ts:onClear`. Scoped to the singleton sheet —
+// per-instance sheets created via `createSheet()` don't fire the hook.
+const _sheetClearSubscribers = new Set<() => void>()
+
+const fireSheetClearSubscribers = (): void => {
+  for (const cb of _sheetClearSubscribers) cb()
+}
+
+/**
+ * Subscribe to `sheet.clearAll()`. Fires after the sheet has been
+ * fully cleared, so subscribers can drop downstream caches that depend
+ * on the sheet's class names being live in the DOM.
+ *
+ * Returns a disposer for symmetry; in practice subscribers register
+ * once at module load and never unsubscribe.
+ */
+export const onSheetClear = (callback: () => void): (() => void) => {
+  _sheetClearSubscribers.add(callback)
+  return () => _sheetClearSubscribers.delete(callback)
+}

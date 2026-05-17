@@ -1,6 +1,6 @@
 # @pyreon/lint
 
-Pyreon-specific linter powered by [oxc-parser](https://github.com/nicolo-ribaudo/oxc-parser) — 51 rules across 11 categories for signals, JSX, SSR, performance, and architecture.
+Pyreon-specific linter powered by [oxc-parser](https://github.com/nicolo-ribaudo/oxc-parser) — 67 rules across 13 categories for signals, JSX, SSR, performance, and architecture.
 
 ## Installation
 

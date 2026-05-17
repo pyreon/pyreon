@@ -95,7 +95,7 @@ describe('big-list scaling', () => {
       // oxlint-disable-next-line no-console
       console.log(`[big-list] 10k mount: mountChild=${mountChild}`)
     },
-    30_000, // happy-dom takes ~15s on CI to mount 10k nodes
+    60_000, // happy-dom takes ~15-30s on CI to mount 10k nodes (shared runners under load)
   )
 
   it('1000-row RANDOM SHUFFLE — bounded across 5 seeds', async () => {
@@ -137,7 +137,7 @@ describe('big-list scaling', () => {
       console.log(`[big-list] 10k shuffle: lisOps=${lisOps}`)
       dispose()
     },
-    30_000,
+    60_000,
   )
 
   it('1000-row REVERSAL', async () => {
@@ -165,7 +165,7 @@ describe('big-list scaling', () => {
       expect(lisOps).toBeGreaterThan(0)
       dispose()
     },
-    30_000,
+    60_000,
   )
 
   it('append 1000 rows to existing 1000-row list', async () => {

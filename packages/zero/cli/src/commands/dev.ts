@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { createServer } from 'vite'
+import { loadZeroConfigPort } from './load-config'
 
 export interface DevOptions {
   port?: number
@@ -12,10 +13,18 @@ export async function dev(root: string | undefined, options: DevOptions) {
   try {
     const projectRoot = resolve(root ?? '.')
 
+    // Precedence: CLI flag > zero({ port }) from vite.config.ts > 3000 default.
+    // CAC no longer applies a hardcoded `default: 3000` on the flag — the
+    // absence of `--port` falls through to the config-file lookup, which
+    // falls through to the framework default. Without this, an app with
+    // `zero({ port: 8080 })` was silently ignored by `zero dev`.
+    const configPort = await loadZeroConfigPort(projectRoot)
+    const port = options.port ?? configPort ?? 3000
+
     const server = await createServer({
       root: projectRoot,
       server: {
-        port: options.port ?? 3000,
+        port,
         host: options.host === true ? '0.0.0.0' : options.host || false,
         ...(options.open != null ? { open: options.open } : {}),
       },

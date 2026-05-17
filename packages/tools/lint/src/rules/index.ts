@@ -39,6 +39,7 @@ import { noMissingCleanup } from './lifecycle/no-missing-cleanup'
 import { noMountInEffect } from './lifecycle/no-mount-in-effect'
 import { noEagerImport } from './performance/no-eager-import'
 import { noEffectInFor } from './performance/no-effect-in-for'
+import { noHeavyImportOnlyInHandler } from './performance/no-heavy-import-only-in-handler'
 // Performance
 import { noLargeForWithoutBy } from './performance/no-large-for-without-by'
 import { preferShowOverDisplay } from './performance/prefer-show-over-display'
@@ -112,10 +113,11 @@ export const allRules: Rule[] = [
   noEffectInMount,
   noDomInSetup,
   noImperativeEffectOnCreate,
-  // Performance (4)
+  // Performance (5)
   noLargeForWithoutBy,
   noEffectInFor,
   noEagerImport,
+  noHeavyImportOnlyInHandler,
   preferShowOverDisplay,
   // SSR (3)
   noWindowInSsr,
@@ -186,6 +188,7 @@ export {
   noErrorWithoutPrefix,
   noHrefNavigation,
   noHtmlFor,
+  noHeavyImportOnlyInHandler,
   noImperativeEffectOnCreate,
   noImperativeNavigateInRender,
   noIndexAsBy,

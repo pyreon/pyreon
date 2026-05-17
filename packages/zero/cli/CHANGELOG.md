@@ -1,5 +1,58 @@
 # zero-cli
 
+## 0.18.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/cli@0.18.0
+  - @pyreon/zero@0.18.0
+  - @pyreon/server@0.18.0
+  - @pyreon/create-zero@0.18.0
+
+## 0.17.0
+
+### Patch Changes
+
+- [#580](https://github.com/pyreon/pyreon/pull/580) [`816753b`](https://github.com/pyreon/pyreon/commit/816753b0d10cb55ce41e6ad64aff18bd41e925d6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Honour `zero({ port })` from `vite.config.ts` in `zero dev` / `zero preview`.
+
+  Pre-fix the CLI always bound the CAC-baked default 3000 (or whatever `--port` passed) — `zero({ port: 8080 })` in `vite.config.ts` was silently ignored when the user ran `zero dev`. Post-fix precedence is `CLI flag > zero({ port }) > 3000 default`:
+
+  ```ts
+  // vite.config.ts
+  plugins: [pyreon(), zero({ port: 8080 })];
+  ```
+
+  ```sh
+  zero dev               # → 8080 (reads vite.config.ts)
+  zero dev --port 5191   # → 5191 (CLI override)
+  ```
+
+  Two changes:
+
+  1. **Removed the CAC `default: 3000`** on the `--port` flag. The default made `options.port` always-defined, which meant the config-file fallback could never fire.
+  2. **New `loadZeroConfigPort(root)`** in `packages/zero/cli/src/commands/load-config.ts` — loads `vite.config.ts` via `vite.loadConfigFromFile`, walks the plugin list, finds the zero plugin instance, reads its captured `ZeroConfig.port`. Falls back to `undefined` gracefully when no zero plugin is present (consumer is using `pyreon()` only) so the framework's 3000 default kicks in.
+
+  Composes with PR [#582](https://github.com/pyreon/pyreon/issues/582)'s plugin-side argv detection: `vite --port 517N` (plain Vite invocation) is handled by the plugin; `zero dev --port 5191` (CLI invocation) is handled here. Both paths converge on the same precedence model.
+
+  Bisect-verified: pre-fix `zero dev` in a project with `zero({ port: 8080 })` in vite.config.ts binds 3000 (CAC default wins, configPort never consulted). Post-fix binds 8080. `--port 5191` still wins both before and after.
+
+- Updated dependencies [[`c79ade7`](https://github.com/pyreon/pyreon/commit/c79ade7d8384ff7a0afe1a972db2db8c8fd18c88), [`6960087`](https://github.com/pyreon/pyreon/commit/6960087fe09f984636c0ab0ef440280744f19a67), [`acaa216`](https://github.com/pyreon/pyreon/commit/acaa216fb312e8da8f87125b9961834195c8e970), [`af6faf7`](https://github.com/pyreon/pyreon/commit/af6faf78ce02dae1973ed845459bf714adad4fac), [`53b264b`](https://github.com/pyreon/pyreon/commit/53b264b87897a35d8418ad37ce85c805a5b7874f)]:
+  - @pyreon/cli@0.17.0
+  - @pyreon/zero@0.17.0
+  - @pyreon/server@0.17.0
+  - @pyreon/create-zero@0.17.0
+
+## 0.16.0
+
+### Patch Changes
+
+- Updated dependencies [[`f82584b`](https://github.com/pyreon/pyreon/commit/f82584b3dfb1362d376065354d023647fdbdfa02)]:
+  - @pyreon/zero@0.16.0
+  - @pyreon/server@0.16.0
+  - @pyreon/cli@0.16.0
+  - @pyreon/create-zero@0.16.0
+
 ## 0.14.0
 
 ### Patch Changes

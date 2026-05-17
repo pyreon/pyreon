@@ -320,6 +320,121 @@ export const journeys: Record<string, (page: PageLike) => Promise<void>> = {
     })
   },
 
+  // ─── @pyreon/reactivity isolated stress journeys ───────────────────────
+  //
+  // Five journeys exercising the reactivity primitives in isolation —
+  // each isolates ONE of the four `reactivity.*` counters so per-primitive
+  // regressions can't hide inside the broader cascade of app-shaped
+  // journeys (form, query, rx, store all fold reactivity cost into a
+  // larger graph). All journeys drive via `window.__pyreon_perf_reactivity`
+  // exposed in src/components/ReactivityStressSection.tsx.
+  //
+  // Counter signature predicted per journey:
+  //   - reactivitySignalCreate-100k    → signalCreate: 100_000, others ~0
+  //   - reactivitySignalWrite-100k     → signalWrite: 100_000, signalCreate: 1
+  //   - reactivityEffectFanout-1k      → effectRun: 1000 initial + 10×1000 cascade
+  //   - reactivityComputedDiamond-1k   → computedRecompute: ~2000, effectRun: 2
+  //   - reactivityScopeDispose-10k     → effectRun: 10_000 initial, 0 after dispose
+  //
+  // The scopeDispose journey is the leak detector: a regression that
+  // leaves orphan effects after `scope.stop()` shows up as effectRun >
+  // 10_000 here (the post-dispose write would fire orphan cascades).
+
+  /**
+   * **reactivitySignalCreate-100k** — pure signal allocation cost.
+   *
+   * Allocates 100k fresh signals with no subscribers. Diagnoses per-signal
+   * allocation overhead (constructor, internal subscriber Set, optional
+   * options object). Heap pressure here surfaces GC regressions that the
+   * app-shaped journeys can't isolate.
+   */
+  'reactivitySignalCreate-100k': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_reactivity?: { signalCreate: (n: number) => void }
+      }
+      w.__pyreon_perf_reactivity?.signalCreate(100_000)
+    })
+  },
+
+  /**
+   * **reactivitySignalWrite-100k** — pure write-path cost, no subscribers.
+   *
+   * One signal, 100k writes with unique values (loop counter — deterministic
+   * across runs, bypasses `Object.is` short-circuit). Diagnoses write-path
+   * overhead AND the batch system's no-subscriber fast path: signalWrite
+   * should be exactly 100_000, with effectRun + computedRecompute both 0.
+   * Any non-zero downstream counter would mean a stray subscriber leaked.
+   */
+  'reactivitySignalWrite-100k': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_reactivity?: { signalWrite: (n: number) => void }
+      }
+      w.__pyreon_perf_reactivity?.signalWrite(100_000)
+    })
+  },
+
+  /**
+   * **reactivityEffectFanout-1k** — 1k effect subscribers on 1 signal, 10 writes.
+   *
+   * Subscriber-fanout cost: effectRun = 1000 (initial mount runs) + 10_000
+   * (10 writes × 1000 cascades) = 11_000. Higher than 11_000 means
+   * effects are running multiple times per write (batch system not
+   * deduping). Wall-clock here is the closest proxy to "how fast is
+   * Pyreon's per-effect notify path" — directly comparable across
+   * framework versions.
+   */
+  'reactivityEffectFanout-1k': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_reactivity?: {
+          effectFanout: (subscribers: number, writes: number) => void
+        }
+      }
+      w.__pyreon_perf_reactivity?.effectFanout(1000, 10)
+    })
+  },
+
+  /**
+   * **reactivityComputedDiamond-1k** — diamond dedup correctness probe.
+   *
+   * 1 source signal → 1000 computeds each reading source → 1 effect
+   * reading all 1000 computeds → 1 source write. Counter signature:
+   *   - computedRecompute: ~2000 (1000 initial cold reads + 1000 cascades)
+   *   - effectRun: 2 (1 initial + 1 cascade — NOT 1000)
+   * If effectRun > 2, the two-tier flush is firing the effect once per
+   * computed invalidation instead of deduping. computedRecompute > 2000
+   * means a computed is recomputing multiple times per write.
+   */
+  'reactivityComputedDiamond-1k': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_reactivity?: { computedDiamond: (k: number) => void }
+      }
+      w.__pyreon_perf_reactivity?.computedDiamond(1000)
+    })
+  },
+
+  /**
+   * **reactivityScopeDispose-10k** — scope teardown completeness probe.
+   *
+   * Creates 10k effects inside one EffectScope, disposes the scope, then
+   * writes the source signal once. Expected: effectRun: 10_000 (only the
+   * initial mount runs) — the post-dispose write fires zero cascades.
+   * Any number >10_000 means scope.stop() left effects attached to the
+   * signal (the structural leak shape this journey is the regression
+   * guard for).
+   */
+  'reactivityScopeDispose-10k': async (page) => {
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __pyreon_perf_reactivity?: { scopeDispose: (k: number) => void }
+      }
+      w.__pyreon_perf_reactivity?.scopeDispose(10_000)
+    })
+  },
+
   // ─── @pyreon/store stress journeys ─────────────────────────────────────
   //
   // All journeys go through `window.__pyreon_perf_stores` exposed in

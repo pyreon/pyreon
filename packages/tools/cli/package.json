@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/cli",
-  "version": "0.15.0",
+  "version": "0.18.0",
   "description": "CLI tools for Pyreon — doctor, generate, context",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/cli#readme",
   "bugs": {
@@ -46,7 +46,8 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@pyreon/compiler": "workspace:^"
+    "@pyreon/compiler": "workspace:^",
+    "@pyreon/lint": "workspace:^"
   },
   "peerDependencies": {
     "typescript": ">=5.0.0"

@@ -34,7 +34,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join as pathJoin } from 'node:path'
-import { generateContext, transformJSX } from '@pyreon/compiler'
+import { generateContext, transformDeferInline, transformJSX } from '@pyreon/compiler'
 import type { Plugin, ViteDevServer } from 'vite'
 
 // Virtual module ID for the HMR runtime
@@ -429,16 +429,31 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       // next dev-server module reload.
       if (islandsEnabled) scanIslandDeclarations(code, id, islandRegistry)
 
+      // ── Inline-Defer pre-pass ──────────────────────────────────────────
+      // Rewrites `<Defer when={x}><Modal /></Defer>` into the explicit
+      // chunk-prop form so Rolldown emits a proper per-Defer chunk and
+      // the main bundle drops the static `import { Modal } from ...`
+      // when it's exclusively used inside this Defer's subtree. Runs
+      // BEFORE the JSX→runtime transform so the downstream pipeline
+      // sees an already-explicit `<Defer chunk={...}>` shape with no
+      // special-casing needed in `transformJSX`. See
+      // `@pyreon/compiler/defer-inline` for the rewrite contract.
+      const deferResult = transformDeferInline(code, id)
+      const sourceForJsx = deferResult.changed ? deferResult.code : code
+      for (const w of deferResult.warnings) {
+        this.warn(`${w.message} (${id}:${w.line}:${w.column})`)
+      }
+
       // ── Resolve imported signals from the registry ─────────────────────
       // Check each import in this file: if the imported module has signal
       // exports in the registry, pass them as knownSignals to the compiler.
-      const knownSignals = await resolveImportedSignals(code, id, signalExportRegistry, this, resolveCache)
+      const knownSignals = await resolveImportedSignals(sourceForJsx, id, signalExportRegistry, this, resolveCache)
 
       // Vite passes `ssr: true` when transforming for the SSR module graph
       // (both build --ssr and dev `ssrLoadModule`). The compiler emits plain
       // `h()` calls in that mode so `runtime-server` can render to a string.
       const isSsr = transformOptions?.ssr === true
-      const result = transformJSX(code, id, { ssr: isSsr, knownSignals })
+      const result = transformJSX(sourceForJsx, id, { ssr: isSsr, knownSignals })
       // Surface compiler warnings in the terminal
       for (const w of result.warnings) {
         this.warn(`${w.message} (${id}:${w.line}:${w.column})`)
@@ -730,7 +745,40 @@ function injectHmr(code: string, moduleId: string): string {
     lines.push(`  import.meta.hot.dispose(() => __hmr_dispose(${escapedId}));`)
   }
 
-  lines.push(`  import.meta.hot.accept();`)
+  // Self-accept the module, then drive Pyreon's HMR coordinator.
+  //
+  // The OLD code emitted a bare `import.meta.hot.accept()` (no callback):
+  // Vite re-evaluated the module but NOTHING re-rendered the mounted tree,
+  // AND the self-accept suppressed Vite's full-reload fallback — so a
+  // component/JSX edit produced a silently-stale UI until a MANUAL refresh.
+  //
+  // Now: the accept callback hands the FRESH module namespace Vite already
+  // re-evaluated straight to `globalThis.__pyreon_hmr_swap__` (registered
+  // by `@pyreon/router` in a dev browser — zero import coupling, same
+  // pattern as the perf-harness counter sink), keyed by THIS module's id.
+  // The coordinator finds every active matched route record whose lazy
+  // `_hmrId` matches and swaps in the new component, re-rendering ONLY
+  // that subtree IN PLACE (no page reload → `__pyreon_hmr_registry__`
+  // survives → `__hmr_signal` restores module-scope signal values).
+  //
+  // Using the namespace Vite passes (not a re-run of the lazy thunk)
+  // sidesteps the stale-`?t=` trap: the dynamic-import thunk lives in the
+  // virtual routes module, which is NOT invalidated when this leaf route
+  // self-accepts — re-importing it would return the OLD module.
+  //
+  // `__pyreon_hmr_swap__` returns falsy when the edit was outside the
+  // active route tree (nested non-route component, unrelated route,
+  // signal-only module) OR no coordinator is registered (plain
+  // `@pyreon/runtime-dom` app, or module loaded before any router
+  // mounted). Then `import.meta.hot.invalidate()` → Vite propagates → an
+  // AUTOMATIC full reload. Either way the user never refreshes by hand.
+  lines.push(`  import.meta.hot.accept((__m) => {`)
+  lines.push(`    const __s = globalThis.__pyreon_hmr_swap__;`)
+  lines.push(
+    `    if (typeof __s === "function" && __m && __s(${escapedId}, __m)) return;`,
+  )
+  lines.push(`    import.meta.hot.invalidate();`)
+  lines.push(`  });`)
   lines.push(`}`)
 
   output = `${output}\n\n${lines.join('\n')}\n`

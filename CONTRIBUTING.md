@@ -113,13 +113,49 @@ docs(head): update SSR examples
 
 Pyreon ships via [changesets](https://github.com/changesets/changesets). Every PR that touches `packages/` should include a changeset (`bun changeset`) describing the change.
 
+### 0.x version policy — no `major` changesets
+
+Pyreon is currently 0.x. **All changesets must be `minor` or `patch`** — never `major`. A `major` changeset on a 0.x package produces a 1.0.0 cascade across the `fixed` group of 60+ packages, which is not appropriate for the current pre-1.0 stability commitment.
+
+Two layers enforce this:
+
+1. **CI guard (`Check No Major Changesets`)** — runs on every PR via `scripts/check-no-major-changesets.ts`. Fails with a clear error if any `.changeset/*.md` contains `: major`. Caught at PR time so contributors fix it before merging.
+2. **Release-time cap (`scripts/cap-changeset-bumps.ts`)** — defense-in-depth. If a `: major` ever lands on `main` (e.g. via a workflow path that bypasses the PR check), the release workflow rewrites it to `: minor` BEFORE `changesets/action` runs `version-packages`. Logs the downgrade so it's visible in the release run.
+
+**Breaking changes are still allowed** in 0.x — write the changeset as `minor` and call out the breaking change explicitly in the prose. Consumers who track minor bumps get the right signal from the changelog.
+
+When Pyreon goes 1.0 someday, **remove BOTH the CI guard and the release-time cap in a single deliberate PR**. That removal IS the explicit signal "we're going 1.0 now" — it's intentionally a manual step so it can't happen by accident.
+
 ### Release workflow
 
 `.github/workflows/release.yml` runs on every push to `main`:
 
-1. Validates the merged state (`bun run lint` → `typecheck` → `test`)
-2. If unreleased changesets exist → opens / updates a "Version Packages" PR collecting them
-3. When that PR is merged → publishes to npm with provenance + creates a GitHub Release
+1. (No pre-validation — CI on the merge commit gates this; the release job is lean.)
+2. **Cap any `: major` → `: minor`** in changesets via `scripts/cap-changeset-bumps.ts` (see 0.x policy above).
+3. If unreleased changesets exist → opens / updates a "Version Packages" PR collecting them.
+4. When that PR is merged → `scripts/publish.ts` publishes each package to npm with provenance, emits `New tag: <name>@<version>` lines per success so `changesets/action` populates `outputs.published='true'`.
+5. The umbrella GitHub Release step (gated on `outputs.published`) creates the `v<version>` git tag + GitHub Release, which triggers `release-native.yml` to cross-compile + publish the Rust compiler binaries for all 7 platform triples.
+
+### Native binary publishing (OIDC trusted publishing)
+
+The 7 platform packages (`@pyreon/compiler-darwin-arm64`, `darwin-x64`, `linux-x64-gnu`, `linux-arm64-gnu`, `linux-x64-musl`, `linux-arm64-musl`, `win32-x64-msvc`) ship via `release-native.yml` triggered by tag push. The workflow uses **npm OIDC trusted publishing** — no long-lived `NPM_TOKEN` secret stored in the repo.
+
+**One-time pre-registration (required before the first publish for each package).** npm trusted publishing supports configuring a publisher BEFORE the package exists; the first publish via the configured workflow creates the package. For each of the 7 platform packages above:
+
+1. Sign in to npmjs.com with an account that has publish rights to `@pyreon`.
+2. Open `https://www.npmjs.com/settings/<your-username-or-pyreon-org>/publishing/oidc/new` (Settings → Publishing access → "Add new").
+3. Fill in:
+   - **Package name**: `@pyreon/compiler-<short>` (e.g. `@pyreon/compiler-darwin-arm64`)
+   - **Repository**: `pyreon/pyreon`
+   - **Workflow filename**: `release-native.yml`
+   - **Environment**: (leave blank — workflow doesn't use GitHub Environments)
+4. Save. Repeat for the other 6 packages.
+
+After all 7 are registered, the next `release-native.yml` run on a `v*.*.*` tag will publish all 7 successfully via OIDC — the workflow's `id-token: write` permission lets npm 11+ (Node 24) exchange a short-lived OIDC token for a per-publish npm token, scoped to this workflow + package + commit SHA.
+
+**Why no `NPM_TOKEN`**: long-lived tokens are an exfil surface during publish (they have full publish scope). OIDC trusted publishing replaces that with per-deploy attestation; the published tarballs also gain a `provenance` field that consumers can verify against the GitHub workflow run.
+
+**Recovery**: if all 7 are registered correctly and the workflow still fails with `ENEEDAUTH`, check the workflow file does NOT set `NODE_AUTH_TOKEN` on the Publish step — even an empty-string token (which `${{ secrets.NPM_TOKEN }}` resolves to when the secret is unset) prevents npm from falling back to OIDC. See the comment on the Publish step in `release-native.yml`.
 
 ### Setup: `RELEASE_PAT` (recommended)
 

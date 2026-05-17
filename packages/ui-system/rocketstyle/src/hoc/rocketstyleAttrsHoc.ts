@@ -2,7 +2,11 @@ import { render } from '@pyreon/ui-core'
 import { useTheme } from '../hooks'
 import type { Configuration } from '../types/configuration'
 import type { ComponentFn } from '../types/utils'
-import { calculateChainOptions, removeUndefinedProps } from '../utils/attrs'
+import {
+  calculateChainOptions,
+  mergeDescriptors,
+  removeUndefinedProps,
+} from '../utils/attrs'
 
 export type RocketStyleHOC = ({
   inversed,
@@ -45,19 +49,21 @@ const rocketStyleHOC: RocketStyleHOC = ({ inversed, attrs, priorityAttrs }) => {
 
       const prioritizedAttrs = calculatePriorityAttrs([filteredProps, ...callbackParams])
 
+      // Merge via descriptor-copy so reactive getter props on
+      // filteredProps survive the chain. A `{...A, ...B}` spread
+      // would fire every getter on A and B and store the resolved
+      // value, breaking the reactive subscription downstream.
+      // Attrs callbacks legitimately read prop VALUES (e.g.
+      // `({ href }) => ({ tag: href ? 'a' : 'button' })`) — that's
+      // a one-shot read at setup time by design. The pipeline only
+      // needs to preserve reactivity for props the callbacks DON'T
+      // consume, which the descriptor-merge does.
       const finalAttrs = calculateAttrs([
-        {
-          ...prioritizedAttrs,
-          ...filteredProps,
-        },
+        mergeDescriptors(prioritizedAttrs, filteredProps),
         ...callbackParams,
       ])
 
-      const finalProps = {
-        ...prioritizedAttrs,
-        ...finalAttrs,
-        ...filteredProps,
-      }
+      const finalProps = mergeDescriptors(prioritizedAttrs, finalAttrs, filteredProps)
 
       return WrappedComponent(finalProps)
     }

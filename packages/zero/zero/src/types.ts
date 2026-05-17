@@ -254,6 +254,38 @@ export interface ZeroConfig {
       currentPath: string
       elapsed: number
     }) => void | Promise<void>
+    /**
+     * Route-level code splitting in SSG mode. Default `true`.
+     *
+     * When `true` (default), each route file becomes its own dynamic-import
+     * chunk via `lazy(() => import("..."))` — only the route the user
+     * lands on plus its dependencies ship in the initial bundle, the
+     * rest fetch on navigation. Matches the SSR/SPA-mode behaviour zero
+     * has always had; brings parity to SSG.
+     *
+     * When `false`, every route is bundled statically into the main
+     * client chunk (the pre-2026-Q3 SSG behaviour). Useful for tiny
+     * sites (2-5 pages) where the single-chunk-then-instant-nav trade
+     * is preferable — the chunk-fetch cost on navigation is gone, and
+     * the marginal bytes are negligible.
+     *
+     * Crossover point: ~5-8 routes. Below that, single-chunk is fine.
+     * Above that, lazy() shrinks the initial bundle by a meaningful
+     * amount (a 50-route docs site might drop from 200 KB to 80 KB on
+     * first paint).
+     *
+     * Underlying mechanism is the same 3-tier generator zero already
+     * uses for SSR/SPA mode (`fs-router.ts:generateRouteEntry`): lazy
+     * component + inlined metadata when possible, lazy + lazy-thunked
+     * function exports when not, namespace-import fallback for cases
+     * the literal-extractor can't reach.
+     *
+     * @example
+     * ssg: {
+     *   splitChunks: false, // bundle-everything for a 3-page marketing site
+     * }
+     */
+    splitChunks?: boolean
   }
 
   /** ISR config — only used when mode is "isr". */

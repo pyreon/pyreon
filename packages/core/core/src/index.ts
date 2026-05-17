@@ -35,12 +35,22 @@ export type {
   TargetedEvent,
   TextareaAttributes,
 } from './jsx-runtime'
+export type { DeferProps } from './defer'
+export { Defer } from './defer'
 export { lazy } from './lazy'
 export { onErrorCaptured, onMount, onUnmount, onUpdate } from './lifecycle'
 export { mapArray } from './map-array'
 export type { PortalProps } from './portal'
 export { Portal, PortalSymbol } from './portal'
-export { _rp, createUniqueId, makeReactiveProps, mergeProps, REACTIVE_PROP, splitProps } from './props'
+export {
+  _rp,
+  _wrapSpread,
+  createUniqueId,
+  makeReactiveProps,
+  mergeProps,
+  REACTIVE_PROP,
+  splitProps,
+} from './props'
 export type { Ref, RefCallback, RefProp } from './ref'
 export { createRef } from './ref'
 export type { MatchProps, ShowProps, SwitchProps } from './show'
@@ -49,7 +59,7 @@ export type { ClassValue } from './style'
 export { CSS_UNITLESS, cx, normalizeStyleValue, toKebabCase } from './style'
 export type { LazyComponent } from './suspense'
 export { Suspense } from './suspense'
-export type { ErrorContext, ErrorHandler } from './telemetry'
+export type { ErrorContext, ErrorHandler, ReactiveTraceEntry } from './telemetry'
 export { registerErrorHandler, reportError } from './telemetry'
 export type {
   CleanupFn,

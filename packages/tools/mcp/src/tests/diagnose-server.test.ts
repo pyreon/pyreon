@@ -73,4 +73,54 @@ describe('MCP server — diagnose tool', () => {
       await close()
     }
   })
+
+  // ── v2 structured-context enrichment (backward-compatible additions) ──
+
+  it('string-only call is byte-identical to v1 (no enrichment sections)', async () => {
+    const { client, close } = await newClient()
+    try {
+      const text = await callTool(client, 'diagnose', {
+        error: 'count is not a function',
+      })
+      // v1 base present, NO v2 sections / separators leaked in.
+      expect(text).toContain('**Cause:**')
+      expect(text).not.toContain('### Reactive run-up')
+      expect(text).not.toContain('### Static detector findings')
+      expect(text).not.toContain('---')
+    } finally {
+      await close()
+    }
+  })
+
+  it('componentSource enriches with static detector findings over JSON-RPC', async () => {
+    const { client, close } = await newClient()
+    try {
+      const text = await callTool(client, 'diagnose', {
+        error: 'name is stale after parent update',
+        componentSource: 'function Greeting({ name }: { name: string }) { return <div>{name}</div> }',
+      })
+      expect(text).toContain('### Static detector findings')
+      expect(text).toContain('props-destructured')
+    } finally {
+      await close()
+    }
+  })
+
+  it('reactiveTrace enriches with the causal run-up over JSON-RPC', async () => {
+    const { client, close } = await newClient()
+    try {
+      const text = await callTool(client, 'diagnose', {
+        error: 'cannot read property of null',
+        reactiveTrace: [
+          { name: 'user', prev: 'null', next: 'null', timestamp: 1 },
+          { name: 'status', prev: '"loading"', next: '"ready"', timestamp: 2 },
+        ],
+      })
+      expect(text).toContain('### Reactive run-up')
+      expect(text).toContain('user: null → null')
+      expect(text).toContain('status: "loading" → "ready"')
+    } finally {
+      await close()
+    }
+  })
 })
