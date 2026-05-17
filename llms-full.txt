@@ -2087,6 +2087,120 @@ const InvertedSection = () => (
 >
 > **System-mode subscription**: `mode="system"` lazily creates a `matchMedia('(prefers-color-scheme: dark)')` subscription on first read; the listener stays alive for the document lifetime, so a single subscription handles every `useMode()` consumer.
 
+## @pyreon/styler — CSS-in-JS
+
+Pyreon's CSS-in-JS engine. `styled('div')` is a tagged template that returns a `ComponentFn` injecting a generated class; `css` is a tagged template returning a LAZY `CSSResult` resolved on use (not a string); `keyframes` returns the generated animation-name string. Tagged-template interpolations receive the component's `props` (and the theme) so styles can be signal-driven — function interpolations flip the component onto the dynamic resolve path (`isDynamic`). A singleton `StyleSheet` with FNV-1a hashing dedupes and supports SSR; `createSheet()` makes an isolated instance. Theme is delivered through a REACTIVE context — `useTheme()` snapshots at call time, `useThemeAccessor()` returns the raw `() => Theme` accessor for tracking inside effects so whole-theme swaps re-resolve without remounting.
+
+```typescript
+import { styled } from "@pyreon/styler"
+
+const Button = styled("button")`
+  background: ${(p) => p.theme.colors.primary};
+  padding: ${(p) => (p.$compact ? "4px" : "12px")};
+`
+// <Button $compact onClick={...}>Go</Button>  — $compact not forwarded to <button>
+
+import { css, useCSS } from "@pyreon/styler"
+
+const card = css`border: 1px solid #ddd; padding: 16px;`
+function Card(props) {
+  const cls = useCSS(card)
+  return <div class={cls}>{props.children}</div>
+}
+
+import { keyframes, styled } from "@pyreon/styler"
+
+const spin = keyframes`from { transform: rotate(0) } to { transform: rotate(360deg) }`
+const Spinner = styled("div")`animation: ${spin} 1s linear infinite;`
+
+import { createGlobalStyle } from "@pyreon/styler"
+
+const GlobalReset = createGlobalStyle`
+  *, *::before, *::after { box-sizing: border-box }
+  body { margin: 0; font-family: ${(p) => p.theme.fonts.body}; }
+`
+// render <GlobalReset /> once at the app root
+
+import { css, useCSS } from "@pyreon/styler"
+
+const box = css`color: ${(p) => p.danger ? "red" : "inherit"};`
+function Box(props) {
+  return <div class={useCSS(box, props)}>{props.children}</div>
+}
+
+import { useTheme } from "@pyreon/styler"
+
+function Badge() {
+  const t = useTheme()
+  return <span style={{ color: t.colors.primary }}>{/* … */}</span>
+}
+
+import { useThemeAccessor } from "@pyreon/styler"
+import { effect } from "@pyreon/reactivity"
+
+const theme = useThemeAccessor()
+effect(() => applyChartPalette(theme().colors)) // re-runs on theme swap
+
+import { ThemeProvider } from "@pyreon/styler"
+
+<ThemeProvider theme={{ colors: { primary: "#06f" } }}>
+  <App />
+</ThemeProvider>
+
+import { ThemeContext } from "@pyreon/styler"
+import { useContext } from "@pyreon/core"
+
+const themeAccessor = useContext(ThemeContext) // () => Theme
+
+import { createSheet } from "@pyreon/styler"
+
+const shadowSheet = createSheet({ /* StyleSheetOptions */ })
+
+import { StyleSheet } from "@pyreon/styler"
+
+const s = new StyleSheet({ /* options */ })
+
+import { sheet } from "@pyreon/styler"
+// SSR: render the app, then read the collected rules off `sheet` for the <head>
+
+import { resolve } from "@pyreon/styler"
+
+const cssText = resolve(strings, values, { theme, $compact: true })
+
+import { normalizeCSS } from "@pyreon/styler"
+
+normalizeCSS("color:  red ;") // canonical form, dedup-stable
+
+import { resolveValue } from "@pyreon/styler"
+
+resolveValue((p) => p.theme.colors.primary, { theme })
+
+import { clearNormCache } from "@pyreon/styler"
+
+afterEach(() => clearNormCache())
+
+import { buildProps } from "@pyreon/styler"
+
+const forwarded = buildProps(rawProps, "sc-abc123", true)
+
+import { filterProps } from "@pyreon/styler"
+
+const domSafe = filterProps(props)
+
+import { isDynamic } from "@pyreon/styler"
+
+isDynamic((p) => p.color) // true → dynamic path
+isDynamic("12px")          // false → static, cached
+```
+
+> **css / keyframes return lazy values, not strings**: The `css` tagged template yields a `CSSResult` (resolved on use); `keyframes` stringifies to an animation NAME; `createGlobalStyle` returns a `ComponentFn` that must be MOUNTED. None of them inject CSS at call time — only on resolution/mount.
+>
+> **Theme context is reactive**: `useTheme()` is a snapshot; `useThemeAccessor()` is the tracking accessor. `styled` / `useCSS` templates already track the theme through their resolver, so whole-theme swaps re-resolve CSS + swap class names WITHOUT remounting the VNode. Destructuring `useTheme()` and reading outside a reactive scope freezes the value.
+>
+> **Prop forwarding copies descriptors**: `buildProps` / `filterProps` copy property DESCRIPTORS (not values) so compiler-emitted `_rp` getter props keep their reactive subscription end-to-end. Any custom prop-forwarding wrapper layered on styler MUST do the same — plain `result[k] = src[k]` silently collapses signal-driven props to a one-time snapshot.
+>
+> **Singleton sheet by default**: All injection goes through the `sheet` singleton (FNV-1a dedup, SSR). `createSheet()` / `new StyleSheet()` are only for isolated realms (shadow DOM, iframes, test isolation) — mixing sheets for one document breaks dedup.
+
 ## @pyreon/unistyle — Responsive CSS Utilities
 
 Foundational responsive-style layer that powers every visual package above it (`elements`, `rocketstyle`, `coolgrid`, `kinetic`). `enrichTheme()` merges a partial user theme with the default breakpoints / spacing / unit utilities so the rest of the system has a complete theme to read. `makeItResponsive()` turns a value or per-breakpoint map into the right CSS for the current screen. `createMediaQueries()` builds breakpoint-keyed media queries; `styles()` generates CSS from a theme; `alignContent()` resolves alignment shorthand to flex / grid CSS. The package is the single source of truth for responsive prop semantics across the UI system.

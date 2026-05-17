@@ -1446,6 +1446,7 @@
         "@pyreon/reactivity": "workspace:^",
       },
       "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
         "@vitest/browser-playwright": "^4.1.4",
