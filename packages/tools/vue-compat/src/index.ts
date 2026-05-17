@@ -925,6 +925,27 @@ interface ComponentOptions<P extends Props = Props> {
 }
 
 /**
+ * Computes Vue's fallthrough `attrs` — every passed prop that is NOT a
+ * declared prop (and not the internal `children` slot payload). When the
+ * component declared no props (`declared` undefined) the split is unknowable,
+ * so the full props object is returned (honest back-compat — matches the
+ * pre-split behavior rather than guessing).
+ */
+function splitVueAttrs(
+  props: Record<string, unknown>,
+  declared: string[] | undefined,
+): Record<string, unknown> {
+  if (!declared) return props
+  const declaredSet = new Set(declared)
+  const attrs: Record<string, unknown> = {}
+  for (const key of Object.keys(props)) {
+    if (key === 'children' || declaredSet.has(key)) continue
+    attrs[key] = props[key]
+  }
+  return attrs
+}
+
+/**
  * Defines a component using Vue 3 Composition API style.
  * Only supports the `setup()` function — Options API is not supported.
  */
@@ -934,9 +955,15 @@ export function defineComponent<P extends Props = Props>(
   if (typeof options === 'function') {
     return options as ComponentFn<P>
   }
+  const declaredProps = options.props ? Object.keys(options.props) : undefined
   const comp = (props: P) => {
     // Extract children from props for slots
     const children = (props as Record<string, unknown>).children as VNodeChild | undefined
+    // Publish the declared-prop names on the active render context so the
+    // standalone useAttrs() / getCurrentInstance() can compute the Vue
+    // declared-vs-fallthrough split (Vue's `attrs` excludes declared props).
+    const rc = getCurrentCtx()
+    if (rc && declaredProps) rc._declaredProps = declaredProps
     // Create a minimal SetupContext
     const setupCtx: SetupContext = {
       emit: (event: string, ...args: unknown[]) => {
@@ -947,7 +974,7 @@ export function defineComponent<P extends Props = Props>(
       slots: {
         default: children !== undefined ? (() => children) : undefined,
       } as Record<string, (() => VNodeChild) | undefined>,
-      attrs: props as Record<string, unknown>,
+      attrs: splitVueAttrs(props as Record<string, unknown>, declaredProps),
     }
     const result = options.setup(props, setupCtx)
     if (typeof result === 'function') {
@@ -1482,8 +1509,14 @@ export interface ComponentInternalInstance {
   proxy: Record<string, unknown>
   /** Slots derived from the current component's children. */
   slots: Record<string, (() => VNodeChild) | undefined>
-  /** Non-prop attributes (the props object, mirrors `useAttrs()`). */
+  /** Fallthrough attrs (declared props excluded — mirrors `useAttrs()`). */
   attrs: Record<string, unknown>
+  /**
+   * Emits an event by invoking the matching `on{Event}` prop handler —
+   * same behavior as the `emit` on `defineComponent`'s setup context.
+   * Libraries that call `instance.emit(...)` (vee-validate, etc.) work.
+   */
+  emit: (event: string, ...args: unknown[]) => void
   /** `true` — present for libraries that branch on `isMounted`-like flags. */
   isMounted: boolean
   /** @internal — the underlying compat render context. */
@@ -1505,10 +1538,12 @@ let _instanceUid = 0
  *  - `proxy` is an empty object — Pyreon components are plain functions with
  *    no `this`-bound Options instance. Code that reads reactive state off
  *    `instance.proxy.$data` / `.$props` will not work; use `props` directly.
- *  - `appContext`, `parent`, `vnode`, `emit`, `expose`, render internals are
- *    NOT provided. Libraries that walk the parent chain or call `emit` off
- *    the instance are not supported via this handle (use the `emit` passed to
- *    `defineComponent`'s setup context instead).
+ *  - `instance.emit(event, ...args)` IS provided (invokes the matching
+ *    `on{Event}` prop handler). `instance.attrs` is the fallthrough split
+ *    (declared props excluded) when the component used `defineComponent({
+ *    props })`; otherwise it is the full props object.
+ *  - `appContext`, `parent`, `vnode`, `expose`, render internals are NOT
+ *    provided. Libraries that walk the parent chain are not supported.
  *  - The same `uid` is stable across re-renders of the same instance
  *    (hook-indexed), matching Vue's per-instance-id guarantee.
  *
@@ -1537,7 +1572,12 @@ export function getCurrentInstance(): ComponentInternalInstance | null {
     slots: {
       default: children !== undefined ? () => children : undefined,
     },
-    attrs: props,
+    attrs: splitVueAttrs(props, ctx._declaredProps),
+    emit: (event: string, ...args: unknown[]) => {
+      const handlerKey = `on${event.charAt(0).toUpperCase()}${event.slice(1)}`
+      const handler = (props as Record<string, unknown>)[handlerKey]
+      if (typeof handler === 'function') (handler as (...a: unknown[]) => void)(...args)
+    },
     isMounted: true,
     _ctx: ctx,
   }
@@ -1601,7 +1641,10 @@ export function useSlots(): Record<string, (() => VNodeChild) | undefined> {
 export function useAttrs(): Record<string, unknown> {
   const ctx = getCurrentCtx()
   if (!ctx) return {}
-  return ctx._props ?? {}
+  // Vue's `attrs` = fallthrough props (declared props excluded). The split is
+  // known when the component used `defineComponent({ props })`; otherwise the
+  // full props object is returned (honest — the split is unknowable).
+  return splitVueAttrs(ctx._props ?? {}, ctx._declaredProps)
 }
 
 // ─── watchPostEffect / watchSyncEffect ───────────────────────────────────────

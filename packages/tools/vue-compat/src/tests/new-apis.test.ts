@@ -1517,6 +1517,45 @@ describe('getCurrentInstance()', () => {
     expect(inst2!.uid).toBe(inst1!.uid)
     unmount()
   })
+
+  it('instance.emit(event, ...args) invokes the matching on{Event} prop handler', () => {
+    const calls: unknown[][] = []
+    const Comp = () => {
+      const inst = getCurrentInstance()
+      inst!.emit('save', 42, 'x')
+      return jsx('div', { children: 'c' })
+    }
+    const el = container()
+    const unmount = mount(
+      jsx(Comp, { onSave: (...a: unknown[]) => calls.push(a) }),
+      el,
+    )
+    // emit is called from the render body, which the compat wrapper may run
+    // more than once — assert the handler was invoked with the right args
+    // (not an exact call count, which is render-cadence coupled).
+    expect(calls.length).toBeGreaterThanOrEqual(1)
+    expect(calls[0]).toEqual([42, 'x'])
+    unmount()
+  })
+
+  it('instance.attrs excludes declared props under defineComponent({ props })', () => {
+    let attrs: Record<string, unknown> = {}
+    const Comp = defineComponent({
+      props: { id: {} },
+      setup() {
+        attrs = getCurrentInstance()!.attrs
+        return () => jsx('div', { children: 'a' })
+      },
+    })
+    const el = container()
+    const unmount = mount(
+      jsx(Comp as never, { id: 'declared', role: 'dialog' }),
+      el,
+    )
+    expect('id' in attrs).toBe(false)
+    expect(attrs.role).toBe('dialog')
+    unmount()
+  })
 })
 
 // ─── useSlots / useAttrs ────────────────────────────────────────────────────
@@ -1567,6 +1606,36 @@ describe('useAttrs()', () => {
     const unmount = mount(jsx(Comp, { 'data-x': 'y', title: 'hi' }), el)
     expect(attrs['data-x']).toBe('y')
     expect(attrs.title).toBe('hi')
+    unmount()
+  })
+
+  it('excludes declared props (Vue fallthrough split) when defineComponent({ props })', () => {
+    let attrs: Record<string, unknown> = {}
+    const Comp = defineComponent({
+      props: { msg: {}, count: {} },
+      setup() {
+        attrs = useAttrs()
+        return () => jsx('div', { children: 'a' })
+      },
+    })
+    const el = container()
+    const unmount = mount(
+      jsx(Comp as never, {
+        msg: 'declared',
+        count: 1,
+        'data-x': 'y',
+        onClick: () => {},
+        children: 'kid',
+      }),
+      el,
+    )
+    // declared props + the internal children payload are NOT in attrs
+    expect('msg' in attrs).toBe(false)
+    expect('count' in attrs).toBe(false)
+    expect('children' in attrs).toBe(false)
+    // genuine fallthrough attrs ARE present
+    expect(attrs['data-x']).toBe('y')
+    expect(typeof attrs.onClick).toBe('function')
     unmount()
   })
 })
