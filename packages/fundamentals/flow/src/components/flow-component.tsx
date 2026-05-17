@@ -937,8 +937,10 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     }
 
     updateSize()
-    resizeObserver = new ResizeObserver(updateSize)
-    resizeObserver.observe(el)
+    if (typeof ResizeObserver === 'function') {
+      resizeObserver = new ResizeObserver(updateSize)
+      resizeObserver.observe(el)
+    }
   }
 
   const containerStyle = `position: relative; width: 100%; height: 100%; overflow: hidden; outline: none; touch-action: none; ${props.style ?? ''}`

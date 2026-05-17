@@ -46,6 +46,100 @@ export const noWindowInSsr: Rule = {
     // the same as `if (typeof window !== 'undefined')` — the universal
     // browser-detection idiom. Set captured at module scope; lookups by name.
     const typeofBoundConsts = new Set<string>()
+
+    // Member-captured typeof bindings — `this.isSSR = typeof document ===
+    // 'undefined'` / `obj.ready = typeof window !== 'undefined'` / class
+    // field `isSSR = typeof document === 'undefined'`. Keyed by a
+    // normalized member-path string (`this.isSSR`, `obj.ready`). The value
+    // records POLARITY so guard recognition is exact:
+    //   'positive'  → captured `typeof X !== 'undefined'` (or bare typeof);
+    //                  `if (this.k)` is the browser-safe branch,
+    //                  `if (!this.k) return` is the SSR early-return.
+    //   'negative'  → captured `typeof X === 'undefined'` (the `isSSR`
+    //                  idiom — true on the server); `if (!this.k)` is the
+    //                  browser-safe branch, `if (this.k) return` is the
+    //                  SSR early-return.
+    // This extends the const-captured-typeof idiom the rule already
+    // supports to member-assignment / class-field captures. It is
+    // intentionally separate from `typeofBoundConsts` (which is
+    // polarity-naive) so the existing const behaviour is untouched.
+    const memberCapturedTypeof = new Map<string, 'positive' | 'negative'>()
+    /** Normalize a `this.x` / `obj.x` member path to a stable key. */
+    function memberPathKey(node: any): string | null {
+      if (!node || node.type !== 'MemberExpression' || node.computed) return null
+      if (node.property?.type !== 'Identifier') return null
+      const obj = node.object
+      if (obj?.type === 'ThisExpression') return `this.${node.property.name}`
+      if (obj?.type === 'Identifier') return `${obj.name}.${node.property.name}`
+      return null
+    }
+    /**
+     * Polarity of a typeof-check expression used as a captured binding:
+     * `typeof X !== 'undefined'` / bare `typeof X` → 'positive';
+     * `typeof X === 'undefined'` → 'negative'. Returns null when the
+     * expression is not a direct typeof check (we deliberately do NOT
+     * recurse into &&/|| here — a captured SSR flag is virtually always a
+     * single typeof check, and widening this would risk masking real
+     * unguarded uses).
+     */
+    function typeofCapturePolarity(expr: any): 'positive' | 'negative' | null {
+      if (!expr) return null
+      if (
+        expr.type === 'BinaryExpression' &&
+        expr.left?.type === 'UnaryExpression' &&
+        expr.left.operator === 'typeof'
+      ) {
+        if (expr.operator === '!==' || expr.operator === '!=') return 'positive'
+        if (expr.operator === '===' || expr.operator === '==') return 'negative'
+        return null
+      }
+      // Bare `typeof X` as a truthiness flag (rare) — string is truthy, so
+      // it behaves like the positive form.
+      if (expr.type === 'UnaryExpression' && expr.operator === 'typeof') return 'positive'
+      return null
+    }
+    /**
+     * Is `test` a body-scoped guard whose body is the BROWSER-SAFE branch,
+     * by virtue of a member-captured typeof binding?
+     *   positive-bound `this.k`  → `if (this.k) { … }`
+     *   negative-bound `this.k`  → `if (!this.k) { … }`
+     */
+    function testIsMemberTypeofGuard(test: any): boolean {
+      if (!test) return false
+      // `if (this.k)` — safe when k is positive-bound.
+      const directKey = memberPathKey(test)
+      if (directKey && memberCapturedTypeof.get(directKey) === 'positive') return true
+      // `if (!this.k)` — safe when k is negative-bound (the `isSSR` idiom).
+      if (test.type === 'UnaryExpression' && test.operator === '!') {
+        const negKey = memberPathKey(test.argument)
+        if (negKey && memberCapturedTypeof.get(negKey) === 'negative') return true
+      }
+      // `if (this.k && other)` / `if (other && this.k)` — AND short-circuits
+      // so either side being a member typeof guard protects the body.
+      if (test.type === 'LogicalExpression' && test.operator === '&&') {
+        return testIsMemberTypeofGuard(test.left) || testIsMemberTypeofGuard(test.right)
+      }
+      return false
+    }
+    /**
+     * Is `test` an early-return guard condition that, when it fires, means
+     * the SSR path bailed — so the rest of the function body (incl. nested
+     * closures) only runs in a browser?
+     *   positive-bound `this.k`  → `if (!this.k) return`
+     *   negative-bound `this.k`  → `if (this.k) return`
+     */
+    function isMemberNegatedTypeofExpr(test: any): boolean {
+      if (!test) return false
+      // `if (this.k) return` — early bail when k is negative-bound (isSSR).
+      const directKey = memberPathKey(test)
+      if (directKey && memberCapturedTypeof.get(directKey) === 'negative') return true
+      // `if (!this.k) return` — early bail when k is positive-bound.
+      if (test.type === 'UnaryExpression' && test.operator === '!') {
+        const negKey = memberPathKey(test.argument)
+        if (negKey && memberCapturedTypeof.get(negKey) === 'positive') return true
+      }
+      return false
+    }
     function isPositiveTypeofCheck(expr: any): boolean {
       if (!expr) return false
       // `typeof X !== 'undefined'` (or `!=`) — the POSITIVE form: body is
@@ -55,6 +149,23 @@ export const noWindowInSsr: Rule = {
         (expr.operator === '!==' || expr.operator === '!=') &&
         expr.left?.type === 'UnaryExpression' &&
         expr.left.operator === 'typeof'
+      )
+        return true
+      // `typeof X === 'function'` / `typeof X === 'object'` — also a
+      // POSITIVE existence assertion: the body only runs when the global
+      // exists (and is of that type). Common for optional browser APIs:
+      // `if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(id)`,
+      // `if (typeof IntersectionObserver === 'function') …`. Only the two
+      // string literals that imply existence are accepted — `=== 'undefined'`
+      // is the SSR-fallback branch (handled by isNegatedTypeofExpr) and
+      // must NOT be treated as positive.
+      if (
+        expr.type === 'BinaryExpression' &&
+        (expr.operator === '===' || expr.operator === '==') &&
+        expr.left?.type === 'UnaryExpression' &&
+        expr.left.operator === 'typeof' &&
+        expr.right?.type === 'Literal' &&
+        (expr.right.value === 'function' || expr.right.value === 'object')
       )
         return true
       // Bare `typeof X` as truthiness check (rare).
@@ -98,6 +209,9 @@ export const noWindowInSsr: Rule = {
     function testIsTypeofGuard(test: any): boolean {
       if (!test) return false
       if (isPositiveTypeofCheck(test)) return true
+      // `if (this.isReady) { … }` — member-captured positive typeof binding
+      // (or `if (!this.isSSR)` for the negative `isSSR` idiom).
+      if (testIsMemberTypeofGuard(test)) return true
       // `if (isBrowser)` — bound from a typeof, body is browser-safe.
       if (test.type === 'Identifier' && typeofBoundConsts.has(test.name)) return true
       // `if (isBrowser())` — function whose body returns a typeof check.
@@ -177,6 +291,10 @@ export const noWindowInSsr: Rule = {
         typeofBoundConsts.has(test.argument.name)
       )
         return true
+      // Member-captured typeof early-return forms:
+      //   `if (this.isSSR) return`        (isSSR = typeof X === 'undefined')
+      //   `if (!this.isReady) return`     (isReady = typeof X !== 'undefined')
+      if (isMemberNegatedTypeofExpr(test)) return true
       // `!isBrowser()` where isBrowser is a typeof-guard function — common
       // SSR pattern in storage adapters: `if (!isBrowser()) return null`.
       if (
@@ -187,11 +305,22 @@ export const noWindowInSsr: Rule = {
         typeofGuardFunctions.has(test.argument.callee.name)
       )
         return true
-      // `typeof X === 'undefined' || typeof Y === 'undefined'` — chained
-      // SSR bailouts (common when a feature needs multiple browser APIs).
-      // Both sides must be negated-typeof checks.
+      // OR-chained early-return bailout: `if (A || typeof X === 'undefined')
+      // return`. ANY disjunct being a negated-typeof check is sufficient —
+      // for an EARLY-RETURN guard, extra disjuncts only make the bail fire
+      // MORE often, never less. After the guard, every disjunct is falsy,
+      // so the negated-typeof disjunct's global is guaranteed to exist.
+      // Common shape: `if (!el || typeof IntersectionObserver === 'undefined')
+      // return` before `new IntersectionObserver(...)`. This is strictly
+      // more conservative for SSR-safety than requiring all sides — it can
+      // only recognize MORE valid guards, never silence an unguarded use
+      // (the used global's own negated-typeof must still be a disjunct, or
+      // a bound flag, for `isNegatedTypeofExpr` to return true). Note this
+      // widening is confined to early-return guards: `isNegatedTypeofExpr`
+      // is only ever called from `isEarlyReturnTypeofGuard`, never from the
+      // positive body-guard path.
       if (test.type === 'LogicalExpression' && test.operator === '||') {
-        return isNegatedTypeofExpr(test.left) && isNegatedTypeofExpr(test.right)
+        return isNegatedTypeofExpr(test.left) || isNegatedTypeofExpr(test.right)
       }
       return false
     }
@@ -199,13 +328,29 @@ export const noWindowInSsr: Rule = {
       if (!stmt || stmt.type !== 'IfStatement') return false
       if (!isNegatedTypeofExpr(stmt.test)) return false
       // Consequent must terminate the function — either a return or a throw
-      // (both bail out, leaving the rest of the body implicitly guarded).
-      // Bare statement OR single-statement block are both accepted.
+      // (both bail out, leaving the rest of the body — INCLUDING any nested
+      // function/closure expressions defined later — implicitly guarded:
+      // `typeofGuardDepth` is global and stays bumped until THIS function
+      // exits, so it spans nested scopes too).
+      //
+      // Accepted shapes:
+      //   `if (cond) return`                       — bare terminator
+      //   `if (cond) { return … }`                 — single-stmt block
+      //   `if (cond) { const noop = …; return … }` — block that ENDS with a
+      //                                              terminator
+      // The third shape is the real-world SSR-fallback idiom: build a noop
+      // result then `return` it. The statements before the terminator run
+      // ONLY on the SSR path (where the function bails) — they can't
+      // un-bail it, so the rest of the body is still browser-only. We only
+      // require the LAST statement to be the terminator (every preceding
+      // statement is irrelevant to the bail). A non-terminating block is
+      // still rejected (the function would fall through to the body in
+      // SSR — genuinely unguarded).
       const c = stmt.consequent
       const isTerminator = (s: any): boolean =>
         s?.type === 'ReturnStatement' || s?.type === 'ThrowStatement'
       if (isTerminator(c)) return true
-      if (c?.type === 'BlockStatement' && c.body.length === 1 && isTerminator(c.body[0]))
+      if (c?.type === 'BlockStatement' && c.body.length >= 1 && isTerminator(c.body.at(-1)))
         return true
       return false
     }
@@ -296,6 +441,28 @@ export const noWindowInSsr: Rule = {
             typeofGuardFunctions.add(decl.id.name)
           }
         }
+      },
+      // `this.isSSR = typeof document === 'undefined'`
+      // `obj.ready = typeof window !== 'undefined'`
+      // Captured with polarity so `if (this.isSSR) return` (negative) and
+      // `if (this.ready) { … }` (positive) are recognized as guards.
+      // Only plain `=` assignments are tracked; compound (`||=` etc.) and
+      // computed members are intentionally ignored (not the idiom).
+      AssignmentExpression(node: any) {
+        if (node.operator !== '=') return
+        const key = memberPathKey(node.left)
+        if (!key) return
+        const polarity = typeofCapturePolarity(node.right)
+        if (polarity) memberCapturedTypeof.set(key, polarity)
+      },
+      // Class field initializer: `class S { isSSR = typeof document === 'undefined' }`
+      // — equivalent to `this.isSSR = …` set at construction time. Keyed
+      // as `this.<name>` so method-body `if (this.isSSR)` guards resolve.
+      PropertyDefinition(node: any) {
+        if (node.computed || node.static) return
+        if (node.key?.type !== 'Identifier') return
+        const polarity = typeofCapturePolarity(node.value)
+        if (polarity) memberCapturedTypeof.set(`this.${node.key.name}`, polarity)
       },
       FunctionDeclaration(node: any) {
         // function isBrowser() { return typeof window !== 'undefined' }

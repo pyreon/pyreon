@@ -181,6 +181,55 @@ interface DetectContext {
   code: string
   diagnostics: ReactDiagnostic[]
   reactImportedHooks: Set<string>
+  /**
+   * Identifiers bound to a signal factory (`const x = signal(...)` /
+   * `computed(...)` / `useSignal(...)` / `createSignal(...)`) anywhere in the
+   * file. Only `const` declarations are tracked — `let`/`var` may be
+   * reassigned to a non-signal value, so a `.value` write through them
+   * wouldn't be a reliable signal-write. The collection is scope-blind for
+   * the same reason `collectSignalBindings` in `pyreon-intercept.ts` is — the
+   * rare shadow-a-signal-name case is acceptable noise; the precision win is
+   * eliminating the `input.value = ''` / `cell.value = x` / `o.value = y`
+   * false-positive class entirely.
+   */
+  signalBindings: Set<string>
+}
+
+/**
+ * Collects every identifier bound to a signal factory call. Mirrors
+ * `pyreon-intercept.ts:collectSignalBindings` but also recognises the
+ * `useSignal` / `createSignal` aliases (Solid / hook-style) so the React
+ * detector — which runs on cross-framework migration input — doesn't miss a
+ * genuine `mySignal.value = x` written by someone coming from Solid/Vue.
+ */
+function collectDetectSignalBindings(sf: ts.SourceFile): Set<string> {
+  const names = new Set<string>()
+  function isSignalFactoryCall(init: ts.Expression | undefined): boolean {
+    if (!init || !ts.isCallExpression(init)) return false
+    const callee = init.expression
+    if (!ts.isIdentifier(callee)) return false
+    return (
+      callee.text === 'signal' ||
+      callee.text === 'computed' ||
+      callee.text === 'useSignal' ||
+      callee.text === 'createSignal'
+    )
+  }
+  function walk(node: ts.Node): void {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+      const list = node.parent
+      if (
+        ts.isVariableDeclarationList(list) &&
+        (list.flags & ts.NodeFlags.Const) !== 0 &&
+        isSignalFactoryCall(node.initializer)
+      ) {
+        names.add(node.name.text)
+      }
+    }
+    ts.forEachChild(node, walk)
+  }
+  walk(sf)
+  return names
 }
 
 function detectGetNodeText(ctx: DetectContext, node: ts.Node): string {
@@ -497,6 +546,15 @@ function detectJsxAttributes(ctx: DetectContext, node: ts.JsxAttribute): void {
 
 function detectDotValueSignal(ctx: DetectContext, node: ts.PropertyAccessExpression): void {
   const varName = (node.expression as ts.Identifier).text
+  // Precision gate: only flag `X.value = …` when X is actually a tracked
+  // signal binding. Without this, the detector false-positived on every
+  // DOM-element / data-object `.value` write — `input.value = ''`,
+  // `cell.value = x`, `o.value = y`, `ref.current.value = z` (the receiver
+  // there is the `.current` PropertyAccess, already excluded by
+  // `isDotValueAccess` requiring an Identifier receiver). Require positive
+  // evidence the receiver is a `const X = signal(...)` / `computed(...)` /
+  // `useSignal(...)` / `createSignal(...)` binding before emitting.
+  if (!ctx.signalBindings.has(varName)) return
   const parent = node.parent
   if (ts.isBinaryExpression(parent) && parent.left === node) {
     detectDiag(
@@ -598,6 +656,7 @@ export function detectReactPatterns(code: string, filename = 'input.tsx'): React
     code,
     diagnostics: [],
     reactImportedHooks: new Set<string>(),
+    signalBindings: collectDetectSignalBindings(sf),
   }
 
   detectVisit(ctx, sf)

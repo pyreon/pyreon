@@ -1,5 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
+import { isPathExempt } from '../../utils/exempt-paths'
 
 // `use…`/`get…`/`is…`/`has…` are conventional hook/getter prefixes — not
 // signal reads. `[A-Z]…` covers component invocations. The skip-names set
@@ -22,8 +23,15 @@ export const noBareSignalInJsx: Rule = {
       'Disallow bare signal calls in JSX text positions. Wrap in `() =>` for reactivity.',
     severity: 'error',
     fixable: true,
+    schema: { exemptPaths: 'string[]' },
   },
   create(context) {
+    // Path-based exemption (consistent with the other exemptable rules):
+    // render-function primitives (`@pyreon/ui-primitives`, `@pyreon/elements`)
+    // read signals in JSX *attribute* positions (`value={value()}`) which the
+    // compiler `_rp()`-wraps reactively — the rule's text-position heuristic
+    // over-fires there. Curated via `.pyreonlintrc.json` `exemptPaths`.
+    if (isPathExempt(context)) return {}
     let jsxDepth = 0
     const callbacks: VisitorCallbacks = {
       JSXElement() {

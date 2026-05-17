@@ -29,6 +29,10 @@ function createNewTag(tag: {
   children: string
   key: unknown
 }): void {
+  // SSR guard: only ever reached via the (also-guarded) `syncDom`, but
+  // keep the guard local so the contract is self-evident and SSR-safe
+  // even if a future caller invokes this directly.
+  if (typeof document === 'undefined') return
   const el = document.createElement(tag.tag)
   const key = tag.key as string
   el.setAttribute(ATTR, key)

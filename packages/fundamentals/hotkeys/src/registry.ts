@@ -68,6 +68,7 @@ function attachListener(): void {
 }
 
 function detachListener(): void {
+  if (typeof window === 'undefined') return
   if (!listenerAttached || !keydownHandler) return
   window.removeEventListener('keydown', keydownHandler)
   listenerAttached = false
