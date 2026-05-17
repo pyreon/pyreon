@@ -195,24 +195,40 @@ interface RouteRecord<TPath extends string = string> {
   children?: RouteRecord[]
   loader?: RouteLoaderFn
   staleWhileRevalidate?: boolean
+  loaderKey?: (ctx: Pick<LoaderContext, 'params' | 'query'>) => string
+  gcTime?: number
   errorComponent?: ComponentFn
+  notFoundComponent?: ComponentFn
+  pendingComponent?: ComponentFn
+  pendingMs?: number
+  pendingMinMs?: number
+  validateSearch?: (raw: Record<string, string>) => Record<string, unknown>
+  middleware?: RouteMiddleware | RouteMiddleware[]
 }
 ```
 
-| Field                  | Type                                   | Description                                                                                |
-| ---------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `path`                 | `string`                               | Path pattern with `:param` segments                                                        |
-| `component`            | `ComponentFn \| LazyComponent`         | Component to render, or a `lazy()` wrapper                                                 |
-| `name`                 | `string`                               | Optional name for named navigation                                                         |
-| `meta`                 | `RouteMeta`                            | Route metadata (title, auth, scroll, custom fields)                                        |
-| `redirect`             | `string \| (to) => string`             | Redirect target, evaluated before guards                                                   |
-| `beforeEnter`          | `NavigationGuard \| NavigationGuard[]` | Guard(s) run before entering this route                                                    |
-| `beforeLeave`          | `NavigationGuard \| NavigationGuard[]` | Guard(s) run before leaving this route                                                     |
-| `alias`                | `string \| string[]`                   | Alternative path(s) that render the same component and share guards, loaders, and metadata |
-| `children`             | `RouteRecord[]`                        | Nested child routes                                                                        |
-| `loader`               | `RouteLoaderFn`                        | Data loader function                                                                       |
-| `staleWhileRevalidate` | `boolean`                              | When true, show cached loader data immediately and revalidate in the background            |
-| `errorComponent`       | `ComponentFn`                          | Component shown when the loader fails                                                      |
+| Field | Type | Description |
+| --- | --- | --- |
+| `path` | `string` | Path pattern with `:param` segments |
+| `component` | `ComponentFn \| LazyComponent` | Component to render, or a `lazy()` wrapper |
+| `name` | `string` | Optional name for named navigation |
+| `meta` | `RouteMeta` | Route metadata (title, auth, scroll, custom fields) |
+| `redirect` | `string \| (to) => string` | Redirect target, evaluated before guards |
+| `beforeEnter` | `NavigationGuard \| NavigationGuard[]` | Guard(s) run before entering this route |
+| `beforeLeave` | `NavigationGuard \| NavigationGuard[]` | Guard(s) run before leaving this route |
+| `alias` | `string \| string[]` | Alternative path(s) that render the same component and share guards, loaders, and metadata |
+| `children` | `RouteRecord[]` | Nested child routes |
+| `loader` | `RouteLoaderFn` | Data loader function |
+| `staleWhileRevalidate` | `boolean` | When true, show cached loader data immediately and revalidate in the background |
+| `loaderKey` | `(ctx) => string` | Cache-identity function for loader data. Default: `path + JSON.stringify(params)` |
+| `gcTime` | `number` | Time in ms to keep cached loader data before GC. Default `300000` (5 min); `0` disables caching |
+| `errorComponent` | `ComponentFn` | Component shown when the loader fails (also catches render errors) |
+| `notFoundComponent` | `ComponentFn` | Component rendered for unmatched URLs under this layout (the `_404.tsx` "404 within layout" pattern) |
+| `pendingComponent` | `ComponentFn` | Component shown while this route's loader is running |
+| `pendingMs` | `number` | Delay in ms before showing `pendingComponent` (default `0`) — prevents flash on fast loaders |
+| `pendingMinMs` | `number` | Minimum display time in ms for `pendingComponent` once shown (default `200`) — prevents flicker |
+| `validateSearch` | `(raw) => Record<string, unknown>` | Validate/transform raw query params into typed values. Result on `route.search` / `useValidatedSearch()` |
+| `middleware` | `RouteMiddleware \| RouteMiddleware[]` | Per-route middleware — runs before guards, can accumulate context data |
 
 ### Path Patterns
 
@@ -551,6 +567,101 @@ const routes = [
 
 This only applies when navigating to a route that already has cached loader data (e.g., the user previously visited it). On the first visit, the loader runs normally and navigation waits for it to complete.
 
+### Loader Cache
+
+Loader results are cached by key with in-flight deduplication and TTL-based garbage collection. This avoids re-fetching data the user just navigated away from and back to.
+
+```ts
+const routes = [
+  {
+    path: '/user/:id',
+    component: UserProfile,
+    loader: async ({ params, signal }) => {
+      const res = await fetch(`/api/users/${params.id}`, { signal })
+      return res.json()
+    },
+    // Cache identity — same key = served from cache, loader skipped
+    loaderKey: ({ params }) => `user-${params.id}`,
+    // Keep cached data 10 minutes before garbage collection (default: 5 min)
+    gcTime: 10 * 60 * 1000,
+  },
+]
+```
+
+- **`loaderKey`** — derives the cache key from `params` / `query`. Two navigations producing the same key resolve from cache without re-running the loader. Default: `path + JSON.stringify(params)`.
+- **`gcTime`** — milliseconds to keep a cached entry before it is garbage-collected. Default `300000` (5 minutes). Set to `0` to disable caching for the route.
+- **In-flight dedup** — two concurrent navigations to the same key share a single loader promise. Aborted in-flight entries are skipped so a fresh navigation never inherits a cancelled fetch.
+- **SWR bypass** — `staleWhileRevalidate: true` routes always re-run the loader for revalidation; the cache only seeds the immediate stale render.
+
+Invalidate cached loader data imperatively via the router:
+
+```ts
+const router = useRouter()
+
+// Invalidate ALL cached loader data
+router.invalidateLoader()
+
+// Invalidate by exact cache key (as returned by loaderKey)
+router.invalidateLoader('user-42')
+
+// Invalidate entries where a predicate matches the key
+router.invalidateLoader((key) => key.startsWith('user-'))
+```
+
+After invalidation the next navigation to the affected route re-runs the loader instead of serving the stale entry.
+
+### Pending Components
+
+Show a placeholder while a route's loader runs, without flashing on fast loads:
+
+```ts
+const routes = [
+  {
+    path: '/dashboard',
+    component: Dashboard,
+    loader: loadDashboard,
+    pendingComponent: DashboardSkeleton,
+    pendingMs: 150, // wait 150ms before showing the skeleton (default: 0)
+    pendingMinMs: 400, // once shown, keep it for at least 400ms (default: 200)
+  },
+]
+```
+
+- **`pendingComponent`** — rendered while this route's loader is in flight.
+- **`pendingMs`** — delay before the pending component appears (default `0`). A loader that resolves faster than `pendingMs` never shows the placeholder, so quick navigations don't flash a skeleton.
+- **`pendingMinMs`** — once the pending component is shown, it stays for at least this long (default `200`) to avoid a jarring flicker if data arrives a moment later.
+
+Internally this is a signal-driven state machine: `hidden → pending → ready`.
+
+### Validated Search Params
+
+Transform raw query strings into typed, validated values per route. `validateSearch` accepts any `(raw: Record<string, string>) => T` function — a plain function, a Zod `.parse`, a Valibot parser, etc.
+
+```ts
+const routes = [
+  {
+    path: '/search',
+    component: SearchPage,
+    // Plain function
+    validateSearch: (raw) => ({
+      page: Number(raw.page) || 1,
+      q: raw.q ?? '',
+    }),
+  },
+  {
+    path: '/products',
+    component: Products,
+    // With Zod
+    validateSearch: z.object({
+      page: z.coerce.number().default(1),
+      sort: z.enum(['name', 'price']).default('name'),
+    }).parse,
+  },
+]
+```
+
+The validated result is available on `route.search` and, with full type inference, via the `useValidatedSearch<T>()` hook (see [Hooks](#usevalidatedsearch)).
+
 ## Components
 
 ### RouterProvider
@@ -839,6 +950,56 @@ function SearchPage() {
 ```
 
 The `defaults` object provides fallback values for missing query params. `set()` navigates to the current path with updated params (existing params are preserved, only specified keys are changed).
+
+### useValidatedSearch
+
+Reactive accessor for the current route's validated search params (configured via the route's `validateSearch`). Returns the typed result with structural sharing — a shallow-equal check prevents re-renders when unrelated query params change.
+
+```ts
+function useValidatedSearch<T>(): () => T
+```
+
+```tsx
+import { useValidatedSearch } from '@pyreon/router'
+
+// Route: { path: '/search', validateSearch: (raw) => ({ page: Number(raw.page) || 1, q: raw.q ?? '' }) }
+function SearchPage() {
+  const search = useValidatedSearch<{ page: number; q: string }>()
+
+  return (
+    <div>
+      <p>Query: {search().q}</p>
+      <p>Page: {search().page}</p>
+    </div>
+  )
+}
+```
+
+Returns an empty object when the matched route has no `validateSearch` configured. Pair it with the route's `validateSearch` (see [Validated Search Params](#validated-search-params)) — that function is the single source of truth for the shape `T`.
+
+### useIsActive
+
+Returns a reactive boolean for whether a path matches the current route. Useful for custom active-state styling outside of `RouterLink`.
+
+```ts
+function useIsActive(path: string, exact?: boolean): () => boolean
+```
+
+```tsx
+import { useIsActive } from '@pyreon/router'
+
+function NavItem(props: { to: string; label: string }) {
+  const isActive = useIsActive(props.to)
+
+  return (
+    <a href={props.to} class={() => (isActive() ? 'nav-item active' : 'nav-item')}>
+      {props.label}
+    </a>
+  )
+}
+```
+
+Matching is segment-aware: `/admin` matches `/admin/users` (prefix) when `exact` is falsy, but never matches `/admin-panel`. Pass `exact: true` to require an exact path match.
 
 ### useBlocker
 
@@ -1142,10 +1303,22 @@ interface LoaderContext {
   params: Record<string, string> // Route params
   query: Record<string, string> // Query string params
   signal: AbortSignal // Aborted when a newer navigation starts
+  request?: Request // The incoming HTTP Request — SSR only, undefined on CSR
 }
 ```
 
 The `signal` is crucial for cancellation: if the user navigates away before the loader finishes, the signal is aborted. Always pass it to `fetch()` and other async operations.
+
+`request` is populated **only when the loader runs during SSR** (via `prefetchLoaderData(router, path, request)`) — it is `undefined` on every client-side navigation. This lets server-side loaders read cookies / auth headers and decide whether to `throw redirect('/login')` *before* the layout renders:
+
+```ts
+loader: ({ request }) => {
+  const cookie = request?.headers.get('cookie') ?? ''
+  const sid = cookie.match(/sid=([^;]+)/)?.[1]
+  if (!sid) throw redirect('/login')
+  return loadSession(sid)
+}
+```
 
 ### Loader Behavior
 
@@ -1331,6 +1504,68 @@ import { isRedirectError, getRedirectInfo } from '@pyreon/router'
 
 **`LoaderContext.request`** is populated only when a loader runs during SSR (via `prefetchLoaderData(router, path, request)`); `undefined` on every CSR navigation. This lets server-side loaders read cookies / auth headers and decide whether to `redirect()` BEFORE the layout renders.
 
+### notFound() — trigger a 404 boundary
+
+Throw `notFound()` inside a loader or a component to render the nearest `NotFoundBoundary` instead of the route. This is the "the route matched but the resource doesn't exist" case (e.g. `/user/999` where user 999 was deleted) — distinct from "no route matched at all".
+
+```tsx
+import { notFound, NotFoundBoundary, isNotFoundError } from '@pyreon/router'
+
+const routes = [
+  {
+    path: '/user/:id',
+    component: UserProfile,
+    loader: async ({ params, signal }) => {
+      const res = await fetch(`/api/users/${params.id}`, { signal })
+      if (res.status === 404) throw notFound()
+      return res.json()
+    },
+  },
+]
+
+function App() {
+  return (
+    <RouterProvider router={router}>
+      <NotFoundBoundary fallback={() => <h1>404 — Not Found</h1>}>
+        <RouterView />
+      </NotFoundBoundary>
+    </RouterProvider>
+  )
+}
+```
+
+- **`notFound()`** — returns a sentinel error to `throw`. Catchable by the nearest `NotFoundBoundary`.
+- **`NotFoundBoundary`** — renders its `fallback` when a descendant throws `notFound()`. Behaves like an error boundary scoped to not-found errors.
+- **`isNotFoundError(err)`** — type guard for custom error boundaries that need to distinguish not-found from other errors (re-throw everything else, render a 404 UI for this one).
+
+```tsx
+<ErrorBoundary
+  fallback={(err) => {
+    if (isNotFoundError(err)) return <NotFound />
+    if (isRedirectError(err)) throw err // let the router handle redirects
+    return <GenericError error={err} />
+  }}
+>
+  <RouterView />
+</ErrorBoundary>
+```
+
+### The `_404.tsx` convention (no-route-matched)
+
+When **no route matches** the URL at all, the router renders the deepest matched layout's `notFoundComponent` as a synthetic leaf — so the 404 page carries the same chrome (header, nav, footer) as a normal page. With `@pyreon/zero`'s fs-router this is wired automatically by dropping a `_404.tsx` (or `_not-found.tsx`) file next to your `_layout.tsx`; the scanner attaches its default export as the parent layout's `notFoundComponent`.
+
+The resolved route exposes `isNotFound: true` when this synthetic fallback fired, which SSR handlers read to emit an HTTP `404` status:
+
+```ts
+interface ResolvedRoute {
+  // ...
+  search?: Record<string, unknown> // validated search params (validateSearch)
+  isNotFound?: boolean // true when a notFoundComponent fallback rendered
+}
+```
+
+`notFound()` (the thrown sentinel) and `notFoundComponent` / `_404.tsx` (the no-route-matched fallback) are complementary: the first is for "matched route, missing resource", the second for "URL matched nothing".
+
 ## Lazy Loading
 
 Use the `lazy()` helper for code-splitting route components:
@@ -1509,10 +1744,34 @@ interface Router {
   /** Promise that resolves once the initial navigation completes */
   isReady(): Promise<void>
 
+  /**
+   * Resolve `path`, load any lazy route components into the cache, and run
+   * the matched routes' loaders. After this resolves, a `RouterView`
+   * rendered for `path` produces final HTML synchronously. Used by SSR/SSG.
+   * `request` is forwarded to loaders as `LoaderContext.request`.
+   * `options.skipLoaders: true` resolves lazy components but skips loaders
+   * entirely (used by SSG 404 generation, where there's no real request).
+   */
+  preload(
+    path: string,
+    request?: Request,
+    options?: { skipLoaders?: boolean },
+  ): Promise<void>
+
+  /**
+   * Invalidate cached loader data. Forces loaders to re-run on next nav.
+   *  - no args: invalidate ALL cached loader data
+   *  - string: invalidate by cache key (as returned by loaderKey)
+   *  - function: invalidate entries where the predicate returns true
+   */
+  invalidateLoader(keyOrPredicate?: string | ((key: string) => boolean)): void
+
   /** Remove all event listeners, clear caches, abort in-flight navigations */
   destroy(): void
 }
 ```
+
+`Router` is generic over the route-name union for type-safe named navigation — `Router<TNames>`. See [Typed Route Names](#typed-route-names).
 
 **The `loading` signal:**
 
@@ -2025,13 +2284,13 @@ The type map supports `'string'`, `'number'`, and `'boolean'`. Values are coerce
 
 ## Route Transitions
 
-`useTransition` provides a reactive signal indicating whether a route transition is in progress:
+`useTransition` returns a reactive accessor that is `true` while a route transition is in progress:
 
 ```tsx
 import { useTransition } from '@pyreon/router'
 
 function App() {
-  const { isTransitioning } = useTransition()
+  const isTransitioning = useTransition()
 
   return (
     <div>
@@ -2042,7 +2301,7 @@ function App() {
 }
 ```
 
-The signal is `true` from the start of navigation (guard evaluation, loader fetching) until the route component is mounted.
+`useTransition()` returns `() => boolean` directly (not an object). The accessor is `true` from the start of navigation (guard evaluation, loader fetching) until the route component is mounted.
 
 ## View Transitions API
 
@@ -2122,10 +2381,13 @@ Inside components, read middleware data with `useMiddlewareData()`:
 import { useMiddlewareData } from '@pyreon/router'
 
 function AdminDashboard() {
-  const data = useMiddlewareData<{ user: User }>()
-  return <h1>Welcome, {data.user.name}</h1>
+  const data = useMiddlewareData() // () => Record<string, unknown>
+  const user = () => data().user as User
+  return <h1>Welcome, {user().name}</h1>
 }
 ```
+
+`useMiddlewareData()` returns a reactive accessor `() => Record<string, unknown>` — call it to read the accumulated middleware data, and cast individual keys at the use site. It is not generic and does not return the object directly.
 
 ## Typed Route Names
 
@@ -2175,6 +2437,16 @@ router.push({ name: 'user', params: { id: '42' } })
 
 <APICard name="hydrateLoaderData" type="function" signature="hydrateLoaderData(router: Router, data: Record<string, unknown>): void" description="Client: hydrate serialized loader data into the router so the initial render uses server-fetched data." />
 
+<APICard name="redirect" type="function" signature="redirect(url: string, status?: RedirectStatus): never" description="Throw inside a loader to redirect the navigation before the layout renders. Default status 307." />
+
+<APICard name="isRedirectError" type="function" signature="isRedirectError(err: unknown): boolean" description="Type guard — true when err is a redirect() sentinel. Re-throw it from custom error boundaries." />
+
+<APICard name="getRedirectInfo" type="function" signature="getRedirectInfo(err: unknown): { url: string; status: RedirectStatus } | null" description="Extract the target URL and status from a redirect() error, or null if not a redirect." />
+
+<APICard name="notFound" type="function" signature="notFound(message?: string): never" description="Throw inside a loader or component to trigger the nearest NotFoundBoundary." />
+
+<APICard name="isNotFoundError" type="function" signature="isNotFoundError(err: unknown): boolean" description="Type guard — true when err is a notFound() sentinel." />
+
 ### Components
 
 <APICard name="RouterProvider" type="component" signature="<RouterProvider :router='router'>...</RouterProvider>" description="Provide the router instance to the component tree via context." />
@@ -2182,6 +2454,8 @@ router.push({ name: 'user', params: { id: '42' } })
 <APICard name="RouterView" type="component" signature="<RouterView />" description="Render the matched route component for the current route. Nest inside layouts for nested routing." />
 
 <APICard name="RouterLink" type="component" signature='<RouterLink to="/path" activeClass="active" exactActiveClass="exact-active">...</RouterLink>' description="Navigation link that applies active classes and supports prefetching on hover/focus." />
+
+<APICard name="NotFoundBoundary" type="component" signature="<NotFoundBoundary fallback={() => <NotFound />}>...</NotFoundBoundary>" description="Renders its fallback when a descendant throws notFound()." />
 
 ### Hooks
 
@@ -2195,9 +2469,13 @@ router.push({ name: 'user', params: { id: '42' } })
 
 <APICard name="useTypedSearchParams" type="hook" signature="useTypedSearchParams<T>(schema: T): TypedSearchParams<T>" description="Type-safe search params with automatic coercion from URL strings." />
 
-<APICard name="useTransition" type="hook" signature="useTransition(): { isTransitioning: () => boolean }" description="Reactive signal indicating whether a route transition is in progress." />
+<APICard name="useValidatedSearch" type="hook" signature="useValidatedSearch<T>(): () => T" description="Reactive accessor for the route's validateSearch result, with structural sharing." />
 
-<APICard name="useMiddlewareData" type="hook" signature="useMiddlewareData<T>(): T" description="Read data set by route middleware in the current route's middleware chain." />
+<APICard name="useIsActive" type="hook" signature="useIsActive(path: string, exact?: boolean): () => boolean" description="Reactive boolean for whether a path matches the current route (segment-aware prefix match)." />
+
+<APICard name="useTransition" type="hook" signature="useTransition(): () => boolean" description="Reactive accessor — true while a route transition is in progress." />
+
+<APICard name="useMiddlewareData" type="hook" signature="useMiddlewareData(): () => Record<string, unknown>" description="Reactive accessor for data set by the route's middleware chain." />
 
 <APICard name="useBlocker" type="hook" signature="useBlocker(fn: BlockerFn): { remove(): void }" description="Register a navigation blocker. Returns true to block, false to allow. Also handles beforeunload." />
 
@@ -2231,9 +2509,15 @@ router.push({ name: 'user', params: { id: '42' } })
 
 <APICard name="AfterEachHook" type="type" signature="type AfterEachHook = (to: ResolvedRoute, from: ResolvedRoute) => void" description="Hook function called after navigation commits. Cannot affect navigation." />
 
-<APICard name="LoaderContext" type="type" signature="interface LoaderContext { params: Record<string, string>; query: Record<string, string>; signal: AbortSignal }" description="Context passed to route loader functions." />
+<APICard name="LoaderContext" type="type" signature="interface LoaderContext { params: Record<string, string>; query: Record<string, string>; signal: AbortSignal; request?: Request }" description="Context passed to route loader functions. request is populated only during SSR." />
 
 <APICard name="RouteLoaderFn" type="type" signature="type RouteLoaderFn = (ctx: LoaderContext) => Promise<unknown>" description="Async loader function for fetching route data before navigation commits." />
+
+<APICard name="RouteMiddleware" type="type" signature="type RouteMiddleware = (ctx: RouteMiddlewareContext) => void | false | string | Promise<void | false | string>" description="Per-route middleware run before guards. Return false to cancel, string to redirect." />
+
+<APICard name="RouteMiddlewareContext" type="type" signature="interface RouteMiddlewareContext { to: ResolvedRoute; from: ResolvedRoute; data: Record<string, unknown> }" description="Context passed through the middleware chain. Accumulate state on ctx.data." />
+
+<APICard name="RedirectStatus" type="type" signature="type RedirectStatus = 301 | 302 | 303 | 307 | 308" description="HTTP status for redirect(). Default 307 (method-preserving)." />
 
 <APICard name="ScrollBehaviorFn" type="type" signature='type ScrollBehaviorFn = (to: ResolvedRoute, from: ResolvedRoute, savedPosition: number | null) => "top" | "restore" | "none" | number' description="Custom scroll behavior function for advanced scroll control." />
 
