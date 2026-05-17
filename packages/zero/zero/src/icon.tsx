@@ -1,67 +1,128 @@
-import type { SvgAttributes, VNodeChild } from '@pyreon/core'
+import type { PyreonHTMLAttributes, SvgAttributes, VNodeChild } from '@pyreon/core'
+import { splitProps } from '@pyreon/core'
 
 // ─── Icon ───────────────────────────────────────────────────────────────────
 //
-// The minimal leaf: renders a plain <svg> and NOTHING else — no wrapper
-// element, no host span, no sizing box. The consumer wraps and sizes it.
+// Renders a FULL, already-complete SVG that you loaded — it does NOT
+// synthesize its own <svg> wrapper around hand-authored <path> children.
+// You load an svg (it contains the <svg> root itself); Icon renders it and
+// makes it container-sizable + theme-aware.
 //
-// Contract:
-//  - Root IS the <svg>. Wrap it yourself if you want (`<span><Icon/></span>`).
-//  - No fixed width/height → it fills its container; the consumer's wrapper
-//    (CSS width/height, font-size, flex/grid cell) controls the size.
-//  - `fill="currentColor"` → CSS `color` themes it (dark mode for free).
-//  - All props pass straight through to the <svg> and override the defaults
-//    (pass `style`, `class`, `fill`, `viewBox`, `aria-*`, `onClick`, …).
+// Two ways to hand it the loaded svg (you chose: support both):
+//   • `as`  — an imported SVG *component* (`import X from './x.svg?component'`).
+//             Rendered directly — NO host wrapper. Recommended form: it's a
+//             real <svg> element, so container-fill is reliable.
+//   • `svg` — the raw `<svg>…</svg>` *markup string*
+//             (`import x from './x.svg?raw'`). Inlined via a single `<span>`
+//             host (a markup string can't mount without a parent element —
+//             this one host is unavoidable for the string form).
+//
+// Either way:
+//   • Container-filling defaults (`fill="currentColor"`,
+//     `display:block;width:100%;height:100%`) — every consumer prop spreads
+//     through and OVERRIDES them (`style`, `class`, `fill`, `aria-*`, …).
+//   • No fixed size → it fills its container; the consumer's wrapper
+//     (`<span style="width:2rem"><Icon/></span>`, a flex/grid cell,
+//     `font-size`) controls the size.
+//   • `fill="currentColor"` → CSS `color` themes it (dark mode for free).
 //
 // Two layers (mirrors createLink/Link, createImage/Image):
-//  1. createIcon(viewBox, paths) — factory: one icon component per glyph
-//  2. Icon                       — generic shell for one-off inline SVG
+//   1. createIcon(source) — factory: one component per loaded glyph
+//   2. Icon               — generic shell for a one-off loaded svg
 //
 // There is intentionally no `useIcon` — an icon has no composable behaviour
-// (no async, no state, no router). Adding a hook layer would be surface for
-// its own sake.
+// (no async, no state, no router). A hook layer would be surface for its
+// own sake.
+
+const FILL_STYLE = 'display:block;width:100%;height:100%'
+
+/** An imported SVG component (`import X from './x.svg?component'`). */
+export type SvgComponent = (props: SvgAttributes) => VNodeChild
 
 /**
- * Props for {@link Icon}. Exactly the standard `<svg>` attribute surface —
- * `viewBox`, `fill`, `class`, `style`, `aria-*`, `onClick`, `children`, … —
- * every one passed straight through and overriding the component's defaults.
+ * Props for {@link Icon}. The standard `<svg>` attribute surface
+ * (`fill`, `class`, `style`, `aria-*`, `onClick`, …) — every one passed
+ * straight through and overriding the container-fill defaults — plus the
+ * two source props.
  */
-export type IconProps = SvgAttributes
-
-/**
- * Generic inline-SVG shell. Container-filling, props-transparent, no wrapper.
- *
- * @example
- * <span style="width:2rem">
- *   <Icon><path d="M20 6 9 17l-5-5" /></Icon>
- * </span>
- */
-export function Icon(props: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      style="display:block;width:100%;height:100%"
-      {...props}
-    >
-      {props.children}
-    </svg>
-  )
+export interface IconProps extends SvgAttributes {
+  /**
+   * An imported SVG component, e.g. `import X from './icon.svg?component'`.
+   * Rendered directly with no host wrapper. Recommended over `svg`.
+   */
+  as?: SvgComponent
+  /**
+   * A full `<svg>…</svg>` markup string, e.g.
+   * `import x from './icon.svg?raw'`. Inlined inside a single `<span>` host.
+   */
+  svg?: string
 }
 
 /**
- * Build a reusable icon component from a viewBox + its shapes. Each icon is
- * still just a plain container-filling <svg> with props passed through.
+ * Render a loaded SVG — container-filling, theme-aware, props-transparent.
  *
  * @example
- * export const Check = createIcon('0 0 24 24', <path d="M20 6 9 17l-5-5" />)
- * // …then, sized entirely by the consumer's wrapper:
+ * import Check from './check.svg?component'
+ * <span style="width:2rem"><Icon as={Check} /></span>
+ *
+ * @example
+ * import check from './check.svg?raw'
+ * <span style="width:2rem"><Icon svg={check} /></span>
+ */
+export function Icon(props: IconProps): VNodeChild {
+  const [own, rest] = splitProps(props, ['as', 'svg'])
+
+  // Component form — render the imported SVG directly, no host wrapper.
+  // Defaults first so consumer `rest` (spread) overrides them; JSX spread
+  // is reactivity-safe (compiler wraps it with `_wrapSpread`).
+  if (own.as) {
+    const As = own.as
+    return <As fill="currentColor" style={FILL_STYLE} {...rest} />
+  }
+
+  // Raw-markup form — the string already contains its own <svg>, so we
+  // inline it via a single <span> host. `dangerouslySetInnerHTML` last so
+  // it can't be clobbered by a stray spread key.
+  if (own.svg) {
+    // svg-only props (`fill`, `viewBox`, …) are inapplicable to the host
+    // span AND can't reach the opaque inlined markup — only host-level
+    // attrs (`class`, `style`, `aria-*`, events) are meaningfully
+    // forwardable here. Narrow the spread to the host's real surface.
+    const hostRest = rest as unknown as PyreonHTMLAttributes<HTMLElement>
+    return (
+      <span
+        style={FILL_STYLE}
+        {...hostRest}
+        dangerouslySetInnerHTML={{ __html: own.svg }}
+      />
+    )
+  }
+
+  return null
+}
+
+/**
+ * Build a reusable icon component from a loaded svg — a markup string OR an
+ * imported SVG component. The result is still just `<Icon>`, so it's
+ * container-sizable + theme-aware with every prop passed through.
+ *
+ * @example
+ * import check from './check.svg?raw'
+ * export const Check = createIcon(check)
+ *
+ * import StarSvg from './star.svg?component'
+ * export const Star = createIcon(StarSvg)
+ *
+ * // …sized + themed entirely by the consumer:
  * <span style="width:48px"><Check class="text-green-600" /></span>
  */
-export function createIcon(viewBox: string, paths: VNodeChild) {
-  return (props: SvgAttributes) => (
-    <Icon viewBox={viewBox} {...props}>
-      {paths}
-    </Icon>
-  )
+export function createIcon(
+  source: string | SvgComponent,
+): (props: SvgAttributes) => VNodeChild {
+  return (props: SvgAttributes) =>
+    typeof source === 'string' ? (
+      <Icon svg={source} {...props} />
+    ) : (
+      <Icon as={source} {...props} />
+    )
 }

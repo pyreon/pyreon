@@ -2,37 +2,41 @@
 '@pyreon/zero': minor
 ---
 
-`<Icon>` + `createIcon` — minimal inline-SVG leaf for the Image/Link/Script family.
+`<Icon>` + `createIcon` — renders a FULL loaded SVG (Image/Link/Script family).
 
-The rendered root **is** the `<svg>` — no wrapper element, no host span, no fixed
-size. The consumer wraps and sizes it (`<span style="width:2rem"><Icon/></span>`,
-a flex/grid cell, `font-size`). Defaults (`viewBox="0 0 24 24"`,
-`fill="currentColor"`, `display:block;width:100%;height:100%`) are all
-overridable — every prop spreads straight onto the `<svg>` and wins over the
-default. `fill="currentColor"` means CSS `color` themes it (dark mode for free).
+`<Icon>` does **not** synthesize its own `<svg>` around hand-authored `<path>`
+children. You load a complete svg (it already contains the `<svg>` root) and
+Icon makes it container-sizable + theme-aware. Two source props:
+
+- `as` — an imported SVG **component** (`import X from './x.svg?component'`).
+  Rendered **directly, no host wrapper**; svg attributes forward. Recommended.
+- `svg` — the raw `<svg>…</svg>` **markup string**
+  (`import x from './x.svg?raw'`). Inlined via a single `<span>` host (a markup
+  string can't mount without a parent — this one host is unavoidable).
 
 ```tsx
 import { Icon, createIcon } from '@pyreon/zero'
+import Check from './check.svg?component'
+import checkRaw from './check.svg?raw'
 
-// One-off inline SVG, sized by the consumer's wrapper:
-<span style="width:2rem">
-  <Icon><path d="M20 6 9 17l-5-5" /></Icon>
-</span>
+<span style="width:2rem"><Icon as={Check} /></span>      // no wrapper
+<span style="width:2rem"><Icon svg={checkRaw} /></span>  // one <span> host
 
-// Reusable glyph component:
-export const Check = createIcon('0 0 24 24', <path d="M20 6 9 17l-5-5" />)
-<span style="width:48px"><Check class="text-green-600" /></span>
+export const Star = createIcon(Check)      // component → rendered directly
+export const Tick = createIcon(checkRaw)   // raw string → inlined
 ```
 
-Two layers (mirrors `createLink`/`Link`, `createImage`/`Image`): `createIcon`
-(one component per glyph) and `Icon` (one-off inline SVG). Intentionally **no
-`useIcon` hook** — an icon has no composable behaviour (no async, no state, no
-router); a hook layer would be surface for its own sake. New exports: `Icon`,
-`createIcon`, `IconProps` (= `SvgAttributes`). Backward-compatible; no existing
-API changed.
+Container-fill defaults (`fill="currentColor"`,
+`display:block;width:100%;height:100%`) spread-overridable; no fixed size (the
+consumer's wrapper sizes it); `fill="currentColor"` themes via CSS `color`.
+Two layers (mirrors `createLink`/`Link`, `createImage`/`Image`):
+`createIcon(source)` per-glyph factory + `Icon` one-off. Intentionally **no
+`useIcon` hook** — an icon has no composable behaviour. New exports: `Icon`,
+`createIcon`, `IconProps` (extends `SvgAttributes`), `SvgComponent`.
+Backward-compatible; no existing API changed.
 
-Verification: 8 real-`h()` happy-dom mount tests in
-`packages/zero/zero/src/tests/icon.test.ts` (defaults, prop pass-through /
-override, children, `createIcon` glyph + consumer-prop forwarding); manifest
-entries (`Icon`, `createIcon`) + regenerated MCP api-reference; snapshot test
-count bumped 25 → 27.
+Verification: real-`h()` happy-dom mount tests in
+`packages/zero/zero/src/tests/icon.test.ts` (component form renders direct / no
+host, raw form inlines via `<span>`, defaults + prop override, `createIcon`
+both source kinds, no-source → null); manifest entries (`Icon`, `createIcon`) +
+regenerated MCP api-reference; snapshot count 25 → 27.
