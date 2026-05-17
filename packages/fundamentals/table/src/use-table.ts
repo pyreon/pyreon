@@ -79,6 +79,9 @@ export function useTable<TData extends RowData>(
         ...userOpts.state,
       },
       onStateChange: (updater: Updater<TableState>) => {
+        // Imperative event callback (not a tracked scope) — reading the
+        // current state to apply the TanStack updater must not subscribe.
+        // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
         const newState = typeof updater === 'function' ? updater(tableState.peek()) : updater
 
         stateChanged = true

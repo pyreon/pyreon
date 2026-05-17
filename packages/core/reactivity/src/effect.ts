@@ -102,6 +102,11 @@ interface PyreonErrorBridge {
 const _errorBridge = globalThis as PyreonErrorBridge
 
 function _defaultErrorHandler(err: unknown): void {
+  // Last-resort unhandled-effect-error reporter — MUST fire in
+  // production (silently swallowing uncaught effect errors is a
+  // serious bug; React/Vue/Solid all log uncaught errors in prod).
+  // Deliberately not __DEV__-gated.
+  // pyreon-lint-disable-next-line pyreon/dev-guard-warnings
   console.error('[pyreon] Unhandled effect error:', err)
 }
 

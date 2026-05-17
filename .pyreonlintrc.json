@@ -5,7 +5,15 @@
     "pyreon/no-window-in-ssr": [
       "error",
       {
-        "exemptPaths": ["packages/core/runtime-dom/", "__tests__/", ".test."]
+        "exemptPaths": [
+          "packages/core/runtime-dom/",
+          "packages/core/compiler/",
+          "-compat/",
+          "packages/internals/perf-harness/",
+          "packages/internals/test-utils/",
+          "__tests__/",
+          ".test."
+        ]
       }
     ],
     "pyreon/no-unbatched-updates": [
@@ -73,8 +81,20 @@
           "packages/tools/mcp/",
           "packages/tools/storybook/",
           "packages/tools/typescript/",
+          "-compat/",
           "scripts/",
           "examples/"
+        ]
+      }
+    ],
+    "pyreon/no-bare-signal-in-jsx": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/ui/primitives/",
+          "packages/ui-system/elements/",
+          "__tests__/",
+          ".test."
         ]
       }
     ]

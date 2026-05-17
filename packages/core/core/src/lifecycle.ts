@@ -59,12 +59,14 @@ function captureCallSite(): string {
 function warnOutsideSetup(hookName: string): void {
   if (__DEV__ && !_current) {
     const callSite = captureCallSite()
-    const location = callSite ? `\n  Called from: ${callSite}` : ''
+    // Local name must NOT shadow the `location` browser global (poor
+    // hygiene + trips SSR static analysis into a false positive).
+    const callSiteSuffix = callSite ? `\n  Called from: ${callSite}` : ''
     // oxlint-disable-next-line no-console
     console.warn(
       `[Pyreon] ${hookName}() called outside component setup. ` +
         "Lifecycle hooks must be called synchronously during a component's setup function." +
-        location +
+        callSiteSuffix +
         (hookName === 'onUnmount'
           ? '\n  Hint: `provide()` internally calls onUnmount(). If you use provide(), ensure it runs during synchronous component setup — not inside effects, callbacks, or after awaits.'
           : ''),

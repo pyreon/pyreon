@@ -333,14 +333,62 @@ describe('detectReactPatterns', () => {
     expect(d!.fixable).toBe(true)
   })
 
-  test('detects .value assignment on signal-like variable', () => {
-    const code = 'count.value = 5'
+  test('detects .value assignment on a declared signal', () => {
+    const code = 'const count = signal(0)\ncount.value = 5'
     const diags = detectReactPatterns(code)
     const d = diags.find((d) => d.code === 'dot-value-signal')
     expect(d).toBeDefined()
     expect(d!.message).toContain('Vue ref')
     expect(d!.suggested).toContain('count.set(5)')
     expect(d!.fixable).toBe(false)
+  })
+
+  // ─── dot-value-signal precision (FP-free): only flag tracked signals ──────
+
+  test('flags .value write on signal(), computed(), useSignal(), createSignal()', () => {
+    for (const factory of ['signal', 'computed', 'useSignal', 'createSignal']) {
+      const code = `const s = ${factory}(0)\ns.value = 1`
+      const diags = detectReactPatterns(code)
+      const d = diags.find((d) => d.code === 'dot-value-signal')
+      expect(d, `expected dot-value-signal for ${factory}`).toBeDefined()
+      expect(d!.suggested).toContain('s.set(1)')
+    }
+  })
+
+  test('does NOT flag input.value = "" (DOM element, not a signal)', () => {
+    const code = `const input = document.querySelector("input")\ninput.value = ""`
+    const diags = detectReactPatterns(code)
+    expect(diags.find((d) => d.code === 'dot-value-signal')).toBeUndefined()
+  })
+
+  test('does NOT flag cell.value = x (data object, not a signal)', () => {
+    const code = `const cell = sheet.getCell(1, 1)\ncell.value = "hello"`
+    const diags = detectReactPatterns(code)
+    expect(diags.find((d) => d.code === 'dot-value-signal')).toBeUndefined()
+  })
+
+  test('does NOT flag o.value = y (loop option object, not a signal)', () => {
+    const code = `for (const o of options) { o.value = y }`
+    const diags = detectReactPatterns(code)
+    expect(diags.find((d) => d.code === 'dot-value-signal')).toBeUndefined()
+  })
+
+  test('does NOT flag ref.current.value = z (ref pattern, not a signal)', () => {
+    const code = `const ref = useRef(null)\nref.current.value = 42`
+    const diags = detectReactPatterns(code)
+    expect(diags.find((d) => d.code === 'dot-value-signal')).toBeUndefined()
+  })
+
+  test('does NOT flag bare X.value = n with no signal declaration', () => {
+    const code = 'count.value = 5'
+    const diags = detectReactPatterns(code)
+    expect(diags.find((d) => d.code === 'dot-value-signal')).toBeUndefined()
+  })
+
+  test('does NOT flag .value write on a let/var (mutable, unreliable)', () => {
+    const code = `let maybe = signal(0)\nmaybe = 5\nmaybe.value = 1`
+    const diags = detectReactPatterns(code)
+    expect(diags.find((d) => d.code === 'dot-value-signal')).toBeUndefined()
   })
 
   test('detects .map() in JSX expression', () => {

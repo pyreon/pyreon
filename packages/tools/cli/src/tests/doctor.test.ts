@@ -76,10 +76,25 @@ describe('doctor() end-to-end', () => {
 
   it('flags React patterns when detected', async () => {
     const cwd = makeTmpDir()
+    // Must live under packages/<cat>/<pkg>/src/ — the doctor's
+    // OBJECTIVE scope (first-party published source only). A fixture
+    // at the repo-root `src/` is intentionally NOT audited.
     writeFile(
       cwd,
-      'src/App.tsx',
+      'packages/core/app/src/App.tsx',
       `import { useState } from "react"\nexport function X() { const [c, setC] = useState(0); return <div className="x">{c}</div> }\n`,
+    )
+    // A SECOND React-ism fixture under examples/ + a *-compat package
+    // must be IGNORED (objectivity guarantee — bisect-load-bearing).
+    writeFile(
+      cwd,
+      'examples/demo/src/Demo.tsx',
+      `import { useState } from "react"\nexport function D() { const [c] = useState(0); return <div className="d">{c}</div> }\n`,
+    )
+    writeFile(
+      cwd,
+      'packages/tools/react-compat/src/index.ts',
+      `export function useState<T>(v: T) { return [v, () => {}] as const }\n`,
     )
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     await doctor({ ...defaults(cwd), json: true, only: ['react-patterns'] })
@@ -91,6 +106,16 @@ describe('doctor() end-to-end', () => {
     expect(parsed.findings.length).toBeGreaterThan(0)
     const codes = parsed.findings.map((f: { code: string }) => f.code)
     expect(codes.some((c: string) => c.startsWith('react-patterns/'))).toBe(true)
+    // Objectivity: every finding is from the in-scope package fixture —
+    // NONE from examples/ or the *-compat package (bisect-load-bearing).
+    const paths = parsed.findings.map(
+      (f: { location?: { relPath?: string } }) => f.location?.relPath ?? '',
+    )
+    expect(paths.every((p: string) => p.includes('packages/core/app/'))).toBe(
+      true,
+    )
+    expect(paths.some((p: string) => p.includes('examples/'))).toBe(false)
+    expect(paths.some((p: string) => p.includes('react-compat'))).toBe(false)
   })
 
   it('legacy --audit-tests maps to --only audit-tests', async () => {

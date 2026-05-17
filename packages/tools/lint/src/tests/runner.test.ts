@@ -2208,6 +2208,280 @@ describe('no-window-in-ssr: precision (oxc no-parent fixes)', () => {
   })
 })
 
+// ── Precision fix: field-captured typeof (shape a) ──────────────────────────
+// `this.isSSR = typeof document === 'undefined'` / class-field
+// `isSSR = typeof document === 'undefined'` / `obj.ready = typeof window
+// !== 'undefined'` are SSR-guard bindings — extends the existing
+// const-captured-typeof idiom to member-assignment / class-field captures.
+// Real-world FP source: @pyreon/styler StyleSheet.isSSR pattern.
+describe('no-window-in-ssr: field-captured typeof guard (shape a)', () => {
+  it('DOES NOT FIRE: class field `isSSR = typeof document === "undefined"` + `if (this.isSSR) return`', () => {
+    const source = `
+      class Sheet {
+        isSSR = typeof document === 'undefined'
+        insert() {
+          if (this.isSSR) return
+          const el = document.createElement('style')
+          document.head.appendChild(el)
+        }
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('DOES NOT FIRE: ctor `this.isSSR = typeof document === "undefined"` + `if (!this.isSSR) {…}`', () => {
+    const source = `
+      class Sheet {
+        isSSR
+        constructor() { this.isSSR = typeof document === 'undefined' }
+        sync() {
+          if (!this.isSSR) {
+            const el = document.querySelector('style')
+            if (el) el.remove()
+          }
+        }
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('DOES NOT FIRE: positive `obj.ready = typeof window !== "undefined"` + `if (obj.ready) {…}`', () => {
+    const source = `
+      const obj = {}
+      obj.ready = typeof window !== 'undefined'
+      function f() {
+        if (obj.ready) {
+          window.addEventListener('resize', () => {})
+        }
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('DOES NOT FIRE: positive field + `if (!this.ready) return` early-return form', () => {
+    const source = `
+      class W {
+        ready = typeof window !== 'undefined'
+        m() {
+          if (!this.ready) return
+          const x = window.innerWidth
+        }
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  // Polarity must be respected — wrong-polarity guard is NOT a guard.
+  it('FIRES: negative field but body under `if (this.isSSR) {…}` (the SSR branch — NOT browser-safe)', () => {
+    const source = `
+      class Sheet {
+        isSSR = typeof document === 'undefined'
+        m() {
+          if (this.isSSR) {
+            const el = document.createElement('style')
+          }
+        }
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('FIRES: field captured from a non-typeof value (plain boolean) — not a guard', () => {
+    const source = `
+      class Sheet {
+        isSSR = false
+        m() {
+          if (!this.isSSR) {
+            const el = document.createElement('style')
+          }
+        }
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('FIRES: field-captured typeof but completely unguarded use elsewhere', () => {
+    const source = `
+      class Sheet {
+        isSSR = typeof document === 'undefined'
+        m() {
+          const el = document.createElement('style')
+        }
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+// ── Precision fix: head guard covers nested closures (shape b) ───────────────
+// A function-head early-return typeof guard protects the ENTIRE function
+// body INCLUDING nested function/closure expressions defined within it —
+// even when the guard's consequent block has statements before the
+// terminating return (the SSR-fallback "build a noop result then return"
+// idiom). Real-world FP source: @pyreon/dnd useSortable.
+describe('no-window-in-ssr: head guard covers nested closures (shape b)', () => {
+  it('DOES NOT FIRE: nested closure use under simple `if (typeof document === "undefined") return`', () => {
+    const source = `
+      function useThing() {
+        if (typeof document === 'undefined') return
+        function ref(el) {
+          const handler = () => {
+            const focused = document.activeElement
+          }
+          el.addEventListener('keydown', handler)
+        }
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('DOES NOT FIRE: dnd useSortable shape — multi-stmt guard block + deeply nested closure', () => {
+    const source = `
+      function useSortable(options) {
+        if (typeof document === 'undefined') {
+          const noop = (_el) => {}
+          return {
+            containerRef: noop,
+            itemRef: () => noop,
+            activeId: () => null,
+          }
+        }
+        function containerRef(el) {
+          const keyHandler = (e) => {
+            const focused = document.activeElement
+            if (!focused) return
+          }
+          el.addEventListener('keydown', keyHandler)
+        }
+        return { containerRef }
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('DOES NOT FIRE: multi-stmt guard block ending in `throw`', () => {
+    const source = `
+      function startClient() {
+        if (typeof window === 'undefined') {
+          const msg = 'startClient must run in a browser'
+          throw new Error(msg)
+        }
+        const root = window.document.getElementById('app')
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('FIRES: nested closure use with NO head guard (genuinely unguarded)', () => {
+    const source = `
+      function useThing() {
+        function ref(el) {
+          const handler = () => {
+            const focused = document.activeElement
+          }
+        }
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('FIRES: guard consequent block does NOT terminate (falls through to body in SSR)', () => {
+    // `if (typeof document === 'undefined') { log('ssr') }` — no return/throw,
+    // so the function continues into the browser-only code even on the
+    // server. Genuinely unguarded; must still fire.
+    const source = `
+      function useThing() {
+        if (typeof document === 'undefined') {
+          const noop = () => {}
+        }
+        const focused = document.activeElement
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+// ── Precision fix: early-return OR-disjunct + positive typeof===literal ──────
+// Closely related to shape (b)'s early-return-guard family. Real-world FP
+// sources: @pyreon/core defer.ts `if (!el || typeof IntersectionObserver
+// === 'undefined') return`, and @pyreon/flow `if (typeof
+// cancelAnimationFrame === 'function') cancelAnimationFrame(id)`.
+describe('no-window-in-ssr: early-return OR-disjunct + positive typeof===literal', () => {
+  it('DOES NOT FIRE: `if (!el || typeof IntersectionObserver === "undefined") return` then use', () => {
+    const source = `
+      function setupVisible(el, startLoad) {
+        if (!el || typeof IntersectionObserver === 'undefined') {
+          startLoad()
+          return () => {}
+        }
+        const obs = new IntersectionObserver(() => {})
+        obs.observe(el)
+        return () => obs.disconnect()
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('DOES NOT FIRE: positive `if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(id)`', () => {
+    const source = `
+      function caf(id) {
+        if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(id)
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('DOES NOT FIRE: positive `typeof X === "function"` ternary test', () => {
+    const source = `
+      function raf(cb) {
+        return typeof requestAnimationFrame === 'function' ? requestAnimationFrame(cb) : 0
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('FIRES: OR early-return where NO disjunct is a negated-typeof of the used global', () => {
+    // `if (!el || cond) return` — neither disjunct asserts `document` exists,
+    // so the later `document.activeElement` is genuinely unguarded.
+    const source = `
+      function f(el, cond) {
+        if (!el || cond) return
+        const x = document.activeElement
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('FIRES: `typeof X === "undefined"` as a POSITIVE-form test is NOT positive', () => {
+    // `if (typeof document === 'undefined') { document.X }` — body is the
+    // SSR-fallback branch. The new `=== 'function'|'object'` recognition
+    // must NOT leak into accepting `=== 'undefined'`.
+    const source = `
+      if (typeof document === 'undefined') {
+        const el = document.createElement('div')
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBeGreaterThanOrEqual(1)
+  })
+})
+
 // Additional precision: `IS_BROWSER && active()` as ternary/if test — the
 // LogicalAnd short-circuits so the body only runs when the typeof-derived
 // const is truthy. Common pattern in Portal/Overlay conditional rendering.
@@ -2344,6 +2618,15 @@ describe('no-window-in-ssr: parameter shadowing + typeof-derived AND chains', ()
   it('silent for destructured parameter named `location`', () => {
     const source = `
       function route({ location, path }) { return location + path }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent for `typeofConst ? global() : fallback` ternary (PyreonUI shape)', () => {
+    const source = `
+      const _isBrowser = typeof window !== 'undefined' && typeof matchMedia === 'function'
+      const prefersDark = _isBrowser ? matchMedia('(prefers-color-scheme: dark)').matches : false
     `
     const result = lintSource(source)
     expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)

@@ -71,6 +71,7 @@ export function useChart<TOption extends EChartsOption = EChartsOption>(
     ensureModules(opts as Record<string, unknown>, renderer)
       .then((core) => {
         // Guard: component may have unmounted during async load
+        // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
         if (!container.peek()) return
 
         try {

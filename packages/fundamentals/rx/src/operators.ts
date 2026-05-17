@@ -14,6 +14,9 @@ export function distinct<T>(
 
   effect(() => {
     const val = source()
+    // Loop-prevention: read own output untracked so writing it back
+    // doesn't re-trigger this effect. `source()` is the only dep.
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     if (!equals(val, result.peek())) {
       result.set(val)
     }
@@ -44,6 +47,9 @@ export function scan<T, U>(
 
   effect(() => {
     const val = source()
+    // Loop-prevention: read the running accumulator untracked; the
+    // tracked dependency is `source()`, not `result`.
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     result.set(reducer(result.peek(), val))
   })
 

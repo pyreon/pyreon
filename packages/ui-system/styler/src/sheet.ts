@@ -47,6 +47,10 @@ export class StyleSheet {
   }
 
   private mount() {
+    // SSR guard: the constructor only calls mount() when !this.isSSR, but
+    // keep the guard in-method so it's self-evidently SSR-safe regardless
+    // of caller (matches `this.isSSR = typeof document === 'undefined'`).
+    if (this.isSSR) return
     // Reuse existing <style> tag from SSR hydration
     const existing = document.querySelector(`style[${ATTR}]`) as HTMLStyleElement | null
 
