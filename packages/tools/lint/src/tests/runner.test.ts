@@ -53,8 +53,8 @@ function lintWith(ruleId: string, source: string, filePath?: string) {
 // ── Rule Metadata ───────────────────────────────────────────────────────────
 
 describe('Rule metadata', () => {
-  it('should have 66 rules', () => {
-    expect(allRules.length).toBe(66)
+  it('should have 67 rules', () => {
+    expect(allRules.length).toBe(67)
   })
 
   it('should have unique rule IDs', () => {
