@@ -68,6 +68,8 @@ describe('gen-docs — zero snapshot', () => {
     expect(keys).toContain('zero/useLink')
     expect(keys).toContain('zero/createLink')
     expect(keys).toContain('zero/prefetchRoute')
+    expect(keys).toContain('zero/Icon')
+    expect(keys).toContain('zero/createIcon')
     expect(keys).toContain('zero/Image')
     expect(keys).toContain('zero/useImage')
     expect(keys).toContain('zero/createImage')
@@ -79,7 +81,7 @@ describe('gen-docs — zero snapshot', () => {
     // up as a snapshot failure. Bump intentionally when adding a new
     // API entry. The `gen-docs --check` CI gate catches the same drift
     // from the OTHER direction (rendered file out of sync with source).
-    expect(keys.length).toBe(25)
+    expect(keys.length).toBe(27)
 
     // Flagship APIs MUST carry MCP-density mistakes lists — drop one
     // and the snapshot fails loudly. The 6+ mistakes convention is

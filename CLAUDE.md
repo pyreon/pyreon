@@ -207,6 +207,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - OG image generation: `ogImagePlugin({ templates, locales })` — build-time OG image rendering
 - Reactive favicon switching: dual light/dark PNG/ICO with theme-synced `media` attribute swap
 - Meta completion: og:image:width/height, og:video, og:audio, noIndex, ogTemplate, favicon prop on Meta component
+- `<Icon>` + `createIcon` — minimal inline-SVG leaf (4th member of the Image/Link/Script family). Rendered root IS the `<svg>`: no wrapper, no fixed size, container-filling defaults (`viewBox="0 0 24 24"`, `fill="currentColor"`, `display:block;width:100%;height:100%`), every prop spreads through and overrides. Two layers (`createIcon` per-glyph factory + `Icon` one-off shell); intentionally NO `useIcon` hook (an icon has no composable behaviour). `IconProps = SvgAttributes`. Reference: `packages/zero/zero/src/icon.tsx`; tests `src/tests/icon.test.ts` (8 real-`h()` happy-dom mount specs).
 
 ## Fundamentals — Key Technical Details
 

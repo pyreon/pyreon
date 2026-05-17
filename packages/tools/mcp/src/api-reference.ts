@@ -3648,6 +3648,41 @@ const ButtonLink = createLink((props) => (
     notes: `Imperatively prefetch a route's JS chunk by injecting \`<link rel="prefetch">\` + \`<link rel="modulepreload">\` into \`document.head\`. Deduplicates — calling twice with the same \`href\` is a no-op. Backed by an LRU cache (MAX 200 entries) that evicts oldest entries AND removes their DOM nodes to prevent head-bloat across long SPA sessions. See also: Link, useLink.`,
   },
 
+  'zero/Icon': {
+    signature: '<Icon viewBox="0 0 24 24" fill="currentColor" {...svgProps}>{paths}</Icon>',
+    example: `import { Icon, createIcon } from '@pyreon/zero'
+
+// One-off inline SVG, sized by the consumer's wrapper:
+<span style="width:2rem">
+  <Icon><path d="M20 6 9 17l-5-5" /></Icon>
+</span>
+
+// Reusable glyph component:
+export const Check = createIcon('0 0 24 24', <path d="M20 6 9 17l-5-5" />)
+<span style="width:48px"><Check class="text-green-600" /></span>`,
+    notes: 'Minimal inline-SVG leaf. The rendered root IS the `<svg>` — no wrapper element, no host span, no fixed size — so the consumer wraps and sizes it (`<span style="width:2rem"><Icon/></span>`, a flex/grid cell, `font-size`). Defaults (`viewBox="0 0 24 24"`, `fill="currentColor"`, `display:block;width:100%;height:100%`) are all overridable: every prop spreads straight onto the `<svg>` and wins over the default. `fill="currentColor"` means CSS `color` themes it (dark mode for free). Intentionally has no `useIcon` hook — an icon has no composable behaviour (no async, no state, no router); the two layers are `createIcon` (one component per glyph) and `Icon` (one-off inline SVG). See also: createIcon, IconProps, Image.',
+    mistakes: `- Expecting \`<Icon>\` to size itself — it has NO intrinsic width/height; it fills its container. An \`<Icon>\` with no sized ancestor collapses. Wrap it (\`<span style="width:1.5rem">\`) or give it a sized flex/grid cell
+- Setting \`width\`/\`height\` props to size it — they pass through to the \`<svg>\` but the default \`width:100%;height:100%\` style still wins. Size via the WRAPPER (or override \`style\`), not attributes
+- Hardcoding \`fill="#000"\` — that breaks theming. Leave the \`currentColor\` default and drive the colour with CSS \`color\` so dark mode + hover states work for free
+- Reaching for a \`useIcon\` hook — there isn't one, by design. Compose with \`createIcon\` (per-glyph component) or just inline \`<Icon>\`; an icon has no behaviour worth a hook layer
+- Passing a fixed \`viewBox\` to \`createIcon\` that doesn't match the path coordinates — the glyph clips or floats. The \`viewBox\` must be the coordinate system the \`d\`/\`points\` were authored in`,
+  },
+
+  'zero/createIcon': {
+    signature: 'function createIcon(viewBox: string, paths: VNodeChild): (props: SvgAttributes) => VNode',
+    example: `import { createIcon } from '@pyreon/zero'
+
+export const Check = createIcon('0 0 24 24', <path d="M20 6 9 17l-5-5" />)
+export const Logo = createIcon('0 0 32 32', <circle cx={16} cy={16} r={8} />)
+
+// Sized + themed entirely by the consumer:
+<span style="width:48px"><Check class="text-green-600" aria-label="done" /></span>`,
+    notes: 'Builds a reusable icon component from a `viewBox` + its shapes. The returned component is still just a plain container-filling `<svg>` (via `Icon`) with every consumer prop passed through and overriding the defaults — so a generated icon set is `createIcon`-per-glyph with zero per-icon boilerplate. Mirrors the `createLink`/`createImage` factory layer, minus a hook (icons have no composable behaviour). See also: Icon, IconProps.',
+    mistakes: `- Calling \`createIcon\` inside a component body — define icon components at module scope (like \`createLink\`/\`createImage\`). Re-creating the component every render defeats identity-based reconciliation
+- Passing a resolved string for \`paths\` — \`paths\` is \`VNodeChild\` (JSX): \`<path .../>\`, a fragment of shapes, etc. A raw markup string won't render; use \`dangerouslySetInnerHTML\` on a plain \`<Icon>\` if you truly have an SVG string
+- Expecting the factory \`viewBox\` to be locked — a consumer can still override it (\`<Check viewBox="0 0 16 16"/>\`) because props spread last. That's intended (escape hatch), but means the \`viewBox\` arg is a default, not a guarantee`,
+  },
+
   'zero/Image': {
     signature: '<Image src={url} alt={alt} width={w} height={h} priority={false} loading="lazy" placeholder={blurUrl} />',
     example: `import { Image } from '@pyreon/zero/image'
