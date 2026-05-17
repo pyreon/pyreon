@@ -1302,7 +1302,15 @@ bunx playwright test --project=playground                     # same
 bunx playwright test --project=playground --grep="signal"     # filter
 ```
 
-CI runs the playground + ssr-showcase + fundamentals projects on every PR as a required check (`E2E` job), plus `bun run test:e2e:ui-regression`, `bun run test:e2e:compat`, `bun run test:e2e:app-showcase`, `bun run test:e2e:ssg-subpath`, `bun run test:e2e:ssg-i18n`, and `bun run test:e2e:ssg-i18n-prefix` as separate steps (own configs, own webServer boots). **101 tests total** (43 playground + 12 ssr-showcase + 10 ui-showcase regression + 12 compat layer + 4 app-showcase flow + 4 app-showcase dnd + 1 app-showcase charts + 4 ssg-subpath + 6 ssg-i18n + 4 ssg-i18n-prefix + 1 fundamentals multi-route SWEEP) plus 5 fixme'd compiler-bug tests, ~6 minutes wall-clock. Playwright report uploaded as artifact on failure.
+CI runs the e2e suites as a **parallel, flake-resilient matrix** (the `E2E` required check). **101 tests total** (43 playground + 12 ssr-showcase + 10 ui-showcase regression + 12 compat layer + 4 app-showcase flow + 4 app-showcase dnd + 1 app-showcase charts + 4 ssg-subpath + 6 ssg-i18n + 4 ssg-i18n-prefix + 1 fundamentals multi-route SWEEP) plus 5 fixme'd compiler-bug tests. Playwright report uploaded as artifact (per-suite name) on failure.
+
+**CI matrix shape (`.github/workflows/ci.yml`).** Before 2026-05 the E2E job ran 11 suites SEQUENTIALLY in one runner — wall-clock = the SUM (~6-10 min), and a flake in suite N skipped every suite after it (an unrelated `storage-hydration` flake once skipped the entire `zero-hmr` gate). Now three jobs:
+
+- **`e2e-decide`** runs `scripts/e2e-affected.ts` → a GitHub-Actions matrix `include` of only the suites the PR's changed paths can affect. `push: main` / `merge_group` always pass `--all` (the gate protecting `main` never trusts the narrowing — false-negatives are the only real danger; `forcesFullRun` escalates to ALL on any core-package / `scripts/**` / `playwright*.config.ts` / workflow / lockfile change).
+- **`e2e-suite`** is a `fail-fast: false` matrix — every suite is its own parallel job + own check. One suite's flake/failure can't skip or cancel another; wall-clock ≈ the slowest single suite. A docs-only PR yields an empty matrix (job skipped).
+- **`e2e`** (this exact, stable check name) aggregates the matrix so branch-protection's `E2E` requirement keeps resolving regardless of which / how-many suites ran — empty matrix = green skip; any selected suite failing = red.
+
+**Flake resilience.** Every `playwright*.config.ts` uses `retries: process.env.CI ? 2 : 0` — a flaky spec (overlayfs / timing / HMR-ws / resource-contention race) self-heals within its job across up to 3 attempts; a real bug fails all 3. Local stays `0` for honest, fast feedback. This + the per-suite job isolation makes the "one unrelated flake reds/skips the whole gate" failure mode structurally impossible. Run a single suite locally with `bun run test:e2e:<name>` (e.g. `test:e2e:zero-hmr`).
 
 **Project status** (see [`playwright.config.ts`](playwright.config.ts) header for full detail):
 
