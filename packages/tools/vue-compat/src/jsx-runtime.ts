@@ -33,6 +33,12 @@ export interface RenderContext {
   unmounted: boolean
   /** Callbacks to run on unmount (lifecycle + effect cleanups) */
   unmountCallbacks: (() => void)[]
+  /**
+   * The props object the wrapped component was invoked with. Read by
+   * `getCurrentInstance()` / `useSlots()` / `useAttrs()` to derive slots
+   * + attrs. Set by the wrapper before each render.
+   */
+  _props?: Record<string, unknown>
 }
 
 export interface EffectEntry {
@@ -106,6 +112,7 @@ function wrapCompatComponent(vueComponent: Function): ComponentFn {
       pendingLayoutEffects: [],
       unmounted: false,
       unmountCallbacks: [],
+      _props: props as Record<string, unknown>,
     }
 
     const version = signal(0)

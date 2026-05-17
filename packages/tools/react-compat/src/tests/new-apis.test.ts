@@ -25,6 +25,7 @@ import {
   useEffect,
   useInsertionEffect,
   useLayoutEffect,
+  useOptimistic,
   useReducer,
   useState,
   useSyncExternalStore,
@@ -580,6 +581,68 @@ describe('useActionState', () => {
     )
     expect(state3).toBe(42)
     expect(isPending3).toBe(false)
+  })
+})
+
+describe('useOptimistic', () => {
+  test('returns [passthrough, addFn] initially', () => {
+    const [state, add] = withHookCtx(() =>
+      useOptimistic<number, number>(10, (s, a) => s + a),
+    )
+    expect(state).toBe(10)
+    expect(typeof add).toBe('function')
+  })
+
+  test('addOptimistic layers an action through the reducer', () => {
+    const runner = createHookRunner()
+    // Real usage: the base keeps identity across renders until it truly changes.
+    const base = [1]
+    const add = (() => {
+      const [, fn] = runner.run(() =>
+        useOptimistic<number[], number>(base, (s, a) => [...s, a]),
+      )
+      return fn
+    })()
+    add(2)
+    add(3)
+    const [state2] = runner.run(() =>
+      useOptimistic<number[], number>(base, (s, a) => [...s, a]),
+    )
+    expect(state2).toEqual([1, 2, 3])
+  })
+
+  test('overlay clears when passthrough changes (real update landed)', () => {
+    const runner = createHookRunner()
+    const base1 = [1]
+    const [, add] = runner.run(() =>
+      useOptimistic<number[], number>(base1, (s, a) => [...s, a]),
+    )
+    add(99)
+    expect(
+      runner.run(() =>
+        useOptimistic<number[], number>(base1, (s, a) => [...s, a]),
+      )[0],
+    ).toEqual([1, 99])
+    // Parent re-renders with the real (server-confirmed) value — new reference:
+    const base2 = [1, 99]
+    const [state3] = runner.run(() =>
+      useOptimistic<number[], number>(base2, (s, a) => [...s, a]),
+    )
+    expect(state3).toEqual([1, 99]) // overlay discarded, not [1,99,99]
+  })
+
+  test('default reducer replaces state with the action value', () => {
+    const runner = createHookRunner()
+    const [, add] = runner.run(() => useOptimistic<string>('idle'))
+    add('saving…')
+    const [state2] = runner.run(() => useOptimistic<string>('idle'))
+    expect(state2).toBe('saving…')
+  })
+
+  test('outside a component render returns [passthrough, noop]', () => {
+    const [state, add] = useOptimistic<number, number>(7, (s, a) => s + a)
+    expect(state).toBe(7)
+    expect(() => add(1)).not.toThrow()
   })
 })
 

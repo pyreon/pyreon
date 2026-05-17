@@ -32,6 +32,7 @@ import {
   Portal,
   pushContext,
   h as pyreonH,
+  Suspense as PyreonSuspense,
   useContext,
 } from '@pyreon/core'
 import {
@@ -42,7 +43,12 @@ import {
   type Signal,
   signal,
 } from '@pyreon/reactivity'
-import { mount as pyreonMount } from '@pyreon/runtime-dom'
+import {
+  KeepAlive as PyreonKeepAlive,
+  mount as pyreonMount,
+  Transition as PyreonTransition,
+  TransitionGroup as PyreonTransitionGroup,
+} from '@pyreon/runtime-dom'
 import { getCurrentCtx, getHookIndex } from './jsx-runtime'
 
 // ─── Internal symbols ─────────────────────────────────────────────────────────
@@ -1216,10 +1222,386 @@ export function Teleport(props: {
 }
 
 /**
- * KeepAlive — not supported in Pyreon. Renders children as-is.
+ * KeepAlive — mounts its children once and keeps them alive (state preserved)
+ * even when hidden, instead of destroying/recreating them.
+ *
+ * Wraps `@pyreon/runtime-dom`'s real KeepAlive. Vue's `<KeepAlive>` keeps a
+ * cache of inactive component instances; this maps the common single-slot
+ * usage to Pyreon's `active`-accessor model.
+ *
+ * LIMITATIONS vs Vue 3:
+ *  - Vue's `include` / `exclude` / `max` props are NOT supported. Pyreon's
+ *    KeepAlive is a single always-mounted slot toggled by an `active`
+ *    accessor — there is no per-component LRU cache to filter or bound.
+ *    These props are accepted (so existing Vue code typechecks) but ignored.
+ *  - Vue toggles activation via the dynamic child (`<component :is>`); here
+ *    you pass an `active` accessor (`() => boolean`). When omitted, children
+ *    are always mounted and visible (a faithful default — nothing is
+ *    destroyed, matching KeepAlive's core guarantee).
+ *
+ * @example
+ * import { KeepAlive, ref } from "@pyreon/vue-compat"
+ *
+ * function App() {
+ *   const showA = ref(true)
+ *   return (
+ *     <KeepAlive active={() => showA.value}>
+ *       <ExpensiveTab />
+ *     </KeepAlive>
+ *   )
+ * }
  */
-export function KeepAlive(props: { children?: VNodeChild }): VNodeChild {
-  return props.children ?? null
+export function KeepAlive(props: {
+  active?: () => boolean
+  /** Accepted for Vue compatibility — ignored (no per-instance cache). */
+  include?: string | RegExp | (string | RegExp)[]
+  /** Accepted for Vue compatibility — ignored (no per-instance cache). */
+  exclude?: string | RegExp | (string | RegExp)[]
+  /** Accepted for Vue compatibility — ignored (no per-instance cache). */
+  max?: number
+  children?: VNodeChild
+}): VNodeChild {
+  return PyreonKeepAlive({
+    ...(props.active !== undefined ? { active: props.active } : {}),
+    children: props.children ?? null,
+  })
+}
+
+// ─── Transition / TransitionGroup ────────────────────────────────────────────
+
+/**
+ * Transition — adds CSS enter/leave animation classes to a single child,
+ * controlled by a reactive `show` accessor.
+ *
+ * Wraps `@pyreon/runtime-dom`'s Transition. Vue's class-name conventions
+ * (`enter-from-class`, `enter-active-class`, …) are mapped onto Pyreon's
+ * (`enterFrom`, `enterActive`, …), and Vue's `@before-enter` / `@after-enter`
+ * style hooks are mapped onto Pyreon's `onBeforeEnter` / `onAfterEnter`.
+ *
+ * LIMITATIONS vs Vue 3:
+ *  - Vue's `<Transition>` infers visibility from a `v-if` / `v-show` on its
+ *    child. Pyreon has no template directives, so you MUST pass an explicit
+ *    `show: () => boolean` accessor. Without it the child is shown
+ *    unconditionally (no enter/leave is ever triggered).
+ *  - `mode` ("out-in" / "in-out"), `css: false`, and JS-only hook-driven
+ *    transitions are NOT supported — Pyreon's Transition is CSS-class based.
+ *    The props are accepted for typechecking but ignored.
+ *  - The Vue `name` convention (`name="fade"` → `fade-enter-from` …) is
+ *    preserved 1:1 (Pyreon uses the identical class-name scheme).
+ *
+ * @example
+ * import { Transition, ref } from "@pyreon/vue-compat"
+ *
+ * function App() {
+ *   const visible = ref(false)
+ *   return (
+ *     <Transition name="fade" show={() => visible.value}>
+ *       <div class="modal">Hello</div>
+ *     </Transition>
+ *   )
+ * }
+ * // CSS:
+ * //   .fade-enter-from, .fade-leave-to     { opacity: 0; }
+ * //   .fade-enter-active, .fade-leave-active { transition: opacity 300ms; }
+ */
+export function Transition(props: {
+  name?: string
+  show?: () => boolean
+  appear?: boolean
+  /** Vue class-name prop — mapped to Pyreon's `enterFrom`. */
+  enterFromClass?: string
+  /** Vue class-name prop — mapped to Pyreon's `enterActive`. */
+  enterActiveClass?: string
+  /** Vue class-name prop — mapped to Pyreon's `enterTo`. */
+  enterToClass?: string
+  /** Vue class-name prop — mapped to Pyreon's `leaveFrom`. */
+  leaveFromClass?: string
+  /** Vue class-name prop — mapped to Pyreon's `leaveActive`. */
+  leaveActiveClass?: string
+  /** Vue class-name prop — mapped to Pyreon's `leaveTo`. */
+  leaveToClass?: string
+  /** Accepted for Vue compatibility — ignored (CSS-class transitions only). */
+  mode?: 'in-out' | 'out-in' | 'default'
+  /** Accepted for Vue compatibility — ignored (CSS-class transitions only). */
+  css?: boolean
+  onBeforeEnter?: (el: HTMLElement) => void
+  onAfterEnter?: (el: HTMLElement) => void
+  onBeforeLeave?: (el: HTMLElement) => void
+  onAfterLeave?: (el: HTMLElement) => void
+  children?: VNodeChild
+}): VNodeChild {
+  return PyreonTransition({
+    show: props.show ?? (() => true),
+    ...(props.name !== undefined ? { name: props.name } : {}),
+    ...(props.appear !== undefined ? { appear: props.appear } : {}),
+    ...(props.enterFromClass !== undefined ? { enterFrom: props.enterFromClass } : {}),
+    ...(props.enterActiveClass !== undefined ? { enterActive: props.enterActiveClass } : {}),
+    ...(props.enterToClass !== undefined ? { enterTo: props.enterToClass } : {}),
+    ...(props.leaveFromClass !== undefined ? { leaveFrom: props.leaveFromClass } : {}),
+    ...(props.leaveActiveClass !== undefined ? { leaveActive: props.leaveActiveClass } : {}),
+    ...(props.leaveToClass !== undefined ? { leaveTo: props.leaveToClass } : {}),
+    ...(props.onBeforeEnter !== undefined ? { onBeforeEnter: props.onBeforeEnter } : {}),
+    ...(props.onAfterEnter !== undefined ? { onAfterEnter: props.onAfterEnter } : {}),
+    ...(props.onBeforeLeave !== undefined ? { onBeforeLeave: props.onBeforeLeave } : {}),
+    ...(props.onAfterLeave !== undefined ? { onAfterLeave: props.onAfterLeave } : {}),
+    children: props.children ?? null,
+  })
+}
+
+/**
+ * TransitionGroup — animates a keyed reactive list with CSS enter/leave plus
+ * FLIP move animations.
+ *
+ * Wraps `@pyreon/runtime-dom`'s TransitionGroup. Vue's class-name props are
+ * mapped onto Pyreon's, same as {@link Transition}.
+ *
+ * LIMITATIONS vs Vue 3:
+ *  - Vue's `<TransitionGroup>` renders its children via slots and reads keys
+ *    from the child VNode `key`. Pyreon's API is explicit: pass `items`
+ *    (a reactive accessor), `keyFn` (stable key extractor), and `render`
+ *    (returns one DOM-element VNode per item). This is the faithful Pyreon
+ *    shape — the animation behavior (enter/leave/FLIP-move) is identical.
+ *  - `mode` and `css: false` are NOT supported (CSS-class transitions only).
+ *
+ * @example
+ * import { TransitionGroup, ref } from "@pyreon/vue-compat"
+ *
+ * function App() {
+ *   const items = ref([{ id: 1 }, { id: 2 }])
+ *   return (
+ *     <TransitionGroup
+ *       tag="ul"
+ *       name="list"
+ *       items={() => items.value}
+ *       keyFn={(it) => it.id}
+ *       render={(it) => <li class="item">{it.id}</li>}
+ *     />
+ *   )
+ * }
+ */
+export function TransitionGroup<T = unknown>(props: {
+  tag?: string
+  name?: string
+  appear?: boolean
+  enterFromClass?: string
+  enterActiveClass?: string
+  enterToClass?: string
+  leaveFromClass?: string
+  leaveActiveClass?: string
+  leaveToClass?: string
+  /** Vue class-name prop — mapped to Pyreon's `moveClass`. */
+  moveClass?: string
+  items: () => T[]
+  keyFn: (item: T, index: number) => string | number
+  render: (item: T, index: number) => ReturnType<typeof pyreonH>
+  onBeforeEnter?: (el: HTMLElement) => void
+  onAfterEnter?: (el: HTMLElement) => void
+  onBeforeLeave?: (el: HTMLElement) => void
+  onAfterLeave?: (el: HTMLElement) => void
+}): VNodeChild {
+  return PyreonTransitionGroup<T>({
+    items: props.items,
+    keyFn: props.keyFn,
+    render: props.render,
+    ...(props.tag !== undefined ? { tag: props.tag } : {}),
+    ...(props.name !== undefined ? { name: props.name } : {}),
+    ...(props.appear !== undefined ? { appear: props.appear } : {}),
+    ...(props.enterFromClass !== undefined ? { enterFrom: props.enterFromClass } : {}),
+    ...(props.enterActiveClass !== undefined ? { enterActive: props.enterActiveClass } : {}),
+    ...(props.enterToClass !== undefined ? { enterTo: props.enterToClass } : {}),
+    ...(props.leaveFromClass !== undefined ? { leaveFrom: props.leaveFromClass } : {}),
+    ...(props.leaveActiveClass !== undefined ? { leaveActive: props.leaveActiveClass } : {}),
+    ...(props.leaveToClass !== undefined ? { leaveTo: props.leaveToClass } : {}),
+    ...(props.moveClass !== undefined ? { moveClass: props.moveClass } : {}),
+    ...(props.onBeforeEnter !== undefined ? { onBeforeEnter: props.onBeforeEnter } : {}),
+    ...(props.onAfterEnter !== undefined ? { onAfterEnter: props.onAfterEnter } : {}),
+    ...(props.onBeforeLeave !== undefined ? { onBeforeLeave: props.onBeforeLeave } : {}),
+    ...(props.onAfterLeave !== undefined ? { onAfterLeave: props.onAfterLeave } : {}),
+  })
+}
+
+// ─── Suspense ────────────────────────────────────────────────────────────────
+
+/**
+ * Suspense — shows `fallback` content while an async (lazy) child is loading.
+ *
+ * Re-exports `@pyreon/core`'s Suspense. Vue 3's `<Suspense>` uses named
+ * `#default` / `#fallback` slots; this maps the `fallback` slot to Pyreon
+ * Suspense's `fallback` prop and the default slot to `children`.
+ *
+ * LIMITATIONS vs Vue 3:
+ *  - Vue resolves `<Suspense>` against any `async setup()` in the subtree and
+ *    supports `@resolve` / `@pending` / `@fallback` events plus the `timeout`
+ *    prop. Pyreon's Suspense resolves against components carrying a
+ *    `__loading` accessor (e.g. {@link defineAsyncComponent} output) and does
+ *    not emit those events. The events / `timeout` prop are accepted for
+ *    typechecking but ignored.
+ *
+ * @example
+ * import { Suspense, defineAsyncComponent } from "@pyreon/vue-compat"
+ *
+ * const AsyncPage = defineAsyncComponent(() => import("./Page"))
+ *
+ * function App() {
+ *   return (
+ *     <Suspense fallback={<div>Loading…</div>}>
+ *       <AsyncPage />
+ *     </Suspense>
+ *   )
+ * }
+ */
+export function Suspense(props: {
+  fallback?: VNodeChild
+  /** Accepted for Vue compatibility — ignored (no timeout phase). */
+  timeout?: number
+  children?: VNodeChild
+}): VNodeChild {
+  return PyreonSuspense({
+    fallback: props.fallback ?? null,
+    children: props.children ?? null,
+  })
+}
+
+// ─── getCurrentInstance / useSlots / useAttrs ────────────────────────────────
+
+/**
+ * Vue-compatible component-instance handle.
+ *
+ * Backed by the compat hook-context. Only the fields commonly read by
+ * composable libraries are populated. See {@link getCurrentInstance}.
+ */
+export interface ComponentInternalInstance {
+  /** Monotonic per-instance id. */
+  uid: number
+  /**
+   * Vue's `proxy` — the component public instance. In this shim it is an
+   * empty object (Pyreon components are plain functions; there is no
+   * `this`-bound options instance). Present so `inst.proxy` access doesn't
+   * throw; do not rely on reading reactive state off it.
+   */
+  proxy: Record<string, unknown>
+  /** Slots derived from the current component's children. */
+  slots: Record<string, (() => VNodeChild) | undefined>
+  /** Non-prop attributes (the props object, mirrors `useAttrs()`). */
+  attrs: Record<string, unknown>
+  /** `true` — present for libraries that branch on `isMounted`-like flags. */
+  isMounted: boolean
+  /** @internal — the underlying compat render context. */
+  _ctx: ReturnType<typeof getCurrentCtx>
+}
+
+let _instanceUid = 0
+
+/**
+ * Returns a handle to the current component instance, or `null` if called
+ * outside a component setup.
+ *
+ * Vue 3's `getCurrentInstance()` is an internal API many composable libraries
+ * (vee-validate, vue-i18n, pinia plugins, …) read for `uid`, `proxy`, `slots`,
+ * `attrs`. This shim returns a minimal stable object with those fields so such
+ * libraries don't crash.
+ *
+ * LIMITATIONS vs Vue 3:
+ *  - `proxy` is an empty object — Pyreon components are plain functions with
+ *    no `this`-bound Options instance. Code that reads reactive state off
+ *    `instance.proxy.$data` / `.$props` will not work; use `props` directly.
+ *  - `appContext`, `parent`, `vnode`, `emit`, `expose`, render internals are
+ *    NOT provided. Libraries that walk the parent chain or call `emit` off
+ *    the instance are not supported via this handle (use the `emit` passed to
+ *    `defineComponent`'s setup context instead).
+ *  - The same `uid` is stable across re-renders of the same instance
+ *    (hook-indexed), matching Vue's per-instance-id guarantee.
+ *
+ * @example
+ * import { getCurrentInstance } from "@pyreon/vue-compat"
+ *
+ * function useUid() {
+ *   const inst = getCurrentInstance()
+ *   return inst ? inst.uid : -1
+ * }
+ */
+export function getCurrentInstance(): ComponentInternalInstance | null {
+  const ctx = getCurrentCtx()
+  if (!ctx) return null
+
+  const idx = getHookIndex()
+  if (idx < ctx.hooks.length) {
+    return ctx.hooks[idx] as ComponentInternalInstance
+  }
+
+  const props = ctx._props ?? {}
+  const children = (props as Record<string, unknown>).children as VNodeChild | undefined
+  const instance: ComponentInternalInstance = {
+    uid: _instanceUid++,
+    proxy: {},
+    slots: {
+      default: children !== undefined ? () => children : undefined,
+    },
+    attrs: props,
+    isMounted: true,
+    _ctx: ctx,
+  }
+  ctx.hooks[idx] = instance
+  return instance
+}
+
+/**
+ * Returns the current component's slots — a map of slot-name → render
+ * function. Only the `default` slot is populated (derived from `children`),
+ * matching how `@pyreon/vue-compat` models slots elsewhere
+ * ({@link defineComponent}'s setup context).
+ *
+ * LIMITATIONS vs Vue 3:
+ *  - Vue supports arbitrary named + scoped slots resolved from the parent
+ *    template. Pyreon passes a single `children` payload, so only
+ *    `slots.default` is available. Named/scoped slots are not modeled.
+ *  - Returns an empty object (no `default`) when there are no children or
+ *    when called outside a component.
+ *
+ * @example
+ * import { useSlots } from "@pyreon/vue-compat"
+ *
+ * function Wrapper() {
+ *   const slots = useSlots()
+ *   return <div class="box">{slots.default?.()}</div>
+ * }
+ */
+export function useSlots(): Record<string, (() => VNodeChild) | undefined> {
+  const ctx = getCurrentCtx()
+  if (!ctx) return {}
+  const props = ctx._props ?? {}
+  const children = (props as Record<string, unknown>).children as VNodeChild | undefined
+  if (children === undefined) return {}
+  return { default: () => children }
+}
+
+/**
+ * Returns the current component's non-prop attributes.
+ *
+ * In Vue, `useAttrs()` is the fallthrough attributes NOT declared in `props`.
+ * `@pyreon/vue-compat` does not do declared-prop separation (components are
+ * plain functions receiving one `props` object), so this returns the full
+ * props object — every consumer-supplied attribute is present.
+ *
+ * LIMITATIONS vs Vue 3:
+ *  - No declared-vs-fallthrough split: `useAttrs()` here === the full props
+ *    object (including any that Vue would have consumed as declared props).
+ *    Read the specific keys you need; don't assume the result excludes
+ *    declared props.
+ *  - Returns an empty object when called outside a component.
+ *
+ * @example
+ * import { useAttrs } from "@pyreon/vue-compat"
+ *
+ * function Passthrough() {
+ *   const attrs = useAttrs()
+ *   return <input {...attrs} />
+ * }
+ */
+export function useAttrs(): Record<string, unknown> {
+  const ctx = getCurrentCtx()
+  if (!ctx) return {}
+  return ctx._props ?? {}
 }
 
 // ─── watchPostEffect / watchSyncEffect ───────────────────────────────────────

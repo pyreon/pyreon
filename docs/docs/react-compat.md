@@ -767,6 +767,46 @@ function useDeferredValue<T>(value: T): T
 
 Returns the value as-is. No deferral in Pyreon.
 
+#### `useOptimistic`
+
+```ts
+function useOptimistic<S, A = S>(
+  passthrough: S,
+  reducer?: (state: S, action: A) => S,
+): [S, (action: A) => void]
+```
+
+React 19's `useOptimistic`. Returns `[optimisticState, addOptimistic]`. `optimisticState` is `passthrough` reduced through every pending optimistic action; calling `addOptimistic(action)` layers an action onto the state and re-renders. The `addOptimistic` function has a stable identity across renders, matching React's guarantee. When no `reducer` is supplied, each action replaces the state outright (`(_state, action) => action`).
+
+In React, optimistic updates are discarded once the surrounding async action settles and the host re-renders with the real value -- a behavior that relies on concurrent transitions. Pyreon has no concurrent transitions, so the faithful equivalent is: **the optimistic overlay is cleared whenever `passthrough` changes by reference** (`Object.is` comparison) -- that is, when the real update lands. Until then, the layered actions stay applied. For the canonical "show optimistic state -> await the action -> render the real value" flow, the observable behavior matches React. Called outside a component render, it degrades gracefully -- returning the base value and a no-op adder.
+
+```tsx
+function TodoList(props: { todos: () => Todo[]; onAdd: (text: string) => Promise<void> }) {
+  const [optimisticTodos, addOptimisticTodo] = useOptimistic(
+    props.todos(),
+    (state: Todo[], newTodo: Todo) => [...state, { ...newTodo, pending: true }],
+  )
+
+  const handleAdd = async (text: string) => {
+    // Renders the pending row immediately
+    addOptimisticTodo({ id: crypto.randomUUID(), text, pending: false })
+    await props.onAdd(text)
+    // When the parent passes a fresh `todos` array, the overlay resets
+    // to the real list (passthrough changed by reference).
+  }
+
+  return (
+    <ul>
+      {() =>
+        optimisticTodos.map((todo) => (
+          <li class={() => (todo.pending ? 'pending' : '')}>{todo.text}</li>
+        ))
+      }
+    </ul>
+  )
+}
+```
+
 ### Portals
 
 #### `createPortal`

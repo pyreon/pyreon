@@ -732,6 +732,72 @@ export function useActionState<S, P>(
   return [state, dispatch, isPending]
 }
 
+// ─── useOptimistic ──────────────────────────────────────────────────────────
+
+/**
+ * React 19 `useOptimistic` — returns `[optimisticState, addOptimistic]`.
+ *
+ * `optimisticState` is `passthrough` reduced through every pending optimistic
+ * action. Calling `addOptimistic(action)` layers an action on and re-renders.
+ *
+ * React discards optimistic updates once the surrounding async action settles
+ * and the host re-renders with the real value. Pyreon has no concurrent
+ * transitions, so the faithful equivalent is: the optimistic overlay is
+ * cleared whenever `passthrough` changes (i.e. the real update landed). Until
+ * then the layered actions stay applied — the observable behavior matches
+ * React for the canonical "show optimistic → await action → real value" flow.
+ *
+ * @example
+ * const [optimisticTodos, addOptimisticTodo] = useOptimistic(
+ *   todos,
+ *   (state, newTodo) => [...state, { ...newTodo, pending: true }],
+ * )
+ * // addOptimisticTodo({ text }) → renders the pending row immediately;
+ * // when the server round-trip resolves and the parent passes fresh `todos`,
+ * // the overlay resets to the real list.
+ */
+export function useOptimistic<S, A = S>(
+  passthrough: S,
+  reducer?: (state: S, action: A) => S,
+): [S, (action: A) => void] {
+  const ctx = getCurrentCtx()
+  if (!ctx) {
+    // Outside a component render there is no re-render channel — return the
+    // base value and a no-op adder (matches React degrading gracefully).
+    return [passthrough, () => {}]
+  }
+  const idx = getHookIndex()
+
+  if (ctx.hooks.length <= idx) {
+    const entry = {
+      base: passthrough,
+      actions: [] as A[],
+      add: null as unknown as (action: A) => void,
+    }
+    // Stable adder identity across renders (React guarantee).
+    entry.add = (action: A) => {
+      entry.actions.push(action)
+      ctx.scheduleRerender()
+    }
+    ctx.hooks.push(entry)
+  }
+
+  const entry = ctx.hooks[idx] as { base: S; actions: A[]; add: (action: A) => void }
+
+  // Real update landed → discard the optimistic overlay.
+  if (!Object.is(entry.base, passthrough)) {
+    entry.base = passthrough
+    entry.actions = []
+  }
+
+  const apply = reducer ?? ((_state: S, action: A) => action as unknown as S)
+  const optimistic = entry.actions.reduce<S>(
+    (acc, action) => apply(acc, action),
+    passthrough,
+  )
+  return [optimistic, entry.add]
+}
+
 // ─── startTransition ────────────────────────────────────────────────────────
 
 /**

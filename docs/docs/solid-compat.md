@@ -1063,6 +1063,142 @@ Catches errors in its subtree and renders a fallback.
 </ErrorBoundary>
 ```
 
+### Dynamic Components
+
+#### `Dynamic`
+
+```ts
+function Dynamic<P>(props: { component: ComponentFn<P> | string } & P): VNode
+```
+
+A faithful thin re-export of `@pyreon/core`'s `Dynamic`. Solid's `<Dynamic component={X} {...rest} />` maps 1:1 onto Pyreon's `Dynamic({ component, ...rest })` -- both take a `component` prop (a component function OR a string tag name) and forward every other prop through. No shimming is involved.
+
+```tsx
+import { Dynamic } from '@pyreon/solid-compat'
+
+function App(props: { as: 'h1' | 'h2' }) {
+  // Renders <h1> or <h2> depending on props.as
+  return (
+    <Dynamic component={props.as} class="title">
+      Hello
+    </Dynamic>
+  )
+}
+```
+
+**Component reference also works:**
+
+```tsx
+const Red = (p: { children?: unknown }) => <span style="color:red">{p.children}</span>
+const Blue = (p: { children?: unknown }) => <span style="color:blue">{p.children}</span>
+
+;<Dynamic component={isError() ? Red : Blue}>status</Dynamic>
+```
+
+### Portals
+
+#### `Portal`
+
+```ts
+function Portal(props: {
+  mount?: Element
+  useShadow?: boolean
+  isSVG?: boolean
+  children: VNodeChild
+}): VNode
+```
+
+Renders children into a different DOM node than the current parent tree -- modals, tooltips, dropdowns, overlays. Solid's API is `<Portal mount={el} useShadow={bool} isSVG={bool}>`. This shim maps Solid's `mount` prop onto Pyreon's `Portal` `target` prop. When `mount` is omitted, it defaults to `document.body` -- matching Solid's default.
+
+```tsx
+import { Portal } from '@pyreon/solid-compat'
+
+function Modal(props: { onClose: () => void }) {
+  // Renders at document.body level regardless of where <Modal> sits
+  return (
+    <Portal>
+      <div class="backdrop" onClick={props.onClose}>
+        ...
+      </div>
+    </Portal>
+  )
+}
+```
+
+**Explicit mount target:**
+
+```tsx
+const host = document.getElementById('overlay-root')!
+
+;<Portal mount={host}>
+  <Tooltip />
+</Portal>
+```
+
+::: warning Limitations
+`useShadow` and `isSVG` are accepted in the prop type for API compatibility but are **ignored** -- `@pyreon/core`'s `Portal` has no shadow-root or SVG-namespace support:
+
+- **`useShadow`** -- Solid attaches a shadow root to the portal host for style isolation. Pyreon's `Portal` renders directly into the target with no shadow root. Passing `useShadow` has no effect.
+- **`isSVG`** -- Solid uses this to create the portal host in the SVG namespace. Pyreon's `Portal` always renders into the target as-is. Passing `isSVG` has no effect.
+
+:::
+
+### Rendering
+
+These correspond to Solid's `solid-js/web` entry point. `@pyreon/solid-compat` exposes them from the **main entry** -- there is no `/web` subpath, so import them directly from `@pyreon/solid-compat`.
+
+#### `render`
+
+```ts
+function render(code: () => VNodeChild, element: MountableElement): () => void
+```
+
+Mounts an app into a DOM element and returns a dispose function. Solid's signature is `render(code: () => JSX.Element, element): () => void`. The `code` thunk is passed directly to Pyreon's `mount` -- `VNodeChild` includes the accessor form `() => VNodeChildAtom`, so the thunk is a valid reactive root child (it re-evaluates on signal change). `mount` returns its own unmount/dispose function, which is returned verbatim -- calling it removes everything and disposes effects, matching Solid's contract.
+
+```tsx
+import { render } from '@pyreon/solid-compat'
+import { createSignal } from '@pyreon/solid-compat'
+
+function Counter() {
+  const [n, setN] = createSignal(0)
+  return <button onClick={() => setN(n() + 1)}>{n()}</button>
+}
+
+const dispose = render(() => <Counter />, document.getElementById('app')!)
+// later: dispose() -- unmounts and cleans up
+```
+
+#### `hydrate`
+
+```ts
+function hydrate(code: () => VNodeChild, element: MountableElement): () => void
+```
+
+Hydrates server-rendered markup in `element` and returns a dispose function. Solid's signature is `hydrate(code: () => JSX.Element, element): () => void`. Maps onto `@pyreon/runtime-dom`'s `hydrateRoot(container, vnode)`, which itself returns a dispose function (returned verbatim here, matching Solid's contract). As with `render`, the `code` thunk is a valid reactive root child.
+
+```tsx
+import { hydrate } from '@pyreon/solid-compat'
+
+// Server emitted #app's HTML; reuse the DOM instead of re-creating it:
+const dispose = hydrate(() => <App />, document.getElementById('app')!)
+```
+
+#### `MountableElement`
+
+```ts
+type MountableElement = Element
+```
+
+The DOM node type a Solid app can mount into -- the second argument to `render` / `hydrate`.
+
+```tsx
+import { render, type MountableElement } from '@pyreon/solid-compat'
+
+function mountApp(root: MountableElement) {
+  return render(() => <App />, root)
+}
+```
+
 ## Real-World Patterns
 
 ### Reactive Todo App
