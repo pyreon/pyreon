@@ -5,7 +5,7 @@ import { HEAVY_PACKAGES } from '../../utils/imports'
 /**
  * A statically-imported heavy module that is referenced ONLY inside
  * deferred scopes — JSX event handlers (`onClick={() => …}`) or lifecycle
- * callbacks (`onMount`/`onUnmount`/`onCleanup`/`effect`/`renderEffect`) —
+ * callbacks (`onMount`/`onUnmount`/`onCleanup`) —
  * has no reason to sit in the initial bundle. The static `import` forces
  * the heavy chunk to load on first paint even though nothing touches it
  * until the user interacts. Converting it to a dynamic `import()` inside
@@ -41,13 +41,17 @@ import { HEAVY_PACKAGES } from '../../utils/imports'
  *   return <Chart data={data()} />
  */
 
-const DEFERRED_CALLS = new Set([
-  'onMount',
-  'onUnmount',
-  'onCleanup',
-  'effect',
-  'renderEffect',
-])
+// Genuinely deferred scopes: JSX `on*` handlers (only run on user
+// interaction) + lifecycle hooks that run AFTER setup / on teardown.
+// `effect` / `renderEffect` are deliberately EXCLUDED — their callbacks
+// run SYNCHRONOUSLY during component setup (the `no-imperative-effect-on-
+// create` shape), so a heavy module used in an effect body is a
+// render-time dependency, not a deferrable one. Excluding them keeps the
+// rule strictly conservative (false-positive forbidden). Surfaced by the
+// real-corpus e2e: `examples/app-showcase/.../LivePreview.tsx` calls
+// `render` from `@pyreon/document` inside an `effect` — a legit reactive
+// render, NOT a defer-this-import opportunity.
+const DEFERRED_CALLS = new Set(['onMount', 'onUnmount', 'onCleanup'])
 
 const FN_TYPES = new Set(['ArrowFunctionExpression', 'FunctionExpression'])
 
@@ -220,9 +224,10 @@ export const noHeavyImportOnlyInHandler: Rule = {
           const used = locals
             .map((n) => bindings.get(n))
             .filter((b): b is Use => !!b && (b.eager || b.deferred))
-          if (used.length === 0) continue // unused — not this rule's concern
+          const first = used[0]
+          if (!first) continue // unused — not this rule's concern
           if (used.some((b) => b.eager)) continue // needed eagerly — suppress
-          const src = used[0]!.source
+          const src = first.source
           context.report({
             message:
               `\`${src}\` is heavy and used ONLY inside event handlers / lifecycle callbacks. ` +

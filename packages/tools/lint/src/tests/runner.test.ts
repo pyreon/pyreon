@@ -98,7 +98,7 @@ describe('Rule metadata', () => {
     expect(counts.reactivity).toBe(13)
     expect(counts.jsx).toBe(11)
     expect(counts.lifecycle).toBe(5)
-    expect(counts.performance).toBe(4)
+    expect(counts.performance).toBe(5)
     expect(counts.ssr).toBe(3)
     expect(counts.architecture).toBe(7)
     expect(counts.store).toBe(3)
@@ -1958,7 +1958,7 @@ describe('Ignore filter', () => {
 describe('Presets', () => {
   it('recommended should include all rules', () => {
     const config = getPreset('recommended')
-    expect(Object.keys(config.rules).length).toBe(66)
+    expect(Object.keys(config.rules).length).toBe(67)
   })
 
   it('strict should promote all warns to errors', () => {
