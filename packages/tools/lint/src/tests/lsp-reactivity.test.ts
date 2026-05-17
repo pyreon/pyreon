@@ -1,9 +1,24 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   _handleMessage,
   _resetOpenDocuments,
   computeReactivityHints,
 } from '../lsp/index'
+
+// Warm the lazy `@pyreon/compiler` import ONCE before any test. The first
+// `loadAnalyze()` cold-transforms the entire compiler barrel (jsx.ts +
+// the TS compiler API via pyreon-intercept) through vitest's transformer
+// in a fresh `@pyreon/lint` worker — a deterministic one-time ~10-30s
+// cost on cold CI runners (NOT a race; the anti-fixed-sleep guidance is
+// about event races, not module cold-load). After this hook the module
+// is memoized so every spec's call is sub-millisecond. In a real
+// long-lived LSP server this cost is paid once at first hint, off the
+// node transformer (~1s), and the editor re-requests — invisible to the
+// user. The generous hook timeout is headroom for shared-runner cold
+// transform, not brittleness.
+beforeAll(async () => {
+  await computeReactivityHints('warmup.tsx', 'const x = 1')
+}, 180_000)
 
 /**
  * Reactivity-Lens LSP surface — e2e proof at the JSON-RPC contract layer.
