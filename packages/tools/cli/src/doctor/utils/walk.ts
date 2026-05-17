@@ -4,9 +4,11 @@
  *
  * The walker skips the standard non-source dirs (`node_modules`,
  * `dist`, `lib`, `.git`, etc.) and matches `.ts` / `.tsx` / `.js` /
- * `.jsx`. It's a thin wrapper around the original `collectSourceFiles`
- * that lived in `doctor.ts` pre-PR-2; extracted here so any gate can
- * use it without import-cycling through the doctor module.
+ * `.jsx`. Gates consume the objective first-party scope
+ * (`collectFirstPartySourceFiles` + the pure `isFirstPartySourceFile`
+ * / `isCompatPackageFile` predicates) so health is measured only over
+ * `packages/<cat>/<pkg>/src/**` — not examples, e2e, docs, scripts,
+ * or detector test-fixtures.
  */
 
 import * as fs from 'node:fs'
@@ -51,11 +53,6 @@ const walk = (dir: string, results: string[]): void => {
   }
 }
 
-export const collectSourceFiles = (cwd: string): string[] => {
-  const results: string[] = []
-  walk(cwd, results)
-  return results
-}
 
 // ─── Objective first-party scope ─────────────────────────────────────────────
 //

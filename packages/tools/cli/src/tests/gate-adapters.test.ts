@@ -245,4 +245,32 @@ describe('runLintGate', () => {
     assertShape(result, 'lint')
     fs.rmSync(cwd, { recursive: true, force: true })
   })
+
+  it('maps warn → warning and info → info severities (mapLintSeverity)', async () => {
+    const cwd = makeTmpDir()
+    // `no-nested-effect` is a WARN rule; `no-eager-import` is an INFO
+    // rule — both in the `recommended` preset, both pure-AST so they
+    // fire deterministically on this in-scope first-party fixture.
+    writeFile(
+      cwd,
+      'packages/core/app/src/Drag.tsx',
+      [
+        `import { effect } from '@pyreon/reactivity'`,
+        `import { render } from '@pyreon/document'`,
+        `export function D() {`,
+        `  effect(() => { effect(() => { void render }) })`,
+        `  return null`,
+        `}`,
+        ``,
+      ].join('\n'),
+    )
+    const result = await runLintGate({ cwd })
+    assertShape(result, 'lint')
+    const sevs = new Set(result.findings.map((f) => f.severity))
+    // The recommended preset emits non-error severities for these rules;
+    // the gate must surface them (not just 'error'), exercising the
+    // warn→warning / info→info arms of mapLintSeverity.
+    expect(sevs.has('warning') || sevs.has('info')).toBe(true)
+    fs.rmSync(cwd, { recursive: true, force: true })
+  })
 })
