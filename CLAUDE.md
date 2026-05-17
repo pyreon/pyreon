@@ -457,7 +457,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - `useIsActive(path, exact?)` — returns reactive boolean for whether a path matches the current route
 - Segment-aware prefix matching: `/admin` matches `/admin/users` when `exact` is false
 - `useTypedSearchParams({ page: 'number', q: 'string' })` — typed search params with auto-coercion
-- `useTransition()` — returns `{ isTransitioning }` signal during route transitions
+- `useTransition()` — returns a reactive accessor `() => boolean` (call it: `useTransition()()`), true during route transitions. `useMiddlewareData()` likewise returns `() => Record<string, unknown>` — both are accessors, not destructurable objects
 - Hash scrolling — navigating to `#id` auto-scrolls to the matching element
 - Route error boundaries — `errorComponent` on route records catches render errors (not just loader errors)
 - View Transitions API — auto-enabled for route navigations, opt out per route via `meta.viewTransition: false`

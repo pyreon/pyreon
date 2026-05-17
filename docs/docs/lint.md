@@ -1,6 +1,6 @@
 ---
 title: '@pyreon/lint'
-description: Pyreon-specific linter — 62 rules for signals, JSX, SSR, performance, architecture, and routing.
+description: Pyreon-specific linter — 67 rules for signals, JSX, SSR, performance, architecture, routing, and SSG.
 ---
 
 `@pyreon/lint` is a framework-specific linter that catches Pyreon anti-patterns at the AST level. Powered by `oxc-parser` for fast ESTree/TS-ESTree parsing.
@@ -47,7 +47,7 @@ pyreon-lint --watch src/
 # JSON output for tooling integration
 pyreon-lint --format json
 
-# List all 62 rules
+# List all 67 rules
 pyreon-lint --list
 
 # Override a specific rule
@@ -185,9 +185,9 @@ watchAndLint({
 - **`app`** — Recommended, but library-only rules are turned off: `dev-guard-warnings`, `no-error-without-prefix`, `no-circular-import`, `no-cross-layer-import`, and `require-browser-smoke-test`. Note that `no-process-dev-gate` stays **on** in `app` — the bundler-coupled dev-gate bug hits user-facing browser code regardless of whether the project ships as a library or an app. For Pyreon applications.
 - **`lib`** — Strict, plus every architecture rule is forced to `error`: `no-circular-import`, `no-cross-layer-import`, `dev-guard-warnings`, `no-error-without-prefix`, `no-process-dev-gate`, and `require-browser-smoke-test`. For Pyreon packages and libraries.
 
-## Rules (62)
+## Rules (67)
 
-### Reactivity (12)
+### Reactivity (13)
 
 | Rule                            | Severity | Fixable | Description                                                                        |
 | ------------------------------- | -------- | ------- | ---------------------------------------------------------------------------------- |
@@ -203,6 +203,7 @@ watchAndLint({
 | `pyreon/prefer-computed`        | warn     |         | `effect()` that only sets a signal — use `computed()`                              |
 | `pyreon/no-effect-assignment`   | warn     |         | `effect(() => signal.update(...))` — use `computed()`                              |
 | `pyreon/no-signal-leak`         | warn     |         | Signal created but never read                                                      |
+| `pyreon/storage-signal-v-forwarding` | error |        | Signal-like wrapper callable missing `_v` forwarding — breaks `_bindText` fast path |
 
 ### JSX (11)
 
@@ -230,14 +231,15 @@ watchAndLint({
 | `pyreon/no-dom-in-setup`                | warn     | DOM access in component setup — use `onMount`                                     |
 | `pyreon/no-imperative-effect-on-create` | warn     | `effect()` doing DOM/IO/timer work at component setup — move it into `onMount()`  |
 
-### Performance (4)
+### Performance (5)
 
-| Rule                              | Severity | Description                                    |
-| --------------------------------- | -------- | ---------------------------------------------- |
-| `pyreon/no-large-for-without-by`  | error    | `<For>` without `by` — O(n) reconciliation     |
-| `pyreon/no-effect-in-for`         | warn     | `effect()` inside `<For>` creates N effects    |
-| `pyreon/no-eager-import`          | info     | Static import of heavy packages — use `lazy()` |
-| `pyreon/prefer-show-over-display` | info     | Conditional `display` style — use `<Show>`     |
+| Rule                                    | Severity | Description                                                            |
+| --------------------------------------- | -------- | ---------------------------------------------------------------------- |
+| `pyreon/no-large-for-without-by`        | error    | `<For>` without `by` — O(n) reconciliation                             |
+| `pyreon/no-effect-in-for`               | warn     | `effect()` inside `<For>` creates N effects                            |
+| `pyreon/no-heavy-import-only-in-handler`| warn     | Heavy module imported statically but used only in a deferred scope — use a dynamic `import()` |
+| `pyreon/no-eager-import`                | info     | Static import of heavy packages — use `lazy()`                         |
+| `pyreon/prefer-show-over-display`       | info     | Conditional `display` style — use `<Show>`                             |
 
 ### SSR (3)
 
@@ -267,6 +269,16 @@ watchAndLint({
 | `pyreon/no-imperative-navigate-in-render` | error    | `navigate()` in component body causes infinite loops |
 | `pyreon/no-missing-fallback`              | warn     | Route config without catch-all / 404 route           |
 | `pyreon/prefer-use-is-active`             | info     | `location.pathname ===` — use `useIsActive()`        |
+
+### SSG (3)
+
+Route-scoped (`src/routes/`) rules for `@pyreon/zero` static-site generation.
+
+| Rule                              | Severity | Description                                                                            |
+| --------------------------------- | -------- | -------------------------------------------------------------------------------------- |
+| `pyreon/revalidate-not-pure-literal` | error | `export const revalidate` must be a numeric literal or `false` — non-literals are silently dropped from the build-time ISR manifest |
+| `pyreon/missing-get-static-paths` | warn     | Dynamic route (`[id].tsx` / `[...slug].tsx`) without `export const getStaticPaths` — silently skipped by SSG auto-detect |
+| `pyreon/invalid-loader-export`    | error    | `export const loader` is not callable — crashes the SSR runtime with `loader is not a function` |
 
 ### Store (3)
 

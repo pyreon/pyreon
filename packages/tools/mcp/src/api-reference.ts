@@ -900,26 +900,26 @@ params.set({ page: 2 })  // updates URL`,
   },
 
   'router/useTransition': {
-    signature: 'useTransition(): { isTransitioning: () => boolean }',
-    example: `const { isTransitioning } = useTransition()
+    signature: 'useTransition(): () => boolean',
+    example: `const isTransitioning = useTransition()
 
 <Show when={isTransitioning()}>
   <ProgressBar />
 </Show>`,
-    notes: 'Reactive signal for route transition state. `isTransitioning()` is true during navigation (while guards run + loaders resolve), false when the new route is mounted. Useful for progress bars and global loading indicators. See also: useRouter, useRoute.',
+    notes: 'Returns a reactive accessor for route transition state. The accessor is true during navigation (while guards run + loaders resolve), false when the new route is mounted. Call it inside a reactive scope. Useful for progress bars and global loading indicators. See also: useRouter, useRoute.',
   },
 
   'router/useMiddlewareData': {
-    signature: 'useMiddlewareData<T>(): T',
+    signature: 'useMiddlewareData(): () => Record<string, unknown>',
     example: `// Middleware:
 const authMiddleware: RouteMiddleware = async (ctx) => {
   ctx.data.user = await getUser(ctx.to)
 }
 
 // Component:
-const data = useMiddlewareData<{ user: User }>()
-// data.user is available`,
-    notes: 'Read data set by `RouteMiddleware` in the middleware chain. Middleware functions receive `ctx` with a mutable `ctx.data` object — properties set there are available to all downstream components via this hook. See also: createRouter, useLoaderData.',
+const data = useMiddlewareData()
+// data().user is available`,
+    notes: 'Returns a reactive accessor for data set by `RouteMiddleware` in the middleware chain. Middleware functions receive `ctx` with a mutable `ctx.data` object — properties set there are read by calling the returned accessor inside a reactive scope. See also: createRouter, useLoaderData.',
   },
 
   'router/useLoaderData': {
@@ -2817,7 +2817,7 @@ diagnose({
 // → full canonical pattern body
 get_pattern({})
 // → [{ name: 'controllable-state', summary: '...' }, ...]`,
-    notes: 'Fetch a canonical "how do I do X" pattern body from `docs/patterns/`. Eight foundational patterns ship: `dev-warnings`, `controllable-state`, `ssr-safe-hooks`, `signal-writes`, `keyed-lists`, `reactive-context`, `event-listeners`, `form-fields`. Omit `name` to list available patterns. Drop a new `docs/patterns/<slug>.md` file to add one — picked up on next call. See also: get_anti_patterns.',
+    notes: 'Fetch a canonical "how do I do X" pattern body from `docs/patterns/`. 16 foundational patterns ship: `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`. Omit `name` to list available patterns. Drop a new `docs/patterns/<slug>.md` file to add one — picked up on next call. See also: get_anti_patterns.',
   },
 
   'mcp/get_anti_patterns': {
