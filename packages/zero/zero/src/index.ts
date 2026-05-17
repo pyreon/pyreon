@@ -13,7 +13,7 @@
 
 // ─── Components (browser-safe) ──────────────────────────────────────────────
 
-export type { IconProps } from "./icon";
+export type { IconProps, SvgComponent } from "./icon";
 export { createIcon, Icon } from "./icon";
 export type { ImageProps, ImageRenderProps, ImageSource, UseImageReturn } from "./image";
 export { createImage, Image, useImage } from "./image";

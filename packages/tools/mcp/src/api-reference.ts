@@ -3760,38 +3760,40 @@ const ButtonLink = createLink((props) => (
   },
 
   'zero/Icon': {
-    signature: '<Icon viewBox="0 0 24 24" fill="currentColor" {...svgProps}>{paths}</Icon>',
-    example: `import { Icon, createIcon } from '@pyreon/zero'
+    signature: '<Icon as={ImportedSvgComponent} | svg={rawSvgMarkupString} {...hostProps} />',
+    example: `import { Icon } from '@pyreon/zero'
+import Check from './check.svg?component'
+import checkRaw from './check.svg?raw'
 
-// One-off inline SVG, sized by the consumer's wrapper:
-<span style="width:2rem">
-  <Icon><path d="M20 6 9 17l-5-5" /></Icon>
-</span>
+// Component form — rendered directly, no wrapper, reliable fill:
+<span style="width:2rem"><Icon as={Check} /></span>
 
-// Reusable glyph component:
-export const Check = createIcon('0 0 24 24', <path d="M20 6 9 17l-5-5" />)
-<span style="width:48px"><Check class="text-green-600" /></span>`,
-    notes: 'Minimal inline-SVG leaf. The rendered root IS the `<svg>` — no wrapper element, no host span, no fixed size — so the consumer wraps and sizes it (`<span style="width:2rem"><Icon/></span>`, a flex/grid cell, `font-size`). Defaults (`viewBox="0 0 24 24"`, `fill="currentColor"`, `display:block;width:100%;height:100%`) are all overridable: every prop spreads straight onto the `<svg>` and wins over the default. `fill="currentColor"` means CSS `color` themes it (dark mode for free). Intentionally has no `useIcon` hook — an icon has no composable behaviour (no async, no state, no router); the two layers are `createIcon` (one component per glyph) and `Icon` (one-off inline SVG). See also: createIcon, IconProps, Image.',
-    mistakes: `- Expecting \`<Icon>\` to size itself — it has NO intrinsic width/height; it fills its container. An \`<Icon>\` with no sized ancestor collapses. Wrap it (\`<span style="width:1.5rem">\`) or give it a sized flex/grid cell
-- Setting \`width\`/\`height\` props to size it — they pass through to the \`<svg>\` but the default \`width:100%;height:100%\` style still wins. Size via the WRAPPER (or override \`style\`), not attributes
-- Hardcoding \`fill="#000"\` — that breaks theming. Leave the \`currentColor\` default and drive the colour with CSS \`color\` so dark mode + hover states work for free
-- Reaching for a \`useIcon\` hook — there isn't one, by design. Compose with \`createIcon\` (per-glyph component) or just inline \`<Icon>\`; an icon has no behaviour worth a hook layer
-- Passing a fixed \`viewBox\` to \`createIcon\` that doesn't match the path coordinates — the glyph clips or floats. The \`viewBox\` must be the coordinate system the \`d\`/\`points\` were authored in`,
+// Raw-markup form — inlined inside one <span> host:
+<span style="width:2rem"><Icon svg={checkRaw} /></span>`,
+    notes: `Renders a FULL loaded SVG — it does NOT synthesize its own \`<svg>\` around hand-authored \`<path>\` children. You load an svg (it already contains the \`<svg>\` root) and Icon makes it container-sizable + theme-aware. Two source props: \`as\` — an imported SVG *component* (\`import X from './x.svg?component'\`), rendered DIRECTLY with no host wrapper (recommended; it's a real \`<svg>\` so container-fill is reliable); \`svg\` — the raw \`<svg>…</svg>\` *markup string* (\`import x from './x.svg?raw'\`), inlined via a single \`<span>\` host (a markup string needs a parent to mount — this one host is unavoidable for the string form). Defaults (\`fill="currentColor"\`, \`display:block;width:100%;height:100%\`) are overridable — consumer props spread through and win. No fixed size → fills its container; \`fill="currentColor"\` themes via CSS \`color\`. Intentionally no \`useIcon\` hook (an icon has no composable behaviour); two layers: \`createIcon\` (one component per loaded glyph) + \`Icon\` (one-off). See also: createIcon, IconProps, Image.`,
+    mistakes: `- Expecting \`<Icon>\` to synthesize an \`<svg>\` from \`<path>\` children — it does NOT. Pass a loaded svg via \`as\` (imported \`?component\`) or \`svg\` (imported \`?raw\` string). Children are not the API
+- Expecting \`<Icon>\` to size itself — it has NO intrinsic size; it fills its container. Wrap + size it (\`<span style="width:1.5rem">\`) or use a sized flex/grid cell
+- Hardcoding \`fill="#000"\` — breaks theming. Leave the \`currentColor\` default; drive colour with CSS \`color\` so dark mode + hover work for free. Only the \`as\` form forwards \`fill\` to the real svg — the \`svg\`-string form's markup is opaque, so colour it via \`currentColor\` inside the asset
+- Expecting svg-only props (\`viewBox\`, \`fill\`) to apply in the \`svg\`-string form — they can't reach the opaque inlined markup; only host attrs (\`class\`, \`style\`, \`aria-*\`, events) forward. Use the \`as\` form when you need to drive svg attributes
+- Reaching for a \`useIcon\` hook — there isn't one, by design. Use \`createIcon\` or inline \`<Icon>\`; an icon has no behaviour worth a hook layer
+- Preferring \`svg\` (raw string) for the wrapper-free guarantee — it's the opposite: \`svg\` ALWAYS adds a \`<span>\` host (unavoidable for string inlining); \`as\` is the zero-wrapper form`,
   },
 
   'zero/createIcon': {
-    signature: 'function createIcon(viewBox: string, paths: VNodeChild): (props: SvgAttributes) => VNode',
+    signature: 'function createIcon(source: string | SvgComponent): (props: SvgAttributes) => VNodeChild',
     example: `import { createIcon } from '@pyreon/zero'
+import StarSvg from './star.svg?component'
+import checkRaw from './check.svg?raw'
 
-export const Check = createIcon('0 0 24 24', <path d="M20 6 9 17l-5-5" />)
-export const Logo = createIcon('0 0 32 32', <circle cx={16} cy={16} r={8} />)
+export const Star = createIcon(StarSvg)     // component → rendered directly
+export const Check = createIcon(checkRaw)   // raw string → inlined via <span>
 
 // Sized + themed entirely by the consumer:
 <span style="width:48px"><Check class="text-green-600" aria-label="done" /></span>`,
-    notes: 'Builds a reusable icon component from a `viewBox` + its shapes. The returned component is still just a plain container-filling `<svg>` (via `Icon`) with every consumer prop passed through and overriding the defaults — so a generated icon set is `createIcon`-per-glyph with zero per-icon boilerplate. Mirrors the `createLink`/`createImage` factory layer, minus a hook (icons have no composable behaviour). See also: Icon, IconProps.',
+    notes: `Builds a reusable icon component from a LOADED svg — a raw \`<svg>…</svg>\` markup string (\`?raw\`) OR an imported SVG component (\`?component\`). The result is still just \`<Icon>\` (string → \`svg\` prop, component → \`as\` prop), so it's container-sizable + theme-aware with every prop passed through. A generated icon set is \`createIcon\`-per-glyph with zero per-icon boilerplate. Mirrors the \`createLink\`/\`createImage\` factory layer, minus a hook (icons have no composable behaviour). See also: Icon, IconProps.`,
     mistakes: `- Calling \`createIcon\` inside a component body — define icon components at module scope (like \`createLink\`/\`createImage\`). Re-creating the component every render defeats identity-based reconciliation
-- Passing a resolved string for \`paths\` — \`paths\` is \`VNodeChild\` (JSX): \`<path .../>\`, a fragment of shapes, etc. A raw markup string won't render; use \`dangerouslySetInnerHTML\` on a plain \`<Icon>\` if you truly have an SVG string
-- Expecting the factory \`viewBox\` to be locked — a consumer can still override it (\`<Check viewBox="0 0 16 16"/>\`) because props spread last. That's intended (escape hatch), but means the \`viewBox\` arg is a default, not a guarantee`,
+- Passing hand-built \`<path>\` JSX as \`source\` — \`source\` is a full loaded svg: a \`?raw\` markup string OR a \`?component\` import. It does NOT take individual shapes; the loaded asset already contains its own \`<svg>\` root
+- Assuming the \`?raw\` form has no wrapper — the string form ALWAYS adds one \`<span>\` host (unavoidable for inlining markup). Use the \`?component\` form for the zero-wrapper, attribute-forwarding path`,
   },
 
   'zero/Image': {
