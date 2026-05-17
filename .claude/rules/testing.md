@@ -14,7 +14,7 @@
 
 ## Coverage
 
-- All packages maintain >95% on all 4 metrics (statements, branches, functions, lines)
+- **Enforced contract**: `@vitus-labs/tools-vitest`'s `createVitestConfig()` sets a **90% global threshold** on all 4 metrics (statements, branches, functions, lines). A package whose coverage drops below 90% on ANY metric makes its own `bun run test` exit non-zero — that is the real, blocking gate. >95% is the **aspiration**, not a guaranteed invariant: coverage drifts as code is added without matching tests, and the threshold (not 95%) is what actually blocks. Treat a package below 95% as a hardening opportunity; treat one below 90% as a RED gate to fix now. (Example: `@pyreon/reactivity` — the foundation package every other depends on — had drifted to 87.38% branches and its test command was exiting 1 until the coverage-hardening PR brought it to ≥90% on all 4.)
 - V8 coverage counts branch sides for `??`, `||`, ternary — use type assertions (`as Type`) or `!` for provably-safe paths to avoid uncoverable branches
 - Module-level const captures (e.g., `const _isBrowser = typeof window !== "undefined"`) move branches from per-call to module-load time
 - Run coverage: `cd packages/<name> && bun run test -- --coverage`
