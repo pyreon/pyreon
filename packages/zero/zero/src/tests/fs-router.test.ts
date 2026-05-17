@@ -194,7 +194,9 @@ describe('generateRouteModule', () => {
   it('uses lazy() for routes when files cannot be read', () => {
     const code = generateRouteModule(['index.tsx'], '/src/routes')
     expect(code).toContain('import { lazy }')
-    expect(code).toContain('lazy(() => import("/src/routes/index.tsx"))')
+    // `, { hmrId: ... }` is appended by codegen for dev HMR (inert in
+    // prod). Assert the lazy import target without pinning the closing.
+    expect(code).toContain('lazy(() => import("/src/routes/index.tsx")')
   })
 
   it('emits no `import * as` when no metadata is detected', () => {
@@ -564,7 +566,7 @@ describe('generateRouteModuleFromRoutes — with detected exports', () => {
     const routes = [makeRoute('about.tsx')]
     const result = generateRouteModuleFromRoutes(routes, './routes')
     expect(result).toContain('import { lazy }')
-    expect(result).toContain('lazy(() => import("./routes/about.tsx"))')
+    expect(result).toContain('lazy(() => import("./routes/about.tsx")')
     // No static `import * as` for metadata since none exists
     expect(result).not.toContain('import * as')
     // No _pick helper either
@@ -581,7 +583,7 @@ describe('generateRouteModuleFromRoutes — with detected exports', () => {
     expect(result).toContain('import * as')
     expect(result).toContain('dashboard.tsx')
     // home has no metadata → lazy() only
-    expect(result).toContain('lazy(() => import("./routes/home.tsx"))')
+    expect(result).toContain('lazy(() => import("./routes/home.tsx")')
     // Direct property access, not _pick
     expect(result).toContain('.loader')
     expect(result).not.toContain('_pick')
@@ -632,7 +634,7 @@ describe('generateRouteModuleFromRoutes — with detected exports', () => {
       makeRoute('posts/[id].tsx', { hasGetStaticPaths: true } as Partial<RouteFileExports>),
     ]
     const result = generateRouteModuleFromRoutes(routes, './routes')
-    expect(result).toContain('lazy(() => import("./routes/posts/[id].tsx"))')
+    expect(result).toContain('lazy(() => import("./routes/posts/[id].tsx")')
     expect(result).toContain('getStaticPaths:')
     expect(result).toMatch(/import \* as _m\d+ from "\.\/routes\/posts\/\[id\]\.tsx"/)
   })

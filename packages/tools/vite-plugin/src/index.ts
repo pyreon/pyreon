@@ -745,7 +745,40 @@ function injectHmr(code: string, moduleId: string): string {
     lines.push(`  import.meta.hot.dispose(() => __hmr_dispose(${escapedId}));`)
   }
 
-  lines.push(`  import.meta.hot.accept();`)
+  // Self-accept the module, then drive Pyreon's HMR coordinator.
+  //
+  // The OLD code emitted a bare `import.meta.hot.accept()` (no callback):
+  // Vite re-evaluated the module but NOTHING re-rendered the mounted tree,
+  // AND the self-accept suppressed Vite's full-reload fallback — so a
+  // component/JSX edit produced a silently-stale UI until a MANUAL refresh.
+  //
+  // Now: the accept callback hands the FRESH module namespace Vite already
+  // re-evaluated straight to `globalThis.__pyreon_hmr_swap__` (registered
+  // by `@pyreon/router` in a dev browser — zero import coupling, same
+  // pattern as the perf-harness counter sink), keyed by THIS module's id.
+  // The coordinator finds every active matched route record whose lazy
+  // `_hmrId` matches and swaps in the new component, re-rendering ONLY
+  // that subtree IN PLACE (no page reload → `__pyreon_hmr_registry__`
+  // survives → `__hmr_signal` restores module-scope signal values).
+  //
+  // Using the namespace Vite passes (not a re-run of the lazy thunk)
+  // sidesteps the stale-`?t=` trap: the dynamic-import thunk lives in the
+  // virtual routes module, which is NOT invalidated when this leaf route
+  // self-accepts — re-importing it would return the OLD module.
+  //
+  // `__pyreon_hmr_swap__` returns falsy when the edit was outside the
+  // active route tree (nested non-route component, unrelated route,
+  // signal-only module) OR no coordinator is registered (plain
+  // `@pyreon/runtime-dom` app, or module loaded before any router
+  // mounted). Then `import.meta.hot.invalidate()` → Vite propagates → an
+  // AUTOMATIC full reload. Either way the user never refreshes by hand.
+  lines.push(`  import.meta.hot.accept((__m) => {`)
+  lines.push(`    const __s = globalThis.__pyreon_hmr_swap__;`)
+  lines.push(
+    `    if (typeof __s === "function" && __m && __s(${escapedId}, __m)) return;`,
+  )
+  lines.push(`    import.meta.hot.invalidate();`)
+  lines.push(`  });`)
   lines.push(`}`)
 
   output = `${output}\n\n${lines.join('\n')}\n`

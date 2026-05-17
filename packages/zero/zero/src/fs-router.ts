@@ -1100,7 +1100,13 @@ export function generateRouteModuleFromRoutes(
     const opts: string[] = []
     if (loadingName) opts.push(`loading: ${loadingName}`)
     if (errorName) opts.push(`error: ${errorName}`)
-    const optsStr = opts.length > 0 ? `, { ${opts.join(', ')} }` : ''
+    // `hmrId` lets `@pyreon/router`'s dev HMR coordinator map a
+    // hot-updated module back to its route record(s) for an in-place
+    // component swap (no page reload, signals preserved). Inert in
+    // production — the coordinator is only registered in a dev browser,
+    // so `_hmrId` is dead metadata once built.
+    opts.push(`hmrId: ${JSON.stringify(fullPath)}`)
+    const optsStr = `, { ${opts.join(', ')} }`
     imports.push(`const ${name} = lazy(() => import("${fullPath}")${optsStr})`)
     return name
   }

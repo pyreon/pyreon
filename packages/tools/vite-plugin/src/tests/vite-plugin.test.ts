@@ -58,7 +58,7 @@ async function transform(plugin: ReturnType<typeof pyreonPlugin>, code: string, 
 // ─── HMR injection ──────────────────────────────────────────────────────────
 
 describe('HMR injection', () => {
-  it('injects HMR accept for modules with component exports', async () => {
+  it('injects a coordinator-driven HMR accept for modules with component exports', async () => {
     const plugin = createPlugin()
     const code = `
 import { h } from "@pyreon/core"
@@ -66,7 +66,18 @@ export function App() { return h("div", null, "hello") }
 `
     const result = await transform(plugin, code, '/src/App.tsx')
     expect(result).toBeDefined()
-    expect(result!.code).toContain('import.meta.hot.accept()')
+    // Self-accept WITH a callback receiving the fresh module (the bare
+    // `accept()` was the bug — it suppressed Vite's reload fallback while
+    // re-rendering nothing).
+    expect(result!.code).toContain('import.meta.hot.accept((__m) => {')
+    expect(result!.code).not.toContain('import.meta.hot.accept();')
+    // Hands the fresh module to the router-registered HMR coordinator,
+    // keyed by THIS module's id (zero import coupling).
+    expect(result!.code).toContain('globalThis.__pyreon_hmr_swap__')
+    expect(result!.code).toContain('__s("/src/App.tsx", __m)')
+    // Falls back to an automatic full reload when the edit was outside the
+    // active route tree or no coordinator is registered.
+    expect(result!.code).toContain('import.meta.hot.invalidate()')
   })
 
   it('injects HMR for exported const components', async () => {
