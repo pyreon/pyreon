@@ -269,13 +269,17 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
     connect()
   }
 
-  // Track reactive URL and enabled state
+  // Track reactive URL and enabled state — reconnect when either changes.
+  // Respect intentionalClose: if the user explicitly called close(), a
+  // later change to a tracked signal (reactive `url`/`enabled` — the
+  // documented pattern) must NOT silently flip the stream back on
+  // against their intent. Mirrors useSubscription. Use manualReconnect()
+  // to resume after an explicit close.
   effect(() => {
-    // Read reactive values to subscribe to changes
     if (typeof options.url === 'function') options.url()
     if (typeof options.enabled === 'function') options.enabled()
 
-    intentionalClose = false
+    if (intentionalClose) return
     reconnectAttempts = 0
     connect()
   })

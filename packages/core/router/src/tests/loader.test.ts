@@ -184,20 +184,44 @@ describe('stringifyLoaderData (M2.2)', () => {
     })
   })
 
-  test('handles deeply-nested data without falsely flagging shared references as cycles', () => {
-    // A non-cyclic shared reference (two keys pointing at the same array)
-    // SHOULD throw — JSON serialization can't represent shared identity
-    // without `references`, and a runtime cycle-detector treating shared
-    // refs as cycles is the safe default for hydration semantics. Verify
-    // the throw shape — if this becomes too aggressive, relax with a
-    // post-visit drop instead of WeakSet.
+  test('shared (DAG) references serialize — only true cycles throw', () => {
+    // BEHAVIOUR CHANGE (intentional, bug fix). Previously the all-seen
+    // WeakSet threw "circular reference" on ANY object visited twice — a
+    // shared reference (DAG), not a cycle. That 500'd the SSR response for
+    // extremely common loader payloads (an ORM returning the same instance
+    // twice). The original code's own comment anticipated this remedy:
+    // "if this becomes too aggressive, relax with a post-visit drop
+    // instead of WeakSet" — which is exactly what ancestor-path detection
+    // does. Strictly more permissive: inputs that throw before now succeed;
+    // inputs that worked are unchanged; real cycles still throw.
     const shared = [1, 2, 3]
-    expect(() =>
-      stringifyLoaderData({
-        '/a': shared,
-        '/b': shared,
-      }),
-    ).toThrow(/circular reference/)
+    const json = stringifyLoaderData({ '/a': shared, '/b': shared })
+    expect(JSON.parse(json)).toEqual({ '/a': [1, 2, 3], '/b': [1, 2, 3] })
+
+    // Canonical real-world shape: one user object referenced twice.
+    const user = { id: 7, name: 'Ada' }
+    const post = stringifyLoaderData({ '/posts/1': { author: user, lastEditor: user } })
+    expect(JSON.parse(post)).toEqual({
+      '/posts/1': { author: { id: 7, name: 'Ada' }, lastEditor: { id: 7, name: 'Ada' } },
+    })
+
+    // Diamond: same node reachable via two paths, no cycle.
+    const leaf = { v: 1 }
+    const diamond = stringifyLoaderData({ '/d': { left: { leaf }, right: { leaf } } })
+    expect(JSON.parse(diamond)).toEqual({ '/d': { left: { leaf: { v: 1 } }, right: { leaf: { v: 1 } } } })
+  })
+
+  test('still throws on a true cycle through a shared-looking path', () => {
+    // A shared ref that ALSO closes a cycle must still throw.
+    interface N {
+      id: number
+      next?: N
+    }
+    const a: N = { id: 1 }
+    const b: N = { id: 2 }
+    a.next = b
+    b.next = a // real cycle
+    expect(() => stringifyLoaderData({ '/x': { a, b } })).toThrow(/\[Pyreon\] Loader returned circular reference/)
   })
 
   test('empty record produces empty object JSON', () => {
@@ -606,6 +630,24 @@ describe('router — staleWhileRevalidate', () => {
     await new Promise<void>((r) => setTimeout(r, 50))
     expect(loaderCallCount).toBe(2)
   })
+
+  // FOLLOW-UP FINDING (empirically proven, intentionally NOT fixed here):
+  // `revalidateSwrLoaders` is never invoked even by the canonical
+  // `staleWhileRevalidate` nav pattern above. `runLoaders`'s gate is
+  // `r.staleWhileRevalidate && router._loaderData.has(r)`, but
+  // `resolveRoute` returns FRESH `RouteRecord` objects per resolution, so
+  // `_loaderData.has(r)` is never true across navigations — the SWR
+  // branch is dead and the `loaderCallCount === 2` above actually comes
+  // from the BLOCKING path running twice (this test is misnamed). I.e.
+  // the `staleWhileRevalidate` route option is effectively non-functional
+  // for the nav-away/back case. This is a distinct, significant bug whose
+  // correct fix is keying `_loaderData` / the SWR gate by a STABLE key
+  // (path / loaderKey) instead of record identity — a non-trivial router
+  // behaviour change that deserves its own focused, aligned PR rather
+  // than being bundled into a hardening sweep (silent scope creep). An
+  // attempted "surface the swallowed SWR error" fix was reverted from
+  // this PR precisely because the path is unreachable dead code until
+  // this root cause is fixed.
 })
 
 describe('router.preload', () => {

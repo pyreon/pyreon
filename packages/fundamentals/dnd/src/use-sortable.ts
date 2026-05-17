@@ -71,7 +71,12 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
   const overEdge = signal<DropEdge | null>(null)
   const axis = options.axis ?? 'vertical'
 
+  // Shared (container-level) pdnd cleanups — drained once on unmount.
   const cleanups: (() => void)[] = []
+  // Per-item pdnd cleanups, keyed by sort key. Disposed individually on
+  // item unmount / re-register so a churning list doesn't accumulate
+  // dead registrations for the sortable's whole lifetime.
+  const itemCleanups = new Map<string | number, () => void>()
 
   /** Perform the reorder based on current active/over/edge state. */
   function performReorder() {
@@ -179,7 +184,21 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
 
   function itemRef(key: string | number): (el: HTMLElement | null) => void {
     return (el: HTMLElement | null) => {
-      // Pyreon ref-on-unmount: see containerRef comment.
+      // Per-key disposal. The ref fires with the element on mount and
+      // with `null` on unmount. The old code pushed every registration
+      // onto the shared `cleanups[]` and made the null branch a pure
+      // no-op — so for a `<For>`-rendered sortable (the documented usage:
+      // todo list / kanban) every removed item's pdnd `draggable` /
+      // `dropTargetForElements` registration (and its pointer/drag
+      // listeners on the now-detached node) leaked until the WHOLE
+      // sortable unmounted. Dispose the prior registration for this key
+      // on BOTH unmount (el === null) and re-registration (same key,
+      // new element) so the live set tracks live items, not all-ever.
+      const prev = itemCleanups.get(key)
+      if (prev) {
+        prev()
+        itemCleanups.delete(key)
+      }
       if (!el) return
       el.dataset.pyreonSortKey = String(key)
       if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0')
@@ -228,13 +247,15 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
         }),
       )
 
-      cleanups.push(cleanup)
+      itemCleanups.set(key, cleanup)
     }
   }
 
   onCleanup(() => {
     for (const cleanup of cleanups) cleanup()
     cleanups.length = 0
+    for (const cleanup of itemCleanups.values()) cleanup()
+    itemCleanups.clear()
     activeId.set(null)
     overId.set(null)
     overEdge.set(null)

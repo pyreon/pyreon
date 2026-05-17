@@ -36,9 +36,9 @@ export interface Signal<T> {
   subscribe(listener: () => void): () => void
   /**
    * Register a direct updater — even lighter than subscribe().
-   * Uses a flat array instead of Set. Disposal nulls the slot (no Set.delete).
    * Intended for compiler-emitted DOM bindings (_bindText, _bindDirect).
-   * Returns a disposer that nulls the slot.
+   * Returns a disposer that removes the updater (O(1)); the live set
+   * stays bounded under register/dispose churn.
    */
   direct(updater: () => void): () => void
   /**
@@ -64,13 +64,13 @@ interface SignalFn<T> {
   _v: T
   /** @internal subscriber set (lazily allocated by trackSubscriber) */
   _s: Set<() => void> | null
-  /** @internal direct updaters array — compiler-emitted DOM updaters (lazily allocated) */
-  _d: ((() => void) | null)[] | null
+  /** @internal direct updater set — compiler-emitted DOM updaters (lazily allocated) */
+  _d: Set<() => void> | null
   peek(): T
   set(value: T): void
   update(fn: (current: T) => T): void
   subscribe(listener: () => void): () => void
-  /** Register a direct updater — lighter than subscribe, uses array index disposal. */
+  /** Register a direct updater — lighter than subscribe; O(1) set-based disposal. */
   direct(updater: () => void): () => void
   label: string | undefined
   debug(): SignalDebugInfo<T>
@@ -154,33 +154,36 @@ function _subscribe(this: SignalFn<unknown>, listener: () => void): () => void {
 
 /**
  * Register a direct updater — lighter than subscribe().
- * Uses a flat array instead of Set. Disposal nulls the slot (no Set.delete overhead).
  * Used by compiler-emitted _bindText/_bindDirect for zero-overhead DOM bindings.
+ *
+ * Backed by a `Set` (same as `_s`), NOT a flat array. The array form
+ * disposed by nulling the slot (`arr[idx] = null`) but never compacted —
+ * so a long-lived signal (theme/locale/auth, or a signal read inside
+ * `<For>` rows) bound by churning components accumulated one permanent
+ * dead slot per ever-mounted binding. That is an app-lifetime memory
+ * leak AND degrades the signal-write hot path: `notifyDirect` iterated
+ * O(total-ever-registered), not O(live). A Set bounds growth to the live
+ * set and keeps disposal + iteration O(live); the "Set.delete overhead"
+ * the array form optimised for is negligible against an unbounded array.
  */
 function _directFn(this: SignalFn<unknown>, updater: () => void): () => void {
-  if (!this._d) this._d = []
-  const arr = this._d
-  const idx = arr.length
-  arr.push(updater)
+  if (!this._d) this._d = new Set()
+  const set = this._d
+  set.add(updater)
   return () => {
-    arr[idx] = null
+    set.delete(updater)
   }
 }
 
 /**
- * Notify direct updaters — flat array iteration, batch-aware.
- * Null slots (from disposed updaters) are skipped.
+ * Notify direct updaters — set iteration, batch-aware. Disposed updaters
+ * are already absent from the set (O(1) delete on disposal).
  */
-function notifyDirect(updaters: ((() => void) | null)[]): void {
+function notifyDirect(updaters: Set<() => void>): void {
   if (isBatching()) {
-    for (let i = 0; i < updaters.length; i++) {
-      const fn = updaters[i]
-      if (fn) enqueuePendingNotification(fn)
-    }
+    for (const fn of updaters) enqueuePendingNotification(fn)
   } else {
-    for (let i = 0; i < updaters.length; i++) {
-      updaters[i]?.()
-    }
+    for (const fn of updaters) fn()
   }
 }
 

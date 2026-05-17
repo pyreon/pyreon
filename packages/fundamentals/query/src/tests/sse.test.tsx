@@ -521,6 +521,38 @@ describe('useSSE', () => {
     unmount()
   })
 
+  it('does NOT reconnect when a tracked signal changes after an explicit close() (F4)', () => {
+    // Regression: the reactive effect unconditionally reset
+    // `intentionalClose = false` and called connect() whenever a tracked
+    // signal (reactive `url`/`enabled` — the documented pattern) changed.
+    // So a user who explicitly close()'d had the stream silently
+    // resurrected by an unrelated URL/enabled change, against their
+    // intent. Mirrors useSubscription's `if (intentionalClose) return`.
+    const client = makeClient()
+    const url = signal('http://example.com/events1')
+    let sse: UseSSEResult<string> | null = null
+
+    const unmount = withProvider(client, () => {
+      sse = useSSE({ url: () => url() })
+    })
+
+    expect(mockInstances).toHaveLength(1)
+    sse!.close()
+    expect(sse!.status()).toBe('disconnected')
+
+    // A tracked-signal change after explicit close must NOT reconnect.
+    url.set('http://example.com/events2')
+
+    expect(mockInstances).toHaveLength(1) // no new EventSource
+    expect(sse!.status()).toBe('disconnected')
+
+    // reconnect() (manualReconnect) is the explicit, intended way to resume.
+    sse!.reconnect()
+    expect(mockInstances).toHaveLength(2)
+
+    unmount()
+  })
+
   it('passes withCredentials to EventSource', () => {
     const client = makeClient()
 

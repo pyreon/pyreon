@@ -164,17 +164,25 @@ describe('signal', () => {
       expect(calls3).toBe(2) // still active
     })
 
-    test('direct updater slot is null after disposal', () => {
+    test('direct updater is removed from the set after disposal', () => {
       const s = signal(0)
-      const dispose = s.direct(() => {})
+      let calls = 0
+      const dispose = s.direct(() => {
+        calls++
+      })
 
-      // Access internal _d array via cast
-      const internal = s as unknown as { _d: ((() => void) | null)[] | null }
+      // Internal `_d` is a Set (not an unbounded array — see signal.ts).
+      const internal = s as unknown as { _d: Set<() => void> | null }
       expect(internal._d).not.toBeNull()
-      expect(internal._d![0]).toBeTypeOf('function')
+      expect(internal._d!.size).toBe(1)
+      s.set(1)
+      expect(calls).toBe(1)
 
       dispose()
-      expect(internal._d![0]).toBeNull()
+      // O(1) removal — the slot is GONE, not nulled-and-retained.
+      expect(internal._d!.size).toBe(0)
+      s.set(2)
+      expect(calls).toBe(1) // disposed updater not invoked
     })
   })
 
@@ -208,13 +216,31 @@ describe('signal', () => {
       expect(calls).toBe(1)
     })
 
-    test('direct updater with no prior direct array initializes lazily', () => {
+    test('direct updater set initializes lazily', () => {
       const s = signal(0)
-      const internal = s as unknown as { _d: ((() => void) | null)[] | null }
+      const internal = s as unknown as { _d: Set<() => void> | null }
       expect(internal._d).toBeNull()
       s.direct(() => {})
       expect(internal._d).not.toBeNull()
-      expect(internal._d).toHaveLength(1)
+      expect(internal._d!.size).toBe(1)
+    })
+
+    test('churned direct bindings do not accumulate (no unbounded growth)', () => {
+      // Regression for the array-form leak: a long-lived signal whose
+      // direct bindings register+dispose repeatedly (e.g. <For> rows
+      // re-mounting) must keep `_d` bounded to the LIVE set, not grow
+      // one permanent dead slot per ever-registered binding.
+      const s = signal(0)
+      const internal = s as unknown as { _d: Set<() => void> | null }
+      for (let i = 0; i < 10_000; i++) {
+        const dispose = s.direct(() => {})
+        dispose()
+      }
+      expect(internal._d!.size).toBe(0)
+      // One live binding survives → notify cost is O(live), not O(10_000).
+      const dispose = s.direct(() => {})
+      expect(internal._d!.size).toBe(1)
+      dispose()
     })
   })
 
