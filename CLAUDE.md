@@ -1292,6 +1292,17 @@ bun run check-doc-claims --json  # machine-readable
 
 CI runs this on every PR as a required `Check Doc Claims` job (~2s). The gate ALSO rejects hedged forms like "33+ hooks" — write the exact number so the source-of-truth comparison stays strict. Adding a new claim with a known canonical source means adding a new entry to the `checks[]` array; arbitrary numeric prose is not in scope.
 
+## Check Manifest Depth — MCP `get_api` density ratchet
+
+`scripts/check-manifest-depth.ts` enforces a floor on package-manifest `api[]` density. The root cause behind "`get_api` returns a signature but no foot-gun catalog for half the fundamentals" was that nothing enforced depth: `@pyreon/rx` shipped 3 `api[]` entries for 37 functions; `@pyreon/store` referenced `StoreApi` 3× in `seeAlso` with no entry at all (a silent `get_api` 404 to AI agents). The manifest-depth PR enriched store + rx to MCP density (grounded in real source — including correcting four `rx` inaccuracies: the false `.subscribe`-detection claim, the backwards `() => items()` advice, `groupBy` documented as `Map` when it returns `Record`, and `search`'s `{ keys }` vs positional signature) and added this gate so density can't silently erode.
+
+```bash
+bun run check-manifest-depth          # exit non-zero on regression
+bun run check-manifest-depth --json   # machine-readable
+```
+
+It is a **ratchet, not a target** (same shape as `check-bundle-budgets` / audit-types `EXEMPT_FIELDS`): `LOCKED` records each migrated package's *achieved* `{ minEntries, minWithMistakes }` — counted via the authoritative `findManifests` loader (the same one `get_api` uses), never a source grep. The gate fails only if a locked package drops below its floor. Packages absent from `LOCKED` (i18n, charts, code, dnd, state-tree, validation, …) are the visible migration backlog — intentionally NOT gated, so the gate never flag-days CI on 15 packages at once. Migrating a package = enrich its manifest, then add it to `LOCKED` with the numbers that PR achieves; that addition is the deliberate "at standard now" signal, reviewed in the same PR. CI runs it as a required `Check Manifest Depth` job (~2s, `needs: install`).
+
 ## E2E — real-Chromium tests against example apps
 
 `bun run test:e2e` runs Playwright against `examples/playground` in real Chromium. Tests live in `e2e/` and exercise framework primitives via `window.__pyreon` (mount/unmount, signal-driven DOM updates, computed values, batching, conditional rendering, list reconciliation, router navigation). Companion to `verify-modes` (build artifacts) — together they cover both the static output AND the runtime behavior.
