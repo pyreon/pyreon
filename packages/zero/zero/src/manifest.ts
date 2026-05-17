@@ -525,25 +525,28 @@ export const Check = createIcon(checkRaw)   // raw string → inlined via <span>
     {
       name: 'iconsPlugin',
       kind: 'function',
-      signature: "iconsPlugin({ dir, out?, mode?: 'inline' | 'image' }): Plugin",
+      signature: "iconsPlugin({ dir | sets, out?, mode?: 'inline' | 'image' }): Plugin",
       summary:
-        "Vite plugin (from `@pyreon/zero/server`): point it at a folder of `*.svg` files and it writes a strictly-typed generated `icons.gen.tsx` exporting `<Icon name=\"…\" />`. Add an svg → the `name` union widens; remove one → an invalid `name` fails typecheck. The generated file calls `createNamedIcon(REGISTRY)`, so `keyof typeof REGISTRY` IS the type surface (autocomplete + real go-to-definition, zero per-app wiring — same one-touch shape as fs-router / islands auto-registry). Regenerates on add/unlink in dev (idempotent write — never rewrites identical content). Two render modes per the colorful-vs-system split: `mode: 'inline'` (default — system icons; each svg inlined as raw `?raw` markup, `currentColor`-themeable, recolor via CSS `color`) and `mode: 'image'` (colorful / brand icons; each svg emitted as a static asset, rendered `<img>`, NO mutation, original colors preserved). Default `out` is `icons.gen.tsx` next to `dir` (e.g. `src/icons` → `src/icons.gen.tsx`) — recommend gitignoring it (build artifact). It writes a real file (NOT a virtual module) deliberately: the published `@pyreon/zero` package can't `import` a plugin virtual module — Rolldown resolves static imports before plugin `resolveId` (the same constraint that makes islands need `hydrateIslandsAuto(registry)` with an explicit import).",
-      example: `// vite.config.ts
+        "Vite plugin (from `@pyreon/zero/server`): point it at a folder of `*.svg` files and it writes a strictly-typed generated `icons.gen.tsx` exporting `<Icon name=\"…\" />`. Add an svg → the `name` union widens; remove one → an invalid `name` fails typecheck. The generated file calls `createNamedIcon(REGISTRY)`, so `keyof typeof REGISTRY` IS the type surface (autocomplete + real go-to-definition, zero per-app wiring — same one-touch shape as fs-router / islands auto-registry). Regenerates on add/unlink in dev (idempotent write — never rewrites identical content). **Named multi-set form** (`sets: { ui: { dir }, brand: { dir, mode } }`, mutually exclusive with `dir`): one generated file exports a strictly-typed component PER set with NAMESPACED types so they never clash — `ui` → `<UiIcon name=\"…\" />` + `type UiIconName`, `brand` → `<BrandIcon name=\"…\" />` + `type BrandIconName`; per-set binding prefixes mean two sets sharing a glyph filename don't collide. Two render modes per the colorful-vs-system split (settable per-set): `mode: 'inline'` (default — system icons; each svg inlined as raw `?raw` markup, `currentColor`-themeable, recolor via CSS `color`) and `mode: 'image'` (colorful / brand icons; each svg emitted as a static asset, rendered `<img>`, NO mutation, original colors preserved). Default `out` is `icons.gen.tsx` next to `dir` for the single-set form (`src/icons` → `src/icons.gen.tsx`) or `src/icons.gen.tsx` for the multi-set form — recommend gitignoring it (build artifact). It writes a real file (NOT a virtual module) deliberately: the published `@pyreon/zero` package can't `import` a plugin virtual module — Rolldown resolves static imports before plugin `resolveId` (the same constraint that makes islands need `hydrateIslandsAuto(registry)` with an explicit import).",
+      example: `// vite.config.ts — single set:
 import { iconsPlugin } from '@pyreon/zero/server'
-export default { plugins: [iconsPlugin({ dir: './src/icons' })] }
+iconsPlugin({ dir: './src/icons' })
+// app: import { Icon } from './icons.gen'; <Icon name="check-circle" />
 
-// app — strictly typed, autocompletes, rejects typos:
-import { Icon } from './icons.gen'
-<span style="width:2rem"><Icon name="check-circle" /></span>
-
-// colorful / brand set — original colors, no recolor:
-iconsPlugin({ dir: './src/brand', mode: 'image' })`,
+// Named multi-set — per-set typed components, no IconName clash:
+iconsPlugin({ sets: {
+  ui:    { dir: './src/icons/ui' },
+  brand: { dir: './src/icons/brand', mode: 'image' },
+}})
+// app: import { UiIcon, BrandIcon } from './icons.gen'
+// <UiIcon name="arrow-left" />  <BrandIcon name="logo-mark" />`,
       mistakes: [
+        "Passing BOTH `dir` and `sets` (or neither) — exactly one is required; the plugin throws `[Pyreon] iconsPlugin: provide EXACTLY ONE of dir or sets` at config time",
         "Using `mode: 'inline'` (default) for multicolor / brand SVGs — inline mode is for monochrome system icons you recolor via `currentColor`. A multicolor logo's hardcoded fills survive but you lose nothing by using `mode: 'image'`, which is the correct choice for no-mutation colorful assets",
         "Using `mode: 'image'` for icons you need to recolor — `<img>` can't be themed via CSS `color`; the svg is opaque. Recolorable system icons need `mode: 'inline'`",
-        "Editing the generated `icons.gen.tsx` by hand — it's regenerated on every add/unlink. Add/remove `.svg` files in `dir` instead; commit the gitignore entry, not the file",
+        "Editing the generated `icons.gen.tsx` by hand — it's regenerated on every add/unlink. Add/remove `.svg` files in the set folder(s) instead; commit the gitignore entry, not the file",
         "Expecting a virtual `import 'virtual:zero/icons'` — there isn't one (Rolldown import-ordering constraint). The plugin writes a REAL file you import by path; that's what gives go-to-definition + zero wiring",
-        "Pointing `dir` at a folder that doesn't exist yet — `scanIconDir` returns empty and the generated `IconName` is `never` (every `name` fails typecheck). Create the folder + drop at least one `.svg` first",
+        "Pointing a set `dir` at a folder that doesn't exist yet — `scanIconDir` returns empty and the generated `*IconName` is `never` (every `name` fails typecheck). Create the folder + drop at least one `.svg` first",
         "Forgetting `vite/client` types — the generated file's `?raw` imports rely on Vite's ambient `*.svg?raw` module declaration; the generated file emits `/// <reference types=\"vite/client\" />` but the consuming tsconfig must still resolve `vite/client`",
       ],
       seeAlso: ['createNamedIcon', 'Icon', 'IconProps'],

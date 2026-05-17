@@ -4,8 +4,11 @@ import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 
 import {
+  componentNameFromSetKey,
   generateIconSetSource,
+  generateNamedIconSetsSource,
   iconNameFromFile,
+  iconsPlugin,
   scanIconDir,
 } from '../icons-plugin'
 
@@ -95,5 +98,73 @@ describe('generateIconSetSource', () => {
     const src = generateIconSetSource([], { mode: 'inline', importDir: './i' })
     expect(src).toContain('const REGISTRY = {')
     expect(src).toContain('export const Icon = createNamedIcon(REGISTRY)')
+  })
+})
+
+describe('componentNameFromSetKey', () => {
+  it('PascalCases the key + appends Icon', () => {
+    expect(componentNameFromSetKey('ui')).toBe('UiIcon')
+    expect(componentNameFromSetKey('brand')).toBe('BrandIcon')
+    expect(componentNameFromSetKey('brand-marks')).toBe('BrandMarksIcon')
+    expect(componentNameFromSetKey('social_logos')).toBe('SocialLogosIcon')
+  })
+
+  it('sanitizes a non-identifier-leading key', () => {
+    expect(componentNameFromSetKey('1up')).toBe('Set1upIcon')
+  })
+})
+
+describe('generateNamedIconSetsSource', () => {
+  it('emits a namespaced component + type PER set, one createNamedIcon import', () => {
+    const src = generateNamedIconSetsSource([
+      { key: 'ui', files: ['check.svg', 'arrow-left.svg'], mode: 'inline', importDir: './icons/ui' },
+      { key: 'brand', files: ['logo.svg'], mode: 'image', importDir: './icons/brand' },
+    ])
+    // one shared import
+    expect(src.match(/import \{ createNamedIcon \}/g)).toHaveLength(1)
+    // ui set — inline (?raw), typed UiIconName, <UiIcon>
+    expect(src).toContain("import ui_check from './icons/ui/check.svg?raw'")
+    expect(src).toContain('export type UiIconName = keyof typeof UiIcon_REGISTRY')
+    expect(src).toContain('export const UiIcon = createNamedIcon(UiIcon_REGISTRY)')
+    // brand set — image (no ?raw), typed BrandIconName, <BrandIcon> image-mode
+    expect(src).toContain("import brand_logo from './icons/brand/logo.svg'")
+    expect(src).toContain('export type BrandIconName = keyof typeof BrandIcon_REGISTRY')
+    expect(src).toContain(
+      "export const BrandIcon = createNamedIcon(BrandIcon_REGISTRY, { mode: 'image' })",
+    )
+    // NO bare `Icon` / `IconName` — sets never clash with the single-set names
+    expect(src).not.toContain('export const Icon =')
+    expect(src).not.toContain('export type IconName =')
+  })
+
+  it('per-set binding prefix → two sets sharing a glyph filename do not collide', () => {
+    const src = generateNamedIconSetsSource([
+      { key: 'a', files: ['star.svg'], mode: 'inline', importDir: './a' },
+      { key: 'b', files: ['star.svg'], mode: 'inline', importDir: './b' },
+    ])
+    expect(src).toContain("import a_star from './a/star.svg?raw'")
+    expect(src).toContain("import b_star from './b/star.svg?raw'")
+  })
+})
+
+describe('iconsPlugin — dir/sets XOR validation', () => {
+  it('throws when neither dir nor sets is given', () => {
+    expect(() => iconsPlugin({} as never)).toThrow(/EXACTLY ONE/)
+  })
+
+  it('throws when BOTH dir and sets are given', () => {
+    expect(() =>
+      iconsPlugin({ dir: './icons', sets: { ui: { dir: './ui' } } } as never),
+    ).toThrow(/EXACTLY ONE/)
+  })
+
+  it('accepts the single-set form', () => {
+    const p = iconsPlugin({ dir: './icons' })
+    expect(p.name).toBe('pyreon:zero-icons')
+  })
+
+  it('accepts the named multi-set form', () => {
+    const p = iconsPlugin({ sets: { ui: { dir: './icons/ui' } } })
+    expect(p.name).toBe('pyreon:zero-icons')
   })
 })
