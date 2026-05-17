@@ -46,23 +46,29 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command:
-        'bun run --filter=@pyreon/ssr-showcase dev -- --port 5201 --strictPort',
+      // Launch the dev server under NODE, not Bun. ROOT CAUSE of the CI
+      // failure (confirmed by direct experiment, not hypothesis): when
+      // Vite's dev server runs under `bun`, Bun's `fs.watch` does NOT feed
+      // Vite's file watcher reliably for the spec's programmatic in-place
+      // `writeFileSync` — Vite never sees a `change`, never sends an HMR
+      // update, the page stays stuck at MARKER_V1 with neither an in-place
+      // swap NOR an `invalidate()` reload. macOS Bun-fsevents happened to
+      // work locally (the only passing config); Bun chokidar `usePolling`
+      // was blind too; Bun on GitHub Actions' Linux was blind. Under Node,
+      // the IDENTICAL edit produces `js-update → __pyreon_hmr_swap__ →
+      // RouterView re-render` in ~505ms — the framework fix working as
+      // designed. So this gate runs vite via Node. `node_modules/.bin/vite`
+      // is hoisted to the workspace root by Bun's installer (verified in
+      // CI's post-`bun install` layout); the example's own vite.config.ts +
+      // workspace `bun` condition resolution work identically under Node
+      // (the SSR pipeline + zero plugin chain were exercised end-to-end in
+      // the confirming experiment). `cwd` points Vite at the example so it
+      // picks up examples/ssr-showcase/vite.config.ts.
+      command: 'node ../../node_modules/.bin/vite --port 5201 --strictPort',
+      cwd: 'examples/ssr-showcase',
       port: 5201,
       timeout: 180_000,
       reuseExistingServer: !process.env.CI,
-      // Force Vite's chokidar watcher to poll. On GitHub Actions' Linux
-      // runners, native inotify events for a programmatic `writeFileSync`
-      // (the spec's mid-test edit) are unreliable on the overlay
-      // filesystem — the watch event never fires, so Vite never sends the
-      // HMR update, and the spec sees a permanently-stale MARKER_V1 with
-      // neither an in-place swap NOR an `invalidate()` reload. Local
-      // macOS fsevents are reliable, which is why this only failed in CI.
-      // `CHOKIDAR_USEPOLLING=true` is chokidar's documented CI/Docker
-      // escape hatch (Vite reads it via its chokidar watcher); 300ms
-      // interval keeps the post-edit latency well inside the 30s budget.
-      // Scoped to THIS gate's dev server only — no app/framework change.
-      env: { CHOKIDAR_USEPOLLING: 'true', CHOKIDAR_INTERVAL: '300' },
     },
   ],
 })
