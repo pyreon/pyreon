@@ -45,5 +45,8 @@
   "dependencies": {
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^"
+  },
+  "devDependencies": {
+    "@pyreon/manifest": "workspace:*"
   }
 }
