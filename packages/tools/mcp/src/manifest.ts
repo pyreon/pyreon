@@ -141,7 +141,24 @@ diagnose({
         'Expecting the tool to return a fix patch — it returns structured CONTEXT (regex diagnosis + detector hits + matched anti-patterns + reactive run-up). The agent reasons over it; the tool does not embed a model',
         'Passing a production error report and expecting `reactiveTrace` content — the trace is dev-only (it tree-shakes out of prod builds), so prod reports carry `reactiveTrace: undefined` and the tool degrades to the v1 base diagnosis',
       ],
-      seeAlso: ['validate', 'get_anti_patterns'],
+      seeAlso: ['validate', 'get_anti_patterns', 'explain_error'],
+    },
+    {
+      name: 'explain_error',
+      kind: 'constant',
+      signature:
+        'tool: explain_error({ report: string; componentSource?: string }) → FailureDossier',
+      summary:
+        "The rich-context sibling of `diagnose`. `diagnose` matches an error STRING against known footguns; `explain_error` takes a full `ErrorContext`-shaped report — crucially the `reactiveTrace` (the causal SEQUENCE of signal writes from @pyreon/core's error reports) — and assembles a structured failure dossier: the reactive run-up + heuristic findings (empty-trace / nullish-then-crash / write-storm / last-write-correlation / type-flip), optional static `detectPyreonPatterns` on the component source, and correlated anti-pattern catalogue entries. The server only assembles + applies cheap heuristics; the consuming agent reasons over the dossier and a human gates any patch (the tool returns text only — no mutation, no LLM dependency). Use it when an agent has a captured Pyreon crash and the stack trace alone is not enough — the reactive sequence shows *how* the app reached the failing state.",
+      example: `explain_error({ report: JSON.stringify(errorContext) })
+// errorContext from registerErrorHandler(ctx => …) in dev;
+// ctx.reactiveTrace is the high-signal field`,
+      mistakes: [
+        'Passing only an error string — that is what `diagnose` is for. `explain_error` wants the structured report (phase, component, props, reactiveTrace) to be worth more than `diagnose`',
+        "Expecting it to apply a fix — it returns a dossier + suspected cause only. Repair is human-gated by construction (the tool has no write capability)",
+        'Capturing the report in production — `reactiveTrace` is dev-only (tree-shaken in prod), so the highest-signal section will be empty. Capture in dev',
+      ],
+      seeAlso: ['diagnose', 'validate', 'get_anti_patterns'],
     },
     {
       name: 'get_routes',

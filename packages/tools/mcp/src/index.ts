@@ -11,6 +11,7 @@
  *   validate                  — Check a code snippet for Pyreon anti-patterns
  *   migrate_react             — Convert React code to idiomatic Pyreon
  *   diagnose                  — Parse an error message into structured fix information
+ *   explain_error             — Assemble a failure dossier from a full error report (incl. reactiveTrace)
  *   get_routes                — List all routes in the current project
  *   get_components            — List all components with their props and signals
  *   get_browser_smoke_status  — Report which browser-categorized packages have smoke coverage
@@ -48,6 +49,7 @@ import {
   parseAntiPatterns,
 } from './anti-patterns'
 import { API_REFERENCE } from './api-reference'
+import { buildErrorDossier, parseErrorReport } from './explain-error'
 import {
   findChangelog,
   formatChangelog,
@@ -248,6 +250,58 @@ server.tool(
       { diagnoseError, detectPyreonPatterns, antiPatterns },
     )
     return textResult(formatEnrichedDiagnosis({ error }, enriched))
+  },
+)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Tool: explain_error
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// The rich-context sibling of `diagnose`. `diagnose` matches an error
+// STRING against known footguns. `explain_error` takes a full
+// `ErrorContext`-shaped report — crucially including the `reactiveTrace`
+// (the causal SEQUENCE of signal writes from @pyreon/core, shipped in
+// the reactive-trace PR) — and assembles a structured failure dossier:
+// reactive run-up + heuristic findings, optional static detection on the
+// component source, correlated anti-pattern catalogue entries.
+//
+// This server ASSEMBLES; the consuming agent reasons; the human gates
+// any patch (the tool only ever returns text — no mutation, no LLM
+// dependency, no autonomy). It is the sound, distinctive core of
+// "AI-native self-healing" — self-EXPLAINING, not autonomous-repairing.
+
+server.tool(
+  'explain_error',
+  {
+    /**
+     * JSON of an `ErrorContext`-shaped report. Minimal shape:
+     * `{ "error": "msg" | { message, name, stack }, "phase"?,
+     *    "component"?, "props"?, "reactiveTrace"?: [{name,prev,next,timestamp}] }`.
+     * The `reactiveTrace` is the high-signal field — capture it via
+     * `registerErrorHandler(ctx => …)` in dev (it is `undefined` in prod
+     * by design).
+     */
+    report: z.string(),
+    /** Optional raw source of the failing component — enables static anti-pattern detection. */
+    componentSource: z.string().optional(),
+  },
+  async ({ report, componentSource }) => {
+    const parsed = parseErrorReport(report)
+    if (!parsed) {
+      return textResult(
+        'Could not parse the error report. Pass a JSON object with at least an `error` field, e.g.:\n\n```json\n{\n  "error": { "message": "Cannot read properties of null (reading \'name\')", "name": "TypeError" },\n  "phase": "render",\n  "component": "UserCard",\n  "reactiveTrace": [\n    { "name": "user", "prev": "User {id, …}", "next": "null", "timestamp": 1234.5 }\n  ]\n}\n```\n\nCapture this in dev via `registerErrorHandler(ctx => sendToTool(JSON.stringify(ctx)))` — `ctx.reactiveTrace` is the high-signal field.',
+      )
+    }
+    // Reuse the same catalogue loader the `get_anti_patterns` tool uses
+    // so finding→catalogue correlation works in the monorepo. Degrades
+    // gracefully (no correlation section) when the rules file is absent
+    // (consumer project) — the dossier is still fully useful without it.
+    const doc = loadAntiPatternsDoc()
+    const antiPatterns = doc ? parseAntiPatterns(doc) : undefined
+    const dossierOpts: Parameters<typeof buildErrorDossier>[1] = {}
+    if (componentSource !== undefined) dossierOpts.componentSource = componentSource
+    if (antiPatterns !== undefined) dossierOpts.antiPatterns = antiPatterns
+    return textResult(buildErrorDossier(parsed, dossierOpts))
   },
 )
 
