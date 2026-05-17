@@ -62,6 +62,7 @@ import {
   loadPatternRegistry,
   suggestPatterns,
 } from './patterns'
+import { enrichDiagnosis, formatEnrichedDiagnosis } from './diagnose-enrich'
 import { generateContext, type ProjectContext } from './project-scanner'
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -211,26 +212,48 @@ server.tool(
 server.tool(
   'diagnose',
   {
-    error: z.string(),
-  },
-  async ({ error }) => {
-    const diagnosis = diagnoseError(error)
-
-    if (!diagnosis) {
-      return textResult(
-        `Could not identify a Pyreon-specific pattern in this error.\n\nError: ${error}\n\nSuggestions:\n- Check for typos in variable/function names\n- Verify all imports are correct\n- Run \`bun run typecheck\` for full TypeScript diagnostics\n- Run \`pyreon doctor\` for project-wide health check`,
+    error: z.string().describe('The error message / stack. Required.'),
+    componentSource: z
+      .string()
+      .optional()
+      .describe(
+        'Optional. The failing component\'s source. When given, the tool runs the static Pyreon pattern detectors over it and maps any hits to the documented anti-pattern catalog.',
+      ),
+    filename: z
+      .string()
+      .optional()
+      .describe('Optional filename for the detectors (a few rules are path-sensitive).'),
+    reactiveTrace: z
+      .array(
+        z.object({
+          name: z.string().optional(),
+          prev: z.string(),
+          next: z.string(),
+          timestamp: z.number(),
+        }),
       )
-    }
+      .optional()
+      .describe(
+        'Optional. The reactive write sequence leading to the error — `ErrorContext.reactiveTrace` from `@pyreon/core` (populated in dev). The causal run-up, not a snapshot.',
+      ),
+    phase: z
+      .string()
+      .optional()
+      .describe('Optional. Lifecycle phase the error occurred in (setup/render/mount/unmount/effect).'),
+  },
+  async ({ error, componentSource, filename, reactiveTrace, phase }) => {
+    // Anti-pattern catalog is the bridge from a detector hit to its
+    // prose explanation. Loaded once per call; `[]` when the rules dir
+    // isn't reachable (consumer project) — enrichment degrades, the v1
+    // base diagnosis is unaffected.
+    const doc = loadAntiPatternsDoc()
+    const antiPatterns = doc ? parseAntiPatterns(doc) : []
 
-    let text = `**Cause:** ${diagnosis.cause}\n\n**Fix:** ${diagnosis.fix}`
-    if (diagnosis.fixCode) {
-      text += `\n\n**Code:**\n\`\`\`typescript\n${diagnosis.fixCode}\n\`\`\``
-    }
-    if (diagnosis.related) {
-      text += `\n\n**Related:** ${diagnosis.related}`
-    }
-
-    return textResult(text)
+    const enriched = enrichDiagnosis(
+      { error, componentSource, filename, reactiveTrace, phase },
+      { diagnoseError, detectPyreonPatterns, antiPatterns },
+    )
+    return textResult(formatEnrichedDiagnosis({ error }, enriched))
   },
 )
 

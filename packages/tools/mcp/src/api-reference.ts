@@ -2743,10 +2743,23 @@ function Counter() {
   },
 
   'mcp/diagnose': {
-    signature: 'tool: diagnose({ error: string }) → DiagnoseResult',
-    example: `diagnose({ error: 'Cannot redefine property X on object [object Object]' })
-// → cause: configurable: false on a getter; fix: set configurable: true`,
-    notes: 'Parse a Pyreon runtime / build error message into structured fix information: probable cause, recommended fix, related docs, and the `.claude/rules/anti-patterns.md` entry (if any) the error matches. Useful when an agent sees a stack trace and wants to skip the "search the codebase for similar errors" step. See also: validate, get_anti_patterns.',
+    signature: 'tool: diagnose({ error: string, componentSource?: string, reactiveTrace?: ReactiveTraceEntry[], filename?: string, phase?: string }) → DiagnoseResult',
+    example: `// v1 — unchanged, backward-compatible
+diagnose({ error: 'Cannot redefine property X on object [object Object]' })
+// → cause: configurable: false on a getter; fix: set configurable: true
+
+// v2 — structured context → causal diagnosis
+diagnose({
+  error: 'name is stale after parent update',
+  componentSource: 'function G({ name }) { return <div>{name}</div> }',
+  reactiveTrace: [{ name: 'name', prev: '"a"', next: '"b"', timestamp: 1 }],
+})
+// → base diagnosis + "Static detector findings: props-destructured"
+//   + matched anti-pattern entry + the reactive run-up`,
+    notes: 'Parse a Pyreon runtime / build error into structured fix information. **String-only call is unchanged** (probable cause + fix + related docs from the regex pattern table — fully backward-compatible). v2 adds OPTIONAL structured context for richer, causal diagnosis: pass `componentSource` and the tool runs the static Pyreon detectors over it and maps each hit to the documented anti-pattern catalog entry (the `detectorCodes` bridge); pass `reactiveTrace` (the `ErrorContext.reactiveTrace` from `@pyreon/core`, populated in dev) and the tool formats the causal sequence of signal writes leading to the crash. The tool is deterministic — it assembles structured context, the calling agent reasons over it (no embedded LLM). Use the enriched form when you have the failing component + the error report; use the bare string form for a quick "what does this error mean". See also: validate, get_anti_patterns.',
+    mistakes: `- Assuming v2 changed the string-only behaviour — it did not; an error-only call returns byte-identical output to before. The enrichment sections appear ONLY when componentSource / reactiveTrace are supplied
+- Expecting the tool to return a fix patch — it returns structured CONTEXT (regex diagnosis + detector hits + matched anti-patterns + reactive run-up). The agent reasons over it; the tool does not embed a model
+- Passing a production error report and expecting \`reactiveTrace\` content — the trace is dev-only (it tree-shakes out of prod builds), so prod reports carry \`reactiveTrace: undefined\` and the tool degrades to the v1 base diagnosis`,
   },
 
   'mcp/get_routes': {
