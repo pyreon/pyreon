@@ -84,60 +84,25 @@ test('editing a route component hot-updates the DOM in place, no reload, signal 
       { timeout: 15_000 },
     )
 
-    // ── CI-DIAGNOSTIC (remove once the gate is reliably green) ───────────
-    // This gate is CI-only-reproducible (overlayfs inotify). Local macOS
-    // always passes, so any further failure must be diagnosed from the CI
-    // log itself, not guessed from a local run. These listeners print the
-    // Vite HMR websocket traffic + whether the swap coordinator fired, so
-    // a failing CI run shows EXACTLY where the chain broke (watcher never
-    // delivered → no WS update frame; delivered but coordinator missed →
-    // WS frame present, no SWAP line).
-    page.on('console', (m) => {
-      const t = m.text()
-      if (t.includes('[vite]') || t.startsWith('SWAP'))
-        console.log('[ci-diag console]', m.type(), t)
-    })
-    page.on('websocket', (ws) => {
-      console.log('[ci-diag ws-open]', ws.url())
-      ws.on('framereceived', (d) => {
-        const s = String(d.payload)
-        if (
-          s.includes('update') ||
-          s.includes('reload') ||
-          s.includes('prune')
-        )
-          console.log('[ci-diag ws-recv]', s.slice(0, 200))
-      })
-    })
-    await page.evaluate(() => {
-      const g = window as unknown as Record<string, unknown>
-      const orig = g.__pyreon_hmr_swap__ as
-        | ((id: string, mod: unknown) => boolean)
-        | undefined
-      g.__pyreon_hmr_swap__ = (id: string, mod: unknown) => {
-        const r = orig ? orig(id, mod) : false
-        // eslint-disable-next-line no-console
-        console.log(`SWAP-CALLED ${id} -> ${r}`)
-        return r
-      }
-    })
-
     // ── The edit ────────────────────────────────────────────────────────
     writeFileSync(PROBE, original.replace('MARKER_V1', 'MARKER_V2'), 'utf8')
     // Deterministically trigger Vite's REAL HMR pipeline for the file we
-    // just wrote — the dev-only `pyreon:hmr-test-trigger` plugin calls
+    // just wrote — the dev-only `pyreon:hmr-test-trigger` plugin (mounted
+    // only when playwright.zero-hmr.config.ts sets PYREON_HMR_TEST) calls
     // `server.watcher.emit('change', f)`, the exact entrypoint a genuine
     // fs event uses. This removes the dependency on the OS file watcher
-    // (unreliable on GHA Linux overlayfs / Bun; polling blind in Vite 8)
-    // WITHOUT faking any part of the framework HMR codepath under test.
+    // (no watcher config — Bun, Node, Vite 8 polling — reliably delivers
+    // a programmatic in-place write on GHA Linux overlayfs; only macOS
+    // fsevents does, which is why this was CI-only) WITHOUT faking any
+    // part of the framework HMR codepath under test (handleHotUpdate →
+    // ws update → injected accept callback → @pyreon/router._hmrSwap →
+    // RouterView re-render all run for real). Assert the endpoint
+    // actually fired so a broken trigger fails loudly here instead of
+    // silently timing out at the marker assertion below.
     const touch = await page.request.post(
       `/__pyreon_hmr_touch__?f=${encodeURIComponent(PROBE)}`,
     )
-    console.log(
-      `[ci-diag] edit written; touch status=${touch.status()} body=${(
-        await touch.text()
-      ).slice(0, 80)}`,
-    )
+    expect(touch.ok()).toBeTruthy()
 
     // (1) HMR actually fires — the marker reflects the NEW source.
     //     Pre-fix this never happens (bare accept → stale) and times out.
