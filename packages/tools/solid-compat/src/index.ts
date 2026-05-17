@@ -13,12 +13,22 @@
  *   import { createSignal, createEffect } from "solid-js"  // aliased by vite plugin
  */
 
-import type { ComponentFn, Context, LazyComponent, Props, VNodeChild } from '@pyreon/core'
+import type {
+  ComponentFn,
+  Context,
+  LazyComponent,
+  Props,
+  VNode,
+  VNodeChild,
+  VNodeChildAccessor,
+} from '@pyreon/core'
 import {
+  Dynamic as PyreonDynamic,
   ErrorBoundary,
   For,
   Match,
   nativeCompat,
+  Portal as PyreonPortal,
   createContext as pyreonCreateContext,
   onMount as pyreonOnMount,
   onUnmount as pyreonOnUnmount,
@@ -41,6 +51,7 @@ import {
   runUntracked,
   setCurrentScope,
 } from '@pyreon/reactivity'
+import { hydrateRoot, mount as pyreonMount } from '@pyreon/runtime-dom'
 import { getCurrentCtx, getHookIndex } from './jsx-runtime'
 
 // ─── Type exports (Solid API surface) ───────────────────────────────────────
@@ -1135,6 +1146,131 @@ export function createReaction(onInvalidate: () => void): (tracking: () => void)
       onInvalidate()
     })
   }
+}
+
+// ─── Dynamic ─────────────────────────────────────────────────────────────────
+
+/**
+ * Solid-compatible `<Dynamic>` — renders a component (or HTML tag) chosen at
+ * runtime, spreading the remaining props onto it.
+ *
+ * Solid's `<Dynamic component={X} {...rest} />` maps 1:1 onto Pyreon's
+ * `Dynamic({ component, ...rest })`: both take a `component` prop (a component
+ * function OR a string tag name) and forward every other prop through. This is
+ * a faithful thin re-export of `@pyreon/core`'s `Dynamic` — no shimming.
+ *
+ * @example
+ * import { Dynamic } from "solid-js/web" // aliased to @pyreon/solid-compat
+ *
+ * function App(props: { as: "h1" | "h2" }) {
+ *   // Renders <h1> or <h2> depending on props.as
+ *   return <Dynamic component={props.as} class="title">Hello</Dynamic>
+ * }
+ *
+ * @example
+ * // Component reference also works:
+ * const Red = (p: { children?: unknown }) => <span style="color:red">{p.children}</span>
+ * const Blue = (p: { children?: unknown }) => <span style="color:blue">{p.children}</span>
+ * <Dynamic component={isError() ? Red : Blue}>status</Dynamic>
+ */
+export const Dynamic = PyreonDynamic
+
+// ─── Portal ──────────────────────────────────────────────────────────────────
+
+/**
+ * Solid-compatible `<Portal>` — renders children into a different DOM node than
+ * the current parent tree (modals, tooltips, dropdowns, overlays).
+ *
+ * Solid's API is `<Portal mount={el} useShadow={bool} isSVG={bool}>`. This shim
+ * maps Solid's `mount` prop onto Pyreon's `Portal` `target` prop. When `mount`
+ * is omitted, it defaults to `document.body` — matching Solid's default.
+ *
+ * LIMITATIONS (honest — not faked):
+ * - `useShadow` is NOT supported. Solid attaches a shadow root to the portal
+ *   host for style isolation; `@pyreon/core`'s `Portal` renders directly into
+ *   the target with no shadow root. If `useShadow` is passed it is ignored.
+ * - `isSVG` is NOT supported. Solid uses it to create the portal host in the
+ *   SVG namespace; Pyreon's `Portal` always renders into the target as-is. If
+ *   `isSVG` is passed it is ignored.
+ *
+ * @example
+ * import { Portal } from "solid-js/web" // aliased to @pyreon/solid-compat
+ *
+ * function Modal(props: { onClose: () => void }) {
+ *   // Renders at document.body level regardless of where <Modal> sits
+ *   return (
+ *     <Portal>
+ *       <div class="backdrop" onClick={props.onClose}>...</div>
+ *     </Portal>
+ *   )
+ * }
+ *
+ * @example
+ * // Explicit mount target:
+ * const host = document.getElementById("overlay-root")!
+ * <Portal mount={host}><Tooltip /></Portal>
+ */
+export function Portal(props: {
+  mount?: Element
+  /** Not supported by @pyreon/core's Portal — ignored. */
+  useShadow?: boolean
+  /** Not supported by @pyreon/core's Portal — ignored. */
+  isSVG?: boolean
+  children: VNodeChild
+}): VNode {
+  const target = props.mount ?? document.body
+  return PyreonPortal({ target, children: props.children })
+}
+
+// ─── render / hydrate (solid-js/web entry points) ────────────────────────────
+
+/** A DOM node a Solid app can mount into. */
+export type MountableElement = Element
+
+/**
+ * Solid-compatible `render` (from `solid-js/web`) — mounts an app into a DOM
+ * element and returns a dispose function.
+ *
+ * Solid's signature is `render(code: () => JSX.Element, element): () => void`.
+ * The `code` thunk is passed directly to Pyreon's `mount` — `VNodeChild`
+ * includes the accessor form `() => VNodeChildAtom`, so the thunk is a valid
+ * reactive root child (it re-evaluates on signal change). `mount` returns its
+ * own unmount/dispose function, which is returned verbatim — calling it
+ * removes everything and disposes effects, matching Solid's contract.
+ *
+ * @example
+ * import { render } from "solid-js/web" // aliased to @pyreon/solid-compat
+ * import { createSignal } from "solid-js"
+ *
+ * function Counter() {
+ *   const [n, setN] = createSignal(0)
+ *   return <button onClick={() => setN(n() + 1)}>{n()}</button>
+ * }
+ *
+ * const dispose = render(() => <Counter />, document.getElementById("app")!)
+ * // later: dispose() — unmounts and cleans up
+ */
+export function render(code: VNodeChildAccessor, element: MountableElement): () => void {
+  return pyreonMount(code, element)
+}
+
+/**
+ * Solid-compatible `hydrate` (from `solid-js/web`) — hydrates server-rendered
+ * markup in `element` and returns a dispose function.
+ *
+ * Solid's signature is `hydrate(code: () => JSX.Element, element): () => void`.
+ * Maps onto `@pyreon/runtime-dom`'s `hydrateRoot(container, vnode)`, which
+ * itself returns a dispose function (returned verbatim here, matching Solid's
+ * contract). As with `render`, the `code` thunk is a valid reactive root child.
+ *
+ * @example
+ * import { hydrate } from "solid-js/web" // aliased to @pyreon/solid-compat
+ *
+ * // Server emitted #app's HTML; reuse the DOM instead of re-creating it:
+ * const dispose = hydrate(() => <App />, document.getElementById("app")!)
+ */
+export function hydrate(code: VNodeChildAccessor, element: MountableElement): () => void {
+  return hydrateRoot(element, code)
 }
 
 // ─── Re-exports from @pyreon/core ──────────────────────────────────────────────

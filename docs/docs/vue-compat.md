@@ -896,8 +896,8 @@ Maps to `onUnmount`. Pyreon does not have a separate pre-unmount phase, so `onBe
 | `onUpdated`       | `onUpdate`     | Fires after reactive updates             |
 | `onBeforeUpdate`  | Not available  | Use `watch`/`watchEffect` instead        |
 | `onErrorCaptured` | Not available  | Use try/catch in setup                   |
-| `onActivated`     | Not available  | No `<KeepAlive>` equivalent              |
-| `onDeactivated`   | Not available  | No `<KeepAlive>` equivalent              |
+| `onActivated`     | Not available  | `<KeepAlive>` works (see below) but does not emit activation hooks |
+| `onDeactivated`   | Not available  | `<KeepAlive>` works (see below) but does not emit deactivation hooks |
 
 ### Async
 
@@ -1162,6 +1162,249 @@ const Static = defineComponent({
 ```
 
 **Difference from Vue:** Only Composition API is supported. No Options API (`data`, `methods`, `computed` options). No `<template>` support -- the setup function must return a render function or VNode.
+
+### Built-in Components
+
+These map Vue 3's built-in components onto the equivalent Pyreon primitives. Because Pyreon has no `<template>`, `v-if`, or `v-show`, the visibility/keying inputs Vue infers from the template are passed as explicit props.
+
+#### `KeepAlive`
+
+```ts
+function KeepAlive(props: {
+  active?: () => boolean
+  include?: string | RegExp | (string | RegExp)[]
+  exclude?: string | RegExp | (string | RegExp)[]
+  max?: number
+  children?: VNodeChild
+}): VNodeChild
+```
+
+Keeps a child subtree alive (mounted, state preserved) instead of destroying and recreating it. Wraps `@pyreon/runtime-dom`'s `KeepAlive` -- a single always-mounted slot toggled by an `active` accessor.
+
+```tsx
+import { KeepAlive, ref } from '@pyreon/vue-compat'
+
+const App = defineComponent({
+  setup() {
+    const showA = ref(true)
+    return () => (
+      <div>
+        <button onClick={() => (showA.value = !showA.value)}>Toggle</button>
+        <KeepAlive active={() => showA.value}>
+          <ExpensiveTab />
+        </KeepAlive>
+      </div>
+    )
+  },
+})
+```
+
+When `active` is omitted, the children are always mounted and visible -- nothing is destroyed, which is a faithful default for `KeepAlive`'s core guarantee.
+
+**Difference from Vue:** Vue toggles activation via the dynamic child (`<component :is>`). Here you pass an `active: () => boolean` accessor instead, since Pyreon has no template directives. The `include`, `exclude`, and `max` props are accepted so existing Vue code typechecks, but they are **ignored** -- Pyreon's `KeepAlive` is a single always-mounted slot, not a per-component LRU cache to filter or bound. The `onActivated` / `onDeactivated` lifecycle hooks are not available (see the Lifecycle Hook Summary).
+
+#### `Transition`
+
+```ts
+function Transition(props: {
+  name?: string
+  show?: () => boolean
+  appear?: boolean
+  enterFromClass?: string
+  enterActiveClass?: string
+  enterToClass?: string
+  leaveFromClass?: string
+  leaveActiveClass?: string
+  leaveToClass?: string
+  mode?: 'in-out' | 'out-in' | 'default'
+  css?: boolean
+  onBeforeEnter?: (el: HTMLElement) => void
+  onAfterEnter?: (el: HTMLElement) => void
+  onBeforeLeave?: (el: HTMLElement) => void
+  onAfterLeave?: (el: HTMLElement) => void
+  children?: VNodeChild
+}): VNodeChild
+```
+
+Adds CSS enter/leave animation classes to a single child, controlled by a reactive `show` accessor. Wraps `@pyreon/runtime-dom`'s `Transition`. Vue's class-name props (`enter-from-class`, `enter-active-class`, …) are mapped onto Pyreon's (`enterFrom`, `enterActive`, …), and the `@before-enter` / `@after-enter` style hooks are mapped onto Pyreon's `onBeforeEnter` / `onAfterEnter`.
+
+```tsx
+import { Transition, ref } from '@pyreon/vue-compat'
+
+const App = defineComponent({
+  setup() {
+    const visible = ref(false)
+    return () => (
+      <div>
+        <button onClick={() => (visible.value = !visible.value)}>Toggle</button>
+        <Transition name="fade" show={() => visible.value}>
+          <div class="modal">Hello</div>
+        </Transition>
+      </div>
+    )
+  },
+})
+
+// CSS:
+//   .fade-enter-from, .fade-leave-to       { opacity: 0; }
+//   .fade-enter-active, .fade-leave-active { transition: opacity 300ms; }
+```
+
+The Vue `name` convention (`name="fade"` → `fade-enter-from` …) is preserved 1:1 -- Pyreon uses the identical class-name scheme.
+
+**Difference from Vue:** Vue's `<Transition>` infers visibility from a `v-if` / `v-show` on its child. Pyreon has no template directives, so you **must** pass an explicit `show: () => boolean` accessor -- without it the child is shown unconditionally and no enter/leave is ever triggered. Pyreon's `Transition` is **CSS-class based only**: `mode` (`"out-in"` / `"in-out"`), `css: false`, and JS-only hook-driven transitions are **not supported** -- those props are accepted for typechecking but ignored.
+
+#### `TransitionGroup`
+
+```ts
+function TransitionGroup<T = unknown>(props: {
+  tag?: string
+  name?: string
+  appear?: boolean
+  enterFromClass?: string
+  enterActiveClass?: string
+  enterToClass?: string
+  leaveFromClass?: string
+  leaveActiveClass?: string
+  leaveToClass?: string
+  moveClass?: string
+  items: () => T[]
+  keyFn: (item: T, index: number) => string | number
+  render: (item: T, index: number) => VNode
+  onBeforeEnter?: (el: HTMLElement) => void
+  onAfterEnter?: (el: HTMLElement) => void
+  onBeforeLeave?: (el: HTMLElement) => void
+  onAfterLeave?: (el: HTMLElement) => void
+}): VNodeChild
+```
+
+Animates a keyed reactive list with CSS enter/leave plus FLIP move animations. Wraps `@pyreon/runtime-dom`'s `TransitionGroup`. Class-name props are mapped onto Pyreon's, same as `Transition`, plus `moveClass` → Pyreon's `moveClass`.
+
+```tsx
+import { TransitionGroup, ref } from '@pyreon/vue-compat'
+
+const App = defineComponent({
+  setup() {
+    const items = ref([{ id: 1 }, { id: 2 }])
+    return () => (
+      <TransitionGroup
+        tag="ul"
+        name="list"
+        items={() => items.value}
+        keyFn={(it) => it.id}
+        render={(it) => <li class="item">{it.id}</li>}
+      />
+    )
+  },
+})
+```
+
+**Difference from Vue:** Vue's `<TransitionGroup>` renders its children via slots and reads keys from each child VNode's `key`. Pyreon's API is explicit -- pass `items` (a reactive accessor), `keyFn` (a stable key extractor), and `render` (returns one DOM-element VNode per item). The animation behavior (enter/leave/FLIP-move) is identical. `mode` and `css: false` are **not supported** -- CSS-class transitions only.
+
+#### `Suspense`
+
+```ts
+function Suspense(props: {
+  fallback?: VNodeChild
+  timeout?: number
+  children?: VNodeChild
+}): VNodeChild
+```
+
+Shows `fallback` content while an async (lazy) child is loading. Re-exports `@pyreon/core`'s `Suspense`. Vue 3's `<Suspense>` uses named `#default` / `#fallback` slots; this maps the `fallback` slot to Pyreon Suspense's `fallback` prop and the default slot to `children`.
+
+```tsx
+import { Suspense, defineAsyncComponent } from '@pyreon/vue-compat'
+
+const AsyncPage = defineAsyncComponent(() => import('./Page'))
+
+const App = defineComponent({
+  setup() {
+    return () => (
+      <Suspense fallback={<div>Loading…</div>}>
+        <AsyncPage />
+      </Suspense>
+    )
+  },
+})
+```
+
+**Difference from Vue:** Vue resolves `<Suspense>` against any `async setup()` in the subtree and supports `@resolve` / `@pending` / `@fallback` events plus the `timeout` prop. Pyreon's `Suspense` resolves against components carrying a `__loading` accessor (the output of `defineAsyncComponent`), **not** an arbitrary `async setup()`. The events and `timeout` prop are accepted for typechecking but **ignored**.
+
+### Component Instance & Slots
+
+These shim Vue 3's internal component-instance APIs that composable libraries (vee-validate, vue-i18n, pinia plugins, …) commonly read.
+
+#### `getCurrentInstance`
+
+```ts
+function getCurrentInstance(): ComponentInternalInstance | null
+
+interface ComponentInternalInstance {
+  uid: number
+  proxy: Record<string, unknown>
+  slots: Record<string, (() => VNodeChild) | undefined>
+  attrs: Record<string, unknown>
+  isMounted: boolean
+}
+```
+
+Returns a handle to the current component instance, or `null` if called outside a component setup. Many Vue composable libraries read this internal API for `uid`, `proxy`, `slots`, and `attrs`; this shim returns a minimal stable object with those fields so such libraries do not crash.
+
+```tsx
+import { getCurrentInstance } from '@pyreon/vue-compat'
+
+function useUid() {
+  const inst = getCurrentInstance()
+  return inst ? inst.uid : -1
+}
+```
+
+The same `uid` is stable across re-renders of the same instance (hook-indexed), matching Vue's per-instance-id guarantee.
+
+**Difference from Vue:** Only a minimal `{ uid, proxy, slots, attrs, isMounted }` is provided. `proxy` is an **empty object** -- Pyreon components are plain functions with no `this`-bound Options instance, so code that reads reactive state off `instance.proxy.$data` / `.$props` will not work (use `props` directly). `appContext`, `parent`, `vnode`, `emit`, `expose`, and render internals are **not** provided -- libraries that walk the parent chain or call `emit` off the instance are not supported via this handle (use the `emit` passed to `defineComponent`'s setup context instead).
+
+#### `useSlots`
+
+```ts
+function useSlots(): Record<string, (() => VNodeChild) | undefined>
+```
+
+Returns the current component's slots -- a map of slot-name → render function.
+
+```tsx
+import { useSlots } from '@pyreon/vue-compat'
+
+const Wrapper = defineComponent({
+  setup() {
+    const slots = useSlots()
+    return () => <div class="box">{slots.default?.()}</div>
+  },
+})
+```
+
+**Difference from Vue:** Vue supports arbitrary named and scoped slots resolved from the parent template. Pyreon passes a single `children` payload, so **only `slots.default`** is populated (derived from `children`). Named/scoped slots are not modeled. Returns an empty object (no `default`) when there are no children or when called outside a component.
+
+#### `useAttrs`
+
+```ts
+function useAttrs(): Record<string, unknown>
+```
+
+Returns the current component's attributes.
+
+```tsx
+import { useAttrs } from '@pyreon/vue-compat'
+
+const Passthrough = defineComponent({
+  setup() {
+    const attrs = useAttrs()
+    return () => <input {...attrs} />
+  },
+})
+```
+
+**Difference from Vue:** In Vue, `useAttrs()` returns only the fallthrough attributes **not** declared in `props`. `@pyreon/vue-compat` does no declared-prop separation (components are plain functions receiving one `props` object), so this returns the **full props object** -- every consumer-supplied attribute is present, including any that Vue would have consumed as declared props. Read the specific keys you need; don't assume the result excludes declared props. Returns an empty object when called outside a component.
 
 ### Rendering
 
@@ -1724,6 +1967,13 @@ createApp(App).mount('#app')
 | `provide`         | Function | Provide a value to descendants                       |
 | `inject`          | Function | Inject a value from ancestors                        |
 | `defineComponent` | Function | Define a component                                   |
+| `KeepAlive`         | Function | Keep a child subtree alive (wraps runtime-dom KeepAlive) |
+| `Transition`        | Function | CSS enter/leave transition for a single child        |
+| `TransitionGroup`   | Function | CSS enter/leave + FLIP move for a keyed list         |
+| `Suspense`          | Function | Show fallback while an async child loads             |
+| `getCurrentInstance` | Function | Minimal current-component-instance handle            |
+| `useSlots`          | Function | Current component's slots (`default` only)           |
+| `useAttrs`          | Function | Current component's attributes (full props object)   |
 | `h`               | Function | Create virtual DOM nodes                             |
 | `Fragment`        | Symbol   | Fragment for multiple root elements                  |
 | `createApp`       | Function | Create an application instance                       |
@@ -1731,3 +1981,4 @@ createApp(App).mount('#app')
 | `Ref`             | Type     | Ref interface                                        |
 | `ComputedRef`     | Type     | Computed ref interface                               |
 | `WatchOptions`    | Type     | Watch options interface                              |
+| `ComponentInternalInstance` | Type | Minimal component-instance handle interface       |

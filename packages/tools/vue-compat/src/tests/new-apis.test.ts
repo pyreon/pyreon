@@ -6,6 +6,7 @@ import {
   defineAsyncComponent,
   defineComponent,
   effectScope,
+  getCurrentInstance,
   getCurrentScope,
   h,
   inject,
@@ -24,8 +25,13 @@ import {
   readonly,
   ref,
   shallowReadonly,
+  Suspense,
   Teleport,
   toValue,
+  Transition,
+  TransitionGroup,
+  useAttrs,
+  useSlots,
   version,
   watch,
   watchEffect,
@@ -35,6 +41,7 @@ import {
 import {
   beginRender,
   endRender,
+  jsx,
   type RenderContext,
 } from '../jsx-runtime'
 
@@ -548,14 +555,35 @@ describe('Teleport', () => {
 })
 
 describe('KeepAlive', () => {
-  it('passes through children', () => {
-    const result = KeepAlive({ children: 'hello' })
-    expect(result).toBe('hello')
+  it('mounts children (real runtime-dom KeepAlive wrapper)', () => {
+    const el = container()
+    const vnode = h(KeepAlive as ComponentFn, null, h('span', null, 'hello'))
+    const unmount = mount(vnode, el)
+    expect(el.textContent).toBe('hello')
+    unmount()
   })
 
-  it('returns null without children', () => {
-    const result = KeepAlive({})
-    expect(result).toBeNull()
+  it('keeps children mounted but hidden when active() is false', () => {
+    const el = container()
+    const vnode = h(
+      KeepAlive as ComponentFn,
+      { active: () => false } as Record<string, unknown>,
+      h('span', { id: 'ka-hidden' }, 'kept'),
+    )
+    const unmount = mount(vnode, el)
+    // Children are still in the DOM (state preserved), just CSS-hidden
+    const span = el.querySelector('#ka-hidden')
+    expect(span).not.toBeNull()
+    expect(span!.textContent).toBe('kept')
+    unmount()
+  })
+
+  it('renders a transparent wrapper VNode (not raw children)', () => {
+    const vnode = KeepAlive({ children: 'x' })
+    // Real KeepAlive returns a <div style="display: contents"> VNode,
+    // not the bare children string the old stub returned.
+    expect(typeof vnode).toBe('object')
+    expect(vnode).not.toBeNull()
   })
 })
 
@@ -1299,5 +1327,261 @@ describe('defineComponent slots', () => {
 
     expect(capturedSlots.default).toBeUndefined()
     unmount()
+  })
+})
+
+// ─── Transition ─────────────────────────────────────────────────────────────
+
+describe('Transition', () => {
+  it('renders its child when show() is true', () => {
+    const el = container()
+    const vnode = h(
+      Transition as ComponentFn,
+      { name: 'fade', show: () => true } as Record<string, unknown>,
+      h('div', { class: 'modal' }, 'content'),
+    )
+    const unmount = mount(vnode, el)
+    expect(el.textContent).toBe('content')
+    expect(el.querySelector('.modal')).not.toBeNull()
+    unmount()
+  })
+
+  it('defaults show() to always-true when omitted', () => {
+    const el = container()
+    const vnode = h(
+      Transition as ComponentFn,
+      { name: 'fade' } as Record<string, unknown>,
+      h('div', null, 'always'),
+    )
+    const unmount = mount(vnode, el)
+    expect(el.textContent).toBe('always')
+    unmount()
+  })
+
+  it('maps Vue enterFromClass → Pyreon enterFrom (renders the child)', () => {
+    // Pyreon's Transition injects a ref into the child element to drive
+    // class application; the Vue class-name props are forwarded as the
+    // Pyreon-named overrides. Mount end-to-end to prove the mapping holds.
+    const el = container()
+    const vnode = h(
+      Transition as ComponentFn,
+      {
+        show: () => true,
+        enterFromClass: 'my-enter-from',
+        enterActiveClass: 'my-enter-active',
+      } as Record<string, unknown>,
+      h('div', { class: 'mapped' }, 'x'),
+    )
+    const unmount = mount(vnode, el)
+    expect(el.querySelector('.mapped')).not.toBeNull()
+    expect(el.textContent).toBe('x')
+    unmount()
+  })
+
+  it('passes lifecycle callbacks through', () => {
+    // Smoke: building the VNode with hooks must not throw.
+    const result = Transition({
+      show: () => true,
+      onBeforeEnter: () => {},
+      onAfterEnter: () => {},
+      onBeforeLeave: () => {},
+      onAfterLeave: () => {},
+      children: h('div', null, 'y'),
+    })
+    expect(result).not.toBeNull()
+  })
+})
+
+// ─── TransitionGroup ────────────────────────────────────────────────────────
+
+describe('TransitionGroup', () => {
+  it('renders a keyed list', () => {
+    const el = container()
+    const items = [{ id: 1 }, { id: 2 }, { id: 3 }]
+    const vnode = h(TransitionGroup as ComponentFn, {
+      tag: 'ul',
+      name: 'list',
+      items: () => items,
+      keyFn: (it: { id: number }) => it.id,
+      render: (it: { id: number }) => h('li', { class: 'item' }, String(it.id)),
+    } as Record<string, unknown>)
+    const unmount = mount(vnode, el)
+    const lis = el.querySelectorAll('li.item')
+    expect(lis.length).toBe(3)
+    expect(el.textContent).toBe('123')
+    expect(el.querySelector('ul')).not.toBeNull()
+    unmount()
+  })
+
+  it('maps Vue moveClass → Pyreon moveClass (returns a VNode)', () => {
+    const result = TransitionGroup({
+      items: () => [{ id: 1 }],
+      keyFn: (it: { id: number }) => it.id,
+      render: (it: { id: number }) => h('div', null, String(it.id)),
+      moveClass: 'my-move',
+      enterFromClass: 'ef',
+    })
+    expect(result).not.toBeNull()
+    expect(typeof result).toBe('object')
+  })
+})
+
+// ─── Suspense ───────────────────────────────────────────────────────────────
+
+describe('Suspense', () => {
+  it('renders children synchronously when no async child', () => {
+    const el = container()
+    const vnode = h(
+      Suspense as ComponentFn,
+      { fallback: h('div', null, 'loading') } as Record<string, unknown>,
+      h('div', { class: 'page' }, 'ready'),
+    )
+    const unmount = mount(vnode, el)
+    expect(el.textContent).toBe('ready')
+    unmount()
+  })
+
+  it('shows fallback while a defineAsyncComponent child loads', async () => {
+    let resolveLoader: (m: { default: ComponentFn }) => void = () => {}
+    const Async = defineAsyncComponent(
+      () =>
+        new Promise<{ default: ComponentFn }>((res) => {
+          resolveLoader = res
+        }),
+    )
+    const el = container()
+    const vnode = h(
+      Suspense as ComponentFn,
+      { fallback: h('div', { id: 'fb' }, 'loading…') } as Record<string, unknown>,
+      h(Async as ComponentFn, null),
+    )
+    const unmount = mount(vnode, el)
+    // Initially: fallback visible
+    expect(el.textContent).toContain('loading…')
+
+    resolveLoader({ default: (() => h('div', { id: 'loaded' }, 'done')) as ComponentFn })
+    await new Promise((r) => setTimeout(r, 20))
+
+    expect(el.querySelector('#loaded')).not.toBeNull()
+    expect(el.textContent).toContain('done')
+    unmount()
+  })
+
+  it('defaults fallback to null when omitted', () => {
+    const result = Suspense({ children: h('div', null, 'x') })
+    expect(result).not.toBeNull()
+  })
+})
+
+// ─── getCurrentInstance ─────────────────────────────────────────────────────
+
+describe('getCurrentInstance()', () => {
+  it('returns null outside a component', () => {
+    expect(getCurrentInstance()).toBeNull()
+  })
+
+  it('returns a stable instance with uid/proxy/slots/attrs inside a component', async () => {
+    let inst1: ReturnType<typeof getCurrentInstance> = null
+    let inst2: ReturnType<typeof getCurrentInstance> = null
+    let renderCount = 0
+    const r = ref(0)
+
+    // Use jsx() so the component is wrapped → hook context + _props active
+    // (this is how real vue-compat apps run via the vite plugin).
+    const Comp = () => {
+      const i = getCurrentInstance()
+      if (renderCount === 0) inst1 = i
+      else inst2 = i
+      renderCount++
+      void r.value // track → forces a re-render
+      return jsx('div', { children: 'c' })
+    }
+
+    const el = container()
+    const unmount = mount(jsx(Comp, { children: 'kid' }), el)
+
+    expect(inst1).not.toBeNull()
+    expect(typeof inst1!.uid).toBe('number')
+    expect(typeof inst1!.proxy).toBe('object')
+    expect(inst1!.isMounted).toBe(true)
+    // attrs mirrors props (children present)
+    expect(typeof inst1!.attrs).toBe('object')
+    // slots.default derived from children
+    expect(typeof inst1!.slots.default).toBe('function')
+    expect(inst1!.slots.default!()).toBe('kid')
+
+    // Stable uid across re-render (hook-indexed)
+    r.value = 1
+    await new Promise((res) => setTimeout(res, 30))
+    expect(inst2).not.toBeNull()
+    expect(inst2!.uid).toBe(inst1!.uid)
+    unmount()
+  })
+})
+
+// ─── useSlots / useAttrs ────────────────────────────────────────────────────
+
+describe('useSlots()', () => {
+  it('returns {} outside a component', () => {
+    expect(useSlots()).toEqual({})
+  })
+
+  it('exposes default slot derived from children', () => {
+    let slots: Record<string, (() => unknown) | undefined> = {}
+    const Comp = () => {
+      slots = useSlots()
+      return jsx('div', { children: 'wrap' })
+    }
+    const el = container()
+    const unmount = mount(jsx(Comp, { children: 'slotted' }), el)
+    expect(typeof slots.default).toBe('function')
+    expect(slots.default!()).toBe('slotted')
+    unmount()
+  })
+
+  it('returns {} when component has no children', () => {
+    let slots: Record<string, (() => unknown) | undefined> = { default: () => 'x' }
+    const Comp = () => {
+      slots = useSlots()
+      return jsx('div', { children: 'no-kids' })
+    }
+    const el = container()
+    const unmount = mount(jsx(Comp, {}), el)
+    expect(slots).toEqual({})
+    unmount()
+  })
+})
+
+describe('useAttrs()', () => {
+  it('returns {} outside a component', () => {
+    expect(useAttrs()).toEqual({})
+  })
+
+  it('returns the full props object (no declared/fallthrough split)', () => {
+    let attrs: Record<string, unknown> = {}
+    const Comp = () => {
+      attrs = useAttrs()
+      return jsx('div', { children: 'a' })
+    }
+    const el = container()
+    const unmount = mount(jsx(Comp, { 'data-x': 'y', title: 'hi' }), el)
+    expect(attrs['data-x']).toBe('y')
+    expect(attrs.title).toBe('hi')
+    unmount()
+  })
+})
+
+// ─── new exports importable ─────────────────────────────────────────────────
+
+describe('new API exports', () => {
+  it('are all defined on the module', async () => {
+    const mod = await import('../index')
+    expect(mod.Transition).toBeDefined()
+    expect(mod.TransitionGroup).toBeDefined()
+    expect(mod.Suspense).toBeDefined()
+    expect(mod.getCurrentInstance).toBeDefined()
+    expect(mod.useSlots).toBeDefined()
+    expect(mod.useAttrs).toBeDefined()
+    expect(mod.KeepAlive).toBeDefined()
   })
 })

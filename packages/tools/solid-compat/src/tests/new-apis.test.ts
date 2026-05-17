@@ -1009,17 +1009,19 @@ import {
   createReaction,
   createUniqueId,
   DEV,
+  Dynamic,
+  hydrate,
   Index,
   mergeProps,
   on,
+  Portal,
   reconcile,
+  render,
+  Show,
   splitProps,
   unwrap,
   useContext,
 } from '../index'
-
-// Import Show separately for the native component test
-import { Show } from '../index'
 
 // ─── createEffect with prev value ───────────────────────────────────────────
 
@@ -1535,5 +1537,149 @@ describe('createReaction', () => {
       expect(invalidations).toEqual(['invalidated', 'invalidated'])
       dispose()
     })
+  })
+})
+
+// ─── Dynamic / Portal / render / hydrate (compat-audit additions) ────────────
+
+describe('Dynamic', () => {
+  it('renders a string tag chosen at runtime', () => {
+    const container = document.createElement('div')
+    mount(
+      jsx(Dynamic as unknown as ComponentFn, { component: 'h2', children: 'Title' }),
+      container,
+    )
+    expect(container.querySelector('h2')?.textContent).toBe('Title')
+  })
+
+  it('renders a component reference and forwards rest props', () => {
+    const container = document.createElement('div')
+    const Badge = (p: Props & { label?: string }) =>
+      h('span', { class: 'badge' }, p.label as string)
+    mount(
+      jsx(Dynamic as unknown as ComponentFn, {
+        component: Badge as ComponentFn,
+        label: 'NEW',
+      }),
+      container,
+    )
+    const span = container.querySelector('span.badge')
+    expect(span?.textContent).toBe('NEW')
+  })
+
+  it('is a faithful re-export of @pyreon/core Dynamic (same identity)', async () => {
+    const core = await import('@pyreon/core')
+    expect(Dynamic).toBe(core.Dynamic)
+  })
+
+  it('returns null for a falsy component prop', () => {
+    expect(Dynamic({ component: undefined as unknown as string })).toBeNull()
+  })
+})
+
+describe('Portal', () => {
+  it('renders children into document.body by default', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    mount(
+      jsx(Portal as unknown as ComponentFn, {
+        children: h('div', { id: 'portal-default' }, 'hi'),
+      }),
+      container,
+    )
+    // The portal content escapes the container into document.body
+    const portaled = document.body.querySelector('#portal-default')
+    expect(portaled?.textContent).toBe('hi')
+    expect(container.querySelector('#portal-default')).toBeNull()
+    document.body.removeChild(container)
+  })
+
+  it('renders children into an explicit mount target', () => {
+    const container = document.createElement('div')
+    const host = document.createElement('section')
+    host.id = 'overlay-root'
+    document.body.appendChild(host)
+    mount(
+      jsx(Portal as unknown as ComponentFn, {
+        mount: host,
+        children: h('div', { id: 'portal-explicit' }, 'yo'),
+      }),
+      container,
+    )
+    expect(host.querySelector('#portal-explicit')?.textContent).toBe('yo')
+    document.body.removeChild(host)
+  })
+
+  it('ignores unsupported useShadow / isSVG props without throwing', () => {
+    const container = document.createElement('div')
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    expect(() =>
+      mount(
+        jsx(Portal as unknown as ComponentFn, {
+          mount: host,
+          useShadow: true,
+          isSVG: true,
+          children: h('span', { id: 'p-flags' }, 'ok'),
+        }),
+        container,
+      ),
+    ).not.toThrow()
+    expect(host.querySelector('#p-flags')?.textContent).toBe('ok')
+    document.body.removeChild(host)
+  })
+})
+
+describe('render', () => {
+  it('mounts a thunk-returning app and returns a dispose fn', () => {
+    const el = document.createElement('div')
+    const dispose = render(() => h('div', { id: 'rendered' }, 'app'), el)
+    expect(el.querySelector('#rendered')?.textContent).toBe('app')
+    expect(typeof dispose).toBe('function')
+    // dispose() must not throw — it disposes effects + runs unmount
+    expect(() => dispose()).not.toThrow()
+  })
+
+  it('clears the previous mount (mount clears container first)', () => {
+    const el = document.createElement('div')
+    el.innerHTML = '<p id="stale">old</p>'
+    render(() => h('div', { id: 'fresh' }, 'new'), el)
+    // mount() clears the container before mounting — stale content gone
+    expect(el.querySelector('#stale')).toBeNull()
+    expect(el.querySelector('#fresh')?.textContent).toBe('new')
+  })
+
+  it('mounts a thunk-returning component that re-renders on its signal', async () => {
+    const el = document.createElement('div')
+    let setN: ((v: number) => void) | undefined
+    const Counter = () => {
+      const [n, set] = createSignal(1)
+      setN = (v) => set(v)
+      return jsx('span', { id: 'n', children: `count:${n()}` })
+    }
+    // Faithful Solid shape: render(() => <Counter/>, el)
+    const dispose = render(() => jsx(Counter as ComponentFn, {}), el)
+    expect(el.innerHTML).toContain('count:1')
+    setN!(2)
+    // Compat re-render is scheduled via microtask + version signal.
+    // Uses toContain (not strict equality) — the manual-jsx() test harness
+    // has no compiler-driven keyed reconciliation, so the compat re-render
+    // appends the fresh node alongside the stale one. This mirrors how the
+    // pre-existing compat re-render tests in this file assert (e.g. the
+    // createEffect→setCount test asserts `innerHTML).toContain('42')`).
+    await new Promise((r) => setTimeout(r, 50))
+    expect(el.innerHTML).toContain('count:2')
+    dispose()
+  })
+})
+
+describe('hydrate', () => {
+  it('hydrates server markup and returns a dispose fn', () => {
+    const el = document.createElement('div')
+    el.innerHTML = '<button id="hy">0</button>'
+    const dispose = hydrate(() => h('button', { id: 'hy' }, '0'), el)
+    expect(el.querySelector('#hy')?.textContent).toBe('0')
+    expect(typeof dispose).toBe('function')
+    dispose()
   })
 })
