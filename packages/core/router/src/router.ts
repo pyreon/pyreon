@@ -754,8 +754,27 @@ export function createRouter<TNames extends string = string>(
             loadingSignal.update((n) => n - 1)
           }
         })
-        .catch(() => {
-          /* Background revalidation failure — stale data remains valid */
+        .catch((err: unknown) => {
+          // Background revalidation failed — the stale data remains valid
+          // and on screen, so this MUST NOT cancel/redirect the (already
+          // settled) navigation. But an empty catch is the silent-failure
+          // anti-pattern the project forbids: a persistently-failing
+          // revalidation loader (auth expiry, API outage, a bug thrown in
+          // the loader) produces ZERO signal — the developer sees
+          // permanently-stale data with nothing pointing at the cause.
+          // Surface it like every other loader error (dev warn + the
+          // user-supplied onError hook) WITHOUT acting on the return
+          // value. This path was dead code until the SWR prune fix
+          // (#617) made `revalidateSwrLoaders` actually run for the
+          // nav-away/back case.
+          if (__DEV__) {
+            // oxlint-disable-next-line no-console
+            console.warn(
+              `[Pyreon Router] SWR background revalidation failed for "${r.path}" — serving stale data:`,
+              err,
+            )
+          }
+          router._onError?.(err, to)
         })
     }
   }
