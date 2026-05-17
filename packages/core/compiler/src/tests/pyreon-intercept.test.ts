@@ -84,6 +84,137 @@ describe('detectPyreonPatterns', () => {
     })
   })
 
+  describe('props-destructured-body', () => {
+    const only = (code: string) =>
+      detectPyreonPatterns(code).filter((d) => d.code === 'props-destructured-body')
+
+    it('flags `const { x } = props` in an arrow component body', () => {
+      const code = `
+        const Greeting = (props: { name: string }) => {
+          const { name } = props
+          return <div>Hello {name}</div>
+        }
+      `
+      const diags = only(code)
+      expect(diags).toHaveLength(1)
+      expect(diags[0]!.code).toBe('props-destructured-body')
+      expect(diags[0]!.message).toContain('ONCE')
+      expect(diags[0]!.fixable).toBe(false)
+    })
+
+    it('flags it in a function-declaration component', () => {
+      const code = `
+        function Greeting(props: { name: string }) {
+          const { name } = props
+          return <div>Hello {name}</div>
+        }
+      `
+      expect(only(code)).toHaveLength(1)
+    })
+
+    it('flags let / var / alias / default / rest / nested shapes', () => {
+      const code = `
+        const A = (props: any) => { let { a } = props; return <i>{a}</i> }
+        const B = (props: any) => { var { b } = props; return <i>{b}</i> }
+        const C = (props: any) => { const { c: cc } = props; return <i>{cc}</i> }
+        const D = (props: any) => { const { d = 1 } = props; return <i>{d}</i> }
+        const E = (props: any) => { const { ...rest } = props; return <i>{rest.x}</i> }
+        const F = (props: any) => { const { f: { g } } = props; return <i>{g}</i> }
+      `
+      expect(only(code)).toHaveLength(6)
+    })
+
+    it('flags a destructure nested inside a body-scope if-block (still synchronous)', () => {
+      const code = `
+        const Gate = (props: any) => {
+          if (props.cond) { const { x } = props; return <i>{x}</i> }
+          return <i />
+        }
+      `
+      expect(only(code)).toHaveLength(1)
+    })
+
+    it('unwraps `as` / `satisfies` / `!` / parens on the initializer', () => {
+      const code = `
+        const A = (props: any) => { const { a } = props as Props; return <i>{a}</i> }
+        const B = (props: any) => { const { b } = (props); return <i>{b}</i> }
+        const C = (props: any) => { const { c } = props!; return <i>{c}</i> }
+        const D = (props: any) => { const { d } = props satisfies Props; return <i>{d}</i> }
+      `
+      expect(only(code)).toHaveLength(4)
+    })
+
+    it('does NOT flag `const x = props` (alias, no destructure)', () => {
+      const code = `
+        const Greeting = (props: any) => { const p = props; return <div>{p.name}</div> }
+      `
+      expect(only(code)).toEqual([])
+    })
+
+    it('does NOT flag a destructure off a non-props identifier', () => {
+      const code = `
+        const Greeting = (props: any) => {
+          const store = useStore()
+          const { name } = store
+          return <div>{name}{props.x}</div>
+        }
+      `
+      expect(only(code)).toEqual([])
+    })
+
+    it('does NOT flag `const { x } = props.nested` (member, out of canonical scope by design)', () => {
+      const code = `
+        const Greeting = (props: any) => { const { x } = props.nested; return <div>{x}</div> }
+      `
+      expect(only(code)).toEqual([])
+    })
+
+    it('does NOT flag destructures inside nested functions (handler / effect / returned accessor)', () => {
+      const code = `
+        const Handler = (props: any) => {
+          const onClick = () => { const { id } = props; doThing(id) }
+          effect(() => { const { y } = props; track(y) })
+          return <button onClick={onClick}>{() => { const { z } = props; return z }}</button>
+        }
+      `
+      expect(only(code)).toEqual([])
+    })
+
+    it('does NOT flag the returned reactive-accessor fix shape', () => {
+      const code = `
+        const Greeting = (props: any) =>
+          (() => { const { name } = props; return <div>Hello {name}</div> })
+      `
+      // The body is an arrow expression returning a nested accessor — the
+      // destructure lives inside the nested fn, which re-reads props.
+      expect(only(code)).toEqual([])
+    })
+
+    it('does NOT flag the parameter-destructure shape (props-destructured owns it)', () => {
+      const code = `
+        const Greeting = ({ name }: { name: string }) => <div>Hello {name}</div>
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'props-destructured-body')).toEqual([])
+      expect(diags.filter((d) => d.code === 'props-destructured')).toHaveLength(1)
+    })
+
+    it('does NOT flag non-component helpers that destructure an arg named props', () => {
+      const code = `
+        function mergeProps(props: any) { const { a, b } = props; return a + b }
+        const reducer = (props: any) => { const { x } = props; return x }
+      `
+      expect(only(code)).toEqual([])
+    })
+
+    it('does NOT flag a lowercase JSX-returning function (not component-shaped)', () => {
+      const code = `
+        const renderRow = (props: any) => { const { cell } = props; return <td>{cell}</td> }
+      `
+      expect(only(code)).toEqual([])
+    })
+  })
+
   describe('process-dev-gate', () => {
     it('flags typeof process + NODE_ENV production gates', () => {
       const code = `
