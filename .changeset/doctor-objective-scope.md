@@ -7,6 +7,7 @@
 '@pyreon/styler': patch
 '@pyreon/hotkeys': patch
 '@pyreon/flow': patch
+'@pyreon/ui-core': patch
 ---
 
 fix: make `pyreon doctor` objective + close the real first-party findings it then surfaced
