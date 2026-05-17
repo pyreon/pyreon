@@ -86,6 +86,28 @@ describe('matchApiRoute', () => {
   it('rejects missing segments', () => {
     expect(matchApiRoute('/api/posts/:id', '/api/posts')).toBeNull()
   })
+
+  it('skips prototype-polluting param names (Z5 defense-in-depth)', () => {
+    // Param NAMES come from the route file pattern (`[constructor].ts`),
+    // so this is dev-controlled (not an attacker vector) — but a
+    // `:constructor` / `:prototype` segment otherwise creates an OWN
+    // `constructor`/`prototype` property shadowing the prototype chain
+    // on the params object. The guard skips the dangerous names while
+    // legitimate sibling params still resolve.
+    const c = matchApiRoute('/api/:constructor', '/api/x')
+    expect(c).not.toBeNull()
+    expect(Object.hasOwn(c!, 'constructor')).toBe(false)
+    expect(c).toEqual({})
+
+    const p = matchApiRoute('/api/:prototype/:id', '/api/p/5')
+    expect(p).toEqual({ id: '5' }) // dangerous skipped, safe kept
+    expect(Object.hasOwn(p!, 'prototype')).toBe(false)
+
+    const ca = matchApiRoute('/api/:constructor*', '/api/a/b/c')
+    expect(Object.hasOwn(ca!, 'constructor')).toBe(false)
+
+    expect(({} as Record<string, unknown>).id).toBeUndefined()
+  })
 })
 
 describe('generateApiRouteModule', () => {

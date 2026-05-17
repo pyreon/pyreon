@@ -79,6 +79,76 @@ describe('createISRHandler', () => {
     expect(res.headers.get('x-isr-age')).toBeDefined()
   })
 
+  // ─── Z2 — only cacheable (2xx, cookie-free) responses are cached ────────
+
+  it('does NOT cache a non-2xx response and preserves its status (Z2)', async () => {
+    // Regression: a transient 500/redirect was cached and replayed as a
+    // 200 for the whole revalidate window — a self-inflicted outage.
+    let n = 0
+    const inner = vi.fn(async () => {
+      n++
+      return new Response(n === 1 ? 'boom' : 'ok', { status: n === 1 ? 500 : 200 })
+    })
+    const handler = createISRHandler(inner, { revalidate: 60 })
+
+    const r1 = await handler(new Request('http://localhost/x'))
+    expect(r1.status).toBe(500) // status preserved, not normalized to 200
+    expect(r1.headers.get('x-isr-cache')).toBe('BYPASS')
+
+    const r2 = await handler(new Request('http://localhost/x'))
+    expect(inner).toHaveBeenCalledTimes(2) // not served from cache
+    expect(r2.status).toBe(200)
+    expect(await r2.text()).toBe('ok')
+  })
+
+  it('does NOT cache a Set-Cookie response (cross-user leak) (Z2)', async () => {
+    let n = 0
+    const inner = vi.fn(async () => {
+      n++
+      return new Response(`u${n}`, {
+        status: 200,
+        headers: { 'set-cookie': `session=user${n}` },
+      })
+    })
+    const handler = createISRHandler(inner, { revalidate: 60 })
+
+    const r1 = await handler(new Request('http://localhost/p'))
+    expect(r1.headers.get('x-isr-cache')).toBe('BYPASS')
+    const r2 = await handler(new Request('http://localhost/p'))
+    expect(inner).toHaveBeenCalledTimes(2)
+    expect(await r2.text()).toBe('u2')
+  })
+
+  // ─── Z4 — background revalidation is timeout-bounded ────────────────────
+
+  it('a hung revalidation does not pin the entry stale forever (Z4)', async () => {
+    // Regression: a handler that never settles left its key in the
+    // in-flight set forever (`finally` never ran), so EVERY later
+    // request short-circuited the de-dupe guard — the entry could never
+    // recover from stale. The timeout must release the key.
+    let n = 0
+    const inner = vi.fn(async () => {
+      n++
+      if (n === 1) return new Response('v1', { status: 200 })
+      return new Promise<Response>(() => {}) // every revalidation hangs
+    })
+    const handler = createISRHandler(inner, {
+      revalidate: 0, // everything immediately stale
+      revalidateTimeoutMs: 30,
+    })
+
+    await handler(new Request('http://localhost/h')) // MISS → cache v1 (n=1)
+    await new Promise((r) => setTimeout(r, 5)) // age > 0 → now stale
+    await handler(new Request('http://localhost/h')) // STALE → revalidate (n=2, hangs)
+    await new Promise((r) => setTimeout(r, 80)) // > 30ms timeout → key released
+    await handler(new Request('http://localhost/h')) // STALE → revalidate AGAIN (n=3)
+    await new Promise((r) => setTimeout(r, 10))
+
+    // n===3 proves the second (hung) revalidation's key was released so
+    // a third could start. Pre-fix it stayed pinned → n would be 2.
+    expect(inner).toHaveBeenCalledTimes(3)
+  })
+
   // ─── M1.1 — cacheKey opt-in (per-user / per-query caching) ───────────────
 
   describe('cacheKey (M1.1)', () => {

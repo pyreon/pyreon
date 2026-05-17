@@ -179,6 +179,17 @@ function wrap(raw: object, shallow: boolean): object {
         return true
       }
 
+      // Defense-in-depth against prototype pollution: a bare
+      // `target.__proto__ = obj` here would mutate the store object's
+      // prototype rather than set a property. `reconcile()` already
+      // filters these, but the proxy is the public write surface
+      // (`store.__proto__ = …`, spread of untrusted data) so guard here
+      // too. Silently ignore — assigning these through a store is never
+      // a legitimate operation.
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+        return true
+      }
+
       const prevLength = isArray ? (target as unknown[]).length : 0
       ;(target as Record<PropertyKey, unknown>)[key] = value
 

@@ -52,6 +52,14 @@ export function matchApiRoute(pattern: string, path: string): Record<string, str
   const pathParts = path.split('/').filter(Boolean)
   const params: Record<string, string> = {}
 
+  // A param NAME comes from the route pattern (file-based route like
+  // `[__proto__].ts`) — developer-controlled, so this is defense-in-depth
+  // rather than an attacker vector, but assigning `params['constructor']
+  // = …` creates a real own-prop shadow on the result. Skip the
+  // dangerous names (consistent with reconcile / i18n deepMerge guards).
+  const isUnsafeParam = (name: string): boolean =>
+    name === '__proto__' || name === 'constructor' || name === 'prototype'
+
   for (let i = 0; i < patternParts.length; i++) {
     const pp = patternParts[i]
     if (!pp) continue
@@ -59,7 +67,7 @@ export function matchApiRoute(pattern: string, path: string): Record<string, str
     // Catch-all: :param*
     if (pp.endsWith('*')) {
       const paramName = pp.slice(1, -1)
-      params[paramName] = pathParts.slice(i).join('/')
+      if (!isUnsafeParam(paramName)) params[paramName] = pathParts.slice(i).join('/')
       return params
     }
 
@@ -68,7 +76,8 @@ export function matchApiRoute(pattern: string, path: string): Record<string, str
 
     // Dynamic segment: :param
     if (pp.startsWith(':')) {
-      params[pp.slice(1)] = pathParts[i]!
+      const paramName = pp.slice(1)
+      if (!isUnsafeParam(paramName)) params[paramName] = pathParts[i]!
       continue
     }
 

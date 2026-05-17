@@ -112,4 +112,27 @@ describe('rateLimitMiddleware', () => {
     const result = mw(ctx2)
     expect(result?.status).toBe(429)
   })
+
+  it('enforces a HARD store cap — floods cannot grow memory unbounded (Z1)', () => {
+    // Regression: cleanup only deleted EXPIRED entries. A flood of
+    // unique keys WITHIN one window (spoofed X-Forwarded-For) produced
+    // only fresh entries, so the store grew without bound — an
+    // unauthenticated memory-exhaustion DoS. `MAX_STORE_SIZE` (10000)
+    // was declared but never enforced. Observable proxy: once the cap
+    // is hit the OLDEST tracker is evicted, so a victim seen before a
+    // >cap flood is treated as fresh again (counter reset).
+    const mw = rateLimitMiddleware({ max: 5, window: 60 })
+
+    const victim = mockCtx('/api', 'victim-ip')
+    mw(victim)
+    expect(victim.headers.get('X-RateLimit-Remaining')).toBe('4') // count=1
+
+    for (let i = 0; i < 10_002; i++) mw(mockCtx('/api', `flood-${i}`))
+
+    const victim2 = mockCtx('/api', 'victim-ip')
+    mw(victim2)
+    // Evicted by the hard cap → brand-new client (count reset → 4).
+    // Pre-fix: never evicted (count=2 → '3') AND Map held >10000.
+    expect(victim2.headers.get('X-RateLimit-Remaining')).toBe('4')
+  })
 })

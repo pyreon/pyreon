@@ -118,30 +118,56 @@ export function serializeLoaderData(router: RouterInstance): Record<string, unkn
  * const tag = `<script>window.__PYREON_LOADER_DATA__=${json}</script>`
  */
 export function stringifyLoaderData(loaderData: Record<string, unknown>): string {
-  const seen = new WeakSet<object>()
-  const keyStack: string[] = []
-  const replacer = (key: string, value: unknown): unknown => {
-    // JSON.stringify calls the replacer with key = '' for the root, then
-    // the property name for each subsequent member. Track the path so the
-    // circular-ref error message names the offending route key.
-    if (key !== '') keyStack.push(key)
-    if (typeof value === 'function' || typeof value === 'symbol') {
-      // Drop silently. JSON.stringify already drops these as VALUES, but
-      // an explicit drop also handles array entries (where it'd convert
-      // to null otherwise — undesirable for downstream typed hydration).
-      return undefined
+  // True cycle detection: track the ANCESTOR PATH only (add on descend,
+  // remove on ascend), NOT every object ever visited. The prior
+  // implementation kept an all-seen WeakSet that was never pruned, so any
+  // object referenced more than once — a DAG, not a cycle — falsely threw
+  // "circular reference" and 500'd the SSR response. Shared references are
+  // extremely common in loader payloads (`{ author: user, lastEditor: user }`
+  // where both are the same ORM instance; a list whose rows share a lookup
+  // object). `JSON.stringify` serializes those fine; only a real cycle must
+  // throw. A `JSON.stringify` replacer has no "leave" hook, so cycle
+  // detection runs as a single recursive pre-pass that maintains the
+  // ancestor set, then `JSON.stringify` does the (now cycle-free) encode.
+  const ancestors = new Set<object>()
+  const detectCycle = (value: unknown, path: string): void => {
+    if (value === null || typeof value !== 'object') return
+    // Respect `toJSON` so detection matches what JSON.stringify actually
+    // serializes (Date/etc. become primitives — no cycle through them).
+    const v =
+      typeof (value as { toJSON?: unknown }).toJSON === 'function'
+        ? (value as { toJSON: () => unknown }).toJSON()
+        : value
+    if (v === null || typeof v !== 'object') return
+    const obj = v as object
+    if (ancestors.has(obj)) {
+      throw new Error(
+        `[Pyreon] Loader returned circular reference at "${path || '<root>'}". ` +
+          `Loaders must return JSON-serializable data (no cycles, no functions, no Date/Map/Set without a custom replacer). ` +
+          `Common cause: returning a Mongo/Prisma model with back-references intact.`,
+      )
     }
-    if (value && typeof value === 'object') {
-      if (seen.has(value as object)) {
-        const path = keyStack.join('.') || '<root>'
-        throw new Error(
-          `[Pyreon] Loader returned circular reference at "${path}". ` +
-            `Loaders must return JSON-serializable data (no cycles, no functions, no Date/Map/Set without a custom replacer). ` +
-            `Common cause: returning a Mongo/Prisma model with back-references intact.`,
-        )
+    ancestors.add(obj)
+    if (Array.isArray(obj)) {
+      for (let i = 0; i < obj.length; i++) detectCycle(obj[i], `${path}[${i}]`)
+    } else {
+      for (const k of Object.keys(obj)) {
+        const child = (obj as Record<string, unknown>)[k]
+        // Mirror the encode-time drop: function/symbol values are not
+        // serialized, so a cycle reachable only THROUGH one can't occur.
+        if (typeof child === 'function' || typeof child === 'symbol') continue
+        detectCycle(child, path ? `${path}.${k}` : k)
       }
-      seen.add(value as object)
     }
+    ancestors.delete(obj) // ascend — siblings / shared refs are NOT cycles
+  }
+  detectCycle(loaderData, '')
+
+  const replacer = (_key: string, value: unknown): unknown => {
+    // Drop silently. JSON.stringify already drops these as VALUES, but an
+    // explicit drop also handles array entries (where it'd convert to null
+    // otherwise — undesirable for downstream typed hydration).
+    if (typeof value === 'function' || typeof value === 'symbol') return undefined
     return value
   }
   return JSON.stringify(loaderData, replacer).replace(/<\//g, '<\\/')

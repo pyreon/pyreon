@@ -53,10 +53,18 @@ function splitOnce(str: string, delimiter: string): [string, string] {
 }
 
 export function processTemplate(template: string, data: TemplateData): string {
+  // Use FUNCTION replacements, not string replacements. With a string
+  // replacement, `String.prototype.replace` still interprets `$$`, `$&`,
+  // `` $` ``, `$'`, `$n` in the *replacement* even though the search is a
+  // literal string. `data.app` is rendered SSR HTML and routinely
+  // contains literal `$&` / `$$` (prices, code samples, math) — string
+  // replacement would corrupt them. A replacer function returns its
+  // value verbatim with zero `$`-pattern interpretation. Same
+  // first-occurrence semantics as before.
   return template
-    .replace('<!--pyreon-head-->', data.head)
-    .replace('<!--pyreon-app-->', data.app)
-    .replace('<!--pyreon-scripts-->', data.scripts)
+    .replace('<!--pyreon-head-->', () => data.head)
+    .replace('<!--pyreon-app-->', () => data.app)
+    .replace('<!--pyreon-scripts-->', () => data.scripts)
 }
 
 /** Fast path using a pre-compiled template */
