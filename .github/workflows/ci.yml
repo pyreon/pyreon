@@ -631,6 +631,28 @@ jobs:
       - name: Verify doc-claim numbers match source of truth
         run: bun run check-doc-claims
 
+  # ── Manifest depth ratchet ────────────────────────────────────────────
+  # The root cause behind "get_api returns a signature but no foot-gun
+  # catalog for half the fundamentals" was that nothing enforced manifest
+  # density — rx shipped 3 api[] entries for 37 functions; store
+  # referenced StoreApi 3x in seeAlso with no entry (a get_api 404).
+  # This ratchet locks each migrated package's achieved density so it
+  # can't silently erode. Not-yet-migrated packages are intentionally
+  # absent from the lock (the visible backlog), so this never flag-days
+  # CI. See scripts/check-manifest-depth.ts.
+  check-manifest-depth:
+    name: Check Manifest Depth
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - name: Verify locked manifests stay at or above their density floor
+        run: bun run check-manifest-depth
+
   # ── No-major-changesets: 0.x version cap at PR time ───────────────────
   # Pyreon is 0.x; `major` changesets would produce a 1.0.0 cascade across
   # the `fixed` group of 60+ packages. Companion to `scripts/cap-changeset-

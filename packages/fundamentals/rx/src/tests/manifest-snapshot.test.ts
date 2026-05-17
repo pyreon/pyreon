@@ -7,14 +7,14 @@ import manifest from '../manifest'
 
 describe('gen-docs — rx snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/rx — Signal-aware reactive transforms — filter, map, sortBy, groupBy, pipe, debounce, throttle, 37 functions. Functions detect signals by checking for a \`.subscribe\` method. Pass the signal itself (\`items\`), not an accessor wrapper (\`() => items()\`). Accessor wrappers produce a static result."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/rx — Signal-aware reactive transforms — filter, map, sortBy, groupBy, pipe, debounce, throttle, 37 functions. Detection is purely \`typeof source === "function"\` (see \`isSignal\` in \`rx/src/types.ts\`) — there is NO \`.subscribe\` / value inspection. Any function (the signal, an accessor wrapper \`() => items()\`, a bound method) is treated as reactive and called inside a computed. The actual mistake is the opposite of what you might expect: passing a RESOLVED value (\`items()\`, an already-read array) takes the static path and never updates. Pass the signal, not its resolved value."`)
   })
 
   it('renders to llms-full.txt section', () => {
     expect(renderLlmsFullSection(manifest)).toMatchInlineSnapshot(`
       "## @pyreon/rx — Reactive Transforms
 
-      Signal-aware reactive data transforms for Pyreon. Every function is overloaded: pass a \`Signal<T[]>\` and get a \`Computed<T[]>\` that auto-tracks and re-derives when the source changes; pass a plain \`T[]\` and get a static result. 37 functions across collections (filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, first, compact, reverse, partition, takeWhile, dropWhile, unique, sample), aggregation (count, sum, min, max, average, reduce, every, some), operators (distinct, scan, combine, zip, merge), timing (debounce, throttle), and search. \`pipe(source, ...ops)\` composes transforms left-to-right. Also exported as a namespaced \`rx\` object for dot-notation usage.
+      Signal-aware reactive data transforms for Pyreon. Every collection/aggregation function is overloaded: pass a \`Signal<T[]>\` and get a \`Computed<T[]>\` that auto-tracks and re-derives when the source changes; pass a plain \`T[]\` and get a static result. Signal detection is purely \`typeof source === "function"\` — any function is treated as a reactive source and called inside a computed; a resolved value (already-called signal) takes the static path and never updates. 37 functions across collections (filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, first, compact, reverse, partition, takeWhile, dropWhile, unique, sample), aggregation (count, sum, min, max, average, reduce, every, some), operators (distinct, scan, combine, zip, merge), timing (debounce, throttle), and search. \`pipe(source, ...ops)\` composes transforms left-to-right. Also exported as a namespaced \`rx\` object for dot-notation usage.
 
       \`\`\`typescript
       import { signal } from '@pyreon/reactivity'
@@ -43,7 +43,7 @@ describe('gen-docs — rx snapshot', () => {
       const count = rx.count(activeUsers)                       // Computed<number>
 
       // Grouping:
-      const byDept = rx.groupBy(users, u => u.department)      // Computed<Map<string, User[]>>
+      const byDept = rx.groupBy(users, u => u.department)      // Computed<Record<string, User[]>>
 
       // Pipe — compose left-to-right:
       const result = pipe(
@@ -53,19 +53,21 @@ describe('gen-docs — rx snapshot', () => {
         map(u => u.name),
       )  // Computed<string[]> → ["Alice", "Charlie"]
 
-      // Search — fuzzy text matching across fields:
+      // Search — case-insensitive substring match across STRING fields.
+      // 3rd arg is a positional keys array, NOT a { keys } options object.
       const query = signal('')
-      const matches = search(users, query, { keys: ['name', 'department'] })
+      const matches = search(users, query, ['name', 'department'])
 
-      // Timing — debounce/throttle signal emissions:
-      const debounced = debounce(users, 300)    // Computed that settles after 300ms
-      const throttled = rx.throttle(users, 100) // Computed that emits at most every 100ms
+      // Timing — debounce/throttle a SIGNAL value (returns ReadableSignal +
+      // dispose; value-level, not collection operators; NOT auto-cleaned):
+      const debounced = debounce(users, 300)    // ReadableSignal<User[]> & { dispose }
+      const throttled = rx.throttle(users, 100) // ReadableSignal<User[]> & { dispose }
 
       // Plain input → plain output (no signals):
       const staticResult = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]
       \`\`\`
 
-      > **Signal detection**: Functions detect signals by checking for a \`.subscribe\` method. Pass the signal itself (\`items\`), not an accessor wrapper (\`() => items()\`). Accessor wrappers produce a static result.
+      > **Signal detection**: Detection is purely \`typeof source === "function"\` (see \`isSignal\` in \`rx/src/types.ts\`) — there is NO \`.subscribe\` / value inspection. Any function (the signal, an accessor wrapper \`() => items()\`, a bound method) is treated as reactive and called inside a computed. The actual mistake is the opposite of what you might expect: passing a RESOLVED value (\`items()\`, an already-read array) takes the static path and never updates. Pass the signal, not its resolved value.
       >
       > **Computed lifecycle**: Computed outputs from signal inputs auto-dispose when they have no subscribers. In component bodies, the reactive scope from JSX keeps them alive; in standalone code, subscribe or read within an \`effect()\` to keep them active.
       >
@@ -78,8 +80,18 @@ describe('gen-docs — rx snapshot', () => {
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    expect(Object.keys(record).length).toBe(3)
+    // Enriched to MCP density (manifest-depth PR): rx, pipe, filter,
+    // map, sortBy, groupBy, search, debounce, throttle = 9.
+    expect(Object.keys(record).length).toBe(9)
     expect(record['rx/rx']!.notes).toContain('Signal')
-    expect(record['rx/rx']!.mistakes?.split('\n').length).toBe(2)
+    expect(record['rx/rx']!.mistakes?.split('\n').length).toBe(4)
+    // Regression guard: the 4 corrected inaccuracies must NOT reappear.
+    // groupBy must say Record, not claim a Map return type.
+    expect(record['rx/groupBy']!.notes).toContain('Record')
+    expect(record['rx/groupBy']!.notes).not.toContain('`Map<')
+    // search must document the positional keys arg.
+    expect(record['rx/search']!.notes).toContain('POSITIONAL')
+    // The rx-entry summary must not resurrect the false `.subscribe` claim.
+    expect(record['rx/rx']!.notes).not.toContain('.subscribe')
   })
 })

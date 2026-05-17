@@ -1313,20 +1313,47 @@ store.count()       // 0
 store.increment()   // reactive update
 patch({ count: 42 })`,
     notes: 'Define a composition-style store. The setup function runs once per store ID, returning an object whose signals become tracked state and whose functions become interceptable actions. Returns a hook function that produces a StoreApi with `.store` (user state/actions), `.patch()`, `.subscribe()`, `.onAction()`, `.reset()`, and `.dispose()`. Stores are singletons — calling the hook twice with the same ID returns the same instance. See also: StoreApi, addStorePlugin, resetStore.',
-    mistakes: `- Calling \`useCounter()\` expecting a new instance — stores are singletons by ID, the setup function only runs once
-- Reading \`store.count\` without calling it — signals are functions, use \`store.count()\` to read the value
-- Calling \`store.count.set()\` instead of using \`patch()\` when updating multiple signals — \`patch()\` batches updates into a single notification
-- Forgetting \`dispose()\` in tests — store persists in the registry across test cases, leaking state. Use \`resetStore(id)\` or \`resetAllStores()\` in test cleanup`,
+    mistakes: `- Calling \`useCounter()\` expecting a new instance — stores are singletons by ID. The setup runs once; the registry returns the same \`StoreApi\` for every later call with that ID until \`resetStore(id)\` / \`resetAllStores()\`
+- Reading \`store.count\` without calling it — signals are functions; use \`store.count()\` to read
+- Calling \`store.count.set()\` for multi-field updates instead of \`patch()\` — separate \`.set()\` calls each notify subscribers; \`patch()\` batches them into ONE \`type: "patch"\` mutation
+- Forgetting \`dispose()\` / \`resetAllStores()\` in tests — the store persists in the global registry across test cases, leaking state into the next test. Put \`afterEach(() => resetAllStores())\` in setup
+- Returning a non-signal, non-function value from \`setup\` (a plain object/array) and expecting it to be reactive — only signals become tracked state. Classification is duck-typed: signals = \`.set\` + \`.peek\`, computeds = \`.dispose\` (and not a signal), everything-else-callable = action. A plain object is none of these and is passed through inert
+- Mutating state by reassigning \`store.count\` — it is a frozen accessor; write via \`store.increment()\` (an action) or \`patch({ count })\`. Direct property assignment is silently ineffective
+- Registering an \`addStorePlugin\` AFTER the store was first created and expecting it to apply — plugins run only at creation time. The already-created store never sees it (see \`addStorePlugin\` mistakes)`,
+  },
+
+  'store/StoreApi': {
+    signature: 'interface StoreApi<T> { store: T; id: string; state: Snapshot<T>; patch(p: Partial|fn): void; subscribe(cb): () => void; onAction(cb): () => void; reset(): void; dispose(): void }',
+    example: `const { store, patch, subscribe, onAction, reset, dispose } = useCounter()
+patch({ count: 42 })                       // object form — batched
+patch((s) => { s.count.set(s.count.peek() + 1) }) // functional form: real signals
+const off = subscribe((m) => console.log(m.type, m.events))
+onAction((ctx) => { ctx.after((r) => log(r)); ctx.onError((e) => report(e)) })
+reset()      // signals → setup-time values
+dispose()    // teardown + registry removal`,
+    notes: 'The object the `defineStore` hook returns. `store` is the user state + actions; `id` the registry key; `state` a plain-value snapshot getter (signals read via `.peek()`, no tracking — safe to log / serialize). `patch` batch-updates signals; `subscribe` fires per mutation with `{ storeId, type: "direct" | "patch", events }`; `onAction` intercepts wrapped actions (`ctx.name`, `ctx.args`, `ctx.after(fn)`, `ctx.onError(fn)`); `reset` restores each signal to its setup-time `.peek()` value; `dispose` unsubscribes all listeners and removes the store from the registry. See also: defineStore, addStorePlugin.',
+    mistakes: `- \`patch({ typoKey: 1 })\` is a SILENT no-op — object-form patch only writes keys that are signal names; an unknown / mistyped key is skipped with no error or warning. Verify key names
+- \`patch\` silently drops \`__proto__\` / \`constructor\` / \`prototype\` keys (prototype-pollution guard) — a state field literally named one of those cannot be patched via the object form; use the functional form
+- Expecting \`reset()\` to restore the "last good" or current-default value — it restores the value captured by \`.peek()\` when \`setup\` first ran. A signal whose initial value was itself derived at setup resets to THAT, not to a fresh recomputation
+- Reading \`.state\` and expecting it to be reactive — it is a one-shot plain snapshot via \`.peek()\` (no tracking). Reading it inside an \`effect\`/\`computed\` will NOT re-run on change; read \`store.x()\` for reactive access
+- Keeping a destructured \`store\`/\`patch\` reference after \`resetStore(id)\` — the old \`StoreApi\` keeps working but is detached from the registry; the next hook call creates a NEW instance and your stale reference points at the orphan
+- Returning the \`subscribe\` / \`onAction\` disposer and never calling it — listeners live until disposed (or the store is disposed); in long-lived stores this leaks`,
   },
 
   'store/addStorePlugin': {
     signature: '(plugin: StorePlugin) => void',
-    example: `addStorePlugin((api) => {
-  api.subscribe((mutation, state) => {
+    example: `// Register BEFORE any store hook is first called.
+addStorePlugin((api) => {
+  api.subscribe((mutation) => {
     console.log(\`[\${api.id}] \${mutation.type}:\`, mutation.events)
   })
 })`,
-    notes: 'Register a global store plugin that runs when any store is first created. Plugin receives the full StoreApi, enabling cross-cutting concerns like logging, persistence, or devtools integration. Plugin errors are caught and logged in dev mode without breaking store creation. See also: defineStore, StoreApi.',
+    notes: 'Register a global store plugin. The plugin runs ONCE per store, at first creation of that store, receiving its full `StoreApi` — for logging, persistence, devtools, etc. Runs for every store created AFTER registration. Plugin throws are caught and (dev-only) `console.warn`ed so one bad plugin cannot break store creation — but in production a throwing plugin fails completely silently. The plugin chain is uncached: cost is O(stores × plugins) across all fresh store creations. See also: defineStore, StoreApi.',
+    mistakes: `- Registering AFTER a store was already created — plugins run only at creation. Stores already in the registry never receive the plugin. Register at module init before the first hook call, or \`resetStore(id)\` to force re-creation through the plugin chain
+- Relying on a plugin throw surfacing in production — errors are swallowed with only a dev-mode \`console.warn\`. A plugin that throws in prod silently does nothing; make the plugin itself defensive
+- Calling \`api.subscribe\` / \`api.onAction\` in a plugin without ever disposing — those listeners live for the whole store lifetime; in tests they accumulate across cases unless \`resetAllStores()\` runs in cleanup
+- Registering many plugins and not noticing the cost — the chain is uncached and runs per fresh store creation (O(stores × plugins)); the \`store.pluginRun\` perf counter scales exactly with this
+- Assuming plugin registration is idempotent — \`addStorePlugin\` pushes onto a list every call; registering the same plugin twice runs it twice per store`,
   },
 
   'store/setStoreRegistryProvider': {
@@ -1342,14 +1369,22 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())`,
 
   'store/resetStore': {
     signature: '(id: string) => void',
-    example: `resetStore('counter') // next useCounter() call creates a fresh store`,
-    notes: 'Remove a store from the registry by ID. The next call to the store hook re-runs the setup function from scratch. Useful for testing isolation and HMR. See also: resetAllStores, defineStore.',
+    example: `resetStore('counter') // next useCounter() call builds a fresh store`,
+    notes: 'Remove ONE store from the registry by ID. The next call to that store hook re-runs `setup` from scratch, producing a brand-new `StoreApi`. For per-test isolation and HMR. Does NOT dispose the old instance or notify its subscribers — it just detaches it from the registry. See also: resetAllStores, defineStore, StoreApi.',
+    mistakes: `- Expecting components/closures holding the OLD \`StoreApi\` to pick up the new one — they keep operating on the now-orphaned old instance. \`resetStore\` only affects what the NEXT hook call resolves
+- Using it as a "clear state" within a live app — it swaps the instance, so any active subscribers/effects bound to the old store go stale. For in-app state clearing use \`reset()\` on the StoreApi (restores setup-time values, keeps the instance + subscribers)
+- Calling it without re-invoking the hook and expecting fresh state — the new store is created lazily on the next hook call, not by \`resetStore\` itself
+- Passing a wrong / mistyped ID — silently no-ops (the ID simply is not in the registry); state is not reset and you get no error`,
   },
 
   'store/resetAllStores': {
     signature: '() => void',
-    example: 'afterEach(() => resetAllStores())',
-    notes: 'Clear the entire store registry. All subsequent store hook calls create fresh instances. Primary use case is test cleanup and SSR request isolation. See also: resetStore.',
+    example: 'afterEach(() => resetAllStores()) // canonical test isolation',
+    notes: 'Clear the ENTIRE store registry. Every subsequent store hook call creates a fresh instance. Primary use: test cleanup (the canonical `afterEach`) and forcing a clean slate. Like `resetStore`, it detaches — it does not dispose old instances or notify their subscribers. See also: resetStore, setStoreRegistryProvider.',
+    mistakes: `- Forgetting it in test cleanup — THE store-test footgun: a store mutated in one test persists into the next, causing order-dependent failures that pass in isolation. \`afterEach(() => resetAllStores())\` is mandatory boilerplate
+- Expecting it to also clear registered plugins — \`addStorePlugin\` registrations are global and survive \`resetAllStores()\`. Stores re-created afterward still run the previously-registered plugins
+- Calling it mid-render in a live app — every component holding a destructured store keeps its orphaned instance while new hook calls build fresh ones; you get a split-brain UI. This is a test/SSR-isolation tool, not runtime state management
+- Relying on it for SSR request isolation instead of \`setStoreRegistryProvider\` — calling \`resetAllStores()\` per request is racy under concurrency (one request wipes stores belonging to a concurrent request mid-flight); use an AsyncLocalStorage-backed registry provider`,
   },
   // <gen-docs:api-reference:end @pyreon/store>
 
@@ -2988,10 +3023,12 @@ value('garbage', 0) // → { value: 0, unit: 'px' }`,
     example: `const active = rx.filter(users, u => u.active)      // Computed<User[]>
 const sorted = rx.sortBy(active, 'name')             // Computed<User[]>
 const total = rx.sum(users, u => u.age)              // Computed<number>
-const grouped = rx.groupBy(users, u => u.department) // Computed<Map<string, User[]>>`,
-    notes: 'Namespaced object exposing all 37 reactive transform functions plus `pipe`. Use `rx.filter(...)` for dot-notation style, or destructure individual functions for tree-shaking. Every function is overloaded: `Signal<T[]>` input produces `Computed<T[]>` that auto-tracks, plain `T[]` input produces a static result. See also: pipe, filter.',
+const grouped = rx.groupBy(users, u => u.department) // Computed<Record<string, User[]>>`,
+    notes: 'Namespaced object exposing all 37 reactive transform functions plus `pipe`. Use `rx.filter(...)` for dot-notation style, or destructure individual functions for tree-shaking. Every function is overloaded: `Signal<T[]>` input produces `Computed<T[]>` that auto-tracks, plain `T[]` input produces a static result. See also: pipe, filter, sortBy, groupBy.',
     mistakes: `- Expecting \`rx.filter(signal, pred)\` to return a plain array — signal inputs always produce \`Computed\` outputs. Call the result to read: \`active()\`
-- Passing a signal accessor (\`() => items()\`) instead of the signal itself — pass \`items\` not \`() => items()\`; the function checks for \`.subscribe\` to detect signals`,
+- Passing a RESOLVED value where a signal was meant — \`rx.filter(items(), pred)\` (note the \`()\`) takes the static path and never updates when \`items\` changes. Pass \`items\` (the signal), not \`items()\`. A spike in the \`rx.transform.raw\` perf counter is exactly this mistake
+- Assuming signal detection inspects the value — it is purely \`typeof source === "function"\`. Any function (an accessor wrapper \`() => items()\`, a bound method, a getter) is treated as a reactive source and invoked inside a computed; only non-function inputs (arrays) take the static path
+- Reading a \`Computed\` output once and caching the array — it is reactive; re-read it (or read inside an \`effect\`/JSX) so you see updates`,
   },
 
   'rx/pipe': {
@@ -3004,15 +3041,89 @@ const grouped = rx.groupBy(users, u => u.department) // Computed<Map<string, Use
   take(10),
 )
 // Computed<string[]> when users is a signal`,
-    notes: 'Compose transforms left-to-right. Each operator receives the output of the previous one. Signal source produces a reactive `Computed` that re-derives when the source changes. Use curried forms of individual functions as operators: `filter(pred)`, `sortBy(key)`, `map(fn)`, etc. See also: rx.',
-    mistakes: '- Calling the non-curried form inside pipe — `pipe(users, filter(users, pred))` is wrong; use the curried form: `pipe(users, filter(pred))`',
+    notes: 'Compose transforms left-to-right. Each operator receives the output of the previous one. Signal source produces a reactive `Computed` that re-derives when the source changes. Use curried forms of individual functions as operators: `filter(pred)`, `sortBy(key)`, `map(fn)`, etc. See also: rx, filter, map, sortBy.',
+    mistakes: `- Calling the non-curried form inside pipe — \`pipe(users, filter(users, pred))\` is wrong; use the curried form: \`pipe(users, filter(pred))\`
+- Expecting \`pipe(arr, ...)\` (plain array source) to be reactive — only a signal source produces a \`Computed\`; a plain array gives a one-shot plain result
+- Reading the pipe result as an array when the source is a signal — it is a \`Computed\`; call it: \`result()\`
+- Putting a timing operator (\`debounce\`/\`throttle\`) in a \`pipe\` chain — those take a single \`Signal<T>\` and return a signal, they are not curried collection operators and do not compose in \`pipe\``,
   },
 
   'rx/filter': {
-    signature: '<T>(source: Signal<T[]> | T[], predicate: (item: T) => boolean) => Computed<T[]> | T[]',
-    example: `const evens = filter(items, n => n % 2 === 0)  // Computed<number[]>
-const result = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]`,
-    notes: 'Filter items by predicate. Signal input produces a reactive `Computed<T[]>` that re-evaluates when the source signal changes. Also available in curried form `filter(pred)` for use with `pipe()`. See also: rx, pipe.',
+    signature: '<T>(source: Signal<T[]> | T[], predicate: (item: T) => boolean) => Computed<T[]> | T[]  // curried: filter(pred)',
+    example: `const evens = filter(items, n => n % 2 === 0)  // Computed<number[]> (items is a signal)
+const result = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5] (plain)
+pipe(items, filter(n => n > 3))                      // curried form in a pipe`,
+    notes: 'Filter items by predicate. Signal input produces a reactive `Computed<T[]>` that re-evaluates when the source signal changes; plain array input returns a plain array. Curried form `filter(pred)` is for `pipe()`. Curry vs direct is detected by argument count, so a single-argument call is always the curried operator. See also: rx, pipe, map.',
+    mistakes: `- Calling \`filter(pred)\` directly expecting a result — a single function arg is the CURRIED operator (returns a function), not a filtered array. Use \`filter(source, pred)\` for the direct form
+- Passing \`items()\` instead of \`items\` — the resolved array takes the static path; the result never updates`,
+  },
+
+  'rx/map': {
+    signature: '<T, U>(source: Signal<T[]> | T[], fn: (item: T, index: number) => U) => Computed<U[]> | U[]  // curried: map(fn)',
+    example: `const names = map(users, u => u.name)            // Computed<string[]>
+pipe(users, filter(u => u.active), map(u => u.name)) // curried in pipe`,
+    notes: 'Transform each item. Signal input → reactive `Computed<U[]>`; plain array → plain array. The mapper receives `(item, index)`. Curried form `map(fn)` composes in `pipe()`. See also: rx, filter, pipe.',
+    mistakes: `- Expecting this to be the JSX list renderer — \`rx.map\` derives a reactive array; to render a keyed list use \`<For each={…} by={…}>\`, not \`rx.map\` output spread into JSX
+- Relying on referential stability of mapped objects — every re-derive produces fresh objects; key lists by a stable id, not object identity`,
+  },
+
+  'rx/sortBy': {
+    signature: '<T>(source: Signal<T[]> | T[], key: keyof T | ((item: T) => unknown)) => Computed<T[]> | T[]',
+    example: `const byName = sortBy(users, 'name')          // Computed<User[]>, ascending
+const byAge = sortBy(users, u => u.age)        // key-selector form
+const desc = sortBy(users, 'age')              // then reverse() for descending`,
+    notes: 'Sort by a key or key-selector. **Non-mutating** — copies via `[...arr]` before sorting, so the source array/signal is never mutated (unlike native `Array.prototype.sort`). Signal input → reactive `Computed<T[]>`. Comparison is a plain `a < b ? -1 : a > b ? 1 : 0` — ascending only, no direction option, no locale/`Intl` collation. See also: rx, pipe, groupBy.',
+    mistakes: `- Expecting it to mutate / sort in place like \`Array.sort\` — it returns a NEW sorted array; the source is untouched
+- Expecting a direction option — there is none. Always ascending; compose \`reverse()\` for descending
+- Sorting numeric STRINGS expecting numeric order — comparison is \`<\`/\`>\`, so \`"10" < "2"\` lexically. Use a numeric key-selector (\`u => Number(u.id)\`) when the field is a numeric string
+- Expecting locale-aware ordering — no \`Intl.Collator\`; accented / non-ASCII ordering is codepoint order, not locale order`,
+  },
+
+  'rx/groupBy': {
+    signature: '<T>(source: Signal<T[]> | T[], key: keyof T | ((item: T) => unknown)) => Computed<Record<string, T[]>> | Record<string, T[]>',
+    example: `const byDept = groupBy(users, u => u.department) // Computed<Record<string, User[]>>
+for (const [dept, members] of Object.entries(byDept())) { … }`,
+    notes: 'Group items into buckets by key. **Returns a plain `Record<string, T[]>`, NOT a `Map`.** Keys are coerced with `String(...)`, so numeric / boolean group keys become strings (`1` → `"1"`, `true` → `"true"`). Signal input → reactive `Computed<Record<string, T[]>>`. Insertion order within each bucket is preserved. See also: rx, sortBy, keyBy.',
+    mistakes: `- Treating the result as a \`Map\` — it is a plain object. Use \`Object.entries()\` / \`result[key]\`, not \`.get()\` / \`.has()\` / \`.size\`
+- Expecting original key types — every key is \`String()\`-coerced; group under \`"1"\`, not \`1\`, and \`"true"\`, not \`true\`
+- Iterating with \`for...in\` and not guarding inherited keys — prefer \`Object.entries()\` / \`Object.keys()\`
+- Assuming a missing group is \`[]\` — \`result[unknownKey]\` is \`undefined\`, not an empty array; default it explicitly`,
+  },
+
+  'rx/search': {
+    signature: '<T>(source: Signal<T[]> | T[], query: Signal<string> | string, keys: (keyof T)[]) => Computed<T[]> | T[]',
+    example: `const q = signal('')
+const results = search(users, q, ['name', 'email'])  // Computed<User[]>
+// substring, case-insensitive: q="ali" matches "Alice"`,
+    notes: 'Case-insensitive **substring** filter across the named fields. The third argument is a POSITIONAL `keys` array — `search(users, q, ["name", "email"])` — NOT a `{ keys }` options object. Only `string`-typed fields match (non-string values are skipped). Reactive when EITHER `source` OR `query` is a signal. Empty/whitespace query returns the full list. See also: rx, filter.',
+    mistakes: `- Passing \`{ keys: [...] }\` — the signature is positional: \`search(source, query, ["name","email"])\`. An options object is treated as the keys array and matches nothing
+- Expecting fuzzy / typo-tolerant matching — it is plain \`String.includes\` after \`toLowerCase().trim()\`, not fuzzy. "alce" will NOT match "Alice"
+- Searching a non-string field (number/date) — only \`typeof val === "string"\` fields are tested; numeric columns never match. Pre-stringify if you need them searchable
+- Passing \`query\` as a resolved string when you want reactivity — pass the \`Signal<string>\` so the result re-derives as the user types; a plain string is matched once`,
+  },
+
+  'rx/debounce': {
+    signature: '<T>(source: Signal<T>, ms: number) => ReadableSignal<T> & { dispose: () => void }',
+    example: `const raw = signal('')
+const debounced = debounce(raw, 300)   // ReadableSignal<string> & { dispose }
+effect(() => fetchResults(debounced())) // fires 300ms after typing stops
+onCleanup(() => debounced.dispose())    // REQUIRED — not auto-cleaned`,
+    notes: 'Debounce a SIGNAL value (the whole emitted value, not array items — it is not a collection transform and does not curry into `pipe`). Returns a new readable signal that settles `ms` after the source stops changing, plus a `dispose()` that tears down its internal effect + timer. Seeds synchronously with the current `source()` value. See also: throttle, rx.',
+    mistakes: `- Not calling \`dispose()\` — each \`debounce\`/\`throttle\` owns a live effect + timer that are NOT auto-cleaned. Leaks across navigations; a growing \`rx.debounce.create\` perf counter is exactly this
+- Putting it in a \`pipe()\` chain — \`debounce\` takes a single \`Signal<T>\` and returns a signal; it is not a curried collection operator
+- Expecting array-item debounce — \`debounce(usersSignal, 300)\` debounces the whole array emission, not individual rows
+- Reading it before the first settle and expecting the latest value — it seeds with the initial \`source()\` and only updates after the quiet window`,
+  },
+
+  'rx/throttle': {
+    signature: '<T>(source: Signal<T>, ms: number) => ReadableSignal<T> & { dispose: () => void }',
+    example: `const throttled = throttle(scrollY, 100)
+effect(() => updateHeader(throttled()))
+onCleanup(() => throttled.dispose())   // REQUIRED — not auto-cleaned`,
+    notes: 'Throttle a SIGNAL value to at most one emission per `ms`. Returns a new readable signal + `dispose()` (internal effect + timer). Like `debounce`, value-level not item-level, does not compose in `pipe`, and seeds synchronously with the current `source()`. See also: debounce, rx.',
+    mistakes: `- Not calling \`dispose()\` — same leak as \`debounce\`; tracked by the \`rx.throttle.create\` perf counter
+- Confusing it with \`debounce\` — throttle emits at a steady max rate during continuous change; debounce emits once after change STOPS
+- Using it as a \`pipe\` operator — it is not curried and takes a single signal`,
   },
   // <gen-docs:api-reference:end @pyreon/rx>
 
