@@ -126,6 +126,9 @@ export function createPermissions(initial?: PermissionMap): Permissions {
   can.granted = computed(() => {
     version()
     const keys: string[] = []
+    // `version()` above is the tracked dependency; `store` is read
+    // untracked by design (the signal that changes is `version`).
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     for (const [key, value] of store.peek()) {
       // Static true or predicate (capability exists)
       if (value === true || typeof value === 'function') {
@@ -137,6 +140,8 @@ export function createPermissions(initial?: PermissionMap): Permissions {
 
   can.entries = computed(() => {
     version()
+    // `version()` is the tracked dependency; `store` read untracked.
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     return [...store.peek().entries()]
   })
 

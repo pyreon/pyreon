@@ -45,11 +45,11 @@ const assertShape = (result: GateResult, gate: string): void => {
 }
 
 describe('runReactPatternsGate', () => {
-  it('finds nothing in a clean dir', async () => {
+  it('finds nothing in a clean in-scope package src file', async () => {
     const cwd = makeTmpDir()
     writeFile(
       cwd,
-      'src/App.tsx',
+      'packages/core/app/src/App.tsx',
       `import { signal } from "@pyreon/reactivity"\nexport function X() { const c = signal(0); return <div class="x">{c()}</div> }\n`,
     )
     const result = await runReactPatternsGate({ cwd })
@@ -58,11 +58,11 @@ describe('runReactPatternsGate', () => {
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
-  it('flags useState + className when present', async () => {
+  it('flags useState + className in first-party package src', async () => {
     const cwd = makeTmpDir()
     writeFile(
       cwd,
-      'src/App.tsx',
+      'packages/core/app/src/App.tsx',
       `import { useState } from "react"\nexport function X() { const [c, setC] = useState(0); return <div className="x">{c}</div> }\n`,
     )
     const result = await runReactPatternsGate({ cwd })
@@ -70,6 +70,30 @@ describe('runReactPatternsGate', () => {
     expect(result.findings.length).toBeGreaterThan(0)
     const codes = result.findings.map((f) => f.code)
     expect(codes.some((c) => c.startsWith('react-patterns/'))).toBe(true)
+    fs.rmSync(cwd, { recursive: true, force: true })
+  })
+
+  it('OBJECTIVE scope: ignores examples/, *-compat src, and test fixtures', async () => {
+    const cwd = makeTmpDir()
+    // All three would fire react-patterns if scanned — none must.
+    writeFile(
+      cwd,
+      'examples/demo/src/Demo.tsx',
+      `import { useState } from "react"\nexport function D() { const [c] = useState(0); return <div className="d">{c}</div> }\n`,
+    )
+    writeFile(
+      cwd,
+      'packages/tools/react-compat/src/index.ts',
+      `export function useState<T>(v: T) { return [v, () => {}] as const }\nexport const className = "x"\n`,
+    )
+    writeFile(
+      cwd,
+      'packages/core/app/src/__tests__/App.test.tsx',
+      `import { useState } from "react"\nexport function T() { const [c] = useState(0); return <div className="t">{c}</div> }\n`,
+    )
+    const result = await runReactPatternsGate({ cwd })
+    assertShape(result, 'react-patterns')
+    expect(result.findings).toEqual([])
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
@@ -99,21 +123,36 @@ describe('runPyreonPatternsGate', () => {
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
-  it('flags `<For>` without `by` prop', async () => {
+  it('flags `<For>` without `by` prop in first-party package src', async () => {
     const cwd = makeTmpDir()
     writeFile(
       cwd,
-      'src/X.tsx',
+      'packages/core/app/src/X.tsx',
       `import { For } from "@pyreon/core"\nexport function X({ items }) { return <For each={items}>{(x) => <li>{x}</li>}</For> }\n`,
     )
     const result = await runPyreonPatternsGate({ cwd })
     assertShape(result, 'pyreon-patterns')
-    // We can't strictly assert the code matches since detection is
-    // syntactic and the fixture is small; just assert SOME finding
-    // surfaces with the right gate.
     if (result.findings.length > 0) {
       expect(result.findings[0]!.gate).toBe('pyreon-patterns')
     }
+    fs.rmSync(cwd, { recursive: true, force: true })
+  })
+
+  it('OBJECTIVE scope: ignores examples/ + test fixtures (pyreon-patterns runs on compat — real Pyreon code)', async () => {
+    const cwd = makeTmpDir()
+    writeFile(
+      cwd,
+      'examples/demo/src/Demo.tsx',
+      `import { For } from "@pyreon/core"\nexport function D({ items }) { return <For each={items}>{(x) => <li>{x}</li>}</For> }\n`,
+    )
+    writeFile(
+      cwd,
+      'packages/core/app/src/__tests__/X.test.tsx',
+      `import { For } from "@pyreon/core"\nexport function T({ items }) { return <For each={items}>{(x) => <li>{x}</li>}</For> }\n`,
+    )
+    const result = await runPyreonPatternsGate({ cwd })
+    assertShape(result, 'pyreon-patterns')
+    expect(result.findings).toEqual([])
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 })
@@ -165,27 +204,43 @@ describe('runLintGate', () => {
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
-  it('exercises the diagnostic emission path against a real lint target', async () => {
+  it('exercises the diagnostic emission path against a real in-scope lint target', async () => {
     const cwd = makeTmpDir()
-    // Write a file that triggers `pyreon/no-window-in-ssr` (one of
-    // the simplest universally-firing rules). This exercises
-    // mapLintCategory + the diagnostic-emission branch.
+    // `pyreon/no-window-in-ssr` fires on this; it must be under
+    // packages/<cat>/<pkg>/src/ to be inside the OBJECTIVE scope.
     writeFile(
       cwd,
-      'src/App.tsx',
+      'packages/core/app/src/App.tsx',
       `export function X() { return <div>{window.innerWidth}</div> }\n`,
     )
     const result = await runLintGate({ cwd })
     assertShape(result, 'lint')
-    // Whether or not findings fire depends on the lint setup detecting
-    // the tmp dir as a Pyreon project — either way we exercised the
-    // entry path + emission loop.
+    // Whether findings fire depends on lint detecting the tmp dir as a
+    // Pyreon project — either way the entry path + emission loop ran.
+    fs.rmSync(cwd, { recursive: true, force: true })
+  })
+
+  it('OBJECTIVE scope: lint ignores examples/ even when it would flag them', async () => {
+    const cwd = makeTmpDir()
+    writeFile(
+      cwd,
+      'examples/demo/src/Demo.tsx',
+      `export function D() { return <div>{window.innerWidth}</div> }\n`,
+    )
+    const result = await runLintGate({ cwd })
+    assertShape(result, 'lint')
+    // No first-party package src exists → nothing to lint → no findings.
+    expect(
+      result.findings.some((f) =>
+        (f.location?.relPath ?? '').includes('examples/'),
+      ),
+    ).toBe(false)
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
   it('--fix mode runs without throwing', async () => {
     const cwd = makeTmpDir()
-    writeFile(cwd, 'src/App.tsx', `export const x = 1\n`)
+    writeFile(cwd, 'packages/core/app/src/App.tsx', `export const x = 1\n`)
     const result = await runLintGate({ cwd, fix: true })
     assertShape(result, 'lint')
     fs.rmSync(cwd, { recursive: true, force: true })

@@ -18,7 +18,7 @@ import {
 } from '@pyreon/compiler'
 
 import type { Finding, GateResult } from '../types'
-import { collectSourceFiles } from '../utils/walk'
+import { collectFirstPartySourceFiles } from '../utils/walk'
 
 export interface PyreonPatternsGateOptions {
   cwd: string
@@ -29,7 +29,7 @@ export const runPyreonPatternsGate = async (
 ): Promise<GateResult> => {
   const start = Date.now()
   const findings: Finding[] = []
-  const files = collectSourceFiles(opts.cwd)
+  const files = collectFirstPartySourceFiles(opts.cwd)
 
   for (const file of files) {
     let code: string

@@ -5,7 +5,13 @@
     "pyreon/no-window-in-ssr": [
       "error",
       {
-        "exemptPaths": ["packages/core/runtime-dom/", "__tests__/", ".test."]
+        "exemptPaths": [
+          "packages/core/runtime-dom/",
+          "packages/internals/perf-harness/",
+          "packages/internals/test-utils/",
+          "__tests__/",
+          ".test."
+        ]
       }
     ],
     "pyreon/no-unbatched-updates": [

@@ -19,6 +19,7 @@ import * as path from 'node:path'
 
 import { lint, allRules } from '@pyreon/lint'
 
+import { collectFirstPartySourceFiles } from '../utils/walk'
 import type {
   Finding,
   FindingCategory,
@@ -76,8 +77,14 @@ export const runLintGate = async (
   const start = Date.now()
   const findings: Finding[] = []
 
+  // Objective scope: lint ONLY first-party published-package source
+  // (the surface the project ships + maintains), not example apps,
+  // e2e/docs/scripts, or detector test-fixtures. `@pyreon/lint` still
+  // layers the project's `.pyreonlintrc.json` config + `exemptPaths`
+  // on top — `lint()` accepts an explicit file list (gatherFiles' isFile
+  // branch), so the curated config is unchanged; only the surface is.
   const result = await lint({
-    paths: [opts.cwd],
+    paths: collectFirstPartySourceFiles(opts.cwd),
     fix: opts.fix ?? false,
   })
 

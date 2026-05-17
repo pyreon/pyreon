@@ -69,6 +69,10 @@ export function createInstance<
   })
 
   // ── 1. State signals ──────────────────────────────────────────────────────
+  // Per-state-key signal allocation at instance CREATION (createInstance
+  // runs once per model instance), not per-render — this is the model's
+  // fine-grained reactive architecture, not the signal-in-render-loop
+  // anti-pattern the rule targets. Disabled per-site below with rationale.
   for (const [key, defaultValue] of Object.entries(config.state)) {
     meta.stateKeys.push(key)
     const path = `/${key}`
@@ -83,6 +87,7 @@ export function createInstance<
         defaultValue._config,
         (initValue as Record<string, unknown>) ?? {},
       )
+      // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
       rawSig = signal(nestedInstance)
 
       // Propagate nested patches upward with the key as path prefix.
@@ -90,6 +95,7 @@ export function createInstance<
         meta.emitPatch({ ...patch, path: path + patch.path })
       })
     } else {
+      // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
       rawSig = signal(initValue !== undefined ? initValue : defaultValue)
     }
 

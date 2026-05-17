@@ -208,12 +208,22 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   const _invalidCount = signal(0)
   const _dirtyCount = signal(0)
 
+  // Per-field fine-grained signal allocation at form SETUP (useForm runs
+  // once), not per-render — this IS the documented form architecture
+  // ("value/error/touched/dirty are independent Signal<T>"), not the
+  // signal-in-render-loop anti-pattern the rule targets. Disabled per-site.
   for (const [name, initial] of fieldEntries) {
+    // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
     const valueSig = signal(initial) as Signal<TValues[typeof name]>
+    // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
     const errorSig = signal<ValidationError>(undefined)
+    // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
     const touchedSig = signal(false)
+    // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
     const dirtySig = signal(false)
+    // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
     const fieldDisabled = signal(false)
+    // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
     const fieldReadOnly = signal(false)
     if (process.env.NODE_ENV !== 'production')
       // 6 signals per field — value/error/touched/dirty/disabled/readOnly.
