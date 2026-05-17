@@ -48,7 +48,7 @@ const User = () => {
   const data = useLoaderData<UserData>()
   const router = useRouter()
   const isAdmin = useIsActive("/admin")
-  const { isTransitioning } = useTransition()
+  const isTransitioning = useTransition()
   const params = useTypedSearchParams({ tab: "string", page: "number" })
 
   return (
@@ -214,10 +214,10 @@ params.set({ page: 2 })  // updates URL`,
     {
       name: 'useTransition',
       kind: 'hook',
-      signature: 'useTransition(): { isTransitioning: () => boolean }',
+      signature: 'useTransition(): () => boolean',
       summary:
-        'Reactive signal for route transition state. `isTransitioning()` is true during navigation (while guards run + loaders resolve), false when the new route is mounted. Useful for progress bars and global loading indicators.',
-      example: `const { isTransitioning } = useTransition()
+        'Returns a reactive accessor for route transition state. The accessor is true during navigation (while guards run + loaders resolve), false when the new route is mounted. Call it inside a reactive scope. Useful for progress bars and global loading indicators.',
+      example: `const isTransitioning = useTransition()
 
 <Show when={isTransitioning()}>
   <ProgressBar />
@@ -227,17 +227,17 @@ params.set({ page: 2 })  // updates URL`,
     {
       name: 'useMiddlewareData',
       kind: 'hook',
-      signature: 'useMiddlewareData<T>(): T',
+      signature: 'useMiddlewareData(): () => Record<string, unknown>',
       summary:
-        'Read data set by `RouteMiddleware` in the middleware chain. Middleware functions receive `ctx` with a mutable `ctx.data` object — properties set there are available to all downstream components via this hook.',
+        'Returns a reactive accessor for data set by `RouteMiddleware` in the middleware chain. Middleware functions receive `ctx` with a mutable `ctx.data` object — properties set there are read by calling the returned accessor inside a reactive scope.',
       example: `// Middleware:
 const authMiddleware: RouteMiddleware = async (ctx) => {
   ctx.data.user = await getUser(ctx.to)
 }
 
 // Component:
-const data = useMiddlewareData<{ user: User }>()
-// data.user is available`,
+const data = useMiddlewareData()
+// data().user is available`,
       seeAlso: ['createRouter', 'useLoaderData'],
     },
     {

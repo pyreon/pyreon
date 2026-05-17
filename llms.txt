@@ -372,9 +372,9 @@ import { useTypedSearchParams } from '@pyreon/router'
 const params = useTypedSearchParams({ page: 'number', q: 'string' })
 params.page()  // number
 
-// Route transition state
+// Route transition state — useTransition() returns a reactive accessor () => boolean
 import { useTransition } from '@pyreon/router'
-const { isTransitioning } = useTransition()
+const isTransitioning = useTransition()  // call it: isTransitioning()
 
 // View Transitions API — auto-enabled, opt out per route:
 { path: '/modal', component: Modal, meta: { viewTransition: false } }
@@ -384,7 +384,7 @@ const { isTransitioning } = useTransition()
 
 // Middleware chain with data passing
 const auth: RouteMiddleware = async (ctx) => { ctx.data.user = await getUser(ctx.request) }
-// In component: const data = useMiddlewareData<{ user: User }>()
+// In component: const data = useMiddlewareData()  // accessor → read via data().user
 ```
 
 ## Documentation

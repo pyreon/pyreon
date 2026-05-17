@@ -264,7 +264,7 @@ Falls back with a clear message when `.claude/rules/browser-packages.json` isn't
 
 ### get_pattern
 
-Fetches a canonical "how do I do X" pattern body from `docs/docs/patterns/` in the monorepo. Patterns are markdown files keyed by slug (`controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `reactive-context`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`). Drop a new `docs/docs/patterns/<slug>.md` file to add one — it's discovered at runtime on the next call, no code change needed.
+Fetches a canonical "how do I do X" pattern body from `docs/docs/patterns/` in the monorepo. Patterns are markdown files keyed by slug — 16 today: `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`. Drop a new `docs/docs/patterns/<slug>.md` file to add one — it's discovered at runtime on the next call, no code change needed.
 
 **Parameters:**
 
