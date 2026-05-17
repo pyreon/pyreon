@@ -18,7 +18,15 @@ function styleStr(styles: Record<string, string | number | undefined>): string {
   for (const [k, v] of Object.entries(styles)) {
     if (v != null && v !== '') {
       const prop = k.replace(/([A-Z])/g, '-$1').toLowerCase()
-      parts.push(`${prop}:${typeof v === 'number' ? `${v}px` : v}`)
+      // String values can be document-author / CMS controlled (column
+      // `width`, `align`, `gap`, …) and land inside a `style="…"`
+      // attribute. Without sanitization `width: 'x"><script>…'` breaks
+      // out of the attribute → XSS in the produced HTML (emailed /
+      // served). Route every string value through the same `sanitizeCss`
+      // the rest of this renderer uses (strips `" < > ; ( )` + css
+      // injection vectors). Numbers are structurally safe.
+      const safeV = typeof v === 'number' ? `${v}px` : sanitizeStyle(v)
+      if (safeV !== '') parts.push(`${prop}:${safeV}`)
     }
   }
   return parts.length > 0 ? ` style="${parts.join(';')}"` : ''
@@ -53,7 +61,13 @@ function renderNode(node: DocNode): string {
       // <meta name="author">, subject goes in <meta name="description">
       // (the closest semantic HTML equivalent — DOCX's "subject"
       // is conceptually the same as HTML's description meta).
-      const lang = (p.language as string) ?? 'en'
+      // `language` lands raw in `<html lang="…">`. title/author/subject
+      // are escaped; `lang` was not — `language: 'en"><script>…'` broke
+      // out of the attribute (XSS). A valid BCP-47 tag is letters /
+      // digits / hyphen only: strip everything else, then HTML-escape as
+      // belt-and-braces, falling back to 'en' if nothing survives.
+      const rawLang = ((p.language as string) ?? 'en').replace(/[^a-zA-Z0-9-]/g, '')
+      const lang = escapeHtml(rawLang || 'en')
       const title = p.title ? `<title>${escapeHtml(p.title as string)}</title>` : ''
       const author = p.author
         ? `<meta name="author" content="${escapeHtml(p.author as string)}">`

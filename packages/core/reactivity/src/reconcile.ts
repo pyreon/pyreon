@@ -23,6 +23,16 @@ import { isStore } from './store'
 
 type AnyObject = Record<PropertyKey, unknown>
 
+// Keys that, written through the bracket-assignment paths below, would
+// mutate Object.prototype (or a constructor's prototype) instead of the
+// store. `reconcile` is explicitly documented for applying API responses
+// directly (`reconcile(JSON.parse(body), store)`), and
+// `JSON.parse('{"__proto__":{…}}')` yields an OWN enumerable `__proto__`
+// key that `Object.keys` returns — the canonical prototype-pollution
+// merge vector. Skip these unconditionally on both the write and the
+// stale-key-removal pass.
+const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+
 export function reconcile<T extends object>(source: T, target: T): void {
   _reconcileInner(source, target, new WeakSet())
 }
@@ -80,6 +90,7 @@ function _reconcileObject(source: AnyObject, target: AnyObject, seen: WeakSet<ob
   const targetKeys = new Set(Object.keys(target))
 
   for (const key of sourceKeys) {
+    if (DANGEROUS_KEYS.has(key)) continue
     const sv = source[key]
     const tv = target[key]
 
@@ -101,6 +112,7 @@ function _reconcileObject(source: AnyObject, target: AnyObject, seen: WeakSet<ob
 
   // Remove keys that no longer exist in source
   for (const key of targetKeys) {
+    if (DANGEROUS_KEYS.has(key)) continue
     delete target[key]
   }
 }

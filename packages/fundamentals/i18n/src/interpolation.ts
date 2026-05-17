@@ -23,7 +23,19 @@ export function interpolate(template: string, values?: InterpolationValues): str
     // Safely coerce — guard against malicious toString/valueOf
     try {
       return typeof value === 'object' && value !== null ? JSON.stringify(value) : `${value}`
-    } catch {
+    } catch (err) {
+      // Serialization failed (circular object, a Symbol coerced via
+      // `${value}`, a throwing toString/valueOf). Falling back to the raw
+      // placeholder is correct, but swallowing silently leaves the
+      // developer with `{{name}}` rendered to end users and zero signal
+      // pointing at the cause. Surface it in dev.
+      if (__DEV__) {
+        // oxlint-disable-next-line no-console
+        console.warn(
+          `[Pyreon i18n] interpolation value for "${trimmed}" is not serializable — rendering the raw placeholder. Pass a string/number, or pre-serialize the value.`,
+          err,
+        )
+      }
       return `{{${trimmed}}}`
     }
   })

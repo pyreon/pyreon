@@ -86,6 +86,30 @@ describe('matchApiRoute', () => {
   it('rejects missing segments', () => {
     expect(matchApiRoute('/api/posts/:id', '/api/posts')).toBeNull()
   })
+
+  it('skips prototype-polluting param names (Z5 defense-in-depth)', () => {
+    // Param NAMES come from the route file pattern (`[constructor].ts`),
+    // so this is dev-controlled (not an attacker vector) — but a
+    // `:constructor` / `:prototype` segment otherwise creates an OWN
+    // `constructor`/`prototype` property shadowing the prototype chain
+    // on the params object. The guard skips the dangerous names while
+    // legitimate sibling params still resolve.
+    const c = matchApiRoute('/api/:constructor', '/api/x')
+    expect(c).not.toBeNull()
+    expect(Object.hasOwn(c!, 'constructor')).toBe(false)
+    expect(c).toEqual({})
+
+    const p = matchApiRoute('/api/:prototype/:id', '/api/p/5')
+    expect(p).toEqual({ id: '5' }) // dangerous skipped, safe kept
+    expect(Object.hasOwn(p!, 'prototype')).toBe(false)
+
+    // Catch-all variant.
+    const ca = matchApiRoute('/api/:constructor*', '/api/a/b/c')
+    expect(Object.hasOwn(ca!, 'constructor')).toBe(false)
+
+    // Object.prototype itself is never touched.
+    expect(({} as Record<string, unknown>).id).toBeUndefined()
+  })
 })
 
 describe('generateApiRouteModule', () => {
@@ -115,5 +139,40 @@ describe('generateApiRouteModule', () => {
     const code = generateApiRouteModule(['api/posts.ts', 'index.tsx', 'about.tsx'], '/src/routes')
     expect(code).not.toContain('index.tsx')
     expect(code).not.toContain('about.tsx')
+  })
+})
+
+describe('matchApiRoute — prototype-safe params (Z5)', () => {
+  // A route-pattern-derived param name is developer-controlled
+  // (defense-in-depth, not an attacker vector), but
+  // `params['constructor'] = 'x'` creates a real own-prop shadow.
+  // Skip the dangerous names — consistent with the reconcile / i18n
+  // deepMerge guards added in this sweep.
+  it('skips a `:constructor` / `:prototype` param instead of shadowing it', () => {
+    const c = matchApiRoute('/api/:constructor', '/api/x')
+    expect(c).not.toBeNull()
+    expect(Object.hasOwn(c as object, 'constructor')).toBe(false)
+    expect(c).toEqual({})
+
+    const pr = matchApiRoute('/api/:prototype', '/api/y')
+    expect(Object.hasOwn(pr as object, 'prototype')).toBe(false)
+  })
+
+  it('still extracts safe params alongside a skipped dangerous one', () => {
+    expect(matchApiRoute('/api/:constructor/:id', '/api/c/5')).toEqual({ id: '5' })
+  })
+
+  it('skips a dangerous catch-all param name', () => {
+    const r = matchApiRoute('/api/:constructor*', '/api/a/b/c')
+    expect(r).not.toBeNull()
+    expect(Object.hasOwn(r as object, 'constructor')).toBe(false)
+  })
+
+  it('does not pollute Object.prototype via a __proto__ param', () => {
+    matchApiRoute('/api/:__proto__', '/api/evil')
+    expect(({} as Record<string, unknown>).evil).toBeUndefined()
+    expect(Object.getPrototypeOf(matchApiRoute('/api/:__proto__', '/api/z') ?? {})).toBe(
+      Object.prototype,
+    )
   })
 })

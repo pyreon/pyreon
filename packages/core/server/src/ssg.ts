@@ -29,7 +29,7 @@
  */
 
 import { mkdir, writeFile } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
 
 export interface PrerenderOptions {
   /** SSR handler created by createHandler() */
@@ -102,8 +102,17 @@ export async function prerender(options: PrerenderOptions): Promise<PrerenderRes
 
     const filePath = resolveOutputPath(outDir, path)
 
+    // Containment check must be separator-terminated. A bare
+    // `startsWith(resolve(outDir))` is a string-prefix test, not a
+    // path-containment test: with outDir `/app/dist`, a traversed
+    // `filePath` resolving to `/app/dist-secret/x` passes
+    // `'/app/dist-secret/x'.startsWith('/app/dist')` → true, and the
+    // build writes (possibly secret-bearing) HTML to a SIBLING dir
+    // outside the intended output root. `path` derives from caller-
+    // supplied route params (e.g. CMS slugs via getStaticPaths).
     const resolvedOut = resolve(outDir)
-    if (!resolve(filePath).startsWith(resolvedOut)) {
+    const resolvedFile = resolve(filePath)
+    if (resolvedFile !== resolvedOut && !resolvedFile.startsWith(resolvedOut + sep)) {
       errors.push({ path, error: new Error(`Path traversal detected: "${path}"`) })
       return
     }

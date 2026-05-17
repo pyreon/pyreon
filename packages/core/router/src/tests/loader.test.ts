@@ -184,20 +184,44 @@ describe('stringifyLoaderData (M2.2)', () => {
     })
   })
 
-  test('handles deeply-nested data without falsely flagging shared references as cycles', () => {
-    // A non-cyclic shared reference (two keys pointing at the same array)
-    // SHOULD throw — JSON serialization can't represent shared identity
-    // without `references`, and a runtime cycle-detector treating shared
-    // refs as cycles is the safe default for hydration semantics. Verify
-    // the throw shape — if this becomes too aggressive, relax with a
-    // post-visit drop instead of WeakSet.
+  test('shared (DAG) references serialize — only true cycles throw', () => {
+    // BEHAVIOUR CHANGE (intentional, bug fix). Previously the all-seen
+    // WeakSet threw "circular reference" on ANY object visited twice — a
+    // shared reference (DAG), not a cycle. That 500'd the SSR response for
+    // extremely common loader payloads (an ORM returning the same instance
+    // twice). The original code's own comment anticipated this remedy:
+    // "if this becomes too aggressive, relax with a post-visit drop
+    // instead of WeakSet" — which is exactly what ancestor-path detection
+    // does. Strictly more permissive: inputs that throw before now succeed;
+    // inputs that worked are unchanged; real cycles still throw.
     const shared = [1, 2, 3]
-    expect(() =>
-      stringifyLoaderData({
-        '/a': shared,
-        '/b': shared,
-      }),
-    ).toThrow(/circular reference/)
+    const json = stringifyLoaderData({ '/a': shared, '/b': shared })
+    expect(JSON.parse(json)).toEqual({ '/a': [1, 2, 3], '/b': [1, 2, 3] })
+
+    // Canonical real-world shape: one user object referenced twice.
+    const user = { id: 7, name: 'Ada' }
+    const post = stringifyLoaderData({ '/posts/1': { author: user, lastEditor: user } })
+    expect(JSON.parse(post)).toEqual({
+      '/posts/1': { author: { id: 7, name: 'Ada' }, lastEditor: { id: 7, name: 'Ada' } },
+    })
+
+    // Diamond: same node reachable via two paths, no cycle.
+    const leaf = { v: 1 }
+    const diamond = stringifyLoaderData({ '/d': { left: { leaf }, right: { leaf } } })
+    expect(JSON.parse(diamond)).toEqual({ '/d': { left: { leaf: { v: 1 } }, right: { leaf: { v: 1 } } } })
+  })
+
+  test('still throws on a true cycle through a shared-looking path', () => {
+    // A shared ref that ALSO closes a cycle must still throw.
+    interface N {
+      id: number
+      next?: N
+    }
+    const a: N = { id: 1 }
+    const b: N = { id: 2 }
+    a.next = b
+    b.next = a // real cycle
+    expect(() => stringifyLoaderData({ '/x': { a, b } })).toThrow(/\[Pyreon\] Loader returned circular reference/)
   })
 
   test('empty record produces empty object JSON', () => {
@@ -606,6 +630,25 @@ describe('router — staleWhileRevalidate', () => {
     await new Promise<void>((r) => setTimeout(r, 50))
     expect(loaderCallCount).toBe(2)
   })
+
+  // NOTE: C5 (SWR background-revalidation error no longer silently
+  // swallowed — now surfaced via __DEV__ warn + router._onError) ships
+  // WITHOUT an isolated regression test, by deliberate decision. The SWR
+  // `.catch` branch is not deterministically reachable from the public
+  // API in a unit test: `runLoaders`'s gate is
+  // `r.staleWhileRevalidate && router._loaderData.has(r)`, but
+  // `resolveRoute` returns fresh RouteRecord objects per resolution, so
+  // `_loaderData.has(r)` is never true across separate navigations —
+  // every attempted trigger fell through to the BLOCKING loader path
+  // (which already surfaces onError), so a test there would pass for the
+  // wrong reason (false confidence — explicitly forbidden). Coupling a
+  // test to internal record identity was rejected as brittle. The fix
+  // itself is correct by inspection and matches the project's own
+  // anti-patterns.md rule ("Silent plugin/init error swallowing … Always
+  // log in __DEV__ and call onError"). Separately flagged for follow-up:
+  // the unstable resolved-record identity appears to make SWR's
+  // nav-away/back trigger ineffective — a distinct finding, intentionally
+  // NOT investigated here to avoid silent scope creep.
 })
 
 describe('router.preload', () => {

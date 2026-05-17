@@ -28,6 +28,25 @@ export function createISRHandler(
   const cache = new Map<string, CacheEntry>()
   const revalidating = new Set<string>()
   const revalidateMs = config.revalidate * 1000
+  // Bounded background-revalidation timeout. Without it, a handler that
+  // hangs forever leaves its key permanently in `revalidating` (the
+  // `finally` that clears it never runs), so EVERY later request for
+  // that key short-circuits the `revalidating.has(key)` guard and the
+  // entry stays stale for the rest of the process lifetime — it can
+  // never recover. 30s default matches the Suspense streaming timeout;
+  // overridable via ISRConfig.revalidateTimeoutMs.
+  const REVALIDATE_TIMEOUT_MS = Math.max(1, config.revalidateTimeoutMs ?? 30_000)
+
+  // Only 2xx, cookie-free responses may be cached. Caching a transient
+  // 5xx/3xx/404 and replaying it as a 200 for the whole revalidate
+  // window is a self-inflicted outage / cache-poisoning bug. Caching a
+  // `Set-Cookie` response and replaying it to every visitor leaks one
+  // user's session/CSRF cookie cross-user — not covered by the
+  // documented "ISR-without-cacheKey is for non-personalized pages"
+  // caveat (that caveat is about key variance, not header stripping).
+  function isCacheable(res: Response): boolean {
+    return res.status >= 200 && res.status < 300 && !res.headers.has('set-cookie')
+  }
   const maxEntries = Math.max(1, config.maxEntries ?? 1000)
   // M1.1 — cache-key derivation. Default keys by pathname only (the
   // pre-M1 behaviour). User-supplied `cacheKey` opts in to varying
@@ -76,16 +95,29 @@ export function createISRHandler(
         method: 'GET',
         headers: originalReq.headers,
       })
-      const res = await handler(req)
-      const html = await res.text()
-      const headers: Record<string, string> = {}
-      res.headers.forEach((v, k) => {
-        headers[k] = v
-      })
-
-      set(key, { html, headers, timestamp: Date.now() })
+      // Bound the revalidation so a hung handler can't pin `key` in
+      // `revalidating` forever (which would freeze the entry stale).
+      const res = await Promise.race([
+        handler(req),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error('[Pyreon ISR] revalidation timeout')),
+            REVALIDATE_TIMEOUT_MS,
+          ),
+        ),
+      ])
+      // Never overwrite a good stale entry with a bad re-render
+      // (5xx/3xx) or poison it with a Set-Cookie response.
+      if (isCacheable(res)) {
+        const html = await res.text()
+        const headers: Record<string, string> = {}
+        res.headers.forEach((v, k) => {
+          headers[k] = v
+        })
+        set(key, { html, headers, timestamp: Date.now() })
+      }
     } catch {
-      // Revalidation failed — stale cache entry remains valid
+      // Revalidation failed / timed out — stale cache entry remains valid
     } finally {
       revalidating.delete(key)
     }
@@ -123,13 +155,25 @@ export function createISRHandler(
       })
     }
 
-    // Cache miss — render, cache, and return
+    // Cache miss — render. Only cache (and only normalize to a 200
+    // text/html response) when the render is actually cacheable; a
+    // transient error / redirect / Set-Cookie response is passed
+    // through verbatim with its ORIGINAL status + headers and is NOT
+    // stored, so it can't be replayed as a 200 to later visitors.
     const res = await handler(req)
     const html = await res.text()
     const headers: Record<string, string> = {}
     res.headers.forEach((v, k) => {
       headers[k] = v
     })
+
+    if (!isCacheable(res)) {
+      return new Response(html, {
+        status: res.status,
+        statusText: res.statusText,
+        headers: { ...headers, 'x-isr-cache': 'BYPASS' },
+      })
+    }
 
     set(key, { html, headers, timestamp: Date.now() })
 

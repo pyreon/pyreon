@@ -162,9 +162,9 @@ describe('useSortable', () => {
     // Regression: Pyreon's runtime invokes ref callbacks with `el | null`
     // — `null` on unmount. Previously the exported types were
     // `(el: HTMLElement) => void` (non-null), forcing every consumer to
-    // wrap with adapter callbacks. The hook now accepts `null` and
-    // no-ops — pdnd's per-element cleanups are registered via
-    // `onCleanup`, so the unmount path is already covered.
+    // wrap with adapter callbacks. The hook accepts `null`; on `null`
+    // the per-key pdnd registration is disposed eagerly (F3 fix) rather
+    // than deferred to component `onCleanup`.
     const { useSortable } = await import('../use-sortable')
     const items = signal([{ id: '1' }, { id: '2' }])
 
@@ -200,6 +200,10 @@ describe('useSortable', () => {
 
     expect(el.getAttribute('tabindex')).toBe('-1')
   })
+
+  // F3 (per-item registration leak) is regression-tested in the isolated
+  // `use-sortable-leak.test.ts` (pdnd mocked there — the real lib uses
+  // document-level listeners with no robust per-element DOM observable).
 
   it('supports horizontal axis', async () => {
     const { useSortable } = await import('../use-sortable')

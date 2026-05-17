@@ -1230,4 +1230,24 @@ describe('ssgPlugin', () => {
       expect(result).toEqual({})
     })
   })
+
+  describe('isInsideDist (Z3 — path-traversal containment)', () => {
+    it('accepts paths inside the dist root and the root itself', () => {
+      expect(_internal.isInsideDist('/app/dist', '/app/dist/about/index.html')).toBe(true)
+      expect(_internal.isInsideDist('/app/dist', '/app/dist/index.html')).toBe(true)
+      expect(_internal.isInsideDist('/app/dist', '/app/dist')).toBe(true)
+    })
+
+    it('rejects a SIBLING dir that merely shares the prefix (the bug)', () => {
+      // Bare `startsWith(resolve(distDir))` is a string-prefix test:
+      // `/app/dist-evil/x` startsWith `/app/dist` → true → write escapes
+      // the output root. The separator-terminated check rejects it.
+      expect(_internal.isInsideDist('/app/dist', '/app/dist-evil/x/index.html')).toBe(false)
+      expect(_internal.isInsideDist('/app/dist', '/app/dist-secret')).toBe(false)
+    })
+
+    it('rejects `..` traversal out of the dist root', () => {
+      expect(_internal.isInsideDist('/app/dist', '/app/dist/../evil/index.html')).toBe(false)
+    })
+  })
 })
