@@ -37,6 +37,7 @@ export interface NativeBinding {
     filename: string,
     ssr: boolean,
     knownSignals: string[] | null,
+    reactivityLens: boolean,
   ) => unknown
 }
 

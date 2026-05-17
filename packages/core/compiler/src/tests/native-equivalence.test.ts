@@ -5,11 +5,23 @@
  * between the two backends.
  */
 import { transformJSX_JS } from '../jsx'
+import type { ReactivitySpan } from '../jsx'
 
 // Load native if available
-let nativeTransform: ((code: string, filename: string, ssr: boolean, knownSignals: string[] | null) => {
-  code: string; usesTemplates?: boolean | null; warnings: Array<{ message: string; line: number; column: number; code: string }>
-}) | null = null
+let nativeTransform:
+  | ((
+      code: string,
+      filename: string,
+      ssr: boolean,
+      knownSignals: string[] | null,
+      reactivityLens?: boolean,
+    ) => {
+      code: string
+      usesTemplates?: boolean | null
+      warnings: Array<{ message: string; line: number; column: number; code: string }>
+      reactivityLens?: ReactivitySpan[] | null
+    })
+  | null = null
 
 try {
   const path = require('node:path')
@@ -37,6 +49,50 @@ function compareSsr(input: string) {
   const js = transformJSX_JS(input, 'test.tsx', { ssr: true })
   const rs = nativeTransform!(input, 'test.tsx', true, null)
   expect(rs.code).toBe(js.code)
+}
+
+// Reactivity-lens cross-backend gate (Phase 3). Asserts the Rust binary
+// emits the SAME sidecar the JS oracle does. Two contracts:
+//   1. ADDITIVE — `code` is byte-identical with the lens collected vs
+//      not, on BOTH backends (the option never affects codegen).
+//   2. PARITY — the SET of recorded spans is identical JS↔Rust.
+// Spans are compared order-independently: the LSP consumer sorts before
+// rendering, so traversal order is NOT part of the contract — the SET of
+// codegen decisions is. Sorting by (start,end,kind,detail) makes a
+// missing/extra/wrong span fail loudly while ignoring walk order.
+function canon(spans: ReactivitySpan[] | null | undefined): string[] {
+  return (spans ?? [])
+    .map(
+      (s) =>
+        `${s.start}|${s.end}|${s.line}|${s.column}|${s.endLine}|${s.endColumn}|${s.kind}|${s.detail}`,
+    )
+    .sort()
+}
+
+function compareLens(input: string, filename = 'test.tsx') {
+  const jsOff = transformJSX_JS(input, filename)
+  const jsOn = transformJSX_JS(input, filename, { reactivityLens: true })
+  const rsOff = nativeTransform!(input, filename, false, null, false)
+  const rsOn = nativeTransform!(input, filename, false, null, true)
+
+  // (1) additive — collecting the lens never changes emitted code, on
+  // either backend, and both backends still agree on that code.
+  expect(jsOn.code).toBe(jsOff.code)
+  expect(rsOn.code).toBe(rsOff.code)
+  expect(rsOn.code).toBe(jsOn.code)
+
+  // The opt-out path must NOT carry the sidecar (parity with JS, which
+  // omits the field entirely when not collecting).
+  expect(rsOff.reactivityLens == null).toBe(true)
+  expect(jsOff.reactivityLens == null).toBe(true)
+
+  // (2) parity — identical SET of spans.
+  const j = canon(jsOn.reactivityLens)
+  const r = canon(rsOn.reactivityLens)
+  expect(r).toEqual(j)
+  // Guard against the degenerate "both empty → trivially equal" pass:
+  // every fixture below is chosen to produce ≥1 span.
+  expect(j.length).toBeGreaterThan(0)
 }
 
 // ─── Cross-backend equivalence ──────────────────────────────────────────────
@@ -728,4 +784,49 @@ describeNative('Native vs JS equivalence — DOM properties', () => {
     // updating.
     compare('<div><input title={x()} /></div>')
   })
+})
+
+// ─── Reactivity-lens parity (Phase 3) ───────────────────────────────────────
+// The Rust binary must emit the SAME sidecar as the JS oracle so the
+// ~80% of users on the native path get the Lens too. Each fixture is
+// chosen to exercise one of the five structural kinds; `compareLens`
+// also asserts the additive guarantee (codegen byte-identical with the
+// option on vs off, both backends) so this block doubles as the native
+// regression guard for "the lens option must never affect output".
+//
+// Bisect-verified: removing ANY of the 6 `ctx.lens(...)` calls in
+// native/src/lib.rs fails the matching fixture below with an
+// array-length / element mismatch in `compareLens`'s parity assertion
+// (e.g. dropping the `reactive-prop` call → `<Comp value={x()} />` fails
+// `expect(r).toEqual(j)` because the Rust set is missing that span);
+// restored → 9/9 pass.
+describeNative('Reactivity-lens — JS↔Rust span parity', () => {
+  test('reactive text child (_bindText)', () =>
+    compareLens('<div>{count()}</div>'))
+
+  test('reactive accessor text child (() => …)', () =>
+    compareLens('<div>{() => count()}</div>'))
+
+  test('static-text child (baked once — the high-precision negative)', () =>
+    compareLens('<div>{someConst}</div>'))
+
+  test('reactive-prop on a component (_rp(() => …))', () =>
+    compareLens('<Comp value={count()} />'))
+
+  test('reactive-attr on a DOM element (live binding)', () =>
+    compareLens('<div><span title={count()}>hi</span></div>'))
+
+  test('hoisted-static (module-scope hoist)', () =>
+    compareLens('<Comp>{<b class="x">hi</b>}</Comp>'))
+
+  test('mixed: reactive + static + prop in one tree', () =>
+    compareLens(
+      '<section><Comp value={count()} /><p>{count()}</p><p>{label}</p></section>',
+    ))
+
+  test('multi-line source — line/column parity across newlines', () =>
+    compareLens('<div>\n  {count()}\n  <span title={other()}>\n  z</span>\n</div>'))
+
+  test('signal auto-call shape — declared signal, bare {count} → reactive', () =>
+    compareLens('const count = signal(0); const App = () => <div>{count}</div>', 'auto.tsx'))
 })

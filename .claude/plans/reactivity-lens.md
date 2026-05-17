@@ -1,6 +1,7 @@
 # Reactivity Lens — make reactivity legible at authoring time
 
-**Status:** Phase 0 kill-test → **GO**, and **Phase 1 SHIPPED in this PR**
+**Status:** Phase 0 kill-test → **GO**; **Phase 1 SHIPPED** (PR #611,
+merged); **Phase 3 (Rust-backend sidecar parity) SHIPPED in this PR**.
 (funded as a P0 experimental, per explicit user direction; framed
 experimental). Spike was not thrown away — it cleared every kill
 criterion cheaply, so it was promoted in place with full measurement +
@@ -76,13 +77,20 @@ unifies the surface.
 
 ## What is NOT proven / deliberate follow-ups (honest)
 
-- **Rust-backend parity (Phase 3).** The lens is JS-backend only. ~80%
-  of users hit the native binary, which is byte-identical for codegen
-  (527 equivalence tests) so the analysis is sound, but the native
-  binary does not yet *emit* the sidecar. The LSP path forces the JS
-  backend (`transformJSX_JS`) so it is correct today; production
-  bundling uses native (lens not consumed there — it's editor-only).
-  Rust emit + a map-equivalence test is the next phase.
+- ~~**Rust-backend parity (Phase 3).**~~ **SHIPPED (this PR).** The Rust
+  native binary now emits the `reactivityLens` sidecar from the same 6
+  codegen-decision sites as the JS path, gated by the same opt-in 5th
+  `transform_jsx` arg (`Ctx::lens` + napi `ReactivitySpan`, snake→camel
+  mapped). `compareLens` in `native-equivalence.test.ts` (9 fixtures, one
+  per kind + mixed/multi-line/auto-call) proves JS↔Rust span-set parity
+  AND the additive guarantee (codegen byte-identical with the option on
+  vs off, both backends); bisect-verified by removing any single
+  `ctx.lens(...)` call (the matching fixture fails with the Rust set
+  missing that span) then restoring. So the ~80% of users on the native
+  path get the lens too. `analyzeReactivity` still forces
+  `transformJSX_JS` deliberately — it is the oracle for the merged
+  footgun+structural taxonomy; the raw sidecar parity is what Phase 3
+  closed.
 - **No rendered-editor e2e.** The proof is the LSP JSON-RPC contract +
   the compiler drift gate, not a Playwright-drives-VSCode test. For an
   editor feature the load-bearing contract is "server returns correct
@@ -103,6 +111,8 @@ unifies the surface.
 ## Sequencing
 
 This is the prevention bet from the strategic analysis. Shipped behind
-nothing (user directed P0). Phases 2–4 (richer LSP, Rust parity, VSCode
-decoration polish) are independently revertable follow-ups; none are
-blockers for the value delivered here.
+nothing (user directed P0). Phase 1 (JS lens + LSP) and Phase 3 (Rust
+sidecar parity) are landed; the remaining follow-ups (richer LSP /
+inlay-hint UX polish, manifest/llms enrichment, rendered-editor e2e,
+the body-scope `const {x}=props` detector) are independently revertable
+and none are blockers for the value delivered here.

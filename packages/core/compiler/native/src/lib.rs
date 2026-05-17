@@ -17,11 +17,32 @@ pub struct CompilerWarning {
     pub code: String,
 }
 
+/// Reactivity-lens span — the Rust mirror of `ReactivitySpan` in
+/// `src/jsx.ts`. Each is a faithful RECORD of a codegen decision the
+/// compiler already made (never an approximation). Populated ONLY when
+/// `transform_jsx`'s `reactivity_lens` arg is `Some(true)`; the emitted
+/// `code` is byte-identical whether or not this is collected. napi-rs
+/// maps the snake_case fields to camelCase (`endLine` / `endColumn` /
+/// the parent `reactivityLens`) so the JS shape matches `src/jsx.ts`
+/// exactly.
+#[napi(object)]
+pub struct ReactivitySpan {
+    pub start: u32,
+    pub end: u32,
+    pub line: u32,
+    pub column: u32,
+    pub end_line: u32,
+    pub end_column: u32,
+    pub kind: String,
+    pub detail: String,
+}
+
 #[napi(object)]
 pub struct TransformResult {
     pub code: String,
     pub uses_templates: Option<bool>,
     pub warnings: Vec<CompilerWarning>,
+    pub reactivity_lens: Option<Vec<ReactivitySpan>>,
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -322,10 +343,17 @@ struct Ctx<'a> {
     signal_vars: FxHashSet<String>,
     /// Shadowed signal names in current scope (for scope-aware auto-call)
     shadowed_signals: FxHashSet<String>,
+
+    /// Reactivity-lens sidecar (opt-in via `transform_jsx`'s 5th arg).
+    /// Mirrors `src/jsx.ts`'s `collectLens` / `reactivityLens` exactly:
+    /// purely additive, recorded at the SAME codegen-decision sites as
+    /// the existing `replacements`/`hoists` pushes — never a second pass.
+    collect_lens: bool,
+    reactivity_lens: Vec<ReactivitySpan>,
 }
 
 impl<'a> Ctx<'a> {
-    fn new(source: &'a str, program: &'a Program<'a>, ssr: bool) -> Self {
+    fn new(source: &'a str, program: &'a Program<'a>, ssr: bool, collect_lens: bool) -> Self {
         Ctx {
             source,
             program,
@@ -353,7 +381,31 @@ impl<'a> Ctx<'a> {
             parent_is_jsx: false,
             signal_vars: FxHashSet::default(),
             shadowed_signals: FxHashSet::default(),
+            collect_lens,
+            reactivity_lens: Vec::new(),
         }
+    }
+
+    /// Record a reactivity-lens span. Byte-for-byte mirror of
+    /// `src/jsx.ts`'s `lens(start, end, kind, detail)`: `locate(start)`
+    /// → (line, column); `locate(end)` → (endLine, endColumn). No-op
+    /// when `collect_lens` is false (zero cost on the default path).
+    fn lens(&mut self, start: u32, end: u32, kind: &str, detail: String) {
+        if !self.collect_lens {
+            return;
+        }
+        let (line, column) = self.line_index.locate(start);
+        let (end_line, end_column) = self.line_index.locate(end);
+        self.reactivity_lens.push(ReactivitySpan {
+            start,
+            end,
+            line,
+            column,
+            end_line,
+            end_column,
+            kind: kind.to_string(),
+            detail,
+        });
     }
 
     fn slice(&self, span: Span) -> &'a str {
@@ -386,6 +438,11 @@ impl<'a> Ctx<'a> {
                 code: self.source.to_string(),
                 uses_templates: None,
                 warnings: self.warnings,
+                reactivity_lens: if self.collect_lens {
+                    Some(self.reactivity_lens)
+                } else {
+                    None
+                },
             };
         }
 
@@ -460,6 +517,11 @@ impl<'a> Ctx<'a> {
                 None
             },
             warnings: self.warnings,
+            reactivity_lens: if self.collect_lens {
+                Some(self.reactivity_lens)
+            } else {
+                None
+            },
         }
     }
 }
@@ -1863,6 +1925,7 @@ pub fn transform_jsx(
     filename: String,
     ssr: bool,
     known_signals: Option<Vec<String>>,
+    reactivity_lens: Option<bool>,
 ) -> TransformResult {
     let source_type = SourceType::from_path(&filename)
         .unwrap_or_default()
@@ -1879,10 +1942,12 @@ pub fn transform_jsx(
             code,
             uses_templates: None,
             warnings: vec![],
+            reactivity_lens: None,
         };
     }
 
-    let mut ctx = Ctx::new(&code, &ret.program, ssr);
+    let collect_lens = reactivity_lens == Some(true);
+    let mut ctx = Ctx::new(&code, &ret.program, ssr, collect_lens);
 
     // Seed signal_vars from known_signals (cross-module imports resolved by Vite plugin)
     if let Some(signals) = known_signals {
@@ -2453,12 +2518,15 @@ fn handle_jsx_attribute(
             } else {
                 sliced
             };
-            ctx.add_replacement(
-                expr.span().start,
-                expr.span().end,
-                format!("_rp(() => {})", inner),
-            );
+            let sp = expr.span();
+            ctx.add_replacement(sp.start, sp.end, format!("_rp(() => {})", inner));
             ctx.needs_rp_import = true;
+            ctx.lens(
+                sp.start,
+                sp.end,
+                "reactive-prop",
+                "live prop — signal reads here are tracked into the component".to_string(),
+            );
         }
     } else {
         // DOM prop: hoist or wrap with () =>
@@ -2538,11 +2606,18 @@ fn maybe_hoist_expr(expr: &Expression, ctx: &mut Ctx) -> Option<String> {
         Expression::JSXElement(el) => {
             if is_static_jsx_node(el) {
                 let name = ctx.next_hoist_name();
-                let text = slice_span(expr.span(), ctx);
+                let sp = expr.span();
+                let text = slice_span(sp, ctx);
                 ctx.hoists.push(Hoist {
                     name: name.clone(),
                     text,
                 });
+                ctx.lens(
+                    sp.start,
+                    sp.end,
+                    "hoisted-static",
+                    "static — hoisted once to module scope, never re-evaluated".to_string(),
+                );
                 Some(name)
             } else {
                 None
@@ -2551,11 +2626,18 @@ fn maybe_hoist_expr(expr: &Expression, ctx: &mut Ctx) -> Option<String> {
         Expression::JSXFragment(frag) => {
             if is_static_jsx_fragment(frag) {
                 let name = ctx.next_hoist_name();
-                let text = slice_span(expr.span(), ctx);
+                let sp = expr.span();
+                let text = slice_span(sp, ctx);
                 ctx.hoists.push(Hoist {
                     name: name.clone(),
                     text,
                 });
+                ctx.lens(
+                    sp.start,
+                    sp.end,
+                    "hoisted-static",
+                    "static — hoisted once to module scope, never re-evaluated".to_string(),
+                );
                 Some(name)
             } else {
                 None
@@ -2572,7 +2654,14 @@ fn wrap_expr(expr: &Expression, ctx: &mut Ctx) {
     } else {
         format!("() => {}", sliced)
     };
-    ctx.add_replacement(expr.span().start, expr.span().end, text);
+    let sp = expr.span();
+    ctx.add_replacement(sp.start, sp.end, text);
+    ctx.lens(
+        sp.start,
+        sp.end,
+        "reactive",
+        "live — re-evaluates whenever its signals change".to_string(),
+    );
 }
 
 fn hoist_or_wrap(expr: &Expression, ctx: &mut Ctx) {
@@ -3166,6 +3255,16 @@ fn emit_dynamic_attr(
             .push(attr_setter(html_attr_name, var_name, &expr_text));
         return;
     }
+    let sp = expr_node.span();
+    ctx.lens(
+        sp.start,
+        sp.end,
+        "reactive-attr",
+        format!(
+            "live attribute — `{}` re-applies whenever its signals change",
+            html_attr_name
+        ),
+    );
     let direct_ref = try_direct_signal_ref(expr_node, ctx);
     if let Some(ref signal_name) = direct_ref {
         tb.needs_bind_direct = true;
@@ -3403,7 +3502,14 @@ fn process_one_child(
                 ));
                 return Some("<!>".to_string());
             }
+            let cx_sp = expr.span();
             if is_reactive {
+                ctx.lens(
+                    cx_sp.start,
+                    cx_sp.end,
+                    "reactive",
+                    "live — this text re-renders whenever its signals change".to_string(),
+                );
                 Some(emit_reactive_text_child(
                     &expr_text,
                     expr,
@@ -3415,6 +3521,12 @@ fn process_one_child(
                     ctx,
                 ))
             } else {
+                ctx.lens(
+                    cx_sp.start,
+                    cx_sp.end,
+                    "static-text",
+                    "baked once into the DOM — never re-renders (no signal read here)".to_string(),
+                );
                 Some(emit_static_text_child(
                     &expr_text,
                     var_name,
