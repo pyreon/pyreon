@@ -87,13 +87,21 @@ function computedLazy<T>(fn: () => T): Computed<T> {
   let tracked = false
   const deps: Set<() => void>[] = []
   const host: { _s: Set<() => void> | null } = { _s: null }
-  let directFns: ((() => void) | null)[] | null = null
+  // Set, not a never-compacted flat array. The array form's disposal
+  // only nulled the slot (`arr[idx] = null`) and never shrank, so a
+  // long-lived computed (a derived theme/locale/auth value, or one read
+  // inside churning `<For>` rows) bound by mount/unmount churn grew one
+  // permanent dead slot per ever-registered binding — app-lifetime
+  // memory growth AND `recompute` iterating O(total-ever) instead of
+  // O(live). Identical bug class already fixed for `signal._d`
+  // (signal.ts `_directFn`); `computed` was left on the broken pattern.
+  let directFns: Set<() => void> | null = null
 
   const recompute = () => {
     if (disposed || dirty) return
     dirty = true
     if (host._s) notifySubscribers(host._s)
-    if (directFns) for (const f of directFns) f?.()
+    if (directFns) for (const f of directFns) f()
   }
   _markRecompute(recompute)
 
@@ -136,13 +144,20 @@ function computedLazy<T>(fn: () => T): Computed<T> {
     enumerable: false,
   })
 
+  // @internal — mirrors `signal._d`. Lets tests deterministically assert
+  // the live direct-updater set stays BOUNDED under register/dispose
+  // churn (the never-compacted-array leak this fix removes).
+  Object.defineProperty(read, '_d', {
+    get: () => directFns,
+    enumerable: false,
+  })
+
   read.direct = (updater: () => void): (() => void) => {
-    if (!directFns) directFns = []
-    const arr = directFns
-    const idx = arr.length
-    arr.push(updater)
+    if (!directFns) directFns = new Set()
+    const set = directFns
+    set.add(updater)
     return () => {
-      arr[idx] = null
+      set.delete(updater)
     }
   }
 
@@ -163,7 +178,15 @@ function computedWithEquals<T>(fn: () => T, equals: (prev: T, next: T) => boolea
   let disposed = false
   const deps: Set<() => void>[] = []
   const host: { _s: Set<() => void> | null } = { _s: null }
-  let directFns: ((() => void) | null)[] | null = null
+  // Set, not a never-compacted flat array. The array form's disposal
+  // only nulled the slot (`arr[idx] = null`) and never shrank, so a
+  // long-lived computed (a derived theme/locale/auth value, or one read
+  // inside churning `<For>` rows) bound by mount/unmount churn grew one
+  // permanent dead slot per ever-registered binding — app-lifetime
+  // memory growth AND `recompute` iterating O(total-ever) instead of
+  // O(live). Identical bug class already fixed for `signal._d`
+  // (signal.ts `_directFn`); `computed` was left on the broken pattern.
+  let directFns: Set<() => void> | null = null
 
   const recompute = () => {
     if (disposed) return
@@ -181,7 +204,7 @@ function computedWithEquals<T>(fn: () => T, equals: (prev: T, next: T) => boolea
       return
     }
     if (host._s) notifySubscribers(host._s)
-    if (directFns) for (const f of directFns) f?.()
+    if (directFns) for (const f of directFns) f()
   }
   _markRecompute(recompute)
 
@@ -216,13 +239,20 @@ function computedWithEquals<T>(fn: () => T, equals: (prev: T, next: T) => boolea
     enumerable: false,
   })
 
+  // @internal — mirrors `signal._d`. Lets tests deterministically assert
+  // the live direct-updater set stays BOUNDED under register/dispose
+  // churn (the never-compacted-array leak this fix removes).
+  Object.defineProperty(read, '_d', {
+    get: () => directFns,
+    enumerable: false,
+  })
+
   read.direct = (updater: () => void): (() => void) => {
-    if (!directFns) directFns = []
-    const arr = directFns
-    const idx = arr.length
-    arr.push(updater)
+    if (!directFns) directFns = new Set()
+    const set = directFns
+    set.add(updater)
     return () => {
-      arr[idx] = null
+      set.delete(updater)
     }
   }
 

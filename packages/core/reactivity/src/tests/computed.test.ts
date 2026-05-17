@@ -198,6 +198,37 @@ describe('computed', () => {
     expect(called).toBe(2) // equals suppresses
   })
 
+  test('.direct() registrations do not accumulate under churn (bounded, like signal._d)', () => {
+    // Regression for the never-compacted-array leak: a long-lived
+    // computed whose direct updaters register+dispose repeatedly (e.g.
+    // <For> rows re-mounting) must keep its live set bounded to LIVE
+    // registrations, not grow one permanent dead slot per ever-
+    // registered binding (which also made `recompute` O(total-ever)).
+    const s = signal(0)
+    const c = computed(() => s() * 2)
+    c() // initialize
+    const internal = c as unknown as { _d: Set<() => void> | null }
+
+    for (let i = 0; i < 10_000; i++) {
+      const dispose = c.direct(() => {})
+      dispose()
+    }
+    expect(internal._d!.size).toBe(0)
+
+    // One live binding survives → notify/iterate cost is O(live), not 10k.
+    let fired = 0
+    const dispose = c.direct(() => {
+      fired++
+    })
+    expect(internal._d!.size).toBe(1)
+    s.set(1)
+    expect(fired).toBe(1)
+    dispose()
+    expect(internal._d!.size).toBe(0)
+    s.set(2)
+    expect(fired).toBe(1) // disposed updater not invoked
+  })
+
   describe('_v with equals after disposal', () => {
     test('_v returns last cached value after dispose()', () => {
       const s = signal(5)

@@ -125,8 +125,18 @@ describe('Transition', () => {
       // flaked). `vi.waitFor` polls every 10ms up to the timeout, so it
       // settles as soon as the assertion holds while still bounding the
       // worst case.
+      //
+      // Timeout raised 2000 → 8000: under the full 60+-package parallel
+      // CI `Test` job, event-loop starvation can delay the Transition's
+      // completion callback past 2s (it was reproducibly flaking this
+      // single test there while passing deterministically in isolation).
+      // The runtime itself bounds Transition completion at a documented
+      // 5s fallback (CLAUDE.md), so a test asserting that completion must
+      // allow ≥5s + CI-scheduling margin. The poll still settles
+      // immediately once `onAfterEnter` fires — this only widens the
+      // worst-case ceiling, it does not slow the happy path.
       await vi.waitFor(() => expect(onAfterEnter).toHaveBeenCalled(), {
-        timeout: 2000,
+        timeout: 8000,
       })
     }
   })
