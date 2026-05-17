@@ -2731,7 +2731,18 @@ function Counter() {
     signature: 'tool: diagnose({ error: string }) → DiagnoseResult',
     example: `diagnose({ error: 'Cannot redefine property X on object [object Object]' })
 // → cause: configurable: false on a getter; fix: set configurable: true`,
-    notes: 'Parse a Pyreon runtime / build error message into structured fix information: probable cause, recommended fix, related docs, and the `.claude/rules/anti-patterns.md` entry (if any) the error matches. Useful when an agent sees a stack trace and wants to skip the "search the codebase for similar errors" step. See also: validate, get_anti_patterns.',
+    notes: 'Parse a Pyreon runtime / build error message into structured fix information: probable cause, recommended fix, related docs, and the `.claude/rules/anti-patterns.md` entry (if any) the error matches. Useful when an agent sees a stack trace and wants to skip the "search the codebase for similar errors" step. See also: validate, get_anti_patterns, explain_error.',
+  },
+
+  'mcp/explain_error': {
+    signature: 'tool: explain_error({ report: string; componentSource?: string }) → FailureDossier',
+    example: `explain_error({ report: JSON.stringify(errorContext) })
+// errorContext from registerErrorHandler(ctx => …) in dev;
+// ctx.reactiveTrace is the high-signal field`,
+    notes: `The rich-context sibling of \`diagnose\`. \`diagnose\` matches an error STRING against known footguns; \`explain_error\` takes a full \`ErrorContext\`-shaped report — crucially the \`reactiveTrace\` (the causal SEQUENCE of signal writes from @pyreon/core's error reports) — and assembles a structured failure dossier: the reactive run-up + heuristic findings (empty-trace / nullish-then-crash / write-storm / last-write-correlation / type-flip), optional static \`detectPyreonPatterns\` on the component source, and correlated anti-pattern catalogue entries. The server only assembles + applies cheap heuristics; the consuming agent reasons over the dossier and a human gates any patch (the tool returns text only — no mutation, no LLM dependency). Use it when an agent has a captured Pyreon crash and the stack trace alone is not enough — the reactive sequence shows *how* the app reached the failing state. See also: diagnose, validate, get_anti_patterns.`,
+    mistakes: `- Passing only an error string — that is what \`diagnose\` is for. \`explain_error\` wants the structured report (phase, component, props, reactiveTrace) to be worth more than \`diagnose\`
+- Expecting it to apply a fix — it returns a dossier + suspected cause only. Repair is human-gated by construction (the tool has no write capability)
+- Capturing the report in production — \`reactiveTrace\` is dev-only (tree-shaken in prod), so the highest-signal section will be empty. Capture in dev`,
   },
 
   'mcp/get_routes': {
