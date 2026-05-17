@@ -21,8 +21,15 @@
  * @module
  */
 
-import { analyzeReactivity } from '@pyreon/compiler'
-import type { ReactivityFinding } from '@pyreon/compiler'
+// `@pyreon/compiler` is a HEAVY graph (full JSX transform + oxc-parser +
+// the TS compiler API via pyreon-intercept). A static value-import here
+// would make EVERY importer of this module — including `cli.ts` and the
+// package `index.ts` re-export — eagerly cold-load the entire compiler
+// at module-eval (a CI `import('../cli')` hook timed out at 10s on
+// exactly this). The Lens only needs it when hints are actually
+// computed, so the value is lazy-loaded + memoized. The TYPE import is
+// `import type` → fully erased at runtime, zero eager-load cost.
+import type { ReactivityFinding, analyzeReactivity as AnalyzeFn } from '@pyreon/compiler'
 import { AstCache } from '../cache'
 import { getPreset } from '../config/presets'
 import { allRules } from '../rules/index'
@@ -107,12 +114,19 @@ const HINT_LABEL: Record<string, string> = {
  *          text; `footgunDiagnostics` — detected anti-patterns as
  *          warning-severity diagnostics (source `pyreon-lens`).
  */
-export function computeReactivityHints(
+let _analyze: typeof AnalyzeFn | undefined
+async function loadAnalyze(): Promise<typeof AnalyzeFn> {
+  if (!_analyze) _analyze = (await import('@pyreon/compiler')).analyzeReactivity
+  return _analyze
+}
+
+export async function computeReactivityHints(
   filePath: string,
   text: string,
-): { inlayHints: LspInlayHint[]; footgunDiagnostics: LspDiagnostic[] } {
+): Promise<{ inlayHints: LspInlayHint[]; footgunDiagnostics: LspDiagnostic[] }> {
   let findings: ReactivityFinding[]
   try {
+    const analyzeReactivity = await loadAnalyze()
     findings = analyzeReactivity(text, filePath).findings
   } catch {
     return { inlayHints: [], footgunDiagnostics: [] }
@@ -152,7 +166,7 @@ export function computeReactivityHints(
 
 // ─── Lint a document ───────────────────────────────────────────────────────
 
-function lintDocument(uri: string, text: string): LspDiagnostic[] {
+async function lintDocument(uri: string, text: string): Promise<LspDiagnostic[]> {
   const filePath = uri.replace('file://', '')
   let lintDiags: LspDiagnostic[] = []
   try {
@@ -163,8 +177,15 @@ function lintDocument(uri: string, text: string): LspDiagnostic[] {
     // Reactivity-Lens layer is computed independently below (it has its
     // own try/catch and TS-API parse).
   }
-  const { footgunDiagnostics } = computeReactivityHints(filePath, text)
+  const { footgunDiagnostics } = await computeReactivityHints(filePath, text)
   return [...lintDiags, ...footgunDiagnostics]
+}
+
+/** Lint + publish; fire-and-forget from notification handlers. */
+function publishDiagnostics(uri: string, text: string): void {
+  void lintDocument(uri, text).then((diagnostics) =>
+    sendNotification('textDocument/publishDiagnostics', { uri, diagnostics }),
+  )
 }
 
 // ─── Debounce ──────────────────────────────────────────────────────────────
@@ -179,8 +200,7 @@ function debounceLint(uri: string, text: string): void {
     uri,
     setTimeout(() => {
       debounceTimers.delete(uri)
-      const diagnostics = lintDocument(uri, text)
-      sendNotification('textDocument/publishDiagnostics', { uri, diagnostics })
+      publishDiagnostics(uri, text)
     }, DEBOUNCE_MS),
   )
 }
@@ -195,7 +215,9 @@ const openDocuments = new Map<string, string>()
  * contract — including the `textDocument/inlayHint` round-trip — is
  * unit-testable without spawning the stdio transport.
  */
-export function _handleMessage(msg: JsonRpcMessage): JsonRpcMessage | null {
+export function _handleMessage(
+  msg: JsonRpcMessage,
+): JsonRpcMessage | null | Promise<JsonRpcMessage | null> {
   if (msg.method === 'initialize') {
     return {
       jsonrpc: '2.0',
@@ -218,8 +240,7 @@ export function _handleMessage(msg: JsonRpcMessage): JsonRpcMessage | null {
   if (msg.method === 'textDocument/didOpen') {
     const { uri, text } = msg.params.textDocument
     openDocuments.set(uri, text)
-    const diagnostics = lintDocument(uri, text)
-    sendNotification('textDocument/publishDiagnostics', { uri, diagnostics })
+    publishDiagnostics(uri, text)
     return null
   }
 
@@ -237,10 +258,7 @@ export function _handleMessage(msg: JsonRpcMessage): JsonRpcMessage | null {
   if (msg.method === 'textDocument/didSave') {
     const uri = msg.params.textDocument.uri
     const text = openDocuments.get(uri)
-    if (text) {
-      const diagnostics = lintDocument(uri, text)
-      sendNotification('textDocument/publishDiagnostics', { uri, diagnostics })
-    }
+    if (text) publishDiagnostics(uri, text)
     return null
   }
 
@@ -250,18 +268,25 @@ export function _handleMessage(msg: JsonRpcMessage): JsonRpcMessage | null {
     if (text == null) {
       return { jsonrpc: '2.0', id: msg.id, result: [] }
     }
-    const { inlayHints } = computeReactivityHints(uri.replace('file://', ''), text)
-    // Honor the requested range if the client sent one (large files send a
-    // visible-range window; outside it the editor will re-request on scroll).
-    const range = msg.params.range as
-      | { start: { line: number }; end: { line: number } }
-      | undefined
-    const hints = range
-      ? inlayHints.filter(
-          (h) => h.position.line >= range.start.line && h.position.line <= range.end.line,
-        )
-      : inlayHints
-    return { jsonrpc: '2.0', id: msg.id, result: hints }
+    // Async — the compiler value is lazy-loaded on first use (see
+    // `loadAnalyze`). The transport awaits the returned promise.
+    return computeReactivityHints(uri.replace('file://', ''), text).then(
+      ({ inlayHints }) => {
+        // Honor the requested visible range if the client sent one (large
+        // files send a window; the editor re-requests on scroll).
+        const range = msg.params.range as
+          | { start: { line: number }; end: { line: number } }
+          | undefined
+        const hints = range
+          ? inlayHints.filter(
+              (h) =>
+                h.position.line >= range.start.line &&
+                h.position.line <= range.end.line,
+            )
+          : inlayHints
+        return { jsonrpc: '2.0', id: msg.id, result: hints }
+      },
+    )
   }
 
   if (msg.method === 'textDocument/didClose') {
@@ -341,7 +366,11 @@ export function startLspServer(): void {
       try {
         const msg = JSON.parse(body) as JsonRpcMessage
         const response = _handleMessage(msg)
-        if (response) sendMessage(response)
+        if (response) {
+          Promise.resolve(response).then((r) => {
+            if (r) sendMessage(r)
+          })
+        }
       } catch {
         // malformed JSON — ignore
       }
