@@ -1646,8 +1646,54 @@ interface ErrorContext {
   timestamp: number
   /** Component props at the time of the error */
   props?: Record<string, unknown>
+  /**
+   * The last ~50 signal writes (chronological) leading up to the error.
+   * The causal sequence of reactive state changes — not a point-in-time
+   * snapshot. Populated automatically in development; `undefined` in
+   * production (the recorder tree-shakes out, zero cost).
+   */
+  reactiveTrace?: ReactiveTraceEntry[]
+}
+
+interface ReactiveTraceEntry {
+  /** Signal `name` (from `signal(v, { name })` or the vite plugin's dev auto-naming). `undefined` for anonymous signals. */
+  name: string | undefined
+  /** Bounded string preview of the value before the write. */
+  prev: string
+  /** Bounded string preview of the value after the write. */
+  next: string
+  /** `performance.now()` at write time. */
+  timestamp: number
 }
 ```
+
+#### Reactive trace — "what changed before the crash?"
+
+For a signal framework, the first question a crash raises isn't *what threw* — the stack tells you that — it's *what reactive state led there*. `ctx.reactiveTrace` carries the bounded sequence of recent signal writes, so an error report shows the causal chain, not just the endpoint:
+
+```ts
+registerErrorHandler((ctx) => {
+  Sentry.captureException(ctx.error, {
+    extra: {
+      component: ctx.component,
+      phase: ctx.phase,
+      // The reactive run-up — e.g.
+      //   [{ name: 'status', prev: '"idle"', next: '"submitting"' },
+      //    { name: 'user',   prev: 'null',    next: 'User {id, …}' }]
+      reactiveTrace: ctx.reactiveTrace,
+    },
+  })
+})
+```
+
+Properties of the trace:
+
+- **Dev-only.** The recorder feeding it is behind the production dead-code gate and tree-shakes out of prod bundles. `reactiveTrace` is simply `undefined` in production — zero runtime cost, no bytes shipped.
+- **Bounded.** A fixed-size (~50-entry) ring buffer, oldest-evicted. It never grows, and it holds **string previews** (truncated, safely stringified) of values — never raw references — so it can't pin large arrays / detached DOM / closures in memory and is always safe to serialize into a report.
+- **Sequence, not snapshot.** It records the *order* of writes, which is what actually explains how the app reached the bad state. A point-in-time dump of every signal value can't do that.
+- **Automatic.** No opt-in. Distinct from `onSignalUpdate` (which is opt-in and captures stacks for tracing) — this is the always-on, deliberately-cheap path that exists specifically to enrich error reports.
+
+You can also read the buffer directly via `getReactiveTrace()` from `@pyreon/reactivity` (and `clearReactiveTrace()` for test isolation).
 
 ### Multiple Error Handlers
 

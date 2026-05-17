@@ -59,7 +59,7 @@ export type { ClassValue } from './style'
 export { CSS_UNITLESS, cx, normalizeStyleValue, toKebabCase } from './style'
 export type { LazyComponent } from './suspense'
 export { Suspense } from './suspense'
-export type { ErrorContext, ErrorHandler } from './telemetry'
+export type { ErrorContext, ErrorHandler, ReactiveTraceEntry } from './telemetry'
 export { registerErrorHandler, reportError } from './telemetry'
 export type {
   CleanupFn,

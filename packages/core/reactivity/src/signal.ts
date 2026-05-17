@@ -1,5 +1,6 @@
 import { batch, enqueuePendingNotification, isBatching } from './batch'
 import { _notifyTraceListeners, isTracing } from './debug'
+import { _recordSignalWrite } from './reactive-trace'
 import { notifySubscribers, trackSubscriber } from './tracking'
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
@@ -87,6 +88,15 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
     _countSink.__pyreon_count__?.('reactivity.signalWrite')
   const prev = this._v
   this._v = newValue
+  // Dev-only bounded ring buffer of recent writes — attached to error
+  // reports so a crash carries the causal sequence of signal changes,
+  // not just the thrown value. Tree-shaken in prod via the gate.
+  // Deliberately separate from the `isTracing()` path below: that one
+  // is opt-in (requires an onSignalUpdate listener) and captures a
+  // stack (expensive); this is always-on in dev and intentionally
+  // cheap (string preview, no stack).
+  if (process.env.NODE_ENV !== 'production')
+    _recordSignalWrite(this.label, prev, newValue)
   if (isTracing()) {
     // Trace listeners are user-supplied debug code that fires on every
     // signal write. A throwing listener here would leave `_v` updated but

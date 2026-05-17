@@ -388,6 +388,21 @@ why()         // disarm + dump transcript:
 - Using \`why()\` in production — pure dev tool`,
   },
 
+  'reactivity/getReactiveTrace': {
+    signature: '() => Array<{ name: string | undefined; prev: string; next: string; timestamp: number }>',
+    example: `import { getReactiveTrace, clearReactiveTrace, signal } from '@pyreon/reactivity'
+
+const status = signal('idle', { name: 'status' })
+status.set('submitting')
+getReactiveTrace()
+// [{ name: 'status', prev: '"idle"', next: '"submitting"', timestamp: 1234.5 }]
+clearReactiveTrace()  // → []`,
+    notes: 'Returns the last ~50 signal writes (chronological, oldest → newest) from a bounded dev-only ring buffer — the causal SEQUENCE of reactive state changes, not a point-in-time snapshot. `@pyreon/core` attaches this to `ErrorContext.reactiveTrace` automatically so error reports carry "what changed in the run-up to the crash". Entries hold bounded string previews of values (never raw refs — no memory pinning, always serializable). **Dev-only**: the recorder feeding the buffer is behind the production dead-code gate and tree-shakes out, so this returns `[]` in prod builds. Distinct from `onSignalUpdate` — that is opt-in and captures stacks; this is always-on, deliberately cheap, and exists to enrich error reports. `clearReactiveTrace()` resets it (test isolation). See also: onSignalUpdate, inspectSignal.',
+    mistakes: `- Expecting it to return signal VALUES — it returns string PREVIEWS (truncated, safely stringified). For live values inspect the signal directly
+- Relying on it in production — returns \`[]\` (the recorder is dev-gated and tree-shaken). Use it for dev tooling / error-report enrichment, not runtime logic
+- Treating it as a snapshot of all signals — it is a bounded ring of recent WRITES; signals never written (or written before the ~50-entry window) are absent`,
+  },
+
   'reactivity/setErrorHandler': {
     signature: '(fn: (err: unknown) => void) => void',
     example: `setErrorHandler(err => {

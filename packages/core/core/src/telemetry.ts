@@ -16,6 +16,13 @@
  * })
  */
 
+import { getReactiveTrace, type ReactiveTraceEntry } from '@pyreon/reactivity'
+
+// Bundler-agnostic dev gate (see pyreon/no-process-dev-gate).
+const __DEV__ = process.env.NODE_ENV !== 'production'
+
+export type { ReactiveTraceEntry }
+
 export interface ErrorContext {
   /** Component function name, "Anonymous", or "Effect" for reactive effects */
   component: string
@@ -27,6 +34,22 @@ export interface ErrorContext {
   timestamp: number
   /** Component props at the time of the error */
   props?: Record<string, unknown>
+  /**
+   * The last N signal writes (chronological, oldest → newest) leading
+   * up to the error — the causal sequence of reactive state changes,
+   * not a point-in-time snapshot. Each entry is `{ name, prev, next,
+   * timestamp }` with `prev` / `next` as bounded string previews.
+   *
+   * Populated automatically in development from `@pyreon/reactivity`'s
+   * dev-only ring buffer. **`undefined` in production** — the recorder
+   * feeding the buffer tree-shakes out of prod bundles, so the cost is
+   * zero and the field is simply absent.
+   *
+   * For a signal framework this answers the first question a crash
+   * raises — "what reactive state changed in the run-up?" — that the
+   * thrown value + stack alone can't.
+   */
+  reactiveTrace?: ReactiveTraceEntry[]
 }
 
 export type ErrorHandler = (ctx: ErrorContext) => void
@@ -56,6 +79,20 @@ export function registerErrorHandler(handler: ErrorHandler): () => void {
  * Existing console.error calls are preserved; this is additive.
  */
 export function reportError(ctx: ErrorContext): void {
+  // Enrich with the recent-signal-write trace so every handler (Sentry,
+  // Datadog, console) gets the causal reactive sequence for free. Only
+  // when the caller didn't already supply one, and only in dev — the
+  // gate lets the `getReactiveTrace` call (and the buffer behind it)
+  // tree-shake out of production. A throwing/empty trace must never
+  // block error reporting, so it's best-effort.
+  if (__DEV__ && ctx.reactiveTrace === undefined) {
+    try {
+      const trace = getReactiveTrace()
+      if (trace.length > 0) ctx.reactiveTrace = trace
+    } catch {
+      // Trace capture is diagnostic — never let it swallow the real error.
+    }
+  }
   for (const h of _handlers) {
     try {
       h(ctx)
