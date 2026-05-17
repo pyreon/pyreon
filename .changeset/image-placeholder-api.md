@@ -7,7 +7,7 @@
 **Closed bug (the `audit-types` class):** `PlaceholderStrategy` typed `'dominant-color'` from the plugin's inception but no code path ever implemented it — the CDN, dev, and build paths each open-coded `generateBlurPlaceholder`, so `placeholder: 'dominant-color'` silently produced a blur and `placeholder: 'none'` was silently ignored in build mode (only the CDN path honored it). All three paths now route through one `generatePlaceholder` dispatcher:
 
 - `'blur'` (default, unchanged) — downscaled + blurred WebP base64
-- `'color'` — sharp `.stats().dominant` → ~70-byte flat-fill SVG data URI (instant paint, zero layout shift, smallest payload)
+- `'color'` — sharp `.stats().dominant` → ~200-byte flat-fill SVG data URI (instant paint, zero layout shift, constant size regardless of source complexity)
 - `'dominant-color'` — **deprecated alias of `'color'`**, normalized via `normalizePlaceholder`
 - `'none'` — now honored in every path, not just CDN
 

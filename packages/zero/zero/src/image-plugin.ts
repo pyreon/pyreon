@@ -674,7 +674,7 @@ export async function generatePlaceholder(
 }
 
 /**
- * Generate a dominant-colour placeholder: a ~70-byte flat-fill SVG data URI.
+ * Generate a dominant-colour placeholder: a ~200-byte flat-fill SVG data URI.
  *
  * Uses sharp's `.stats()` `dominant` swatch — a histogram-binned colour,
  * not a naive average (averaging a photo trends muddy grey). Note the
