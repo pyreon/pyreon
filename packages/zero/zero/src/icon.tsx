@@ -50,12 +50,12 @@ export interface IconProps extends SvgAttributes {
    * An imported SVG component, e.g. `import X from './icon.svg?component'`.
    * Rendered directly with no host wrapper. Recommended over `svg`.
    */
-  as?: SvgComponent
+  as?: SvgComponent | undefined
   /**
    * A full `<svg>…</svg>` markup string, e.g.
    * `import x from './icon.svg?raw'`. Inlined inside a single `<span>` host.
    */
-  svg?: string
+  svg?: string | undefined
 }
 
 /**
@@ -125,4 +125,58 @@ export function createIcon(
     ) : (
       <Icon as={source} {...props} />
     )
+}
+
+// ─── createNamedIcon — typed icon-set runtime ────────────────────────────────
+//
+// The runtime half of `iconsPlugin`. The plugin scans a folder and writes a
+// generated file that calls this with a registry literal; `keyof typeof
+// REGISTRY` makes `name` a strict union (autocompletes, rejects typos) and
+// gives real go-to-definition — zero per-app wiring.
+
+/** How a named icon set renders each entry. */
+export type IconMode = 'inline' | 'image'
+
+/** Props of a component built by {@link createNamedIcon}. */
+export type NamedIconProps<R extends Record<string, string>> = {
+  /** A name from the scanned set — strictly typed to the available files. */
+  name: keyof R & string
+  /** `<img>` alt text (image mode). Defaults to `""` (decorative). */
+  alt?: string
+} & Omit<IconProps, 'as' | 'svg'>
+
+/**
+ * Build a strictly-typed `<Icon name="…" />` from a name→source registry.
+ *
+ * - `mode: 'inline'` (default) — `source` is raw `<svg>` markup; rendered via
+ *   {@link Icon} so it's `currentColor`-themeable (system icons you recolor).
+ * - `mode: 'image'` — `source` is an asset URL; rendered as `<img>` with NO
+ *   svg mutation, original colors preserved (colorful / brand icons).
+ *
+ * Either way it stays container-filling + props-transparent. Not called by
+ * hand normally — `iconsPlugin` emits the generated file that calls it.
+ *
+ * @example
+ * // icons.gen.tsx (auto-generated):
+ * export const Icon = createNamedIcon({ 'check-circle': '<svg…' })
+ * // app:
+ * <span style="width:2rem"><Icon name="check-circle" /></span>
+ */
+export function createNamedIcon<R extends Record<string, string>>(
+  registry: R,
+  options: { mode?: IconMode } = {},
+): (props: NamedIconProps<R>) => VNodeChild {
+  const mode = options.mode ?? 'inline'
+  return (props: NamedIconProps<R>) => {
+    const [own, rest] = splitProps(props, ['name', 'alt'])
+    const source = registry[own.name]
+    if (mode === 'image') {
+      // svg-only props can't apply to an <img>; only host attrs forward.
+      const hostRest = rest as unknown as PyreonHTMLAttributes<HTMLImageElement>
+      return (
+        <img src={source} alt={own.alt ?? ''} style={FILL_STYLE} {...hostRest} />
+      )
+    }
+    return <Icon svg={source} {...rest} />
+  }
 }
