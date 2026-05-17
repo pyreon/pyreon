@@ -276,12 +276,12 @@ const mode = useMode()  // "light" | "dark" (reactive signal)
 - @pyreon/flow — Reactive flow diagrams — signal-native nodes, edges, pan/zoom, auto-layout via elkjs (peer: @pyreon/runtime-dom). LayoutOptions.direction / layerSpacing / edgeRouting apply to layered/tree only — force/stress/radial/box/rectpacking silently ignore them. nodeSpacing is the only field respected by every algorithm. Dev-mode console.warn fires when an option is set on an algorithm that ignores it.
 - @pyreon/code — Reactive code editor — CodeMirror 6 with signals, minimap, diff editor, lazy-loaded languages (peer: @pyreon/runtime-dom). `@pyreon/runtime-dom` is required in consumer apps because `<CodeEditor>` JSX emits `_tpl()` / `_bind()` calls.
 - @pyreon/document — Universal document rendering — 18 primitives, 14+ output formats. Heavy format renderers are lazy-loaded: PDF (~3MB via pdfmake + bundled fonts), DOCX (~700KB via docx), XLSX (~1.1MB via exceljs), PPTX (~400KB via pptxgenjs). First render of each format triggers the dynamic import; subsequent renders are instant. The vendored architecture means apps download all renderer chunks during npm install (14MB total `lib/`), but consumer-side bundlers tree-shake to only ship the renderers an app actually invokes.
-- @pyreon/rx — Signal-aware reactive transforms — filter, map, sortBy, groupBy, pipe, debounce, throttle, 37 functions. Functions detect signals by checking for a `.subscribe` method. Pass the signal itself (`items`), not an accessor wrapper (`() => items()`). Accessor wrappers produce a static result.
+- @pyreon/rx — Signal-aware reactive transforms — filter, map, sortBy, groupBy, pipe, debounce, throttle, 37 functions. Detection is purely `typeof source === "function"` (see `isSignal` in `rx/src/types.ts`) — there is NO `.subscribe` / value inspection. Any function (the signal, an accessor wrapper `() => items()`, a bound method) is treated as reactive and called inside a computed. The actual mistake is the opposite of what you might expect: passing a RESOLVED value (`items()`, an already-read array) takes the static path and never updates. Pass the signal, not its resolved value.
 - @pyreon/toast — Toast notifications — toast(), toast.success/error/warning/info/loading, Toaster component, a11y (peer: @pyreon/runtime-dom). Unlike most Pyreon packages, toast uses a module-level signal store — `toast()` works from event handlers, effects, or any non-component code. The `<Toaster />` component reads from this shared store.
 - @pyreon/url-state — URL-synced state — useUrlState(key, default) or schema mode, auto type coercion, SSR-safe. Type coercion is based on the default value: `useUrlState("page", 1)` coerces `?page=2` to number `2`. `useUrlState("page", "1")` keeps it as string `"1"`. Always provide the right type as default.
 - @pyreon/storybook — Storybook renderer for Pyreon components
 - @pyreon/mcp — Model Context Protocol server — discoverability map, live API lookup, validation, migration, anti-pattern catalog, changelog, test-environment audit. Each `createServer()` instance maintains its own cached context (routes, components, islands). The cache auto-resets when `process.cwd()` changes between tool invocations, so the same server can operate across multiple projects in one session.
-- @pyreon/lint — Pyreon-specific linter — 62 rules across 12 categories, config files, watch mode, AST cache, CLI + LSP
+- @pyreon/lint — Pyreon-specific linter — 67 rules across 13 categories, config files, watch mode, AST cache, CLI + LSP
 
 ## Zero (Full-Stack Framework)
 
@@ -372,9 +372,9 @@ import { useTypedSearchParams } from '@pyreon/router'
 const params = useTypedSearchParams({ page: 'number', q: 'string' })
 params.page()  // number
 
-// Route transition state
+// Route transition state — useTransition() returns a reactive accessor () => boolean
 import { useTransition } from '@pyreon/router'
-const { isTransitioning } = useTransition()
+const isTransitioning = useTransition()  // call it: isTransitioning()
 
 // View Transitions API — auto-enabled, opt out per route:
 { path: '/modal', component: Modal, meta: { viewTransition: false } }
@@ -384,7 +384,7 @@ const { isTransitioning } = useTransition()
 
 // Middleware chain with data passing
 const auth: RouteMiddleware = async (ctx) => { ctx.data.user = await getUser(ctx.request) }
-// In component: const data = useMiddlewareData<{ user: User }>()
+// In component: const data = useMiddlewareData()  // accessor → read via data().user
 ```
 
 ## Documentation

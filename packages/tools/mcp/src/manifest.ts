@@ -6,7 +6,7 @@ export default defineManifest({
   tagline:
     'Model Context Protocol server — discoverability map, live API lookup, validation, migration, anti-pattern catalog, changelog, test-environment audit',
   description:
-    'MCP server (stdio transport) that exposes Pyreon\\\'s structured knowledge to AI coding assistants (Claude Code, Cursor, etc.). Thirteen tools: `mcp_overview` (start here — markdown table of every tool with "when to use" + example, read straight from this manifest), `get_api` (look up any Pyreon API), `validate` (catch React + Pyreon-specific anti-patterns in a snippet), `migrate_react` (auto-convert React code), `diagnose` (parse a Pyreon error into structured fix info), `get_routes` / `get_components` (project introspection), `get_browser_smoke_status` (which packages need a browser smoke test), `get_pattern` (canonical "how do I do X" docs), `get_anti_patterns` (the catalog from `.claude/rules/anti-patterns.md`), `get_changelog` (recent release notes per package), `audit_test_environment` (mock-vnode test scanner — PR #197 bug class), and `audit_islands` (project-wide islands cross-file audit — duplicate names, dead islands, registry drift, nested islands, never-with-registry).',
+    'MCP server (stdio transport) that exposes Pyreon\\\'s structured knowledge to AI coding assistants (Claude Code, Cursor, etc.). Thirteen tools: `mcp_overview` (start here — markdown table of every tool with "when to use" + example, read straight from this manifest), `get_api` (look up any Pyreon API), `validate` (catch React + Pyreon-specific anti-patterns in a snippet), `migrate_react` (auto-convert React code), `diagnose` (parse a Pyreon error into structured fix info; optional `componentSource` + `reactiveTrace` for causal diagnosis), `get_routes` / `get_components` (project introspection), `get_browser_smoke_status` (which packages need a browser smoke test), `get_pattern` (canonical "how do I do X" docs), `get_anti_patterns` (the catalog from `.claude/rules/anti-patterns.md`), `get_changelog` (recent release notes per package), `audit_test_environment` (mock-vnode test scanner — PR #197 bug class), and `audit_islands` (project-wide islands cross-file audit — duplicate names, dead islands, registry drift, nested islands, never-with-registry).',
   category: 'server',
   features: [
     'Thirteen tools covering discovery, lookup, validation, migration, diagnosis, introspection, audit',
@@ -120,11 +120,27 @@ function Counter() {
     {
       name: 'diagnose',
       kind: 'constant',
-      signature: 'tool: diagnose({ error: string }) → DiagnoseResult',
+      signature:
+        'tool: diagnose({ error: string, componentSource?: string, reactiveTrace?: ReactiveTraceEntry[], filename?: string, phase?: string }) → DiagnoseResult',
       summary:
-        'Parse a Pyreon runtime / build error message into structured fix information: probable cause, recommended fix, related docs, and the `.claude/rules/anti-patterns.md` entry (if any) the error matches. Useful when an agent sees a stack trace and wants to skip the "search the codebase for similar errors" step.',
-      example: `diagnose({ error: 'Cannot redefine property X on object [object Object]' })
-// → cause: configurable: false on a getter; fix: set configurable: true`,
+        'Parse a Pyreon runtime / build error into structured fix information. **String-only call is unchanged** (probable cause + fix + related docs from the regex pattern table — fully backward-compatible). v2 adds OPTIONAL structured context for richer, causal diagnosis: pass `componentSource` and the tool runs the static Pyreon detectors over it and maps each hit to the documented anti-pattern catalog entry (the `detectorCodes` bridge); pass `reactiveTrace` (the `ErrorContext.reactiveTrace` from `@pyreon/core`, populated in dev) and the tool formats the causal sequence of signal writes leading to the crash. The tool is deterministic — it assembles structured context, the calling agent reasons over it (no embedded LLM). Use the enriched form when you have the failing component + the error report; use the bare string form for a quick "what does this error mean".',
+      example: `// v1 — unchanged, backward-compatible
+diagnose({ error: 'Cannot redefine property X on object [object Object]' })
+// → cause: configurable: false on a getter; fix: set configurable: true
+
+// v2 — structured context → causal diagnosis
+diagnose({
+  error: 'name is stale after parent update',
+  componentSource: 'function G({ name }) { return <div>{name}</div> }',
+  reactiveTrace: [{ name: 'name', prev: '"a"', next: '"b"', timestamp: 1 }],
+})
+// → base diagnosis + "Static detector findings: props-destructured"
+//   + matched anti-pattern entry + the reactive run-up`,
+      mistakes: [
+        'Assuming v2 changed the string-only behaviour — it did not; an error-only call returns byte-identical output to before. The enrichment sections appear ONLY when componentSource / reactiveTrace are supplied',
+        'Expecting the tool to return a fix patch — it returns structured CONTEXT (regex diagnosis + detector hits + matched anti-patterns + reactive run-up). The agent reasons over it; the tool does not embed a model',
+        'Passing a production error report and expecting `reactiveTrace` content — the trace is dev-only (it tree-shakes out of prod builds), so prod reports carry `reactiveTrace: undefined` and the tool degrades to the v1 base diagnosis',
+      ],
       seeAlso: ['validate', 'get_anti_patterns', 'explain_error'],
     },
     {
@@ -169,7 +185,7 @@ function Counter() {
       kind: 'constant',
       signature: 'tool: get_pattern({ name?: string }) → PatternBody | string[]',
       summary:
-        'Fetch a canonical "how do I do X" pattern body from `docs/patterns/`. Eight foundational patterns ship: `dev-warnings`, `controllable-state`, `ssr-safe-hooks`, `signal-writes`, `keyed-lists`, `reactive-context`, `event-listeners`, `form-fields`. Omit `name` to list available patterns. Drop a new `docs/patterns/<slug>.md` file to add one — picked up on next call.',
+        'Fetch a canonical "how do I do X" pattern body from `docs/patterns/`. 16 foundational patterns ship: `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`. Omit `name` to list available patterns. Drop a new `docs/patterns/<slug>.md` file to add one — picked up on next call.',
       example: `get_pattern({ name: 'controllable-state' })
 // → full canonical pattern body
 get_pattern({})
@@ -180,11 +196,18 @@ get_pattern({})
       name: 'get_anti_patterns',
       kind: 'constant',
       signature:
-        "tool: get_anti_patterns({ category?: 'reactivity' | 'jsx' | 'context' | 'architecture' | 'testing' | 'lifecycle' | 'documentation' | 'all' }) → AntiPattern[]",
+        "tool: get_anti_patterns({ category?: 'reactivity'|'jsx'|'context'|'architecture'|'testing'|'lifecycle'|'documentation'|'all'; name?: string; full?: boolean }) → string",
       summary:
-        'Browse the anti-patterns catalog parsed from `.claude/rules/anti-patterns.md`. Each entry surfaces its `[detector: <code>]` tag inline so an agent can pair the catalog entry with the live static detector exposed by `validate`. Optional `category` filter; default returns all categories.',
-      example: `get_anti_patterns({ category: 'reactivity' })
-// → ['Bare signal in JSX text', 'Stale closures', 'Destructuring props', ...]`,
+        'Browse the anti-patterns catalog from `.claude/rules/anti-patterns.md`, token-frugal by default. **No args → a COMPACT INDEX** (one line per entry: title + `[detector: <code>]` tag + one-sentence hook; ≈3.3K tokens vs the ≈14K full dump — a ~76% cut on the common orient call). Drill in deliberately: `{ name }` → the single matching entry\\\'s full body (cheapest); `{ category }` → full bodies for one category; `{ full: true }` → entire catalog (≈14K, explicit opt-in). The index keeps per-category `## <Heading>` markers so categories are still discoverable in one call; each `[detector: <code>]` tag pairs the entry with the live `validate` detector.',
+      example: `get_anti_patterns()
+// → compact index (~3.3K): titles + detector tags + one-line hooks
+get_anti_patterns({ name: 'Destructuring props' })  // → that entry's full body
+get_anti_patterns({ category: 'reactivity' })       // → full bodies, one category
+get_anti_patterns({ full: true })                   // → entire catalog (~14K)`,
+      mistakes: [
+        'Reaching for `{ full: true }` to "see the anti-patterns" — that is the ~14K dump. The no-arg index is the orient call; pull full bodies with `{ name }` once you know which entry matters',
+        'Expecting no-arg to return full bodies — it returns the index (behaviour changed in the token-slim PR). Full bodies need `{ name }`, `{ category }`, or `{ full: true }`',
+      ],
       seeAlso: ['validate', 'get_pattern'],
     },
     {

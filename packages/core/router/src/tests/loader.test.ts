@@ -184,20 +184,44 @@ describe('stringifyLoaderData (M2.2)', () => {
     })
   })
 
-  test('handles deeply-nested data without falsely flagging shared references as cycles', () => {
-    // A non-cyclic shared reference (two keys pointing at the same array)
-    // SHOULD throw — JSON serialization can't represent shared identity
-    // without `references`, and a runtime cycle-detector treating shared
-    // refs as cycles is the safe default for hydration semantics. Verify
-    // the throw shape — if this becomes too aggressive, relax with a
-    // post-visit drop instead of WeakSet.
+  test('shared (DAG) references serialize — only true cycles throw', () => {
+    // BEHAVIOUR CHANGE (intentional, bug fix). Previously the all-seen
+    // WeakSet threw "circular reference" on ANY object visited twice — a
+    // shared reference (DAG), not a cycle. That 500'd the SSR response for
+    // extremely common loader payloads (an ORM returning the same instance
+    // twice). The original code's own comment anticipated this remedy:
+    // "if this becomes too aggressive, relax with a post-visit drop
+    // instead of WeakSet" — which is exactly what ancestor-path detection
+    // does. Strictly more permissive: inputs that throw before now succeed;
+    // inputs that worked are unchanged; real cycles still throw.
     const shared = [1, 2, 3]
-    expect(() =>
-      stringifyLoaderData({
-        '/a': shared,
-        '/b': shared,
-      }),
-    ).toThrow(/circular reference/)
+    const json = stringifyLoaderData({ '/a': shared, '/b': shared })
+    expect(JSON.parse(json)).toEqual({ '/a': [1, 2, 3], '/b': [1, 2, 3] })
+
+    // Canonical real-world shape: one user object referenced twice.
+    const user = { id: 7, name: 'Ada' }
+    const post = stringifyLoaderData({ '/posts/1': { author: user, lastEditor: user } })
+    expect(JSON.parse(post)).toEqual({
+      '/posts/1': { author: { id: 7, name: 'Ada' }, lastEditor: { id: 7, name: 'Ada' } },
+    })
+
+    // Diamond: same node reachable via two paths, no cycle.
+    const leaf = { v: 1 }
+    const diamond = stringifyLoaderData({ '/d': { left: { leaf }, right: { leaf } } })
+    expect(JSON.parse(diamond)).toEqual({ '/d': { left: { leaf: { v: 1 } }, right: { leaf: { v: 1 } } } })
+  })
+
+  test('still throws on a true cycle through a shared-looking path', () => {
+    // A shared ref that ALSO closes a cycle must still throw.
+    interface N {
+      id: number
+      next?: N
+    }
+    const a: N = { id: 1 }
+    const b: N = { id: 2 }
+    a.next = b
+    b.next = a // real cycle
+    expect(() => stringifyLoaderData({ '/x': { a, b } })).toThrow(/\[Pyreon\] Loader returned circular reference/)
   })
 
   test('empty record produces empty object JSON', () => {
@@ -587,25 +611,59 @@ describe('router — staleWhileRevalidate', () => {
         staleWhileRevalidate: true,
         loader: async () => {
           loaderCallCount++
-          return `data-v${loaderCallCount}`
+          const v = loaderCallCount
+          // The revalidation call (2nd) takes REAL async time so the
+          // stale window is deterministic, not microtask-races. The
+          // first (blocking) call resolves immediately.
+          if (v >= 2) await new Promise<void>((r) => setTimeout(r, 40))
+          return `data-v${v}`
         },
       },
     ]
+    const swrRecord = routes[1] as RouteRecord
     const router = createRouter({ routes, url: '/' }) as RouterInstance
 
     // First navigation — loader runs as blocking
     await router.push('/data')
     expect(loaderCallCount).toBe(1)
-    expect(router._loaderData.get(routes[1] as RouteRecord)).toBe('data-v1')
+    expect(router._loaderData.get(swrRecord)).toBe('data-v1')
 
-    // Navigate away and back — should show stale data and revalidate
+    // Navigate AWAY, then BACK. The away nav must NOT prune the SWR
+    // route's loader data (that was the bug — see the regression note
+    // below); on return the SWR fast-path must serve the STALE value
+    // immediately and revalidate in the BACKGROUND.
     await router.push('/')
     await router.push('/data')
 
-    // Give background revalidation time
-    await new Promise<void>((r) => setTimeout(r, 50))
+    // SWR discriminator (load-bearing): the return navigation resolves
+    // WITHOUT blocking on the (40ms) loader — the served data is still
+    // STALE `data-v1`, revalidation pending. Pre-fix this navigation
+    // went through the BLOCKING path (the prune wiped the entry), so
+    // `await push('/data')` would have awaited the loader and the data
+    // here would already be `data-v2`.
+    expect(router._loaderData.get(swrRecord)).toBe('data-v1')
+
+    // Background revalidation then completes and swaps in fresh data.
+    await new Promise<void>((r) => setTimeout(r, 80))
     expect(loaderCallCount).toBe(2)
+    expect(router._loaderData.get(swrRecord)).toBe('data-v2')
   })
+
+  // REGRESSION NOTE (fixed in this PR). `staleWhileRevalidate` was
+  // effectively a no-op for the realistic nav-away/back case:
+  // `commitNavigation`'s `doCommit` pruned `_loaderData` for every
+  // record not in the NEW matched chain on every navigation, so
+  // navigating away deleted the SWR route's data and `runLoaders`'
+  // `r.staleWhileRevalidate && _loaderData.has(r)` gate was always false
+  // on return — `revalidateSwrLoaders` never ran; every visit went
+  // through the blocking path. (NB: the earlier hypothesis that
+  // `resolveRoute` returns fresh `RouteRecord` objects was WRONG —
+  // identity is stable; the prune was the sole cause, proven by an
+  // instrumented probe showing SWR fires correctly for `/data → /data`
+  // with no nav-away but not for `/data → / → /data`.) Fix: the prune
+  // skips `staleWhileRevalidate` records so their data survives
+  // navigating away. The strengthened test above is the regression
+  // guard — its stale-window assertion fails on the pre-fix prune.
 })
 
 describe('router.preload', () => {

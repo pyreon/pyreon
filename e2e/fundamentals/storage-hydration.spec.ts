@@ -92,10 +92,26 @@ test.describe('@pyreon/storage hydration — strong elements bound to storage si
 
     // Pre-fix: click writes localStorage but the strong stays empty
     // because the binding reads stale `source._v` (undefined).
+    //
+    // The post-click assertions use a generous CI timeout. On a cold,
+    // resource-contended GitHub runner the first click → signal write →
+    // `_bindText` patch round-trip legitimately exceeds Playwright's
+    // default 5s `expect` window (this spec flaked exactly here, which is
+    // what motivated the PR-#603 `retries: 2` net). This is NOT masking
+    // the bug this spec guards: a real `_v`-forwarding regression leaves
+    // the strong EMPTY / stuck on `'light'` *forever* — it fails at 5s,
+    // 15s, or any timeout. Widening the window only removes a known,
+    // understood, non-bug load-sensitivity so the spec passes on the
+    // first attempt instead of relying on the retry mask (which would
+    // otherwise drown the new flaky-spec CI signal in expected noise).
+    // The HMR-suppression recipe from `.claude/rules/testing.md` is
+    // deliberately NOT used — see this file's `beforeEach`: it breaks
+    // click-handler delegation in the fundamentals-playground dev build.
+    const CI_REACT = 15_000
     await page.getByRole('button', { name: 'Toggle Theme' }).click()
-    await expect(themeCurrent).toHaveText('dark')
+    await expect(themeCurrent).toHaveText('dark', { timeout: CI_REACT })
 
     await page.getByRole('button', { name: 'Toggle Theme' }).click()
-    await expect(themeCurrent).toHaveText('light')
+    await expect(themeCurrent).toHaveText('light', { timeout: CI_REACT })
   })
 })

@@ -1,3 +1,4 @@
+import { clearReactiveTrace, signal } from '@pyreon/reactivity'
 import type { ErrorContext } from '../telemetry'
 import { registerErrorHandler, reportError } from '../telemetry'
 
@@ -199,5 +200,98 @@ describe('registerErrorHandler — reactivity bridge (regression)', () => {
 
     unsub1()
     unsub2()
+  })
+})
+
+describe('reportError — reactiveTrace enrichment', () => {
+  beforeEach(() => clearReactiveTrace())
+
+  test('attaches recent signal writes to the error context (dev)', () => {
+    const s = signal(0, { name: 'enrichTest' })
+    s.set(1)
+    s.set(2)
+
+    let captured: ErrorContext | undefined
+    const unsub = registerErrorHandler((ctx) => {
+      captured = ctx
+    })
+    reportError({
+      component: 'C',
+      phase: 'render',
+      error: new Error('boom'),
+      timestamp: Date.now(),
+    })
+    unsub()
+
+    expect(captured?.reactiveTrace).toBeDefined()
+    expect(captured!.reactiveTrace).toHaveLength(2)
+    expect(captured!.reactiveTrace![0]).toMatchObject({
+      name: 'enrichTest',
+      prev: '0',
+      next: '1',
+    })
+    expect(captured!.reactiveTrace![1]).toMatchObject({ prev: '1', next: '2' })
+  })
+
+  test('does not overwrite a caller-supplied reactiveTrace', () => {
+    const s = signal(0, { name: 'x' })
+    s.set(99)
+
+    let captured: ErrorContext | undefined
+    const unsub = registerErrorHandler((ctx) => {
+      captured = ctx
+    })
+    const supplied = [{ name: 'manual', prev: 'a', next: 'b', timestamp: 1 }]
+    reportError({
+      component: 'C',
+      phase: 'effect',
+      error: new Error('boom'),
+      timestamp: Date.now(),
+      reactiveTrace: supplied,
+    })
+    unsub()
+
+    expect(captured!.reactiveTrace).toBe(supplied)
+  })
+
+  test('no trace field when there were no signal writes', () => {
+    let captured: ErrorContext | undefined
+    const unsub = registerErrorHandler((ctx) => {
+      captured = ctx
+    })
+    reportError({
+      component: 'C',
+      phase: 'mount',
+      error: new Error('boom'),
+      timestamp: Date.now(),
+    })
+    unsub()
+
+    // Empty buffer → field stays undefined (don't attach a noisy []).
+    expect(captured?.reactiveTrace).toBeUndefined()
+  })
+
+  test('the effect-error bridge path is also enriched', () => {
+    const s = signal('idle', { name: 'phase' })
+    s.set('running')
+
+    let captured: ErrorContext | undefined
+    const unsub = registerErrorHandler((ctx) => {
+      captured = ctx
+    })
+    // Drive the reactivity → core bridge the same way an effect throw does.
+    const bridge = (
+      globalThis as { __pyreon_report_error__?: (e: unknown, p: 'effect') => void }
+    ).__pyreon_report_error__
+    bridge?.(new Error('effect boom'), 'effect')
+    unsub()
+
+    expect(captured?.component).toBe('Effect')
+    expect(captured?.reactiveTrace).toBeDefined()
+    expect(captured!.reactiveTrace![0]).toMatchObject({
+      name: 'phase',
+      prev: '"idle"',
+      next: '"running"',
+    })
   })
 })

@@ -131,7 +131,7 @@ export default defineConfig({
           collapsed: false,
           items: [
             { text: 'Zero', link: '/docs/zero' },
-            { text: 'Static Site Generation', link: '/docs/ssg' },
+            { text: 'SSG', link: '/docs/ssg' },
             { text: 'Create Zero', link: '/docs/create-zero' },
             { text: 'Meta', link: '/docs/meta' },
             { text: 'Storybook', link: '/docs/storybook' },

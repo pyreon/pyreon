@@ -62,6 +62,22 @@ export function rateLimitMiddleware(config: RateLimitConfig = {}): Middleware {
     for (const [key, entry] of store) {
       if (entry.resetAt <= now) store.delete(key)
     }
+    // HARD cap. The expired-sweep above only removes entries whose
+    // window has elapsed. An attacker flooding unique keys WITHIN one
+    // window (spoofed `X-Forwarded-For` / proxy header — `defaultKeyFn`
+    // trusts request headers) produces only fresh entries, so the sweep
+    // frees nothing and `store.set` grows the Map without bound — an
+    // unauthenticated memory-exhaustion DoS. `MAX_STORE_SIZE` was a
+    // declared constant used ONLY as a sweep trigger, never enforced.
+    // Map preserves insertion order, so evicting from the front drops
+    // the oldest trackers first (acceptable: an evicted attacker key
+    // simply gets a fresh window — no bypass of legitimate limits since
+    // a real client re-inserts and is immediately re-tracked).
+    while (store.size > MAX_STORE_SIZE) {
+      const oldest = store.keys().next().value
+      if (oldest === undefined) break
+      store.delete(oldest)
+    }
   }
 
   return (ctx: MiddlewareContext) => {

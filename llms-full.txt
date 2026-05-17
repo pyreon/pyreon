@@ -219,7 +219,7 @@ const User = () => {
   const data = useLoaderData<UserData>()
   const router = useRouter()
   const isAdmin = useIsActive("/admin")
-  const { isTransitioning } = useTransition()
+  const isTransitioning = useTransition()
   const params = useTypedSearchParams({ tab: "string", page: "number" })
 
   return (
@@ -1725,7 +1725,7 @@ useHotkey('escape', () => closeModal(), { enableOnFormElements: true })
 
 ## @pyreon/rx — Reactive Transforms
 
-Signal-aware reactive data transforms for Pyreon. Every function is overloaded: pass a `Signal<T[]>` and get a `Computed<T[]>` that auto-tracks and re-derives when the source changes; pass a plain `T[]` and get a static result. 37 functions across collections (filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, first, compact, reverse, partition, takeWhile, dropWhile, unique, sample), aggregation (count, sum, min, max, average, reduce, every, some), operators (distinct, scan, combine, zip, merge), timing (debounce, throttle), and search. `pipe(source, ...ops)` composes transforms left-to-right. Also exported as a namespaced `rx` object for dot-notation usage.
+Signal-aware reactive data transforms for Pyreon. Every collection/aggregation function is overloaded: pass a `Signal<T[]>` and get a `Computed<T[]>` that auto-tracks and re-derives when the source changes; pass a plain `T[]` and get a static result. Signal detection is purely `typeof source === "function"` — any function is treated as a reactive source and called inside a computed; a resolved value (already-called signal) takes the static path and never updates. 37 functions across collections (filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, first, compact, reverse, partition, takeWhile, dropWhile, unique, sample), aggregation (count, sum, min, max, average, reduce, every, some), operators (distinct, scan, combine, zip, merge), timing (debounce, throttle), and search. `pipe(source, ...ops)` composes transforms left-to-right. Also exported as a namespaced `rx` object for dot-notation usage.
 
 ```typescript
 import { signal } from '@pyreon/reactivity'
@@ -1754,7 +1754,7 @@ const totalAge = rx.sum(users, u => u.age)               // Computed<number>
 const count = rx.count(activeUsers)                       // Computed<number>
 
 // Grouping:
-const byDept = rx.groupBy(users, u => u.department)      // Computed<Map<string, User[]>>
+const byDept = rx.groupBy(users, u => u.department)      // Computed<Record<string, User[]>>
 
 // Pipe — compose left-to-right:
 const result = pipe(
@@ -1764,19 +1764,21 @@ const result = pipe(
   map(u => u.name),
 )  // Computed<string[]> → ["Alice", "Charlie"]
 
-// Search — fuzzy text matching across fields:
+// Search — case-insensitive substring match across STRING fields.
+// 3rd arg is a positional keys array, NOT a { keys } options object.
 const query = signal('')
-const matches = search(users, query, { keys: ['name', 'department'] })
+const matches = search(users, query, ['name', 'department'])
 
-// Timing — debounce/throttle signal emissions:
-const debounced = debounce(users, 300)    // Computed that settles after 300ms
-const throttled = rx.throttle(users, 100) // Computed that emits at most every 100ms
+// Timing — debounce/throttle a SIGNAL value (returns ReadableSignal +
+// dispose; value-level, not collection operators; NOT auto-cleaned):
+const debounced = debounce(users, 300)    // ReadableSignal<User[]> & { dispose }
+const throttled = rx.throttle(users, 100) // ReadableSignal<User[]> & { dispose }
 
 // Plain input → plain output (no signals):
 const staticResult = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]
 ```
 
-> **Signal detection**: Functions detect signals by checking for a `.subscribe` method. Pass the signal itself (`items`), not an accessor wrapper (`() => items()`). Accessor wrappers produce a static result.
+> **Signal detection**: Detection is purely `typeof source === "function"` (see `isSignal` in `rx/src/types.ts`) — there is NO `.subscribe` / value inspection. Any function (the signal, an accessor wrapper `() => items()`, a bound method) is treated as reactive and called inside a computed. The actual mistake is the opposite of what you might expect: passing a RESOLVED value (`items()`, an already-read array) takes the static path and never updates. Pass the signal, not its resolved value.
 >
 > **Computed lifecycle**: Computed outputs from signal inputs auto-dispose when they have no subscribers. In component bodies, the reactive scope from JSX keeps them alive; in standalone code, subscribe or read within an `effect()` to keep them active.
 >
@@ -1979,7 +1981,7 @@ const flexCss = alignContent({ alignX: 'center', alignY: 'start', direction: 'ro
 
 ## @pyreon/lint — Pyreon-specific Linter
 
-Pyreon-specific lint rules powered by `oxc-parser`. Covers reactivity (12), JSX (11), lifecycle (5), performance (4), SSR (3), architecture (7), store (3), form (3), styling (4), hooks (3), accessibility (3), router (4) — 62 rules total. Programmatic API (`lint`, `lintFile`), CLI (`pyreon-lint`), watch mode (fs.watch + 100ms debounce + AstCache), LSP server, and `.pyreonlintrc.json` config with per-rule options via ESLint-style tuple form. Notable rules: `pyreon/no-process-dev-gate` (auto-fixable; replaces dead-in-browser `typeof process` gates with `import.meta.env?.DEV`), `pyreon/require-browser-smoke-test` (locks in T1.1 browser-test durability).
+Pyreon-specific lint rules powered by `oxc-parser`. Covers reactivity (13), JSX (11), lifecycle (5), performance (5), SSR (3), architecture (7), store (3), form (3), styling (4), hooks (3), accessibility (3), router (4), SSG (3) — 67 rules total. Programmatic API (`lint`, `lintFile`), CLI (`pyreon-lint`), watch mode (fs.watch + 100ms debounce + AstCache), LSP server, and `.pyreonlintrc.json` config with per-rule options via ESLint-style tuple form. Notable rules: `pyreon/no-process-dev-gate` (auto-fixable; replaces dead-in-browser `typeof process` gates with the bundler-agnostic `process.env.NODE_ENV` convention), `pyreon/no-heavy-import-only-in-handler` (flags a statically-imported heavy module used only in deferred scopes — convert to a dynamic `import()`).
 
 ```typescript
 import { lint, lintFile, allRules, getPreset, AstCache } from '@pyreon/lint'
@@ -2013,7 +2015,7 @@ const fileResult = lintFile('app.tsx', source, allRules, config, cache)
 
 ## @pyreon/mcp — MCP Server
 
-MCP server (stdio transport) that exposes Pyreon\'s structured knowledge to AI coding assistants (Claude Code, Cursor, etc.). Thirteen tools: `mcp_overview` (start here — markdown table of every tool with "when to use" + example, read straight from this manifest), `get_api` (look up any Pyreon API), `validate` (catch React + Pyreon-specific anti-patterns in a snippet), `migrate_react` (auto-convert React code), `diagnose` (parse a Pyreon error into structured fix info), `get_routes` / `get_components` (project introspection), `get_browser_smoke_status` (which packages need a browser smoke test), `get_pattern` (canonical "how do I do X" docs), `get_anti_patterns` (the catalog from `.claude/rules/anti-patterns.md`), `get_changelog` (recent release notes per package), `audit_test_environment` (mock-vnode test scanner — PR #197 bug class), and `audit_islands` (project-wide islands cross-file audit — duplicate names, dead islands, registry drift, nested islands, never-with-registry).
+MCP server (stdio transport) that exposes Pyreon\'s structured knowledge to AI coding assistants (Claude Code, Cursor, etc.). Thirteen tools: `mcp_overview` (start here — markdown table of every tool with "when to use" + example, read straight from this manifest), `get_api` (look up any Pyreon API), `validate` (catch React + Pyreon-specific anti-patterns in a snippet), `migrate_react` (auto-convert React code), `diagnose` (parse a Pyreon error into structured fix info; optional `componentSource` + `reactiveTrace` for causal diagnosis), `get_routes` / `get_components` (project introspection), `get_browser_smoke_status` (which packages need a browser smoke test), `get_pattern` (canonical "how do I do X" docs), `get_anti_patterns` (the catalog from `.claude/rules/anti-patterns.md`), `get_changelog` (recent release notes per package), `audit_test_environment` (mock-vnode test scanner — PR #197 bug class), and `audit_islands` (project-wide islands cross-file audit — duplicate names, dead islands, registry drift, nested islands, never-with-registry).
 
 ```typescript
 // .mcp/config.json — register the server with any MCP-aware client

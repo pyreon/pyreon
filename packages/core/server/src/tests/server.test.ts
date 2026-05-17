@@ -32,6 +32,23 @@ describe('HTML template', () => {
     expect(result).not.toContain('<!--pyreon-scripts-->')
   })
 
+  test('processTemplate preserves literal $-sequences in rendered HTML (no regex-pattern corruption)', () => {
+    // Regression: `String.prototype.replace(str, str)` interprets `$$`,
+    // `$&`, `` $` ``, `$'`, `$n` in the REPLACEMENT even with a string
+    // search. Rendered SSR HTML routinely contains these (prices, code,
+    // math). Must round-trip verbatim.
+    const appHtml = 'Total: $$50 — match $& and back$`tick and $\' and $1 group'
+    const result = processTemplate(DEFAULT_TEMPLATE, {
+      head: 'price $& head',
+      app: appHtml,
+      scripts: '$$ scripts $\'',
+    })
+    expect(result).toContain(appHtml)
+    expect(result).toContain('price $& head')
+    expect(result).toContain("$$ scripts $'")
+    expect(result).not.toContain('<!--pyreon-app-->')
+  })
+
   test('buildScripts emits loader data + client entry', () => {
     const scripts = buildScripts('/entry.js', { users: [{ id: 1 }] })
     expect(scripts).toContain('window.__PYREON_LOADER_DATA__=')
@@ -755,6 +772,32 @@ describe('prerender', () => {
 
     // Cleanup
     await rm(tmpDir, { recursive: true, force: true })
+  })
+
+  test('rejects a path that escapes outDir into a SIBLING dir (prefix-match bypass)', async () => {
+    // Regression: the guard was `resolve(filePath).startsWith(resolve(outDir))`
+    // — a string-prefix test. With outDir `/tmp/<base>`, a path resolving
+    // to the SIBLING `/tmp/<base>-evil/...` passes `startsWith` and the
+    // build writes HTML OUTSIDE the output root. `path` derives from
+    // caller route params (CMS slugs via getStaticPaths).
+    const App: ComponentFn = () => h('div', null, 'secret')
+    const handler = createHandler({ App, routes: [{ path: '/', component: App }] })
+    const stamp = Date.now()
+    const outDir = `/tmp/pyreon-ssgtrav-${stamp}`
+    const siblingEvil = `/tmp/pyreon-ssgtrav-${stamp}-evil`
+    const escapingPath = `/../pyreon-ssgtrav-${stamp}-evil`
+
+    const result = await prerender({ handler, paths: [escapingPath], outDir })
+
+    // The escaping path is rejected, recorded as an error, NOT written.
+    expect(result.pages).toBe(0)
+    expect(result.errors.some((e) => /Path traversal detected/.test(String(e.error)))).toBe(true)
+    const fs = await import('node:fs')
+    expect(fs.existsSync(`${siblingEvil}/index.html`)).toBe(false)
+
+    const { rm } = await import('node:fs/promises')
+    await rm(outDir, { recursive: true, force: true })
+    await rm(siblingEvil, { recursive: true, force: true })
   })
 
   test('onPage callback can skip pages', async () => {

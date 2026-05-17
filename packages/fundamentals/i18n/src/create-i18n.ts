@@ -22,6 +22,11 @@ function resolveKey(dict: TranslationDictionary, keyPath: string): string | unde
   return typeof current === 'string' ? current : undefined
 }
 
+/** Segments that would walk into / write onto a shared prototype. */
+function isUnsafeI18nKey(key: string): boolean {
+  return key === '__proto__' || key === 'constructor' || key === 'prototype'
+}
+
 /**
  * Convert flat dotted keys into nested objects.
  * `{ 'section.title': 'Report' }` → `{ section: { title: 'Report' } }`
@@ -35,8 +40,17 @@ function nestFlatKeys(messages: TranslationDictionary): TranslationDictionary {
   for (const key of Object.keys(messages)) {
     const value = messages[key]
     if (key.includes('.') && typeof value === 'string') {
-      hasFlatKeys = true
       const parts = key.split('.')
+      // Prototype-pollution guard. `addMessages` runs nestFlatKeys BEFORE
+      // deepMerge, so deepMerge's own __proto__/constructor/prototype
+      // filter never sees the DOTTED form. A key like `__proto__.isAdmin`
+      // would walk `current = current['__proto__']` (= Object.prototype,
+      // since `'__proto__' in current` is always true) and then write
+      // onto the shared prototype. App message JSON is routinely fetched
+      // from a CDN / community-translation platform — untrusted. Skip the
+      // whole key if ANY segment is dangerous.
+      if (parts.some(isUnsafeI18nKey)) continue
+      hasFlatKeys = true
       let current: TranslationDictionary = result
       for (let i = 0; i < parts.length - 1; i++) {
         const part = parts[i] as string
@@ -46,7 +60,7 @@ function nestFlatKeys(messages: TranslationDictionary): TranslationDictionary {
         current = current[part] as TranslationDictionary
       }
       current[parts[parts.length - 1] as string] = value
-    } else if (value !== undefined) {
+    } else if (value !== undefined && !isUnsafeI18nKey(key)) {
       result[key] = value
     }
   }

@@ -208,3 +208,65 @@ export function formatAntiPatterns(
 
   return parts.join('\n').trimEnd()
 }
+
+/**
+ * Compact INDEX of anti-patterns — one short line per entry instead of
+ * the full body. This is the default `get_anti_patterns()` response.
+ *
+ * Why: the full catalog is ~14K tokens. An agent calling
+ * `get_anti_patterns()` to orient ("what should I avoid?") almost never
+ * needs every full body at once — it needs the map, then the one or two
+ * entries relevant to what it's writing. The index is ~1.5K tokens (a
+ * ~90% cut on the common path); full bodies stay one explicit call away
+ * (`{ category }`, `{ name }`, or `{ full: true }`).
+ *
+ * Structural markers are deliberately preserved: the `# Pyreon
+ * Anti-Patterns — index (...)` header and per-category `## <Heading>`
+ * sections mean an agent can still discover categories from the index
+ * without a second call, and the detector tag stays inline (short +
+ * high-signal: tells the agent the mistake is auto-caught by
+ * `validate`). Only the prose body is elided, replaced by a truncated
+ * one-sentence hook.
+ */
+const INDEX_HOOK_MAX = 100
+
+function indexHook(description: string): string {
+  // First non-empty line, first sentence-ish, bounded.
+  const firstLine = description.split('\n').find((l) => l.trim().length > 0) ?? ''
+  const trimmed = firstLine.trim()
+  if (trimmed.length <= INDEX_HOOK_MAX) return trimmed
+  // Cut on the last word boundary before the cap so we never split a word.
+  const slice = trimmed.slice(0, INDEX_HOOK_MAX)
+  const lastSpace = slice.lastIndexOf(' ')
+  return `${slice.slice(0, lastSpace > 40 ? lastSpace : INDEX_HOOK_MAX).trimEnd()}…`
+}
+
+export function formatAntiPatternsIndex(entries: AntiPatternEntry[]): string {
+  if (entries.length === 0) {
+    return 'No anti-patterns found. Check that `.claude/rules/anti-patterns.md` is reachable.'
+  }
+  const byCategory = new Map<AntiPatternCategory, AntiPatternEntry[]>()
+  for (const entry of entries) {
+    if (!byCategory.has(entry.category)) byCategory.set(entry.category, [])
+    byCategory.get(entry.category)!.push(entry)
+  }
+  const parts: string[] = [
+    `# Pyreon Anti-Patterns — index (${entries.length} total, ${byCategory.size} categor${byCategory.size === 1 ? 'y' : 'ies'})`,
+    '',
+    'Compact index — one line per entry. For the full body of an entry call `get_anti_patterns({ name: "<title>" })`; for every entry in a category call `get_anti_patterns({ category: "<slug>" })`; for the entire catalog (~14K tokens) call `get_anti_patterns({ full: true })`. Entries tagged `[detector: <code>]` are caught statically by the `validate` tool.',
+    '',
+  ]
+  for (const [, catEntries] of byCategory) {
+    parts.push(`## ${catEntries[0]!.categoryHeading} (${catEntries.length})`)
+    parts.push('')
+    for (const entry of catEntries) {
+      const tag =
+        entry.detectorCodes.length > 0
+          ? ` \`[detector: ${entry.detectorCodes.join(' / ')}]\``
+          : ''
+      parts.push(`- **${entry.name}**${tag} — ${indexHook(entry.description)}`)
+    }
+    parts.push('')
+  }
+  return parts.join('\n').trimEnd()
+}

@@ -388,6 +388,21 @@ why()         // disarm + dump transcript:
 - Using \`why()\` in production — pure dev tool`,
   },
 
+  'reactivity/getReactiveTrace': {
+    signature: '() => Array<{ name: string | undefined; prev: string; next: string; timestamp: number }>',
+    example: `import { getReactiveTrace, clearReactiveTrace, signal } from '@pyreon/reactivity'
+
+const status = signal('idle', { name: 'status' })
+status.set('submitting')
+getReactiveTrace()
+// [{ name: 'status', prev: '"idle"', next: '"submitting"', timestamp: 1234.5 }]
+clearReactiveTrace()  // → []`,
+    notes: 'Returns the last ~50 signal writes (chronological, oldest → newest) from a bounded dev-only ring buffer — the causal SEQUENCE of reactive state changes, not a point-in-time snapshot. `@pyreon/core` attaches this to `ErrorContext.reactiveTrace` automatically so error reports carry "what changed in the run-up to the crash". Entries hold bounded string previews of values (never raw refs — no memory pinning, always serializable). **Dev-only**: the recorder feeding the buffer is behind the production dead-code gate and tree-shakes out, so this returns `[]` in prod builds. Distinct from `onSignalUpdate` — that is opt-in and captures stacks; this is always-on, deliberately cheap, and exists to enrich error reports. `clearReactiveTrace()` resets it (test isolation). See also: onSignalUpdate, inspectSignal.',
+    mistakes: `- Expecting it to return signal VALUES — it returns string PREVIEWS (truncated, safely stringified). For live values inspect the signal directly
+- Relying on it in production — returns \`[]\` (the recorder is dev-gated and tree-shaken). Use it for dev tooling / error-report enrichment, not runtime logic
+- Treating it as a snapshot of all signals — it is a bounded ring of recent WRITES; signals never written (or written before the ~50-entry window) are absent`,
+  },
+
   'reactivity/setErrorHandler': {
     signature: '(fn: (err: unknown) => void) => void',
     example: `setErrorHandler(err => {
@@ -885,26 +900,26 @@ params.set({ page: 2 })  // updates URL`,
   },
 
   'router/useTransition': {
-    signature: 'useTransition(): { isTransitioning: () => boolean }',
-    example: `const { isTransitioning } = useTransition()
+    signature: 'useTransition(): () => boolean',
+    example: `const isTransitioning = useTransition()
 
 <Show when={isTransitioning()}>
   <ProgressBar />
 </Show>`,
-    notes: 'Reactive signal for route transition state. `isTransitioning()` is true during navigation (while guards run + loaders resolve), false when the new route is mounted. Useful for progress bars and global loading indicators. See also: useRouter, useRoute.',
+    notes: 'Returns a reactive accessor for route transition state. The accessor is true during navigation (while guards run + loaders resolve), false when the new route is mounted. Call it inside a reactive scope. Useful for progress bars and global loading indicators. See also: useRouter, useRoute.',
   },
 
   'router/useMiddlewareData': {
-    signature: 'useMiddlewareData<T>(): T',
+    signature: 'useMiddlewareData(): () => Record<string, unknown>',
     example: `// Middleware:
 const authMiddleware: RouteMiddleware = async (ctx) => {
   ctx.data.user = await getUser(ctx.to)
 }
 
 // Component:
-const data = useMiddlewareData<{ user: User }>()
-// data.user is available`,
-    notes: 'Read data set by `RouteMiddleware` in the middleware chain. Middleware functions receive `ctx` with a mutable `ctx.data` object — properties set there are available to all downstream components via this hook. See also: createRouter, useLoaderData.',
+const data = useMiddlewareData()
+// data().user is available`,
+    notes: 'Returns a reactive accessor for data set by `RouteMiddleware` in the middleware chain. Middleware functions receive `ctx` with a mutable `ctx.data` object — properties set there are read by calling the returned accessor inside a reactive scope. See also: createRouter, useLoaderData.',
   },
 
   'router/useLoaderData': {
@@ -1298,20 +1313,47 @@ store.count()       // 0
 store.increment()   // reactive update
 patch({ count: 42 })`,
     notes: 'Define a composition-style store. The setup function runs once per store ID, returning an object whose signals become tracked state and whose functions become interceptable actions. Returns a hook function that produces a StoreApi with `.store` (user state/actions), `.patch()`, `.subscribe()`, `.onAction()`, `.reset()`, and `.dispose()`. Stores are singletons — calling the hook twice with the same ID returns the same instance. See also: StoreApi, addStorePlugin, resetStore.',
-    mistakes: `- Calling \`useCounter()\` expecting a new instance — stores are singletons by ID, the setup function only runs once
-- Reading \`store.count\` without calling it — signals are functions, use \`store.count()\` to read the value
-- Calling \`store.count.set()\` instead of using \`patch()\` when updating multiple signals — \`patch()\` batches updates into a single notification
-- Forgetting \`dispose()\` in tests — store persists in the registry across test cases, leaking state. Use \`resetStore(id)\` or \`resetAllStores()\` in test cleanup`,
+    mistakes: `- Calling \`useCounter()\` expecting a new instance — stores are singletons by ID. The setup runs once; the registry returns the same \`StoreApi\` for every later call with that ID until \`resetStore(id)\` / \`resetAllStores()\`
+- Reading \`store.count\` without calling it — signals are functions; use \`store.count()\` to read
+- Calling \`store.count.set()\` for multi-field updates instead of \`patch()\` — separate \`.set()\` calls each notify subscribers; \`patch()\` batches them into ONE \`type: "patch"\` mutation
+- Forgetting \`dispose()\` / \`resetAllStores()\` in tests — the store persists in the global registry across test cases, leaking state into the next test. Put \`afterEach(() => resetAllStores())\` in setup
+- Returning a non-signal, non-function value from \`setup\` (a plain object/array) and expecting it to be reactive — only signals become tracked state. Classification is duck-typed: signals = \`.set\` + \`.peek\`, computeds = \`.dispose\` (and not a signal), everything-else-callable = action. A plain object is none of these and is passed through inert
+- Mutating state by reassigning \`store.count\` — it is a frozen accessor; write via \`store.increment()\` (an action) or \`patch({ count })\`. Direct property assignment is silently ineffective
+- Registering an \`addStorePlugin\` AFTER the store was first created and expecting it to apply — plugins run only at creation time. The already-created store never sees it (see \`addStorePlugin\` mistakes)`,
+  },
+
+  'store/StoreApi': {
+    signature: 'interface StoreApi<T> { store: T; id: string; state: Snapshot<T>; patch(p: Partial|fn): void; subscribe(cb): () => void; onAction(cb): () => void; reset(): void; dispose(): void }',
+    example: `const { store, patch, subscribe, onAction, reset, dispose } = useCounter()
+patch({ count: 42 })                       // object form — batched
+patch((s) => { s.count.set(s.count.peek() + 1) }) // functional form: real signals
+const off = subscribe((m) => console.log(m.type, m.events))
+onAction((ctx) => { ctx.after((r) => log(r)); ctx.onError((e) => report(e)) })
+reset()      // signals → setup-time values
+dispose()    // teardown + registry removal`,
+    notes: 'The object the `defineStore` hook returns. `store` is the user state + actions; `id` the registry key; `state` a plain-value snapshot getter (signals read via `.peek()`, no tracking — safe to log / serialize). `patch` batch-updates signals; `subscribe` fires per mutation with `{ storeId, type: "direct" | "patch", events }`; `onAction` intercepts wrapped actions (`ctx.name`, `ctx.args`, `ctx.after(fn)`, `ctx.onError(fn)`); `reset` restores each signal to its setup-time `.peek()` value; `dispose` unsubscribes all listeners and removes the store from the registry. See also: defineStore, addStorePlugin.',
+    mistakes: `- \`patch({ typoKey: 1 })\` is a SILENT no-op — object-form patch only writes keys that are signal names; an unknown / mistyped key is skipped with no error or warning. Verify key names
+- \`patch\` silently drops \`__proto__\` / \`constructor\` / \`prototype\` keys (prototype-pollution guard) — a state field literally named one of those cannot be patched via the object form; use the functional form
+- Expecting \`reset()\` to restore the "last good" or current-default value — it restores the value captured by \`.peek()\` when \`setup\` first ran. A signal whose initial value was itself derived at setup resets to THAT, not to a fresh recomputation
+- Reading \`.state\` and expecting it to be reactive — it is a one-shot plain snapshot via \`.peek()\` (no tracking). Reading it inside an \`effect\`/\`computed\` will NOT re-run on change; read \`store.x()\` for reactive access
+- Keeping a destructured \`store\`/\`patch\` reference after \`resetStore(id)\` — the old \`StoreApi\` keeps working but is detached from the registry; the next hook call creates a NEW instance and your stale reference points at the orphan
+- Returning the \`subscribe\` / \`onAction\` disposer and never calling it — listeners live until disposed (or the store is disposed); in long-lived stores this leaks`,
   },
 
   'store/addStorePlugin': {
     signature: '(plugin: StorePlugin) => void',
-    example: `addStorePlugin((api) => {
-  api.subscribe((mutation, state) => {
+    example: `// Register BEFORE any store hook is first called.
+addStorePlugin((api) => {
+  api.subscribe((mutation) => {
     console.log(\`[\${api.id}] \${mutation.type}:\`, mutation.events)
   })
 })`,
-    notes: 'Register a global store plugin that runs when any store is first created. Plugin receives the full StoreApi, enabling cross-cutting concerns like logging, persistence, or devtools integration. Plugin errors are caught and logged in dev mode without breaking store creation. See also: defineStore, StoreApi.',
+    notes: 'Register a global store plugin. The plugin runs ONCE per store, at first creation of that store, receiving its full `StoreApi` — for logging, persistence, devtools, etc. Runs for every store created AFTER registration. Plugin throws are caught and (dev-only) `console.warn`ed so one bad plugin cannot break store creation — but in production a throwing plugin fails completely silently. The plugin chain is uncached: cost is O(stores × plugins) across all fresh store creations. See also: defineStore, StoreApi.',
+    mistakes: `- Registering AFTER a store was already created — plugins run only at creation. Stores already in the registry never receive the plugin. Register at module init before the first hook call, or \`resetStore(id)\` to force re-creation through the plugin chain
+- Relying on a plugin throw surfacing in production — errors are swallowed with only a dev-mode \`console.warn\`. A plugin that throws in prod silently does nothing; make the plugin itself defensive
+- Calling \`api.subscribe\` / \`api.onAction\` in a plugin without ever disposing — those listeners live for the whole store lifetime; in tests they accumulate across cases unless \`resetAllStores()\` runs in cleanup
+- Registering many plugins and not noticing the cost — the chain is uncached and runs per fresh store creation (O(stores × plugins)); the \`store.pluginRun\` perf counter scales exactly with this
+- Assuming plugin registration is idempotent — \`addStorePlugin\` pushes onto a list every call; registering the same plugin twice runs it twice per store`,
   },
 
   'store/setStoreRegistryProvider': {
@@ -1327,14 +1369,22 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())`,
 
   'store/resetStore': {
     signature: '(id: string) => void',
-    example: `resetStore('counter') // next useCounter() call creates a fresh store`,
-    notes: 'Remove a store from the registry by ID. The next call to the store hook re-runs the setup function from scratch. Useful for testing isolation and HMR. See also: resetAllStores, defineStore.',
+    example: `resetStore('counter') // next useCounter() call builds a fresh store`,
+    notes: 'Remove ONE store from the registry by ID. The next call to that store hook re-runs `setup` from scratch, producing a brand-new `StoreApi`. For per-test isolation and HMR. Does NOT dispose the old instance or notify its subscribers — it just detaches it from the registry. See also: resetAllStores, defineStore, StoreApi.',
+    mistakes: `- Expecting components/closures holding the OLD \`StoreApi\` to pick up the new one — they keep operating on the now-orphaned old instance. \`resetStore\` only affects what the NEXT hook call resolves
+- Using it as a "clear state" within a live app — it swaps the instance, so any active subscribers/effects bound to the old store go stale. For in-app state clearing use \`reset()\` on the StoreApi (restores setup-time values, keeps the instance + subscribers)
+- Calling it without re-invoking the hook and expecting fresh state — the new store is created lazily on the next hook call, not by \`resetStore\` itself
+- Passing a wrong / mistyped ID — silently no-ops (the ID simply is not in the registry); state is not reset and you get no error`,
   },
 
   'store/resetAllStores': {
     signature: '() => void',
-    example: 'afterEach(() => resetAllStores())',
-    notes: 'Clear the entire store registry. All subsequent store hook calls create fresh instances. Primary use case is test cleanup and SSR request isolation. See also: resetStore.',
+    example: 'afterEach(() => resetAllStores()) // canonical test isolation',
+    notes: 'Clear the ENTIRE store registry. Every subsequent store hook call creates a fresh instance. Primary use: test cleanup (the canonical `afterEach`) and forcing a clean slate. Like `resetStore`, it detaches — it does not dispose old instances or notify their subscribers. See also: resetStore, setStoreRegistryProvider.',
+    mistakes: `- Forgetting it in test cleanup — THE store-test footgun: a store mutated in one test persists into the next, causing order-dependent failures that pass in isolation. \`afterEach(() => resetAllStores())\` is mandatory boilerplate
+- Expecting it to also clear registered plugins — \`addStorePlugin\` registrations are global and survive \`resetAllStores()\`. Stores re-created afterward still run the previously-registered plugins
+- Calling it mid-render in a live app — every component holding a destructured store keeps its orphaned instance while new hook calls build fresh ones; you get a split-brain UI. This is a test/SSR-isolation tool, not runtime state management
+- Relying on it for SSR request isolation instead of \`setStoreRegistryProvider\` — calling \`resetAllStores()\` per request is racy under concurrency (one request wipes stores belonging to a concurrent request mid-flight); use an AsyncLocalStorage-backed registry provider`,
   },
   // <gen-docs:api-reference:end @pyreon/store>
 
@@ -2603,7 +2653,7 @@ lint({
     "pyreon/no-window-in-ssr": { exemptPaths: ["src/foundation/"] },
   },
 })`,
-    notes: '62 rules across 12 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. Wrong-typed options surface on `result.configDiagnostics`. Uses `oxc-parser` with AST caching. See also: lintFile, getPreset, AstCache.',
+    notes: '67 rules across 13 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. Wrong-typed options surface on `result.configDiagnostics`. Uses `oxc-parser` with AST caching. See also: lintFile, getPreset, AstCache.',
   },
 
   'lint/lintFile': {
@@ -2728,10 +2778,23 @@ function Counter() {
   },
 
   'mcp/diagnose': {
-    signature: 'tool: diagnose({ error: string }) → DiagnoseResult',
-    example: `diagnose({ error: 'Cannot redefine property X on object [object Object]' })
-// → cause: configurable: false on a getter; fix: set configurable: true`,
-    notes: 'Parse a Pyreon runtime / build error message into structured fix information: probable cause, recommended fix, related docs, and the `.claude/rules/anti-patterns.md` entry (if any) the error matches. Useful when an agent sees a stack trace and wants to skip the "search the codebase for similar errors" step. See also: validate, get_anti_patterns, explain_error.',
+    signature: 'tool: diagnose({ error: string, componentSource?: string, reactiveTrace?: ReactiveTraceEntry[], filename?: string, phase?: string }) → DiagnoseResult',
+    example: `// v1 — unchanged, backward-compatible
+diagnose({ error: 'Cannot redefine property X on object [object Object]' })
+// → cause: configurable: false on a getter; fix: set configurable: true
+
+// v2 — structured context → causal diagnosis
+diagnose({
+  error: 'name is stale after parent update',
+  componentSource: 'function G({ name }) { return <div>{name}</div> }',
+  reactiveTrace: [{ name: 'name', prev: '"a"', next: '"b"', timestamp: 1 }],
+})
+// → base diagnosis + "Static detector findings: props-destructured"
+//   + matched anti-pattern entry + the reactive run-up`,
+    notes: 'Parse a Pyreon runtime / build error into structured fix information. **String-only call is unchanged** (probable cause + fix + related docs from the regex pattern table — fully backward-compatible). v2 adds OPTIONAL structured context for richer, causal diagnosis: pass `componentSource` and the tool runs the static Pyreon detectors over it and maps each hit to the documented anti-pattern catalog entry (the `detectorCodes` bridge); pass `reactiveTrace` (the `ErrorContext.reactiveTrace` from `@pyreon/core`, populated in dev) and the tool formats the causal sequence of signal writes leading to the crash. The tool is deterministic — it assembles structured context, the calling agent reasons over it (no embedded LLM). Use the enriched form when you have the failing component + the error report; use the bare string form for a quick "what does this error mean". See also: validate, get_anti_patterns, explain_error.',
+    mistakes: `- Assuming v2 changed the string-only behaviour — it did not; an error-only call returns byte-identical output to before. The enrichment sections appear ONLY when componentSource / reactiveTrace are supplied
+- Expecting the tool to return a fix patch — it returns structured CONTEXT (regex diagnosis + detector hits + matched anti-patterns + reactive run-up). The agent reasons over it; the tool does not embed a model
+- Passing a production error report and expecting \`reactiveTrace\` content — the trace is dev-only (it tree-shakes out of prod builds), so prod reports carry \`reactiveTrace: undefined\` and the tool degrades to the v1 base diagnosis`,
   },
 
   'mcp/explain_error': {
@@ -2765,14 +2828,19 @@ function Counter() {
 // → full canonical pattern body
 get_pattern({})
 // → [{ name: 'controllable-state', summary: '...' }, ...]`,
-    notes: 'Fetch a canonical "how do I do X" pattern body from `docs/patterns/`. Eight foundational patterns ship: `dev-warnings`, `controllable-state`, `ssr-safe-hooks`, `signal-writes`, `keyed-lists`, `reactive-context`, `event-listeners`, `form-fields`. Omit `name` to list available patterns. Drop a new `docs/patterns/<slug>.md` file to add one — picked up on next call. See also: get_anti_patterns.',
+    notes: 'Fetch a canonical "how do I do X" pattern body from `docs/patterns/`. 16 foundational patterns ship: `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`. Omit `name` to list available patterns. Drop a new `docs/patterns/<slug>.md` file to add one — picked up on next call. See also: get_anti_patterns.',
   },
 
   'mcp/get_anti_patterns': {
-    signature: `tool: get_anti_patterns({ category?: 'reactivity' | 'jsx' | 'context' | 'architecture' | 'testing' | 'lifecycle' | 'documentation' | 'all' }) → AntiPattern[]`,
-    example: `get_anti_patterns({ category: 'reactivity' })
-// → ['Bare signal in JSX text', 'Stale closures', 'Destructuring props', ...]`,
-    notes: 'Browse the anti-patterns catalog parsed from `.claude/rules/anti-patterns.md`. Each entry surfaces its `[detector: <code>]` tag inline so an agent can pair the catalog entry with the live static detector exposed by `validate`. Optional `category` filter; default returns all categories. See also: validate, get_pattern.',
+    signature: `tool: get_anti_patterns({ category?: 'reactivity'|'jsx'|'context'|'architecture'|'testing'|'lifecycle'|'documentation'|'all'; name?: string; full?: boolean }) → string`,
+    example: `get_anti_patterns()
+// → compact index (~3.3K): titles + detector tags + one-line hooks
+get_anti_patterns({ name: 'Destructuring props' })  // → that entry's full body
+get_anti_patterns({ category: 'reactivity' })       // → full bodies, one category
+get_anti_patterns({ full: true })                   // → entire catalog (~14K)`,
+    notes: `Browse the anti-patterns catalog from \`.claude/rules/anti-patterns.md\`, token-frugal by default. **No args → a COMPACT INDEX** (one line per entry: title + \`[detector: <code>]\` tag + one-sentence hook; ≈3.3K tokens vs the ≈14K full dump — a ~76% cut on the common orient call). Drill in deliberately: \`{ name }\` → the single matching entry\'s full body (cheapest); \`{ category }\` → full bodies for one category; \`{ full: true }\` → entire catalog (≈14K, explicit opt-in). The index keeps per-category \`## <Heading>\` markers so categories are still discoverable in one call; each \`[detector: <code>]\` tag pairs the entry with the live \`validate\` detector. See also: validate, get_pattern.`,
+    mistakes: `- Reaching for \`{ full: true }\` to "see the anti-patterns" — that is the ~14K dump. The no-arg index is the orient call; pull full bodies with \`{ name }\` once you know which entry matters
+- Expecting no-arg to return full bodies — it returns the index (behaviour changed in the token-slim PR). Full bodies need \`{ name }\`, \`{ category }\`, or \`{ full: true }\``,
   },
 
   'mcp/get_changelog': {
@@ -2966,10 +3034,12 @@ value('garbage', 0) // → { value: 0, unit: 'px' }`,
     example: `const active = rx.filter(users, u => u.active)      // Computed<User[]>
 const sorted = rx.sortBy(active, 'name')             // Computed<User[]>
 const total = rx.sum(users, u => u.age)              // Computed<number>
-const grouped = rx.groupBy(users, u => u.department) // Computed<Map<string, User[]>>`,
-    notes: 'Namespaced object exposing all 37 reactive transform functions plus `pipe`. Use `rx.filter(...)` for dot-notation style, or destructure individual functions for tree-shaking. Every function is overloaded: `Signal<T[]>` input produces `Computed<T[]>` that auto-tracks, plain `T[]` input produces a static result. See also: pipe, filter.',
+const grouped = rx.groupBy(users, u => u.department) // Computed<Record<string, User[]>>`,
+    notes: 'Namespaced object exposing all 37 reactive transform functions plus `pipe`. Use `rx.filter(...)` for dot-notation style, or destructure individual functions for tree-shaking. Every function is overloaded: `Signal<T[]>` input produces `Computed<T[]>` that auto-tracks, plain `T[]` input produces a static result. See also: pipe, filter, sortBy, groupBy.',
     mistakes: `- Expecting \`rx.filter(signal, pred)\` to return a plain array — signal inputs always produce \`Computed\` outputs. Call the result to read: \`active()\`
-- Passing a signal accessor (\`() => items()\`) instead of the signal itself — pass \`items\` not \`() => items()\`; the function checks for \`.subscribe\` to detect signals`,
+- Passing a RESOLVED value where a signal was meant — \`rx.filter(items(), pred)\` (note the \`()\`) takes the static path and never updates when \`items\` changes. Pass \`items\` (the signal), not \`items()\`. A spike in the \`rx.transform.raw\` perf counter is exactly this mistake
+- Assuming signal detection inspects the value — it is purely \`typeof source === "function"\`. Any function (an accessor wrapper \`() => items()\`, a bound method, a getter) is treated as a reactive source and invoked inside a computed; only non-function inputs (arrays) take the static path
+- Reading a \`Computed\` output once and caching the array — it is reactive; re-read it (or read inside an \`effect\`/JSX) so you see updates`,
   },
 
   'rx/pipe': {
@@ -2982,15 +3052,89 @@ const grouped = rx.groupBy(users, u => u.department) // Computed<Map<string, Use
   take(10),
 )
 // Computed<string[]> when users is a signal`,
-    notes: 'Compose transforms left-to-right. Each operator receives the output of the previous one. Signal source produces a reactive `Computed` that re-derives when the source changes. Use curried forms of individual functions as operators: `filter(pred)`, `sortBy(key)`, `map(fn)`, etc. See also: rx.',
-    mistakes: '- Calling the non-curried form inside pipe — `pipe(users, filter(users, pred))` is wrong; use the curried form: `pipe(users, filter(pred))`',
+    notes: 'Compose transforms left-to-right. Each operator receives the output of the previous one. Signal source produces a reactive `Computed` that re-derives when the source changes. Use curried forms of individual functions as operators: `filter(pred)`, `sortBy(key)`, `map(fn)`, etc. See also: rx, filter, map, sortBy.',
+    mistakes: `- Calling the non-curried form inside pipe — \`pipe(users, filter(users, pred))\` is wrong; use the curried form: \`pipe(users, filter(pred))\`
+- Expecting \`pipe(arr, ...)\` (plain array source) to be reactive — only a signal source produces a \`Computed\`; a plain array gives a one-shot plain result
+- Reading the pipe result as an array when the source is a signal — it is a \`Computed\`; call it: \`result()\`
+- Putting a timing operator (\`debounce\`/\`throttle\`) in a \`pipe\` chain — those take a single \`Signal<T>\` and return a signal, they are not curried collection operators and do not compose in \`pipe\``,
   },
 
   'rx/filter': {
-    signature: '<T>(source: Signal<T[]> | T[], predicate: (item: T) => boolean) => Computed<T[]> | T[]',
-    example: `const evens = filter(items, n => n % 2 === 0)  // Computed<number[]>
-const result = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]`,
-    notes: 'Filter items by predicate. Signal input produces a reactive `Computed<T[]>` that re-evaluates when the source signal changes. Also available in curried form `filter(pred)` for use with `pipe()`. See also: rx, pipe.',
+    signature: '<T>(source: Signal<T[]> | T[], predicate: (item: T) => boolean) => Computed<T[]> | T[]  // curried: filter(pred)',
+    example: `const evens = filter(items, n => n % 2 === 0)  // Computed<number[]> (items is a signal)
+const result = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5] (plain)
+pipe(items, filter(n => n > 3))                      // curried form in a pipe`,
+    notes: 'Filter items by predicate. Signal input produces a reactive `Computed<T[]>` that re-evaluates when the source signal changes; plain array input returns a plain array. Curried form `filter(pred)` is for `pipe()`. Curry vs direct is detected by argument count, so a single-argument call is always the curried operator. See also: rx, pipe, map.',
+    mistakes: `- Calling \`filter(pred)\` directly expecting a result — a single function arg is the CURRIED operator (returns a function), not a filtered array. Use \`filter(source, pred)\` for the direct form
+- Passing \`items()\` instead of \`items\` — the resolved array takes the static path; the result never updates`,
+  },
+
+  'rx/map': {
+    signature: '<T, U>(source: Signal<T[]> | T[], fn: (item: T, index: number) => U) => Computed<U[]> | U[]  // curried: map(fn)',
+    example: `const names = map(users, u => u.name)            // Computed<string[]>
+pipe(users, filter(u => u.active), map(u => u.name)) // curried in pipe`,
+    notes: 'Transform each item. Signal input → reactive `Computed<U[]>`; plain array → plain array. The mapper receives `(item, index)`. Curried form `map(fn)` composes in `pipe()`. See also: rx, filter, pipe.',
+    mistakes: `- Expecting this to be the JSX list renderer — \`rx.map\` derives a reactive array; to render a keyed list use \`<For each={…} by={…}>\`, not \`rx.map\` output spread into JSX
+- Relying on referential stability of mapped objects — every re-derive produces fresh objects; key lists by a stable id, not object identity`,
+  },
+
+  'rx/sortBy': {
+    signature: '<T>(source: Signal<T[]> | T[], key: keyof T | ((item: T) => unknown)) => Computed<T[]> | T[]',
+    example: `const byName = sortBy(users, 'name')          // Computed<User[]>, ascending
+const byAge = sortBy(users, u => u.age)        // key-selector form
+const desc = sortBy(users, 'age')              // then reverse() for descending`,
+    notes: 'Sort by a key or key-selector. **Non-mutating** — copies via `[...arr]` before sorting, so the source array/signal is never mutated (unlike native `Array.prototype.sort`). Signal input → reactive `Computed<T[]>`. Comparison is a plain `a < b ? -1 : a > b ? 1 : 0` — ascending only, no direction option, no locale/`Intl` collation. See also: rx, pipe, groupBy.',
+    mistakes: `- Expecting it to mutate / sort in place like \`Array.sort\` — it returns a NEW sorted array; the source is untouched
+- Expecting a direction option — there is none. Always ascending; compose \`reverse()\` for descending
+- Sorting numeric STRINGS expecting numeric order — comparison is \`<\`/\`>\`, so \`"10" < "2"\` lexically. Use a numeric key-selector (\`u => Number(u.id)\`) when the field is a numeric string
+- Expecting locale-aware ordering — no \`Intl.Collator\`; accented / non-ASCII ordering is codepoint order, not locale order`,
+  },
+
+  'rx/groupBy': {
+    signature: '<T>(source: Signal<T[]> | T[], key: keyof T | ((item: T) => unknown)) => Computed<Record<string, T[]>> | Record<string, T[]>',
+    example: `const byDept = groupBy(users, u => u.department) // Computed<Record<string, User[]>>
+for (const [dept, members] of Object.entries(byDept())) { … }`,
+    notes: 'Group items into buckets by key. **Returns a plain `Record<string, T[]>`, NOT a `Map`.** Keys are coerced with `String(...)`, so numeric / boolean group keys become strings (`1` → `"1"`, `true` → `"true"`). Signal input → reactive `Computed<Record<string, T[]>>`. Insertion order within each bucket is preserved. See also: rx, sortBy, keyBy.',
+    mistakes: `- Treating the result as a \`Map\` — it is a plain object. Use \`Object.entries()\` / \`result[key]\`, not \`.get()\` / \`.has()\` / \`.size\`
+- Expecting original key types — every key is \`String()\`-coerced; group under \`"1"\`, not \`1\`, and \`"true"\`, not \`true\`
+- Iterating with \`for...in\` and not guarding inherited keys — prefer \`Object.entries()\` / \`Object.keys()\`
+- Assuming a missing group is \`[]\` — \`result[unknownKey]\` is \`undefined\`, not an empty array; default it explicitly`,
+  },
+
+  'rx/search': {
+    signature: '<T>(source: Signal<T[]> | T[], query: Signal<string> | string, keys: (keyof T)[]) => Computed<T[]> | T[]',
+    example: `const q = signal('')
+const results = search(users, q, ['name', 'email'])  // Computed<User[]>
+// substring, case-insensitive: q="ali" matches "Alice"`,
+    notes: 'Case-insensitive **substring** filter across the named fields. The third argument is a POSITIONAL `keys` array — `search(users, q, ["name", "email"])` — NOT a `{ keys }` options object. Only `string`-typed fields match (non-string values are skipped). Reactive when EITHER `source` OR `query` is a signal. Empty/whitespace query returns the full list. See also: rx, filter.',
+    mistakes: `- Passing \`{ keys: [...] }\` — the signature is positional: \`search(source, query, ["name","email"])\`. An options object is treated as the keys array and matches nothing
+- Expecting fuzzy / typo-tolerant matching — it is plain \`String.includes\` after \`toLowerCase().trim()\`, not fuzzy. "alce" will NOT match "Alice"
+- Searching a non-string field (number/date) — only \`typeof val === "string"\` fields are tested; numeric columns never match. Pre-stringify if you need them searchable
+- Passing \`query\` as a resolved string when you want reactivity — pass the \`Signal<string>\` so the result re-derives as the user types; a plain string is matched once`,
+  },
+
+  'rx/debounce': {
+    signature: '<T>(source: Signal<T>, ms: number) => ReadableSignal<T> & { dispose: () => void }',
+    example: `const raw = signal('')
+const debounced = debounce(raw, 300)   // ReadableSignal<string> & { dispose }
+effect(() => fetchResults(debounced())) // fires 300ms after typing stops
+onCleanup(() => debounced.dispose())    // REQUIRED — not auto-cleaned`,
+    notes: 'Debounce a SIGNAL value (the whole emitted value, not array items — it is not a collection transform and does not curry into `pipe`). Returns a new readable signal that settles `ms` after the source stops changing, plus a `dispose()` that tears down its internal effect + timer. Seeds synchronously with the current `source()` value. See also: throttle, rx.',
+    mistakes: `- Not calling \`dispose()\` — each \`debounce\`/\`throttle\` owns a live effect + timer that are NOT auto-cleaned. Leaks across navigations; a growing \`rx.debounce.create\` perf counter is exactly this
+- Putting it in a \`pipe()\` chain — \`debounce\` takes a single \`Signal<T>\` and returns a signal; it is not a curried collection operator
+- Expecting array-item debounce — \`debounce(usersSignal, 300)\` debounces the whole array emission, not individual rows
+- Reading it before the first settle and expecting the latest value — it seeds with the initial \`source()\` and only updates after the quiet window`,
+  },
+
+  'rx/throttle': {
+    signature: '<T>(source: Signal<T>, ms: number) => ReadableSignal<T> & { dispose: () => void }',
+    example: `const throttled = throttle(scrollY, 100)
+effect(() => updateHeader(throttled()))
+onCleanup(() => throttled.dispose())   // REQUIRED — not auto-cleaned`,
+    notes: 'Throttle a SIGNAL value to at most one emission per `ms`. Returns a new readable signal + `dispose()` (internal effect + timer). Like `debounce`, value-level not item-level, does not compose in `pipe`, and seeds synchronously with the current `source()`. See also: debounce, rx.',
+    mistakes: `- Not calling \`dispose()\` — same leak as \`debounce\`; tracked by the \`rx.throttle.create\` perf counter
+- Confusing it with \`debounce\` — throttle emits at a steady max rate during continuous change; debounce emits once after change STOPS
+- Using it as a \`pipe\` operator — it is not curried and takes a single signal`,
   },
   // <gen-docs:api-reference:end @pyreon/rx>
 
@@ -3624,6 +3768,84 @@ const ButtonLink = createLink((props) => (
 // On user hovering a card, prefetch the linked route's chunk
 <Card onMouseEnter={() => prefetchRoute('/posts/' + post.id)}>...</Card>`,
     notes: `Imperatively prefetch a route's JS chunk by injecting \`<link rel="prefetch">\` + \`<link rel="modulepreload">\` into \`document.head\`. Deduplicates — calling twice with the same \`href\` is a no-op. Backed by an LRU cache (MAX 200 entries) that evicts oldest entries AND removes their DOM nodes to prevent head-bloat across long SPA sessions. See also: Link, useLink.`,
+  },
+
+  'zero/Icon': {
+    signature: '<Icon as={ImportedSvgComponent} | svg={rawSvgMarkupString} {...hostProps} />',
+    example: `import { Icon } from '@pyreon/zero'
+import Check from './check.svg?component'
+import checkRaw from './check.svg?raw'
+
+// Component form — rendered directly, no wrapper, reliable fill:
+<span style="width:2rem"><Icon as={Check} /></span>
+
+// Raw-markup form — inlined inside one <span> host:
+<span style="width:2rem"><Icon svg={checkRaw} /></span>`,
+    notes: `Renders a FULL loaded SVG — it does NOT synthesize its own \`<svg>\` around hand-authored \`<path>\` children. You load an svg (it already contains the \`<svg>\` root) and Icon makes it container-sizable + theme-aware. Two source props: \`as\` — an imported SVG *component* (\`import X from './x.svg?component'\`), rendered DIRECTLY with no host wrapper (recommended; it's a real \`<svg>\` so container-fill is reliable); \`svg\` — the raw \`<svg>…</svg>\` *markup string* (\`import x from './x.svg?raw'\`), inlined via a single \`<span>\` host (a markup string needs a parent to mount — this one host is unavoidable for the string form). Defaults (\`fill="currentColor"\`, \`display:block;width:100%;height:100%\`) are overridable — consumer props spread through and win. No fixed size → fills its container; \`fill="currentColor"\` themes via CSS \`color\`. Intentionally no \`useIcon\` hook (an icon has no composable behaviour); two layers: \`createIcon\` (one component per loaded glyph) + \`Icon\` (one-off). See also: createIcon, IconProps, Image.`,
+    mistakes: `- Expecting \`<Icon>\` to synthesize an \`<svg>\` from \`<path>\` children — it does NOT. Pass a loaded svg via \`as\` (imported \`?component\`) or \`svg\` (imported \`?raw\` string). Children are not the API
+- Expecting \`<Icon>\` to size itself — it has NO intrinsic size; it fills its container. Wrap + size it (\`<span style="width:1.5rem">\`) or use a sized flex/grid cell
+- Hardcoding \`fill="#000"\` — breaks theming. Leave the \`currentColor\` default; drive colour with CSS \`color\` so dark mode + hover work for free. Only the \`as\` form forwards \`fill\` to the real svg — the \`svg\`-string form's markup is opaque, so colour it via \`currentColor\` inside the asset
+- Expecting svg-only props (\`viewBox\`, \`fill\`) to apply in the \`svg\`-string form — they can't reach the opaque inlined markup; only host attrs (\`class\`, \`style\`, \`aria-*\`, events) forward. Use the \`as\` form when you need to drive svg attributes
+- Reaching for a \`useIcon\` hook — there isn't one, by design. Use \`createIcon\` or inline \`<Icon>\`; an icon has no behaviour worth a hook layer
+- Preferring \`svg\` (raw string) for the wrapper-free guarantee — it's the opposite: \`svg\` ALWAYS adds a \`<span>\` host (unavoidable for string inlining); \`as\` is the zero-wrapper form`,
+  },
+
+  'zero/createIcon': {
+    signature: 'function createIcon(source: string | SvgComponent): (props: SvgAttributes) => VNodeChild',
+    example: `import { createIcon } from '@pyreon/zero'
+import StarSvg from './star.svg?component'
+import checkRaw from './check.svg?raw'
+
+export const Star = createIcon(StarSvg)     // component → rendered directly
+export const Check = createIcon(checkRaw)   // raw string → inlined via <span>
+
+// Sized + themed entirely by the consumer:
+<span style="width:48px"><Check class="text-green-600" aria-label="done" /></span>`,
+    notes: `Builds a reusable icon component from a LOADED svg — a raw \`<svg>…</svg>\` markup string (\`?raw\`) OR an imported SVG component (\`?component\`). The result is still just \`<Icon>\` (string → \`svg\` prop, component → \`as\` prop), so it's container-sizable + theme-aware with every prop passed through. A generated icon set is \`createIcon\`-per-glyph with zero per-icon boilerplate. Mirrors the \`createLink\`/\`createImage\` factory layer, minus a hook (icons have no composable behaviour). See also: Icon, IconProps, createNamedIcon, iconsPlugin.`,
+    mistakes: `- Calling \`createIcon\` inside a component body — define icon components at module scope (like \`createLink\`/\`createImage\`). Re-creating the component every render defeats identity-based reconciliation
+- Passing hand-built \`<path>\` JSX as \`source\` — \`source\` is a full loaded svg: a \`?raw\` markup string OR a \`?component\` import. It does NOT take individual shapes; the loaded asset already contains its own \`<svg>\` root
+- Assuming the \`?raw\` form has no wrapper — the string form ALWAYS adds one \`<span>\` host (unavoidable for inlining markup). Use the \`?component\` form for the zero-wrapper, attribute-forwarding path`,
+  },
+
+  'zero/iconsPlugin': {
+    signature: `iconsPlugin({ dir | sets, out?, mode?: 'inline' | 'image' }): Plugin`,
+    example: `// vite.config.ts — single set:
+import { iconsPlugin } from '@pyreon/zero/server'
+iconsPlugin({ dir: './src/icons' })
+// app: import { Icon } from './icons.gen'; <Icon name="check-circle" />
+
+// Named multi-set — per-set typed components, no IconName clash:
+iconsPlugin({ sets: {
+  ui:    { dir: './src/icons/ui' },
+  brand: { dir: './src/icons/brand', mode: 'image' },
+}})
+// app: import { UiIcon, BrandIcon } from './icons.gen'
+// <UiIcon name="arrow-left" />  <BrandIcon name="logo-mark" />`,
+    notes: `Vite plugin (from \`@pyreon/zero/server\`): point it at a folder of \`*.svg\` files and it writes a strictly-typed generated \`icons.gen.tsx\` exporting \`<Icon name="…" />\`. Add an svg → the \`name\` union widens; remove one → an invalid \`name\` fails typecheck. The generated file calls \`createNamedIcon(REGISTRY)\`, so \`keyof typeof REGISTRY\` IS the type surface (autocomplete + real go-to-definition, zero per-app wiring — same one-touch shape as fs-router / islands auto-registry). Regenerates on add/unlink in dev (idempotent write — never rewrites identical content). **Named multi-set form** (\`sets: { ui: { dir }, brand: { dir, mode } }\`, mutually exclusive with \`dir\`): one generated file exports a strictly-typed component PER set with NAMESPACED types so they never clash — \`ui\` → \`<UiIcon name="…" />\` + \`type UiIconName\`, \`brand\` → \`<BrandIcon name="…" />\` + \`type BrandIconName\`; per-set binding prefixes mean two sets sharing a glyph filename don't collide. Two render modes per the colorful-vs-system split (settable per-set): \`mode: 'inline'\` (default — system icons; each svg inlined as raw \`?raw\` markup, \`currentColor\`-themeable, recolor via CSS \`color\`) and \`mode: 'image'\` (colorful / brand icons; each svg emitted as a static asset, rendered \`<img>\`, NO mutation, original colors preserved). Default \`out\` is \`icons.gen.tsx\` next to \`dir\` for the single-set form (\`src/icons\` → \`src/icons.gen.tsx\`) or \`src/icons.gen.tsx\` for the multi-set form — recommend gitignoring it (build artifact). It writes a real file (NOT a virtual module) deliberately: the published \`@pyreon/zero\` package can't \`import\` a plugin virtual module — Rolldown resolves static imports before plugin \`resolveId\` (the same constraint that makes islands need \`hydrateIslandsAuto(registry)\` with an explicit import). See also: createNamedIcon, Icon, IconProps.`,
+    mistakes: `- Passing BOTH \`dir\` and \`sets\` (or neither) — exactly one is required; the plugin throws \`[Pyreon] iconsPlugin: provide EXACTLY ONE of dir or sets\` at config time
+- Using \`mode: 'inline'\` (default) for multicolor / brand SVGs — inline mode is for monochrome system icons you recolor via \`currentColor\`. A multicolor logo's hardcoded fills survive but you lose nothing by using \`mode: 'image'\`, which is the correct choice for no-mutation colorful assets
+- Using \`mode: 'image'\` for icons you need to recolor — \`<img>\` can't be themed via CSS \`color\`; the svg is opaque. Recolorable system icons need \`mode: 'inline'\`
+- Editing the generated \`icons.gen.tsx\` by hand — it's regenerated on every add/unlink. Add/remove \`.svg\` files in the set folder(s) instead; commit the gitignore entry, not the file
+- Expecting a virtual \`import 'virtual:zero/icons'\` — there isn't one (Rolldown import-ordering constraint). The plugin writes a REAL file you import by path; that's what gives go-to-definition + zero wiring
+- Pointing a set \`dir\` at a folder that doesn't exist yet — \`scanIconDir\` returns empty and the generated \`*IconName\` is \`never\` (every \`name\` fails typecheck). Create the folder + drop at least one \`.svg\` first
+- Forgetting \`vite/client\` types — the generated file's \`?raw\` imports rely on Vite's ambient \`*.svg?raw\` module declaration; the generated file emits \`/// <reference types="vite/client" />\` but the consuming tsconfig must still resolve \`vite/client\``,
+  },
+
+  'zero/createNamedIcon': {
+    signature: `function createNamedIcon<R extends Record<string, string>>(registry: R, options?: { mode?: 'inline' | 'image' }): (props: { name: keyof R & string } & …) => VNodeChild`,
+    example: `// icons.gen.tsx (auto-generated by iconsPlugin):
+import { createNamedIcon } from '@pyreon/zero'
+export const Icon = createNamedIcon({ 'check-circle': '<svg…>…</svg>' })
+
+// image mode (hand-maintained colorful set):
+import logo from './logo.svg' // Vite → URL
+export const Brand = createNamedIcon({ logo }, { mode: 'image' })
+<Brand name="logo" alt="Company" />`,
+    notes: `Runtime half of \`iconsPlugin\` — builds a strictly-typed \`<Icon name="…" />\` from a name→source registry. \`keyof R\` makes \`name\` a precise string union (the generated file passes a literal registry so the union infers there → autocomplete + go-to-definition). \`mode: 'inline'\` (default) treats each \`source\` as raw \`<svg>\` markup rendered via \`Icon\` (\`currentColor\`-themeable system icons); \`mode: 'image'\` treats each \`source\` as an asset URL rendered \`<img>\` with NO mutation (colorful / brand icons). Either way it stays container-filling + props-transparent. Not normally hand-called — \`iconsPlugin\` emits the generated file that calls it; call it directly only for a hand-maintained set. See also: iconsPlugin, Icon, IconProps.`,
+    mistakes: `- Passing a \`Record<string, string>\` typed loosely (e.g. \`: Record<string, string>\`) — that widens \`keyof R\` to \`string\` and you lose the typed \`name\`. Pass the object literal directly (or \`as const\`) so the keys infer
+- Using \`mode: 'image'\` then expecting \`fill\` / svg props to apply — the \`<img>\` is opaque; only host attrs (\`class\`, \`style\`, \`alt\`, events) forward. Use \`mode: 'inline'\` for svg-attribute control
+- Omitting \`alt\` in \`mode: 'image'\` — it defaults to \`""\` (decorative). Pass a real \`alt\` for meaningful icons; screen readers skip empty-alt images
+- Calling \`createNamedIcon\` inside a component body — define the set once at module scope (the generated file does). Re-creating it per render defeats identity-based reconciliation`,
   },
 
   'zero/Image': {

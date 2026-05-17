@@ -59,6 +59,15 @@ export interface ISRConfig {
    */
   maxEntries?: number
   /**
+   * Max wall-time (ms) for a single background revalidation before it is
+   * abandoned. Without a bound, a handler that hangs leaves its key
+   * pinned in the in-flight set forever — every later request for that
+   * key short-circuits the de-dupe guard and the entry can never
+   * recover from stale. Default: `30000` (matches the Suspense
+   * streaming timeout).
+   */
+  revalidateTimeoutMs?: number
+  /**
    * Cache-key derivation function. The default keys cache entries by
    * `url.pathname` ONLY — query strings, cookies, and headers are
    * stripped.

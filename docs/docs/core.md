@@ -1485,6 +1485,142 @@ function Dashboard() {
 function lazy<P extends Props>(load: () => Promise<{ default: ComponentFn<P> }>): LazyComponent<P>
 ```
 
+## Defer
+
+Lazy-load a chunk when a trigger condition is met. `Defer` collapses the `lazy()` + `Suspense` + observer boilerplate into a single component, and only fetches the chunk when one of three triggers fires — not on initial render.
+
+Where `lazy()` starts its dynamic `import()` immediately at module evaluation time, `Defer` holds the import until the trigger fires. That makes it the right tool for code that should not be in the main bundle _and_ should not even be fetched until the user needs it: modals, below-the-fold content, non-critical dashboards.
+
+```tsx
+import { Defer } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
+
+const open = signal(false)
+
+function Page() {
+  return (
+    <>
+      <button onClick={() => open.set(true)}>Delete account</button>
+
+      {/* The modal chunk is fetched only after the button is clicked. */}
+      <Defer chunk={() => import('./ConfirmDeleteModal')} when={open}>
+        {(Modal) => <Modal onClose={() => open.set(false)} />}
+      </Defer>
+    </>
+  )
+}
+```
+
+### Trigger modes
+
+Exactly one of the three triggers is supplied per `<Defer>`. `when` is mutually exclusive with `on`.
+
+- **`when={() => signal()}`** -- signal-driven. Load the chunk when the accessor becomes truthy. Repeated truthy emissions are no-ops; the chunk loads exactly once per `Defer` instance even if the condition oscillates (e.g. a modal that opens, closes, then opens again). This is the modal / on-demand-panel pattern.
+- **`on="visible"`** -- viewport-driven. Load the chunk when the wrapper scrolls into view, detected with an `IntersectionObserver`. Tune the pre-load distance with `rootMargin` (default `'200px'`, so the chunk usually finishes loading before the user reaches it). Best for below-the-fold content like a comments section.
+- **`on="idle"`** -- idle-driven. Load the chunk during browser idle time via `requestIdleCallback`. Best for non-critical work that should warm up after the page is interactive but doesn't block anything.
+
+```tsx
+// Viewport-driven (below-the-fold)
+<Defer chunk={() => import('./Comments')} on="visible" rootMargin="300px">
+  {(Comments) => <Comments postId={postId()} />}
+</Defer>
+
+// Idle-driven (non-critical)
+<Defer chunk={() => import('./Analytics')} on="idle">
+  {(Dashboard) => <Dashboard />}
+</Defer>
+```
+
+In SSR or non-browser environments where `IntersectionObserver` / `requestIdleCallback` are unavailable, the `on="visible"` and `on="idle"` triggers fall back to loading the chunk eagerly so the component still renders.
+
+### DeferProps
+
+```ts
+interface DeferProps<P extends Props> {
+  /**
+   * Dynamic import to lazy-load. The literal `import('./X')` is what the
+   * bundler sees when emitting chunks -- using a variable here defeats
+   * code splitting. Optional only because the compiler-driven inline form
+   * synthesizes it; the explicit form requires it.
+   */
+  chunk?: () => Promise<{ default: ComponentFn<P> } | ComponentFn<P>>
+  /** Signal-driven trigger -- load when truthy. Mutually exclusive with `on`. */
+  when?: () => boolean
+  /** Viewport / idle trigger. Mutually exclusive with `when`. */
+  on?: 'visible' | 'idle'
+  /**
+   * Render-prop receiving the loaded component, for prop forwarding.
+   * Defaults to `<Component />` with no props if omitted. The inline
+   * (compiler-driven) form passes raw JSX here -- see below.
+   */
+  children?: ((Component: ComponentFn<P>) => VNodeChild) | VNodeChild
+  /** Shown while the chunk is loading. Defaults to `null`. */
+  fallback?: VNodeChild
+  /** `IntersectionObserver` rootMargin for `on="visible"`. Default `'200px'`. */
+  rootMargin?: string
+}
+```
+
+A rejected `chunk()` is thrown during rendering and can be caught by an `ErrorBoundary` (the same recovery path as `lazy()`):
+
+```tsx
+<ErrorBoundary fallback={(err, reset) => <ChunkFailed error={err} retry={reset} />}>
+  <Defer chunk={() => import('./Editor')} when={editing}>
+    {(Editor) => <Editor />}
+  </Defer>
+</ErrorBoundary>
+```
+
+### Inline children (compiler-driven)
+
+The explicit form above always works at runtime. With `@pyreon/vite-plugin` enabled, you can also write the **inline form** -- drop the `chunk` prop and the render-prop, and just put the component as a JSX child:
+
+```tsx
+import { Defer } from '@pyreon/core'
+import { ConfirmDeleteModal } from './ConfirmDeleteModal'
+
+function Page() {
+  return (
+    <Defer when={open}>
+      <ConfirmDeleteModal onClose={() => open.set(false)} count={selectedCount} />
+    </Defer>
+  )
+}
+```
+
+At build time, `@pyreon/compiler`'s `transformDeferInline` pass (which runs in the Vite plugin's `transform()` hook, _before_ the JSX-to-runtime transform) rewrites this into the explicit form:
+
+```tsx
+<Defer
+  when={open}
+  chunk={() => import('./ConfirmDeleteModal').then((__m) => ({ default: __m.ConfirmDeleteModal }))}
+>
+  {(__C) => <__C onClose={() => open.set(false)} count={selectedCount} />}
+</Defer>
+```
+
+It then **removes the static `import { ConfirmDeleteModal } from './ConfirmDeleteModal'`** -- without this, the bundler would statically include the module and the dynamic import would become a no-op chunk. Props, event handlers, and closure-captured signals (`onClose`, `count` above) pass through verbatim into the synthesized render-prop body; closure capture works naturally because the render-prop arrow lexically captures the surrounding scope. The trigger props (`when`, `on`, `rootMargin`, `fallback`) pass through unchanged.
+
+Supported import shapes for the inline child:
+
+- Default import -- `import Modal from './Modal'`
+- Named import -- `import { Modal } from './Modal'`
+- Renamed import -- `import { Modal as M } from './Modal'; <M />` (the chunk extracts the _original_ exported name)
+- Namespace import -- `import * as M from './Modal'; <M.Modal />`
+- Multi-specifier imports -- only the deferred binding is removed; siblings (`import { Modal, Other }`) stay intact
+
+The transform is intentionally conservative. It bails (leaving the source unchanged and emitting a compile-time warning) when the child is not a single component element, when the imported binding is also used elsewhere in the file (the bundler would static-bundle it anyway), or for member expressions deeper than depth-1 (`<M.Sub.Modal />`). When it bails, fall back to the explicit `chunk`-prop form. The inline form is a JS-fallback-compiler feature; running tests through a bundler without `@pyreon/vite-plugin` reaches the runtime without a synthesized `chunk` and throws a clear actionable error pointing at both forms.
+
+### Defer vs lazy / Suspense
+
+| Need                                                | Use                                                    |
+| --------------------------------------------------- | ------------------------------------------------------ |
+| Split a route / always-rendered heavy component     | `lazy()` + `Suspense` (import starts immediately)      |
+| Code that shouldn't load until a condition / scroll | `Defer` with `when` / `on="visible"` / `on="idle"`     |
+| Show a loading UI for either                        | `Suspense` (for `lazy()`) or `Defer`'s `fallback` prop |
+
+`Defer` is not a replacement for `lazy()` -- `lazy()` is for "this component is always part of the render but I want it in its own chunk", `Defer` is for "don't even fetch this until the trigger fires". Both compose with `ErrorBoundary` for chunk-load failure recovery.
+
 ## mapArray
 
 Keyed reactive list mapping that creates each mapped item exactly once per key and reuses it across updates. When the source array is reordered or partially changed, only new keys invoke `map()`; existing entries return the cached result. Removed keys are evicted from the cache.

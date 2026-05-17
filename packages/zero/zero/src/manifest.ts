@@ -476,6 +476,105 @@ const ButtonLink = createLink((props) => (
     },
 
     {
+      name: 'Icon',
+      kind: 'component',
+      signature: '<Icon as={ImportedSvgComponent} | svg={rawSvgMarkupString} {...hostProps} />',
+      summary:
+        "Renders a FULL loaded SVG — it does NOT synthesize its own `<svg>` around hand-authored `<path>` children. You load an svg (it already contains the `<svg>` root) and Icon makes it container-sizable + theme-aware. Two source props: `as` — an imported SVG *component* (`import X from './x.svg?component'`), rendered DIRECTLY with no host wrapper (recommended; it's a real `<svg>` so container-fill is reliable); `svg` — the raw `<svg>…</svg>` *markup string* (`import x from './x.svg?raw'`), inlined via a single `<span>` host (a markup string needs a parent to mount — this one host is unavoidable for the string form). Defaults (`fill=\"currentColor\"`, `display:block;width:100%;height:100%`) are overridable — consumer props spread through and win. No fixed size → fills its container; `fill=\"currentColor\"` themes via CSS `color`. Intentionally no `useIcon` hook (an icon has no composable behaviour); two layers: `createIcon` (one component per loaded glyph) + `Icon` (one-off).",
+      example: `import { Icon } from '@pyreon/zero'
+import Check from './check.svg?component'
+import checkRaw from './check.svg?raw'
+
+// Component form — rendered directly, no wrapper, reliable fill:
+<span style="width:2rem"><Icon as={Check} /></span>
+
+// Raw-markup form — inlined inside one <span> host:
+<span style="width:2rem"><Icon svg={checkRaw} /></span>`,
+      mistakes: [
+        "Expecting `<Icon>` to synthesize an `<svg>` from `<path>` children — it does NOT. Pass a loaded svg via `as` (imported `?component`) or `svg` (imported `?raw` string). Children are not the API",
+        "Expecting `<Icon>` to size itself — it has NO intrinsic size; it fills its container. Wrap + size it (`<span style=\"width:1.5rem\">`) or use a sized flex/grid cell",
+        "Hardcoding `fill=\"#000\"` — breaks theming. Leave the `currentColor` default; drive colour with CSS `color` so dark mode + hover work for free. Only the `as` form forwards `fill` to the real svg — the `svg`-string form's markup is opaque, so colour it via `currentColor` inside the asset",
+        "Expecting svg-only props (`viewBox`, `fill`) to apply in the `svg`-string form — they can't reach the opaque inlined markup; only host attrs (`class`, `style`, `aria-*`, events) forward. Use the `as` form when you need to drive svg attributes",
+        "Reaching for a `useIcon` hook — there isn't one, by design. Use `createIcon` or inline `<Icon>`; an icon has no behaviour worth a hook layer",
+        "Preferring `svg` (raw string) for the wrapper-free guarantee — it's the opposite: `svg` ALWAYS adds a `<span>` host (unavoidable for string inlining); `as` is the zero-wrapper form",
+      ],
+      seeAlso: ['createIcon', 'IconProps', 'Image'],
+    },
+    {
+      name: 'createIcon',
+      kind: 'function',
+      signature: 'function createIcon(source: string | SvgComponent): (props: SvgAttributes) => VNodeChild',
+      summary:
+        "Builds a reusable icon component from a LOADED svg — a raw `<svg>…</svg>` markup string (`?raw`) OR an imported SVG component (`?component`). The result is still just `<Icon>` (string → `svg` prop, component → `as` prop), so it's container-sizable + theme-aware with every prop passed through. A generated icon set is `createIcon`-per-glyph with zero per-icon boilerplate. Mirrors the `createLink`/`createImage` factory layer, minus a hook (icons have no composable behaviour).",
+      example: `import { createIcon } from '@pyreon/zero'
+import StarSvg from './star.svg?component'
+import checkRaw from './check.svg?raw'
+
+export const Star = createIcon(StarSvg)     // component → rendered directly
+export const Check = createIcon(checkRaw)   // raw string → inlined via <span>
+
+// Sized + themed entirely by the consumer:
+<span style="width:48px"><Check class="text-green-600" aria-label="done" /></span>`,
+      mistakes: [
+        "Calling `createIcon` inside a component body — define icon components at module scope (like `createLink`/`createImage`). Re-creating the component every render defeats identity-based reconciliation",
+        "Passing hand-built `<path>` JSX as `source` — `source` is a full loaded svg: a `?raw` markup string OR a `?component` import. It does NOT take individual shapes; the loaded asset already contains its own `<svg>` root",
+        "Assuming the `?raw` form has no wrapper — the string form ALWAYS adds one `<span>` host (unavoidable for inlining markup). Use the `?component` form for the zero-wrapper, attribute-forwarding path",
+      ],
+      seeAlso: ['Icon', 'IconProps', 'createNamedIcon', 'iconsPlugin'],
+    },
+    {
+      name: 'iconsPlugin',
+      kind: 'function',
+      signature: "iconsPlugin({ dir | sets, out?, mode?: 'inline' | 'image' }): Plugin",
+      summary:
+        "Vite plugin (from `@pyreon/zero/server`): point it at a folder of `*.svg` files and it writes a strictly-typed generated `icons.gen.tsx` exporting `<Icon name=\"…\" />`. Add an svg → the `name` union widens; remove one → an invalid `name` fails typecheck. The generated file calls `createNamedIcon(REGISTRY)`, so `keyof typeof REGISTRY` IS the type surface (autocomplete + real go-to-definition, zero per-app wiring — same one-touch shape as fs-router / islands auto-registry). Regenerates on add/unlink in dev (idempotent write — never rewrites identical content). **Named multi-set form** (`sets: { ui: { dir }, brand: { dir, mode } }`, mutually exclusive with `dir`): one generated file exports a strictly-typed component PER set with NAMESPACED types so they never clash — `ui` → `<UiIcon name=\"…\" />` + `type UiIconName`, `brand` → `<BrandIcon name=\"…\" />` + `type BrandIconName`; per-set binding prefixes mean two sets sharing a glyph filename don't collide. Two render modes per the colorful-vs-system split (settable per-set): `mode: 'inline'` (default — system icons; each svg inlined as raw `?raw` markup, `currentColor`-themeable, recolor via CSS `color`) and `mode: 'image'` (colorful / brand icons; each svg emitted as a static asset, rendered `<img>`, NO mutation, original colors preserved). Default `out` is `icons.gen.tsx` next to `dir` for the single-set form (`src/icons` → `src/icons.gen.tsx`) or `src/icons.gen.tsx` for the multi-set form — recommend gitignoring it (build artifact). It writes a real file (NOT a virtual module) deliberately: the published `@pyreon/zero` package can't `import` a plugin virtual module — Rolldown resolves static imports before plugin `resolveId` (the same constraint that makes islands need `hydrateIslandsAuto(registry)` with an explicit import).",
+      example: `// vite.config.ts — single set:
+import { iconsPlugin } from '@pyreon/zero/server'
+iconsPlugin({ dir: './src/icons' })
+// app: import { Icon } from './icons.gen'; <Icon name="check-circle" />
+
+// Named multi-set — per-set typed components, no IconName clash:
+iconsPlugin({ sets: {
+  ui:    { dir: './src/icons/ui' },
+  brand: { dir: './src/icons/brand', mode: 'image' },
+}})
+// app: import { UiIcon, BrandIcon } from './icons.gen'
+// <UiIcon name="arrow-left" />  <BrandIcon name="logo-mark" />`,
+      mistakes: [
+        "Passing BOTH `dir` and `sets` (or neither) — exactly one is required; the plugin throws `[Pyreon] iconsPlugin: provide EXACTLY ONE of dir or sets` at config time",
+        "Using `mode: 'inline'` (default) for multicolor / brand SVGs — inline mode is for monochrome system icons you recolor via `currentColor`. A multicolor logo's hardcoded fills survive but you lose nothing by using `mode: 'image'`, which is the correct choice for no-mutation colorful assets",
+        "Using `mode: 'image'` for icons you need to recolor — `<img>` can't be themed via CSS `color`; the svg is opaque. Recolorable system icons need `mode: 'inline'`",
+        "Editing the generated `icons.gen.tsx` by hand — it's regenerated on every add/unlink. Add/remove `.svg` files in the set folder(s) instead; commit the gitignore entry, not the file",
+        "Expecting a virtual `import 'virtual:zero/icons'` — there isn't one (Rolldown import-ordering constraint). The plugin writes a REAL file you import by path; that's what gives go-to-definition + zero wiring",
+        "Pointing a set `dir` at a folder that doesn't exist yet — `scanIconDir` returns empty and the generated `*IconName` is `never` (every `name` fails typecheck). Create the folder + drop at least one `.svg` first",
+        "Forgetting `vite/client` types — the generated file's `?raw` imports rely on Vite's ambient `*.svg?raw` module declaration; the generated file emits `/// <reference types=\"vite/client\" />` but the consuming tsconfig must still resolve `vite/client`",
+      ],
+      seeAlso: ['createNamedIcon', 'Icon', 'IconProps'],
+    },
+    {
+      name: 'createNamedIcon',
+      kind: 'function',
+      signature:
+        "function createNamedIcon<R extends Record<string, string>>(registry: R, options?: { mode?: 'inline' | 'image' }): (props: { name: keyof R & string } & …) => VNodeChild",
+      summary:
+        "Runtime half of `iconsPlugin` — builds a strictly-typed `<Icon name=\"…\" />` from a name→source registry. `keyof R` makes `name` a precise string union (the generated file passes a literal registry so the union infers there → autocomplete + go-to-definition). `mode: 'inline'` (default) treats each `source` as raw `<svg>` markup rendered via `Icon` (`currentColor`-themeable system icons); `mode: 'image'` treats each `source` as an asset URL rendered `<img>` with NO mutation (colorful / brand icons). Either way it stays container-filling + props-transparent. Not normally hand-called — `iconsPlugin` emits the generated file that calls it; call it directly only for a hand-maintained set.",
+      example: `// icons.gen.tsx (auto-generated by iconsPlugin):
+import { createNamedIcon } from '@pyreon/zero'
+export const Icon = createNamedIcon({ 'check-circle': '<svg…>…</svg>' })
+
+// image mode (hand-maintained colorful set):
+import logo from './logo.svg' // Vite → URL
+export const Brand = createNamedIcon({ logo }, { mode: 'image' })
+<Brand name="logo" alt="Company" />`,
+      mistakes: [
+        "Passing a `Record<string, string>` typed loosely (e.g. `: Record<string, string>`) — that widens `keyof R` to `string` and you lose the typed `name`. Pass the object literal directly (or `as const`) so the keys infer",
+        "Using `mode: 'image'` then expecting `fill` / svg props to apply — the `<img>` is opaque; only host attrs (`class`, `style`, `alt`, events) forward. Use `mode: 'inline'` for svg-attribute control",
+        "Omitting `alt` in `mode: 'image'` — it defaults to `\"\"` (decorative). Pass a real `alt` for meaningful icons; screen readers skip empty-alt images",
+        "Calling `createNamedIcon` inside a component body — define the set once at module scope (the generated file does). Re-creating it per render defeats identity-based reconciliation",
+      ],
+      seeAlso: ['iconsPlugin', 'Icon', 'IconProps'],
+    },
+    {
       name: 'Image',
       kind: 'component',
       signature:

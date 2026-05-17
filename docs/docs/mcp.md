@@ -188,22 +188,39 @@ Returns the migrated code, a list of applied changes, and any remaining issues t
 
 ### diagnose
 
-Parse an error message into structured fix information.
+Parse a Pyreon runtime / build error into structured fix information. The **string-only call is fully backward-compatible** — pass just `error` and you get the v1 behavior (probable cause + fix + related docs from the regex pattern table). v2 adds **optional structured context** for richer, causal diagnosis: supply the failing component source and the dev-mode reactive trace and the tool assembles a deterministic failure context for the calling agent to reason over (no embedded model).
 
 **Parameters:**
 
-| Param   | Type     | Description                   |
-| ------- | -------- | ----------------------------- |
-| `error` | `string` | The error message to diagnose |
+| Param             | Type                    | Description                                                                                                                                                  |
+| ----------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `error`           | `string`                | The error message / stack to diagnose                                                                                                                        |
+| `componentSource` | `string?`               | Failing component source. Runs the static Pyreon detectors over it and maps each hit to the documented anti-pattern catalog entry                             |
+| `filename`        | `string?`               | Filename for path-sensitive detectors                                                                                                                        |
+| `reactiveTrace`   | `ReactiveTraceEntry[]?` | `ErrorContext.reactiveTrace` from `@pyreon/core` (dev-only) — the causal sequence of signal writes leading to the crash, formatted as a chronological run-up  |
+| `phase`           | `string?`               | Lifecycle phase (`setup` / `render` / `mount` / `unmount` / `effect`)                                                                                        |
+
+`ReactiveTraceEntry` is `{ name?: string; prev: string; next: string; timestamp: number }`.
 
 **Response includes:**
 
-- Root cause explanation
-- Suggested fix (prose)
-- Fix code snippet (when applicable)
+- Root cause explanation (v1 regex diagnosis)
+- Suggested fix (prose) + fix code snippet (when applicable)
 - Related documentation links
+- **(v2, when `componentSource` supplied)** static detector findings mapped to matched anti-pattern catalog entries
+- **(v2, when `reactiveTrace` supplied)** the chronological signal-write run-up to the crash
 
-Recognizes common Pyreon errors like missing imports, type mismatches, SSR context issues, and router configuration problems.
+The enrichment sections appear **only** when the optional context is supplied — an error-only call returns byte-identical output to v1. `reactiveTrace` is dev-only (it tree-shakes out of production builds), so production error reports degrade gracefully to the v1 base diagnosis. Recognizes common Pyreon errors like missing imports, type mismatches, SSR context issues, and router configuration problems.
+
+**Example call (v2):**
+
+```json
+{
+  "error": "name is stale after parent update",
+  "componentSource": "function G({ name }) { return <div>{name}</div> }",
+  "reactiveTrace": [{ "name": "name", "prev": "\"a\"", "next": "\"b\"", "timestamp": 1 }]
+}
+```
 
 ### get_routes
 
@@ -247,7 +264,7 @@ Falls back with a clear message when `.claude/rules/browser-packages.json` isn't
 
 ### get_pattern
 
-Fetches a canonical "how do I do X" pattern body from `docs/patterns/` in the monorepo. Patterns are markdown files keyed by slug (e.g. `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `keyed-lists`, `reactive-context`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`).
+Fetches a canonical "how do I do X" pattern body from `docs/docs/patterns/` in the monorepo. Patterns are markdown files keyed by slug — 16 today: `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`. Drop a new `docs/docs/patterns/<slug>.md` file to add one — it's discovered at runtime on the next call, no code change needed.
 
 **Parameters:**
 
@@ -265,19 +282,37 @@ When a pattern isn't found, returns up to 5 fuzzy-matched suggestions plus the f
 
 ### get_anti_patterns
 
-Browses the anti-pattern catalog parsed live from `.claude/rules/anti-patterns.md`. Each entry surfaces the rule body plus its `[detector: <code>]` tag (when one exists), so an agent can pair the catalog entry with the live static detector run by the [`validate`](#validate) tool.
+Browses the anti-pattern catalog parsed live from `.claude/rules/anti-patterns.md`. **Token-frugal by default**: with no arguments the tool returns a **compact index** — one line per entry (title + `[detector: <code>]` tag + a one-sentence hook), with the per-category `## <Heading>` markers preserved so categories stay discoverable in a single call. This is ≈3.3K tokens versus ≈14K for the full dump — a ~76% cut on the common "what should I avoid?" orient call. Drill into full bodies deliberately:
+
+- `{ name }` → the single matching entry's full body (cheapest drill-in; case-insensitive title substring match)
+- `{ category }` → full bodies for one category (the unchanged pre-existing filtered contract)
+- `{ full: true }` → the entire catalog (~14K tokens — explicit, expensive opt-in)
+
+Each `[detector: <code>]` tag pairs the entry with the live static detector run by the [`validate`](#validate) tool.
 
 **Parameters:**
 
-| Param      | Type      | Description                                                                                                                                                                                                          |
-| ---------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `category` | `string?` | Filter to one category. Allowed: `reactivity`, `jsx`, `context`, `architecture`, `testing`, `lifecycle`, `documentation`, `all`. Omit (or pass `"all"`) for the full catalog. Returns matching suggestions on a typo. |
+| Param      | Type       | Description                                                                                                                                              |
+| ---------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `category` | `string?`  | Full bodies for one category. Allowed: `reactivity`, `jsx`, `context`, `architecture`, `testing`, `lifecycle`, `documentation`, `all`. Omit for the index |
+| `name`     | `string?`  | Full body of the entry whose title contains this (case-insensitive). Most token-frugal drill-in. Returns the index pointer on no match                    |
+| `full`     | `boolean?` | Return the entire catalog (~14K tokens). Default is the compact index                                                                                    |
 
-**Example call:**
+**Example calls:**
+
+```json
+{}
+```
+
+```json
+{ "name": "Destructuring props" }
+```
 
 ```json
 { "category": "reactivity" }
 ```
+
+> **Behavior note:** prior to the token-slim change, a no-arg call returned the entire catalog. It now returns the compact index. Full bodies are still fully reachable — via `{ name }`, `{ category }`, or `{ full: true }` — just behind a deliberate call instead of the default. A token-budget CI gate (`src/tests/token-budget.test.ts`) pins `get_anti_patterns({})` under 5,000 tokens and keeps the index ≥60% smaller than `{ full: true }`.
 
 ### get_changelog
 

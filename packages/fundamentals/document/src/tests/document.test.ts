@@ -217,6 +217,46 @@ describe('HTML renderer', () => {
     expect(html).toContain('Hello')
   })
 
+  it('escapes XSS via document `language` and style values (F2)', async () => {
+    // Regression: `language` was interpolated raw into `<html lang="…">`
+    // and `styleStr` emitted string values raw into `style="…"`. A
+    // CMS/author-supplied `language` or column `width`/`align` containing
+    // `"><script>…` broke out of the attribute → stored XSS in the
+    // produced HTML (emailed / served).
+    const doc = Document({
+      language: 'en"><script>alert(1)</script>',
+      children: Page({
+        children: Column({
+          width: 'auto"><script>alert(2)</script>',
+          // Force a malicious string through the typed `align` prop (a
+          // CMS / untrusted source can supply any string at runtime).
+          align: 'start"><img src=x onerror=alert(3)>' as unknown as 'center',
+          children: Heading({ children: 'X' }),
+        }),
+      }),
+    })
+    const html = (await render(doc, 'html')) as string
+
+    // The real invariant: no tag/attribute can be FORMED from the
+    // payload. With `< > "` stripped, the residue is inert text inside a
+    // correctly-quoted attribute (e.g. `onerror=alert3` as junk CSS) —
+    // not executable. So assert no injected element + no attribute
+    // breakout, and that the lang / style attribute values carry none of
+    // the structural chars `" < >`.
+    // No element can be FORMED from the payload (`<` is stripped from
+    // every untrusted value, so no `<script`/`<img` exists beyond the
+    // renderer's own legitimate tags).
+    expect(html).not.toContain('<script')
+    expect(html).not.toContain('<img')
+    const langMatch = html.match(/<html lang="([^"]*)"/)
+    expect(langMatch).not.toBeNull()
+    expect(langMatch?.[1]).toMatch(/^[a-zA-Z0-9-]*$/)
+    // Every style="…" value is free of attribute-structural chars.
+    for (const m of html.matchAll(/style="([^"]*)"/g)) {
+      expect(m[1]).not.toMatch(/[<>"]/)
+    }
+  })
+
   it('renders text with formatting', async () => {
     const doc = Document({
       children: Text({

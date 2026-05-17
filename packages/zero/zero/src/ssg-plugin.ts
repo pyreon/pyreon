@@ -23,7 +23,7 @@
 
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { Plugin } from 'vite'
 import { resolveAdapter } from './adapters'
@@ -598,6 +598,21 @@ function resolveOutputPath(distDir: string, path: string): string {
   return join(distDir, path, 'index.html')
 }
 
+/**
+ * Path-containment check that is SEPARATOR-TERMINATED. A bare
+ * `resolve(filePath).startsWith(resolve(distDir))` is a string-prefix
+ * test, not a path test: with distDir `/app/dist`, a traversed filePath
+ * resolving to the SIBLING `/app/dist-evil/x` passes
+ * `'/app/dist-evil/x'.startsWith('/app/dist')` → true and the build
+ * writes outside the intended output root. `path` derives from caller
+ * route params (CMS slugs via `getStaticPaths`), so this is reachable.
+ */
+function isInsideDist(distDir: string, filePath: string): boolean {
+  const root = resolve(distDir)
+  const target = resolve(filePath)
+  return target === root || target.startsWith(root + sep)
+}
+
 // ─── Redirect emission (PR B) ──────────────────────────────────────────────
 //
 // The shape returned by the SSG entry's renderPath when a loader throws
@@ -1128,8 +1143,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
 
             if (config.ssg?.redirectsAsHtml === 'meta-refresh') {
               const filePath = resolveOutputPath(distDir, p)
-              const resolvedOut = resolve(distDir)
-              if (!resolve(filePath).startsWith(resolvedOut)) {
+              if (!isInsideDist(distDir, filePath)) {
                 errors.push({ path: p, error: new Error(`Path traversal detected: "${p}"`) })
                 return
               }
@@ -1144,8 +1158,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           const filePath = resolveOutputPath(distDir, p)
 
           // Path-traversal guard — same as @pyreon/server's prerender.
-          const resolvedOut = resolve(distDir)
-          if (!resolve(filePath).startsWith(resolvedOut)) {
+          if (!isInsideDist(distDir, filePath)) {
             errors.push({ path: p, error: new Error(`Path traversal detected: "${p}"`) })
             return
           }
@@ -1174,8 +1187,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
               const fallbackHtml = await config.ssg.onPathError(p, error)
               if (typeof fallbackHtml === 'string') {
                 const filePath = resolveOutputPath(distDir, p)
-                const resolvedOut = resolve(distDir)
-                if (!resolve(filePath).startsWith(resolvedOut)) {
+                if (!isInsideDist(distDir, filePath)) {
                   errors.push({ path: p, error: new Error(`Path traversal detected: "${p}"`) })
                   return
                 }
@@ -1505,6 +1517,7 @@ export const _internal = {
   resolvePaths,
   autoDetectStaticPaths,
   resolveOutputPath,
+  isInsideDist,
   expandUrlPattern,
   injectIntoTemplate,
   renderNetlifyRedirects,

@@ -57,7 +57,7 @@ describe('gen-docs — router snapshot', () => {
         const data = useLoaderData<UserData>()
         const router = useRouter()
         const isAdmin = useIsActive("/admin")
-        const { isTransitioning } = useTransition()
+        const isTransitioning = useTransition()
         const params = useTypedSearchParams({ tab: "string", page: "number" })
 
         return (

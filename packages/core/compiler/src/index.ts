@@ -2,8 +2,19 @@
 
 export type { DeferInlineResult, DeferInlineWarning } from './defer-inline'
 export { transformDeferInline } from './defer-inline'
-export type { CompilerWarning, TransformResult } from './jsx'
+export type {
+  CompilerWarning,
+  ReactivityKind,
+  ReactivitySpan,
+  TransformResult,
+} from './jsx'
 export { transformJSX, transformJSX_JS } from './jsx'
+export type {
+  AnalyzeReactivityResult,
+  ReactivityFinding,
+  ReactivityFindingKind,
+} from './reactivity-lens'
+export { analyzeReactivity, formatReactivityLens } from './reactivity-lens'
 export type { ComponentInfo, IslandInfo, ProjectContext, RouteInfo } from './project-scanner'
 export { generateContext } from './project-scanner'
 export type {

@@ -30,6 +30,7 @@ const COMPILER_CODES = [
   'for-missing-by',
   'for-with-key',
   'props-destructured',
+  'props-destructured-body',
   'process-dev-gate',
   'empty-theme',
   'raw-add-event-listener',

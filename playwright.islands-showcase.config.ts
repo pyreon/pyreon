@@ -37,7 +37,10 @@ import { defineConfig, devices } from '@playwright/test'
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
-  retries: 0,
+  // CI: retry flaky specs (overlayfs / timing / HMR-ws / resource-
+  // contention races) so a single flake self-heals within its job; a
+  // real bug fails all attempts. Local stays 0 for honest, fast feedback.
+  retries: process.env.CI ? 2 : 0,
   use: {
     headless: true,
     browserName: 'chromium',
