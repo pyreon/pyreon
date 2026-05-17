@@ -1185,13 +1185,13 @@ export const Dynamic = PyreonDynamic
  * maps Solid's `mount` prop onto Pyreon's `Portal` `target` prop. When `mount`
  * is omitted, it defaults to `document.body` — matching Solid's default.
  *
- * LIMITATIONS (honest — not faked):
- * - `useShadow` is NOT supported. Solid attaches a shadow root to the portal
- *   host for style isolation; `@pyreon/core`'s `Portal` renders directly into
- *   the target with no shadow root. If `useShadow` is passed it is ignored.
- * - `isSVG` is NOT supported. Solid uses it to create the portal host in the
- *   SVG namespace; Pyreon's `Portal` always renders into the target as-is. If
- *   `isSVG` is passed it is ignored.
+ * `useShadow` and `isSVG` are fully supported at the wrapper level (no
+ * `@pyreon/core` change needed): a dedicated host element is created under
+ * `mount` — an SVG-namespaced `<g>` for `isSVG`, or a `<div>` with an open
+ * shadow root for `useShadow` — and children portal into that host. The host
+ * is removed on unmount (via `onCleanup`), so mount/unmount cycles don't leak
+ * detached hosts. With neither flag set the behavior is unchanged (children
+ * portal straight into `mount`).
  *
  * @example
  * import { Portal } from "solid-js/web" // aliased to @pyreon/solid-compat
@@ -1212,13 +1212,39 @@ export const Dynamic = PyreonDynamic
  */
 export function Portal(props: {
   mount?: Element
-  /** Not supported by @pyreon/core's Portal — ignored. */
+  /** Wrap the portalled content in a shadow root on a dedicated host. */
   useShadow?: boolean
-  /** Not supported by @pyreon/core's Portal — ignored. */
+  /** Create the portal host in the SVG namespace (for portalling into `<svg>`). */
   isSVG?: boolean
   children: VNodeChild
 }): VNode {
-  const target = props.mount ?? document.body
+  const mountTarget = props.mount ?? document.body
+
+  // Fast path: no host customization → portal straight into the mount target
+  // (identical to the previous behavior; backward compatible).
+  if (!props.useShadow && !props.isSVG) {
+    return PyreonPortal({ target: mountTarget, children: props.children })
+  }
+
+  // Solid creates a dedicated host element under `mount` for shadow/SVG.
+  const host = props.isSVG
+    ? (document.createElementNS('http://www.w3.org/2000/svg', 'g') as unknown as Element)
+    : document.createElement('div')
+  mountTarget.appendChild(host)
+
+  // `attachShadow` returns a ShadowRoot — a structurally-valid appendChild
+  // container for Pyreon's Portal (the renderer only needs a node it can
+  // append children into). The cast is the documented boundary: ShadowRoot
+  // is not an `Element` but is a valid mount root for the DOM renderer.
+  const target: Element =
+    props.useShadow && !props.isSVG
+      ? (host.attachShadow({ mode: 'open' }) as unknown as Element)
+      : host
+
+  // Remove the host when the surrounding component unmounts so repeated
+  // mount/unmount cycles don't leak detached hosts (Solid manages this too).
+  onCleanup(() => host.remove())
+
   return PyreonPortal({ target, children: props.children })
 }
 

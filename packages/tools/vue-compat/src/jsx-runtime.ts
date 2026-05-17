@@ -39,6 +39,13 @@ export interface RenderContext {
    * + attrs. Set by the wrapper before each render.
    */
   _props?: Record<string, unknown>
+  /**
+   * Names of props declared via `defineComponent({ props })`. Set by
+   * `defineComponent` so `useAttrs()` / `getCurrentInstance().attrs` can
+   * compute the Vue declared-vs-fallthrough split. Undefined when the
+   * component didn't declare props (then attrs = the full props object).
+   */
+  _declaredProps?: string[]
 }
 
 export interface EffectEntry {

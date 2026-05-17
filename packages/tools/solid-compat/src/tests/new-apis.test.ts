@@ -1610,23 +1610,65 @@ describe('Portal', () => {
     document.body.removeChild(host)
   })
 
-  it('ignores unsupported useShadow / isSVG props without throwing', () => {
+  // NOTE: these assert the wrapper's host CREATION contract (the fix). The
+  // actual children-rendered-into-shadow/SVG behavior depends on real DOM
+  // shadow-root / SVG-namespace semantics that happy-dom does not faithfully
+  // reflect through Pyreon's mountChild — that is verified in the real-Chromium
+  // solid-compat.browser.test.ts (test-environment-parity rule).
+  it('useShadow creates a div host with an open shadow root under mount', () => {
     const container = document.createElement('div')
-    const host = document.createElement('div')
-    document.body.appendChild(host)
-    expect(() =>
-      mount(
-        jsx(Portal as unknown as ComponentFn, {
-          mount: host,
-          useShadow: true,
-          isSVG: true,
-          children: h('span', { id: 'p-flags' }, 'ok'),
-        }),
-        container,
-      ),
-    ).not.toThrow()
-    expect(host.querySelector('#p-flags')?.textContent).toBe('ok')
-    document.body.removeChild(host)
+    const mountEl = document.createElement('div')
+    document.body.appendChild(mountEl)
+    mount(
+      jsx(Portal as unknown as ComponentFn, {
+        mount: mountEl,
+        useShadow: true,
+        children: h('span', { id: 'p-shadow' }, 'shadowed'),
+      }),
+      container,
+    )
+    const shadowHost = mountEl.firstElementChild as HTMLElement
+    expect(shadowHost).toBeTruthy()
+    expect(shadowHost.tagName.toLowerCase()).toBe('div')
+    expect(shadowHost.shadowRoot).not.toBeNull()
+    document.body.removeChild(mountEl)
+  })
+
+  it('isSVG creates an SVG-namespaced <g> host under mount', () => {
+    const container = document.createElement('div')
+    const mountEl = document.createElement('div')
+    document.body.appendChild(mountEl)
+    mount(
+      jsx(Portal as unknown as ComponentFn, {
+        mount: mountEl,
+        isSVG: true,
+        children: h('text', { id: 'p-svg' }, 'in-svg'),
+      }),
+      container,
+    )
+    const svgHost = mountEl.firstElementChild
+    expect(svgHost?.namespaceURI).toBe('http://www.w3.org/2000/svg')
+    expect(svgHost?.tagName.toLowerCase()).toBe('g')
+    document.body.removeChild(mountEl)
+  })
+
+  it('default (no flags) still portals straight into mount — unchanged', () => {
+    const container = document.createElement('div')
+    const mountEl = document.createElement('div')
+    document.body.appendChild(mountEl)
+    mount(
+      jsx(Portal as unknown as ComponentFn, {
+        mount: mountEl,
+        children: h('span', { id: 'p-plain' }, 'plain'),
+      }),
+      container,
+    )
+    // No wrapper host — children land directly under mount.
+    expect(mountEl.querySelector('#p-plain')?.textContent).toBe('plain')
+    expect(
+      (mountEl.firstElementChild as HTMLElement | null)?.shadowRoot ?? null,
+    ).toBeNull()
+    document.body.removeChild(mountEl)
   })
 })
 

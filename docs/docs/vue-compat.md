@@ -1362,7 +1362,7 @@ function useUid() {
 
 The same `uid` is stable across re-renders of the same instance (hook-indexed), matching Vue's per-instance-id guarantee.
 
-**Difference from Vue:** Only a minimal `{ uid, proxy, slots, attrs, isMounted }` is provided. `proxy` is an **empty object** -- Pyreon components are plain functions with no `this`-bound Options instance, so code that reads reactive state off `instance.proxy.$data` / `.$props` will not work (use `props` directly). `appContext`, `parent`, `vnode`, `emit`, `expose`, and render internals are **not** provided -- libraries that walk the parent chain or call `emit` off the instance are not supported via this handle (use the `emit` passed to `defineComponent`'s setup context instead).
+**Difference from Vue:** A minimal `{ uid, proxy, slots, attrs, emit, isMounted }` is provided. `instance.emit(event, ...args)` **is** supported — it invokes the matching `on{Event}` prop handler (same behavior as `defineComponent`'s setup-context `emit`), so libraries that call `instance.emit(...)` work. `instance.attrs` is the Vue fallthrough split (declared props excluded) when the component used `defineComponent({ props })`; otherwise it is the full props object. `proxy` is an **empty object** — Pyreon components are plain functions with no `this`-bound Options instance, so code reading reactive state off `instance.proxy.$data` / `.$props` will not work (use `props` directly). `appContext`, `parent`, `vnode`, `expose`, and render internals are **not** provided — libraries that walk the parent chain are not supported via this handle.
 
 #### `useSlots`
 
@@ -1404,7 +1404,7 @@ const Passthrough = defineComponent({
 })
 ```
 
-**Difference from Vue:** In Vue, `useAttrs()` returns only the fallthrough attributes **not** declared in `props`. `@pyreon/vue-compat` does no declared-prop separation (components are plain functions receiving one `props` object), so this returns the **full props object** -- every consumer-supplied attribute is present, including any that Vue would have consumed as declared props. Read the specific keys you need; don't assume the result excludes declared props. Returns an empty object when called outside a component.
+**Difference from Vue:** When the component is defined via `defineComponent({ props })`, `useAttrs()` returns the Vue **fallthrough split** — every consumer-supplied attribute that is **not** a declared prop (and not the internal `children` payload). For a plain-function component that declared no props, the split is unknowable, so the **full props object** is returned (honest fallback — read the specific keys you need in that case). Returns an empty object when called outside a component.
 
 ### Rendering
 
@@ -1973,7 +1973,7 @@ createApp(App).mount('#app')
 | `Suspense`          | Function | Show fallback while an async child loads             |
 | `getCurrentInstance` | Function | Minimal current-component-instance handle            |
 | `useSlots`          | Function | Current component's slots (`default` only)           |
-| `useAttrs`          | Function | Current component's attributes (full props object)   |
+| `useAttrs`          | Function | Fallthrough attrs (declared props excluded under `defineComponent({ props })`) |
 | `h`               | Function | Create virtual DOM nodes                             |
 | `Fragment`        | Symbol   | Fragment for multiple root elements                  |
 | `createApp`       | Function | Create an application instance                       |

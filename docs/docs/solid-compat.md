@@ -1135,12 +1135,15 @@ const host = document.getElementById('overlay-root')!
 </Portal>
 ```
 
-::: warning Limitations
-`useShadow` and `isSVG` are accepted in the prop type for API compatibility but are **ignored** -- `@pyreon/core`'s `Portal` has no shadow-root or SVG-namespace support:
+::: tip useShadow / isSVG are fully supported
+Implemented at the wrapper level — no `@pyreon/core` change needed:
 
-- **`useShadow`** -- Solid attaches a shadow root to the portal host for style isolation. Pyreon's `Portal` renders directly into the target with no shadow root. Passing `useShadow` has no effect.
-- **`isSVG`** -- Solid uses this to create the portal host in the SVG namespace. Pyreon's `Portal` always renders into the target as-is. Passing `isSVG` has no effect.
+- **`useShadow`** — a `<div>` host is created under `mount`, an open shadow root is attached to it, and children render inside the shadow root (style isolation, matching Solid).
+- **`isSVG`** — an SVG-namespaced `<g>` host is created under `mount` and children render into it (for portalling into an `<svg>`).
+- The created host is removed on unmount (via `onCleanup`), so repeated mount/unmount cycles don't leak detached hosts.
+- With neither flag set, behavior is unchanged — children portal straight into `mount` (no wrapper host).
 
+Real shadow-DOM / SVG-namespace rendering is verified in the real-Chromium `solid-compat.browser.test.ts` (happy-dom can't faithfully reflect it).
 :::
 
 ### Rendering
