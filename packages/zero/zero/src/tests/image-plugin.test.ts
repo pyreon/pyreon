@@ -1,5 +1,14 @@
-import { describe, expect, it } from 'vitest'
-import { parseJpegDimensions, parseWebPDimensions } from '../image-plugin'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import {
+  generatePlaceholder,
+  normalizePlaceholder,
+  parseJpegDimensions,
+  parseWebPDimensions,
+  resolveQuality,
+} from '../image-plugin'
 
 describe('parseJpegDimensions', () => {
   function makeJpeg(width: number, height: number): Buffer {
@@ -123,5 +132,114 @@ describe('parseWebPDimensions', () => {
     buf.write('XXXX', 12, 'ascii')
     const result = parseWebPDimensions(buf)
     expect(result).toEqual({ width: 0, height: 0 })
+  })
+})
+
+describe('resolveQuality', () => {
+  it('defaults every format to 80 when undefined', () => {
+    const q = resolveQuality(undefined)
+    expect(q('webp')).toBe(80)
+    expect(q('avif')).toBe(80)
+    expect(q('jpeg')).toBe(80)
+    expect(q('png')).toBe(80)
+  })
+
+  it('applies a single number to every format (backward-compatible)', () => {
+    const q = resolveQuality(85)
+    expect(q('webp')).toBe(85)
+    expect(q('avif')).toBe(85)
+  })
+
+  it('resolves per-format from a map', () => {
+    const q = resolveQuality({ avif: 55, webp: 75 })
+    expect(q('avif')).toBe(55)
+    expect(q('webp')).toBe(75)
+  })
+
+  it('falls back to 80 for formats omitted from the map', () => {
+    const q = resolveQuality({ avif: 55 })
+    expect(q('avif')).toBe(55)
+    expect(q('webp')).toBe(80)
+    expect(q('jpeg')).toBe(80)
+  })
+})
+
+describe('normalizePlaceholder', () => {
+  it('passes blur / color / none through unchanged', () => {
+    expect(normalizePlaceholder('blur')).toBe('blur')
+    expect(normalizePlaceholder('color')).toBe('color')
+    expect(normalizePlaceholder('none')).toBe('none')
+  })
+
+  it('maps the deprecated dominant-color alias to color', () => {
+    // dominant-color was typed since the plugin's inception but never
+    // implemented — this alias is what closes that gap.
+    expect(normalizePlaceholder('dominant-color')).toBe('color')
+  })
+})
+
+describe('generatePlaceholder (sharp-backed)', () => {
+  let dir: string
+  let img: string
+
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'pyreon-img-'))
+    img = join(dir, 'red.png')
+    // Solid pure-red 8x8 PNG via sharp — deterministic dominant colour.
+    const sharp = await import('sharp').then((m) => m.default ?? m)
+    await sharp({
+      create: { width: 8, height: 8, channels: 3, background: { r: 255, g: 0, b: 0 } },
+    })
+      .png()
+      .toFile(img)
+  })
+
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it("'none' produces no placeholder regardless of input", async () => {
+    expect(await generatePlaceholder(img, 'none', 16)).toBe('')
+  })
+
+  it("'color' produces a flat-fill SVG data URI of the dominant colour", async () => {
+    const ph = await generatePlaceholder(img, 'color', 16)
+    expect(ph.startsWith('data:image/svg+xml,')).toBe(true)
+    const svg = decodeURIComponent(ph.slice('data:image/svg+xml,'.length))
+    expect(svg).toContain('<rect')
+    // sharp's `.stats()` dominant is histogram-BINNED, not an exact pixel
+    // read — a pure-red source comes back ~#f80808, not #ff0000. Assert the
+    // swatch is unambiguously red (high R, low G/B) rather than an exact hex.
+    const m = svg.match(/fill='#([0-9a-f]{6})'/)
+    expect(m).not.toBeNull()
+    const [r, g, b] = [0, 2, 4].map((i) => parseInt(m![1]!.slice(i, i + 2), 16))
+    expect(r).toBeGreaterThan(200)
+    expect(g).toBeLessThan(60)
+    expect(b).toBeLessThan(60)
+  })
+
+  it("'color' payload size is constant regardless of image content", async () => {
+    // The real win of `color` over `blur` is CONSTANT size — a flat SVG is
+    // the same ~200 bytes for a 1px solid or a 4K photo, whereas a blurred
+    // WebP grows with source complexity. (For a trivial solid image blur
+    // can actually be the smaller of the two — the advantage shows on real
+    // photos, and as zero-decode instant paint.) Assert the invariant that
+    // actually holds: a different-content image yields a same-length SVG.
+    const blue = join(dir, 'blue.png')
+    const sharp = await import('sharp').then((m) => m.default ?? m)
+    await sharp({
+      create: { width: 64, height: 64, channels: 3, background: { r: 0, g: 0, b: 255 } },
+    })
+      .png()
+      .toFile(blue)
+    const a = await generatePlaceholder(img, 'color', 16)
+    const c = await generatePlaceholder(blue, 'color', 16)
+    expect(c.length).toBe(a.length) // identical envelope, only the hex differs
+    expect(a.length).toBeLessThan(256) // fixed, tiny
+  })
+
+  it("'blur' produces a base64 WebP data URI", async () => {
+    const ph = await generatePlaceholder(img, 'blur', 16)
+    expect(ph.startsWith('data:image/webp;base64,')).toBe(true)
   })
 })
