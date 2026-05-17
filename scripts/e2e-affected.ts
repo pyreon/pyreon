@@ -181,9 +181,16 @@ const SUITES: Suite[] = [
   },
 ]
 
+export { SUITES }
+export type { Suite }
+
 // ── Broad-blast-radius files → run EVERYTHING ──────────────────────────────
 
-function forcesFullRun(path: string): boolean {
+/**
+ * True when a changed path has broad/unknowable blast radius and the
+ * conservative response is to run the FULL suite. Exported for unit tests.
+ */
+export function forcesFullRun(path: string): boolean {
   if (path === 'bun.lock' || path === 'package.json') return true
   if (/^tsconfig.*\.json$/.test(path)) return true
   if (path === 'vitest.shared.ts' || path === 'vitest.browser.ts') return true
@@ -199,49 +206,68 @@ function forcesFullRun(path: string): boolean {
   return false
 }
 
-// ── Main ───────────────────────────────────────────────────────────────────
+// ── Pure selection (unit-testable — no IO) ─────────────────────────────────
 
-let base = 'origin/main'
-let all = false
-let list = false
-for (const arg of process.argv.slice(2)) {
-  if (arg === '--all') all = true
-  else if (arg === '--list') list = true
-  else if (arg.startsWith('--base=')) base = arg.slice('--base='.length)
-}
-
-function selected(): Suite[] {
-  if (all) return SUITES
-
-  let changed: string[]
-  try {
-    const out = execSync(`git diff --name-only ${base}...HEAD`, {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-    changed = out.split('\n').filter(Boolean)
-  } catch {
-    // Can't compute the diff (shallow clone, bad base) — be safe, run all.
-    return SUITES
-  }
-
-  if (changed.length === 0) return [] // nothing changed at all
-
+/**
+ * Decide which e2e suites a change set requires. PURE — no git, no env,
+ * no process. The CLI (`main`) computes `changed` from git and calls this.
+ *
+ * @param changed  changed file paths (repo-relative), or `null` when the
+ *                 diff could NOT be computed (shallow clone / bad base) —
+ *                 treated as "unknown blast radius" → run ALL (safe).
+ * @param opts.all force the full suite (push:main / merge_group).
+ */
+export function selectSuites(
+  changed: string[] | null,
+  opts: { all?: boolean } = {},
+): Suite[] {
+  if (opts.all) return SUITES
+  if (changed === null) return SUITES // diff failed → safe full run
+  if (changed.length === 0) return [] // nothing changed → green skip
   if (changed.some(forcesFullRun)) return SUITES
-
-  const out = SUITES.filter((s) =>
+  return SUITES.filter((s) =>
     changed.some((f) => s.triggers.some((t) => f.startsWith(t))),
   )
-  return out
 }
 
-const chosen = selected()
+// ── CLI ────────────────────────────────────────────────────────────────────
 
-if (list) {
-  console.log(chosen.map((s) => s.name).join('\n'))
-} else {
-  // One compact line — consumed by `fromJSON()` in the workflow.
-  console.log(
-    JSON.stringify(chosen.map((s) => ({ name: s.name, script: s.script }))),
-  )
+function main(): void {
+  let base = 'origin/main'
+  let all = false
+  let list = false
+  for (const arg of process.argv.slice(2)) {
+    if (arg === '--all') all = true
+    else if (arg === '--list') list = true
+    else if (arg.startsWith('--base=')) base = arg.slice('--base='.length)
+  }
+
+  let changed: string[] | null
+  if (all) {
+    changed = null // ignored when all=true
+  } else {
+    try {
+      const out = execSync(`git diff --name-only ${base}...HEAD`, {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+      changed = out.split('\n').filter(Boolean)
+    } catch {
+      changed = null // can't diff → selectSuites returns ALL (safe)
+    }
+  }
+
+  const chosen = selectSuites(changed, { all })
+
+  if (list) {
+    console.log(chosen.map((s) => s.name).join('\n'))
+  } else {
+    // One compact line — consumed by `fromJSON()` in the workflow.
+    console.log(
+      JSON.stringify(chosen.map((s) => ({ name: s.name, script: s.script }))),
+    )
+  }
 }
+
+// Only run the CLI when executed directly — NOT when imported by a test.
+if (import.meta.main) main()

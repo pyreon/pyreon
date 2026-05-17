@@ -374,7 +374,42 @@ jobs:
       - name: Install Playwright Chromium
         run: bunx playwright install --with-deps chromium
       - name: Run e2e — ${{ matrix.name }}
-        run: bun run ${{ matrix.script }}
+        # Tee the combined output so the next step can surface FLAKY
+        # specs. `set -o pipefail` keeps Playwright's real exit code
+        # through the pipe so a genuine failure still fails the job.
+        run: |
+          set -o pipefail
+          bun run ${{ matrix.script }} 2>&1 | tee /tmp/e2e-out.txt
+      - name: Surface flaky specs (passed only on retry)
+        # `retries: 2` means a flaky spec self-heals → the job is green
+        # and the flake is INVISIBLE. That hides a degrading spec. This
+        # step turns "passed on retry" into a loud, durable signal: a
+        # GitHub ::warning:: annotation + a job-summary block. It does
+        # NOT fail the job (the retry already made it pass) — it makes
+        # the flake impossible to ignore so the rate gets watched.
+        if: always()
+        run: |
+          OUT=/tmp/e2e-out.txt
+          [ -f "$OUT" ] || exit 0
+          # Playwright's line/list reporter prints a final "  N flaky"
+          # and lists each flaky title with a "(retry #N)" suffix.
+          FLAKY=$(grep -E '[0-9]+ flaky' "$OUT" | grep -vE '\b0 flaky\b' || true)
+          if [ -z "$FLAKY" ]; then
+            echo "No flaky specs in suite '${{ matrix.name }}'."
+            exit 0
+          fi
+          TITLES=$(grep -E '\(retry #[0-9]+\)' "$OUT" | sed 's/^[[:space:]]*//' | sort -u || true)
+          echo "::warning title=Flaky e2e suite::'${{ matrix.name }}' had spec(s) that passed only on retry — $FLAKY"
+          {
+            echo "### ⚠️ Flaky specs in e2e suite \`${{ matrix.name }}\`"
+            echo ""
+            echo "Passed only after a retry (\`retries: 2\`). Green, but the flake rate should be watched / root-caused — not left to the retry mask."
+            echo ""
+            echo '```'
+            echo "$FLAKY"
+            [ -n "$TITLES" ] && { echo ""; echo "$TITLES"; }
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
