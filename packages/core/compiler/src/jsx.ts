@@ -39,7 +39,13 @@ import { loadNativeBinding } from './load-native'
 // environment, WASM runtime like StackBlitz, missing per-platform package).
 //
 // See `load-native.ts` for the resolution logic.
-type NativeTransformFn = (code: string, filename: string, ssr: boolean, knownSignals: string[] | null) => TransformResult
+type NativeTransformFn = (
+  code: string,
+  filename: string,
+  ssr: boolean,
+  knownSignals: string[] | null,
+  reactivityLens: boolean,
+) => TransformResult
 const nativeBinding = loadNativeBinding(import.meta.url)
 const nativeTransformJsx: NativeTransformFn | null = nativeBinding
   ? (nativeBinding.transformJsx as NativeTransformFn)
@@ -240,7 +246,13 @@ export function transformJSX(
   // of crashing the Vite dev server.
   if (nativeTransformJsx) {
     try {
-      return nativeTransformJsx(code, filename, options.ssr === true, options.knownSignals ?? null)
+      return nativeTransformJsx(
+        code,
+        filename,
+        options.ssr === true,
+        options.knownSignals ?? null,
+        options.reactivityLens === true,
+      )
     } catch {
       // Native transform failed — fall through to JS implementation
     }
