@@ -9,7 +9,7 @@
 '@pyreon/zero': patch
 ---
 
-Security / memory-leak / correctness hardening sweep across core, fundamentals, and zero. 13 source-grounded defects fixed; every fix has a bisect-verified regression test (revert → fail → restore → pass).
+Security / memory-leak / correctness hardening sweep across core, fundamentals, and zero. 12 source-grounded defects fixed; every fix has a bisect-verified regression test (revert → fail → restore → pass).
 
 **Security (prototype pollution / XSS / DoS)**
 
@@ -30,14 +30,13 @@ Security / memory-leak / correctness hardening sweep across core, fundamentals, 
 **Correctness / silent-failure**
 
 - `@pyreon/router` `stringifyLoaderData` — the cycle detector used an all-seen `WeakSet` that was never pruned, so a shared (DAG) reference — extremely common, e.g. `{ author: user, lastEditor: user }` from an ORM — falsely threw "circular reference" and 500'd the SSR response. Replaced with true ancestor-path detection (the original code's own comment anticipated exactly this remedy). **Behaviour change (bug fix, strictly more permissive):** payloads that previously 500'd now serialize; real cycles still throw.
-- `@pyreon/router` SWR — the background-revalidation `.catch` was a fully empty body; a persistently-failing revalidation loader produced zero signal (permanently stale data, developer blind). Now surfaced via `__DEV__` warn + `router._onError`, without cancelling the settled navigation.
 - `@pyreon/server` `processTemplate` — used `String.prototype.replace` with string replacements, so rendered HTML containing literal `$&` / `$$` / `` $` `` / `$'` (prices, code, math) was corrupted by regex-pattern substitution. Switched to function replacements.
 - `@pyreon/i18n` `interpolate` — a serialization failure (circular value, throwing `toString`) was swallowed silently, rendering `{{key}}` to end users with no signal. Now dev-warns (fallback behaviour unchanged).
 - `@pyreon/query` `useSSE` — the reactive effect unconditionally reset `intentionalClose = false`, so an explicit `close()` was silently overridden by any later reactive `url`/`enabled` change. Now respects `intentionalClose` (mirrors `useSubscription`); `reconnect()` is the explicit resume.
 
 **Disclosures (honest scope)**
 
-- **C5 (SWR swallow) ships without an isolated regression test, by deliberate decision.** The SWR `.catch` branch is not deterministically reachable from the public API in a unit test — `resolveRoute` returns fresh `RouteRecord` objects per resolution so `runLoaders`' `_loaderData.has(r)` gate is never true across navigations; every attempted trigger fell through to the (already-covered) blocking-loader error path, so a test there would pass for the wrong reason (false confidence — explicitly forbidden). The fix is correct by inspection and matches the project's own anti-patterns rule. **Separately flagged for follow-up (NOT investigated here to avoid silent scope creep): the unstable resolved-record identity appears to make SWR's nav-away/back trigger ineffective** — a distinct latent finding.
+- **An attempted SWR-swallow fix (surface the empty `.catch` via `__DEV__` warn + `_onError`) was REVERTED from this PR.** Probing empirically proved `revalidateSwrLoaders` is invoked **0 times** even by the canonical `staleWhileRevalidate` nav pattern: `resolveRoute` returns fresh `RouteRecord` objects per resolution, so `runLoaders`' `r.staleWhileRevalidate && router._loaderData.has(r)` gate is never true across navigations — the SWR branch is **dead code**, and the existing "revalidates in background" test's count actually comes from the blocking path running twice. Adding error-surfacing to provably-unreachable code is not hardening (and it dropped router coverage). **The real bug — `staleWhileRevalidate` is effectively non-functional for the nav-away/back case (record-identity-keyed gate)** — is a distinct, significant finding whose correct fix (key the gate by a stable path/loaderKey) is a non-trivial router behaviour change deserving its own focused, aligned PR. Documented in `router/src/tests/loader.test.ts` as a flagged follow-up; deliberately not bundled here (scope/risk).
 - One audit finding (`decodeKeyFromMarker`) was investigated and **dropped as a false positive** — `%2D` never appears in `encodeURIComponent` output, so the manual substitution is uniquely reversible.
 - Z5 (API-route param guard) is defense-in-depth: a string param value assigned to `__proto__` is a silent JS no-op (not exploitable); the guard prevents the real own-prop shadow for `constructor`/`prototype` and matches the repo-wide convention.
 

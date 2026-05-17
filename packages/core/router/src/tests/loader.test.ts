@@ -631,24 +631,23 @@ describe('router — staleWhileRevalidate', () => {
     expect(loaderCallCount).toBe(2)
   })
 
-  // NOTE: C5 (SWR background-revalidation error no longer silently
-  // swallowed — now surfaced via __DEV__ warn + router._onError) ships
-  // WITHOUT an isolated regression test, by deliberate decision. The SWR
-  // `.catch` branch is not deterministically reachable from the public
-  // API in a unit test: `runLoaders`'s gate is
+  // FOLLOW-UP FINDING (empirically proven, intentionally NOT fixed here):
+  // `revalidateSwrLoaders` is never invoked even by the canonical
+  // `staleWhileRevalidate` nav pattern above. `runLoaders`'s gate is
   // `r.staleWhileRevalidate && router._loaderData.has(r)`, but
-  // `resolveRoute` returns fresh RouteRecord objects per resolution, so
-  // `_loaderData.has(r)` is never true across separate navigations —
-  // every attempted trigger fell through to the BLOCKING loader path
-  // (which already surfaces onError), so a test there would pass for the
-  // wrong reason (false confidence — explicitly forbidden). Coupling a
-  // test to internal record identity was rejected as brittle. The fix
-  // itself is correct by inspection and matches the project's own
-  // anti-patterns.md rule ("Silent plugin/init error swallowing … Always
-  // log in __DEV__ and call onError"). Separately flagged for follow-up:
-  // the unstable resolved-record identity appears to make SWR's
-  // nav-away/back trigger ineffective — a distinct finding, intentionally
-  // NOT investigated here to avoid silent scope creep.
+  // `resolveRoute` returns FRESH `RouteRecord` objects per resolution, so
+  // `_loaderData.has(r)` is never true across navigations — the SWR
+  // branch is dead and the `loaderCallCount === 2` above actually comes
+  // from the BLOCKING path running twice (this test is misnamed). I.e.
+  // the `staleWhileRevalidate` route option is effectively non-functional
+  // for the nav-away/back case. This is a distinct, significant bug whose
+  // correct fix is keying `_loaderData` / the SWR gate by a STABLE key
+  // (path / loaderKey) instead of record identity — a non-trivial router
+  // behaviour change that deserves its own focused, aligned PR rather
+  // than being bundled into a hardening sweep (silent scope creep). An
+  // attempted "surface the swallowed SWR error" fix was reverted from
+  // this PR precisely because the path is unreachable dead code until
+  // this root cause is fixed.
 })
 
 describe('router.preload', () => {

@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { effect, signal } from '@pyreon/reactivity'
 import { describe, expect, it, vi } from 'vitest'
 
 // F3 — useSortable per-item registration leak.
@@ -74,5 +74,37 @@ describe('useSortable — per-item registration disposal (F3 leak)', () => {
     const churned = combineCleanups.slice(base)
     expect(churned).toHaveLength(200)
     for (const c of churned) expect(c).toHaveBeenCalledTimes(1)
+  })
+
+  it('component onCleanup drains BOTH container and per-item registrations (F3)', async () => {
+    // Covers the `onCleanup` block: when the sortable's owner is
+    // disposed, the shared container `cleanups[]` AND the per-key
+    // `itemCleanups` map are both drained (F3 added the itemCleanups
+    // drain). Runs inside a disposable `effect` so useSortable's
+    // `onCleanup` actually registers + fires.
+    const { useSortable } = await import('../use-sortable')
+    combineCleanups.length = 0
+
+    let itemRefFn: ((el: HTMLElement | null) => void) | null = null
+    let containerRefFn: ((el: HTMLElement | null) => void) | null = null
+    const owner = effect(() => {
+      const items = signal([{ id: '1' }])
+      const s = useSortable({ items, by: (i) => i.id, onReorder: () => {} })
+      containerRefFn = s.containerRef
+      itemRefFn = s.itemRef('1')
+    })
+
+    // Populate the container cleanups (dropTarget + autoScroll + keydown)
+    // and one per-item registration so BOTH drain paths execute.
+    containerRefFn!(document.createElement('div'))
+    itemRefFn!(document.createElement('div'))
+    const itemCleanup = combineCleanups[combineCleanups.length - 1]!
+    expect(itemCleanup).not.toHaveBeenCalled()
+
+    // Dispose the owner → useSortable's onCleanup runs.
+    owner.dispose()
+
+    // The per-item registration was disposed via the itemCleanups drain.
+    expect(itemCleanup).toHaveBeenCalledTimes(1)
   })
 })

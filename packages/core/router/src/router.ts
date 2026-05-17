@@ -754,21 +754,8 @@ export function createRouter<TNames extends string = string>(
             loadingSignal.update((n) => n - 1)
           }
         })
-        .catch((err: unknown) => {
-          // Background revalidation failed — the stale data remains valid
-          // and on screen, so this MUST NOT cancel/redirect the (already
-          // settled) navigation. But swallowing it silently hides real
-          // failures (auth expiry, API outage, a bug thrown in the loader):
-          // the developer sees permanently-stale data with zero signal.
-          // Surface it like every other loader error — dev warning + the
-          // user-supplied onError hook — without acting on the return value.
-          if (__DEV__) {
-            console.warn(
-              `[Pyreon Router] SWR background revalidation failed for "${r.path}" — serving stale data:`,
-              err,
-            )
-          }
-          router._onError?.(err, to)
+        .catch(() => {
+          /* Background revalidation failure — stale data remains valid */
         })
     }
   }
