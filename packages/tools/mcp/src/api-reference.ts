@@ -2618,7 +2618,7 @@ lint({
     "pyreon/no-window-in-ssr": { exemptPaths: ["src/foundation/"] },
   },
 })`,
-    notes: '62 rules across 12 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. Wrong-typed options surface on `result.configDiagnostics`. Uses `oxc-parser` with AST caching. See also: lintFile, getPreset, AstCache.',
+    notes: '67 rules across 13 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. Wrong-typed options surface on `result.configDiagnostics`. Uses `oxc-parser` with AST caching. See also: lintFile, getPreset, AstCache.',
   },
 
   'lint/lintFile': {
