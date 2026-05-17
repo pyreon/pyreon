@@ -3475,6 +3475,120 @@ isDynamic("12px")          // false → static, cached`,
 
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/elements
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // <gen-docs:api-reference:start @pyreon/elements>
+
+  'elements/Element': {
+    signature: 'Element(props: ElementProps): VNodeChild',
+    example: `import { Element } from "@pyreon/elements"
+
+<Element tag="section" direction="rows" gap="md" alignX="center">
+  <Header />
+  <Body />
+</Element>`,
+    notes: 'The responsive flexbox block primitive every layout-bearing component renders through. Layout props live here (NOT in a styler `.theme()`): `direction` (`inline` | `rows` | `reverseInline` | `reverseRows` — note `row` is INVALID), `alignX`, `alignY`, `gap`, `block`, plus `beforeContent` / `afterContent` slot wrappers and `equalBeforeAfter` (equalizes the slot widths on mount AND keeps them equal via ResizeObserver). The 2026-Q2 simple-path fast path inlines the Wrapper for non-compound, non-needsFix tags: the rendered VNode then exposes the HTML tag as `props.as` and layout under `props.$element.{direction,alignX,alignY,block,equalCols,extraStyles}` rather than flat props (styled-components consumers see no change since `as` is the canonical tag selector). See also: Text, List, Portal.',
+    mistakes: `- Using \`direction="row"\` — invalid; the values are \`inline\` / \`rows\` / \`reverseInline\` / \`reverseRows\`
+- Putting layout props in a styler \`.theme()\` callback — \`direction\` / \`alignX\` / \`alignY\` / \`gap\` / \`block\` are Element ATTRS, not CSS; theme is for colors / spacing / borders
+- Reading flat \`props.direction\` on a simple-path Element in a test or styled consumer — the fast path moves layout to \`props.$element.*\` and the tag to \`props.as\`; read both shapes via a helper
+- Passing children to a void \`tag\` (\`hr\` / \`img\` / \`br\` / \`input\`) — Element correctly drops them; do not rely on a children slot for void tags
+- Relying on \`equalBeforeAfter\` measuring async slot content where \`ResizeObserver\` is undefined (older runtimes / SSR) — it falls back to the one-shot mount measurement there`,
+  },
+
+  'elements/Text': {
+    signature: 'Text(props: TextProps): VNodeChild',
+    example: `import { Text } from "@pyreon/elements"
+
+<Text tag="span">Inline label</Text>`,
+    notes: 'Inline typography primitive — the text counterpart to `Element`. Carries typography props and renders an inline element; use it for runs of text that need the design-system typography contract rather than a raw `<span>`. Like `Element`, visual styling belongs in the styler/rocketstyle layer; `Text` owns the inline-flow structure. See also: Element.',
+  },
+
+  'elements/List': {
+    signature: 'List(props: ListProps): VNodeChild',
+    example: `import { List } from "@pyreon/elements"
+
+<List tag="ul" data={items()} component={(item) => <li>{item.name}</li>} />`,
+    notes: 'A flowing-children container (`ul` / `ol` / `dl` / custom) built on the Iterator data API. Render children directly OR drive it with `data` + a `component` renderer. Inherits Iterator’s four typed overloads (Simple / Object / Children / Loose) and additionally blocks Element-only `label` / `content` props at the type level. See also: Iterator, Element.',
+    mistakes: `- Mixing primitive and object entries in \`data\` (\`[1, {id:1}, null]\`) — primitive arrays and object arrays are mutually exclusive iteration modes; the typed overloads reject the mix for direct callers
+- Passing \`valueName\` with an object-array \`data\` — \`valueName\` is a Simple-mode (primitive) prop only
+- Passing \`children\` AND \`data\`/\`component\` — Children mode and Object mode are distinct overloads; pick one`,
+  },
+
+  'elements/Overlay': {
+    signature: 'Overlay(props: OverlayProps): VNodeChild',
+    example: `import { Overlay } from "@pyreon/elements"
+
+<Overlay isOpen={open()} type="dropdown" align="bottom" onClose={() => open.set(false)}>
+  <Menu />
+</Overlay>`,
+    notes: 'A positioned layer (dropdown / modal / tooltip / popover) with an optional backdrop, driven internally by `useOverlay`. It handles viewport flipping, ESC-to-close, click-outside, scroll tracking, and hover delay — do NOT reimplement any of that in a primitive; compose `Overlay` (or `useOverlay`) instead. Renders through `Portal` so the layer escapes overflow/stacking contexts. See also: useOverlay, OverlayProvider, Portal.',
+    mistakes: `- Hand-rolling positioning / flip / click-outside / ESC logic in a tooltip or dropdown primitive — \`useOverlay\` already owns all of it; reimplementing drifts from the shared behavior
+- Reading the rendered overlay as \`document.body.firstChild\` — it renders through \`Portal\` into a per-instance wrapper; traverse the wrapper, not body’s direct child`,
+  },
+
+  'elements/useOverlay': {
+    signature: 'useOverlay(props?: Partial<UseOverlayProps>): { isOpen, open, close, toggle, triggerProps, overlayProps, /* … */ }',
+    example: `import { useOverlay } from "@pyreon/elements"
+
+const o = useOverlay({ openOn: "hover", type: "tooltip", hoverDelay: 150 })
+// spread o.triggerProps on the anchor, o.overlayProps on the floating layer`,
+    notes: 'The positioning + interaction engine `Overlay` is built on, exposed for headless consumers. Options: `openOn` / `closeOn` (`click` | `hover` | …), `type` (`dropdown` | `modal` | …), `position` (`fixed` | …), `align` + `alignX` / `alignY` + `offsetX` / `offsetY`, `closeOnEsc`, `hoverDelay`, `throttleDelay`, `parentContainer`, `disabled`, `onOpen` / `onClose`. SSR-safe: the internal positioning helpers early-return under no-`window` so the contract is documented at the call site rather than crashing on the server. See also: Overlay, OverlayProvider.',
+    mistakes: `- Passing \`align\` as a function accessor — it is a value option, not a signal accessor; let the compiler wrap reactive values
+- Expecting positioning to run during SSR — the helpers are guarded and no-op without \`window\`; positioning happens post-mount on the client
+- Reaching for \`addEventListener\` for outside-click / scroll instead of letting \`useOverlay\` own the listener lifecycle — it self-cleans on unmount`,
+  },
+
+  'elements/OverlayProvider': {
+    signature: 'OverlayProvider(props: { children?: VNodeChild }): VNodeChild',
+    example: `import { OverlayProvider } from "@pyreon/elements"
+
+<OverlayProvider>
+  <App />
+</OverlayProvider>`,
+    notes: 'Context provider that lets nested overlays coordinate (shared root, stacking, outside-click scoping). `useOverlay` reads it via `useOverlayContext`. Marked `nativeCompat` so it works correctly inside `@pyreon/{react,preact,vue,solid}-compat` apps (its `provide()` runs in Pyreon’s setup frame, not the compat wrapper accessor). See also: useOverlay, Overlay.',
+  },
+
+  'elements/Portal': {
+    signature: 'Portal(props: PortalProps): VNodeChild',
+    example: `import { Portal } from "@pyreon/elements"
+
+<Portal>
+  <Modal />
+</Portal>`,
+    notes: 'Renders children OUTSIDE the parent DOM hierarchy — into a PER-INSTANCE wrapper element (default `<div>`, configurable via `tag`) created inside a `DOMLocation` (default `document.body`). Multiple Portals sharing a location each get their OWN wrapper so children never intermingle, which gives cleanup isolation when several modals / tooltips share a portal root. See also: Overlay, Element.',
+    mistakes: `- Asserting \`document.body.firstChild === modalRoot\` in a test — the Portal nests one level deeper; query the per-instance wrapper (\`document.body.querySelector("[data-…]").parentElement\`) instead
+- Assuming all Portals share one container — each instance gets its own wrapper inside the DOMLocation; they do not merge`,
+  },
+
+  'elements/Iterator': {
+    signature: 'Iterator<T>(props: IteratorProps<T>): VNodeChild',
+    example: `import Iterator from "@pyreon/elements/helpers/Iterator"
+
+<Iterator data={users()} component={(u) => <Row user={u} />} />`,
+    notes: 'The data-iteration helper backing `List` (default export of `helpers/Iterator`). FOUR typed overloads keep iteration modes honest: `SimpleProps<T>` (primitive arrays — `valueName` allowed), `ObjectProps<T>` (object arrays — `valueName` and `children` FORBIDDEN), `ChildrenProps` (no data/component, only children), and a `LooseProps` fallback that exists so rocketstyle/attrs forwarding patterns (`<Iterator {...wrapperProps} />`) bind without a per-call-site overload error. The discriminator picks the overload via `unknown extends T ? Loose : T extends SimpleValue ? Simple : T extends ObjectValue ? Object : Children`. See also: List.',
+    mistakes: `- Mixed-shape \`data\` (\`[1, {id:1}, null]\`) — primitive and object iteration are mutually exclusive; the narrow overloads reject it (the Loose fallback only catches forwarding-pattern shapes)
+- \`valueName\` with object-array \`data\` — Simple-mode only; ObjectProps forbids it
+- \`children\` together with \`data\`/\`component\` — Children and Object are distinct overloads; the runtime picks the mode by which props are populated, but the types steer you to one`,
+  },
+
+  'elements/Util': {
+    signature: 'Util(props: UtilProps): VNodeChild',
+    example: `import { Util } from "@pyreon/elements"
+
+<Util>{children}</Util>`,
+    notes: 'A bare utility primitive — the minimal structural wrapper when you need an Element-family node without layout semantics (no flex direction / align). Use it for thin passthrough containers where `Element` would impose unwanted flex defaults. See also: Element.',
+  },
+
+  'elements/Provider': {
+    signature: 'Provider(props: { children?: VNodeChild }): VNodeChild',
+    example: 'import { Provider } from "@pyreon/elements"',
+    notes: 'Re-exported from `@pyreon/unistyle` for convenience (responsive/breakpoint context). Most apps mount the unified `<PyreonUI>` from `@pyreon/ui-core` instead, which wires this internally — reach for the bare `Provider` only outside the `ui-core` provider tree. See also: Element.',
+  },
+  // <gen-docs:api-reference:end @pyreon/elements>
+
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/storybook
   // ═══════════════════════════════════════════════════════════════════════════
 
