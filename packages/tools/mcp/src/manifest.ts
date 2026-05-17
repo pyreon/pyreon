@@ -179,11 +179,18 @@ get_pattern({})
       name: 'get_anti_patterns',
       kind: 'constant',
       signature:
-        "tool: get_anti_patterns({ category?: 'reactivity' | 'jsx' | 'context' | 'architecture' | 'testing' | 'lifecycle' | 'documentation' | 'all' }) → AntiPattern[]",
+        "tool: get_anti_patterns({ category?: 'reactivity'|'jsx'|'context'|'architecture'|'testing'|'lifecycle'|'documentation'|'all'; name?: string; full?: boolean }) → string",
       summary:
-        'Browse the anti-patterns catalog parsed from `.claude/rules/anti-patterns.md`. Each entry surfaces its `[detector: <code>]` tag inline so an agent can pair the catalog entry with the live static detector exposed by `validate`. Optional `category` filter; default returns all categories.',
-      example: `get_anti_patterns({ category: 'reactivity' })
-// → ['Bare signal in JSX text', 'Stale closures', 'Destructuring props', ...]`,
+        'Browse the anti-patterns catalog from `.claude/rules/anti-patterns.md`, token-frugal by default. **No args → a COMPACT INDEX** (one line per entry: title + `[detector: <code>]` tag + one-sentence hook; ≈3.3K tokens vs the ≈14K full dump — a ~76% cut on the common orient call). Drill in deliberately: `{ name }` → the single matching entry\\\'s full body (cheapest); `{ category }` → full bodies for one category; `{ full: true }` → entire catalog (≈14K, explicit opt-in). The index keeps per-category `## <Heading>` markers so categories are still discoverable in one call; each `[detector: <code>]` tag pairs the entry with the live `validate` detector.',
+      example: `get_anti_patterns()
+// → compact index (~3.3K): titles + detector tags + one-line hooks
+get_anti_patterns({ name: 'Destructuring props' })  // → that entry's full body
+get_anti_patterns({ category: 'reactivity' })       // → full bodies, one category
+get_anti_patterns({ full: true })                   // → entire catalog (~14K)`,
+      mistakes: [
+        'Reaching for `{ full: true }` to "see the anti-patterns" — that is the ~14K dump. The no-arg index is the orient call; pull full bodies with `{ name }` once you know which entry matters',
+        'Expecting no-arg to return full bodies — it returns the index (behaviour changed in the token-slim PR). Full bodies need `{ name }`, `{ category }`, or `{ full: true }`',
+      ],
       seeAlso: ['validate', 'get_pattern'],
     },
     {

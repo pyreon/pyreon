@@ -42,9 +42,9 @@ import { dirname, join, resolve } from 'node:path'
 import { z } from 'zod'
 import packageJson from '../package.json' with { type: 'json' }
 import {
-  ANTI_PATTERN_CATEGORIES,
   type AntiPatternCategory,
   formatAntiPatterns,
+  formatAntiPatternsIndex,
   parseAntiPatterns,
 } from './anti-patterns'
 import { API_REFERENCE } from './api-reference'
@@ -212,17 +212,16 @@ server.tool(
 server.tool(
   'diagnose',
   {
-    error: z.string().describe('The error message / stack. Required.'),
+    // Terse `.describe()` by design: schema descriptions ship in the
+    // `tools/list` payload every consumer pays on every session. The
+    // full param semantics live in the manifest (served on demand via
+    // get_api / mcp_overview), not here. See PR: mcp token slim.
+    error: z.string().describe('Error message / stack.'),
     componentSource: z
       .string()
       .optional()
-      .describe(
-        'Optional. The failing component\'s source. When given, the tool runs the static Pyreon pattern detectors over it and maps any hits to the documented anti-pattern catalog.',
-      ),
-    filename: z
-      .string()
-      .optional()
-      .describe('Optional filename for the detectors (a few rules are path-sensitive).'),
+      .describe('Failing component source — enables static-detector enrichment.'),
+    filename: z.string().optional().describe('Filename for path-sensitive detectors.'),
     reactiveTrace: z
       .array(
         z.object({
@@ -233,13 +232,8 @@ server.tool(
         }),
       )
       .optional()
-      .describe(
-        'Optional. The reactive write sequence leading to the error — `ErrorContext.reactiveTrace` from `@pyreon/core` (populated in dev). The causal run-up, not a snapshot.',
-      ),
-    phase: z
-      .string()
-      .optional()
-      .describe('Optional. Lifecycle phase the error occurred in (setup/render/mount/unmount/effect).'),
+      .describe('ErrorContext.reactiveTrace from @pyreon/core — causal signal-write run-up.'),
+    phase: z.string().optional().describe('Lifecycle phase (setup/render/mount/unmount/effect).'),
   },
   async ({ error, componentSource, filename, reactiveTrace, phase }) => {
     // Anti-pattern catalog is the bridge from a detector hit to its
@@ -487,9 +481,7 @@ server.tool(
       name: z
         .string()
         .optional()
-        .describe(
-          'Pattern slug (e.g. "dev-warnings", "controllable-state"). Omit to list available patterns.',
-        ),
+        .describe('Pattern slug. Omit to list available patterns.'),
     },
     async ({ name }) => {
       const registry = loadPatternRegistry()
@@ -526,12 +518,17 @@ server.tool(
           'all',
         ])
         .optional()
-        .describe(
-          `Category filter: ${ANTI_PATTERN_CATEGORIES.join(', ')}, or "all" (default).`,
-        ),
+        .describe('Full bodies for one category. Omit for the compact index.'),
+      name: z
+        .string()
+        .optional()
+        .describe('Full body of the entry whose title contains this (case-insensitive).'),
+      full: z
+        .boolean()
+        .optional()
+        .describe('Entire catalog (~14K tokens). Default is the compact index.'),
     },
-    async ({ category = 'all' }) => {
-      const cat = category as AntiPatternCategory | 'all'
+    async ({ category, name, full }) => {
       const doc = loadAntiPatternsDoc()
       if (!doc) {
         return textResult(
@@ -539,8 +536,41 @@ server.tool(
         )
       }
       const all = parseAntiPatterns(doc)
-      const filtered = cat === 'all' ? all : all.filter((e) => e.category === cat)
-      return textResult(formatAntiPatterns(filtered, cat))
+
+      // 1. `name` → the single matching entry's full body. Most
+      //    token-frugal "I need THIS one" path.
+      if (name && name.trim().length > 0) {
+        const q = name.trim().toLowerCase()
+        const matches = all.filter((e) => e.name.toLowerCase().includes(q))
+        if (matches.length === 0) {
+          const titles = all.slice(0, 30).map((e) => `  - ${e.name}`).join('\n')
+          return textResult(
+            `No anti-pattern title matches "${name}". Call get_anti_patterns() for the full index. First entries:\n${titles}`,
+          )
+        }
+        return textResult(formatAntiPatterns(matches, 'all'))
+      }
+
+      // 2. `full` → entire catalog. Explicit, expensive opt-in.
+      if (full === true) {
+        return textResult(formatAntiPatterns(all, 'all'))
+      }
+
+      // 3. real `category` slug → that category's full bodies. Unchanged
+      //    behaviour (~1.8K) — the existing filtered contract.
+      if (category && category !== 'all') {
+        const cat = category as AntiPatternCategory
+        return textResult(
+          formatAntiPatterns(
+            all.filter((e) => e.category === cat),
+            cat,
+          ),
+        )
+      }
+
+      // 4. default (no args, or category:'all') → compact index. ~1.5K
+      //    vs ~14K — the ≈90% cut on the common path.
+      return textResult(formatAntiPatternsIndex(all))
     },
   )
 
@@ -554,9 +584,7 @@ server.tool(
       package: z
         .string()
         .optional()
-        .describe(
-          'Package name, e.g. "query" or "@pyreon/query". Omit to list every package with a CHANGELOG.',
-        ),
+        .describe('Package name (e.g. "query"). Omit to list all.'),
       limit: z
         .number()
         .int()
@@ -570,9 +598,7 @@ server.tool(
       since: z
         .string()
         .optional()
-        .describe(
-          'Only include versions strictly newer than this one (e.g. "0.12.0"). Useful when an agent knows the version it was trained against and wants just the delta.',
-        ),
+        .describe('Only versions strictly newer than this (e.g. "0.12.0").'),
     },
     async ({ package: pkg, limit, includeDependencyUpdates, since }) => {
       const registry = loadChangelogRegistry()
@@ -608,9 +634,7 @@ server.tool(
       minRisk: z
         .enum(['high', 'medium', 'low'])
         .optional()
-        .describe(
-          'Minimum risk level to surface. Default "medium" — HIGH + MEDIUM files. Use "high" for only the riskiest, "low" to see everything.',
-        ),
+        .describe('Minimum risk to surface. Default "medium".'),
       limit: z
         .number()
         .int()
@@ -639,9 +663,7 @@ server.tool(
       json: z
         .boolean()
         .optional()
-        .describe(
-          'Return raw JSON output instead of human-readable markdown. Useful when an agent wants to programmatically count findings by code or filter by location.',
-        ),
+        .describe('Raw JSON instead of markdown.'),
     },
     async ({ json }) => {
       const result = auditIslands(process.cwd())
