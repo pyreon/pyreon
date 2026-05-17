@@ -611,43 +611,59 @@ describe('router — staleWhileRevalidate', () => {
         staleWhileRevalidate: true,
         loader: async () => {
           loaderCallCount++
-          return `data-v${loaderCallCount}`
+          const v = loaderCallCount
+          // The revalidation call (2nd) takes REAL async time so the
+          // stale window is deterministic, not microtask-races. The
+          // first (blocking) call resolves immediately.
+          if (v >= 2) await new Promise<void>((r) => setTimeout(r, 40))
+          return `data-v${v}`
         },
       },
     ]
+    const swrRecord = routes[1] as RouteRecord
     const router = createRouter({ routes, url: '/' }) as RouterInstance
 
     // First navigation — loader runs as blocking
     await router.push('/data')
     expect(loaderCallCount).toBe(1)
-    expect(router._loaderData.get(routes[1] as RouteRecord)).toBe('data-v1')
+    expect(router._loaderData.get(swrRecord)).toBe('data-v1')
 
-    // Navigate away and back — should show stale data and revalidate
+    // Navigate AWAY, then BACK. The away nav must NOT prune the SWR
+    // route's loader data (that was the bug — see the regression note
+    // below); on return the SWR fast-path must serve the STALE value
+    // immediately and revalidate in the BACKGROUND.
     await router.push('/')
     await router.push('/data')
 
-    // Give background revalidation time
-    await new Promise<void>((r) => setTimeout(r, 50))
+    // SWR discriminator (load-bearing): the return navigation resolves
+    // WITHOUT blocking on the (40ms) loader — the served data is still
+    // STALE `data-v1`, revalidation pending. Pre-fix this navigation
+    // went through the BLOCKING path (the prune wiped the entry), so
+    // `await push('/data')` would have awaited the loader and the data
+    // here would already be `data-v2`.
+    expect(router._loaderData.get(swrRecord)).toBe('data-v1')
+
+    // Background revalidation then completes and swaps in fresh data.
+    await new Promise<void>((r) => setTimeout(r, 80))
     expect(loaderCallCount).toBe(2)
+    expect(router._loaderData.get(swrRecord)).toBe('data-v2')
   })
 
-  // FOLLOW-UP FINDING (empirically proven, intentionally NOT fixed here):
-  // `revalidateSwrLoaders` is never invoked even by the canonical
-  // `staleWhileRevalidate` nav pattern above. `runLoaders`'s gate is
-  // `r.staleWhileRevalidate && router._loaderData.has(r)`, but
-  // `resolveRoute` returns FRESH `RouteRecord` objects per resolution, so
-  // `_loaderData.has(r)` is never true across navigations — the SWR
-  // branch is dead and the `loaderCallCount === 2` above actually comes
-  // from the BLOCKING path running twice (this test is misnamed). I.e.
-  // the `staleWhileRevalidate` route option is effectively non-functional
-  // for the nav-away/back case. This is a distinct, significant bug whose
-  // correct fix is keying `_loaderData` / the SWR gate by a STABLE key
-  // (path / loaderKey) instead of record identity — a non-trivial router
-  // behaviour change that deserves its own focused, aligned PR rather
-  // than being bundled into a hardening sweep (silent scope creep). An
-  // attempted "surface the swallowed SWR error" fix was reverted from
-  // this PR precisely because the path is unreachable dead code until
-  // this root cause is fixed.
+  // REGRESSION NOTE (fixed in this PR). `staleWhileRevalidate` was
+  // effectively a no-op for the realistic nav-away/back case:
+  // `commitNavigation`'s `doCommit` pruned `_loaderData` for every
+  // record not in the NEW matched chain on every navigation, so
+  // navigating away deleted the SWR route's data and `runLoaders`'
+  // `r.staleWhileRevalidate && _loaderData.has(r)` gate was always false
+  // on return — `revalidateSwrLoaders` never ran; every visit went
+  // through the blocking path. (NB: the earlier hypothesis that
+  // `resolveRoute` returns fresh `RouteRecord` objects was WRONG —
+  // identity is stable; the prune was the sole cause, proven by an
+  // instrumented probe showing SWR fires correctly for `/data → /data`
+  // with no nav-away but not for `/data → / → /data`.) Fix: the prune
+  // skips `staleWhileRevalidate` records so their data survives
+  // navigating away. The strengthened test above is the regression
+  // guard — its stale-window assertion fails on the pre-fix prune.
 })
 
 describe('router.preload', () => {

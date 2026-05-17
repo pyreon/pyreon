@@ -802,8 +802,20 @@ export function createRouter<TNames extends string = string>(
         document.title = to.meta.title
       }
 
+      // Drop loader data for routes no longer matched — EXCEPT
+      // `staleWhileRevalidate` routes. SWR's entire contract is "on
+      // return to this route, serve the previously-loaded data stale
+      // while revalidating in the background"; that requires the data to
+      // SURVIVE navigating away. Pruning it here (the pre-fix behaviour)
+      // meant `runLoaders`' `_loaderData.has(r)` gate was always false on
+      // return, so `revalidateSwrLoaders` never ran and every visit went
+      // through the blocking path — `staleWhileRevalidate` was a no-op
+      // for the realistic nav-away/back case. Retained SWR data is
+      // bounded by the number of SWR route RECORDS (a developer-declared
+      // set; param routes share one record), and per-key freshness/LRU
+      // is still handled by `_loaderCache`.
       for (const record of router._loaderData.keys()) {
-        if (!to.matched.includes(record)) {
+        if (!to.matched.includes(record) && !record.staleWhileRevalidate) {
           router._loaderData.delete(record)
         }
       }
