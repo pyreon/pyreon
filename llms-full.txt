@@ -174,6 +174,111 @@ const LazyApp = () => (
 >
 > **JSX uses standard HTML attributes**: Use `class` not `className`, `for` not `htmlFor`, `onInput` not `onChange` for per-keystroke updates. Pyreon maps to native DOM events, not the React synthetic event system.
 
+## @pyreon/compiler — JSX Reactive Transform
+
+Pyreon's JSX-to-reactive transform. `transformJSX` dispatches to a Rust native binary (napi-rs, 3.7-8.9× faster) and falls back per-call to the pure-JS `transformJSX_JS` when the binary is unavailable (CI, WASM, wrong platform); the two backends are asserted byte-identical by 180+ cross-backend equivalence tests. Emits `_tpl()` (cloneNode templates) + per-text-node `_bind()`, hoists static JSX, inlines `const`-from-`props`, and auto-calls bare signal references in JSX. Also ships the experimental Reactivity-Lens sidecar (`analyzeReactivity` — surfaces the compiler's own per-expression reactive/static decision back to editors), React-pattern detection + one-shot migration, the Pyreon anti-pattern detector behind the MCP `validate` tool, and the syntactic project audits powering `pyreon doctor` (test-environment / islands / SSG).
+
+```typescript
+import { transformJSX } from "@pyreon/compiler"
+
+const { code, warnings } = transformJSX(
+  "export const App = () => <div>{count()}</div>",
+  "App.tsx",
+  { knownSignals: ["count"] },
+)
+
+import { transformJSX_JS } from "@pyreon/compiler"
+
+// Backend-deterministic — never dispatches to the native binary.
+const { code } = transformJSX_JS("<div>{name()}</div>", "x.tsx")
+
+import { analyzeReactivity, formatReactivityLens } from "@pyreon/compiler"
+
+const result = analyzeReactivity(
+  "const A = (props) => <div>{props.name}</div>",
+  "A.tsx",
+)
+for (const f of result.findings) console.log(f.line, f.kind, f.detail)
+console.log(formatReactivityLens(code, result)) // annotated-source debug view
+
+import { analyzeReactivity, formatReactivityLens } from "@pyreon/compiler"
+
+const r = analyzeReactivity(src, "App.tsx")
+process.stdout.write(formatReactivityLens(src, r))
+
+import { detectReactPatterns } from "@pyreon/compiler"
+
+const diags = detectReactPatterns("const [n,setN] = useState(0)", "x.tsx")
+console.log(diags[0]?.code) // "react-use-state"
+
+import { migrateReactCode } from "@pyreon/compiler"
+
+const { code, changes } = migrateReactCode(reactSource, "C.tsx")
+
+import { hasReactPatterns, detectReactPatterns } from "@pyreon/compiler"
+
+if (hasReactPatterns(src)) report(detectReactPatterns(src, file))
+
+import { diagnoseError } from "@pyreon/compiler"
+
+const d = diagnoseError("props.when is not a function")
+if (d) console.log(d.cause, d.fix)
+
+import { detectPyreonPatterns } from "@pyreon/compiler"
+
+const diags = detectPyreonPatterns(
+  "const A = (props) => { const { x } = props; return <i>{x}</i> }",
+  "A.tsx",
+)
+console.log(diags[0]?.code) // "props-destructured-body"
+
+import { hasPyreonPatterns, detectPyreonPatterns } from "@pyreon/compiler"
+
+if (hasPyreonPatterns(src)) report(detectPyreonPatterns(src, file))
+
+import { auditTestEnvironment, formatTestAudit } from "@pyreon/compiler"
+
+const r = auditTestEnvironment(process.cwd())
+console.log(formatTestAudit(r, { minRisk: "high" }))
+
+import { auditTestEnvironment, formatTestAudit } from "@pyreon/compiler"
+
+console.log(formatTestAudit(auditTestEnvironment("."), { minRisk: "medium" }))
+
+import { auditIslands, formatIslandAudit } from "@pyreon/compiler"
+
+const r = auditIslands(process.cwd())
+for (const f of r.findings) console.log(f.code, f.location.file)
+
+import { auditIslands, formatIslandAudit } from "@pyreon/compiler"
+
+console.log(formatIslandAudit(auditIslands(".")))
+
+import { auditSsg, formatSsgAudit } from "@pyreon/compiler"
+
+const r = auditSsg(process.cwd())
+for (const f of r.findings) console.log(f.code, f.location.file)
+
+import { auditSsg, formatSsgAudit } from "@pyreon/compiler"
+
+console.log(formatSsgAudit(auditSsg(".")))
+
+import { transformDeferInline } from "@pyreon/compiler"
+
+const { code, changed } = transformDeferInline(src, "page.tsx")
+
+import { generateContext } from "@pyreon/compiler"
+
+const ctx = generateContext(process.cwd())
+console.log(ctx.routes.length, ctx.islands.length)
+```
+
+> **Dual backend**: Reverting `src/jsx.ts` (the JS path) is INVISIBLE to anything that goes through the native binary — the Rust path in `native/src/lib.rs` is a parallel implementation, kept byte-identical by the cross-backend equivalence tests. Edits to transform behavior must land in BOTH; the equivalence suite is the gate.
+>
+> **Reactivity-Lens is editor-only**: `analyzeReactivity` / `formatReactivityLens` are authoring-time tools (LSP inlay hints via `@pyreon/lint --lsp`, CLI debug). They are NOT consumed at production bundle time and force the JS backend — they never affect emitted code (`reactivityLens` is an additive, byte-neutral sidecar).
+>
+> **Detectors are not codemods**: `detectPyreonPatterns` always reports `fixable: false` (enforced invariant). `detectReactPatterns` is paired with the real `migrateReactCode` codemod; the Pyreon detector has no companion codemod yet, so consumers must not wire auto-fix UX off its `fixable` flag.
+
 ## @pyreon/router — Router
 
 Type-safe client-side router for Pyreon with nested routes, per-route and global navigation guards, data loaders, middleware chain, View Transitions API integration, and typed search params. Context-based (`RouterContext`) with hash and history mode support. Route params are inferred from path strings (`"/user/:id"` yields `{ id: string }`). Named routes enable typed programmatic navigation. SSR-compatible with server-side route resolution. Hash mode uses `history.pushState` (not `window.location.hash`) to avoid double-update. `await router.push()` resolves after the View Transition `updateCallbackDone` (DOM commit), not after animation completion.
