@@ -649,6 +649,64 @@ describe('router — staleWhileRevalidate', () => {
     expect(router._loaderData.get(swrRecord)).toBe('data-v2')
   })
 
+  test('a failing background revalidation surfaces via onError without cancelling or clobbering', async () => {
+    // This path only became testable after #617 made the SWR branch
+    // actually run (the prune previously made `revalidateSwrLoaders`
+    // dead code — the reason an earlier attempt at this fix shipped
+    // WITHOUT a test and was reverted). With SWR live, an empty `.catch`
+    // is the silent-failure anti-pattern: a persistently-failing
+    // revalidation gives the developer zero signal. Contract: the error
+    // is surfaced via `onError` exactly once; the (already-settled)
+    // navigation is NOT cancelled; the failed revalidation does NOT
+    // clobber the stale data (it stays valid + on screen).
+    let loaderCallCount = 0
+    const onError = vi.fn<(err: unknown, route: unknown) => undefined | false>(() => undefined)
+    const routes: RouteRecord[] = [
+      { path: '/', component: Home },
+      {
+        path: '/data',
+        component: About,
+        staleWhileRevalidate: true,
+        loader: async () => {
+          loaderCallCount++
+          const v = loaderCallCount
+          if (v >= 2) {
+            // Real async delay so the rejection is genuinely a
+            // background failure (deterministic, not a microtask race).
+            await new Promise<void>((r) => setTimeout(r, 40))
+            throw new Error('revalidation upstream 503')
+          }
+          return `data-v${v}`
+        },
+      },
+    ]
+    const swrRecord = routes[1] as RouteRecord
+    const router = createRouter({ routes, url: '/', onError }) as RouterInstance
+
+    await router.push('/data') // blocking — primes stale data-v1
+    expect(router._loaderData.get(swrRecord)).toBe('data-v1')
+
+    await router.push('/') // nav away (SWR data survives — #617)
+    await router.push('/data') // SWR: stale served, revalidate in bg
+
+    // Returned on STALE data without blocking; revalidation not failed yet.
+    expect(router.currentRoute().path).toBe('/data')
+    expect(router._loaderData.get(swrRecord)).toBe('data-v1')
+    expect(onError).not.toHaveBeenCalled()
+
+    await new Promise<void>((r) => setTimeout(r, 90)) // revalidation rejects
+
+    expect(loaderCallCount).toBe(2)
+    // The previously-empty `.catch` swallowed this entirely. Contract:
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(Error)
+    expect((onError.mock.calls[0]?.[0] as Error).message).toBe('revalidation upstream 503')
+    // Navigation was NOT cancelled, and the stale value was NOT clobbered
+    // by the failed revalidation — it stays valid and on screen.
+    expect(router.currentRoute().path).toBe('/data')
+    expect(router._loaderData.get(swrRecord)).toBe('data-v1')
+  })
+
   // REGRESSION NOTE (fixed in this PR). `staleWhileRevalidate` was
   // effectively a no-op for the realistic nav-away/back case:
   // `commitNavigation`'s `doCommit` pruned `_loaderData` for every
