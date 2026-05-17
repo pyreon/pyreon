@@ -60,6 +60,41 @@ export interface CompilerWarning {
     | 'circular-prop-derived'
 }
 
+/**
+ * Reactivity-lens kinds. Each is a RECORD of a codegen decision the compiler
+ * already made — never an approximation. Positive claims (`reactive*`) are
+ * emitted ONLY where the compiler provably wrapped/tracked the span; absence
+ * of a span is "not asserted", never an implicit static claim. `static-text`
+ * is the high-precision negative: the literal `else` branch of the
+ * reactive-vs-static text decision (the "this `{x}` is baked once / dead"
+ * footgun signal when the author expected reactivity).
+ */
+export type ReactivityKind =
+  | 'reactive' // expression re-evaluates on signal change (_bind/_bindText/`() =>` wrap)
+  | 'reactive-prop' // component prop tracked into the child (_rp(() => …))
+  | 'reactive-attr' // DOM attribute re-applied on signal change
+  | 'static-text' // text expression baked once into the DOM, never re-renders
+  | 'hoisted-static' // JSX hoisted to module scope, never re-evaluated
+
+export interface ReactivitySpan {
+  /** Source byte offset (start) of the spanned expression in the INPUT. */
+  start: number
+  /** Source byte offset (end). */
+  end: number
+  /** 1-based start line. */
+  line: number
+  /** 0-based start column. */
+  column: number
+  /** 1-based end line. */
+  endLine: number
+  /** 0-based end column. */
+  endColumn: number
+  /** Which codegen decision this span records. */
+  kind: ReactivityKind
+  /** Human-readable, editor-facing one-liner explaining the decision. */
+  detail: string
+}
+
 export interface TransformResult {
   /** Transformed source code (JSX preserved, only expression containers modified) */
   code: string
@@ -67,6 +102,13 @@ export interface TransformResult {
   usesTemplates?: boolean
   /** Compiler warnings for common mistakes */
   warnings: CompilerWarning[]
+  /**
+   * Reactivity-lens spans — populated ONLY when `TransformOptions.reactivityLens`
+   * is `true`. Additive: codegen output is byte-identical whether or not this is
+   * collected. Each span is a faithful record of a reactivity decision the
+   * compiler made for that source range. See {@link ReactivitySpan}.
+   */
+  reactivityLens?: ReactivitySpan[]
 }
 
 // Props that should never be wrapped in a reactive getter
@@ -103,6 +145,15 @@ export interface TransformOptions {
    * // {count} in JSX → {() => count()}
    */
   knownSignals?: string[]
+
+  /**
+   * Collect the {@link ReactivitySpan} sidecar (`TransformResult.reactivityLens`).
+   * Default `false`. Purely additive — the emitted `code` is byte-identical
+   * whether this is on or off (asserted by the compiler equivalence tests).
+   * The lens records reactivity decisions the compiler ALREADY makes for
+   * codegen; it never runs a second analysis pass.
+   */
+  reactivityLens?: boolean
 }
 
 // ─── oxc ESTree helpers ───────────────────────────────────────────────────────
@@ -227,6 +278,25 @@ export function transformJSX_JS(
     warnings.push({ message, line, column, code: warnCode })
   }
 
+  // ── Reactivity lens (opt-in, additive — never affects `result`) ───────────
+  const collectLens = options.reactivityLens === true
+  const reactivityLens: ReactivitySpan[] = []
+  function lens(start: number, end: number, kind: ReactivityKind, detail: string): void {
+    if (!collectLens) return
+    const a = locate(start)
+    const b = locate(end)
+    reactivityLens.push({
+      start,
+      end,
+      line: a.line,
+      column: a.column,
+      endLine: b.line,
+      endColumn: b.column,
+      kind,
+      detail,
+    })
+  }
+
   // ── Parent + children maps (built once, eliminates repeated Object.keys) ──
   const parentMap = new WeakMap<object, N>()
   const childrenMap = new WeakMap<object, N[]>()
@@ -287,6 +357,12 @@ export function transformJSX_JS(
       const name = `_$h${hoistIdx++}`
       const text = code.slice(node.start as number, node.end as number)
       hoists.push({ name, text })
+      lens(
+        node.start as number,
+        node.end as number,
+        'hoisted-static',
+        'static — hoisted once to module scope, never re-evaluated',
+      )
       return name
     }
     return null
@@ -300,6 +376,7 @@ export function transformJSX_JS(
       ? `() => (${sliced})`
       : `() => ${sliced}`
     replacements.push({ start, end, text })
+    lens(start, end, 'reactive', 'live — re-evaluates whenever its signals change')
   }
 
   function hoistOrWrap(expr: N): void {
@@ -370,6 +447,7 @@ export function transformJSX_JS(
         const inner = expr.type === 'ObjectExpression' ? `(${sliced})` : sliced
         replacements.push({ start, end, text: `_rp(() => ${inner})` })
         needsRpImport = true
+        lens(start, end, 'reactive-prop', 'live prop — signal reads here are tracked into the component')
       }
     } else {
       hoistOrWrap(expr)
@@ -761,7 +839,9 @@ export function transformJSX_JS(
 
   walkNode(program)
 
-  if (replacements.length === 0 && hoists.length === 0) return { code, warnings }
+  if (replacements.length === 0 && hoists.length === 0) {
+    return collectLens ? { code, warnings, reactivityLens } : { code, warnings }
+  }
 
   replacements.sort((a, b) => a.start - b.start)
   const outParts: string[] = []
@@ -797,7 +877,9 @@ export function transformJSX_JS(
     output = `import { _rp } from "@pyreon/core";\n` + output
   }
 
-  return { code: output, usesTemplates: needsTplImport, warnings }
+  return collectLens
+    ? { code: output, usesTemplates: needsTplImport, warnings, reactivityLens }
+    : { code: output, usesTemplates: needsTplImport, warnings }
 
   // ── Template emission helpers ─────────────────────────────────────────────
 
@@ -972,6 +1054,12 @@ export function transformJSX_JS(
         bindLines.push(attrSetter(htmlAttrName, varName, expr))
         return
       }
+      lens(
+        exprNode.start as number,
+        exprNode.end as number,
+        'reactive-attr',
+        `live attribute — \`${htmlAttrName}\` re-applies whenever its signals change`,
+      )
       const directRef = tryDirectSignalRef(exprNode)
       if (directRef) {
         needsBindDirectImport = true
@@ -1176,9 +1264,22 @@ export function transformJSX_JS(
         bindLines.push(`const ${d} = _mountSlot(${expr}, ${parentRef}, ${placeholder})`)
         return '<!>'
       }
+      const cx = child.expression
       if (isReactive) {
+        lens(
+          cx.start as number,
+          cx.end as number,
+          'reactive',
+          'live — this text re-renders whenever its signals change',
+        )
         return emitReactiveTextChild(expr, child.expression, varName, parentRef, childNodeIdx, needsPlaceholder)
       }
+      lens(
+        cx.start as number,
+        cx.end as number,
+        'static-text',
+        'baked once into the DOM — never re-renders (no signal read here)',
+      )
       return emitStaticTextChild(expr, varName, parentRef, childNodeIdx, needsPlaceholder)
     }
 

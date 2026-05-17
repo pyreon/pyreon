@@ -1,22 +1,28 @@
 /**
  * Minimal LSP server for @pyreon/lint.
  *
- * Provides real-time Pyreon-specific diagnostics in editors that support
- * the Language Server Protocol (VS Code, Neovim, etc.).
+ * Provides real-time Pyreon-specific feedback in editors that support the
+ * Language Server Protocol (VS Code, Neovim, etc.).
  *
  * Usage: pyreon-lint --lsp
  *
- * The server communicates via JSON-RPC over stdin/stdout following the
- * LSP specification (https://microsoft.github.io/language-server-protocol/).
+ * Two surfaces:
  *
- * Supported capabilities:
- * - textDocument/didOpen — lint on open
- * - textDocument/didSave — lint on save
- * - textDocument/didChange — lint on change (debounced)
+ * 1. **Diagnostics** — `@pyreon/lint` rule violations + Reactivity-Lens
+ *    footguns (`props-destructured`, `signal-write-as-call`, …), published on
+ *    open / change (debounced) / save.
+ * 2. **Inlay hints** — the **Reactivity Lens**: subtle ghost-text at the end
+ *    of each reactive / baked-once expression making Pyreon's "components run
+ *    once; reactivity depends on WHERE you read a signal" model *visible at
+ *    the cursor*. Each hint is a faithful record of a codegen decision the
+ *    `@pyreon/compiler` already made — not a heuristic. Absence of a hint is
+ *    "not asserted", never an implicit static claim.
  *
  * @module
  */
 
+import { analyzeReactivity } from '@pyreon/compiler'
+import type { ReactivityFinding } from '@pyreon/compiler'
 import { AstCache } from '../cache'
 import { getPreset } from '../config/presets'
 import { allRules } from '../rules/index'
@@ -49,7 +55,7 @@ interface JsonRpcMessage {
   result?: any
 }
 
-// ─── LSP Diagnostic conversion ─────────────────────────────────────────────
+// ─── LSP shapes ────────────────────────────────────────────────────────────
 
 interface LspDiagnostic {
   range: { start: { line: number; character: number }; end: { line: number; character: number } }
@@ -57,6 +63,15 @@ interface LspDiagnostic {
   source: string
   message: string
   code: string
+}
+
+interface LspInlayHint {
+  position: { line: number; character: number }
+  label: string
+  /** Tooltip (markdown) shown on hover. */
+  tooltip?: string
+  /** Render a leading space so the hint doesn't jam against the code. */
+  paddingLeft?: boolean
 }
 
 function toLspDiagnostics(diagnostics: Diagnostic[]): LspDiagnostic[] {
@@ -72,17 +87,84 @@ function toLspDiagnostics(diagnostics: Diagnostic[]): LspDiagnostic[] {
   }))
 }
 
+// ─── Reactivity Lens surface ───────────────────────────────────────────────
+
+/** Short ghost-text badge per structural kind. */
+const HINT_LABEL: Record<string, string> = {
+  reactive: 'live',
+  'reactive-prop': 'live·prop',
+  'reactive-attr': 'live·attr',
+  'static-text': 'static',
+  'hoisted-static': 'hoisted',
+}
+
+/**
+ * Compute the Reactivity-Lens surface for a document. Pure +
+ * deterministic + side-effect-free — the unit-testable core of the LSP's
+ * lens feature (the JSON-RPC transport is a thin wrapper).
+ *
+ * @returns `inlayHints` — structural reactivity facts as end-of-span ghost
+ *          text; `footgunDiagnostics` — detected anti-patterns as
+ *          warning-severity diagnostics (source `pyreon-lens`).
+ */
+export function computeReactivityHints(
+  filePath: string,
+  text: string,
+): { inlayHints: LspInlayHint[]; footgunDiagnostics: LspDiagnostic[] } {
+  let findings: ReactivityFinding[]
+  try {
+    findings = analyzeReactivity(text, filePath).findings
+  } catch {
+    return { inlayHints: [], footgunDiagnostics: [] }
+  }
+
+  const inlayHints: LspInlayHint[] = []
+  const footgunDiagnostics: LspDiagnostic[] = []
+
+  for (const f of findings) {
+    if (f.kind === 'footgun') {
+      footgunDiagnostics.push({
+        range: {
+          start: { line: f.line - 1, character: f.column },
+          end: { line: f.endLine - 1, character: f.endColumn },
+        },
+        severity: 2, // warning
+        source: 'pyreon-lens',
+        message: f.detail,
+        code: f.code ?? 'reactivity-footgun',
+      })
+      continue
+    }
+    const label = HINT_LABEL[f.kind]
+    if (!label) continue
+    // Anchor the ghost text at the END of the span so it reads
+    // `{count()} live`. LSP positions are 0-based line + 0-based char.
+    inlayHints.push({
+      position: { line: f.endLine - 1, character: f.endColumn },
+      label,
+      tooltip: f.detail,
+      paddingLeft: true,
+    })
+  }
+
+  return { inlayHints, footgunDiagnostics }
+}
+
 // ─── Lint a document ───────────────────────────────────────────────────────
 
 function lintDocument(uri: string, text: string): LspDiagnostic[] {
+  const filePath = uri.replace('file://', '')
+  let lintDiags: LspDiagnostic[] = []
   try {
-    const filePath = uri.replace('file://', '')
     const result = lintFile(filePath, text, allRules, config, cache)
-    return toLspDiagnostics(result.diagnostics)
+    lintDiags = toLspDiagnostics(result.diagnostics)
   } catch {
-    // Parse errors, unsupported file types — return empty diagnostics
-    return []
+    // Parse errors, unsupported file types — no lint diagnostics. The
+    // Reactivity-Lens layer is computed independently below (it has its
+    // own try/catch and TS-API parse).
   }
+  const { footgunDiagnostics } = computeReactivityHints(filePath, text)
+  return [...lintDiags, ...footgunDiagnostics]
 }
 
 // ─── Debounce ──────────────────────────────────────────────────────────────
@@ -107,7 +189,13 @@ function debounceLint(uri: string, text: string): void {
 
 const openDocuments = new Map<string, string>()
 
-function handleMessage(msg: JsonRpcMessage): JsonRpcMessage | null {
+/**
+ * Pure message handler. Exported (underscore-prefixed, matching the
+ * codebase's `_reloadConfig` internal-export convention) so the JSON-RPC
+ * contract — including the `textDocument/inlayHint` round-trip — is
+ * unit-testable without spawning the stdio transport.
+ */
+export function _handleMessage(msg: JsonRpcMessage): JsonRpcMessage | null {
   if (msg.method === 'initialize') {
     return {
       jsonrpc: '2.0',
@@ -116,6 +204,7 @@ function handleMessage(msg: JsonRpcMessage): JsonRpcMessage | null {
         capabilities: {
           textDocumentSync: 1, // Full sync
           diagnosticProvider: { interFileDependencies: false, workspaceDiagnostics: false },
+          inlayHintProvider: true,
         },
         serverInfo: { name: 'pyreon-lint', version: '0.11.5' },
       },
@@ -155,6 +244,26 @@ function handleMessage(msg: JsonRpcMessage): JsonRpcMessage | null {
     return null
   }
 
+  if (msg.method === 'textDocument/inlayHint') {
+    const uri: string = msg.params.textDocument.uri
+    const text = openDocuments.get(uri)
+    if (text == null) {
+      return { jsonrpc: '2.0', id: msg.id, result: [] }
+    }
+    const { inlayHints } = computeReactivityHints(uri.replace('file://', ''), text)
+    // Honor the requested range if the client sent one (large files send a
+    // visible-range window; outside it the editor will re-request on scroll).
+    const range = msg.params.range as
+      | { start: { line: number }; end: { line: number } }
+      | undefined
+    const hints = range
+      ? inlayHints.filter(
+          (h) => h.position.line >= range.start.line && h.position.line <= range.end.line,
+        )
+      : inlayHints
+    return { jsonrpc: '2.0', id: msg.id, result: hints }
+  }
+
   if (msg.method === 'textDocument/didClose') {
     const uri = msg.params.textDocument.uri
     openDocuments.delete(uri)
@@ -180,6 +289,11 @@ function handleMessage(msg: JsonRpcMessage): JsonRpcMessage | null {
   }
 
   return null
+}
+
+/** Test-only: reset the open-document map between integration specs. */
+export function _resetOpenDocuments(): void {
+  openDocuments.clear()
 }
 
 // ─── JSON-RPC transport (stdin/stdout) ─────────────────────────────────────
@@ -226,7 +340,7 @@ export function startLspServer(): void {
 
       try {
         const msg = JSON.parse(body) as JsonRpcMessage
-        const response = handleMessage(msg)
+        const response = _handleMessage(msg)
         if (response) sendMessage(response)
       } catch {
         // malformed JSON — ignore
