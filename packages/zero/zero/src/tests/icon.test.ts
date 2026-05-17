@@ -5,7 +5,7 @@ import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { createIcon, Icon } from '../icon'
+import { createIcon, createNamedIcon, Icon } from '../icon'
 
 // Real-`h()` mount tests (test-environment-parity rule): exercise the actual
 // Icon / createIcon components through the real runtime, not a mock vnode.
@@ -109,5 +109,47 @@ describe('createIcon — reusable loaded glyph', () => {
     expect(svg?.getAttribute('aria-label')).toBe('star')
     expect(svg?.getAttribute('fill')).toBe('gold')
     expect(svg?.querySelector('path')?.getAttribute('d')).toBe('M5 0 6 4Z')
+  })
+})
+
+describe('createNamedIcon — typed set runtime', () => {
+  const RAW_A = '<svg viewBox="0 0 4 4"><rect width="4" height="4"></rect></svg>'
+  const RAW_B = '<svg viewBox="0 0 6 6"><circle r="3"></circle></svg>'
+
+  it('inline mode: name → raw svg inlined via <Icon> (one <span> host)', () => {
+    const Icon = createNamedIcon({ 'box': RAW_A, 'dot': RAW_B })
+    const root = render(h(Icon, { name: 'dot', class: 'x' }))
+    const svg = root.querySelector('svg')
+    expect(svg?.getAttribute('viewBox')).toBe('0 0 6 6')
+    expect(svg?.querySelector('circle')?.getAttribute('r')).toBe('3')
+    expect(root.querySelector('span')?.getAttribute('class')).toBe('x')
+  })
+
+  it('inline mode: switching name resolves the other entry', () => {
+    const Icon = createNamedIcon({ 'box': RAW_A, 'dot': RAW_B })
+    const svg = render(h(Icon, { name: 'box' })).querySelector('svg')
+    expect(svg?.getAttribute('viewBox')).toBe('0 0 4 4')
+    expect(svg?.querySelector('rect')).toBeTruthy()
+  })
+
+  it('image mode: name → <img> with the asset URL, original colors, no svg mutation', () => {
+    const Icon = createNamedIcon(
+      { 'logo': '/assets/logo.svg', 'mark': '/assets/mark.svg' },
+      { mode: 'image' },
+    )
+    const root = render(h(Icon, { name: 'logo', class: 'brand' }))
+    const img = root.querySelector('img')
+    expect(img?.getAttribute('src')).toBe('/assets/logo.svg')
+    expect(img?.getAttribute('alt')).toBe('')
+    expect(img?.getAttribute('class')).toBe('brand')
+    expect(root.querySelector('svg')).toBeNull()
+  })
+
+  it('image mode: alt prop is forwarded onto the <img>', () => {
+    const Icon = createNamedIcon({ 'logo': '/l.svg' }, { mode: 'image' })
+    const img = render(h(Icon, { name: 'logo', alt: 'Company logo' })).querySelector(
+      'img',
+    )
+    expect(img?.getAttribute('alt')).toBe('Company logo')
   })
 })

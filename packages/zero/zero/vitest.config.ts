@@ -26,6 +26,7 @@ export default mergeConfig(
           'src/index.ts',
           'src/favicon.ts',
           'src/font.ts',
+          'src/icons-plugin.ts',
           'src/image-plugin.ts',
           'src/og-image.ts',
           // Server-runtime middleware / SSR entry:

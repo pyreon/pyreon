@@ -70,6 +70,8 @@ export { compose, getContext } from "./middleware";
 export { zeroPlugin as default, getZeroPluginConfig } from "./vite-plugin";
 export type { FaviconPluginConfig, FaviconLocaleConfig } from "./favicon";
 export { faviconPlugin, faviconLinks } from "./favicon";
+export type { IconsPluginConfig } from "./icons-plugin";
+export { iconsPlugin, iconNameFromFile, scanIconDir, generateIconSetSource } from "./icons-plugin";
 export type { SeoPluginConfig, SitemapConfig, RobotsConfig } from "./seo";
 export { seoPlugin, generateSitemap, generateRobots, jsonLd, seoMiddleware } from "./seo";
 export type { OgImagePluginConfig, OgImageTemplate, OgImageLayer } from "./og-image";
