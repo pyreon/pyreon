@@ -528,10 +528,41 @@ The plugin provides hot module replacement (HMR) behavior through Vite's built-i
 
 ### What Gets Hot-Reloaded
 
-- **Component files** (`.tsx`, `.jsx`, `.pyreon`) -- When you edit a component, the module is invalidated and re-evaluated. Pyreon's reactive system picks up the new component definition.
+- **Component files** (`.tsx`, `.jsx`, `.pyreon`) -- When you edit a component or its JSX, the edited subtree is re-rendered **in place** without a page reload (see [Component-Level Fast Refresh](#component-level-fast-refresh) below). Module-scope signal values are preserved.
 - **SSR entry and its dependencies** -- In SSR mode, changes to the server entry or any module it imports are reflected immediately via `ssrLoadModule`, which always loads the latest version of each module.
 - **CSS and styles** -- Handled by Vite's built-in CSS HMR.
 - **Static assets** -- Handled by Vite's built-in asset handling.
+
+### Component-Level Fast Refresh
+
+For router-driven and `@pyreon/zero` apps, editing a component re-renders **only that subtree in place** — no full page reload, no lost state. This is the default behavior; no configuration is needed.
+
+Earlier versions emitted a bare `import.meta.hot.accept()` (no callback). Vite re-evaluated the edited module, but nothing re-rendered the mounted tree, **and** the self-accept suppressed Vite's full-reload fallback — so a component/JSX edit produced a silently-stale UI until a manual browser refresh, with no error or console output.
+
+The plugin now emits an accept callback that hands the **fresh module namespace Vite already re-evaluated** to a global coordinator:
+
+```ts
+if (import.meta.hot) {
+  import.meta.hot.accept((__m) => {
+    const __s = globalThis.__pyreon_hmr_swap__
+    if (typeof __s === 'function' && __m && __s(moduleId, __m)) return
+    import.meta.hot.invalidate()
+  })
+}
+```
+
+**How it works:**
+
+1. `@pyreon/router` registers the coordinator (`globalThis.__pyreon_hmr_swap__`) in a dev browser — **zero import coupling** (the same global-sink pattern as the perf-harness counters; tree-shaken from production).
+2. The coordinator walks the active matched route chain for any lazy record whose `_hmrId` matches the edited module's id, swaps in the fresh component, and bumps the loading signal. `RouterView`'s `depthEntry` computed re-emits and re-renders **only that subtree in place** — layout and sibling subtrees stay mounted, signals untouched.
+3. Because there is no page reload, `globalThis.__pyreon_hmr_registry__` survives, so `__hmr_signal` restores the edited module's module-scope signal values (see [Signal-Preserving HMR](#signal-preserving-hmr)).
+4. `@pyreon/zero`'s fs-router tags every lazy route with its `hmrId` (`lazy(() => import('/abs/X'), { hmrId: '/abs/X' })`) so the coordinator can match edits to records. This is inert in production.
+
+The plugin hands the callback the namespace **Vite passes in**, not a re-run of the lazy import thunk. Zero's lazy thunk lives in the virtual routes module, which is *not* invalidated when a leaf route self-accepts — re-importing it would return the old (stale `?t=`) module.
+
+**Automatic full-reload fallback:** when the edit is outside the active route tree (a nested non-route component, an unrelated route, a signal-only module) or no coordinator is registered (a plain `@pyreon/runtime-dom` app, or a module loaded before any router mounted), `__pyreon_hmr_swap__` returns falsy and the callback calls `import.meta.hot.invalidate()` — Vite then propagates and triggers an automatic full reload. Either way, you never refresh by hand.
+
+HMR is only injected for modules that export a component-like function (uppercase-first-letter convention) or have module-scope `signal()` calls — pure utility modules are left untouched.
 
 ### HMR Client Injection
 

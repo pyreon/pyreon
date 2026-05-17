@@ -1,6 +1,6 @@
 ---
 title: '@pyreon/lint'
-description: Pyreon-specific linter — 55 rules for signals, JSX, SSR, performance, architecture, and routing.
+description: Pyreon-specific linter — 62 rules for signals, JSX, SSR, performance, architecture, and routing.
 ---
 
 `@pyreon/lint` is a framework-specific linter that catches Pyreon anti-patterns at the AST level. Powered by `oxc-parser` for fast ESTree/TS-ESTree parsing.
@@ -47,7 +47,7 @@ pyreon-lint --watch src/
 # JSON output for tooling integration
 pyreon-lint --format json
 
-# List all 55 rules
+# List all 62 rules
 pyreon-lint --list
 
 # Override a specific rule
@@ -97,7 +97,7 @@ Create `.pyreonlintrc.json` in your project root:
 }
 ```
 
-**Rule options.** Each rule entry is either a bare severity (`"error"`) or a `[severity, options]` tuple (ESLint-style). Rules that support path-based exemption read `options.exemptPaths: string[]` — each entry is a substring match against the file path. Currently: `no-window-in-ssr`, `no-raw-addeventlistener`, `no-raw-setinterval`, `no-process-dev-gate`, `dev-guard-warnings`.
+**Rule options.** Each rule entry is either a bare severity (`"error"`) or a `[severity, options]` tuple (ESLint-style). Rules that support path-based exemption read `options.exemptPaths: string[]` — each entry is a substring match against the file path. Currently: `no-window-in-ssr`, `no-raw-addeventlistener`, `no-raw-setinterval`, `no-process-dev-gate`, `require-browser-smoke-test`, `dev-guard-warnings`, `no-imperative-effect-on-create`, `no-unbatched-updates`, `no-props-destructure`. `require-browser-smoke-test` also accepts an `additionalPackages: string[]` option to opt new browser packages in.
 
 **Validation.** Each rule declares its option shape in `meta.schema`. The runner validates user config once per `(rule, options)` pair — unknown option keys emit a warning, wrong-typed values emit an error and disable the rule for the run. Diagnostics surface on `LintResult.configDiagnostics` (and stderr) so CI / LSP / JSON reporters pick them up.
 
@@ -180,27 +180,29 @@ watchAndLint({
 
 ## Presets
 
-| Preset        | Description                                                             |
-| ------------- | ----------------------------------------------------------------------- |
-| `recommended` | All rules at their default severity. Good for development.              |
-| `strict`      | All warnings promoted to errors. For CI and pre-commit hooks.           |
-| `app`         | Recommended + library-specific rules disabled. For Pyreon applications. |
-| `lib`         | Strict + extra architecture checks. For Pyreon packages and libraries.  |
+- **`recommended`** — All rules at their default severity. Good for development.
+- **`strict`** — All warnings promoted to errors. For CI and pre-commit hooks.
+- **`app`** — Recommended, but library-only rules are turned off: `dev-guard-warnings`, `no-error-without-prefix`, `no-circular-import`, `no-cross-layer-import`, and `require-browser-smoke-test`. Note that `no-process-dev-gate` stays **on** in `app` — the bundler-coupled dev-gate bug hits user-facing browser code regardless of whether the project ships as a library or an app. For Pyreon applications.
+- **`lib`** — Strict, plus every architecture rule is forced to `error`: `no-circular-import`, `no-cross-layer-import`, `dev-guard-warnings`, `no-error-without-prefix`, `no-process-dev-gate`, and `require-browser-smoke-test`. For Pyreon packages and libraries.
 
-## Rules (55)
+## Rules (62)
 
-### Reactivity (8)
+### Reactivity (12)
 
-| Rule                           | Severity | Fixable | Description                                                |
-| ------------------------------ | -------- | ------- | ---------------------------------------------------------- |
-| `pyreon/no-bare-signal-in-jsx` | error    | yes     | `{count()}` won't be reactive — wrap in `() => count()`    |
-| `pyreon/no-signal-in-loop`     | error    |         | `signal()` inside loops creates signals on every iteration |
-| `pyreon/no-nested-effect`      | warn     |         | `effect()` inside `effect()` — use `computed()`            |
-| `pyreon/no-peek-in-tracked`    | error    |         | `.peek()` inside effect/computed bypasses tracking         |
-| `pyreon/no-unbatched-updates`  | warn     |         | 3+ `.set()` calls without `batch()`                        |
-| `pyreon/prefer-computed`       | warn     |         | `effect()` that only sets a signal — use `computed()`      |
-| `pyreon/no-effect-assignment`  | warn     |         | `effect(() => signal.update(...))` — use `computed()`      |
-| `pyreon/no-signal-leak`        | warn     |         | Signal created but never read                              |
+| Rule                            | Severity | Fixable | Description                                                                        |
+| ------------------------------- | -------- | ------- | ---------------------------------------------------------------------------------- |
+| `pyreon/no-bare-signal-in-jsx`  | error    | yes     | `{count()}` won't be reactive — wrap in `() => count()`                            |
+| `pyreon/no-signal-in-loop`      | error    |         | `signal()` inside loops creates signals on every iteration                         |
+| `pyreon/no-signal-in-props`     | warn     |         | `<C x={sig()} />` captures the value once unless the compiler wraps it             |
+| `pyreon/no-async-effect`        | error    |         | `async` in `effect`/`renderEffect`/`computed` — reads after `await` aren't tracked |
+| `pyreon/no-context-destructure` | warn     |         | Destructuring `useContext()` breaks reactivity when the provider uses getters      |
+| `pyreon/no-signal-call-write`   | error    |         | `sig(value)` does NOT write — use `sig.set(value)` / `sig.update(fn)`              |
+| `pyreon/no-nested-effect`       | warn     |         | `effect()` inside `effect()` — use `computed()`                                    |
+| `pyreon/no-peek-in-tracked`     | error    |         | `.peek()` inside effect/computed bypasses tracking                                 |
+| `pyreon/no-unbatched-updates`   | warn     |         | 3+ `.set()` calls without `batch()`                                                |
+| `pyreon/prefer-computed`        | warn     |         | `effect()` that only sets a signal — use `computed()`                              |
+| `pyreon/no-effect-assignment`   | warn     |         | `effect(() => signal.update(...))` — use `computed()`                              |
+| `pyreon/no-signal-leak`         | warn     |         | Signal created but never read                                                      |
 
 ### JSX (11)
 
@@ -218,14 +220,15 @@ watchAndLint({
 | `pyreon/no-missing-for-by`      | warn     |         | `<For>` without `by` uses index-based diffing |
 | `pyreon/no-children-access`     | info     |         | Raw `props.children` in renderer files        |
 
-### Lifecycle (4)
+### Lifecycle (5)
 
-| Rule                        | Severity | Description                                           |
-| --------------------------- | -------- | ----------------------------------------------------- |
-| `pyreon/no-missing-cleanup` | warn     | `onMount` with timer/listener but no cleanup return   |
-| `pyreon/no-mount-in-effect` | warn     | `onMount()` inside `effect()` runs every re-execution |
-| `pyreon/no-effect-in-mount` | info     | `effect()` inside `onMount()` is redundant            |
-| `pyreon/no-dom-in-setup`    | warn     | DOM access in component setup — use `onMount`         |
+| Rule                                    | Severity | Description                                                                       |
+| --------------------------------------- | -------- | --------------------------------------------------------------------------------- |
+| `pyreon/no-missing-cleanup`             | warn     | `onMount` with timer/listener but no cleanup return                               |
+| `pyreon/no-mount-in-effect`             | warn     | `onMount()` inside `effect()` runs every re-execution                             |
+| `pyreon/no-effect-in-mount`             | info     | `effect()` inside `onMount()` is redundant                                        |
+| `pyreon/no-dom-in-setup`                | warn     | DOM access in component setup — use `onMount`                                     |
+| `pyreon/no-imperative-effect-on-create` | warn     | `effect()` doing DOM/IO/timer work at component setup — move it into `onMount()`  |
 
 ### Performance (4)
 
@@ -244,15 +247,17 @@ watchAndLint({
 | `pyreon/no-mismatch-risk`       | warn     | `Date.now()`/`Math.random()` in render — hydration mismatch |
 | `pyreon/prefer-request-context` | warn     | Module-level state in SSR handlers                          |
 
-### Architecture (5)
+### Architecture (7)
 
-| Rule                             | Severity | Fixable | Description                                 |
-| -------------------------------- | -------- | ------- | ------------------------------------------- |
-| `pyreon/no-circular-import`      | error    |         | Violates package dependency layer order     |
-| `pyreon/no-cross-layer-import`   | error    |         | Core importing from UI-system               |
-| `pyreon/dev-guard-warnings`      | error    |         | `console.warn` without `__DEV__` guard      |
-| `pyreon/no-deep-import`          | warn     |         | Deep import into `@pyreon/*/src/` internals |
-| `pyreon/no-error-without-prefix` | warn     | yes     | Error message without `[Pyreon]` prefix     |
+| Rule                                | Severity | Fixable | Description                                                                |
+| ----------------------------------- | -------- | ------- | -------------------------------------------------------------------------- |
+| `pyreon/no-circular-import`         | error    |         | Violates package dependency layer order                                    |
+| `pyreon/no-cross-layer-import`      | error    |         | Core importing from UI-system                                              |
+| `pyreon/dev-guard-warnings`         | error    |         | `console.warn` without `__DEV__` guard                                     |
+| `pyreon/no-process-dev-gate`        | error    | yes     | Bundler-coupled dev gate — use bundler-agnostic `process.env.NODE_ENV`     |
+| `pyreon/require-browser-smoke-test` | error    |         | Browser-categorized package with no `*.browser.test.{ts,tsx}` under `src/` |
+| `pyreon/no-deep-import`             | warn     |         | Deep import into `@pyreon/*/src/` internals                                |
+| `pyreon/no-error-without-prefix`    | warn     | yes     | Error message without `[Pyreon]` prefix                                    |
 
 ### Router (4)
 
@@ -303,3 +308,60 @@ watchAndLint({
 | `pyreon/dialog-a11y`  | warn     | `<dialog>` without `aria-label`/`aria-labelledby` |
 | `pyreon/overlay-a11y` | warn     | `<Overlay>` without role/aria attributes          |
 | `pyreon/toast-a11y`   | warn     | Toast component without `role="alert"`            |
+
+## Notable Rules
+
+### `pyreon/no-process-dev-gate` (auto-fixable)
+
+Pyreon ships libraries to npm; consumers compile with whatever bundler they use — Vite, Webpack (Next.js), Rolldown, esbuild, Rollup, Parcel, or Bun. Two dev-gate patterns are broken in library code and this rule flags both:
+
+- `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'` — dead code in real Vite browser bundles, because Vite does not polyfill `process`. The whole expression statically folds to `false` and the dev warning never fires.
+- `import.meta.env.DEV` (and `(import.meta as ViteMeta).env?.DEV === true`) — Vite/Rolldown-only. Under Webpack/Next.js, esbuild, Rollup, Parcel, or Bun, `import.meta.env` is `undefined` and the warning never fires, even in development.
+
+The auto-fix rewrites both to the bundler-agnostic library convention used by React, Vue, Preact, and Solid:
+
+```ts
+// ❌ flagged
+if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') warn()
+if (import.meta.env.DEV) warn()
+
+// ✅ auto-fixed to
+if (process.env.NODE_ENV !== 'production') warn()
+```
+
+Every modern bundler auto-replaces `process.env.NODE_ENV` at consumer build time and tree-shakes the dev branch to zero bytes in production — no consumer config needed. Server-only packages (`zero`, `runtime-server`, `server`, `vite-plugin`) are exempt because they always run in Node where `process` is real. The companion rule `pyreon/dev-guard-warnings` recognises `if (process.env.NODE_ENV === 'production') return` as a valid early-return guard so warnings in the function body don't fire spuriously. Stays **on** in the `app` preset (the bug hits user-facing browser code regardless of project type).
+
+### `pyreon/require-browser-smoke-test`
+
+Every browser-categorized package must ship at least one `*.browser.test.{ts,tsx}` file under `src/`. The rule fires once per package on its `src/index.ts`, walks the package directory for browser smoke tests, and reports if none exist. This locks in the browser smoke harness: without it, new browser-running packages can silently ship without real-Chromium coverage, and happy-dom masks environment-divergence bugs (mock-vnode metadata drops, `typeof process` dead code, event-delegation bugs that only surface in a real browser). The default browser-package list mirrors `.claude/rules/test-environment-parity.md`; extend via the `additionalPackages` option, opt out via `exemptPaths`. **Off** in the `app` preset — applications don't ship as packages with smoke obligations — and forced to `error` in `lib`.
+
+### `pyreon/no-imperative-effect-on-create`
+
+`effect()` is for pure reactive subscriptions (signal reads driving signal writes). When an `effect()` callback at component-body scope does imperative work — `fetch()`, `setTimeout`/`setInterval`, `requestAnimationFrame`/`requestIdleCallback`, `queueMicrotask`, or `document.*` / `window.*` / `localStorage.*` / `sessionStorage.*` access — that work allocates per instance and runs synchronously during component setup, which compounds badly under many component instances. Move it into `onMount(() => { ... })`:
+
+```tsx
+// ❌ flagged — imperative work in a per-instance effect
+effect(() => {
+  document.addEventListener('keydown', onKey)
+})
+
+// ✅ imperative work belongs in onMount
+onMount(() => {
+  document.addEventListener('keydown', onKey)
+  return () => document.removeEventListener('keydown', onKey)
+})
+```
+
+Pure effects (`effect(() => sum.set(a() + b()))`, `effect(() => console.log(count()))`) are **not** flagged. Foundation hooks (`@pyreon/hooks`, `@pyreon/rx`) are exempt via `exemptPaths` — they're the abstraction layer that wraps timers/listeners for users.
+
+### `pyreon/no-async-effect`
+
+`async` functions passed to `effect()`, `renderEffect()`, or `computed()` only track signal reads up to the first `await` — reads after an `await` happen in a detached microtask with no active tracking context, so the effect never re-runs when those signals change. Read every tracked signal synchronously before the first `await`, or move the async work into an event handler / `onMount`.
+
+### `pyreon/no-signal-call-write` & `pyreon/no-signal-in-props`
+
+`no-signal-call-write` flags `sig(value)` where `sig` was declared `const sig = signal(...)` / `computed(...)` — the callable form is read-only; the argument is ignored. Use `sig.set(value)` or `sig.update(fn)`. `no-signal-in-props` flags `<Comp x={sig()} />` shapes where the signal value is captured once unless the compiler wraps it — prefer the `props.x` access pattern (or pass the accessor) so the prop stays reactive.
+
+### `pyreon/no-context-destructure`
+
+Destructuring `useContext()` (`const { mode } = useContext(Ctx)`) captures the value once at setup time. If the provider exposes values via getters (`get mode()`), destructuring evaluates the getter immediately and the value becomes static. Keep the context object reference and read properties lazily inside reactive scopes: `const ctx = useContext(Ctx)` then `ctx.mode`.

@@ -3,9 +3,13 @@ title: Zero
 description: Full-stack meta-framework for Pyreon applications.
 ---
 
-`@pyreon/zero` is a batteries-included meta-framework for Pyreon, similar to Next.js for React or Nuxt for Vue. It provides file-system routing, SSR/SSG/ISR rendering modes, optimized components, a theme system, SEO utilities, font optimization, and production deployment adapters — everything you need to ship a full-stack Pyreon application.
+`@pyreon/zero` is a batteries-included meta-framework for Pyreon, similar to Next.js for React or Nuxt for Vue. It provides file-system routing, SSR/SSG/ISR/SPA rendering modes, optimized components, a theme system, SEO utilities, font/image optimization, and production deployment adapters — everything you need to ship a full-stack Pyreon application.
 
 <PackageBadge name="@pyreon/zero" href="/docs/zero" status="beta" />
+
+::: tip Static Site Generation
+This page is a quick-start + feature overview. SSG has its own dedicated reference with the full `getStaticPaths`, redirects, i18n, ISR, and adapter story — see **[SSG](/docs/ssg)**.
+:::
 
 ## Installation
 
@@ -40,15 +44,39 @@ bun install
 bun run dev
 ```
 
-This gives you a working application with file-system routing, SSR, and hot module replacement out of the box.
+This gives you a working application with file-system routing, SSR, and hot module replacement out of the box. The dev server defaults to port `3000`; override with `--port` or `zero({ port })`.
+
+## Client-Safe vs Server-Only Entry Points
+
+`@pyreon/zero` is split into a small client-safe main entry and a larger server-only entry. **This is the single most important thing to get right when importing from Zero.**
+
+| Entry                  | Contains                                                                                                                                                   |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@pyreon/zero`         | Browser-safe only: `Image`, `Link`, `Script`, `Icon`, `Meta`, theme system, i18n hooks, plus types                                                          |
+| `@pyreon/zero/server`  | Everything that touches `node:fs`/`node:path`: `createServer`, `createApp`, `defineConfig`, `resolveConfig`, adapters, `seoPlugin`, `aiPlugin`, `i18nRouting`, fs-router helpers, `vercelRevalidateHandler` |
+
+The main entry exports **throwing stubs** for the most commonly mis-imported server APIs (`createServer`, `defineConfig`, `seoPlugin`, `faviconPlugin`, `validateEnv`, `ogImagePlugin`, `aiPlugin`) so a wrong import fails fast with an actionable message instead of a cryptic `node:fs` bundling error:
+
+```ts
+// ✅ client-safe
+import { Image, Link, Icon, theme } from '@pyreon/zero'
+
+// ✅ server-only
+import { createServer, defineConfig } from '@pyreon/zero/server'
+
+// ❌ throws at import: "createServer is server-only. Import from '@pyreon/zero/server' instead."
+import { createServer } from '@pyreon/zero'
+```
+
+A handful of features live on their own focused subpaths (so a client bundle that imports `corsMiddleware` doesn't pull in unrelated server code) — see [Subpath Exports](#subpath-exports).
 
 ## Configuration
 
-Zero is configured as a set of Vite plugins in your `vite.config.ts`:
+Zero is configured as a set of Vite plugins in your `vite.config.ts`. The default export of `@pyreon/zero/server` is the Zero Vite plugin:
 
 ```ts title="vite.config.ts"
 import pyreon from '@pyreon/vite-plugin'
-import zero from '@pyreon/zero'
+import zero from '@pyreon/zero/server'
 import { fontPlugin } from '@pyreon/zero/font'
 import { seoPlugin } from '@pyreon/zero/seo'
 
@@ -62,12 +90,14 @@ export default {
 }
 ```
 
-You can also use the `defineConfig` helper for type-safe configuration:
+`zeroPlugin()` returns `Plugin[]` — `[mainPlugin]` for `ssr`/`spa`/`isr`, `[mainPlugin, ssgPlugin]` for `ssg`. Vite's plugins array natively accepts nested arrays, so `plugins: [pyreon(), zero()]` works unchanged in all modes.
 
-```ts
-import { defineConfig } from '@pyreon/zero/config'
+For type-safe config, use `defineConfig` from `@pyreon/zero/server` (or `@pyreon/zero/config`):
 
-const config = defineConfig({
+```ts title="zero.config.ts"
+import { defineConfig } from '@pyreon/zero/server'
+
+export default defineConfig({
   mode: 'ssr',
   adapter: 'node',
   port: 3000,
@@ -76,17 +106,20 @@ const config = defineConfig({
 
 ### ZeroConfig Options
 
-| Option           | Type                                                | Default        | Description                               |
-| ---------------- | --------------------------------------------------- | -------------- | ----------------------------------------- |
-| `mode`           | `"ssr" \| "ssg" \| "spa" \| "isr"`                  | `"ssr"`        | Global rendering mode                     |
-| `vite`           | `Record<string, unknown>`                           | `&#123;&#125;` | Vite configuration overrides              |
-| `ssr.mode`       | `"stream" \| "string"`                              | `"string"`     | SSR output mode                           |
-| `ssg.paths`      | `string[] \| (() => string[] \| Promise<string[]>)` | `[]`           | Paths to prerender during build           |
-| `isr.revalidate` | `number`                                            | `60`           | Seconds before revalidation for ISR pages |
-| `adapter`        | `"node" \| "bun" \| "static"`                       | `"node"`       | Deployment adapter                        |
-| `base`           | `string`                                            | `"/"`          | Base URL path                             |
-| `middleware`     | `Middleware[]`                                      | `[]`           | Global server middleware                  |
-| `port`           | `number`                                            | `3000`         | Dev/production server port                |
+| Option       | Type                                                                          | Default | Description                                                  |
+| ------------ | ----------------------------------------------------------------------------- | ------- | ------------------------------------------------------------ |
+| `mode`       | `"ssr" \| "ssg" \| "spa" \| "isr"`                                            | `"ssr"` | Global rendering mode                                        |
+| `vite`       | `Record<string, unknown>`                                                     | `{}`    | Vite config overrides                                        |
+| `ssr.mode`   | `"stream" \| "string"`                                                        | `"string"` | SSR output mode                                           |
+| `ssg`        | `{ paths?, emit404?, emitRedirects?, redirectsAsHtml?, onPathError?, errorArtifact?, concurrency?, onProgress?, splitChunks? }` | `{}` | SSG options — see **[SSG](/docs/ssg)** |
+| `isr`        | `ISRConfig` (`{ revalidate, maxEntries?, cacheKey? }`)                         | —       | Runtime ISR config (only used when `mode: "isr"`)            |
+| `adapter`    | `"node" \| "bun" \| "static" \| "vercel" \| "cloudflare" \| "netlify" \| Adapter` | `"node"` | Deployment adapter (name or constructed instance)        |
+| `base`       | `string`                                                                      | `"/"`   | Base URL path — single source of truth (see [Base Path](#base-path)) |
+| `i18n`       | `I18nRoutingConfig`                                                           | —       | Build-time locale-prefixed route duplication — see **[SSG → i18n](/docs/ssg#i18n-localized-routes)** |
+| `middleware` | `Middleware[]`                                                                | `[]`    | Global server middleware                                     |
+| `port`       | `number`                                                                      | `3000`  | Dev/preview server port                                      |
+
+`resolveConfig(userConfig?)` merges user config with the defaults above (`mode: 'ssr'`, `base: '/'`, `port: 3000`, `adapter: 'node'`, `ssr.mode: 'string'`).
 
 ## File-System Routing
 
@@ -101,11 +134,16 @@ Routes live in `src/routes/`. The file path maps directly to the URL:
 
 ### Special Files
 
-| File           | Purpose                                                   |
-| -------------- | --------------------------------------------------------- |
-| `_layout.tsx`  | Wraps all routes in the same directory and subdirectories |
-| `_error.tsx`   | Error boundary for the route segment                      |
-| `_loading.tsx` | Loading/suspense fallback for the route segment           |
+| File           | Purpose                                                                |
+| -------------- | ---------------------------------------------------------------------- |
+| `_layout.tsx`  | Wraps all routes in the same directory and subdirectories              |
+| `_error.tsx`   | Error boundary for the route segment                                   |
+| `_loading.tsx` | Loading/suspense fallback for the route segment                        |
+| `_404.tsx`     | Not-found page (also `_not-found.tsx`) — drives runtime + SSG 404s      |
+
+::: warning Don't double-mount the layout
+fs-router emits `_layout.tsx` as a **parent route**. Do **not** also pass it via `createApp({ layout })` / `startClient({ layout })` — that mounts the layout twice. `createApp` detects this collision and ignores the explicit `layout` with a dev warning, but the correct shape is to never pass it.
+:::
 
 ### Route Groups
 
@@ -120,15 +158,24 @@ src/routes/
     pricing.tsx  → /pricing
 ```
 
-### Virtual Module
+### Virtual Modules
 
-Import the generated route table at runtime:
+The plugin generates three virtual modules you import in your entry files:
 
 ```ts
 import { routes } from 'virtual:zero/routes'
+import { routeMiddleware } from 'virtual:zero/route-middleware'
+import { apiRoutes } from 'virtual:zero/api-routes'
 ```
 
-This provides a fully typed route array ready to pass to the router.
+Add their types to `env.d.ts`:
+
+```ts title="env.d.ts"
+declare module 'virtual:zero/route-middleware' {
+  import type { RouteMiddlewareEntry } from '@pyreon/zero'
+  export const routeMiddleware: RouteMiddlewareEntry[]
+}
+```
 
 ## Route Module Exports
 
@@ -146,540 +193,193 @@ export default function UserPage({ params, data }) {
   )
 }
 
-// Optional: wrap the page in a layout
-export function layout({ children }) {
-  return <div class="user-layout">{children}</div>
-}
-
-// Optional: suspense fallback
-export function loading() {
-  return <div>Loading user...</div>
-}
-
-// Optional: error boundary
-export function error({ error, reset }) {
-  return (
-    <div>
-      Error: {error.message} <button on:click={reset}>Retry</button>
-    </div>
-  )
-}
-
 // Optional: server-side data loading
 export async function loader({ params, query, request, signal }) {
   const user = await db.users.findById(params.id)
   return { name: user.name }
 }
 
-// Optional: middleware for this route
-export function middleware(ctx) {
-  // Return a Response to short-circuit, or undefined/void to pass through
+// Optional: per-route middleware (@pyreon/server signature)
+export const middleware = (ctx) => {
+  if (!ctx.req.headers.get('authorization')) return new Response('Unauthorized', { status: 401 })
 }
 
 // Optional: navigation guard
 export function guard({ params }) {
-  if (!params.id) return '/404'
-  return true
+  return params.id ? true : '/404'
 }
 
 // Optional: head/meta tags
-export const meta = {
-  title: 'User Profile',
-  description: 'View user profile details',
-}
+export const meta = { title: 'User Profile', description: 'View user profile details' }
 
 // Optional: per-route rendering mode override
 export const renderMode = 'ssr' // "ssr" | "ssg" | "spa" | "isr"
+
+// SSG-only: enumerate concrete params for a dynamic route
+export const getStaticPaths = () => [{ params: { id: 'a' } }, { params: { id: 'b' } }]
+
+// SSG/ISR: build-time revalidate interval (seconds, or `false` for never)
+export const revalidate = 60
+
+// Loader cache controls
+export const loaderKey = ({ params }) => `user-${params.id}`
+export const gcTime = 0 // disable loader caching for auth-gated routes
 ```
+
+`getStaticPaths`, `revalidate`, `loaderKey`, and `gcTime` are documented in depth in the **[SSG reference](/docs/ssg)** (the first two) and **[router docs](/docs/router)** (the last two).
 
 ### Loader Context
 
-| Property  | Type                     | Description                   |
-| --------- | ------------------------ | ----------------------------- |
-| `params`  | `Record<string, string>` | Dynamic route parameters      |
-| `query`   | `Record<string, string>` | URL search parameters         |
-| `request` | `Request`                | The incoming HTTP request     |
-| `signal`  | `AbortSignal`            | Abort signal for cancellation |
+The `loader` receives a `LoaderContext` (re-exported from `@pyreon/router`):
+
+| Property  | Type                     | Description                                                       |
+| --------- | ------------------------ | ----------------------------------------------------------------- |
+| `params`  | `Record<string, string>` | Dynamic route parameters                                          |
+| `query`   | `Record<string, string>` | URL search parameters                                             |
+| `request` | `Request \| undefined`   | The incoming HTTP request — populated only during SSR/SSG preload |
+| `signal`  | `AbortSignal`            | Abort signal for cancellation                                     |
+
+Throw `redirect(url, status?)` from `@pyreon/router` inside a loader to redirect before the layout renders — handled at SSR, CSR, **and SSG** (see [SSG → Loader redirects](/docs/ssg#loader-redirects)).
 
 ## Rendering Modes
 
 ### SSR (Server-Side Rendering)
 
-The default mode. Pages are rendered on the server for every request and sent as HTML to the client, then hydrated.
+The default mode. Pages are rendered on the server for every request and hydrated on the client.
 
 ```ts
 defineConfig({
   mode: 'ssr',
-  ssr: { mode: 'stream' }, // "stream" for chunked transfer, "string" for buffered
+  ssr: { mode: 'stream' }, // "stream" for chunked transfer, "string" for buffered (default)
 })
 ```
 
 ### SSG (Static Site Generation)
 
-Pages are prerendered at build time. Ideal for content that rarely changes — marketing sites, blogs, docs, anything where the HTML is identical for every visitor.
+Pages are prerendered to static HTML at build time. Ideal for content that rarely changes. SSG has a substantial feature surface — see the dedicated **[SSG reference](/docs/ssg)**.
 
 ```ts
 defineConfig({
   mode: 'ssg',
-  ssg: {
-    paths: ['/', '/about', '/blog/hello-world'],
-  },
+  ssg: { paths: ['/', '/about', '/blog/hello-world'] },
 })
 ```
-
-**See the dedicated [Static Site Generation](/docs/ssg) page** for the full reference — dynamic routes via `getStaticPaths`, build-time ISR via `revalidate` exports, per-locale 404 + hreflang sitemap, the `vercelRevalidateHandler` scaffold, deployment per platform, and the `pyreon doctor --check-ssg` audit. The summary below covers the quick-start surface only.
-
-When `mode: "ssg"` is set, `vite build` runs the regular client build, then triggers a programmatic SSR sub-build, loads the resulting handler, and writes one HTML file per path:
-
-- `'/'` → `dist/index.html`
-- `'/about'` → `dist/about/index.html`
-- `'/blog/hello-world'` → `dist/blog/hello-world/index.html`
-
-The temporary `dist/.zero-ssg-server/` artifacts are cleaned up automatically after rendering.
-
-`ssg.paths` accepts three shapes:
-
-- `string[]` — explicit list (most common)
-- `() => string[]` — sync function, useful for deriving paths from a glob or static config
-- `() => Promise<string[]>` — async function, useful for fetching paths from a CMS or database
-
-If `ssg.paths` is omitted, the plugin auto-detects static paths from the file-system route tree — every route without a `:param` or `*` catch-all segment is included. **Dynamic routes** can opt in to enumeration by exporting `getStaticPaths` from the route file (see below). When no static paths exist, a single `/` fallback is always produced so the static host has at least an `index.html`.
-
-#### `getStaticPaths` per-route export
-
-Dynamic routes (e.g. `/posts/[id].tsx`) can enumerate concrete values by exporting `getStaticPaths`:
-
-```tsx
-// src/routes/posts/[id].tsx
-import type { GetStaticPaths } from '@pyreon/zero/server'
-
-export const getStaticPaths: GetStaticPaths<{ id: string }> = () => [
-  { params: { id: 'a' } },
-  { params: { id: 'b' } },
-]
-
-export default function Post({ params }) {
-  return <article>Post {params.id}</article>
-}
-```
-
-Sync or async are both supported (`() => Array<{ params }>` or `() => Promise<...>`). Catch-all routes (`[...slug].tsx`) work via `{ params: { slug: 'a/b' } }` → `/blog/a/b`. Errors during enumeration (function throws, returns non-array, missing params) are captured into `PrerenderResult.errors` and the build continues for other routes — SSG never aborts on a single bad enumerator.
-
-Mirrors Astro's per-route convention. Reference: `packages/zero/zero/src/fs-router.ts:detectRouteExports`.
-
-#### `_404.tsx` convention
-
-Drop a `_404.tsx` (or `_not-found.tsx`) anywhere in the routes tree and SSG auto-emits `dist/404.html` at build time. Static hosts (Netlify, Cloudflare Pages, GitHub Pages, S3 + CloudFront) serve `404.html` automatically for unmatched URLs:
-
-```tsx
-// src/routes/_404.tsx
-import { Meta } from '@pyreon/zero'
-
-export default function NotFound() {
-  return (
-    <>
-      <Meta title="Not found" noIndex />
-      <h1>404 — page not found</h1>
-    </>
-  )
-}
-```
-
-The 404 page is rendered through the same head/styler pipeline as every other path (`@pyreon/styler` tag, `@pyreon/head` meta, asset preload links all land correctly). Disable with `ssg.emit404: false`.
-
-**404 pages are wrapped in their parent layout's chrome.** The SSG renderer navigates the router to a synthetic non-matching probe URL per locale. `resolveRoute` walks the route tree finding the deepest parent `_layout.tsx` that contains a `notFoundComponent` (the `_404.tsx` you dropped) AND has children. It builds a matched chain `[...ancestorLayouts, syntheticLeaf]` and renders through the normal pipeline. Result: parent `_layout.tsx` components (sticky headers, footers, navigation chrome, PyreonUI provider) wrap the 404 content automatically — your branded chrome appears on the 404 page exactly as on regular pages. Standard Next.js / Remix behavior.
-
-**Caveat — `notFoundComponent` walking requires a parent layout with `children`.** If a route record IS a leaf page (no `children` array, no inner `<RouterView />`) and yet declares `notFoundComponent`, the resolver can't insert the synthetic leaf at depth 1 — there's no `<RouterView />` slot at that depth. Such records fall back to the standalone render path (no layout wrapping). The canonical pattern (`_404.tsx` inside a `_layout.tsx` directory) always works correctly.
-
-**Caveat — layout loaders run during 404 render.** The probe-URL navigation runs `router.preload()` on the matched chain, so any parent layout `loader()` fires during 404 emission. Most layout loaders fetch public navigation data; if a layout loader requires authenticated context the build-time render doesn't have, the loader should handle `request: undefined` and return a safe fallback. Loader-thrown `redirect()` from a parent layout during 404 render is captured into the redirect manifest (existing PR B behavior).
-
-**Limitation — host routing required for unmatched URLs.** SSG writes `dist/404.html` but the static host (or your own reverse proxy) is responsible for SERVING it when an incoming URL doesn't match a prerendered file. Pyreon does not bundle a server for SSG output. Most managed static hosts wire this automatically:
-
-- **Netlify** — serves `dist/404.html` for any unmatched path by convention. No config needed.
-- **Cloudflare Pages** — serves `dist/404.html` for unmatched paths by convention. No config needed.
-- **GitHub Pages** — serves `dist/404.html` for unmatched paths under the user/project site by convention. No config needed.
-- **Vercel** — serves `dist/404.html` for unmatched paths by convention when deploying a static build.
-- **S3 + CloudFront** — set the CloudFront error response for HTTP 404 to point at `/404.html` with response status 404. (CloudFront has no "404 file" convention; the rule is explicit.)
-- **nginx** — add `error_page 404 /404.html;` inside the `server` block. Combine with `try_files $uri $uri/ $uri.html =404;` for directory-style routing.
-- **Caddy** — add `handle_errors { @404 expression {http.error.status_code} == 404; rewrite @404 /404.html; file_server }` to the site block.
-
-If you self-host on Node/Bun (i.e. you ARE running zero's runtime in `mode: 'ssr' | 'isr'`), the 404 routing is handled in-process by the framework — `dist/404.html` is for static-deploy scenarios only.
-
-#### Per-locale 404 (i18n)
-
-When `zero({ i18n: { locales, defaultLocale, strategy } })` is configured, SSG emits a 404 file PER LOCALE under each locale's directory prefix:
-
-```text
-dist/
-├── 404.html              # default locale (or no-i18n)
-├── de/
-│   └── 404.html          # German 404
-└── cs/
-    └── 404.html          # Czech 404
-```
-
-Drop `_404.tsx` files in the routes tree the same way you drop pages — i18n route duplication fans the not-found components into per-locale variants automatically. If you only ship one `_404.tsx` at the routes root, every locale renders the SAME component (byte-identical HTML); SSG still emits the per-locale files so the static host's per-prefix 404 routing works.
-
-**Host config for per-locale 404 routing.** The challenge is that a managed host's "convention" usually only serves `dist/404.html` at the root — it doesn't know that `/de/unknown-page` should fall through to `dist/de/404.html`. You have to wire that explicitly:
-
-- **Netlify** — add a `[[redirects]]` block per locale to `netlify.toml`:
-
-  ```toml
-  [[redirects]]
-    from = "/de/*"
-    to = "/de/404.html"
-    status = 404
-
-  [[redirects]]
-    from = "/cs/*"
-    to = "/cs/404.html"
-    status = 404
-  ```
-
-  The unprefixed `/*` fallback to `dist/404.html` is automatic; the per-locale rules need explicit declarations.
-
-- **Cloudflare Pages** — extend `_routes.json` and add a custom `errorPage` per locale via the `_redirects` shape:
-
-  ```text
-  /de/* /de/404.html 404
-  /cs/* /cs/404.html 404
-  ```
-
-  This is the same `_redirects` syntax Pyreon emits for loader-thrown redirects (PR B). The 404 entries can be appended after the loader-redirects (last-matching-rule wins, so put specific routes BEFORE the catch-all locale 404s).
-
-- **GitHub Pages** — does NOT support per-directory 404 customization out of the box. All unmatched URLs serve the root `dist/404.html`. If per-locale 404 is required, deploy via a different host or use a build-time redirect generator.
-
-- **nginx** — split locations per locale:
-
-  ```nginx
-  location /de/ {
-    try_files $uri $uri/ $uri.html /de/404.html;
-  }
-
-  location /cs/ {
-    try_files $uri $uri/ $uri.html /cs/404.html;
-  }
-
-  location / {
-    try_files $uri $uri/ $uri.html /404.html;
-  }
-  ```
-
-- **Caddy** — same pattern, per-locale matcher:
-
-  ```caddy
-  handle_errors {
-    @404_de expression {http.error.status_code} == 404 && {http.request.uri.path} startswith "/de/"
-    rewrite @404_de /de/404.html
-
-    @404_cs expression {http.error.status_code} == 404 && {http.request.uri.path} startswith "/cs/"
-    rewrite @404_cs /cs/404.html
-
-    rewrite /404.html
-    file_server
-  }
-  ```
-
-Without per-locale host routing the framework emits the right files, but unmatched URLs under `/de/...` serve the DEFAULT-locale 404 (or whatever the host's convention is for unmatched paths) — the per-locale variants exist on disk but the host never reaches them.
-
-**Why no built-in solution.** Static hosts vary widely in their routing primitives; Pyreon would either need to ship a manifest each host consumes (and stay in sync as host APIs evolve) or run its own request-time router (defeating the static-deploy model). Documenting the explicit host snippets keeps the deploy contract honest. If you want runtime per-locale 404 routing without host config, run zero in `mode: 'ssr'` instead — the framework's request handler walks the matched chain and renders the locale-aware 404 in-process.
-
-#### Redirect handling during SSG
-
-Throw `redirect(url, status?)` inside a route loader and SSG catches it during prerender:
-
-```tsx
-import { redirect } from '@pyreon/router'
-
-export const loader = ({ params }) => {
-  if (params.slug === 'old-name') throw redirect('/blog/new-name', 301)
-  return loadPost(params.slug)
-}
-```
-
-During SSG, redirects are written to a `_redirects` manifest file at the build root (Netlify-compatible format). The path is skipped from prerender output. CSR (client navigation) catches the same `redirect()` and routes through `router.replace()` automatically.
-
-#### Sitemap auto-emit
-
-`dist/sitemap.xml` is generated automatically from the resolved SSG path set (post-`getStaticPaths` expansion). Configure via `seo.sitemap`:
-
-```ts
-defineConfig({
-  mode: 'ssg',
-  seo: {
-    siteUrl: 'https://example.com',
-    sitemap: { changefreq: 'weekly', priority: 0.8 },
-  },
-})
-```
-
-#### `onPathError` callback + error artifact
-
-When SSG hits a per-path render error, it captures it into `PrerenderResult.errors` and continues. Inspect or fail the build via `onPathError`:
-
-```ts
-defineConfig({
-  mode: 'ssg',
-  ssg: {
-    onPathError: ({ path, error }) => {
-      console.error(`[ssg] ${path}: ${error.message}`)
-      // throw to fail the build, or return to continue
-    },
-  },
-})
-```
-
-The full error set is also written to `dist/_pyreon-ssg-errors.json` (path, error message, stack) so CI gates can post-process it. Successful builds with zero errors omit the file.
-
-#### `zeroPlugin()` returns `Plugin[]`
-
-Since the SSG runtime landed, `zeroPlugin()` returns `Plugin[]` (`[mainPlugin]` for non-SSG modes, `[mainPlugin, ssgPlugin]` for SSG). Vite's plugins array natively accepts nested arrays, so `plugins: [pyreon(), zero()]` keeps working unchanged. Only downstream test code that asserted `zeroPlugin()` returns a single Plugin needs `[0]` or array-aware access.
 
 ### SPA (Single-Page Application)
 
 Client-only rendering. The server sends a minimal HTML shell and all rendering happens in the browser.
 
 ```ts
-defineConfig({
-  mode: 'spa',
-})
+defineConfig({ mode: 'spa' })
 ```
 
-### ISR (Incremental Static Regeneration)
+### ISR (Incremental Static Regeneration — runtime)
 
-Pyreon ships ISR in **two complementary layers**: a runtime in-memory cache (when you self-host on Node/Bun) and a build-time manifest that drives platform ISR on managed hosts (Vercel / Cloudflare / Netlify). They can coexist or you can use either alone.
-
-#### Runtime ISR — `mode: 'isr'`
-
-In-memory LRU cache with stale-while-revalidate semantics. The handler renders on first request, caches the response, serves stale + revalidates in the background after the revalidation window.
+`mode: 'isr'` combines SSR with stale-while-revalidate **in-memory** caching at request time. Pages are served from cache and regenerated in the background after the revalidation window.
 
 ```ts
 defineConfig({
   mode: 'isr',
   isr: {
-    revalidate: 60, // seconds
-    maxEntries: 1000, // LRU cap (default)
+    revalidate: 60, // seconds before a cached entry is considered stale
+    maxEntries: 1000, // LRU cap on the in-memory cache (default 1000)
+    cacheKey: (req) => new URL(req.url).pathname, // default keys by pathname only
   },
 })
 ```
 
-The cache is **bounded by `maxEntries`** (default 1000) with oldest-first LRU eviction so unbounded URL spaces like `/user/:id` don't grow memory without limit.
+::: warning ISR cache key + auth
+The default cache key is `url.pathname` only — query, cookies, and headers are stripped. An auth-gated loader (reading `request.headers.get('cookie')`) renders **once** with the first user's cookie and then serves that HTML to everyone. Supply a `cacheKey` that varies on the session identifier, or use `mode: 'ssr'` for personalized routes.
+:::
 
-##### ⚠️ Auth-gated routes need a custom `cacheKey`
+Build-time ISR (per-route `export const revalidate` + adapter-driven rebuild-on-stale) is a **separate** mechanism documented in [SSG → Build-time ISR](/docs/ssg#build-time-isr-per-route-revalidate).
 
-The default cache key is `url.pathname` ONLY — query strings, cookies, and request headers are stripped. **This is unsafe for personalized content.** A loader that reads `request.headers.get('cookie')` to gate auth will render ONCE with the first user's cookie, then serve that same HTML to every subsequent user.
+### Per-route override
 
-Use `cacheKey` to vary by cookies / query / headers:
-
-```ts
-defineConfig({
-  mode: 'isr',
-  isr: {
-    revalidate: 60,
-    // Vary cache by session cookie — each user gets their own cache entry
-    cacheKey: (req) => {
-      const url = new URL(req.url)
-      const session = req.headers.get('cookie')?.match(/session=([^;]+)/)?.[1] ?? 'anon'
-      return `${url.pathname}::${session}`
-    },
-  },
-})
-```
-
-```ts
-// Or vary by a query parameter:
-isr: {
-  revalidate: 60,
-  cacheKey: (req) => {
-    const url = new URL(req.url)
-    return `${url.pathname}?sort=${url.searchParams.get('sort') ?? ''}`
-  },
-}
-```
-
-If you can't safely derive a cache key for personalized content, use `mode: 'ssr'` for those routes instead.
-
-#### Build-time ISR — per-route `revalidate` exports
-
-For managed static hosts (Vercel / Cloudflare Pages / Netlify), declare per-route revalidation intervals via the `revalidate` export. The SSG plugin emits `dist/_pyreon-revalidate.json` mapping `{ concretePath: revalidateSeconds }` for every prerendered path:
-
-```ts
-// src/routes/posts/[id].tsx
-export const revalidate = 60 // revalidate every 60 seconds
-
-export const getStaticPaths = async () => {
-  const posts = await fetchPosts()
-  return posts.map((p) => ({ params: { id: p.slug } }))
-}
-
-export default function Post({ params }) {
-  return <article>Post {params.id}</article>
-}
-```
-
-Or disable revalidation explicitly:
-
-```ts
-export const revalidate = false // never revalidate
-```
-
-The literal value (`60` or `false`) is captured at build time. **Non-literal expressions are silently omitted** — `export const revalidate = TTL` (where `TTL` is a const elsewhere) won't reach the manifest. Always export inline literals.
-
-The manifest produced at `dist/_pyreon-revalidate.json` looks like:
-
-```json
-{
-  "/posts/1": 60,
-  "/posts/2": 60,
-  "/posts/3": 60
-}
-```
-
-#### `Adapter.revalidate(path)` — platform integration
-
-Deploy adapters consume the manifest and integrate with each platform's ISR API:
-
-| Adapter | Mechanism | Env vars |
-| --- | --- | --- |
-| `vercelAdapter` | POST to `<deployment>/api/_pyreon-revalidate?path=…&secret=…` | `VERCEL_DEPLOYMENT_URL`, `VERCEL_REVALIDATE_TOKEN` |
-| `cloudflareAdapter` | POST to `zones/{id}/purge_cache` (edge cache invalidation) | `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_SITE_URL` |
-| `netlifyAdapter` | POST to Build Hook URL (full-site rebuild, path in audit log) | `NETLIFY_BUILD_HOOK_URL` |
-| `staticAdapter` / `nodeAdapter` / `bunAdapter` | no-op (use runtime ISR for self-hosted) | — |
-
-**Vercel** requires a user-side webhook handler at `/api/_pyreon-revalidate`. You write that endpoint, validate the secret, and call Vercel's `res.revalidate()` API. (A future `@pyreon/zero/vercel-revalidate-handler` helper will scaffold this — track in the roadmap.)
-
-**Cloudflare** has a rate limit: ~1000 purges per 24h per zone. High-volume revalidation can hit the cap; the adapter returns `{ regenerated: false }` on 429 responses but doesn't surface the underlying reason — monitor your CMS publish frequency.
-
-**Netlify's** build hook triggers a FULL site rebuild, not per-page ISR. The `path` argument flows into the `trigger_title` field for audit-log traceability only.
-
-If required env vars are missing, the adapter returns `{ regenerated: false }` and warns in dev mode. **Production deployments do not currently warn on missing env vars** — verify your env config before deploying.
-
-#### Combining the two layers
-
-You can use BOTH runtime ISR (`mode: 'isr'`) AND per-route `revalidate` exports on the same app. The runtime layer caches in-memory; the build-time layer drives platform ISR rebuilds. Both layers can coexist correctly:
-
-- **Self-hosted (Node / Bun)** → `mode: 'isr'` for in-process caching; `revalidate` exports unused (no platform to call)
-- **Vercel / Cloudflare / Netlify (static)** → per-route `revalidate` + adapter; runtime cache typically not needed
-- **Hybrid SSR + ISR** → `mode: 'isr'` runtime cache + per-route `revalidate` for platform rebuild signals when a CMS publishes
+Any route file can override the global mode with `export const renderMode = 'ssg'` (etc.).
 
 ## Components
 
-### Image
-
-Optimized image component with lazy loading, responsive srcset generation, blur-up placeholders, and priority loading.
-
-```tsx
-import { Image } from "@pyreon/zero"
-
-<Image
-  src="/photos/hero.jpg"
-  alt="Hero image"
-  width={1200}
-  height={600}
-  priority          // skip lazy loading for above-the-fold images
-  placeholder="blur" // blur-up placeholder while loading
-  sizes="(max-width: 768px) 100vw, 50vw"
-/>
-
-// Responsive with automatic srcset
-<Image
-  src="/photos/product.jpg"
-  alt="Product"
-  width={800}
-  height={800}
-  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-/>
-```
+All four components are client-safe and follow the same three-layer extensibility pattern: a **`useX` composable** (full control), a **`createX` HOC** (wrap any component with the behavior), and a **default component**.
 
 ### Link
 
-Client-side navigation link with prefetching and active state tracking.
+Client-side navigation with prefetching and active state tracking.
 
 ```tsx
-import { Link } from "@pyreon/zero"
+import { Link, useLink, createLink, prefetchRoute } from '@pyreon/zero'
 
-<Link href="/about">About</Link>
-
-// Prefetch strategies
+;<Link href="/about">About</Link>
 <Link href="/dashboard" prefetch="hover">Dashboard</Link>
 <Link href="/settings" prefetch="viewport">Settings</Link>
 <Link href="/admin" prefetch="none">Admin</Link>
 ```
 
-| Prop               | Type                              | Default          | Description                                               |
-| ------------------ | --------------------------------- | ---------------- | --------------------------------------------------------- |
-| `href`             | `string`                          | required         | Navigation target                                         |
-| `prefetch`         | `"hover" \| "viewport" \| "none"` | `"hover"`        | When to prefetch the route                                |
-| `activeClass`      | `string`                          | `"active"`       | CSS class applied when the link matches the current route |
-| `exactActiveClass` | `string`                          | `"exact-active"` | CSS class for exact route match                           |
+| Prop               | Type                              | Default          | Description                                  |
+| ------------------ | --------------------------------- | ---------------- | -------------------------------------------- |
+| `href`             | `string`                          | required         | Navigation target                            |
+| `prefetch`         | `"hover" \| "viewport" \| "none"` | `"hover"`        | When to prefetch the route                   |
+| `activeClass`      | `string`                          | `"active"`       | Class when the link matches the current route |
+| `exactActiveClass` | `string`                          | `"exact-active"` | Class for exact route match                  |
 
-### Link API (Three Levels)
-
-Zero provides the `Link` system at three levels of abstraction:
-
-**1. `useLink(props)` — Composable with full control**
+**Three layers:**
 
 ```tsx
-import { useLink } from '@pyreon/zero'
-
+// 1. useLink — composable, full control
 function CustomNav({ href, children }) {
   const { isActive, isExactActive, navigate, prefetch } = useLink({ href })
-
   return (
-    <button class={isActive() ? 'active' : ''} on:click={navigate} on:mouseenter={prefetch}>
-      {children}
-    </button>
-  )
-}
-```
-
-**2. `createLink(Component)` — HOC wrapping any component**
-
-```tsx
-import { createLink } from "@pyreon/zero"
-
-function FancyButton({ isActive, children, ...props }) {
-  return (
-    <button class={isActive ? "fancy-active" : "fancy"} {...props}>
+    <button class={isActive() ? 'active' : ''} onClick={navigate} onMouseEnter={prefetch}>
       {children}
     </button>
   )
 }
 
-const FancyLink = createLink(FancyButton)
+// 2. createLink — wrap any component with link behavior
+const FancyLink = createLink((props) => (
+  <button class={props.isActive() ? 'fancy-active' : 'fancy'} onClick={props.onClick}>
+    {props.children}
+  </button>
+))
 
-// Usage
-<FancyLink href="/dashboard">Dashboard</FancyLink>
+// 3. Link — the default <a>-based link (itself built via createLink)
 ```
 
-**3. `Link` — Default `<a>`-based link**
+`prefetchRoute('/about')` imperatively prefetches a route's chunk + loader data.
+
+### Image
+
+Optimized image with lazy loading, responsive `srcset`, multi-format `<picture>`, and blur-up placeholders.
 
 ```tsx
-import { Link } from '@pyreon/zero'
+import { Image, useImage, createImage } from '@pyreon/zero'
 
-;<Link href="/about">About</Link>
+;<Image
+  src="/photos/hero.jpg"
+  alt="Hero image"
+  width={1200}
+  height={600}
+  priority // skip lazy loading for above-the-fold images
+  placeholder="data:image/svg+xml;base64,..." // low-quality placeholder URL/data URI
+  sizes="(max-width: 768px) 100vw, 50vw"
+/>
 ```
+
+`useImage(props)` returns the resolved `src`/`srcset`/`sizes`, the container ref, load state, and style accessors; `createImage(Component)` wraps any component with `ImageRenderProps` (pre-rendered `<img>` + placeholder + ref/styles). The default `<Image>` is built via `createImage`.
+
+Build-time optimization (responsive variants, modern formats, generated placeholders) is handled by [`imagePlugin`](#image-processing).
 
 ### Script
 
-Optimized third-party script loading with multiple strategies:
+Optimized third-party script loading.
 
 ```tsx
-import { Script } from "@pyreon/zero"
+import { Script, useScript, createScript } from '@pyreon/zero'
 
-// Load before hydration (blocking)
-<Script src="https://cdn.example.com/critical.js" strategy="beforeHydration" />
-
-// Load after hydration (non-blocking)
+;<Script src="https://cdn.example.com/critical.js" strategy="beforeHydration" />
 <Script src="https://cdn.example.com/analytics.js" strategy="afterHydration" />
-
-// Load when browser is idle
 <Script src="https://cdn.example.com/widget.js" strategy="onIdle" />
-
-// Load on user interaction
 <Script src="https://cdn.example.com/chat.js" strategy="onInteraction" />
-
-// Load when element enters viewport
 <Script src="https://cdn.example.com/video.js" strategy="onViewport" />
 ```
 
@@ -688,12 +388,57 @@ import { Script } from "@pyreon/zero"
 | `beforeHydration` | Loads synchronously before the app hydrates. Use sparingly.                     |
 | `afterHydration`  | Loads asynchronously after hydration completes.                                 |
 | `onIdle`          | Loads during `requestIdleCallback`. Good for non-critical scripts.              |
-| `onInteraction`   | Loads when the user interacts with the page (click, scroll, keydown).           |
+| `onInteraction`   | Loads on first user interaction (click, scroll, keydown).                       |
 | `onViewport`      | Loads when the script's container enters the viewport via IntersectionObserver. |
+
+Same three-layer shape: `useScript(props)` / `createScript(Component)` / `Script`.
+
+### Icon
+
+A minimal inline-SVG leaf — renders an SVG you loaded, container-sizable and theme-aware (`fill="currentColor"` by default, so CSS `color` themes it). Two ways to supply the SVG:
+
+```tsx
+import { Icon, createIcon, createNamedIcon } from '@pyreon/zero'
+
+// Component form (recommended) — import the SVG as a component
+import Check from './check.svg?component'
+;<span style="width:2rem"><Icon as={Check} /></span>
+
+// Raw-markup form — import the SVG as a string
+import check from './check.svg?raw'
+;<span style="width:2rem"><Icon svg={check} /></span>
+
+// Factory: one reusable component per glyph
+export const CheckIcon = createIcon(check) // or createIcon(Check)
+;<span style="width:48px"><CheckIcon class="text-green-600" /></span>
+```
+
+There is intentionally **no `useIcon`** — an icon has no composable behavior. For a folder of icons, [`iconsPlugin`](#other-build-time-plugins) scans a directory and generates a strictly-typed `<Icon name="...">` via `createNamedIcon`.
+
+### Meta
+
+Per-page head tags, including Open Graph + SEO.
+
+```tsx
+import { Meta } from '@pyreon/zero'
+
+;<Meta
+  title="My Page"
+  description="Page description"
+  ogImage={{ url: '/og.png', width: 1200, height: 630 }}
+  ogVideo={{ url: '/video.mp4', type: 'video/mp4' }}
+  ogAudio={{ url: '/audio.mp3', type: 'audio/mpeg' }}
+  noIndex
+  ogTemplate="default"
+  favicon="/custom-favicon.svg"
+/>
+```
+
+`buildMetaTags(props)` returns the tag list directly if you need to compose head output yourself.
 
 ## Theme System
 
-Built-in dark/light theme support with FOUC prevention.
+Built-in dark/light theme with FOUC prevention. All theme APIs are client-safe.
 
 ```tsx
 import {
@@ -704,125 +449,76 @@ import {
   initTheme,
   ThemeToggle,
   themeScript,
+  setSSRThemeDefault,
 } from '@pyreon/zero'
-```
-
-### Usage
-
-```tsx
-import { theme, resolvedTheme, toggleTheme, setTheme, ThemeToggle } from '@pyreon/zero'
 
 function Header() {
   return (
     <header>
-      <p>Current theme: {theme()}</p>
+      <p>Theme: {theme()}</p>
       <p>Resolved (system-aware): {resolvedTheme()}</p>
-      <button on:click={toggleTheme}>Toggle</button>
-      <button on:click={() => setTheme('dark')}>Force Dark</button>
-      <button on:click={() => setTheme('light')}>Force Light</button>
-      <button on:click={() => setTheme('system')}>System</button>
-
-      {/* Or use the built-in toggle component */}
+      <button onClick={toggleTheme}>Toggle</button>
+      <button onClick={() => setTheme('system')}>System</button>
       <ThemeToggle />
     </header>
   )
 }
 ```
 
-### Preventing FOUC
+| Export               | Type                                         | Description                                              |
+| -------------------- | -------------------------------------------- | -------------------------------------------------------- |
+| `theme`              | `() => "light" \| "dark" \| "system"`        | Current theme preference (reactive)                      |
+| `resolvedTheme`      | `() => "light" \| "dark"`                    | Resolved theme — reactive to OS color-scheme changes     |
+| `toggleTheme`        | `() => void`                                 | Toggle between light and dark                            |
+| `setTheme`           | `(t) => void`                                | Set theme explicitly                                     |
+| `initTheme`          | `() => void`                                 | Initialize from storage/system on startup                |
+| `ThemeToggle`        | Component                                    | Pre-built toggle button                                  |
+| `themeScript`        | `string`                                     | Inline `<script>` to apply theme before first paint      |
+| `setSSRThemeDefault` | `(t) => void`                                | Set the theme used during SSR render                     |
 
-Add `themeScript` to your HTML `<head>` to apply the theme before the first paint:
-
-```tsx
-import { themeScript } from '@pyreon/zero'
-
-function Document() {
-  return (
-    <html>
-      <head>
-        <script>{themeScript}</script>
-      </head>
-      <body>{/* ... */}</body>
-    </html>
-  )
-}
-```
-
-Call `initTheme()` during app startup to initialize the reactive theme state from `localStorage` and system preferences:
-
-```tsx
-import { initTheme } from '@pyreon/zero'
-
-initTheme()
-```
-
-### Theme API
-
-| Export          | Type                                         | Description                                                        |
-| --------------- | -------------------------------------------- | ------------------------------------------------------------------ |
-| `theme`         | `() => "light" \| "dark" \| "system"`        | Reactive signal returning the current theme preference             |
-| `resolvedTheme` | `() => "light" \| "dark"`                    | Reactive signal returning the resolved theme (resolves `"system"`) |
-| `toggleTheme`   | `() => void`                                 | Toggles between light and dark                                     |
-| `setTheme`      | `(t: "light" \| "dark" \| "system") => void` | Sets theme explicitly                                              |
-| `initTheme`     | `() => void`                                 | Initializes theme from storage/system preference                   |
-| `ThemeToggle`   | Component                                    | Pre-built toggle button component                                  |
-| `themeScript`   | `string`                                     | Inline script to prevent FOUC                                      |
+Add `themeScript` to your HTML `<head>` and call `initTheme()` on startup to prevent FOUC.
 
 ## Middleware
 
-Built-in server middleware for common tasks:
+Built-in server middleware. Wire them into `createServer({ middleware: [...] })`.
 
-### cacheMiddleware
-
-Applies `Cache-Control` headers based on asset type:
+| Middleware                | Import path                  | Purpose                                            |
+| ------------------------- | ---------------------------- | -------------------------------------------------- |
+| `cacheMiddleware`         | `@pyreon/zero/cache`         | `Cache-Control` headers by asset type              |
+| `securityHeaders`         | `@pyreon/zero/cache`         | CSP, X-Frame-Options, etc.                         |
+| `varyEncoding`            | `@pyreon/zero/cache`         | `Vary: Accept-Encoding` for CDN correctness        |
+| `corsMiddleware`          | `@pyreon/zero/cors`          | CORS                                               |
+| `rateLimitMiddleware`     | `@pyreon/zero/rate-limit`    | Token-bucket rate limiting                         |
+| `compressionMiddleware`   | `@pyreon/zero/compression`   | gzip/br via native `CompressionStream`             |
+| `cspMiddleware`           | `@pyreon/zero/csp`           | Content-Security-Policy with per-request nonce     |
+| `loggerMiddleware`        | `@pyreon/zero/logger`        | Structured request logging                         |
 
 ```ts
-import { cacheMiddleware } from '@pyreon/zero'
+import { cacheMiddleware, securityHeaders } from '@pyreon/zero/cache'
+import { corsMiddleware } from '@pyreon/zero/cors'
+import { rateLimitMiddleware } from '@pyreon/zero/rate-limit'
 
-cacheMiddleware({
-  immutable: 31536000, // Hashed assets (1 year, default)
-  static: 86400, // Static assets (1 day, default)
-  pages: 0, // HTML pages (no cache, default)
-  staleWhileRevalidate: 60, // SWR window in seconds (default)
-  rules: [
-    // Custom per-path overrides
-    { match: '/api/*', control: 'no-store' },
-  ],
-})
+cacheMiddleware({ immutable: 31536000, static: 86400, pages: 0, staleWhileRevalidate: 60 })
+corsMiddleware({ origin: ['https://app.com'], credentials: true, maxAge: 86400 })
+rateLimitMiddleware({ max: 20, window: 60, include: ['/api/*'] })
 ```
 
-| Option                 | Type          | Default    | Description                             |
-| ---------------------- | ------------- | ---------- | --------------------------------------- |
-| `immutable`            | `number`      | `31536000` | Max-age for hashed/fingerprinted assets |
-| `static`               | `number`      | `86400`    | Max-age for static assets               |
-| `pages`                | `number`      | `0`        | Max-age for HTML pages                  |
-| `staleWhileRevalidate` | `number`      | `60`       | Stale-while-revalidate window           |
-| `rules`                | `CacheRule[]` | `[]`       | Custom rules with glob pattern matching |
+### CSP Nonce
 
-### securityHeaders
+```tsx
+import { cspMiddleware } from '@pyreon/zero/csp'
+import { useNonce } from '@pyreon/zero/server'
 
-Adds security-related HTTP headers (Content-Security-Policy, X-Frame-Options, etc.):
+cspMiddleware({ directives: { 'default-src': ["'self'"], 'script-src': ["'self'", "'nonce'"] } })
 
-```ts
-import { securityHeaders } from '@pyreon/zero'
-
-// Use in your server middleware
-securityHeaders()
-```
-
-### varyEncoding
-
-Adds `Vary: Accept-Encoding` header for proper CDN caching:
-
-```ts
-import { varyEncoding } from '@pyreon/zero'
-
-varyEncoding()
+function InlineScript() {
+  return <script nonce={useNonce()}>console.log('safe')</script>
+}
 ```
 
 ## API Routes
 
-API routes are `.ts` files in `src/routes/api/` that export HTTP method handlers. They run on the server and return `Response` objects directly.
+API routes are `.ts` files in `src/routes/api/` that export HTTP method handlers and return `Response` objects.
 
 ```ts title="src/routes/api/posts.ts"
 import type { ApiContext } from '@pyreon/zero'
@@ -837,274 +533,52 @@ export async function POST(ctx: ApiContext) {
 }
 ```
 
-### File path conventions
-
 | File                            | URL                  |
 | ------------------------------- | -------------------- |
 | `src/routes/api/posts.ts`       | `/api/posts`         |
-| `src/routes/api/posts/index.ts` | `/api/posts`         |
 | `src/routes/api/posts/[id].ts`  | `/api/posts/:id`     |
 | `src/routes/api/[...path].ts`   | `/api/*` (catch-all) |
 
-### ApiContext
-
-| Property  | Type                     | Description               |
-| --------- | ------------------------ | ------------------------- |
-| `request` | `Request`                | The incoming HTTP request |
-| `url`     | `URL`                    | Parsed URL                |
-| `path`    | `string`                 | URL path                  |
-| `params`  | `Record<string, string>` | Dynamic route parameters  |
-| `headers` | `Headers`                | Request headers           |
-
-### Wiring API routes
+Wire them via the virtual module. They run before SSR and dispatch by URL + HTTP method; unsupported methods return `405` with an `Allow` header. API routes also work in dev (the plugin dispatches them in the dev server).
 
 ```ts title="src/entry-server.ts"
-import { apiRoutes } from "virtual:zero/api-routes"
+import { routes } from 'virtual:zero/routes'
+import { apiRoutes } from 'virtual:zero/api-routes'
+import { createServer } from '@pyreon/zero/server'
 
-export default createServer({
-  routes,
-  apiRoutes, // API routes run before SSR — matched by URL + HTTP method
-  middleware: [...],
-})
+export default createServer({ routes, apiRoutes })
 ```
-
-Unsupported methods automatically return `405 Method Not Allowed` with an `Allow` header.
-
-### CORS Middleware
-
-```ts
-import { corsMiddleware } from '@pyreon/zero/cors'
-
-// Allow any origin
-corsMiddleware()
-
-// Specific origins with credentials
-corsMiddleware({
-  origin: ['https://app.com', 'https://admin.com'],
-  credentials: true,
-  maxAge: 86400,
-})
-
-// Dynamic origin matching
-corsMiddleware({
-  origin: (o) => o.endsWith('.example.com'),
-})
-```
-
-| Option           | Type                                                | Default                                           | Description               |
-| ---------------- | --------------------------------------------------- | ------------------------------------------------- | ------------------------- |
-| `origin`         | `string \| string[] \| (origin: string) => boolean` | `"*"`                                             | Allowed origins           |
-| `methods`        | `string[]`                                          | `["GET","POST","PUT","PATCH","DELETE","OPTIONS"]` | Allowed methods           |
-| `allowedHeaders` | `string[]`                                          | `["Content-Type","Authorization"]`                | Allowed request headers   |
-| `exposedHeaders` | `string[]`                                          | `[]`                                              | Headers exposed to client |
-| `credentials`    | `boolean`                                           | `false`                                           | Allow credentials         |
-| `maxAge`         | `number`                                            | `86400`                                           | Preflight cache (seconds) |
-
-### Rate Limiting
-
-```ts
-import { rateLimitMiddleware } from '@pyreon/zero/rate-limit'
-
-// 100 requests per minute (default)
-rateLimitMiddleware()
-
-// Strict API rate limiting
-rateLimitMiddleware({
-  max: 20,
-  window: 60,
-  include: ['/api/*'],
-})
-```
-
-| Option    | Type              | Default   | Description                |
-| --------- | ----------------- | --------- | -------------------------- |
-| `max`     | `number`          | `100`     | Max requests per window    |
-| `window`  | `number`          | `60`      | Window in seconds          |
-| `keyFn`   | `(ctx) => string` | IP-based  | Client identifier function |
-| `include` | `string[]`        | all paths | URL patterns to rate limit |
-| `exclude` | `string[]`        | `[]`      | URL patterns to skip       |
-
-Sets `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` headers. Returns `429 Too Many Requests` with `Retry-After` when exceeded.
-
-### Compression
-
-```ts
-import { compressionMiddleware } from '@pyreon/zero/compression'
-
-compressionMiddleware({ threshold: 1024, encodings: ['gzip'] })
-```
-
-Compresses text-based responses (HTML, JSON, JS, CSS, XML, SVG) using the native `CompressionStream` API. Skips binary content and responses below the threshold.
 
 ## Server Actions
 
-Define server-side mutations that are callable from the client. Actions receive parsed JSON or FormData and are mounted at `/_zero/actions/*`.
+Server-side mutations callable from the client, mounted at `/_zero/actions/*`.
 
 ```ts title="src/features/posts.ts"
 import { defineAction } from '@pyreon/zero/actions'
 
 export const createPost = defineAction(async (ctx) => {
   const { title, body } = ctx.json as { title: string; body: string }
-  const post = await db.posts.create({ title, body })
-  return { success: true, id: post.id }
-})
-
-export const deletePost = defineAction(async (ctx) => {
-  const { id } = ctx.json as { id: number }
-  await db.posts.delete(id)
-  return { success: true }
+  return { success: true, id: await db.posts.create({ title, body }) }
 })
 ```
-
-Call actions from components — they're just async functions:
-
-```tsx
-import { createPost } from '../features/posts'
-
-function NewPostForm() {
-  const handleSubmit = async (e: Event) => {
-    e.preventDefault()
-    const result = await createPost({ title: 'Hello', body: 'World' })
-    if (result.success) window.location.href = `/posts/${result.id}`
-  }
-
-  return <form onSubmit={handleSubmit}>...</form>
-}
-```
-
-### ActionContext
-
-| Property   | Type               | Description                                  |
-| ---------- | ------------------ | -------------------------------------------- |
-| `request`  | `Request`          | The original HTTP request                    |
-| `json`     | `unknown`          | Parsed JSON body (for `application/json`)    |
-| `formData` | `FormData \| null` | Parsed form data (for `multipart/form-data`) |
-| `headers`  | `Headers`          | Request headers                              |
-
-### Action Middleware
-
-Mount the action handler in your server entry:
 
 ```ts title="src/entry-server.ts"
 import { createActionMiddleware } from '@pyreon/zero/actions'
+import { createServer } from '@pyreon/zero/server'
 
 export default createServer({
   routes,
-  middleware: [
-    createActionMiddleware(), // handles /_zero/actions/* requests
-    securityHeaders(),
-    cacheMiddleware(),
-  ],
+  middleware: [createActionMiddleware()],
 })
 ```
 
-## Per-Route Middleware
+Call them from components as plain async functions: `const r = await createPost({ title, body })`.
 
-Route files can export a `middleware` function that runs on the server before rendering. Middleware uses `@pyreon/server`'s signature:
-
-```tsx title="src/routes/(admin)/dashboard.tsx"
-import type { MiddlewareContext } from '@pyreon/server'
-
-// Runs on every request to /dashboard
-export const middleware = (ctx: MiddlewareContext) => {
-  const token = ctx.req.headers.get('authorization')
-  if (!token) {
-    return new Response('Unauthorized', { status: 401 })
-  }
-  // Return void to continue to rendering
-}
-```
-
-Wire route middleware in your server entry:
-
-```ts title="src/entry-server.ts"
-import { routes } from 'virtual:zero/routes'
-import { routeMiddleware } from 'virtual:zero/route-middleware'
-import { createServer } from '@pyreon/zero'
-
-export default createServer({
-  routes,
-  routeMiddleware, // per-route middleware dispatched before global middleware
-  middleware: [securityHeaders(), cacheMiddleware()],
-})
-```
-
-Add the virtual module type to your `env.d.ts`:
-
-```ts title="env.d.ts"
-declare module 'virtual:zero/route-middleware' {
-  import type { RouteMiddlewareEntry } from '@pyreon/zero'
-  export const routeMiddleware: RouteMiddlewareEntry[]
-}
-```
+The `ActionContext` exposes `request`, `json` (parsed JSON body), `formData` (for `multipart/form-data`), and `headers`.
 
 ## SEO
 
-### Sitemap Generation
-
-```ts
-import { generateSitemap } from '@pyreon/zero'
-
-const sitemap = generateSitemap(['/', '/about', '/blog/hello-world'], {
-  origin: 'https://example.com',
-  changefreq: 'weekly',
-  priority: 0.8,
-})
-```
-
-| Option            | Type             | Default  | Description                              |
-| ----------------- | ---------------- | -------- | ---------------------------------------- |
-| `origin`          | `string`         | required | Base URL for the sitemap                 |
-| `changefreq`      | `ChangeFreq`     | —        | Default change frequency for all entries |
-| `priority`        | `number`         | `0.7`    | Default priority for all entries         |
-| `exclude`         | `string[]`       | `[]`     | Paths to exclude from the sitemap        |
-| `additionalPaths` | `SitemapEntry[]` | `[]`     | Extra entries to include                 |
-
-### Robots.txt
-
-```ts
-import { generateRobots } from '@pyreon/zero'
-
-const robots = generateRobots({
-  rules: [
-    {
-      userAgent: '*',
-      allow: ['/'],
-      disallow: ['/admin', '/api'],
-    },
-  ],
-  sitemap: 'https://example.com/sitemap.xml',
-})
-```
-
-### JSON-LD
-
-```tsx
-import { jsonLd } from '@pyreon/zero'
-
-function ProductPage({ product }) {
-  return (
-    <>
-      {jsonLd({
-        '@context': 'https://schema.org',
-        '@type': 'Product',
-        name: product.name,
-        description: product.description,
-        offers: {
-          '@type': 'Offer',
-          price: product.price,
-          priceCurrency: 'USD',
-        },
-      })}
-      <h1>{product.name}</h1>
-    </>
-  )
-}
-```
-
-### SEO Vite Plugin
-
-Auto-generates `sitemap.xml` and `robots.txt` at build time:
+`seoPlugin` (from `@pyreon/zero/seo` or `@pyreon/zero/server`) auto-generates `sitemap.xml` and `robots.txt` at build time:
 
 ```ts title="vite.config.ts"
 import { seoPlugin } from '@pyreon/zero/seo'
@@ -1112,37 +586,18 @@ import { seoPlugin } from '@pyreon/zero/seo'
 export default {
   plugins: [
     seoPlugin({
-      sitemap: {
-        origin: 'https://example.com',
-        changefreq: 'weekly',
-        priority: 0.8,
-      },
-      robots: {
-        rules: [{ userAgent: '*', allow: ['/'] }],
-        sitemap: 'https://example.com/sitemap.xml',
-      },
+      sitemap: { origin: 'https://example.com', changefreq: 'weekly', priority: 0.8 },
+      robots: { rules: [{ userAgent: '*', allow: ['/'] }], sitemap: 'https://example.com/sitemap.xml' },
     }),
   ],
 }
 ```
 
-### SEO Dev Middleware
-
-Serves sitemap and robots in development:
-
-```ts
-import { seoMiddleware } from '@pyreon/zero'
-
-seoMiddleware({
-  sitemap: {
-    origin: 'http://localhost:3000',
-  },
-})
-```
+`generateSitemap(paths, config)`, `generateRobots(config)`, and `jsonLd(data)` are also exported for manual use. `seoMiddleware(config)` serves sitemap/robots in development. In SSG mode, the sitemap can be driven by the actual prerendered path set including dynamic and per-locale variants — see [SSG → Sitemap](/docs/ssg#sitemap-from-resolved-paths).
 
 ## Font Optimization
 
-The `fontPlugin` automatically downloads Google Fonts at build time and self-hosts them, eliminating external requests in production. In development, it falls back to the CDN.
+`fontPlugin` (`@pyreon/zero/font`) downloads Google Fonts at build time and self-hosts them; in dev it falls back to the CDN.
 
 ```ts title="vite.config.ts"
 import { fontPlugin } from '@pyreon/zero/font'
@@ -1151,54 +606,25 @@ export default {
   plugins: [
     fontPlugin({
       google: [
-        'Inter:wght@400;500;700', // String shorthand
-        { family: 'Fira Code', weights: [400, 700] }, // Static font object
-        { family: 'Roboto Flex', weightRange: [100, 900], variable: true }, // Variable font
+        'Inter:wght@400;500;700',
+        { family: 'Fira Code', weights: [400, 700] },
+        { family: 'Roboto Flex', weightRange: [100, 900], variable: true },
       ],
       local: [{ family: 'Custom Font', src: './fonts/custom.woff2', weight: 400 }],
-      display: 'swap', // font-display strategy (default: "swap")
-      preload: true, // Preload fonts (default: true)
-      selfHost: true, // Self-host at build time (default: true)
-      fallbacks: {
-        // CLS-reducing fallback metrics
-        Inter: {
-          fallback: 'Arial',
-          sizeAdjust: 1.07,
-          ascentOverride: 0.9,
-        },
-      },
+      display: 'swap',
+      preload: true,
+      selfHost: true,
+      fallbacks: { Inter: { fallback: 'Arial', sizeAdjust: 1.07, ascentOverride: 0.9 } },
     }),
   ],
 }
 ```
 
-### Font Config
-
-| Option      | Type                              | Default        | Description                                       |
-| ----------- | --------------------------------- | -------------- | ------------------------------------------------- |
-| `google`    | `GoogleFontInput[]`               | `[]`           | Google Font families (string shorthand or object) |
-| `local`     | `LocalFont[]`                     | `[]`           | Local font files                                  |
-| `display`   | `FontDisplay`                     | `"swap"`       | `font-display` strategy                           |
-| `preload`   | `boolean`                         | `true`         | Whether to preload fonts                          |
-| `selfHost`  | `boolean`                         | `true`         | Download and self-host at build time              |
-| `fallbacks` | `Record<string, FallbackMetrics>` | `&#123;&#125;` | CLS-reducing fallback font metrics                |
-
-### Font CSS Variables
-
-Generate CSS custom properties for font families:
-
-```ts
-import { fontVariables } from '@pyreon/zero'
-
-const vars = fontVariables({ Inter: "'Inter', sans-serif", 'Fira Code': "'Fira Code', monospace" })
-// Returns CSS like:
-// --font-inter: 'Inter', sans-serif;
-// --font-fira-code: 'Fira Code', monospace;
-```
+`fontVariables({ Inter: "'Inter', sans-serif" })` generates CSS custom properties.
 
 ## Image Processing
 
-The `imagePlugin` provides build-time image optimization. Import images with `?optimize` to generate responsive srcsets and modern formats automatically.
+`imagePlugin` (`@pyreon/zero/image-plugin`) provides build-time image optimization via [sharp](https://sharp.pixelplumbing.com/) (copies as-is with a warning if sharp isn't installed). Import an image with `?optimize` to get a `ProcessedImage` (`{ src, srcset, width, height, placeholder, formats }`):
 
 ```ts title="vite.config.ts"
 import { imagePlugin } from '@pyreon/zero/image-plugin'
@@ -1206,491 +632,246 @@ import { imagePlugin } from '@pyreon/zero/image-plugin'
 export default {
   plugins: [
     imagePlugin({
-      widths: [640, 1024, 1920], // Responsive breakpoints (default)
-      formats: ['webp'], // Output formats (default). Options: "webp", "avif", "jpeg", "png"
-      quality: 80, // Lossy format quality 1-100 (default: 80)
-      placeholderSize: 16, // Blur placeholder size in px (default: 16)
-      outDir: 'assets/img', // Output subdirectory (default: "assets/img")
-      include: /\.(jpe?g|png|webp|avif)$/i, // File patterns to process (default)
+      widths: [640, 1024, 1920], // default
+      formats: ['avif', 'webp'], // default ['webp']
+      quality: { avif: 55, webp: 75 }, // number OR per-format object — default 80
+      placeholder: 'color', // 'blur' | 'color' | 'none' (default 'blur')
+      placeholderSize: 16, // only used by the 'blur' strategy
     }),
   ],
 }
 ```
 
-### Usage in Components
-
 ```tsx
-// Import with ?optimize to get a ProcessedImage object
 import hero from './images/hero.jpg?optimize'
-// hero = { src, srcset, width, height, placeholder, formats, sources }
-
 import { Image } from '@pyreon/zero'
 
 ;<Image {...hero} alt="Hero" priority />
 ```
 
-The plugin uses [sharp](https://sharp.pixelplumbing.com/) for image processing. If sharp is not installed, images are copied as-is with a build-time warning.
+**Placeholder strategies:**
 
-## ISR Handler
+| Strategy           | Output                                                                       |
+| ------------------ | ---------------------------------------------------------------------------- |
+| `'blur'` (default) | Base64 blur data URI (size controlled by `placeholderSize`)                   |
+| `'color'`          | The image's dominant color as a ~200-byte flat SVG data URI                   |
+| `'none'`           | No placeholder (`placeholder: ''`) — skips all placeholder work               |
 
-For custom ISR logic outside the config, use `createISRHandler` directly:
+`'dominant-color'` is a deprecated alias of `'color'`. `quality` accepts a single number applied to all lossy formats, or a per-format object (`{ avif, webp, jpeg }`) — AVIF achieves comparable perceived quality at a much lower number than WebP/JPEG. Optional CDN delivery providers (`cloudinary`, `imgix`, `vercel`, `bunny`) are also available.
 
-```ts
-import { createISRHandler } from '@pyreon/zero'
-
-const handler = createISRHandler(
-  async (request) => {
-    const html = await renderPage(request)
-    return new Response(html, {
-      headers: { 'Content-Type': 'text/html' },
-    })
-  },
-  {
-    revalidate: 60, // seconds between revalidations
-  },
-)
-```
-
-The handler uses an in-memory cache with stale-while-revalidate semantics. Cached responses are served immediately while a background revalidation refreshes the entry.
-
-## Adapters
-
-Adapters tailor the build output for different deployment targets.
-
-| Adapter  | Description                                    |
-| -------- | ---------------------------------------------- |
-| `node`   | Standard Node.js HTTP server output            |
-| `bun`    | Optimized for Bun's HTTP server                |
-| `static` | Outputs static HTML/CSS/JS files (for SSG/SPA) |
-
-Set the adapter in your config:
+## Environment Validation
 
 ```ts
-defineConfig({
-  adapter: 'bun',
+import { validateEnv, schema, publicEnv } from '@pyreon/zero/env'
+
+const env = validateEnv({
+  PORT: 3000, // number with default
+  DEBUG: false, // boolean with default
+  API_KEY: String, // required string
+  ALLOWED_ORIGINS: schema((v) => v.split(',')), // custom parser
 })
+
+const pub = publicEnv() // only PUBLIC_-prefixed vars (safe for client bundles)
 ```
 
-Or use the adapter API directly:
+## App Assembly APIs
 
-```ts
-import { resolveAdapter, nodeAdapter, bunAdapter, staticAdapter } from '@pyreon/zero'
-
-const adapter = resolveAdapter(config) // Resolves based on config.adapter
-```
-
-Each adapter implements a `build()` method that receives the server entry, client output, and output directory paths.
-
-## API Functions
+These come from `@pyreon/zero/server` (`createApp`, `createServer`) and `@pyreon/zero/client` (`startClient`).
 
 ### createApp
 
-Assembles the full application shell with router, head provider, and root layout. Returns both the App component and the router instance:
+Assembles router + head provider + root layout. Returns `{ App, router }`.
 
 ```tsx
-import { createApp } from '@pyreon/zero'
+import { createApp } from '@pyreon/zero/server'
 
 const { App, router } = createApp({
-  routes, // from virtual:zero/routes or manual definition
-  routerMode: 'history', // "history" (default) or "hash"
-  url: '/', // Initial URL for SSR
-  layout: RootLayout, // Optional root layout component
-  errorComponent: GlobalError, // Optional global error boundary
+  routes, // from virtual:zero/routes
+  routerMode: 'history', // "history" (default) | "hash"
+  url: '/', // initial URL (SSR/SSG)
+  base: '/blog/', // optional — see Base Path
+  errorComponent: GlobalError, // optional global error boundary
 })
 ```
 
 ### createServer
 
-Creates a production SSR request handler:
+Production SSR request handler.
 
 ```ts
-import { createServer } from '@pyreon/zero'
+import { createServer } from '@pyreon/zero/server'
 
-const handler = createServer({
+export default createServer({
   routes,
-  routeMiddleware, // Per-route middleware from virtual:zero/route-middleware
-  config: { mode: 'ssr' },
+  apiRoutes, // optional — run before SSR
+  routeMiddleware, // optional — per-route middleware from the virtual module
   middleware: [securityHeaders(), cacheMiddleware()],
-  template: indexHtml, // HTML template string
-  clientEntry: '/src/main.tsx', // Client entry point path
+  config: { mode: 'ssr' },
+  template: indexHtml, // optional HTML template override
+  clientEntry: '/src/main.tsx', // optional
 })
 ```
 
 ### startClient
 
-Client-side hydration or mounting, imported from `@pyreon/zero/client`:
+Client-side hydration / mount.
 
 ```ts
 import { startClient } from '@pyreon/zero/client'
 
-startClient({
-  routes,
-  layout: RootLayout, // Optional root layout component
-})
+startClient({ routes })
 ```
 
-The client automatically detects whether to hydrate (if SSR-rendered HTML is present) or mount fresh (SPA mode).
+`startClient` auto-detects whether to hydrate (SSR-rendered HTML present) or mount fresh (SPA). It also reads the Vite-injected `__ZERO_BASE__` so the router prefix matches the SSR/build output. With fs-router, never pass `layout` to `startClient`.
 
-## Testing Utilities
+## Base Path
 
-Test helpers for middleware and API routes, imported from `@pyreon/zero/testing`.
+`zero({ base: '/blog/' })` is the **single source of truth** for subpath deploys. It propagates to:
 
-### Testing Middleware
+1. **Vite's `base`** — asset URLs in built HTML/JS get the prefix (`<script src="/blog/assets/...">`).
+2. **`createRouter({ base })`** — RouterLink hrefs render prefixed (`<a href="/blog/about">`), incoming URLs are `stripBase`d.
+3. **SSG render + `startClient`** — the SSR sub-build and client both read `__ZERO_BASE__` so hydration matches.
 
-```ts
-import { testMiddleware } from '@pyreon/zero/testing'
-import { corsMiddleware } from '@pyreon/zero/cors'
-
-const { response, headers } = await testMiddleware(corsMiddleware({ origin: '*' }), '/api/posts')
-expect(headers.get('Access-Control-Allow-Origin')).toBe('*')
-```
-
-### Testing API Routes
-
-```ts
-import { createTestApiServer } from '@pyreon/zero/testing'
-
-const server = createTestApiServer([
-  { pattern: '/api/posts', module: { GET: () => Response.json([]) } },
-])
-
-const res = await server.request('/api/posts')
-expect(res.status).toBe(200)
-
-const res2 = await server.request('/api/posts', {
-  method: 'POST',
-  body: { title: 'Hello' },
-})
-expect(res2.status).toBe(201)
-```
-
-### Mock Handlers
-
-```ts
-import { createMockHandler } from '@pyreon/zero/testing'
-
-const handler = createMockHandler({ status: 200, body: { ok: true } })
-// ... use in API route module
-expect(handler.calls).toHaveLength(1)
-expect(handler.calls[0].params).toEqual({ id: '123' })
-```
-
-| Export                              | Description                               |
-| ----------------------------------- | ----------------------------------------- |
-| `createTestContext(path, options)`  | Create mock `MiddlewareContext`           |
-| `testMiddleware(mw, path, options)` | Run middleware, return response + headers |
-| `createTestApiServer(routes)`       | Test API routes via `server.request()`    |
-| `createMockHandler(config)`         | Mock handler that records calls           |
-
-## Client-Safe Entry Points
-
-`@pyreon/zero` is split into client-safe and server-only entry points:
-
-- **`@pyreon/zero`** — Client-safe exports only: components (`Image`, `Link`, `Script`, `ThemeToggle`), theme system, middleware configuration, SEO helpers, font/image plugins, adapters
-- **`@pyreon/zero/server`** — Server-only exports: `createServer`, `createSSRHandler`, env validation, request locals, CSP nonce generation
-
-Importing server-only APIs from the main `@pyreon/zero` entry gives clear error messages:
-
-```ts
-// This works (client-safe):
-import { Image, Link, theme } from '@pyreon/zero'
-
-// This works (server-only):
-import { createServer, validateEnv } from '@pyreon/zero/server'
-
-// This throws a helpful error at import time:
-// import { createServer } from '@pyreon/zero'
-// Error: "createServer is server-only. Import from '@pyreon/zero/server' instead."
-```
+A user's explicit `vite.config.base` still wins (Vite merge semantics: plugin config is the base). The on-disk `dist/` layout stays **unprefixed** (`dist/about/index.html`) — the host serves `dist/` mounted at `/blog/`.
 
 ## Deployment Adapters
 
-In addition to the Node, Bun, and static adapters, Zero now supports platform-specific deployment:
+Adapters tailor build output per platform. Resolve from config (string name or constructed instance) or call directly. All adapter functions come from `@pyreon/zero/server`.
 
 ```ts
-import { vercelAdapter } from '@pyreon/zero/adapter-vercel'
-import { cloudflareAdapter } from '@pyreon/zero/adapter-cloudflare'
-import { netlifyAdapter } from '@pyreon/zero/adapter-netlify'
+import { resolveAdapter, nodeAdapter, vercelAdapter } from '@pyreon/zero/server'
 
-defineConfig({
-  adapter: vercelAdapter(),
-})
+defineConfig({ adapter: 'vercel' }) // or adapter: vercelAdapter()
 ```
 
-| Adapter      | Description                                              |
-| ------------ | -------------------------------------------------------- |
-| `node`       | Standard Node.js HTTP server                             |
-| `bun`        | Optimized for Bun's HTTP server                          |
-| `static`     | Static HTML/CSS/JS output (for SSG/SPA)                  |
-| `vercel`     | Vercel serverless functions with edge runtime support     |
-| `cloudflare` | Cloudflare Pages with Workers runtime                    |
-| `netlify`    | Netlify Functions with streaming response support        |
+| Adapter      | SSR build                                  | SSG build                                              |
+| ------------ | ------------------------------------------ | ------------------------------------------------------ |
+| `node`       | Node HTTP server output                    | no-op                                                  |
+| `bun`        | Bun HTTP server output                     | no-op                                                  |
+| `static`     | Static HTML/CSS/JS                         | no-op (dist already final)                             |
+| `vercel`     | `.vercel/output` (Build Output API v3)     | `.vercel/output/config.json` (static variant)          |
+| `cloudflare` | Cloudflare Pages + Workers                 | `_routes.json` static config                           |
+| `netlify`    | Netlify Functions (streaming)              | `netlify.toml` / static config                         |
 
-## CSP Middleware
+`vercel`/`cloudflare`/`netlify` also implement `Adapter.revalidate(path)` for build-time ISR — see [SSG → Build-time ISR](/docs/ssg#build-time-isr-per-route-revalidate). `static`/`node`/`bun` implement `revalidate` as a no-op.
 
-Content Security Policy middleware with nonce support for inline scripts:
+The adapter's `build()` receives a discriminated `AdapterBuildOptions`: `{ kind: 'ssr', serverEntry, clientOutDir, outDir, config }` or `{ kind: 'ssg', outDir, config }`. In SSG mode the adapter's `build()` is invoked automatically by the SSG plugin's `closeBundle`.
+
+## ISR Handler (runtime)
+
+For custom runtime ISR outside `mode: 'isr'`, use `createISRHandler` (`@pyreon/zero/server`) directly:
 
 ```ts
-import { cspMiddleware } from '@pyreon/zero/server'
+import { createISRHandler } from '@pyreon/zero/server'
 
-cspMiddleware({
-  directives: {
-    'default-src': ["'self'"],
-    'script-src': ["'self'", "'nonce'"], // nonce auto-injected
-    'style-src': ["'self'", "'unsafe-inline'"],
-    'img-src': ["'self'", 'data:', 'https:'],
-  },
-})
+const handler = createISRHandler(
+  async (req) => new Response(await renderPage(req), { headers: { 'Content-Type': 'text/html' } }),
+  { revalidate: 60, maxEntries: 1000, cacheKey: (req) => new URL(req.url).pathname },
+)
 ```
 
-Use `useNonce()` in components to get the per-request nonce for inline scripts:
+In-memory LRU cache with stale-while-revalidate. Cached responses carry `x-isr-cache: HIT|STALE|MISS` and `x-isr-age` headers.
+
+## Other Build-Time Plugins
+
+| Plugin / API     | Import path                | Purpose                                               |
+| ---------------- | -------------------------- | ----------------------------------------------------- |
+| `faviconPlugin`  | `@pyreon/zero/favicon`     | Per-locale favicon generation; `faviconLinks` helper  |
+| `ogImagePlugin`  | `@pyreon/zero/og-image`    | Build-time Open Graph image generation                |
+| `aiPlugin`       | `@pyreon/zero/ai`          | Generates `llms.txt`, JSON-LD inference, AI manifest  |
+| `iconsPlugin`    | `@pyreon/zero/server`      | Scan an icon dir → typed `<Icon name>` set            |
+| `i18nRouting`    | `@pyreon/zero/server`      | Request-time locale detection middleware              |
+
+```ts
+import { faviconPlugin } from '@pyreon/zero/favicon'
+import { ogImagePlugin } from '@pyreon/zero/og-image'
+
+faviconPlugin({ source: './icon.svg', locales: { de: { source: './icon-de.svg' } } })
+ogImagePlugin({ templates: { default: './og-template.tsx' }, locales: { en: { title: 'My App' } } })
+```
+
+## i18n
+
+Two independent layers, both keyed off the same `I18nRoutingConfig`:
+
+- **Request-time detection** — `i18nRouting(config)` Vite plugin + client hooks `useLocale()` / `setLocale(locale, config)` (client-safe from `@pyreon/zero`), plus server helpers `createLocaleContext` / `detectLocaleFromHeader` (`@pyreon/zero/server`).
+- **Build-time route duplication** — `zero({ i18n: { locales, defaultLocale, strategy } })` fans every route into per-locale variants for SSG. Documented in **[SSG → i18n](/docs/ssg#i18n-localized-routes)**.
 
 ```tsx
-import { useNonce } from '@pyreon/zero/server'
+import { useLocale, setLocale } from '@pyreon/zero'
 
-function InlineScript() {
-  const nonce = useNonce()
-  return <script nonce={nonce}>console.log('safe')</script>
+function LocaleSwitcher() {
+  const locale = useLocale()
+  return <button onClick={() => setLocale('de', i18nConfig)}>{locale} → Deutsch</button>
 }
 ```
 
-## Environment Validation
+`I18nRoutingConfig`: `{ locales, defaultLocale, detectLocale?, cookieName?, strategy? }`. Strategy is `'prefix'` (every locale prefixed, including default) or `'prefix-except-default'` (default — default locale keeps clean URLs).
 
-Type-safe environment variable validation with automatic coercion:
-
-```ts
-import { validateEnv, schema, publicEnv } from '@pyreon/zero/server'
-
-// Validate and coerce env vars at startup:
-const env = validateEnv({
-  PORT: 3000,           // number, defaults to 3000
-  DEBUG: false,         // boolean, defaults to false
-  API_KEY: String,      // required string (no default)
-  DATABASE_URL: String, // required string
-})
-
-// Custom parser:
-const env2 = validateEnv({
-  ALLOWED_ORIGINS: schema((v) => v.split(',')),
-})
-
-// Client-safe subset (only PUBLIC_ prefixed vars):
-const pub = publicEnv()
-// pub.PUBLIC_API_URL — available in client bundles
-```
-
-## Request Logging
-
-Structured request logging middleware:
-
-```ts
-import { loggerMiddleware } from '@pyreon/zero/server'
-
-loggerMiddleware() // logs method, path, status, duration
-```
-
-## AI Integration
-
-The `aiPlugin()` Vite plugin generates AI-friendly metadata:
-
-```ts
-import { aiPlugin } from '@pyreon/zero/server'
-
-// In vite.config.ts plugins array:
-aiPlugin()
-```
-
-This generates:
-- `llms.txt` — concise framework reference for LLM context
-- JSON-LD inference metadata in HTML output
-- AI plugin manifest at `/.well-known/ai-plugin.json`
-
-## useRequestLocals
+## Request Locals
 
 Bridge middleware locals into the component tree:
 
 ```tsx
 import { useRequestLocals } from '@pyreon/zero/server'
 
-// In middleware: ctx.locals.user = authenticatedUser
-// In component:
+// middleware: ctx.locals.user = authenticatedUser
 function Dashboard() {
   const locals = useRequestLocals<{ user: User }>()
   return <h1>Welcome, {locals.user.name}</h1>
 }
 ```
 
-## Locale-Aware Favicons
+## Testing Utilities
 
-Generate per-locale favicons from source SVG/PNG files:
-
-```ts
-import { faviconPlugin } from '@pyreon/zero'
-
-faviconPlugin({
-  source: './icon.svg',
-  locales: {
-    de: { source: './icon-de.svg' },
-    ja: { source: './icon-ja.svg' },
-  },
-})
-```
-
-## OG Image Generation
-
-Build-time Open Graph image generation:
+From `@pyreon/zero/testing`:
 
 ```ts
-import { ogImagePlugin } from '@pyreon/zero'
+import { testMiddleware, createTestApiServer, createMockHandler, createTestContext } from '@pyreon/zero/testing'
 
-ogImagePlugin({
-  templates: {
-    default: './og-template.tsx',
-  },
-  locales: {
-    en: { title: 'My App' },
-    de: { title: 'Meine App' },
-  },
-})
+const { headers } = await testMiddleware(corsMiddleware({ origin: '*' }), '/api/posts')
+
+const server = createTestApiServer([{ pattern: '/api/posts', module: { GET: () => Response.json([]) } }])
+const res = await server.request('/api/posts')
 ```
-
-## Reactive Favicon
-
-Theme-aware favicon switching with dual light/dark variants:
-
-```tsx
-// Dual PNG/ICO favicons that swap based on OS theme:
-// light-mode users see icon-light.png, dark-mode users see icon-dark.png
-// Implemented via media attribute on <link> elements:
-// <link rel="icon" href="/icon-light.png" media="(prefers-color-scheme: light)">
-// <link rel="icon" href="/icon-dark.png" media="(prefers-color-scheme: dark)">
-```
-
-## Enhanced Meta
-
-The `Meta` component now supports additional Open Graph and SEO properties:
-
-```tsx
-import { Meta } from '@pyreon/zero'
-
-<Meta
-  title="My Page"
-  description="Page description"
-  ogImage={{ url: '/og.png', width: 1200, height: 630 }}
-  ogVideo={{ url: '/video.mp4', type: 'video/mp4' }}
-  ogAudio={{ url: '/audio.mp3', type: 'audio/mpeg' }}
-  noIndex={true}
-  ogTemplate="default"
-  favicon="/custom-favicon.svg"
-/>
-```
-
-New properties: `og:image:width`, `og:image:height`, `og:video`, `og:audio`, `noIndex`, `ogTemplate`, `favicon`.
-
-## Exports Summary
-
-| Export                   | Signature                                        | Description                                              |
-| ------------------------ | ------------------------------------------------ | -------------------------------------------------------- |
-| `defineConfig`           | `(config: ZeroConfig) => ZeroConfig`             | Type-safe configuration helper                           |
-| `resolveConfig`          | `(config?: ZeroConfig) => ResolvedConfig`        | Merge user config with defaults                          |
-| `createApp`              | `(options) => &#123; App, router &#125;`         | Assembles router + head + layout into an app shell       |
-| `createServer`           | `(options) => RequestHandler`                    | Creates a production SSR request handler                 |
-| `startClient`            | `(options) => void`                              | Client-side hydration/mount (from `@pyreon/zero/client`) |
-| `Image`                  | `(props: ImageProps) => JSX.Element`             | Optimized image component                                |
-| `Link`                   | `(props: LinkProps) => JSX.Element`              | Client navigation link component                         |
-| `useLink`                | `(props: UseLinkProps) => LinkState`             | Low-level link composable                                |
-| `createLink`             | `(Component) => LinkComponent`                   | HOC to add link behavior to any component                |
-| `Script`                 | `(props: ScriptProps) => JSX.Element`            | Optimized script loading component                       |
-| `theme`                  | `() => "light" \| "dark" \| "system"`            | Reactive theme signal                                    |
-| `resolvedTheme`          | `() => "light" \| "dark"`                        | Resolved theme signal                                    |
-| `toggleTheme`            | `() => void`                                     | Toggle between light and dark                            |
-| `setTheme`               | `(t: Theme) => void`                             | Set theme explicitly                                     |
-| `initTheme`              | `() => void`                                     | Initialize theme from storage/system                     |
-| `ThemeToggle`            | `() => JSX.Element`                              | Pre-built theme toggle component                         |
-| `themeScript`            | `string`                                         | Inline script to prevent FOUC                            |
-| `cacheMiddleware`        | `(config?: CacheConfig) => Middleware`           | Cache-Control middleware                                 |
-| `securityHeaders`        | `() => Middleware`                               | Security headers middleware                              |
-| `varyEncoding`           | `() => Middleware`                               | Vary Accept-Encoding middleware                          |
-| `generateSitemap`        | `(files, config: SitemapConfig) => string`       | Generate sitemap XML                                     |
-| `generateRobots`         | `(config?: RobotsConfig) => string`              | Generate robots.txt                                      |
-| `jsonLd`                 | `(data: Record<string, unknown>) => string`      | JSON-LD structured data                                  |
-| `seoPlugin`              | `(config?: SeoPluginConfig) => VitePlugin`       | SEO Vite plugin                                          |
-| `seoMiddleware`          | `(config?: SeoPluginConfig) => Middleware`       | SEO dev server middleware                                |
-| `fontPlugin`             | `(config?: FontConfig) => VitePlugin`            | Font optimization Vite plugin                            |
-| `fontVariables`          | `(families: Record<string, string>) => string`   | Generate CSS font variables                              |
-| `imagePlugin`            | `(config?: ImagePluginConfig) => VitePlugin`     | Image optimization Vite plugin                           |
-| `createISRHandler`       | `(handler, config: ISRConfig) => RequestHandler` | ISR handler with in-memory cache                         |
-| `resolveAdapter`         | `(config: ZeroConfig) => Adapter`                | Resolve deployment adapter                               |
-| `nodeAdapter`            | `() => Adapter`                                  | Node.js adapter                                          |
-| `bunAdapter`             | `() => Adapter`                                  | Bun adapter                                              |
-| `staticAdapter`          | `() => Adapter`                                  | Static output adapter                                    |
-| `defineAction`           | `(handler: ActionHandler) => Action`             | Define a server action                                   |
-| `createActionMiddleware` | `() => Middleware`                               | Mount action handler at `/_zero/actions/*`               |
-| `createApiMiddleware`    | `(routes: ApiRouteEntry[]) => Middleware`        | Mount API route handler                                  |
-| `corsMiddleware`         | `(config?: CorsConfig) => Middleware`            | CORS middleware                                          |
-| `rateLimitMiddleware`    | `(config?: RateLimitConfig) => Middleware`       | Rate limiting middleware                                 |
-| `compressionMiddleware`  | `(config?: CompressionConfig) => Middleware`     | Compression middleware                                   |
 
 ## Subpath Exports
 
-| Import Path                 | Description                                                                 |
-| --------------------------- | --------------------------------------------------------------------------- |
-| `@pyreon/zero`              | Core exports (components, middleware, adapters, theme, SEO, fonts)          |
-| `@pyreon/zero/client`       | Client-side `startClient`                                                   |
-| `@pyreon/zero/config`       | `defineConfig` and `resolveConfig`                                          |
-| `@pyreon/zero/image`        | `Image` component                                                           |
-| `@pyreon/zero/link`         | `Link`, `useLink`, `createLink`                                             |
-| `@pyreon/zero/script`       | `Script` component                                                          |
-| `@pyreon/zero/font`         | `fontPlugin`, `fontVariables`                                               |
-| `@pyreon/zero/cache`        | `cacheMiddleware`, `securityHeaders`, `varyEncoding`                        |
-| `@pyreon/zero/seo`          | `seoPlugin`, `seoMiddleware`, `generateSitemap`, `generateRobots`, `jsonLd` |
-| `@pyreon/zero/theme`        | Theme signals and `ThemeToggle` component                                   |
-| `@pyreon/zero/image-plugin` | `imagePlugin` Vite plugin                                                   |
-| `@pyreon/zero/actions`      | `defineAction`, `createActionMiddleware`                                    |
-| `@pyreon/zero/api-routes`   | API route utilities and `createApiMiddleware`                               |
-| `@pyreon/zero/cors`         | `corsMiddleware`                                                            |
-| `@pyreon/zero/rate-limit`   | `rateLimitMiddleware`                                                       |
-| `@pyreon/zero/compression`  | `compressionMiddleware`, `compressResponse`                                 |
-| `@pyreon/zero/testing`      | Test helpers for middleware and API routes                                  |
-| `@pyreon/zero/server`       | Server-only: `createServer`, `validateEnv`, `useNonce`, `useRequestLocals` |
-| `@pyreon/zero/adapter-vercel` | Vercel serverless deployment adapter                                      |
-| `@pyreon/zero/adapter-cloudflare` | Cloudflare Pages deployment adapter                                  |
-| `@pyreon/zero/adapter-netlify` | Netlify Functions deployment adapter                                    |
+| Import Path                | Exports                                                                              |
+| -------------------------- | ------------------------------------------------------------------------------------ |
+| `@pyreon/zero`             | Client-safe: `Image`, `Link`, `Script`, `Icon`, `Meta`, theme, i18n hooks, types     |
+| `@pyreon/zero/server`      | `createServer`, `createApp`, `defineConfig`, `resolveConfig`, adapters, `seoPlugin`, `aiPlugin`, `ogImagePlugin`, `iconsPlugin`, `i18nRouting`, `vercelRevalidateHandler`, fs-router helpers, `createISRHandler`, `validateEnv`, `useNonce`, `useRequestLocals`, default = `zeroPlugin` |
+| `@pyreon/zero/client`      | `startClient`                                                                        |
+| `@pyreon/zero/config`      | `defineConfig`, `resolveConfig`                                                       |
+| `@pyreon/zero/image`       | `Image`, `useImage`, `createImage`                                                   |
+| `@pyreon/zero/link`        | `Link`, `useLink`, `createLink`, `prefetchRoute`                                     |
+| `@pyreon/zero/script`      | `Script`, `useScript`, `createScript`                                                |
+| `@pyreon/zero/meta`        | `Meta`, `buildMetaTags`                                                              |
+| `@pyreon/zero/theme`       | Theme signals + `ThemeToggle`                                                         |
+| `@pyreon/zero/font`        | `fontPlugin`, `fontVariables`                                                         |
+| `@pyreon/zero/image-plugin`| `imagePlugin`                                                                        |
+| `@pyreon/zero/cache`       | `cacheMiddleware`, `securityHeaders`, `varyEncoding`                                  |
+| `@pyreon/zero/seo`         | `seoPlugin`, `seoMiddleware`, `generateSitemap`, `generateRobots`, `jsonLd`           |
+| `@pyreon/zero/actions`     | `defineAction`, `createActionMiddleware`                                              |
+| `@pyreon/zero/api-routes`  | API route utilities, `createApiMiddleware`                                            |
+| `@pyreon/zero/cors`        | `corsMiddleware`                                                                     |
+| `@pyreon/zero/rate-limit`  | `rateLimitMiddleware`                                                                 |
+| `@pyreon/zero/compression` | `compressionMiddleware`                                                              |
+| `@pyreon/zero/csp`         | `cspMiddleware`                                                                       |
+| `@pyreon/zero/env`         | `validateEnv`, `schema`, `publicEnv`                                                  |
+| `@pyreon/zero/logger`      | `loggerMiddleware`                                                                   |
+| `@pyreon/zero/favicon`     | `faviconPlugin`, `faviconLinks`                                                       |
+| `@pyreon/zero/og-image`    | `ogImagePlugin`, `ogImagePath`                                                        |
+| `@pyreon/zero/ai`          | `aiPlugin`, `inferJsonLd`, `generateLlmsTxt`, `generateLlmsFullTxt`                   |
+| `@pyreon/zero/i18n-routing`| `useLocale`, `setLocale`, `buildLocalePath`, `extractLocaleFromPath`                  |
+| `@pyreon/zero/testing`     | Test helpers for middleware + API routes                                             |
 
-## Type Exports
+::: info
+There are no `@pyreon/zero/adapter-*` or `@pyreon/zero/isr` subpaths. Adapters and `createISRHandler` are exported from `@pyreon/zero/server`.
+:::
 
-| Type                   | Description                                                              |
-| ---------------------- | ------------------------------------------------------------------------ |
-| `ZeroConfig`           | Full configuration object                                                |
-| `RenderMode`           | `"ssr" \| "ssg" \| "spa" \| "isr"`                                       |
-| `RouteModule`          | Shape of a route file's exports                                          |
-| `LoaderContext`        | Argument passed to `loader` functions                                    |
-| `RouteMeta`            | Route meta tags object                                                   |
-| `ISRConfig`            | Configuration for `createISRHandler`                                     |
-| `Adapter`              | Deployment adapter interface                                             |
-| `AdapterBuildOptions`  | Options passed to `adapter.build()`                                      |
-| `CacheConfig`          | Configuration for `cacheMiddleware`                                      |
-| `CacheRule`            | Per-path cache override rule                                             |
-| `SitemapConfig`        | Configuration for `generateSitemap`                                      |
-| `SitemapEntry`         | Individual sitemap entry                                                 |
-| `ChangeFreq`           | Sitemap change frequency values                                          |
-| `RobotsConfig`         | Configuration for `generateRobots`                                       |
-| `RobotsRule`           | Individual robots.txt rule                                               |
-| `SeoPluginConfig`      | Configuration for `seoPlugin` and `seoMiddleware`                        |
-| `FontConfig`           | Configuration for `fontPlugin`                                           |
-| `ImagePluginConfig`    | Configuration for `imagePlugin`                                          |
-| `ProcessedImage`       | Result of `?optimize` image import                                       |
-| `FormatSource`         | Per-format srcset in a `ProcessedImage`                                  |
-| `ImageFormat`          | `"webp" \| "avif" \| "jpeg" \| "png"`                                    |
-| `JsonLdType`           | JSON-LD structured data type                                             |
-| `ActionContext`        | Context passed to server action handlers                                 |
-| `Action`               | Client-callable action returned by `defineAction`                        |
-| `ActionHandler`        | Server action handler function type                                      |
-| `RouteMiddlewareEntry` | Maps URL pattern to route middleware                                     |
-| `ApiContext`           | Context passed to API route handlers                                     |
-| `ApiRouteEntry`        | Maps URL pattern to API route module                                     |
-| `ApiRouteModule`       | API route module with HTTP method handlers                               |
-| `HttpMethod`           | `"GET" \| "POST" \| "PUT" \| "PATCH" \| "DELETE" \| "HEAD" \| "OPTIONS"` |
-| `CorsConfig`           | Configuration for `corsMiddleware`                                       |
-| `RateLimitConfig`      | Configuration for `rateLimitMiddleware`                                  |
-| `CompressionConfig`    | Configuration for `compressionMiddleware`                                |
+## Next Steps
+
+- **[SSG reference](/docs/ssg)** — static generation, dynamic routes, redirects, i18n, build-time ISR, adapters, error handling.
+- **[Router](/docs/router)** — the routing primitives Zero is built on.
+- **[Create Zero](/docs/create-zero)** — project scaffolding.
