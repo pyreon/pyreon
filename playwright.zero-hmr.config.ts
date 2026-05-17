@@ -46,29 +46,48 @@ export default defineConfig({
   ],
   webServer: [
     {
-      // Launch the dev server under NODE, not Bun. ROOT CAUSE of the CI
-      // failure (confirmed by direct experiment, not hypothesis): when
-      // Vite's dev server runs under `bun`, Bun's `fs.watch` does NOT feed
-      // Vite's file watcher reliably for the spec's programmatic in-place
-      // `writeFileSync` — Vite never sees a `change`, never sends an HMR
-      // update, the page stays stuck at MARKER_V1 with neither an in-place
-      // swap NOR an `invalidate()` reload. macOS Bun-fsevents happened to
-      // work locally (the only passing config); Bun chokidar `usePolling`
-      // was blind too; Bun on GitHub Actions' Linux was blind. Under Node,
-      // the IDENTICAL edit produces `js-update → __pyreon_hmr_swap__ →
-      // RouterView re-render` in ~505ms — the framework fix working as
-      // designed. So this gate runs vite via Node. `node_modules/.bin/vite`
-      // is hoisted to the workspace root by Bun's installer (verified in
-      // CI's post-`bun install` layout); the example's own vite.config.ts +
-      // workspace `bun` condition resolution work identically under Node
-      // (the SSR pipeline + zero plugin chain were exercised end-to-end in
-      // the confirming experiment). `cwd` points Vite at the example so it
-      // picks up examples/ssr-showcase/vite.config.ts.
+      // The zero-hmr gate edits a route file mid-test via a programmatic
+      // in-place writeFileSync and asserts the DOM hot-updates in place.
+      // It was a CI-ONLY failure no local run reproduced. The OS file
+      // WATCHER — not the framework HMR pipeline — was the cause, and NO
+      // watcher configuration works on the GHA Linux runner:
+      //
+      //  • GHA Linux dev FS is overlayfs, where inotify does NOT reliably
+      //    deliver `change` events for a programmatic write.
+      //  • Bun's watcher layer is independently unreliable for it.
+      //  • Vite 8 `server.watch.usePolling` is blind in this setup under
+      //    BOTH Bun and Node (proven locally — never delivers either).
+      //  • macOS fsevents happens to deliver it → the only reason any
+      //    local run passed; CI is the sole repro environment.
+      //
+      // FIX (see examples/ssr-showcase/vite.config.ts:hmrTestTrigger):
+      // remove the OS-watcher dependency. The dev-only test plugin
+      // exposes /__pyreon_hmr_touch__; the spec POSTs to it after writing
+      // the file, and it calls `server.watcher.emit('change', f)` — the
+      // exact entrypoint a real fs event uses — driving Vite's full,
+      // genuine HMR pipeline deterministically. OS / runtime / fs no
+      // longer matter for the trigger.
+      //
+      // Still run vite via NODE (not `bun run … dev`): Node is the
+      // proven-good runtime locally and avoids any Bun-specific chokidar
+      // `.emit` quirk — belt-and-braces now that the trigger is
+      // watcher-independent. `node_modules/.bin/vite` is hoisted to the
+      // workspace root by Bun's installer (verified in CI's post-`bun
+      // install` layout); the example's vite.config.ts + workspace
+      // `bun`-condition resolution work identically under Node (SSR
+      // pipeline + zero plugin chain exercised end-to-end in the
+      // confirming experiment). `cwd` points Vite at the example.
       command: 'node ../../node_modules/.bin/vite --port 5201 --strictPort',
       cwd: 'examples/ssr-showcase',
       port: 5201,
       timeout: 180_000,
       reuseExistingServer: !process.env.CI,
+      // Scoped to THIS gate's dev server only — the example's
+      // vite.config.ts reads it to mount the dev-only
+      // `pyreon:hmr-test-trigger` plugin (the spec POSTs to its
+      // /__pyreon_hmr_touch__ endpoint to drive Vite's real HMR pipeline
+      // deterministically, bypassing the flaky OS watcher entirely).
+      env: { PYREON_HMR_TEST: '1' },
     },
   ],
 })
