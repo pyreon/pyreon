@@ -14,6 +14,12 @@
  *                       the component signature; reading is captured once
  *                       and loses reactivity. Access `props.foo` instead
  *                       or use `splitProps(props, [...])`.
+ *  - `props-destructured-body` — `const { foo } = props` written
+ *                       SYNCHRONOUSLY in a component body — the body-scope
+ *                       companion to `props-destructured`. Same capture-
+ *                       once death; nested-function destructures (handler
+ *                       / effect / returned accessor) are NOT flagged
+ *                       (they re-read `props` per invocation).
  *  - `process-dev-gate` — `typeof process !== 'undefined' &&
  *                       process.env.NODE_ENV !== 'production'` is dead
  *                       code in real Vite browser bundles. Use
@@ -80,6 +86,7 @@ export type PyreonDiagnosticCode =
   | 'for-missing-by'
   | 'for-with-key'
   | 'props-destructured'
+  | 'props-destructured-body'
   | 'process-dev-gate'
   | 'empty-theme'
   | 'raw-add-event-listener'
@@ -283,6 +290,110 @@ function detectPropsDestructured(
     '(props: Props) => /* read props.x directly */',
     false,
   )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Pattern: body-scope `const { x } = props` destructure
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Strip the wrappers that can sit between `=` and the props identifier
+ * (`const { x } = (props as Props)!`) so we can compare the base
+ * expression's identity to the component's first-parameter name.
+ */
+function unwrapInitializer(expr: ts.Expression): ts.Expression {
+  let cur = expr
+  let prev: ts.Expression | undefined
+  while (cur !== prev) {
+    prev = cur
+    if (ts.isParenthesizedExpression(cur)) cur = cur.expression
+    else if (ts.isAsExpression(cur)) cur = cur.expression
+    else if (ts.isSatisfiesExpression(cur)) cur = cur.expression
+    else if (ts.isNonNullExpression(cur)) cur = cur.expression
+  }
+  return cur
+}
+
+/**
+ * Body-scope companion to {@link detectPropsDestructured}. Flags
+ * `const { x } = props` (also `let` / `var`, aliases, defaults, rest,
+ * nested patterns) written SYNCHRONOUSLY in a component's body.
+ *
+ * Why this is the footgun: the compiler emits `<C prop={sig()} />` as a
+ * getter-shaped reactive prop. `const { x } = props` fires that getter
+ * exactly ONCE at setup — `x` is a dead snapshot, never re-reads when
+ * the signal changes. `props.x` (live member access inside a tracking
+ * scope) or `splitProps(props, ['x'])` preserve the subscription.
+ *
+ * Precision (zero false positives is the priority — a missed body-scope
+ * destructure is acceptable, a wrong one is not):
+ *  - Only PascalCase, JSX-rendering functions (`isComponentShapedFunction`
+ *    + `containsJsx`) — a plain helper that happens to destructure an
+ *    options bag named `props` is NOT a component and is left alone.
+ *  - The initializer must be the bare first-parameter identifier
+ *    (`= props`), unwrapped through paren / `as` / `satisfies` / `!`.
+ *    `const { x } = props.nested` and `= someOtherObject` are NOT
+ *    flagged (rarer shapes; out of the canonical scope).
+ *  - The destructure must be at the component-body top scope. A nested
+ *    function boundary (`onClick` handler, `effect(() => …)`, a returned
+ *    reactive accessor) re-reads `props` on each invocation, so those
+ *    destructures are reactivity-correct — the walk does NOT descend
+ *    into nested functions.
+ *  - The first parameter must itself be a plain identifier; the
+ *    parameter-destructure shape (`({ x }) => …`) is the existing
+ *    `detectPropsDestructured`'s job, not this one.
+ */
+function detectPropsDestructuredBody(
+  ctx: DetectContext,
+  node: ts.ArrowFunction | ts.FunctionDeclaration | ts.FunctionExpression,
+): void {
+  if (!isComponentShapedFunction(node)) return
+  if (!containsJsx(node)) return
+  if (!node.parameters.length) return
+  const first = node.parameters[0]
+  // First param must be a plain identifier — the destructured-param
+  // shape is detectPropsDestructured's domain.
+  if (!first || !ts.isIdentifier(first.name)) return
+  const paramName = first.name.text
+  const body = node.body
+  if (!body || !ts.isBlock(body)) return
+
+  function walk(n: ts.Node): void {
+    // Do NOT descend into nested functions: a `const { x } = props`
+    // inside a handler / effect / returned accessor re-reads on every
+    // invocation and is reactivity-correct.
+    if (
+      ts.isArrowFunction(n) ||
+      ts.isFunctionExpression(n) ||
+      ts.isFunctionDeclaration(n) ||
+      ts.isMethodDeclaration(n) ||
+      ts.isGetAccessorDeclaration(n) ||
+      ts.isSetAccessorDeclaration(n)
+    ) {
+      return
+    }
+    if (
+      ts.isVariableDeclaration(n) &&
+      ts.isObjectBindingPattern(n.name) &&
+      n.name.elements.length > 0 &&
+      n.initializer
+    ) {
+      const base = unwrapInitializer(n.initializer)
+      if (ts.isIdentifier(base) && base.text === paramName) {
+        pushDiag(
+          ctx,
+          n,
+          'props-destructured-body',
+          `Destructuring \`${paramName}\` in the component body captures the values ONCE during setup — the compiler emits signal-driven props as getters, so the destructured locals are dead snapshots that never update when the parent rewrites them. Read \`${paramName}.x\` directly inside the reactive scope (JSX / effect / computed), or use \`splitProps(${paramName}, ['x', ...])\` to carve out a group while preserving reactivity.`,
+          getNodeText(ctx, n),
+          `// read ${paramName}.x directly, or: const [local] = splitProps(${paramName}, ['x'])`,
+          false,
+        )
+      }
+    }
+    ts.forEachChild(n, walk)
+  }
+  for (const stmt of body.statements) walk(stmt)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -780,6 +891,7 @@ function visitNode(ctx: DetectContext, node: ts.Node): void {
     ts.isFunctionExpression(node)
   ) {
     detectPropsDestructured(ctx, node)
+    detectPropsDestructuredBody(ctx, node)
     detectStaticReturnNullConditional(ctx, node)
   }
   if (ts.isBinaryExpression(node)) {
@@ -839,6 +951,10 @@ export function hasPyreonPatterns(code: string): boolean {
     (/\bDate\.now\s*\(/.test(code) && /\bMath\.random\s*\(/.test(code)) ||
     /on[A-Z]\w*\s*=\s*\{\s*undefined\s*\}/.test(code) ||
     /=\s*\(\s*\{[^}]+\}\s*[:)]/.test(code) ||
+    // props-destructured-body: `const { … } = <ident>` anywhere. Loose
+    // on purpose — the AST walker is the precise gate; this only has to
+    // avoid skipping the full walk.
+    /\b(?:const|let|var)\s+\{[^}]*\}\s*=\s*[A-Za-z_$]/.test(code) ||
     // signal-write-as-call: `const X = signal(` declaration anywhere
     /\b(?:signal|computed)\s*[<(]/.test(code) ||
     // static-return-null-conditional: `if (...) return null` anywhere
