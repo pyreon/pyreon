@@ -1,6 +1,6 @@
 ---
 title: '@pyreon/lint'
-description: Pyreon-specific linter — 67 rules for signals, JSX, SSR, performance, architecture, routing, and SSG.
+description: Pyreon-specific linter — 74 rules for signals, JSX, SSR, performance, architecture, routing, SSG, and opt-in best practices (frontend a11y/CLS, query/rx/form library usage).
 ---
 
 `@pyreon/lint` is a framework-specific linter that catches Pyreon anti-patterns at the AST level. Powered by `oxc-parser` for fast ESTree/TS-ESTree parsing.
@@ -47,7 +47,7 @@ pyreon-lint --watch src/
 # JSON output for tooling integration
 pyreon-lint --format json
 
-# List all 67 rules
+# List all 74 rules
 pyreon-lint --list
 
 # Override a specific rule
@@ -61,7 +61,7 @@ pyreon-lint --config ./custom-lint.json
 
 | Option              | Description                                             |
 | ------------------- | ------------------------------------------------------- |
-| `--preset <name>`   | Preset: `recommended` (default), `strict`, `app`, `lib` |
+| `--preset <name>`   | Preset: `recommended` (default), `strict`, `app`, `lib`, `best-practices` |
 | `--fix`             | Auto-fix fixable issues                                 |
 | `--format <fmt>`    | Output: `text` (default), `json`, `compact`             |
 | `--quiet`           | Only show errors (hide warnings and info)               |
@@ -184,8 +184,30 @@ watchAndLint({
 - **`strict`** — All warnings promoted to errors. For CI and pre-commit hooks.
 - **`app`** — Recommended, but library-only rules are turned off: `dev-guard-warnings`, `no-error-without-prefix`, `no-circular-import`, `no-cross-layer-import`, and `require-browser-smoke-test`. Note that `no-process-dev-gate` stays **on** in `app` — the bundler-coupled dev-gate bug hits user-facing browser code regardless of whether the project ships as a library or an app. For Pyreon applications.
 - **`lib`** — Strict, plus every architecture rule is forced to `error`: `no-circular-import`, `no-cross-layer-import`, `dev-guard-warnings`, `no-error-without-prefix`, `no-process-dev-gate`, and `require-browser-smoke-test`. For Pyreon packages and libraries.
+- **`best-practices`** — `recommended` **plus every opt-in best-practice rule enabled** (the `frontend`, `query`, `rx` categories + form's `no-signal-in-form-initial-values`). These are **off in all other presets** by design — best practices are opinionated, so you opt in explicitly and never get an unexpected score/CI penalty.
 
-## Rules (67)
+### Opt-in best-practice rules
+
+Rules tagged opt-in (`meta.optIn`) are **off in `recommended` / `strict` / `app` / `lib`**. Enable them either wholesale via `--preset best-practices` / `"preset": "best-practices"`, or per-rule:
+
+```json
+{
+  "preset": "recommended",
+  "rules": {
+    "pyreon/require-img-alt": "error",
+    "pyreon/query-options-as-function": "error",
+    "pyreon/rx-prefer-pipe": "off"
+  }
+}
+```
+
+Per-rule config in `.pyreonlintrc.json` **always wins** over the preset (enable one, disable another, change severity, scope via `exemptPaths`).
+
+**Dependency auto-detection.** Library-scoped opt-in rules (`query` / `rx` / form's signal rule, and `frontend`'s `prefer-zero-image`) only activate when the linted project actually declares the relevant `@pyreon/*` package in its `package.json` (`dependencies` / `devDependencies` / `peerDependencies`). A project that doesn't use `@pyreon/query` never sees `query-options-as-function` — zero config, zero noise. The check walks up to the nearest `package.json` and is cached per manifest. Per-rule config still overrides if you want to force a rule on/off regardless.
+
+Every opt-in rule's message is prescriptive (states the fix) so an AI assistant reading lint output knows exactly how to resolve it; `no-positive-tabindex` is auto-fixable (`--fix`).
+
+## Rules (74)
 
 ### Reactivity (13)
 
@@ -288,13 +310,14 @@ Route-scoped (`src/routes/`) rules for `@pyreon/zero` static-site generation.
 | `pyreon/no-mutate-store-state`     | warn     | Direct `.set()` on store signals outside actions |
 | `pyreon/no-store-outside-provider` | warn     | Store hook in SSR without provider               |
 
-### Form (3)
+### Form (4)
 
 | Rule                                  | Severity | Description                                        |
 | ------------------------------------- | -------- | -------------------------------------------------- |
 | `pyreon/no-unregistered-field`        | warn     | `useField()` without `register()`                  |
 | `pyreon/no-submit-without-validation` | warn     | `useForm({ onSubmit })` without validators         |
 | `pyreon/prefer-field-array`           | info     | `signal([])` in form files — use `useFieldArray()` |
+| `pyreon/no-signal-in-form-initial-values` ᵒ | warn | `useForm({ initialValues: { x: sig() } })` snapshots the signal once — pass the plain value / use a reactive field |
 
 ### Styling (4)
 
@@ -320,6 +343,35 @@ Route-scoped (`src/routes/`) rules for `@pyreon/zero` static-site generation.
 | `pyreon/dialog-a11y`  | warn     | `<dialog>` without `aria-label`/`aria-labelledby` |
 | `pyreon/overlay-a11y` | warn     | `<Overlay>` without role/aria attributes          |
 | `pyreon/toast-a11y`   | warn     | Toast component without `role="alert"`            |
+
+> ᵒ = **opt-in** best-practice rule (off in `recommended`/`strict`/`app`/`lib`; enable via `best-practices` preset or per-rule config). Library-scoped ones additionally auto-gate on `package.json` deps — see [Opt-in best-practice rules](#opt-in-best-practice-rules).
+
+### Frontend (4) ᵒ
+
+Opt-in frontend best practices — accessibility + layout-shift (CLS) + asset optimization.
+
+| Rule                            | Severity | Fixable | Description                                                                              |
+| ------------------------------- | -------- | ------- | ---------------------------------------------------------------------------------------- |
+| `pyreon/require-img-alt`        | error    |         | `<img>` without an `alt` attribute — required for a11y (`alt=""` for decorative is fine)  |
+| `pyreon/img-requires-dimensions`| warn     |         | `<img>` without both `width` & `height` — causes layout shift (CLS); set intrinsic dimensions |
+| `pyreon/no-positive-tabindex`   | warn     | yes     | `tabIndex={n}` where n > 0 breaks natural tab order — use `0` (autofix) or `-1`           |
+| `pyreon/prefer-zero-image`      | info     |         | Raw `<img>` in a `@pyreon/zero` project — prefer `<Image>` for lazy-load + srcset + blur (dep-gated) |
+
+### Query (1) ᵒ
+
+Auto-gated on a `@pyreon/query` dependency.
+
+| Rule                               | Severity | Description                                                                                          |
+| ---------------------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| `pyreon/query-options-as-function` | error    | `useQuery`/`useInfiniteQuery`/`useQueries`/`useSuspenseQuery` with an options **object literal** — wrap in `() => ({ ... })` so `queryKey` tracks signals and refetches reactively (`useMutation` excluded) |
+
+### Rx (1) ᵒ
+
+Auto-gated on a `@pyreon/rx` dependency.
+
+| Rule                    | Severity | Description                                                                                  |
+| ----------------------- | -------- | -------------------------------------------------------------------------------------------- |
+| `pyreon/rx-prefer-pipe` | info     | Nested rx transforms (`map(filter(src, …), …)`) — compose via `pipe(src, filter(…), map(…))` for a single computed instead of N |
 
 ## Notable Rules
 

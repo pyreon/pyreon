@@ -4,12 +4,12 @@ export default defineManifest({
   name: '@pyreon/lint',
   title: 'Pyreon-specific Linter',
   tagline:
-    'Pyreon-specific linter — 67 rules across 13 categories, config files, watch mode, AST cache, CLI + LSP',
+    'Pyreon-specific linter — 74 rules across 16 categories, config files, watch mode, AST cache, CLI + LSP',
   description:
-    'Pyreon-specific lint rules powered by `oxc-parser`. Covers reactivity (13), JSX (11), lifecycle (5), performance (5), SSR (3), architecture (7), store (3), form (3), styling (4), hooks (3), accessibility (3), router (4), SSG (3) — 67 rules total. Programmatic API (`lint`, `lintFile`), CLI (`pyreon-lint`), watch mode (fs.watch + 100ms debounce + AstCache), LSP server, and `.pyreonlintrc.json` config with per-rule options via ESLint-style tuple form. Notable rules: `pyreon/no-process-dev-gate` (auto-fixable; replaces dead-in-browser `typeof process` gates with the bundler-agnostic `process.env.NODE_ENV` convention), `pyreon/no-heavy-import-only-in-handler` (flags a statically-imported heavy module used only in deferred scopes — convert to a dynamic `import()`).',
+    'Pyreon-specific lint rules powered by `oxc-parser`. Covers reactivity (13), JSX (11), lifecycle (5), performance (5), SSR (3), architecture (7), store (3), form (4), styling (4), hooks (3), accessibility (3), router (4), SSG (3), frontend (4), query (1), rx (1) — 74 rules total. Programmatic API (`lint`, `lintFile`), CLI (`pyreon-lint`), watch mode (fs.watch + 100ms debounce + AstCache), LSP server, and `.pyreonlintrc.json` config with per-rule options via ESLint-style tuple form. The `frontend`/`query`/`rx` categories + the new `form` rule are **opt-in best-practice rules** (`meta.optIn`): off in the `recommended`/`strict`/`app`/`lib` presets, enabled wholesale by the `best-practices` preset or per-rule config. Library-scoped opt-in rules auto-gate on the project’s `package.json` dependencies (a project that doesn’t use `@pyreon/query` never sees query rules). Notable rules: `pyreon/no-process-dev-gate` (auto-fixable; replaces dead-in-browser `typeof process` gates with the bundler-agnostic `process.env.NODE_ENV` convention), `pyreon/query-options-as-function` (options object literal breaks signal-tracked refetch — wrap in `() => (...)`), `pyreon/require-img-alt` / `pyreon/img-requires-dimensions` (a11y + CLS).',
   category: 'server',
   features: [
-    '67 rules across 13 categories',
+    '74 rules across 16 categories',
     'lint(options) programmatic API + lintFile() low-level entry',
     'CLI: pyreon-lint with --preset / --fix / --watch / --format / --rule-options',
     '4 presets: recommended, strict, app, lib',

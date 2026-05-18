@@ -13,7 +13,7 @@ function printUsage() {
   pyreon-lint [options] [path...]
 
   Options:
-    --preset <name>    Preset: recommended (default), strict, app, lib
+    --preset <name>    Preset: recommended (default), strict, app, lib, best-practices
     --fix              Auto-fix fixable issues
     --format <fmt>     Output: text (default), json, compact
     --quiet            Only show errors

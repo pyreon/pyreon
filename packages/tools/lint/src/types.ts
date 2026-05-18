@@ -42,6 +42,12 @@ export type RuleCategory =
   | 'accessibility'
   | 'router'
   | 'ssg'
+  // Best-practice categories. Rules in these default to `severity: 'off'`
+  // (opt-in) and library-scoped ones auto-activate only when the project
+  // depends on the library (see `utils/project-deps`).
+  | 'frontend'
+  | 'query'
+  | 'rx'
 
 /**
  * Declared type of an option slot. Minimal on purpose — sufficient for
@@ -69,6 +75,19 @@ export interface RuleMeta {
    * error + rule disabled for that run).
    */
   schema?: RuleOptionsSchema
+  /**
+   * Opt-in best-practice rule. When `true`, the standard presets
+   * (`recommended` / `strict` / `app` / `lib`) force this rule OFF so
+   * it never adds noise or a score penalty unless the user wants it.
+   * The `best-practices` preset enables it at `meta.severity`. Explicit
+   * per-rule config in `.pyreonlintrc.json` always overrides both.
+   *
+   * Library-scoped opt-in rules ALSO self-gate on the project's
+   * declared dependencies (see `utils/project-deps:isProjectDependency`)
+   * so even when enabled they stay silent in projects that don't use
+   * the library.
+   */
+  optIn?: boolean
 }
 
 // ── Rule Options ────────────────────────────────────────────────────────────
@@ -138,7 +157,12 @@ export interface LintConfigFile {
   exclude?: string[] | undefined
 }
 
-export type PresetName = 'recommended' | 'strict' | 'app' | 'lib'
+export type PresetName =
+  | 'recommended'
+  | 'strict'
+  | 'app'
+  | 'lib'
+  | 'best-practices'
 
 // ── Results ─────────────────────────────────────────────────────────────────
 
