@@ -231,7 +231,25 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24
-          registry-url: 'https://registry.npmjs.org'
+          # NO `registry-url:` — that makes setup-node write an
+          # `.npmrc` containing `//registry.npmjs.org/:_authToken=`
+          # (empty, because there is intentionally no NODE_AUTH_TOKEN).
+          # npm then sees explicit registry auth and SKIPS the OIDC
+          # trusted-publishing exchange entirely → `npm publish` 404s on
+          # PUT even when the trusted publisher is configured correctly.
+          # This was the real cause of the v0.18.0 native-publish 404s
+          # (provenance still signed because that uses the GitHub OIDC
+          # id-token directly, independent of npm registry auth — which
+          # masked the root cause). For trusted publishing the registry
+          # default is correct and NO .npmrc auth must exist.
+      - name: Ensure npm supports OIDC trusted publishing
+        # npm's native OIDC trusted-publishing (token-free `npm publish`)
+        # landed in npm 11.5.1. Node 24's bundled npm can be older
+        # (24.x shipped 11.3.x); pin a known-good npm so the exchange is
+        # guaranteed regardless of the Node minor.
+        run: |
+          npm install -g npm@latest
+          npm --version
       - name: Download platform artifact
         # SHA must match the real v5.0.0 tag (634f93cb…). The prior pin
         # (cc20338…) was a transcription error that GitHub rejected as
@@ -263,31 +281,22 @@ jobs:
             exit 1
           fi
       - name: Publish to npm (OIDC trusted publishing)
-        # No NODE_AUTH_TOKEN — Pyreon uses npm OIDC trusted publishing
-        # (no long-lived secrets). npm 11+ (shipped with Node 24) handles
-        # the OIDC token exchange automatically when:
-        #   1. `id-token: write` workflow permission is granted (set at
-        #      file scope above — line 37).
-        #   2. The package is registered as a trusted-publisher target
-        #      for THIS workflow on npmjs.com.
-        #
-        # Setting `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` (the prior
-        # shape) resolves to empty string when NPM_TOKEN isn't a repo
-        # secret. setup-node then writes
-        # `//registry.npmjs.org/:_authToken=` (empty) into .npmrc, and
-        # npm tries to use the empty token → ENEEDAUTH instead of
-        # falling back to OIDC. Pyreon's main release flow works without
-        # NODE_AUTH_TOKEN because changesets/action does the OIDC
-        # exchange internally; this raw `npm publish` path relies on
-        # npm CLI's native OIDC support and needs the env line removed.
-        #
-        # Pre-registration required (one-time, per package) for the 7
-        # platform packages:
-        #   1. npmjs.com → Settings → Publishing access → "Add new"
-        #   2. Package: @pyreon/compiler-<short> (one form per triple)
-        #   3. Repository: pyreon/pyreon
-        #   4. Workflow filename: release-native.yml
-        # See CONTRIBUTING.md → "Releases → Native binary publishing"
-        # for the full checklist.
+        # Token-free OIDC trusted publishing. npm (>=11.5.1, ensured
+        # above) performs the OIDC exchange automatically when:
+        #   1. `id-token: write` is granted (file scope, line 37);
+        #   2. NO `.npmrc` registry-auth line exists (setup-node's
+        #      `registry-url:` was removed above — that was writing an
+        #      empty `_authToken` that defeated OIDC);
+        #   3. each `@pyreon/compiler-<triple>` package has a trusted
+        #      publisher configured on npmjs.com matching THIS identity:
+        #        org/repo  = pyreon/pyreon
+        #        workflow  = release-native.yml   (filename only)
+        #        environment = (blank — this workflow uses none)
+        # A 404 on the PUT means (2) or (3) didn't hold. See
+        # CONTRIBUTING.md → "Native binary publishing".
         working-directory: packages/core/compiler/npm/${{ matrix.npm }}
-        run: npm publish --provenance --access public
+        run: |
+          # Belt-and-suspenders: ensure no stray .npmrc auth line (repo
+          # checkout, cached home dir) shadows the OIDC exchange.
+          rm -f "$HOME/.npmrc" .npmrc ../../../../.npmrc 2>/dev/null || true
+          npm publish --provenance --access public
