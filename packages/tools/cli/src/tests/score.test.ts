@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   computeScore,
   gradeFor,
+  isAdvisoryCategory,
   scoreCategory,
 } from '../doctor/score'
 import type { Finding, GateResult } from '../doctor/types'
@@ -154,5 +155,48 @@ describe('computeScore', () => {
     const { categories } = computeScore(findings, gates)
     expect(categories.find((c) => c.category === 'performance')!.included).toBe(true)
     expect(categories.find((c) => c.category === 'performance')!.score).toBe(97)
+  })
+})
+
+describe('advisory best-practices category', () => {
+  it('isAdvisoryCategory: only best-practices is advisory', () => {
+    expect(isAdvisoryCategory('best-practices')).toBe(true)
+    for (const c of [
+      'correctness',
+      'performance',
+      'architecture',
+      'testing',
+      'documentation',
+    ] as const) {
+      expect(isAdvisoryCategory(c)).toBe(false)
+    }
+  })
+
+  it('best-practices is ALWAYS included:false (scored but not graded), even with findings', () => {
+    const findings = [
+      makeFinding('best-practices', 'error'),
+      makeFinding('best-practices', 'warning'),
+    ]
+    const gates = [makeGate('lint', 'correctness', findings)]
+    const { categories } = computeScore(findings, gates)
+    const bp = categories.find((c) => c.category === 'best-practices')!
+    expect(bp.included).toBe(false)
+    // still SCORED for visibility (1 error + 1 warning = 13 penalty)
+    expect(bp.errors).toBe(1)
+    expect(bp.warnings).toBe(1)
+    expect(bp.score).toBe(87)
+  })
+
+  it('best-practices errors do NOT drag the overall grade', () => {
+    // 10 advisory errors would be a 0 subscore — but excluded from mean.
+    const bpErrors = Array.from({ length: 10 }, () =>
+      makeFinding('best-practices', 'error'),
+    )
+    const cleanGates = [makeGate('lint', 'correctness', [])]
+    const withBp = computeScore(bpErrors, cleanGates)
+    const withoutBp = computeScore([], cleanGates)
+    // Identical: the 10 advisory errors changed nothing in the mean.
+    expect(withBp.score).toBe(withoutBp.score)
+    expect(withBp.grade).toBe(withoutBp.grade)
   })
 })

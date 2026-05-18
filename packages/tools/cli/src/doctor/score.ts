@@ -46,7 +46,18 @@ const CATEGORIES: FindingCategory[] = [
   'architecture',
   'testing',
   'documentation',
+  'best-practices',
 ]
+
+// Advisory categories are scored + displayed but NEVER folded into the
+// overall mean / grade (opt-in best-practice findings must not tank the
+// objective health score — opinionated ≠ broken). Kept as a set so a
+// future advisory bucket just adds here.
+const ADVISORY_CATEGORIES = new Set<FindingCategory>(['best-practices'])
+
+/** True when `category` is advisory (excluded from the overall mean + `--ci`). */
+export const isAdvisoryCategory = (c: FindingCategory): boolean =>
+  ADVISORY_CATEGORIES.has(c)
 
 const SEVERITY_WEIGHTS: Record<Severity, number> = {
   error: 10,
@@ -117,7 +128,9 @@ export const computeScore = (
   }
 
   const categories = CATEGORIES.map((c) =>
-    scoreCategory(c, findings, includedCats.has(c)),
+    // Advisory categories are scored for visibility but forced
+    // `included: false` so they never enter the overall mean/grade.
+    scoreCategory(c, findings, isAdvisoryCategory(c) ? false : includedCats.has(c)),
   )
 
   const included = categories.filter((c) => c.included)
