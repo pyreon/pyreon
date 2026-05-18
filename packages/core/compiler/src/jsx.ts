@@ -160,6 +160,64 @@ export interface TransformOptions {
    * codegen; it never runs a second analysis pass.
    */
   reactivityLens?: boolean
+
+  /**
+   * P0 — compile-time rocketstyle wrapper collapse. OFF unless the Vite
+   * plugin supplies this (opt-in `pyreon({ collapse: true })`). The plugin
+   * scans the module's imports for collapsible component candidates,
+   * SSR-resolves each literal-prop call site once (real component, light
+   * + dark), and passes the resolved `sites` map keyed by
+   * {@link rocketstyleCollapseKey}. The compiler only DETECTS the
+   * collapsible shape (bail catalogue — every dimension prop a string
+   * literal, no spread, static-text children) and EMITS the collapsed
+   * `_rsCollapse` call + the once-per-module rule injection; it never
+   * runs the rocketstyle chain itself (RFC decision 2).
+   */
+  collapseRocketstyle?: {
+    /** Component names imported into this module that MAY collapse. */
+    candidates: Set<string>
+    /** key → resolved emission data (absent ⇒ bail, keep normal mount). */
+    sites: Map<
+      string,
+      {
+        templateHtml: string
+        lightClass: string
+        darkClass: string
+        rules: string[]
+        ruleKey: string
+      }
+    >
+    /** Live mode accessor to thread for dual-emit (RFC decision 1). */
+    mode: { name: string; source: string }
+    /** Module specifier for `_rsCollapse`. Default `@pyreon/runtime-dom`. */
+    runtimeDomSource?: string
+    /** Module specifier for the styler `sheet`. Default `@pyreon/styler`. */
+    stylerSource?: string
+  }
+}
+
+/**
+ * Canonical key for a collapsible rocketstyle call site. The Vite plugin
+ * computes this when it resolves a site; the compiler recomputes the
+ * IDENTICAL key from the JSX node to look the resolution up. Stable
+ * ordering of props so attribute order in source doesn't change the key.
+ */
+export function rocketstyleCollapseKey(
+  componentName: string,
+  props: Record<string, string>,
+  childrenText: string,
+): string {
+  const propStr = Object.keys(props)
+    .sort()
+    .map((k) => `${k}=${props[k]}`)
+    .join('')
+  const src = `${componentName} ${propStr} ${childrenText}`
+  let h = 2166136261
+  for (let i = 0; i < src.length; i++) {
+    h ^= src.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return (h >>> 0).toString(36)
 }
 
 // ─── oxc ESTree helpers ───────────────────────────────────────────────────────
@@ -233,6 +291,135 @@ function jsxChildren(node: N): N[] {
   return node.children ?? []
 }
 
+/**
+ * A collapsible call site found by {@link scanCollapsibleSites}.
+ * `componentName` is the LOCAL JSX tag (post-import-alias) — it MUST be
+ * what `rocketstyleCollapseKey` is computed from on BOTH sides so the
+ * plugin's resolved `sites` map keys match the compiler's lookups.
+ */
+export interface CollapsibleSite {
+  /** Local JSX tag name (the key + the compiler's detection use this). */
+  componentName: string
+  /** Module specifier the component was imported from (for the resolver). */
+  source: string
+  /** Imported binding name at `source` (may differ from local if aliased). */
+  importedName: string
+  /** Literal string-valued props (the only shape the slice collapses). */
+  props: Record<string, string>
+  /** Static text children (trimmed; empty ⇒ none). */
+  childrenText: string
+  /** `rocketstyleCollapseKey(componentName, props, childrenText)`. */
+  key: string
+}
+
+/**
+ * Build a `localName → { imported, source }` table from a module's
+ * import declarations. Only named imports (`import { X as Y }`) are
+ * relevant — the collapsible components are always named exports.
+ */
+function collectImportTable(program: N): Map<string, { imported: string; source: string }> {
+  const table = new Map<string, { imported: string; source: string }>()
+  for (const stmt of program.body ?? []) {
+    if (stmt.type !== 'ImportDeclaration') continue
+    const source = stmt.source?.value
+    if (typeof source !== 'string') continue
+    for (const spec of stmt.specifiers ?? []) {
+      if (spec.type !== 'ImportSpecifier') continue
+      const local = spec.local?.name
+      const imported = spec.imported?.name ?? local
+      if (typeof local === 'string') table.set(local, { imported, source })
+    }
+  }
+  return table
+}
+
+/**
+ * Pure detector — finds every collapsible rocketstyle call site in a
+ * module. Used by `@pyreon/vite-plugin` to know which (component, props,
+ * text) tuples to SSR-resolve. The bail catalogue here MUST stay
+ * byte-identical to `tryRocketstyleCollapse`'s (RFC decision 3): a
+ * candidate PascalCase tag whose import source is in `collapsibleSources`,
+ * every attr a plain string literal (no spread, no `{expr}`, no boolean
+ * attr), children empty or static text only. A consistency test asserts
+ * the keys this produces equal the keys the compiler looks up.
+ */
+export function scanCollapsibleSites(
+  code: string,
+  filename: string,
+  collapsibleSources: Set<string>,
+): CollapsibleSite[] {
+  let program: N
+  try {
+    program = parseSync(filename, code, { sourceType: 'module', lang: getLang(filename) }).program
+  } catch {
+    return []
+  }
+  const imports = collectImportTable(program)
+  const out: CollapsibleSite[] = []
+  const visit = (node: N): void => {
+    if (!node || typeof node !== 'object') return
+    if (node.type === 'JSXElement') {
+      const tag = jsxTagName(node)
+      const imp = tag ? imports.get(tag) : undefined
+      if (
+        tag &&
+        tag.charAt(0) !== tag.charAt(0).toLowerCase() &&
+        imp &&
+        collapsibleSources.has(imp.source)
+      ) {
+        const site = detectCollapsibleShape(node, tag)
+        if (site) {
+          out.push({
+            componentName: tag,
+            source: imp.source,
+            importedName: imp.imported,
+            props: site.props,
+            childrenText: site.childrenText,
+            key: rocketstyleCollapseKey(tag, site.props, site.childrenText),
+          })
+        }
+      }
+    }
+    for (const k in node) {
+      const v = node[k]
+      if (Array.isArray(v)) for (const c of v) visit(c)
+      else if (v && typeof v === 'object' && typeof v.type === 'string') visit(v)
+    }
+  }
+  visit(program)
+  return out
+}
+
+/**
+ * The shared bail catalogue — every attr a string literal (no spread, no
+ * `{expr}`, no boolean attr), children empty or static text. Returns the
+ * extracted {props, childrenText} or null (bail). `tryRocketstyleCollapse`
+ * inlines the identical checks; a consistency test locks them together.
+ */
+function detectCollapsibleShape(
+  node: N,
+  _tag: string,
+): { props: Record<string, string>; childrenText: string } | null {
+  const props: Record<string, string> = {}
+  for (const attr of jsxAttrs(node)) {
+    if (attr.type !== 'JSXAttribute') return null // spread → bail
+    const nm = attr.name?.type === 'JSXIdentifier' ? attr.name.name : null
+    if (!nm) return null
+    const v = attr.value
+    if (!v) return null // boolean attr → bail
+    const isStr =
+      v.type === 'StringLiteral' || (v.type === 'Literal' && typeof v.value === 'string')
+    if (!isStr) return null // `{expr}` / dynamic → bail
+    props[nm] = String(v.value)
+  }
+  let childrenText = ''
+  for (const c of jsxChildren(node)) {
+    if (c.type === 'JSXText') childrenText += (c.value ?? '') as string
+    else return null // element / expression child → bail
+  }
+  return { props, childrenText: childrenText.trim() }
+}
+
 // ─── Main transform ─────────────────────────────────────────────────────────
 
 export function transformJSX(
@@ -240,6 +427,12 @@ export function transformJSX(
   filename = 'input.tsx',
   options: TransformOptions = {},
 ): TransformResult {
+  // `collapseRocketstyle` emission lives only in the JS path (the Rust
+  // binary doesn't implement it and isn't passed the option). Force the
+  // JS path when collapse is requested so it isn't silently skipped —
+  // same pattern as `analyzeReactivity` forcing `transformJSX_JS`.
+  if (options.collapseRocketstyle) return transformJSX_JS(code, filename, options)
+
   // Try Rust native binary first (3.7-8.2x faster).
   // Per-call try/catch: if the native binary panics on an edge case
   // (bad UTF-8, unexpected AST shape), fall back gracefully instead
@@ -361,6 +554,57 @@ export function transformJSX_JS(
   let needsBindImportGlobal = false
   let needsApplyPropsImportGlobal = false
   let needsMountSlotImportGlobal = false
+
+  // ── P0 rocketstyle-collapse state ─────────────────────────────────────────
+  let needsCollapse = false
+  const collapseRuleKeys = new Set<string>()
+  const collapseRules: Array<{ ruleKey: string; rules: string[] }> = []
+
+  /**
+   * Detect + collapse a literal-prop rocketstyle call site. Conservative
+   * bail catalogue (RFC decision 3): PascalCase candidate, every attr a
+   * StringLiteral (no spread, no `{expr}`, no boolean attr), children
+   * empty or a single static JSXText. The plugin must already have
+   * SSR-resolved this exact (component, props, text) tuple — an absent
+   * `sites` entry is a hard bail (covers resolver-bailed shapes,
+   * cross-package-without-data, anything uncertain). Emits ONE
+   * `_rsCollapse(tpl, light, dark, () => mode()==='dark')` (dual-emit)
+   * plus a once-per-module idempotent `injectRules`. A false negative is
+   * correct-but-slow; a false positive is wrong output — so every
+   * uncertain signal returns false.
+   */
+  function tryRocketstyleCollapse(node: N): boolean {
+    const cfg = options.collapseRocketstyle
+    if (!cfg) return false
+    const tag = jsxTagName(node)
+    if (!tag || tag.charAt(0) === tag.charAt(0).toLowerCase()) return false
+    if (!cfg.candidates.has(tag)) return false
+    // Shared bail catalogue — IDENTICAL to scanCollapsibleSites (the
+    // plugin scans with the same predicate, so its resolved `sites`
+    // keys match these lookups exactly; no drift possible).
+    const shape = detectCollapsibleShape(node, tag)
+    if (!shape) return false
+    const { props, childrenText } = shape
+    const key = rocketstyleCollapseKey(tag, props, childrenText)
+    const site = cfg.sites.get(key)
+    if (!site) return false // not resolved → keep normal rocketstyle mount
+    const call =
+      `__rsCollapse(${JSON.stringify(site.templateHtml)}, ` +
+      `${JSON.stringify(site.lightClass)}, ${JSON.stringify(site.darkClass)}, ` +
+      `() => __pyrMode() === "dark")`
+    const start = node.start as number
+    const end = node.end as number
+    const parent = findParent(node)
+    const needsBraces =
+      parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
+    replacements.push({ start, end, text: needsBraces ? `{${call}}` : call })
+    needsCollapse = true
+    if (!collapseRuleKeys.has(site.ruleKey)) {
+      collapseRuleKeys.add(site.ruleKey)
+      collapseRules.push({ ruleKey: site.ruleKey, rules: site.rules })
+    }
+    return true
+  }
 
   function maybeHoist(node: N): string | null {
     if (
@@ -857,6 +1101,11 @@ export function transformJSX_JS(
 
     // ── JSX processing (was pass 3) ──
     if (node.type === 'JSXElement') {
+      if (tryRocketstyleCollapse(node)) {
+        // Collapsed to _rsCollapse — children are baked into the SSR-
+        // resolved template; do not recurse into the subtree.
+        return
+      }
       if (!isSelfClosing(node) && tryTemplateEmit(node)) {
         // Template emitted — don't recurse into this subtree (JSXElement is never a function)
         return
@@ -932,6 +1181,29 @@ export function transformJSX_JS(
     if (needsRpImport) coreImports.push('_rp')
     if (needsWrapSpreadImport) coreImports.push('_wrapSpread')
     output = `import { ${coreImports.join(', ')} } from "@pyreon/core";\n` + output
+  }
+
+  if (needsCollapse) {
+    const cfg = options.collapseRocketstyle!
+    const rd = cfg.runtimeDomSource ?? '@pyreon/runtime-dom'
+    const st = cfg.stylerSource ?? '@pyreon/styler'
+    // One idempotent injectRules per distinct rule bundle — keyed by the
+    // resolver's FNV so a re-eval (HMR) or another module's identical
+    // bundle is a no-op (styler dedupes by key). Runs at module-eval,
+    // before any collapsed site mounts, so the sheet is populated
+    // without a prior runtime mount of the real component.
+    const inj = collapseRules
+      .map(
+        (r) =>
+          `__rsSheet.injectRules(${JSON.stringify(r.rules)},${JSON.stringify(r.ruleKey)});`,
+      )
+      .join('')
+    output =
+      `import { _rsCollapse as __rsCollapse } from "${rd}";\n` +
+      `import { sheet as __rsSheet } from "${st}";\n` +
+      `import { ${cfg.mode.name} as __pyrMode } from "${cfg.mode.source}";\n` +
+      `${inj}\n` +
+      output
   }
 
   return collectLens

@@ -34,8 +34,31 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join as pathJoin } from 'node:path'
-import { generateContext, transformDeferInline, transformJSX } from '@pyreon/compiler'
+import {
+  type CollapsibleSite,
+  generateContext,
+  scanCollapsibleSites,
+  transformDeferInline,
+  transformJSX,
+} from '@pyreon/compiler'
+import type { CollapseResolver } from './rocketstyle-collapse'
 import type { Plugin, ViteDevServer } from 'vite'
+
+// Lazy — the resolver module (and its `vite` SSR machinery) must NOT be
+// on the static import path of this cheap entry. It loads ONLY when
+// `pyreon({ collapse })` is enabled AND a collapsible site is scanned;
+// collapse-off consumers never pull it (bundle-budget + cold-load).
+let _createCollapseResolver:
+  | ((root: string) => Promise<CollapseResolver>)
+  | null = null
+async function loadCreateCollapseResolver(): Promise<
+  (root: string) => Promise<CollapseResolver>
+> {
+  if (!_createCollapseResolver) {
+    _createCollapseResolver = (await import('./rocketstyle-collapse')).createCollapseResolver
+  }
+  return _createCollapseResolver
+}
 
 // Virtual module ID for the HMR runtime
 const HMR_RUNTIME_ID = '\0pyreon/hmr-runtime'
@@ -105,6 +128,45 @@ export interface PyreonPluginOptions {
    * hydrateIslandsAuto()
    */
   islands?: boolean
+
+  /**
+   * P0 — opt-in compile-time rocketstyle wrapper collapse. `true` uses
+   * the default provider/theme/mode wiring (PyreonUI + theme +
+   * useMode from @pyreon/ui-core / @pyreon/ui-theme). Pass an object to
+   * override. OFF by default (zero behaviour change). When on, the
+   * plugin SSR-resolves every literal-prop call site of a candidate
+   * component (real component, light + dark) and the compiler collapses
+   * the 5-layer wrapper mount into a single `_rsCollapse` cloneNode.
+   * Only the CLIENT graph is collapsed — the SSR graph keeps the normal
+   * mount (and the resolver itself uses SSR render).
+   *
+   * @example pyreon({ collapse: true })
+   * @example pyreon({ collapse: { components: ['Button', 'Badge'] } })
+   */
+  collapse?: boolean | PyreonCollapseOptions
+}
+
+export interface PyreonCollapseOptions {
+  /**
+   * Import sources whose components may collapse. Default:
+   * `['@pyreon/ui-components']`. The compiler's AST scan only considers
+   * a call site whose component was imported from one of these sources;
+   * the conservative bail catalogue + the SSR resolver are the real
+   * gate beyond that.
+   */
+  sources?: string[]
+  /**
+   * Optional local-name allowlist applied AFTER the source scan
+   * (e.g. `['Button']`). Omit to collapse every collapsible component
+   * from the configured sources.
+   */
+  components?: string[]
+  /** Override the theme/mode provider. Default PyreonUI@@pyreon/ui-core. */
+  provider?: { name: string; source: string }
+  /** Override the theme object. Default theme@@pyreon/ui-theme. */
+  theme?: { name: string; source: string }
+  /** Override the live mode accessor. Default useMode@@pyreon/ui-core. */
+  mode?: { name: string; source: string }
 }
 
 // ── Compat alias maps ─────────────────────────────────────────────────────────
@@ -260,6 +322,52 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
   // module is harmless if the user has no `island()` calls. Opt out only if
   // you have a specific reason.
   const islandsEnabled = options?.islands !== false
+
+  // ── P0 rocketstyle-collapse config (opt-in) ───────────────────────────────
+  const collapseOpt = options?.collapse
+  const collapseEnabled = collapseOpt === true || (collapseOpt != null && collapseOpt !== false)
+  const collapseUserCfg: PyreonCollapseOptions =
+    collapseOpt && collapseOpt !== true ? collapseOpt : {}
+  const collapseProvider = collapseUserCfg.provider ?? {
+    name: 'PyreonUI',
+    source: '@pyreon/ui-core',
+  }
+  const collapseTheme = collapseUserCfg.theme ?? { name: 'theme', source: '@pyreon/ui-theme' }
+  const collapseMode = collapseUserCfg.mode ?? { name: 'useMode', source: '@pyreon/ui-core' }
+  const collapseSources = new Set(collapseUserCfg.sources ?? ['@pyreon/ui-components'])
+  const collapseComponentFilter = collapseUserCfg.components
+    ? (n: string) => collapseUserCfg.components!.includes(n)
+    : null
+  // Lazily created on first client-graph transform; one Vite SSR server
+  // reused for every resolve in the build. Disposed in closeBundle.
+  let collapseResolver: import('./rocketstyle-collapse').CollapseResolver | null = null
+  let collapseResolverInit: Promise<
+    import('./rocketstyle-collapse').CollapseResolver | null
+  > | null = null
+
+  /**
+   * Lazily spin ONE programmatic Vite SSR server (bound to the project's
+   * own vite config) the first time a client-graph module actually has a
+   * collapsible call site. Memoized via `collapseResolverInit` so
+   * concurrent transforms share the single server. Returns null if the
+   * server fails to start (graceful — every call site then keeps its
+   * normal rocketstyle mount).
+   */
+  function ensureCollapseResolver(): Promise<
+    import('./rocketstyle-collapse').CollapseResolver | null
+  > {
+    if (collapseResolver) return Promise.resolve(collapseResolver)
+    if (collapseResolverInit) return collapseResolverInit
+    collapseResolverInit = loadCreateCollapseResolver()
+      .then((create) => create(projectRoot))
+      .then((r) => {
+        collapseResolver = r
+        return r
+      })
+      .catch(() => null)
+    return collapseResolverInit
+  }
+
   let isBuild = false
   let projectRoot = ''
 
@@ -364,6 +472,16 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       }
     },
 
+    // Tear down the one programmatic Vite SSR server the collapse
+    // resolver holds (created lazily on first client-graph transform).
+    async closeBundle() {
+      if (collapseResolver) {
+        await collapseResolver.dispose()
+        collapseResolver = null
+        collapseResolverInit = null
+      }
+    },
+
     // ── Virtual module + compat alias resolution ─────────────────────────────
     async resolveId(id, importer) {
       if (id === HMR_RUNTIME_IMPORT) return HMR_RUNTIME_ID
@@ -453,7 +571,71 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       // (both build --ssr and dev `ssrLoadModule`). The compiler emits plain
       // `h()` calls in that mode so `runtime-server` can render to a string.
       const isSsr = transformOptions?.ssr === true
-      const result = transformJSX(sourceForJsx, id, { ssr: isSsr, knownSignals })
+
+      // ── P0 rocketstyle-collapse (opt-in, CLIENT graph only) ────────────
+      // Never collapse the SSR graph: renderToString needs the real
+      // VNode tree, AND the resolver itself SSR-renders the component —
+      // collapsing the SSR graph would be circular. Resolve every
+      // scanned literal-prop site once (real component, light + dark)
+      // and hand the compiler a key→emission map; the compiler's AST
+      // bail catalogue is the real gate, an unresolved key just falls
+      // back to the normal mount.
+      let collapseRocketstyle:
+        | NonNullable<Parameters<typeof transformJSX>[2]>['collapseRocketstyle']
+        | undefined
+      if (collapseEnabled && !isSsr) {
+        const scanned: CollapsibleSite[] = scanCollapsibleSites(
+          sourceForJsx,
+          id,
+          collapseSources,
+        ).filter((s) => !collapseComponentFilter || collapseComponentFilter(s.componentName))
+        if (scanned.length > 0) {
+          const resolver = await ensureCollapseResolver()
+          if (resolver) {
+            const sites = new Map<
+              string,
+              {
+                templateHtml: string
+                lightClass: string
+                darkClass: string
+                rules: string[]
+                ruleKey: string
+              }
+            >()
+            const candidates = new Set<string>()
+            for (const s of scanned) {
+              const resolved = await resolver.resolve({
+                component: { name: s.importedName, source: s.source },
+                props: s.props,
+                childrenText: s.childrenText,
+                config: {
+                  provider: collapseProvider,
+                  theme: collapseTheme,
+                  mode: collapseMode,
+                },
+              })
+              if (!resolved) continue
+              candidates.add(s.componentName)
+              sites.set(s.key, {
+                templateHtml: resolved.templateHtml,
+                lightClass: resolved.lightClass,
+                darkClass: resolved.darkClass,
+                rules: resolved.rules,
+                ruleKey: resolved.key,
+              })
+            }
+            if (sites.size > 0) {
+              collapseRocketstyle = { candidates, sites, mode: collapseMode }
+            }
+          }
+        }
+      }
+
+      const result = transformJSX(sourceForJsx, id, {
+        ssr: isSsr,
+        knownSignals,
+        ...(collapseRocketstyle ? { collapseRocketstyle } : {}),
+      })
       // Surface compiler warnings in the terminal
       for (const w of result.warnings) {
         this.warn(`${w.message} (${id}:${w.line}:${w.column})`)

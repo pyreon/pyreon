@@ -439,6 +439,64 @@ export class StyleSheet {
     return `<style ${ATTR}="">${css}</style>`
   }
 
+  /**
+   * Returns the collected SSR rules as a raw array (one entry per
+   * top-level rule, already `@layer`-wrapped + class-prefixed exactly as
+   * `insert()` produced them). Used by the compile-time rocketstyle
+   * collapse resolver: it renders a component under SSR, reads the rules
+   * here, and the build emits an idempotent `injectRules()` call so the
+   * collapsed `_tpl()` site is self-sufficient (no prior runtime mount
+   * needed to populate the sheet). A copy — callers must not mutate the
+   * internal buffer.
+   */
+  getStyleRules(): readonly string[] {
+    return this.ssrBuffer.slice()
+  }
+
+  // Idempotency guard for injectRules — keyed by the FNV hash the
+  // collapse resolver computes over the rule set. A second injection of
+  // the same resolved bundle (e.g. the module re-evaluated under HMR, or
+  // two collapsed call sites resolving to the same dimension combo) is a
+  // no-op instead of duplicate live `cssRules`.
+  private injectedBundles = new Set<string>()
+
+  /**
+   * Inject pre-resolved CSS rule text (from `getStyleRules()` captured at
+   * build time by the rocketstyle-collapse resolver) directly into the
+   * live sheet. Unlike `insert()` this does NOT re-hash — the class names
+   * are already baked into `rules` and into the collapsed `_tpl()` HTML;
+   * re-hashing would produce a different class and break the contract.
+   * Idempotent by `key` (the resolver's FNV hash of the bundle).
+   */
+  injectRules(rules: readonly string[], key: string): void {
+    if (this.injectedBundles.has(key)) return
+    this.injectedBundles.add(key)
+    if (this.isSSR) {
+      for (const rule of rules) this.ssrBuffer.push(rule)
+      return
+    }
+    if (!this.sheet) return
+    for (const rule of rules) {
+      try {
+        this.sheet.insertRule(rule, this.sheet.cssRules.length)
+      } catch (_e) {
+        if (__DEV__) {
+          // oxlint-disable-next-line no-console
+          console.warn('[styler] injectRules: failed to insert collapsed rule:', rule, _e)
+        }
+      }
+    }
+  }
+
+  /**
+   * Test-only: live `cssRules.length` (0 in SSR). Mirrors runtime-dom's
+   * `_tplCacheSize()` test-only-accessor convention; lets injectRules /
+   * eviction tests assert without reaching into the private sheet.
+   */
+  ruleCountForTest(): number {
+    return this.sheet?.cssRules.length ?? 0
+  }
+
   /** Returns collected CSS rules as a raw string (useful for streaming SSR). */
   getStyles(): string {
     if (this.ssrBuffer.length === 0) return ''

@@ -194,6 +194,60 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
 }
 
 /**
+ * Compiler-emitted collapsed rocketstyle call site.
+ *
+ * The runtime half of the P0 compile-time rocketstyle wrapper-collapse.
+ * For a literal-prop call site like `<Button state="primary" size="md">Save</Button>`,
+ * the build resolves the FULL rocketstyle/styler pipeline once (SSR
+ * render of the real component) and the compiler emits ONE `_rsCollapse`
+ * call instead of the 5-layer wrapper mount (rocketstyle → attrs HOC →
+ * Element → Wrapper → styled). Measured 44× wall-clock, mountChild 9→1
+ * (see examples/experiments/e2-static-rocketstyle/RESULTS.md).
+ *
+ * Dual-emit (RFC decision 1): both the light- and dark-resolved class
+ * strings are baked in; `isDark` is the app's live mode accessor (the
+ * compiler threads it from the configured provider, e.g. `useMode` from
+ * `@pyreon/ui-core`). A whole-theme/mode swap re-runs only this binding —
+ * no remount — preserving Pyreon's reactive mode-switch contract. The
+ * resolved CSS rules are injected once at module-eval via the styler's
+ * idempotent `injectRules()` (emitted alongside this call), so the
+ * collapsed site is self-sufficient: no prior runtime mount of the real
+ * component is needed to populate the sheet.
+ *
+ * `bind` is the standard `_tpl` child/event binder for the (static)
+ * children — identical to what the compiler emits for the non-collapsed
+ * template path, so children reactivity / event delegation is unchanged.
+ *
+ * @param html  static element HTML WITHOUT the class attr (class is applied reactively)
+ * @param lightClass  resolved styler class string for light mode
+ * @param darkClass   resolved styler class string for dark mode
+ * @param isDark  app mode accessor — `() => boolean` (true ⇒ dark)
+ * @param bind  standard _tpl binder for children/events (or null)
+ */
+export function _rsCollapse(
+  html: string,
+  lightClass: string,
+  darkClass: string,
+  isDark: () => boolean,
+  bind?: ((el: HTMLElement) => (() => void) | null) | null,
+): NativeItem {
+  return _tpl(html, (el) => {
+    // Reactive class: _bindDirect's plain-callable fallback wraps this in
+    // a renderEffect, so reading the mode accessor subscribes to the live
+    // mode signal — a mode swap re-runs ONLY this className assignment.
+    const disposeClass = _bindDirect(isDark as unknown as { _v?: unknown }, (v) => {
+      el.className = v ? darkClass : lightClass
+    })
+    const disposeChildren = bind ? bind(el) : null
+    if (!disposeChildren) return disposeClass
+    return () => {
+      disposeClass()
+      disposeChildren()
+    }
+  })
+}
+
+/**
  * Test-only: clear the template cache. Used by tests that assert on
  * cache size; never called by runtime code. Not exported from the
  * package's public index.
