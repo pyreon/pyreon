@@ -59,6 +59,14 @@ function buildEntry(o: UseHeadInput): HeadEntry {
       children: JSON.stringify(o.jsonLd),
     })
   }
+  if (o.speculationRules) {
+    tags.push({
+      tag: 'script',
+      key: 'speculationrules',
+      props: { type: 'speculationrules' },
+      children: JSON.stringify(o.speculationRules),
+    })
+  }
   if (o.base)
     tags.push({
       tag: 'base',

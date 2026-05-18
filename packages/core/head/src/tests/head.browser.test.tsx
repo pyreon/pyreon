@@ -191,4 +191,61 @@ describe('head in real browser', () => {
     expect(s?.defer).toBe(true)
     unmount()
   })
+
+  // E12 — Speculation Rules. Kill-criterion #2: real Chromium must PARSE
+  // and ACCEPT the emitted block. happy-dom can't validate this — only a
+  // real browser runs the Speculation Rules parser and emits a console
+  // error on a malformed block. We assert: (a) the script lands in <head>
+  // with the exact type, (b) its body is valid JSON, (c) the browser
+  // raises NO "speculation rules" parse error, (d) HTMLScriptElement
+  // recognises the type. Whether Chromium then prefetches/prerenders is
+  // browser-discretionary (heuristic + headless-flag dependent) and is
+  // intentionally NOT asserted — the framework's contract is "emit a
+  // correct, valid declarative hint", same as `<link rel=prefetch>`.
+  it('emits a real <script type="speculationrules"> Chromium parses without error', () => {
+    const specErrors: string[] = []
+    const origErr = console.error
+    console.error = (...a: unknown[]) => {
+      const msg = a.map(String).join(' ')
+      if (/speculation\s*rules/i.test(msg)) specErrors.push(msg)
+    }
+    try {
+      const { unmount } = mountInBrowser(
+        h(
+          HeadProvider,
+          null,
+          h(Page, {
+            setup: () =>
+              useHead({
+                speculationRules: {
+                  prefetch: [
+                    {
+                      source: 'document',
+                      where: { selector_matches: 'a[data-spec]' },
+                      eagerness: 'moderate',
+                    },
+                  ],
+                  prerender: [{ source: 'list', urls: ['/about'], eagerness: 'conservative' }],
+                },
+              }),
+          }),
+        ),
+      )
+      const el = document.head.querySelector<HTMLScriptElement>(
+        'script[type="speculationrules"]',
+      )
+      expect(el).not.toBeNull()
+      // (b) body is valid JSON and round-trips.
+      const parsed = JSON.parse(el?.textContent ?? '')
+      expect(parsed.prerender[0].urls).toEqual(['/about'])
+      expect(parsed.prefetch[0].where).toEqual({ selector_matches: 'a[data-spec]' })
+      // (d) real HTMLScriptElement carries the exact type the spec requires.
+      expect(el?.type).toBe('speculationrules')
+      // (c) Chromium parsed it WITHOUT raising a speculation-rules error.
+      expect(specErrors).toEqual([])
+      unmount()
+    } finally {
+      console.error = origErr
+    }
+  })
 })

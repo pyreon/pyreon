@@ -1187,3 +1187,127 @@ describe('useHead — SSR paths (document undefined)', () => {
     expect(typeof document).toBe('undefined')
   })
 })
+
+// ─── speculationRules (E12) ──────────────────────────────────────────────────
+
+describe('useHead — speculationRules', () => {
+  test('SSR: emits a single <script type="speculationrules"> with valid JSON body', async () => {
+    function Page() {
+      useHead({
+        speculationRules: {
+          prerender: [{ source: 'list', urls: ['/about', '/posts'], eagerness: 'moderate' }],
+        },
+      })
+      return h('div', null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    expect(head).toContain('type="speculationrules"')
+    // Body must be valid JSON parseable back to the exact rules.
+    const m = head.match(/<script type="speculationrules">([\s\S]*?)<\/script>/)
+    expect(m).not.toBeNull()
+    const parsed = JSON.parse((m as RegExpMatchArray)[1] as string)
+    expect(parsed).toEqual({
+      prerender: [{ source: 'list', urls: ['/about', '/posts'], eagerness: 'moderate' }],
+    })
+    // Exactly one block — no accidental duplicate.
+    expect(head.match(/type="speculationrules"/g)).toHaveLength(1)
+  })
+
+  test('CSR: syncs the speculationrules script into document.head on mount', () => {
+    const ctx = createHeadContext()
+    const container = document.createElement('div')
+    function Page() {
+      useHead({ speculationRules: { prefetch: [{ source: 'list', urls: ['/next'] }] } })
+      return h('div', null)
+    }
+    mount(h(HeadProvider, { context: ctx, children: h(Page, null) }), container)
+    const script = document.head.querySelector('script[type="speculationrules"]')
+    expect(script).not.toBeNull()
+    expect(JSON.parse(script?.textContent ?? '{}')).toEqual({
+      prefetch: [{ source: 'list', urls: ['/next'] }],
+    })
+  })
+
+  test('deduped by key — innermost component wins, never two blocks', async () => {
+    function Inner() {
+      useHead({ speculationRules: { prerender: [{ source: 'list', urls: ['/inner'] }] } })
+      return h('div', null)
+    }
+    function Outer() {
+      useHead({ speculationRules: { prerender: [{ source: 'list', urls: ['/outer'] }] } })
+      return h('div', null, h(Inner, null))
+    }
+    const { head } = await renderWithHead(h(Outer, null))
+    expect(head.match(/type="speculationrules"/g)).toHaveLength(1)
+    expect(head).toContain('/inner')
+    expect(head).not.toContain('/outer')
+  })
+
+  test('reactive: regenerates when the source signal changes', () => {
+    const ctx = createHeadContext()
+    const container = document.createElement('div')
+    const target = signal('/a')
+    function Page() {
+      useHead(() => ({
+        speculationRules: { prerender: [{ source: 'list', urls: [target()] }] },
+      }))
+      return h('div', null)
+    }
+    mount(h(HeadProvider, { context: ctx, children: h(Page, null) }), container)
+    expect(document.head.querySelector('script[type="speculationrules"]')?.textContent).toContain(
+      '/a',
+    )
+    target.set('/b')
+    expect(document.head.querySelector('script[type="speculationrules"]')?.textContent).toContain(
+      '/b',
+    )
+  })
+
+  test('document-source predicate rules round-trip', async () => {
+    function Page() {
+      useHead({
+        speculationRules: {
+          prefetch: [
+            {
+              source: 'document',
+              where: { selector_matches: 'a.router-link' },
+              eagerness: 'conservative',
+            },
+          ],
+        },
+      })
+      return h('div', null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    const m = head.match(/<script type="speculationrules">([\s\S]*?)<\/script>/)
+    expect(JSON.parse((m as RegExpMatchArray)[1] as string).prefetch[0].where).toEqual({
+      selector_matches: 'a.router-link',
+    })
+  })
+
+  test('opt-in: no script emitted when speculationRules is absent', async () => {
+    function Page() {
+      useHead({ title: 'No Rules' })
+      return h('div', null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    expect(head).not.toContain('speculationrules')
+  })
+
+  test('XSS-safe: a URL containing </script> is escaped, body stays valid JSON', async () => {
+    function Page() {
+      useHead({
+        speculationRules: { prerender: [{ source: 'list', urls: ['/x</script><b>pwn'] }] },
+      })
+      return h('div', null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    // The raw closing tag must NOT appear unescaped inside the block.
+    const block = head.match(/<script type="speculationrules">([\s\S]*?)<\/script>/)
+    expect(block).not.toBeNull()
+    expect((block as RegExpMatchArray)[1]).not.toContain('</script>')
+    // And the un-escaped JSON still parses back to the original URL.
+    const unescaped = (block as RegExpMatchArray)[1]!.replace(/<\\\//g, '</')
+    expect(JSON.parse(unescaped).prerender[0].urls[0]).toBe('/x</script><b>pwn')
+  })
+})

@@ -3,7 +3,7 @@ title: '@pyreon/head'
 description: Declarative document head management for title, meta tags, scripts, styles, and more.
 ---
 
-`@pyreon/head` provides declarative document `<head>` management for Pyreon applications. Set the page title, meta tags, link tags, scripts, styles, JSON-LD structured data, and HTML/body attributes from any component. Tags are deduplicated by key -- the innermost component wins. Works seamlessly with both client-side rendering (CSR) and server-side rendering (SSR). Supports reactive updates via signal-based getters.
+`@pyreon/head` provides declarative document `<head>` management for Pyreon applications. Set the page title, meta tags, link tags, scripts, styles, JSON-LD structured data, Speculation Rules (native prefetch/prerender), and HTML/body attributes from any component. Tags are deduplicated by key -- the innermost component wins. Works seamlessly with both client-side rendering (CSR) and server-side rendering (SSR). Supports reactive updates via signal-based getters.
 
 <PackageBadge name="@pyreon/head" href="/docs/head" />
 
@@ -155,6 +155,7 @@ interface UseHeadInput {
   style?: Array<{ children: string } & Record<string, string | undefined>>
   noscript?: Array<{ children: string }>
   jsonLd?: Record<string, unknown> | Record<string, unknown>[]
+  speculationRules?: SpeculationRules
   base?: Record<string, string>
   htmlAttrs?: Record<string, string>
   bodyAttrs?: Record<string, string>
@@ -533,6 +534,29 @@ useHead({
   ],
 })
 ```
+
+## Speculation Rules
+
+`speculationRules` is a convenience for the [Speculation Rules API](https://developer.mozilla.org/docs/Web/API/Speculation_Rules_API) — it auto-wraps the object as a `<script type="speculationrules">` tag. Supported browsers **prefetch or fully prerender** the next document(s) in the background, so a real navigation is near-instant. It is opt-in, ships **zero runtime JS**, and is inert (silently ignored) in browsers without support — no polyfill needed.
+
+```tsx
+useHead({
+  speculationRules: {
+    // Fully render these pages in the background, on a moderate trigger.
+    prerender: [{ source: 'list', urls: ['/about', '/pricing'], eagerness: 'moderate' }],
+    // Or let the browser pick links from the current document by selector.
+    prefetch: [
+      { source: 'document', where: { selector_matches: 'a[data-prefetch]' }, eagerness: 'conservative' },
+    ],
+  },
+})
+```
+
+`eagerness` controls when the browser acts: `'immediate'` / `'eager'` / `'moderate'` (≈ on hover/pointer-down) / `'conservative'` (≈ on pointer-down). `source: 'list'` takes explicit same-origin `urls`; `source: 'document'` takes a `where` predicate (e.g. `{ selector_matches }`, `{ href_matches }`).
+
+> **It is a hint, not a guarantee.** Like `<link rel="prefetch">`, the browser prefetches/prerenders at its own discretion (network conditions, Save-Data, memory). This is **complementary to** `RouterLink`'s `prefetch` prop — that warms loader _data_ for in-app client-side navigation; Speculation Rules warm the _document_ at the platform level for full navigations. Use both. Like JSON-LD, the tag is deduplicated by a single key (`"speculationrules"`) — the innermost component wins; emit one rule set per page.
+
+The script body is JSON and is automatically escaped against `</script>` breakout, so user-derived URLs are safe to include.
 
 ## Base Tag
 

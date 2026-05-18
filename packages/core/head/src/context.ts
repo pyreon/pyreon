@@ -111,6 +111,51 @@ export interface StyleTag {
   blocking?: string
 }
 
+/**
+ * How eagerly the browser should act on a speculation rule.
+ * Per the W3C Speculation Rules spec.
+ */
+export type SpeculationEagerness = 'immediate' | 'eager' | 'moderate' | 'conservative'
+
+/**
+ * A single speculation rule (one entry in a `prefetch` / `prerender` list).
+ *
+ * - `source: 'list'` + `urls` — prefetch/prerender these explicit URLs.
+ * - `source: 'document'` + `where` — let the browser pick links from the
+ *   current document that match the predicate (e.g. a CSS selector via
+ *   `{ selector_matches: '.router-link' }`).
+ */
+export interface SpeculationRule {
+  /** `'list'` (explicit `urls`) or `'document'` (predicate-driven). */
+  source?: 'list' | 'document'
+  /** Same-origin URLs to prefetch/prerender (for `source: 'list'`). */
+  urls?: string[]
+  /** Document predicate (for `source: 'document'`) — e.g. `{ selector_matches: 'a.next' }`. */
+  where?: Record<string, unknown>
+  /** When the browser should fetch — defaults to the browser's per-source default. */
+  eagerness?: SpeculationEagerness
+  /** Capability requirements, e.g. `['anonymous-client-ip-when-cross-origin']`. */
+  requires?: string[]
+  /** Referrer policy for the speculative request. */
+  referrer_policy?: string
+}
+
+/**
+ * Declarative Speculation Rules — emitted as a single
+ * `<script type="speculationrules">` tag. Supported browsers prefetch or
+ * fully prerender the next document(s) so navigation is instant. Inert in
+ * non-supporting browsers (no polyfill needed). Opt-in: only emitted when
+ * `useHead({ speculationRules })` is called.
+ *
+ * @see https://developer.mozilla.org/docs/Web/API/Speculation_Rules_API
+ */
+export interface SpeculationRules {
+  /** Lightweight: fetch the response, no rendering. */
+  prefetch?: SpeculationRule[]
+  /** Heavy: fully render the next document in the background. */
+  prerender?: SpeculationRule[]
+}
+
 /** Standard `<base>` tag attributes. */
 export interface BaseTag {
   /** Base URL for relative URLs in the document */
@@ -134,6 +179,13 @@ export interface UseHeadInput {
   noscript?: { children: string }[]
   /** Convenience: emits a <script type="application/ld+json"> tag with JSON.stringify'd content */
   jsonLd?: Record<string, unknown> | Record<string, unknown>[]
+  /**
+   * Convenience: emits a `<script type="speculationrules">` tag with the
+   * JSON.stringify'd rules. Supported browsers prefetch/prerender the next
+   * document(s) for near-instant navigation; inert elsewhere. Opt-in.
+   * @example useHead({ speculationRules: { prerender: [{ source: 'list', urls: ['/about'], eagerness: 'moderate' }] } })
+   */
+  speculationRules?: SpeculationRules
   base?: BaseTag
   /** Attributes to set on the <html> element (e.g. { lang: "en", dir: "ltr" }) */
   htmlAttrs?: Record<string, string>
