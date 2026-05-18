@@ -322,6 +322,27 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
     async generateBundle() {
       if (!isBuild) return
 
+      // `faviconPlugin` is in the plugin list and a `source` is configured
+      // (it's a required field), so the user clearly WANTS favicons. If
+      // `sharp` is missing, the old behaviour was a single swallow-able
+      // `console.warn` + emit nothing — i.e. silently ship a production
+      // site with zero favicons. That's the footgun. Fail the build loudly
+      // with an actionable message instead. Dev keeps the soft warning
+      // (see `warnSharpMissing`) so local iteration isn't blocked.
+      try {
+        await import('sharp')
+      } catch {
+        this.error(
+          '[Pyreon] faviconPlugin: a favicon `source` is configured but ' +
+            '`sharp` is not installed — NO favicons would be generated and ' +
+            'the production build would silently ship none.\n' +
+            '  Fix:    bun add -D sharp   (or: npm i -D sharp)\n' +
+            `  Source: ${config.source}\n` +
+            'To intentionally build without favicons, remove faviconPlugin() ' +
+            'from your Vite plugins.',
+        )
+      }
+
       // Generate favicons for the base (default) source
       await generateFaviconSet.call(this, root, config.source, config.darkSource, '', config, themeColor, backgroundColor, generateManifest)
 

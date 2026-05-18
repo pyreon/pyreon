@@ -659,6 +659,36 @@ import { Image } from '@pyreon/zero'
 
 `'dominant-color'` is a deprecated alias of `'color'`. `quality` accepts a single number applied to all lossy formats, or a per-format object (`{ avif, webp, jpeg }`) — AVIF achieves comparable perceived quality at a much lower number than WebP/JPEG. Optional CDN delivery providers (`cloudinary`, `imgix`, `vercel`, `bunny`) are also available.
 
+## Favicons
+
+`faviconPlugin` (`@pyreon/zero/favicon`) generates the full favicon set from a **single source** (SVG or PNG) and injects every `<head>` tag automatically — no manual `<link>`/`<meta>` wiring. Like `imagePlugin`, it uses [sharp](https://sharp.pixelplumbing.com/) for image generation.
+
+```ts title="vite.config.ts"
+import { faviconPlugin } from '@pyreon/zero/favicon'
+
+export default {
+  plugins: [
+    faviconPlugin({
+      source: './src/assets/icon.svg', // required
+      darkSource: './src/assets/icon-dark.svg', // optional — light/dark variants
+      themeColor: '#6d28d9',
+      name: 'My App', // web-manifest app name
+      locales: { de: { source: './icon-de.svg' } }, // optional per-locale sets
+    }),
+  ],
+}
+```
+
+Generated at build time and emitted into `dist/`: `favicon.ico` (16+32), `favicon.svg`, `favicon-16x16.png`, `favicon-32x32.png`, `apple-touch-icon.png` (180), `icon-192.png`, `icon-512.png`, `site.webmanifest`. The plugin injects the matching `<link rel="icon">` (SVG + PNG), `apple-touch-icon`, `manifest`, and `<meta name="theme-color">` into every page's `<head>`, plus media-conditioned light/dark links and a no-flash blocking script when `darkSource` is set. In dev the assets are served on the fly.
+
+**`sharp` is required.** It is an optional peer install — add it explicitly:
+
+```bash
+bun add -D sharp   # or: npm i -D sharp
+```
+
+In **dev**, a missing `sharp` is a one-time console warning (favicons just don't appear locally — iteration isn't blocked). In a **production `vite build`**, a configured `source` with `sharp` missing is a **hard, actionable build error** — the build fails rather than silently shipping a site with zero favicons. To intentionally build without favicons, remove `faviconPlugin()` from your Vite plugins.
+
 ## Environment Validation
 
 ```ts
