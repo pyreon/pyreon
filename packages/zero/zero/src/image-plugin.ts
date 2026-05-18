@@ -229,23 +229,45 @@ export function imagePlugin(config: ImagePluginConfig = {}): Plugin {
       isBuild = resolvedConfig.command === 'build'
     },
 
-    async resolveId(id) {
-      // SVG as component: import Logo from './logo.svg?component'
-      if (svgOpts && id.includes('?component') && id.split('?')[0]!.endsWith('.svg')) {
-        return `\0virtual:zero-svg:${id}`
-      }
-      // Handle ?optimize query on image imports
-      if (id.includes('?optimize') && include.test(id.split('?')[0]!)) {
-        return `\0virtual:zero-image:${id}`
-      }
-      return null
+    async resolveId(id, importer) {
+      const isSvgComponent =
+        svgOpts && id.includes('?component') && id.split('?')[0]!.endsWith('.svg')
+      const isOptimize =
+        id.includes('?optimize') && include.test(id.split('?')[0]!)
+      if (!isSvgComponent && !isOptimize) return null
+
+      // Resolve the bare specifier to an ABSOLUTE fs path the way Vite
+      // resolves `?url` — importer-relative + alias-aware. The old code
+      // embedded the raw unresolved id, so `load()` had to guess: a
+      // relative `./img.png?optimize` resolved against cwd (≠ the
+      // importer's dir → ENOENT), and an aliased `~/x.png?optimize`
+      // arrived already-absolute and got `join(root,'public',…)`-doubled.
+      // `this.resolve` (skipSelf so we don't recurse into our own
+      // resolveId) handles relative + aliases + extensions. A public-dir
+      // web path (`/foo.png?optimize`) doesn't resolve to a module →
+      // null → keep the original id so load()'s public/ fallback applies.
+      const qIdx = id.indexOf('?')
+      const bare = qIdx === -1 ? id : id.slice(0, qIdx)
+      const query = qIdx === -1 ? '' : id.slice(qIdx)
+      const resolved = await this.resolve(bare, importer, { skipSelf: true })
+      const carried = resolved ? `${resolved.id}${query}` : id
+
+      if (isSvgComponent) return `\0virtual:zero-svg:${carried}`
+      return `\0virtual:zero-image:${carried}`
     },
 
     async load(id) {
       // SVG component loading
       if (id.startsWith('\0virtual:zero-svg:')) {
         const rawPath = id.replace('\0virtual:zero-svg:', '').split('?')[0] ?? id
-        const absPath = rawPath.startsWith('/') ? join(root, rawPath) : rawPath
+        // resolveId now carries an absolute fs path for relative/aliased
+        // imports → trust it if it exists. Only a public-dir web path
+        // (`/logo.svg`, unresolved) falls back to root-join.
+        const absPath = existsSync(rawPath)
+          ? rawPath
+          : rawPath.startsWith('/')
+            ? join(root, rawPath)
+            : rawPath
         if (!existsSync(absPath)) return null
 
         let svg = await readFile(absPath, 'utf-8')
@@ -287,7 +309,16 @@ export default function SvgComponent(props) {
       if (!id.startsWith('\0virtual:zero-image:')) return null
 
       const rawPath = id.replace('\0virtual:zero-image:', '').split('?')[0] ?? id
-      const absPath = rawPath.startsWith('/') ? join(root, 'public', rawPath) : rawPath
+      // resolveId now carries an absolute fs path for relative/aliased
+      // imports (the `./img.png?optimize` and `~/img.png?optimize` cases
+      // that used to ENOENT / double-`public`). Trust an existing
+      // absolute path; only an unresolved public-dir web path
+      // (`/foo.png?optimize`) falls back to `<root>/public/…`.
+      const absPath = existsSync(rawPath)
+        ? rawPath
+        : rawPath.startsWith('/')
+          ? join(root, 'public', rawPath)
+          : rawPath
 
       // CDN mode — rewrite URLs, no local processing
       if (cdn) {
