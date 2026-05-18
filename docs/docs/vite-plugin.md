@@ -172,6 +172,26 @@ interface PyreonPluginOptions {
   }
   /** Enable island auto-discovery + virtual registry. Default: true. */
   islands?: boolean
+  /**
+   * Compile-time rocketstyle wrapper collapse. OFF by default (zero
+   * behaviour change). `true` enables it with defaults; pass an object
+   * to scope which sources/components participate. Build-only today —
+   * dev keeps the normal mount.
+   */
+  collapse?: boolean | PyreonCollapseOptions
+}
+
+interface PyreonCollapseOptions {
+  /** Glob(s) of source files whose call sites are eligible. */
+  sources?: string | string[]
+  /** Component local names to treat as collapsible (default: rocketstyle UI components). */
+  components?: string[]
+  /** The provider component the resolver wraps when SSR-rendering for class capture. */
+  provider?: string
+  /** Theme module/import used by the resolver. */
+  theme?: string
+  /** The mode accessor the collapsed node binds its class to (light/dark swap). */
+  mode?: string
 }
 ```
 
@@ -180,6 +200,7 @@ interface PyreonPluginOptions {
 | `ssr`       | `object`  | No                    | Enable SSR dev middleware. When provided, the plugin adds middleware to Vite's dev server that handles server-rendered requests.                                                        |
 | `ssr.entry` | `string`  | Yes (if `ssr` is set) | Path to the server entry file, relative to the project root. This file must export a `handler` function (or a default export) with the signature `(req: Request) => Promise<Response>`. |
 | `islands`   | `boolean` | No                    | Auto-discover `island()` declarations + emit a virtual registry. Default: `true`. Set `false` to opt out of auto-registration (e.g., when using `hydrateIslands({ ... })` manually).    |
+| `collapse`  | `boolean \| object` | No          | Compile-time rocketstyle wrapper collapse. Default: `false` (off — zero behaviour change). `true` enables with defaults; an object scopes `sources` / `components` / `provider` / `theme` / `mode`. See [Compile-time rocketstyle collapse](#compile-time-rocketstyle-collapse).                                       |
 
 ### Usage
 
@@ -194,6 +215,9 @@ pyreon({
 
 // Disable island auto-registry (opt out)
 pyreon({ islands: false })
+
+// Opt into compile-time rocketstyle collapse (build only)
+pyreon({ collapse: true })
 ```
 
 ### Auto-discovered island registry
@@ -212,6 +236,43 @@ hydrateIslandsAuto(islandsRegistry)
 Why the user passes the import explicitly rather than `hydrateIslandsAuto()` resolving the virtual module itself: Rolldown's static-import analysis runs before plugin `resolveId` hooks for workspace package sources, so an `import 'virtual:...'` inside `@pyreon/server/client` would fail to resolve at build time. Putting the import in the user's `entry-client.ts` (where the plugin's `resolveId` fires natively) is the clean shape.
 
 `hydrate: 'never'` islands are deliberately omitted from the auto-registry so their components stay out of the client bundle. The manual `hydrateIslands({ ... })` API is still public for non-Vite consumers.
+
+### Compile-time rocketstyle collapse
+
+**Opt-in, off by default.** Enable with `pyreon({ collapse: true })`.
+
+A `@pyreon/rocketstyle` component normally mounts through five layers — rocketstyle → the attrs HOC → `Element` → `Wrapper` → `styled`. For a call site where _every_ dimension prop is a string literal and the children are static text, all of that resolves to the same DOM + the same CSS on every mount. The compile-time collapse recognises that shape and replaces it with **one `cloneNode`** of a pre-resolved template plus a once-per-module CSS injection — no per-instance wrapper chain, no per-instance style resolution.
+
+```tsx
+// Eligible — every dimension prop is a string literal, children are static text:
+<Button state="primary" size="medium">Save</Button>
+
+// NOT eligible (kept on the normal 5-layer mount):
+<Button state={kind()}>…</Button>          // signal / expression prop
+<Button {...rest}>…</Button>                // spread
+<Button onClick={save}>{<Icon />}</Button>  // element / expression children
+```
+
+Measured on the E2 micro-benchmark: **~44× wall-clock** for the eligible shape, `mountChild` 9 → 1, `styler.resolve` 22 → 0.
+
+**Parity by construction.** The plugin SSR-renders the real component once per mode (light/dark) through the exact `renderToString` + `@pyreon/styler` path the app uses, captures the resolved root class + rule text, and bakes that into the template. `@pyreon/styler`'s FNV-1a class hash is identical between SSR and the DOM (its hydration contract), so the collapsed node's class is byte-for-byte the class the normal mount would have produced — including under `hydrateRoot`, where the collapsed node swaps in for the SSR subtree with no mismatch and reactivity intact (a light/dark mode flip still patches the class in place, no remount).
+
+**Conservative — uncertain ⇒ no collapse.** Any non-literal prop, spread, non-text child, or a class the resolver can't pin down keeps the call site on the normal mount. Collapse never changes behaviour; with `collapse: false` (the default) the plugin emits exactly what it always did.
+
+```ts
+// Scope which sources / components participate (all fields optional):
+pyreon({
+  collapse: {
+    sources: 'src/**/*.tsx',
+    components: ['Button', 'Card'],
+    provider: 'PyreonUI',
+    theme: './theme',
+    mode: 'useMode',
+  },
+})
+```
+
+**Build-only today.** Dev mode keeps the normal mount (graceful — same output, just not collapsed); the optimisation applies to the production `vite build` client graph. The SSR graph is never collapsed (it needs the real VNode tree, and the resolver itself SSR-renders).
 
 ---
 

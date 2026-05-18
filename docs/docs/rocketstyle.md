@@ -160,3 +160,4 @@ Rocketstyle is designed to work with `@pyreon/styler`. Dimension style objects a
 - Tree-level defaults via Provider/Context
 - Works with `@pyreon/styler` for scoped CSS-in-JS
 - Full TypeScript support with inferred dimension props
+- **Compile-time wrapper collapse** (opt-in) — literal-prop call sites like `<Button state="primary" size="medium">Save</Button>` collapse the 5-layer mount (rocketstyle → attrs → Element → Wrapper → styled) into one `cloneNode` at build time (~44× faster for that shape). Enable via `pyreon({ collapse: true })` — see [Compile-time rocketstyle collapse](/docs/vite-plugin#compile-time-rocketstyle-collapse).
