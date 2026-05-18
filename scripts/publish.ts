@@ -58,6 +58,37 @@ for (const dir of packageDirs) {
   }
 }
 
+// The 7 `@pyreon/compiler-<triple>` native stub packages live one level
+// DEEPER (`packages/core/compiler/npm/<triple>`) than the `packages/*/*`
+// discovery above, so they were absent from `versionMap`. Once PR #644
+// started routing `optionalDependencies` through `resolveWorkspaceDeps()`
+// (the right fix for the `workspace:^` leak), `@pyreon/compiler`'s
+// optional deps had no resolvable version → `resolveWorkspaceDeps`
+// hit `Cannot resolve @pyreon/compiler-darwin-arm64` and `process.exit(1)`
+// MID-RELEASE, after ~N packages had already published (immutable
+// partial release). These stubs are published by `release-native.yml`,
+// not here (see PLATFORM_STUB_PACKAGES skip below) — but their versions
+// MUST be known so the parent's `optionalDependencies` resolve to
+// `^X.Y.Z`. They version-lock to the parent via changesets.
+const stubBase = join(PACKAGES_DIR, 'core', 'compiler', 'npm')
+try {
+  const stubDirs = (await readdir(stubBase, { withFileTypes: true })).filter(
+    (d) => d.isDirectory(),
+  )
+  for (const sub of stubDirs) {
+    try {
+      const pkg = JSON.parse(
+        await readFile(join(stubBase, sub.name, 'package.json'), 'utf-8'),
+      )
+      if (pkg.name) versionMap.set(pkg.name, pkg.version)
+    } catch {
+      // skip a stub dir without package.json
+    }
+  }
+} catch {
+  // npm/ dir absent (non-monorepo checkout) — nothing to add
+}
+
 function resolveWorkspaceDeps(
   deps: Record<string, string> | undefined,
 ): Record<string, string> | undefined {
