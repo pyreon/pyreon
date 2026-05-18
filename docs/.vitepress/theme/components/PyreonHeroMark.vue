@@ -1,11 +1,19 @@
 <!--
-  Animated hero lockup — brand handoff §5 + hero-variants 14–17.
+  Animated hero lockup — brand handoff §5 + pyreon-motion-hero.jsx
+  (canonical HeroTrace) + hero-variants 14–17.
 
-  ALL FOUR generated intros ship; one is picked at RANDOM per visit:
+  FIVE generated intros ship; one is picked at RANDOM per visit:
+    12 · Trace         — signal-graph edges converge, ignite the disc,
+                         n strokes through, wordmark settles, "fire →"
+                         (the canonical §5 "most-watched" hero motion)
     14 · Particles     — discrete signals converge into the disc
     15 · Wavefront     — an ember flamefront sweeps across the glyph
     16 · Pulse cascade — three pulses, each triggers the next stage
     17 · Path-trace    — an ember bead runs a fuse, lighting the glyph
+
+  Reduced-motion is not just "freeze": per pyreon-motion-hero.jsx's
+  PxArtHeroReduced, the static end-state shows a 2px ember underline
+  beneath the wordmark — the "something just fired" signal still reads.
 
   Progressive enhancement / SSR safety: the *final* state (solid glyph +
   wordmark) is the default render. The random pick + the intro happen
@@ -33,9 +41,18 @@ const PARTICLES = [
   { x: 540, y: 60, s: 4, d: 50 },
 ]
 
+// Variant 12 (canonical HeroTrace) — signal-graph edges converging on
+// the o-disc centre (≈144,100 in this 760×200 stage), staggered draw.
+const EDGES = [
+  { x: 4, y: 24, d: 0 },
+  { x: 22, y: 184, d: 40 },
+  { x: 4, y: 110, d: 80 },
+  { x: 70, y: 8, d: 120 },
+]
+
 const root = ref<HTMLElement | null>(null)
 const playing = ref(false)
-const variant = ref<14 | 15 | 16 | 17 | 0>(0) // 0 = static (SSR / no-JS / reduced-motion)
+const variant = ref<12 | 14 | 15 | 16 | 17 | 0>(0) // 0 = static (SSR / no-JS / reduced-motion)
 let io: IntersectionObserver | null = null
 
 onMounted(() => {
@@ -48,10 +65,10 @@ onMounted(() => {
 
   // Optional override for QA: ?hero=14|15|16|17 — otherwise random per visit.
   const forced = Number(new URLSearchParams(window.location.search).get('hero'))
-  const pool = [14, 15, 16, 17] as const
+  const pool = [12, 14, 15, 16, 17] as const
   variant.value = (
-    pool.includes(forced as 14) ? forced : pool[Math.floor(Math.random() * pool.length)]
-  ) as 14 | 15 | 16 | 17
+    pool.includes(forced as 12) ? forced : pool[Math.floor(Math.random() * pool.length)]
+  ) as 12 | 14 | 15 | 16 | 17
 
   io = new IntersectionObserver(
     (entries) => {
@@ -87,6 +104,25 @@ onBeforeUnmount(() => io?.disconnect())
           <stop offset="1" stop-color="var(--ember-warm)" />
         </linearGradient>
       </defs>
+
+      <!-- 12 · canonical Trace — graph edges converge + continuation -->
+      <template v-if="playing && variant === 12">
+        <line
+          v-for="(e, i) in EDGES"
+          :key="i"
+          :x1="e.x"
+          :y1="e.y"
+          x2="144"
+          y2="100"
+          class="px-edge"
+          :style="{ animationDelay: e.d + 'ms' }"
+        />
+        <line x1="144" y1="100" x2="752" y2="86" class="px-edge px-edge--cont" />
+        <g class="px-trace-cap">
+          <circle cx="748" cy="86" r="4" class="px-cap-dot" />
+          <text x="690" y="70" class="px-cap-txt">fire →</text>
+        </g>
+      </template>
 
       <!-- 17 · fuse trail + bead (client-only when that variant plays) -->
       <template v-if="playing && variant === 17">
@@ -146,6 +182,9 @@ onBeforeUnmount(() => io?.disconnect())
           y2="150"
           class="px-underline"
         />
+        <!-- reduced-motion "fired" cue — static 2px ember underline,
+             shown ONLY when motion is suppressed (per PxArtHeroReduced) -->
+        <line x1="250" y1="150" x2="600" y2="150" class="px-fired" />
       </g>
 
       <!-- 15 · wavefront wipe cover + ember sweep bar -->
@@ -217,6 +256,62 @@ onBeforeUnmount(() => io?.disconnect())
 .px-wf-cover,
 .px-wf-bar {
   opacity: 0;
+}
+.px-edge {
+  stroke: url(#px-ember-grad);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 320;
+  stroke-dashoffset: 320;
+  opacity: 0;
+}
+.px-edge--cont {
+  stroke-width: 2;
+  stroke-dasharray: 620;
+  stroke-dashoffset: 620;
+}
+.px-trace-cap {
+  opacity: 0;
+}
+.px-cap-dot {
+  fill: var(--ember-warm);
+}
+.px-cap-txt {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  fill: var(--text-dim);
+  letter-spacing: 0.6px;
+}
+/* reduced-motion "fired" cue — hidden unless motion is suppressed */
+.px-fired {
+  stroke: url(#px-ember-grad);
+  stroke-width: 2;
+  opacity: 0;
+}
+
+/* ── 12 · Trace (canonical · pyreon-motion-hero.jsx) ─────────────────── */
+.is-v12 .px-edge {
+  opacity: 1;
+  animation: px-edge-draw 360ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.is-v12 .px-edge--cont {
+  animation: px-edge-draw 380ms 760ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.is-v12 .px-disc {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: px-pc-disc 280ms 380ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+.is-v12 .px-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+  animation: px-pc-n 340ms 580ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.is-v12 .px-wordwrap {
+  animation: px-fade 280ms 880ms ease-out backwards;
+}
+.is-v12 .px-trace-cap {
+  animation: px-fade 240ms 1040ms ease-out forwards;
 }
 
 /* ── 17 · Path-trace ────────────────────────────────────────────────── */
@@ -398,6 +493,11 @@ onBeforeUnmount(() => io?.disconnect())
     opacity: 1;
   }
 }
+@keyframes px-edge-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
 
 /* Hard guarantee — reduced-motion never animates (JS also avoids it). */
 @media (prefers-reduced-motion: reduce) {
@@ -409,8 +509,14 @@ onBeforeUnmount(() => io?.disconnect())
   .px-ring,
   .px-underline,
   .px-wf-cover,
-  .px-wf-bar {
+  .px-wf-bar,
+  .px-edge,
+  .px-trace-cap {
     opacity: 0 !important;
+  }
+  /* ...but DO show the static "fired" underline (PxArtHeroReduced) */
+  .px-fired {
+    opacity: 1 !important;
   }
 }
 </style>
