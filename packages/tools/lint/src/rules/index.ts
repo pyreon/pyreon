@@ -17,8 +17,11 @@ import { noSubmitWithoutValidation } from './form/no-submit-without-validation'
 import { noUnregisteredField } from './form/no-unregistered-field'
 import { preferFieldArray } from './form/prefer-field-array'
 // Frontend (opt-in best-practice)
+import { anchorIsValid } from './frontend/anchor-is-valid'
 import { imgRequiresDimensions } from './frontend/img-requires-dimensions'
+import { noAutofocus } from './frontend/no-autofocus'
 import { noPositiveTabindex } from './frontend/no-positive-tabindex'
+import { noRedundantRole } from './frontend/no-redundant-role'
 import { preferZeroImage } from './frontend/prefer-zero-image'
 import { requireImgAlt } from './frontend/require-img-alt'
 // I18n (opt-in best-practice)
@@ -29,6 +32,8 @@ import { queryOptionsAsFunction } from './query/query-options-as-function'
 import { preferTypedSearchParams } from './router/prefer-typed-search-params'
 // Rx (opt-in best-practice)
 import { rxPreferPipe } from './rx/rx-prefer-pipe'
+// Storage (opt-in best-practice, dep-gated on @pyreon/storage)
+import { noStorageWriteAsCall } from './storage/no-storage-write-as-call'
 // Hooks
 import { noRawAddEventListener } from './hooks/no-raw-addeventlistener'
 import { noRawLocalStorage } from './hooks/no-raw-localstorage'
@@ -176,12 +181,15 @@ export const allRules: Rule[] = [
   invalidLoaderExport,
   missingGetStaticPaths,
   revalidateNotPureLiteral,
-  // Frontend (4) — opt-in best-practice (off in standard presets;
-  // enabled via the `best-practices` preset or per-rule config)
+  // Frontend (7) — opt-in best-practice a11y/CLS (off in standard
+  // presets; enabled via the `best-practices` preset or per-rule config)
   requireImgAlt,
   imgRequiresDimensions,
   noPositiveTabindex,
   preferZeroImage,
+  noAutofocus,
+  noRedundantRole,
+  anchorIsValid,
   // Query (1) — opt-in, auto-gated on @pyreon/query dependency
   queryOptionsAsFunction,
   // Rx (1) — opt-in, auto-gated on @pyreon/rx dependency
@@ -190,6 +198,8 @@ export const allRules: Rule[] = [
   i18nPreferTransForRichJsx,
   // Router opt-in (1) — auto-gated on @pyreon/router dependency
   preferTypedSearchParams,
+  // Storage (1) — opt-in, auto-gated on @pyreon/storage dependency
+  noStorageWriteAsCall,
 ]
 
 // Re-export all rules individually
