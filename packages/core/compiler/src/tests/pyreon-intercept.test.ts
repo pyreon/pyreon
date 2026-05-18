@@ -755,4 +755,62 @@ describe('detectPyreonPatterns', () => {
       ).toBe(true)
     })
   })
+
+  describe('query-options-as-function', () => {
+    it('flags useQuery with an object-literal first arg', () => {
+      const code = `const q = useQuery({ queryKey: ['user', id()], queryFn: fetchUser })`
+      const diags = detectPyreonPatterns(code)
+      const d = diags.find((x) => x.code === 'query-options-as-function')
+      expect(d).toBeDefined()
+      expect(d!.fixable).toBe(false)
+      expect(d!.message).toContain('FUNCTION')
+      expect(d!.suggested).toBe(
+        "useQuery(() => ({ queryKey: ['user', id()], queryFn: fetchUser }))",
+      )
+    })
+
+    it('flags useInfiniteQuery / useQueries / useSuspenseQuery too', () => {
+      for (const hook of [
+        'useInfiniteQuery',
+        'useQueries',
+        'useSuspenseQuery',
+      ]) {
+        const diags = detectPyreonPatterns(`const r = ${hook}({ queryKey: ['k'] })`)
+        expect(
+          diags.some((d) => d.code === 'query-options-as-function'),
+        ).toBe(true)
+      }
+    })
+
+    it('does NOT flag the correct function form', () => {
+      const code = `const q = useQuery(() => ({ queryKey: ['user', id()], queryFn: fetchUser }))`
+      const diags = detectPyreonPatterns(code)
+      expect(
+        diags.some((d) => d.code === 'query-options-as-function'),
+      ).toBe(false)
+    })
+
+    it('does NOT flag useMutation (options are a plain object by design)', () => {
+      const code = `const m = useMutation({ mutationFn: save, onSuccess })`
+      const diags = detectPyreonPatterns(code)
+      expect(
+        diags.some((d) => d.code === 'query-options-as-function'),
+      ).toBe(false)
+    })
+
+    it('does NOT flag an identifier / call options arg (unprovable)', () => {
+      const code = `const a = useQuery(opts); const b = useQuery(makeOpts())`
+      const diags = detectPyreonPatterns(code)
+      expect(
+        diags.some((d) => d.code === 'query-options-as-function'),
+      ).toBe(false)
+    })
+
+    it('hasPyreonPatterns pre-filter recognizes the object-literal form', () => {
+      expect(hasPyreonPatterns(`useQuery({ queryKey: ['k'] })`)).toBe(true)
+      expect(hasPyreonPatterns(`useQuery(() => ({ queryKey: ['k'] }))`)).toBe(
+        false,
+      )
+    })
+  })
 })
