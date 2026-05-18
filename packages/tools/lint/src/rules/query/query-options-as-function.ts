@@ -21,6 +21,12 @@ import { isProjectDependency } from '../../utils/project-deps'
  * prove its shape without type/dataflow analysis, so it stays silent —
  * conservative, zero false positives).
  *
+ * Auto-fixable: the fix is a pure syntactic wrap of the object literal
+ * in a thunk — `{ ... }` → `() => ({ ... })`. The object is
+ * parenthesized so the arrow body isn't parsed as a block statement.
+ * No behavior changes beyond the intended reactivity fix (the options
+ * are now read lazily so `queryKey` re-evaluates on signal change).
+ *
  * Stays completely silent in projects that don't depend on
  * `@pyreon/query` (no noise, no config).
  */
@@ -38,7 +44,7 @@ export const queryOptionsAsFunction: Rule = {
     description:
       'In @pyreon/query projects, pass useQuery/useInfiniteQuery/useQueries/useSuspenseQuery options as a function, not an object literal.',
     severity: 'error',
-    fixable: false,
+    fixable: true,
     optIn: true,
     schema: { exemptPaths: 'string[]' },
   },
@@ -60,9 +66,13 @@ export const queryOptionsAsFunction: Rule = {
         const firstArg = args[0]
         if (!firstArg || firstArg.type !== 'ObjectExpression') return
 
+        const objSpan = getSpan(firstArg)
+        const objText = context.getSourceText().slice(objSpan.start, objSpan.end)
+
         context.report({
           message: `\`${callee.name}(...)\` options must be a FUNCTION, not an object literal — wrap it as \`() => ({ ... })\` so \`queryKey\` (and other fields) can read Pyreon signals and refetch reactively.`,
-          span: getSpan(firstArg),
+          span: objSpan,
+          fix: { span: objSpan, replacement: `() => (${objText})` },
         })
       },
     }

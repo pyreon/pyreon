@@ -48,6 +48,7 @@ export type RuleCategory =
   | 'frontend'
   | 'query'
   | 'rx'
+  | 'i18n'
 
 /**
  * Declared type of an option slot. Minimal on purpose — sufficient for

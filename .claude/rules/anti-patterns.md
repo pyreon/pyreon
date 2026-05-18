@@ -174,6 +174,8 @@ These are caught by **opt-in** lint rules — off in `recommended`/`strict`/`app
 - **`useQuery` options as an object literal** [`pyreon/query-options-as-function`]: `useQuery({ queryKey, queryFn })` captures the options ONCE. `@pyreon/query` hooks take options as a FUNCTION so `queryKey` can read signals and refetch reactively — wrap it: `useQuery(() => ({ queryKey: [id()], queryFn }))`. `useMutation` is the exception (its options are a plain object — imperative, no tracking).
 - **Nested `@pyreon/rx` transforms** [`pyreon/rx-prefer-pipe`]: `map(filter(src, p), f)` creates N intermediate computeds. Compose with `pipe(src, filter(p), map(f))` — one computed, one subscription.
 - **Signal read in `useForm({ initialValues })`** [`pyreon/no-signal-in-form-initial-values`]: `initialValues` is captured once at form setup, so `initialValues: { name: user() }` snapshots the signal and never updates. Pass the plain value, or use `form.setFieldValue` / a reactive field for dynamic defaults.
+- **`{t('…')}` interleaved with JSX** [`pyreon/i18n-prefer-trans-for-rich-jsx`]: when a translated string sits next to JSX element siblings (`<p>{t('cta')} <a>…</a></p>`), string interpolation can't safely carry the markup. Use `@pyreon/i18n`'s `<Trans>` component for rich/JSX interpolation. Plain text (`<h1>{t('title')}</h1>`) is fine — the rule only fires when element siblings make it "rich".
+- **Manual `new URLSearchParams(...)` in a router app** [`pyreon/prefer-typed-search-params`]: hand-parsing the query string loses type-coercion + SSR-safety. Use `@pyreon/router`'s `useTypedSearchParams({ page: 'number', q: 'string' })` — typed, auto-coerced, NaN-guarded, SSR-safe.
 
 ## Documentation Mistakes
 
