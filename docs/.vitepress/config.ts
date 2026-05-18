@@ -65,6 +65,23 @@ export default defineConfig({
           'Signal-based UI framework — fine-grained reactivity, no virtual DOM, streaming SSR.',
       },
     ],
+    // OG / social card (brand handoff §6.3). Absolute URL — social
+    // scrapers don't resolve site-relative paths. Note: this is an SVG;
+    // most scrapers render it, but Twitter/Slack prefer raster — a
+    // build-time PNG rasterization is a documented follow-up.
+    ['meta', { property: 'og:type', content: 'website' }],
+    ['meta', { property: 'og:title', content: 'Pyreon — the signal-based UI framework' }],
+    [
+      'meta',
+      { property: 'og:image', content: 'https://pyreon.github.io/pyreon/og.svg' },
+    ],
+    ['meta', { property: 'og:image:width', content: '1200' }],
+    ['meta', { property: 'og:image:height', content: '630' }],
+    ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
+    [
+      'meta',
+      { name: 'twitter:image', content: 'https://pyreon.github.io/pyreon/og.svg' },
+    ],
   ],
 
   themeConfig: {
