@@ -53,6 +53,8 @@ This is the single largest performance win currently shaped, and the only one th
 3. `__rs_collapsible: true` opt-in brand vs bail-on-callback heuristic.
 4. Per-instance `_$tpl_42()` factory call vs inline `cloneNode`.
 
+> **All four are resolved** in [`p0-rocketstyle-collapse-rfc.md`](./p0-rocketstyle-collapse-rfc.md) (dual-emit / sidecar manifest / bail-on-callback heuristic with opt-out / hoisted `_$tpl_N` factory), which also scopes the smallest end-to-end **vertical slice** (app-local `<Button state size>` in `examples/ui-showcase`, cross-package consumers deferred to Phase 5) and a slice-level kill criterion. That RFC **gates Phase 1**: implementation does not start until its decisions are approved.
+
 ---
 
 ### P1 — Finish the MCP overhaul tail
