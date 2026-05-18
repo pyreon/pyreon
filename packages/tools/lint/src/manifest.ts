@@ -43,7 +43,7 @@ const fileResult = lintFile('app.tsx', source, allRules, config, cache)
 //   pyreon-lint --preset strict --quiet                    # CI mode
 //   pyreon-lint --fix                                      # auto-fix
 //   pyreon-lint --watch src/                               # watch mode
-//   pyreon-lint --list                                     # list all 62 rules
+//   pyreon-lint --list                                     # list all 76 rules
 //   pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/`,
   api: [
     {
@@ -51,7 +51,7 @@ const fileResult = lintFile('app.tsx', source, allRules, config, cache)
       kind: 'function',
       signature: 'lint(options?: LintOptions): LintResult',
       summary:
-        '67 rules across 13 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. Wrong-typed options surface on `result.configDiagnostics`. Uses `oxc-parser` with AST caching.',
+        '76 rules across 17 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. Wrong-typed options surface on `result.configDiagnostics`. Uses `oxc-parser` with AST caching.',
       example: `import { lint } from "@pyreon/lint"
 
 const result = lint({ paths: ["src/"], preset: "recommended" })
@@ -94,7 +94,7 @@ const result = lintFile("app.tsx", source, allRules, config, cache, configSink)`
       example: `pyreon-lint --preset strict --quiet    # CI mode
 pyreon-lint --fix                       # auto-fix
 pyreon-lint --watch src/                # watch mode
-pyreon-lint --list                      # list all 62 rules
+pyreon-lint --list                      # list all 76 rules
 pyreon-lint --format json               # machine-readable
 pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/`,
       seeAlso: ['lint'],

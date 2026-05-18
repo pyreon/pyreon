@@ -1296,10 +1296,17 @@ Adding a new published package: declare `sideEffects` (`false` for pure librarie
 
 `scripts/check-doc-claims.ts` asserts every numeric claim in human-written docs matches the underlying source of truth. The gate catches the recurring drift mode where a count is hand-quoted in 3-5 places ("34 signal-based hooks…") and only one gets bumped when the code changes — the audit caught the hooks README claiming 16 vs actual 34, drift that lasted long enough to ship to users.
 
-Today the gate covers two source-of-truth counters:
+The pure gate logic lives in `@pyreon/cli` at `packages/tools/cli/src/doctor/gates/doc-claims.ts` (so `pyreon doctor` runs it too); `scripts/check-doc-claims.ts` is a thin CLI wrapper. Add claim entries to the gate's `checks[]` array, not the script.
+
+Today the gate covers five source-of-truth counters (19 claim sites):
 
 - **Hook export count** in `packages/fundamentals/hooks/src/index.ts`. Claim sites: hooks README, `hooks/src/manifest.ts` (tagline + description), `CLAUDE.md` (package overview row + architecture section), `docs/docs/index.md`.
 - **Doc page count** in `docs/**/*.md`. Claim site: `CLAUDE.md`.
+- **Lint rule count** — the `allRules` array in `packages/tools/lint/src/rules/index.ts`. Claim sites: `CLAUDE.md` (×3), `packages/tools/lint/README.md`, `docs/docs/lint.md`, `packages/tools/lint/src/manifest.ts` (6 occurrences, `all`).
+- **Lint category count** — distinct `category:` literals across `packages/tools/lint/src/rules/*/*.ts`. Claim sites: `CLAUDE.md` (×2), `packages/tools/lint/README.md`, `manifest.ts` (`all`).
+- **Detector-code count** — the `PyreonDiagnosticCode` union in `packages/core/compiler/src/pyreon-intercept.ts`. Claim sites: `.claude/rules/anti-patterns.md` ("flags N of the patterns"), `CLAUDE.md` ("N detector codes today").
+
+**Counters TEXT-PARSE in-repo source by `repoRoot`, never `import { allRules }`** — a dynamic import resolves via bun's module cache to a STALE published snapshot (observed: 0.18.0 cache → 66 rules while the working tree had 76), which would make the gate assert against the wrong branch. A `ClaimSpec` can set `all: true` to assert EVERY occurrence of the pattern agrees (not just the first) — required for files like `manifest.ts` that repeat the same count, where bumping 5 of 6 would otherwise pass silently.
 
 ```bash
 bun run check-doc-claims         # exit non-zero if drift
