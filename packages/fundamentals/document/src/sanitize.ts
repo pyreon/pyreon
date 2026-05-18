@@ -82,3 +82,18 @@ export function sanitizeStyle(value: string | undefined): string {
   if (value == null) return ''
   return sanitizeCss(value)
 }
+
+/**
+ * Escape the HTML/XML metacharacters `& < > "` for safe inclusion in
+ * element text / double-quoted attributes. Was copy-pasted byte-
+ * identically as `escapeHtml`/`escapeXml`/`esc` into 4 renderers;
+ * consolidated here. (csv/runtime-server/compiler escapes are
+ * intentionally separate — different algorithm/layer.)
+ */
+export function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}

@@ -116,6 +116,27 @@ describe('ssgPlugin', () => {
       expect(() => _internal.expandUrlPattern('/posts/:id', { id: '' })).toThrow(/without "id"/)
     })
 
+    it('rejects a path-escaping value in a non-catch-all segment (slash / traversal)', () => {
+      // A single :param is ONE URL segment and becomes a dist/<path>/
+      // index.html write target. An unsanitized CMS slug containing "/"
+      // or "." / ".." would escape the intended structure.
+      expect(() => _internal.expandUrlPattern('/posts/:slug', { slug: 'a/b' })).toThrow(/unsafe "slug"/)
+      expect(() => _internal.expandUrlPattern('/posts/:slug', { slug: '..' })).toThrow(/unsafe "slug"/)
+      expect(() => _internal.expandUrlPattern('/posts/:slug', { slug: '.' })).toThrow(/unsafe "slug"/)
+      expect(() => _internal.expandUrlPattern('/posts/:slug', { slug: '../../etc' })).toThrow(
+        /unsafe "slug"/,
+      )
+    })
+
+    it('catch-all keeps multi-segment values but still rejects "." / ".." traversal', () => {
+      // Catch-all legitimately spans segments…
+      expect(_internal.expandUrlPattern('/blog/:rest*', { rest: 'a/b/c' })).toBe('/blog/a/b/c')
+      // …but a traversal segment inside it is still rejected.
+      expect(() => _internal.expandUrlPattern('/blog/:rest*', { rest: 'a/../secret' })).toThrow(
+        /unsafe "rest"/,
+      )
+    })
+
     it('passes through static segments unchanged', () => {
       expect(_internal.expandUrlPattern('/static/path', {})).toBe('/static/path')
     })
@@ -160,6 +181,33 @@ describe('ssgPlugin', () => {
         expect(paths).toContain('/')
         expect(paths).toContain('/posts/a')
         expect(paths).toContain('/posts/b')
+        expect(errors).toEqual([])
+      } finally {
+        f.cleanup()
+      }
+    })
+
+    it('dedups duplicate concrete paths from getStaticPaths (no double render)', async () => {
+      // Regression: a getStaticPaths returning the same slug twice (CMS
+      // duplicate, pagination overlap) previously pushed the path twice
+      // → rendered dist/posts/a/index.html twice (wasted work + last-
+      // write race) and fed a duplicate into the SSG→sitemap merge.
+      const f = makeFixture({
+        'index.tsx': 'export default () => null',
+        'posts/[id].tsx': 'export default () => null\nexport function getStaticPaths() {}',
+      })
+      try {
+        const registry = new Map<string, () => Array<{ params: Record<string, string> }>>([
+          [
+            '/posts/:id',
+            () => [{ params: { id: 'a' } }, { params: { id: 'a' } }, { params: { id: 'b' } }],
+          ],
+        ])
+        const errors: { path: string; error: unknown }[] = []
+        const paths = await _internal.autoDetectStaticPaths(f.routesDir, registry as any, errors)
+        expect(paths.filter((p) => p === '/posts/a')).toHaveLength(1) // not 2
+        expect(paths).toContain('/posts/b')
+        expect(new Set(paths).size).toBe(paths.length) // fully unique
         expect(errors).toEqual([])
       } finally {
         f.cleanup()

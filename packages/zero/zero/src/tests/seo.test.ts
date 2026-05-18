@@ -25,6 +25,23 @@ describe('generateSitemap', () => {
     expect(sitemap).toContain('<loc>https://example.com/posts/</loc>')
   })
 
+  it('dedups a path present in BOTH the route scan and additionalPaths (no duplicate <url>)', () => {
+    // Regression: the same static route routinely appears in the
+    // file-system scan AND `additionalPaths` (SSG-emitted paths merged
+    // via seoPlugin). The non-i18n cluster path was a raw 1:1 map with
+    // no dedup → a duplicate `<url>`/`<loc>` reached the sitemap.
+    const files = ['index.tsx', 'about.tsx']
+    const sitemap = generateSitemap(files, {
+      origin: 'https://example.com',
+      additionalPaths: [{ path: '/about' }, { path: '/extra' }],
+    })
+    const aboutLocs = sitemap.split('<loc>https://example.com/about</loc>').length - 1
+    expect(aboutLocs).toBe(1) // exactly one, not two
+    expect(sitemap).toContain('<loc>https://example.com/extra</loc>')
+    // Total <url> blocks: index + about + extra = 3 (about not doubled)
+    expect(sitemap.split('<url>').length - 1).toBe(3)
+  })
+
   it('excludes layout, error, and loading files', () => {
     const files = ['index.tsx', '_layout.tsx', '_error.tsx', '_loading.tsx']
     const sitemap = generateSitemap(files, config)
