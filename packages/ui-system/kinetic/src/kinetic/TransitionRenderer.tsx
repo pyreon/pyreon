@@ -1,5 +1,5 @@
 import type { VNode } from '@pyreon/core'
-import { createRef, h, Show } from '@pyreon/core'
+import { createRef, h, mergeProps, Show } from '@pyreon/core'
 import { watch } from '@pyreon/reactivity'
 import type { CSSProperties, TransitionCallbacks } from '../types'
 import useAnimationEnd from '../useAnimationEnd'
@@ -139,19 +139,28 @@ const TransitionRenderer = (props: TransitionRendererProps): VNode | null => {
           ? null
           : h(
               props.config.tag,
-              {
+              // mergeProps keeps every reactive HTML-attr getter; ref + the
+              // hidden-state `display:none` style come last and win. The
+              // one-time `props.htmlProps.style` read seeds the hidden
+              // style — display:none must compose over the user's style.
+              mergeProps(props.htmlProps, {
                 ref: mergedRef,
-                ...props.htmlProps,
                 style: {
                   ...((props.htmlProps.style as CSSProperties) ?? {}),
                   display: 'none',
                 },
-              },
+              }),
               props.children,
             )
       }
     >
-      {h(props.config.tag, { ref: mergedRef, ...props.htmlProps }, props.children)}
+      {h(
+        props.config.tag,
+        // Descriptor-preserving merge — reactive HTML attrs keep their
+        // getters; ref wins last. `{ ...props.htmlProps }` would freeze them.
+        mergeProps(props.htmlProps, { ref: mergedRef }),
+        props.children,
+      )}
     </Show>
   )
 }

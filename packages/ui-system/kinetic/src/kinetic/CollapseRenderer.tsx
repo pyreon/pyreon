@@ -1,5 +1,5 @@
 import type { VNode } from '@pyreon/core'
-import { createRef, h, Show } from '@pyreon/core'
+import { createRef, h, mergeProps, Show } from '@pyreon/core'
 import { runUntracked, signal, watch } from '@pyreon/reactivity'
 import type { CSSProperties, TransitionCallbacks, TransitionStage } from '../types'
 import useAnimationEnd from '../useAnimationEnd'
@@ -166,9 +166,16 @@ const CollapseRenderer = ({
     ...(stage() === 'hidden' ? { height: '0px' } : stage() === 'entered' ? { height: 'auto' } : {}),
   }
 
+  // mergeProps (descriptor-preserving) instead of `{ ...htmlProps }` —
+  // every non-style HTML attr keeps its reactive getter; ref + the
+  // collapse-controlled style come last so they win (mergeProps is
+  // last-source-wins). The one-time `htmlProps.style` read above that
+  // seeds wrapperStyle is intentional: collapse OWNS the style prop
+  // (height/overflow are animation-driven), so a static merge of the
+  // user's initial style with the collapse overrides is correct here.
   return h(
     config.tag,
-    { ref: wrapperRef, ...htmlProps, style: wrapperStyle },
+    mergeProps(htmlProps, { ref: wrapperRef, style: wrapperStyle }),
     <Show when={shouldRender}>
       <div ref={contentRef}>{children}</div>
     </Show>,

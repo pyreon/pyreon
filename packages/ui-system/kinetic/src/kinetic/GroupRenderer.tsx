@@ -140,7 +140,9 @@ const GroupRenderer = ({
       )
     })
 
-    return h(config.tag, { ...htmlProps }, ...groupedChildren)
+    // By reference — `{ ...htmlProps }` would value-copy and freeze any
+    // reactive HTML attr the kinetic split preserved as a getter.
+    return h(config.tag, htmlProps, ...groupedChildren)
   }) as unknown as VNode
 }
 
