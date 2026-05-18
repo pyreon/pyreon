@@ -203,7 +203,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - Request logging: `loggerMiddleware()` with configurable format and levels
 - AI integration: `aiPlugin()` — generates llms.txt, JSON-LD inference metadata, AI plugin manifest
 - `useRequestLocals()` — bridge middleware locals into component tree
-- Locale-aware favicons: `faviconPlugin({ locales: { de: { source: "./icon-de.svg" } } })` — per-locale favicon generation
+- Locale-aware favicons: `faviconPlugin({ locales: { de: { source: "./icon-de.svg" } } })` — per-locale favicon generation. Generates the full set (`.ico`/`.svg`/16/32/apple-touch/192/512/`site.webmanifest`) from one source + auto-injects all `<head>` tags. `sharp`-backed (opt install: `bun add -D sharp`). **Missing-`sharp` is a hard `vite build` error when a `source` is configured** (dev stays a soft warning) — never silently ships a faviconless production site. Documented in `docs/docs/zero.md` → Favicons.
 - OG image generation: `ogImagePlugin({ templates, locales })` — build-time OG image rendering
 - Reactive favicon switching: dual light/dark PNG/ICO with theme-synced `media` attribute swap
 - Meta completion: og:image:width/height, og:video, og:audio, noIndex, ogTemplate, favicon prop on Meta component
