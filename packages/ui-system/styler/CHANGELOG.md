@@ -1,5 +1,94 @@
 # @pyreon/styler
 
+## 0.19.0
+
+### Patch Changes
+
+- [#630](https://github.com/pyreon/pyreon/pull/630) [`21e465c`](https://github.com/pyreon/pyreon/commit/21e465c7957c3e57c838af58ffa995682908c5f8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix: make `pyreon doctor` objective + close the real first-party findings it then surfaced
+
+  `pyreon doctor` reported a meaningless **F (score 55, 987 errors)** because
+  its `lint` / `react-patterns` / `pyreon-patterns` gates scanned the WHOLE
+  repo: example apps (intentionally framework-idiomatic, incl. react-compat
+  demos), `e2e/`/`docs/`/`scripts/`, detector test-fixtures (which
+  _deliberately_ contain anti-patterns so the detectors can be tested), and
+  the `*-compat` packages (whose public API IS React/Vue/etc. by design).
+  ~705/987 errors were examples + fixtures; the rest a never-CI-enforced
+  advisory backlog or by-design.
+
+  **Objectivity (the deliverable):** the three gates now audit ONLY
+  first-party published source — `packages/<cat>/<pkg>/src/**`, excluding
+  tests/fixtures/`.d.ts` — via pure, unit-tested predicates
+  (`isFirstPartySourceFile` / `isCompatPackageFile`); `react-patterns`
+  additionally skips `*-compat` src (a React-API shim containing `useState`
+  is a definitional false positive). Errors **987 → 86**.
+
+  **Detector precision (false positives are the antithesis of objective):**
+
+  - `@pyreon/compiler` `dot-value-signal`: now requires the receiver to be a
+    tracked signal binding — no longer flags `input.value` / `cell.value` /
+    `o.value` (17 FPs; bisect-verified).
+  - `@pyreon/lint` `no-window-in-ssr`: recognizes field-captured typeof
+    (`this.isSSR = typeof document === 'undefined'`) and function-head
+    early-return guards covering nested closures (bisect-verified).
+  - `@pyreon/lint` `no-bare-signal-in-jsx`: now supports `exemptPaths`
+    (consistent with the other exemptable rules) — render-function
+    primitives read signals in JSX _attribute_ positions which the compiler
+    `_rp()`-wraps; the text-position heuristic over-fired there.
+
+  **Genuine first-party SSR bugs fixed** (the rule correctly did NOT silence
+  these — cross-function/method guards aren't lexically traceable):
+
+  - `@pyreon/head` `createNewTag` — added `typeof document` guard.
+  - `@pyreon/styler` `Sheet.mount()` — in-method `if (this.isSSR) return`.
+  - `@pyreon/hotkeys` `detachListener` — `typeof window` guard.
+  - `@pyreon/flow` flow-component — guarded `new ResizeObserver` with
+    `typeof ResizeObserver === 'function'`.
+  - `@pyreon/core` lifecycle — renamed a local `location` shadowing the
+    browser global (hygiene; also removed an SSR-analysis false positive).
+
+  **Curated `.pyreonlintrc.json`** exemptions (with rationale) for
+  genuinely-non-SSR-runtime surfaces: `@pyreon/compiler` (build-time Node)
+  and `*-compat` (DOM-runtime framework adapters, consistent with the
+  existing `runtime-dom` exemption) for `no-window-in-ssr`; `*-compat` for
+  `dev-guard-warnings` (intentional user-facing "[Pyreon] X not supported"
+  guidance that must reach prod).
+
+  **Result: errors 987 → 1.** The single remaining `no-window-in-ssr` in
+  `@pyreon/ui-core` (`_isBrowser && matchMedia(...)`) is provably SSR-safe
+  (short-circuit; `_isBrowser` is a `typeof`-AND const) — a documented
+  known rule-precision limitation, left visible (NOT exempted: silencing it
+  would hide future _real_ ui-core SSR bugs — anti-objective).
+
+  Verified: 8 touched packages, 3091 unit tests pass; typecheck clean;
+  full-repo `oxlint` 0 errors; e2e 127 specs pass (default 92 +
+  ui-regression 26 + app-showcase 9); each detector change bisect-verified.
+
+- [#642](https://github.com/pyreon/pyreon/pull/642) [`fa4e37f`](https://github.com/pyreon/pyreon/commit/fa4e37fa620cf0e3f240053bf789b84bd9668838) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Repo sweep (round 2): a real memory leak + cross-compat duplication removal.
+
+  **`@pyreon/styler` — unbounded `insertCache` + DOM `cssRules` growth (memory leak).** `evictIfNeeded()` trimmed ONLY the `cache` Map. The cssText-keyed `insertCache` (large keys — full CSS text) and the live `<style>` tag's `CSSStyleSheet.cssRules` were never evicted, so `maxCacheSize` bounded the _smallest_ of the three storage layers while the two memory-heavy ones grew for the entire process lifetime. Any app generating many distinct CSS strings (signal-driven dynamic styles, per-instance computed themes) leaked Map entries + live DOM rules forever. Fix: a `className → Set<icKey>` reverse index plus a `className → CSSRule[]` object-ref index (object refs survive `deleteRule()` reindexing) let `evictKeys()` drop all three layers in lockstep — `cache.delete` + `insertCache.delete` + descending-index `deleteRule()`. `reset()` / `clearCache()` / `clearAll()` clear the two new indices too. `maxCacheSize` now genuinely bounds memory. No API/behaviour change for steady-state apps; dedup correctness preserved (re-inserting an evicted rule yields the same deterministic className + exactly one live DOM rule). Bisect-verified: reverted `evictKeys` to pre-fix cache-only behaviour → `insertCache stays bounded` failed `expected 300 to be ≤ 75`, `live DOM cssRules count` failed `expected 180 to be ≤ 47`; restored → 13/13.
+
+  **`@pyreon/core` + `@pyreon/react-compat` + `@pyreon/preact-compat` — compat duplication removal (behaviour-preserving).** `shallowEqual` (memo / useState bailout) was copy-pasted byte-identically into `react-compat/index.ts` and `preact-compat/hooks.ts`; the React/Preact DOM-prop mapping (`className→class`, `htmlFor→for`, `onChange→onInput`, `autoFocus`, `defaultValue`/`defaultChecked`, authoring-only strip) was near-duplicated across both jsx-runtimes (only divergence: React also stripped `suppressContentEditableWarning` — a no-op for Preact, so unifying is behaviour-preserving). Consolidated into a new `@pyreon/core/compat-shared.ts` (`shallowEqualProps`, `mapCompatDomProps`) — core is already a dependency of every compat package and already hosts the sibling cross-compat module `compat-marker.ts` (`nativeCompat`/`isNativeCompat`). Both packages now import the canonical helpers (aliased to local names — zero call-site churn).
+
+  Validation: lint 0 errors; typecheck clean (styler + core + react-compat + preact-compat); styler 413/413, core 497/497, react-compat 224/224, preact-compat 157/157; styler browser smoke 9/9; e2e `ui-regression` 26/26 (styler/rocketstyle real-app gate); e2e `compat-layers` 12/12 (react/preact/vue/solid real-app gate); new `compat-shared.test.ts` 13/13.
+
+  **Deferred (own focused PRs — analysis preserved):** router `findNotFoundFallback` cache — its result depends on `urlPath` (not a pure fn of `routes`), so a correct cache needs an enumerate-candidates / pick-by-urlPath refactor. That's a correctness-sensitive perf refactor, not a mistake / edge case / leak / duplicate, so it's out of scope for a behaviour-preserving sweep. `@pyreon/styler` `internElementBundle` css-prop interning ([#626](https://github.com/pyreon/pyreon/issues/626)-documented) — a distinct optimization, not a leak; its own PR. No other new memory leak found this round (prior sweeps already fixed signal.\_d / computed.direct / useSortable / ISR).
+
+- [#628](https://github.com/pyreon/pyreon/pull/628) [`5431467`](https://github.com/pyreon/pyreon/commit/5431467ac41ccd1374359120b3e71f4af5d6745e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Migrate `@pyreon/styler` onto the manifest-driven docs pipeline.
+
+  `@pyreon/styler` is the CSS-in-JS engine (`styled` / `css` / `keyframes` / `createGlobalStyle` / `useCSS` / theming / `StyleSheet`) — one of the most-queried real-API surfaces in the ui-system, but it had only a one-line hand-written `llms.txt` bullet and **no `src/manifest.ts`, no `llms-full.txt` section, and no MCP api-reference region**. `get_api(styler, styled|css|useTheme|…)` 404'd. PR C of the recommended manifest-coverage follow-up sequence (PR A = the doc-claim correction [#623](https://github.com/pyreon/pyreon/issues/623); [#622](https://github.com/pyreon/pyreon/issues/622) = compiler; [#624](https://github.com/pyreon/pyreon/issues/624) = runtime-server — all merged).
+
+  **Added** `packages/ui-system/styler/src/manifest.ts` via `defineManifest()` — **19 `api[]` entries** covering the consumer-facing surface (`styled`, `css`, `keyframes`, `createGlobalStyle`, `useCSS`, `useTheme`, `useThemeAccessor`, `ThemeProvider`, `ThemeContext`, `createSheet`, `StyleSheet`, `sheet`, `resolve`, `normalizeCSS`, `resolveValue`, `clearNormCache`, `buildProps`, `filterProps`, `isDynamic`) with accurate signatures + dense summaries + the real CSS-in-JS foot-guns in `mistakes[]`: `$`-transient props are not forwarded to the DOM; `css`/`keyframes`/`createGlobalStyle` return lazy/name/component values (not strings, not side-effecting); `useTheme()` snapshots vs `useThemeAccessor()` tracks; `buildProps`/`filterProps` copy DESCRIPTORS not values to preserve the `_rp` reactive-prop contract; singleton-sheet-vs-`createSheet` isolation. 4 package `gotchas`.
+
+  **Wiring:** `@pyreon/manifest` `workspace:*` devDep (the `@pyreon/lint` / `@pyreon/compiler` / `@pyreon/runtime-server` convention — gen-docs-only, tree-shaken from published `lib/`). Surgical 1-line bun.lock add; `bun install --frozen-lockfile` verified (fresh-worktree version-field churn reverted to base). api-reference marker pair added in the ui-system group (between `@pyreon/unistyle` and `@pyreon/storybook`). `bun run gen-docs` regenerated the `llms.txt` bullet (in place — styler already had one), the `llms-full.txt` `## @pyreon/styler` section, and the 19-entry MCP region.
+
+  **No runtime or API change** — purely additive doc metadata. `gen-docs --check` in sync; lint **0 errors** (303 pre-existing warnings, same class as prior PRs); typecheck clean (styler + mcp); styler 410 tests, manifest 135 all green; new `manifest-snapshot.test.ts` (5 specs) locks the rendered bullet/section/api-reference shape + foot-gun-catalog assertions locally; `check-manifest-depth` passes (styler enters at port-grade density, intentionally NOT added to `LOCKED` — visible migration backlog, not yet flagship).
+
+  **Authoring note for the next ui-system migration**: `@pyreon/manifest`'s `renderStringLiteral` serializer escapes backtick + `${` when emitting MCP entries into `api-reference.ts`, but does NOT escape literal backslashes. A `summary`/`mistakes` string whose RESOLVED value contains a literal `\` (e.g. from over-escaped nested `` \`…\``` code spans) emits `\\\ `` → the raw backtick prematurely closes the generated template literal → `api-reference.ts` parse error. Keep manifest prose backslash-free: use plain single-backtick code spans for identifiers, never nested backtick-in-backtick escapes; `${`-in-prose is fine (serializer-escaped, round-trips). Documented in `.claude/rules/anti-patterns.md`.
+
+- Updated dependencies [[`c3d0a70`](https://github.com/pyreon/pyreon/commit/c3d0a7017ed2ef4468ec3fb4e4c09ec869d2917a), [`ecd8e52`](https://github.com/pyreon/pyreon/commit/ecd8e526943a1e6b07957ff96f4410fa482baa0d), [`ac1d375`](https://github.com/pyreon/pyreon/commit/ac1d37542b11cd95451a2f0b0a51cc43603d001a), [`21e465c`](https://github.com/pyreon/pyreon/commit/21e465c7957c3e57c838af58ffa995682908c5f8), [`c4b6e9a`](https://github.com/pyreon/pyreon/commit/c4b6e9a5850196171c2197fc918163f736708aa8), [`fb40906`](https://github.com/pyreon/pyreon/commit/fb409066e49e44c42f77084a92a68103a4e6c5ef), [`9f03747`](https://github.com/pyreon/pyreon/commit/9f037478763d9f8cd2365feb63dc87fda2545e5d), [`3374150`](https://github.com/pyreon/pyreon/commit/33741500499dfb487d031bbffe77723d74b8f261), [`fa4e37f`](https://github.com/pyreon/pyreon/commit/fa4e37fa620cf0e3f240053bf789b84bd9668838)]:
+  - @pyreon/reactivity@0.19.0
+  - @pyreon/core@0.19.0
+
 ## 0.18.0
 
 ### Patch Changes

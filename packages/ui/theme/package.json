@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/ui-theme",
-  "version": "0.13.5",
+  "version": "0.13.6",
   "private": true,
   "description": "Default theme for the Pyreon UI component library",
   "bugs": {

@@ -1,5 +1,280 @@
 # @pyreon/compiler
 
+## 0.19.0
+
+### Minor Changes
+
+- [#593](https://github.com/pyreon/pyreon/pull/593) [`5b69841`](https://github.com/pyreon/pyreon/commit/5b69841a6ab30963977e276d120c33d66682da23) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Defer>` inline form (v2) — closes 3 of the 4 scope gaps from PR [#587](https://github.com/pyreon/pyreon/issues/587):
+
+  **Props on inline child** (gap 1)
+
+  ```tsx
+  // Before — bailed with no warning; runtime errored.
+  <Defer when={open}>
+    <Modal title="Confirm" size="md" />
+  </Defer>
+
+  // Now — compiler rewrites:
+  <Defer when={open} chunk={() => import('./Modal').then((__m) => ({ default: __m.Modal }))}>
+    {(__C) => <__C title="Confirm" size="md" />}
+  </Defer>
+  ```
+
+  Props pass through verbatim into the render-prop body. The compiler only replaces the JSXIdentifier name (in opening AND closing tags) with `__C`; everything else (attrs, spread props, event handlers, nested children) survives unchanged.
+
+  **Closure capture** (gap 2)
+
+  ```tsx
+  const open = signal(false)
+  const count = signal(0)
+
+  <Defer when={open}>
+    <Modal count={count} onClose={() => open.set(false)} />
+  </Defer>
+  ```
+
+  Works automatically once gap 1 is fixed — the render-prop arrow function lexically captures the surrounding scope, so `count` / `open` references resolve correctly at chunk-load time. No new code path; this falls out of preserving the child JSX verbatim.
+
+  **Renamed imports** (gap 3)
+
+  ```tsx
+  // Before — bailed with `import-not-found` warning.
+  import { Modal as M } from './Modal'
+  <Defer when={open}><M /></Defer>
+
+  // Now — compiler rewrites, extracting the ORIGINAL exported name from the chunk:
+  <Defer when={open} chunk={() => import('./Modal').then((__m) => ({ default: __m.Modal }))}>
+    {(__C) => <__C />}
+  </Defer>
+  ```
+
+  `__m.Modal` — not `__m.M`. The chunk resolves the module's actual export, while the render-prop body uses `__C` (the render-prop binding).
+
+  **Multi-specifier import handling** (drive-by bug fix)
+
+  ```tsx
+  import { Modal, OtherStuff } from "./shared";
+  // ... uses OtherStuff elsewhere ...
+  <Defer when={open}>
+    <Modal />
+  </Defer>;
+  ```
+
+  v1 would have removed the entire `import { Modal, OtherStuff }` declaration, breaking `OtherStuff`'s usage. v2 removes ONLY the `Modal` specifier — the import becomes `import { OtherStuff } from './shared'`. Sibling bindings stay intact. Handles both first-specifier and later-specifier cases.
+
+  **Still NOT in this** (gap 4 — namespace imports)
+
+  ```tsx
+  import * as M from "./Modal";
+  <Defer>
+    <M.Modal />
+  </Defer>; // — still bails
+  ```
+
+  Namespace imports with `JSXMemberExpression` children require a different rewrite path (the `_C` binding can't replace `M.Modal` since it's a member access, not an identifier). Not addressed in this PR — explicit form is the workaround.
+
+  ## Verification
+
+  - 16 unit tests in `defer-inline.test.ts` (3 new props tests + 2 renamed-imports tests + 2 multi-specifier tests in addition to the existing 9)
+  - End-to-end via verify-modes — `examples/playground/src/pages/About.tsx` now uses inline `<Defer><DeferredFixture label="..." /></Defer>`, exercising prop-preservation through a real Vite build. The fingerprint `DEFER_INLINE_FIXTURE_PROP_LABEL_ABC987` must land in the route chunk (the render-prop body lives in the caller), NOT in the fixture chunk.
+  - Bisect-verified: reverting `buildRenderPropBody` to a constant `{(__C) => <__C />}` (drops prop preservation) → cell fails with `fingerprint "DEFER_INLINE_FIXTURE_PROP_LABEL_ABC987" found in 0 chunks`. Restored → passes.
+
+  1007 `@pyreon/compiler` tests pass.
+
+- [#594](https://github.com/pyreon/pyreon/pull/594) [`e274fce`](https://github.com/pyreon/pyreon/commit/e274fceeb37d0893c7425463e443185388fce475) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Defer>` inline form (v3) — closes the last open scope gap: namespace imports.
+
+  ```tsx
+  // Before — bailed with `import-not-found`; user had to use the explicit form.
+  import * as M from './Modal'
+  <Defer when={open}><M.Modal /></Defer>
+
+  // Now — compiler rewrites:
+  <Defer when={open} chunk={() => import('./Modal').then((__m) => ({ default: __m.Modal }))}>
+    {(__C) => <__C />}
+  </Defer>
+  ```
+
+  The compiler recognises `<M.Modal />` as a depth-1 `JSXMemberExpression`, looks up `M` as an `ImportNamespaceSpecifier`, and rewrites:
+
+  1. The chunk extracts `__m.Modal` (the JSX property — `Modal`) from the namespace's source module
+  2. The full `M.Modal` JSX name is replaced with `__C` in both opening and closing tags
+  3. The static `import * as M from './Modal'` is removed (when M isn't used elsewhere)
+
+  Closes gap 4 from the v2 follow-up roadmap — every common import shape now works inline:
+
+  - `import X from './X'` ✓ (v1)
+  - `import { X } from './X'` ✓ (v1)
+  - `import { X as Y } from './X'` ✓ (v2)
+  - `import * as M from './X'; <M.X />` ✓ (v3, this PR)
+
+  Plus: multi-specifier imports drop only the deferred binding (v2 drive-by fix).
+
+  **Sub-gaps explicitly NOT closed by this PR:**
+
+  - **Deeper member expressions** (`<M.Sub.Modal />`) — `analyzeChildElement` returns null for non-depth-1 member expressions. The Defer is left alone; runtime errors with "missing chunk" if mounted. Workaround: explicit form.
+  - **Member access on a default-import** (`import M from './X'; <M.Modal />`) — semantically different (member access on a component, not a namespace bag). Compiler emits `defer-inline/unsupported-import-shape` warning so the author understands why the inline form is being skipped.
+  - **Namespace bindings referenced elsewhere in the file** (`import * as M; const x = M.Settings; <Defer><M.Modal /></Defer>`) — bails with `defer-inline/import-used-elsewhere` (Rolldown would static-bundle the module on shared usage, making the dynamic import a no-op). Common shape; users hitting this need either the explicit form or to refactor the namespace import.
+
+  ## Verification
+
+  - **23 unit tests** in `defer-inline.test.ts` (7 new for v3 — basic rewrite + props on member-expression child + non-self-closing + 4 bail-out cases)
+  - **Real-app verify-modes**: `examples/playground/src/pages/About.tsx` now uses BOTH the v2 prop-preservation shape (`<DeferredFixture label="..." />`) AND the v3 namespace shape (`<NS.NamespaceFixture />`). New fingerprint `DEFER_NAMESPACE_FIXTURE_MARKER_QRS456` asserts the namespace fixture lands in its own chunk.
+  - **Bisect-verified**: disabling the `ImportNamespaceSpecifier` branch in `findImportFor` → fingerprint lands in `about-*.js` (the route chunk) instead of `NamespaceFixture-*.js`. Restored → passes. Grep for `TEMP BISECT` → clean.
+
+  1014 `@pyreon/compiler` tests pass.
+
+- [#611](https://github.com/pyreon/pyreon/pull/611) [`070a0ec`](https://github.com/pyreon/pyreon/commit/070a0ec687ad598cf15963e5615bb1d8c81933a3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - **Reactivity Lens (experimental)** — surface the compiler's already-computed reactivity analysis back to the author at the source.
+
+  Pyreon's [#1](https://github.com/pyreon/pyreon/issues/1) silent footgun: whether code is reactive is invisible at the moment you write it. The compiler ALREADY decides this per-expression for codegen and discards the analysis. The Lens pipes it back.
+
+  - `@pyreon/compiler`: additive opt-in `TransformOptions.reactivityLens` → `TransformResult.reactivityLens: ReactivitySpan[]` (emitted code byte-identical with it on/off; all existing compiler tests pass unchanged). New exports `analyzeReactivity()` / `formatReactivityLens()` + `ReactivityKind` / `ReactivitySpan` / `ReactivityFinding` types. `analyzeReactivity` merges the structural compiler facts with the existing `detectPyreonPatterns` footgun detectors under one taxonomy.
+  - `@pyreon/lint`: the existing `--lsp` server gains an `inlayHintProvider` + `textDocument/inlayHint` handler rendering `live` / `static` / `live·prop` / `hoisted` ghost-text at each reactive/baked-once expression; footguns publish as `pyreon-lens` warning diagnostics. Adds a `@pyreon/compiler` dependency.
+
+  JS-backend only (native Rust sidecar parity is a follow-up). The positive "this is live" claim is a faithful record of the codegen branch, not a heuristic — drift-gated + bisect-verified.
+
+### Patch Changes
+
+- [#622](https://github.com/pyreon/pyreon/pull/622) [`5fb461a`](https://github.com/pyreon/pyreon/commit/5fb461aaf9fcc8d2a624af1442f4db97fd7f33c9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Migrate `@pyreon/compiler` onto the manifest-driven docs pipeline.
+
+  `@pyreon/compiler` was the last core-layer package with NO `src/manifest.ts` — its `llms.txt` / `llms-full.txt` / MCP `api-reference.ts` surfaces did not exist at all (it was simply absent from every generated doc, and `get_api(compiler, …)` 404'd for the entire public surface including the Reactivity-Lens). This is the cause-level fix behind the "Lens docs enrichment" follow-up: the Lens couldn't be documented because the package it lives in wasn't on the pipeline.
+
+  **Added** `packages/core/compiler/src/manifest.ts` via `defineManifest()` — 18 `api[]` entries (the full public surface from `src/index.ts`): `transformJSX`, `transformJSX_JS`, `analyzeReactivity`, `formatReactivityLens`, `detectReactPatterns`, `migrateReactCode`, `hasReactPatterns`, `diagnoseError`, `detectPyreonPatterns`, `hasPyreonPatterns`, `auditTestEnvironment`, `formatTestAudit`, `auditIslands`, `formatIslandAudit`, `auditSsg`, `formatSsgAudit`, `transformDeferInline`, `generateContext`. Every entry carries an accurate `signature` + dense `summary`; the real foot-guns get `mistakes[]` (the dual-backend invisibility trap, the SSR-needs-`h()`-not-`_tpl()` trap, `knownSignals` cross-module seeding, the Lens asymmetric-precision contract, the enforced `fixable: false` invariant); `analyzeReactivity` / `formatReactivityLens` are flagged `stability: 'experimental'`; 3 package-level `gotchas` (dual backend, Lens is editor-only, detectors are not codemods).
+
+  **Wiring:** added `@pyreon/manifest` as a `workspace:*` devDependency on `@pyreon/compiler` (matches the `@pyreon/lint` convention — `manifest.ts` is gen-docs-only, never imported by `src/index.ts`, so it's tree-shaken from the published `lib/`). Added the `// <gen-docs:api-reference:start/end @pyreon/compiler>` marker pair to `packages/tools/mcp/src/api-reference.ts` (core-layer slot, between `@pyreon/core` and `@pyreon/router`). `bun run gen-docs` regenerated the `llms.txt` bullet, the `llms-full.txt` `## @pyreon/compiler` section, and the 18-entry MCP api-reference region; updated the hand-prose `## Core Framework` count 6 → 7.
+
+  **No runtime or API change** — purely additive doc-pipeline metadata. `gen-docs --check` in sync; lint 0 errors; typecheck clean (compiler + mcp); compiler 1053 tests, mcp 497, manifest 135 all green; `check-manifest-depth` passes (compiler enters at port-grade density and is intentionally NOT added to `LOCKED` — it's the visible migration backlog, not yet at flagship density). New `manifest-snapshot.test.ts` (5 specs) locks the rendered bullet/section/api-reference shape + the experimental-flag and foot-gun-catalog assertions locally in addition to the CI `Docs Sync` gate.
+
+- [#630](https://github.com/pyreon/pyreon/pull/630) [`21e465c`](https://github.com/pyreon/pyreon/commit/21e465c7957c3e57c838af58ffa995682908c5f8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix: make `pyreon doctor` objective + close the real first-party findings it then surfaced
+
+  `pyreon doctor` reported a meaningless **F (score 55, 987 errors)** because
+  its `lint` / `react-patterns` / `pyreon-patterns` gates scanned the WHOLE
+  repo: example apps (intentionally framework-idiomatic, incl. react-compat
+  demos), `e2e/`/`docs/`/`scripts/`, detector test-fixtures (which
+  _deliberately_ contain anti-patterns so the detectors can be tested), and
+  the `*-compat` packages (whose public API IS React/Vue/etc. by design).
+  ~705/987 errors were examples + fixtures; the rest a never-CI-enforced
+  advisory backlog or by-design.
+
+  **Objectivity (the deliverable):** the three gates now audit ONLY
+  first-party published source — `packages/<cat>/<pkg>/src/**`, excluding
+  tests/fixtures/`.d.ts` — via pure, unit-tested predicates
+  (`isFirstPartySourceFile` / `isCompatPackageFile`); `react-patterns`
+  additionally skips `*-compat` src (a React-API shim containing `useState`
+  is a definitional false positive). Errors **987 → 86**.
+
+  **Detector precision (false positives are the antithesis of objective):**
+
+  - `@pyreon/compiler` `dot-value-signal`: now requires the receiver to be a
+    tracked signal binding — no longer flags `input.value` / `cell.value` /
+    `o.value` (17 FPs; bisect-verified).
+  - `@pyreon/lint` `no-window-in-ssr`: recognizes field-captured typeof
+    (`this.isSSR = typeof document === 'undefined'`) and function-head
+    early-return guards covering nested closures (bisect-verified).
+  - `@pyreon/lint` `no-bare-signal-in-jsx`: now supports `exemptPaths`
+    (consistent with the other exemptable rules) — render-function
+    primitives read signals in JSX _attribute_ positions which the compiler
+    `_rp()`-wraps; the text-position heuristic over-fired there.
+
+  **Genuine first-party SSR bugs fixed** (the rule correctly did NOT silence
+  these — cross-function/method guards aren't lexically traceable):
+
+  - `@pyreon/head` `createNewTag` — added `typeof document` guard.
+  - `@pyreon/styler` `Sheet.mount()` — in-method `if (this.isSSR) return`.
+  - `@pyreon/hotkeys` `detachListener` — `typeof window` guard.
+  - `@pyreon/flow` flow-component — guarded `new ResizeObserver` with
+    `typeof ResizeObserver === 'function'`.
+  - `@pyreon/core` lifecycle — renamed a local `location` shadowing the
+    browser global (hygiene; also removed an SSR-analysis false positive).
+
+  **Curated `.pyreonlintrc.json`** exemptions (with rationale) for
+  genuinely-non-SSR-runtime surfaces: `@pyreon/compiler` (build-time Node)
+  and `*-compat` (DOM-runtime framework adapters, consistent with the
+  existing `runtime-dom` exemption) for `no-window-in-ssr`; `*-compat` for
+  `dev-guard-warnings` (intentional user-facing "[Pyreon] X not supported"
+  guidance that must reach prod).
+
+  **Result: errors 987 → 1.** The single remaining `no-window-in-ssr` in
+  `@pyreon/ui-core` (`_isBrowser && matchMedia(...)`) is provably SSR-safe
+  (short-circuit; `_isBrowser` is a `typeof`-AND const) — a documented
+  known rule-precision limitation, left visible (NOT exempted: silencing it
+  would hide future _real_ ui-core SSR bugs — anti-objective).
+
+  Verified: 8 touched packages, 3091 unit tests pass; typecheck clean;
+  full-repo `oxlint` 0 errors; e2e 127 specs pass (default 92 +
+  ui-regression 26 + app-showcase 9); each detector change bisect-verified.
+
+- [#644](https://github.com/pyreon/pyreon/pull/644) [`6472de0`](https://github.com/pyreon/pyreon/commit/6472de00ffdbcff1fd453c125c404b75fc5cc46d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Release pipeline: `scripts/publish.ts` now resolves `workspace:` ranges in `optionalDependencies` (previously only `dependencies` / `peerDependencies` / `devDependencies` were resolved).
+
+  `@pyreon/compiler` is the only package using `optionalDependencies` — its 7 per-platform native-binary packages (`@pyreon/compiler-<triple>`). Because that 4th field was never passed through `resolveWorkspaceDeps()`, `@pyreon/compiler@0.18.0` shipped to npm with `optionalDependencies: { "@pyreon/compiler-darwin-arm64": "workspace:^", … }` — the literal pnpm/bun workspace protocol. Effect: `npm i @pyreon/compiler@0.18.0` **hard-fails for every consumer** with `EUNSUPPORTEDPROTOCOL: Unsupported URL Type "workspace:"` — npm rejects the manifest while parsing, before it can skip an _optional_ dependency. The 0.18.0 compiler is therefore uninstallable standalone (and the 7 native binaries it points at can never resolve).
+
+  Fix is the missing 4th field plus a defense-in-depth guard: after building the resolved manifest, `publish.ts` scans every dependency field and **hard-fails before write/publish** if any `workspace:` range remains — so a future package.json field added without updating the resolve list can't silently ship another broken release (exactly how `optionalDependencies` slipped through). A broken publish is immutable and unrecoverable, so the gate must be pre-publish.
+
+  Bisect-proven against the real `packages/core/compiler/package.json`: before → 7× `workspace:^`; after → 7× `^0.18.0`; guard passes on resolved input and exits 1 on any residual `workspace:`. npm 0.18.0 is immutable and stays broken (deprecate it); this makes the next release's `@pyreon/compiler` installable.
+
+- [#645](https://github.com/pyreon/pyreon/pull/645) [`0408e47`](https://github.com/pyreon/pyreon/commit/0408e475e63770996eff17bfb6ac318e89c45df4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Release pipeline: fix `release-native.yml` OIDC trusted publishing — remove the `.npmrc` that defeated it.
+
+  The Publish job correctly had no `NODE_AUTH_TOKEN`, but `actions/setup-node` was still invoked with `registry-url: 'https://registry.npmjs.org'`. setup-node writes a project `.npmrc` containing `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}` **whenever `registry-url` is set** — with no token in the env that line resolves to an empty `_authToken=`. npm then sees explicit (empty) registry auth and **skips the OIDC trusted-publishing exchange entirely**, so `npm publish` returns `404` on the PUT even when the package's trusted publisher is configured correctly. Provenance still signed (it uses the GitHub OIDC id-token directly, independent of npm registry auth), which masked the root cause and made the v0.18.0 native-publish failures look like an npmjs.com config problem.
+
+  Fix:
+
+  - Remove `registry-url:` from the `setup-node` step (no `.npmrc` auth line is written → npm performs the token-free OIDC exchange).
+  - Add an "Ensure npm supports OIDC trusted publishing" step (`npm install -g npm@latest`) — npm's native token-free trusted publishing landed in 11.5.1; Node 24's bundled npm can be older (24.x shipped 11.3.x).
+  - Belt-and-suspenders `rm -f` of any stray `.npmrc` (repo checkout / cached home) immediately before `npm publish`.
+  - Tightened the in-workflow comment to the exact trusted-publisher identity (`pyreon/pyreon` / `release-native.yml` / no environment) and the precise meaning of a 404.
+
+  YAML validated (parses; `setup-node.with` is now `{ node-version: 24 }` only; publish steps in correct order). This unblocks token-free native-binary publishing for the next release tag — no manual bootstrap needed once it lands (assuming the per-package trusted-publisher records match the identity above).
+
+- [#633](https://github.com/pyreon/pyreon/pull/633) [`7e0fe1a`](https://github.com/pyreon/pyreon/commit/7e0fe1a4f7cbb68f7647d85bef843de90d04d506) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(compiler): `query-options-as-function` detector — makes the @pyreon/query best-practice proactive in MCP `validate`
+
+  `[#632](https://github.com/pyreon/pyreon/issues/632)` shipped `pyreon/query-options-as-function` as an opt-in `@pyreon/lint`
+  rule — **reactive**: an AI agent only sees it after running
+  `pyreon doctor` / `pyreon-lint`. This adds the same check as a
+  `detectPyreonPatterns` code in `@pyreon/compiler`, so the MCP `validate`
+  tool flags it **proactively** — an agent calling `validate({ code })`
+  while writing sees the fix (`useQuery(() => (...))`) before the code is
+  ever committed. Closes the genuine functional gap (proactive AI-fix),
+  not just more coverage.
+
+  - New `PyreonDiagnosticCode: 'query-options-as-function'`. Fires on an
+    object-literal first arg to `useQuery` / `useInfiniteQuery` /
+    `useQueries` / `useSuspenseQuery`. `useMutation` excluded by design
+    (imperative — plain object is correct); identifier/call args stay
+    silent (statically unprovable). `fixable: false` (the documented
+    invariant — no `migrate_pyreon` tool yet).
+  - Wired into the AST dispatch + the `hasPyreonPatterns` regex pre-filter.
+  - Shares one `[detector: query-options-as-function]` tag in
+    `.claude/rules/anti-patterns.md` with the lint rule (the
+    `detector-tag-consistency` drift guard enforces the loop; [#632](https://github.com/pyreon/pyreon/issues/632)'s
+    entry used the wrong tag form — corrected here).
+
+  Bisect-verified (neuter → 2 FIRES specs fail, restore → 73/73 pass).
+  `@pyreon/compiler` suite + the MCP `validate` zero-false-positive guard
+  green. Docs: CLAUDE.md detector list 14 → 15.
+
+- [#618](https://github.com/pyreon/pyreon/pull/618) [`c5b2ea2`](https://github.com/pyreon/pyreon/commit/c5b2ea2fe0df3f52b2af21e0d79b1e391ca9fad5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add the `props-destructured-body` static detector to `detectPyreonPatterns`
+  — the body-scope companion to `props-destructured`. It flags
+  `const { x } = props` written synchronously in a component body, the
+  reactivity footgun the parameter-destructure detector explicitly did
+  NOT cover (previously a documented "lightweight AST can't do this"
+  cliff; the TS-compiler-API detector resolves it with scope tracking).
+
+  Precision (zero-false-positive priority): only PascalCase JSX-rendering
+  components; only `= props` where `props` is the bare first-parameter
+  identifier (unwrapped through `as` / `satisfies` / `!` / parens); the
+  walk does NOT descend into nested functions (a destructure inside a
+  handler / `effect` / returned accessor re-reads `props` per invocation
+  and is reactivity-correct). Surfaces through the MCP `validate` tool and
+  `pyreon doctor` alongside the other Pyreon detectors.
+
+- [#616](https://github.com/pyreon/pyreon/pull/616) [`6581f07`](https://github.com/pyreon/pyreon/commit/6581f073293a72360fe9391990d08316e0dc5b4b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Reactivity Lens — Phase 3: Rust-backend sidecar parity. The native
+  napi-rs binary now emits the `reactivityLens` span sidecar from the
+  same 6 codegen-decision sites as the JS path, gated by the same opt-in
+  `TransformOptions.reactivityLens` flag. Purely additive — emitted code
+  is byte-identical with the option on or off, on both backends — so the
+  ~80% of users on the native path get the editor lens too. JS↔Rust
+  span-set parity + the additive guarantee are gated by the new
+  `compareLens` cross-backend equivalence block (bisect-verified).
+
 ## 0.18.0
 
 ### Minor Changes

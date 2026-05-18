@@ -1,5 +1,242 @@
 # @pyreon/zero
 
+## 0.19.0
+
+### Minor Changes
+
+- [#595](https://github.com/pyreon/pyreon/pull/595) [`0b3e2b3`](https://github.com/pyreon/pyreon/commit/0b3e2b387d4cd6debe6a466877d2100a96ceceb9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `imagePlugin` — implement the `'color'` placeholder strategy + add per-format quality. Closes a typed-but-unimplemented bug.
+
+  **Closed bug (the `audit-types` class):** `PlaceholderStrategy` typed `'dominant-color'` from the plugin's inception but no code path ever implemented it — the CDN, dev, and build paths each open-coded `generateBlurPlaceholder`, so `placeholder: 'dominant-color'` silently produced a blur and `placeholder: 'none'` was silently ignored in build mode (only the CDN path honored it). All three paths now route through one `generatePlaceholder` dispatcher:
+
+  - `'blur'` (default, unchanged) — downscaled + blurred WebP base64
+  - `'color'` — sharp `.stats().dominant` → ~200-byte flat-fill SVG data URI (instant paint, zero layout shift, constant size regardless of source complexity)
+  - `'dominant-color'` — **deprecated alias of `'color'`**, normalized via `normalizePlaceholder`
+  - `'none'` — now honored in every path, not just CDN
+
+  **Better API — per-format quality.** `quality` now accepts a per-format map in addition to a single number:
+
+  ```ts
+  imagePlugin({ formats: ["avif", "webp"], quality: { avif: 55, webp: 75 } });
+  ```
+
+  AVIF reaches WebP-equivalent perceived quality at a much lower number, so one flat value either over-spends bytes on AVIF or under-delivers on WebP. Formats omitted from the map fall back to 80. A bare number still works unchanged (backward-compatible). Resolved once into a per-format lookup (`resolveQuality`) threaded through the CDN / dev / build paths.
+
+  Backward-compatible: default placeholder stays `'blur'`, default quality stays `80`, the `placeholder` string contract is unchanged so `<Image>` consumes every strategy identically. `generatePlaceholder` / `resolveQuality` / `normalizePlaceholder` are `@internal` exports for unit testing (19 specs, including the bisect-locking `'none' produces no placeholder` regression that fails against the pre-dispatcher build path).
+
+  ThumbHash placeholders, rich import queries (`?inline` / `?url` / `?meta`), and a wasm sharp-fallback are deliberately deferred to follow-up PRs.
+
+- [#607](https://github.com/pyreon/pyreon/pull/607) [`5d40b3f`](https://github.com/pyreon/pyreon/commit/5d40b3f70ba50ecd5adbff505db45e38975f61a8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Icon>` + `createIcon` — renders a FULL loaded SVG (Image/Link/Script family).
+
+  `<Icon>` does **not** synthesize its own `<svg>` around hand-authored `<path>`
+  children. You load a complete svg (it already contains the `<svg>` root) and
+  Icon makes it container-sizable + theme-aware. Two source props:
+
+  - `as` — an imported SVG **component** (`import X from './x.svg?component'`).
+    Rendered **directly, no host wrapper**; svg attributes forward. Recommended.
+  - `svg` — the raw `<svg>…</svg>` **markup string**
+    (`import x from './x.svg?raw'`). Inlined via a single `<span>` host (a markup
+    string can't mount without a parent — this one host is unavoidable).
+
+  ```tsx
+  import { Icon, createIcon } from '@pyreon/zero'
+  import Check from './check.svg?component'
+  import checkRaw from './check.svg?raw'
+
+  <span style="width:2rem"><Icon as={Check} /></span>      // no wrapper
+  <span style="width:2rem"><Icon svg={checkRaw} /></span>  // one <span> host
+
+  export const Star = createIcon(Check)      // component → rendered directly
+  export const Tick = createIcon(checkRaw)   // raw string → inlined
+  ```
+
+  Container-fill defaults (`fill="currentColor"`,
+  `display:block;width:100%;height:100%`) spread-overridable; no fixed size (the
+  consumer's wrapper sizes it); `fill="currentColor"` themes via CSS `color`.
+  Two layers (mirrors `createLink`/`Link`, `createImage`/`Image`):
+  `createIcon(source)` per-glyph factory + `Icon` one-off. Intentionally **no
+  `useIcon` hook** — an icon has no composable behaviour. New exports: `Icon`,
+  `createIcon`, `IconProps` (extends `SvgAttributes`), `SvgComponent`.
+  Backward-compatible; no existing API changed.
+
+  Verification: real-`h()` happy-dom mount tests in
+  `packages/zero/zero/src/tests/icon.test.ts` (component form renders direct / no
+  host, raw form inlines via `<span>`, defaults + prop override, `createIcon`
+  both source kinds, no-source → null); manifest entries (`Icon`, `createIcon`) +
+  regenerated MCP api-reference; snapshot count 25 → 27.
+
+- [#609](https://github.com/pyreon/pyreon/pull/609) [`7eaa4f0`](https://github.com/pyreon/pyreon/commit/7eaa4f03c6a9e0d48f38647127e1fd5998dc09d1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `iconsPlugin` named multi-sets — per-set typed components, no `IconName` clash.
+
+  Builds on `iconsPlugin` (single-set). New `sets` form:
+
+  ```ts
+  iconsPlugin({
+    sets: {
+      ui: { dir: "./src/icons/ui" },
+      brand: { dir: "./src/icons/brand", mode: "image" },
+    },
+  });
+  ```
+
+  ```tsx
+  import { UiIcon, BrandIcon } from './icons.gen'
+  <UiIcon name="arrow-left" />     // typed UiIconName
+  <BrandIcon name="logo-mark" />   // typed BrandIconName — independent union
+  ```
+
+  One generated file, one `createNamedIcon` import, a strictly-typed component
+  PER set under **namespaced** names so two sets never clash: `ui` →
+  `<UiIcon>` + `type UiIconName`, `brand` → `<BrandIcon>` + `type
+BrandIconName`. Per-set binding prefixes (`ui_check` / `brand_check`) keep two
+  sets sharing a glyph filename collision-free. `mode` is per-set (a colorful
+  brand set can be `image` while the system set stays `inline`).
+
+  `dir` and `sets` are mutually exclusive — the plugin throws `[Pyreon]
+iconsPlugin: provide EXACTLY ONE of dir or sets` at config time if both or
+  neither is given. The dev watcher watches every set's folder; regeneration is
+  still idempotent. New exports: `IconSetConfig`, `NamedSetInput`,
+  `generateNamedIconSetsSource`, `componentNameFromSetKey` (server entry);
+  `IconsPluginConfig.dir` is now optional alongside the new `sets` field.
+  Backward-compatible — the single-`dir` form is unchanged.
+
+  **Not in this PR (explicit follow-up):** monorepo package-sourced sets +
+  copy-to-public for `mode: 'image'` assets (Vite `emitFile` / stable-URL
+  contract — its own design).
+
+  Verification: pure-generator unit tests (`src/tests/icons-plugin.test.ts` —
+  `componentNameFromSetKey` PascalCase + sanitize, `generateNamedIconSetsSource`
+  namespaced-per-set + one shared import + no bare `Icon`/`IconName` + per-set
+  binding-prefix collision-freedom, `iconsPlugin` dir/sets XOR throw + both
+  accept-forms); manifest `iconsPlugin` entry updated for the multi-set form +
+  regenerated MCP api-reference; CLAUDE.md updated. typecheck 0, lint 0,
+  gen-docs --check clean.
+
+- [#607](https://github.com/pyreon/pyreon/pull/607) [`5d40b3f`](https://github.com/pyreon/pyreon/commit/5d40b3f70ba50ecd5adbff505db45e38975f61a8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `iconsPlugin` + `createNamedIcon` — point at a folder of SVGs, get a strictly-typed `<Icon name="…" />`.
+
+  `iconsPlugin({ dir })` (from `@pyreon/zero/server`) scans `*.svg`, derives a
+  kebab `name` from each filename, and writes a gitignored generated
+  `icons.gen.tsx` that exports a strictly-typed `<Icon>`. Add an svg → the `name`
+  union widens; remove one → an invalid `name` fails typecheck. Regenerates on
+  add/unlink in dev (idempotent — never rewrites identical content).
+
+  ```ts
+  // vite.config.ts
+  import { iconsPlugin } from "@pyreon/zero/server";
+  plugins: [iconsPlugin({ dir: "./src/icons" })];
+  ```
+
+  ```tsx
+  // app — autocompletes, rejects typos, real go-to-definition:
+  import { Icon } from "./icons.gen";
+  <span style="width:2rem">
+    <Icon name="check-circle" />
+  </span>;
+  ```
+
+  The generated file calls `createNamedIcon(REGISTRY)`, so `keyof typeof
+REGISTRY` IS the type surface — zero per-app wiring. It writes a **real file**
+  (not a virtual module) deliberately: the published `@pyreon/zero` can't
+  `import` a plugin virtual module (Rolldown resolves static imports before
+  plugin `resolveId` — the same constraint that makes islands need
+  `hydrateIslandsAuto(registry)` with an explicit import).
+
+  Two render modes per the colorful-vs-system split:
+
+  - `mode: 'inline'` (default) — **system icons**. Each svg inlined as `?raw`
+    markup via `Icon`; `currentColor`-themeable, recolor via CSS `color`.
+  - `mode: 'image'` — **colorful / brand icons**. Each svg emitted as a static
+    asset, rendered `<img>`. NO mutation, original colors preserved.
+
+  `createNamedIcon<R>(registry, { mode? })` is the exported runtime half (typed
+  by `keyof R`) — normally called by the generated file, callable directly for a
+  hand-maintained set. New exports: `iconsPlugin`, `iconNameFromFile`,
+  `scanIconDir`, `generateIconSetSource`, `IconsPluginConfig` (server entry);
+  `createNamedIcon`, `IconMode`, `NamedIconProps` (client entry). Builds on the
+  `Icon` / `createIcon` leaf; backward-compatible, no existing API changed.
+
+  **Not in this PR (explicit follow-up):** named multi-sets (per-set typed
+  `<UiIcon>` / `<BrandIcon>`, no `IconName` clash) + monorepo package-sourced
+  sets + copy-to-public for `mode: 'image'` assets.
+
+  Verification: pure scanner/generator unit tests
+  (`src/tests/icons-plugin.test.ts` — `iconNameFromFile` kebab cases,
+  `scanIconDir` filter/sort/missing-dir, `generateIconSetSource` inline vs image
+
+  - binding-collision guard + empty set) and real-`h()` happy-dom mount tests for
+    `createNamedIcon` both modes (`src/tests/icon.test.ts`); manifest entries
+    (`iconsPlugin`, `createNamedIcon`) + regenerated MCP api-reference; snapshot
+    count 27 → 29.
+
+### Patch Changes
+
+- [#612](https://github.com/pyreon/pyreon/pull/612) [`c3d0a70`](https://github.com/pyreon/pyreon/commit/c3d0a7017ed2ef4468ec3fb4e4c09ec869d2917a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Security / memory-leak / correctness hardening sweep across core, fundamentals, and zero. 12 source-grounded defects fixed; every fix has a bisect-verified regression test (revert → fail → restore → pass).
+
+  **Security (prototype pollution / XSS / DoS)**
+
+  - `@pyreon/reactivity` `reconcile()` + `createStore` set trap — a documented "apply an untrusted API response into a store" path (`reconcile(JSON.parse(body), store)`) had no `__proto__`/`constructor`/`prototype` guard. Added on both the write and stale-key-removal passes + defense-in-depth in the proxy set trap.
+  - `@pyreon/i18n` `addMessages` — `nestFlatKeys` (dotted-key expansion) ran BEFORE `deepMerge`, so deepMerge's own pollution filter never saw the dotted form; `__proto__.x` walked into `Object.prototype` and wrote onto it. Message JSON is routinely CDN/community-sourced. Guarded.
+  - `@pyreon/document` HTML renderer — `language` was interpolated raw into `<html lang="…">` and `styleStr` emitted string values raw into `style="…"`; a CMS/author-supplied value containing `"><script>` broke out → stored XSS. `lang` is now charset-restricted + escaped; style values route through the renderer's existing `sanitizeCss`.
+  - `@pyreon/zero` rate-limit — `MAX_STORE_SIZE` was a declared-but-unenforced constant; the cleanup only evicted EXPIRED entries, so a flood of unique keys within one window (spoofable `X-Forwarded-For`) grew the Map unbounded — an unauthenticated memory-exhaustion DoS. Added a hard cap with oldest-first eviction (mirrors the ISR cache's proven `set()`).
+  - `@pyreon/zero` ISR — the cache stored ANY response and replayed it as a 200 for the whole revalidate window: a transient 5xx/3xx became a self-inflicted outage, and a `Set-Cookie` response was replayed cross-user. Now only 2xx, cookie-free responses are cached; everything else passes through verbatim with its original status (`x-isr-cache: BYPASS`).
+  - `@pyreon/server` `prerender` + `@pyreon/zero` SSG plugin (3 sites) — the path-traversal guard used a bare `startsWith(resolve(outDir))` (string-prefix, not path containment): a `getStaticPaths` slug resolving to the SIBLING `dist-evil/` passed and wrote outside the output root. Now separator-terminated containment (`isInsideDist`).
+  - `@pyreon/zero` API-route matcher — dangerous param names from the route pattern guarded (defense-in-depth; consistent with the reconcile / i18n guards).
+
+  **Memory leaks**
+
+  - `@pyreon/reactivity` `signal._d` — direct-updater disposal nulled an array slot but never compacted, so a long-lived signal (theme/locale/auth, or signals read in `<For>` rows) bound by churning components accumulated one permanent dead slot per ever-mounted binding — an app-lifetime leak that ALSO degraded the signal-write hot path (`notifyDirect` iterated O(total-ever), not O(live)). Switched to a `Set` (same as `_s`): O(1) disposal, O(live) iteration, bounded growth. Proven structurally — `_d.size` stays 0 after 10 000 register/dispose cycles.
+  - `@pyreon/dnd` `useSortable` — `itemRef` pushed every pdnd registration onto a shared array and the unmount (`ref(null)`) branch was a no-op, so a churning `<For>` sortable (todo list / kanban — the documented usage) leaked every removed item's draggable/dropTarget registration until the whole sortable unmounted. Now per-key disposal on unmount and re-register.
+  - `@pyreon/zero` ISR — a hung revalidation handler pinned its key in the in-flight set forever (`finally` never ran), so the entry could never recover from stale. Background revalidation is now timeout-bounded (`ISRConfig.revalidateTimeoutMs`, default 30 s).
+
+  **Correctness / silent-failure**
+
+  - `@pyreon/router` `stringifyLoaderData` — the cycle detector used an all-seen `WeakSet` that was never pruned, so a shared (DAG) reference — extremely common, e.g. `{ author: user, lastEditor: user }` from an ORM — falsely threw "circular reference" and 500'd the SSR response. Replaced with true ancestor-path detection (the original code's own comment anticipated exactly this remedy). **Behaviour change (bug fix, strictly more permissive):** payloads that previously 500'd now serialize; real cycles still throw.
+  - `@pyreon/server` `processTemplate` — used `String.prototype.replace` with string replacements, so rendered HTML containing literal `$&` / `$$` / `` $` `` / `$'` (prices, code, math) was corrupted by regex-pattern substitution. Switched to function replacements.
+  - `@pyreon/i18n` `interpolate` — a serialization failure (circular value, throwing `toString`) was swallowed silently, rendering `{{key}}` to end users with no signal. Now dev-warns (fallback behaviour unchanged).
+  - `@pyreon/query` `useSSE` — the reactive effect unconditionally reset `intentionalClose = false`, so an explicit `close()` was silently overridden by any later reactive `url`/`enabled` change. Now respects `intentionalClose` (mirrors `useSubscription`); `reconnect()` is the explicit resume.
+
+  **Disclosures (honest scope)**
+
+  - **An attempted SWR-swallow fix (surface the empty `.catch` via `__DEV__` warn + `_onError`) was REVERTED from this PR.** Probing empirically proved `revalidateSwrLoaders` is invoked **0 times** even by the canonical `staleWhileRevalidate` nav pattern: `resolveRoute` returns fresh `RouteRecord` objects per resolution, so `runLoaders`' `r.staleWhileRevalidate && router._loaderData.has(r)` gate is never true across navigations — the SWR branch is **dead code**, and the existing "revalidates in background" test's count actually comes from the blocking path running twice. Adding error-surfacing to provably-unreachable code is not hardening (and it dropped router coverage). **The real bug — `staleWhileRevalidate` is effectively non-functional for the nav-away/back case (record-identity-keyed gate)** — is a distinct, significant finding whose correct fix (key the gate by a stable path/loaderKey) is a non-trivial router behaviour change deserving its own focused, aligned PR. Documented in `router/src/tests/loader.test.ts` as a flagged follow-up; deliberately not bundled here (scope/risk).
+  - One audit finding (`decodeKeyFromMarker`) was investigated and **dropped as a false positive** — `%2D` never appears in `encodeURIComponent` output, so the manual substitution is uniquely reversible.
+  - Z5 (API-route param guard) is defense-in-depth: a string param value assigned to `__proto__` is a silent JS no-op (not exploitable); the guard prevents the real own-prop shadow for `constructor`/`prototype` and matches the repo-wide convention.
+
+  Validation: lint 0 errors; typecheck clean (8 touched packages); gen-docs in sync; audit-types `--all --strict` 0 HIGH; bundle-budgets 54/54 within budget. Per-package suites all green (reactivity 294, router 520, server 78, i18n 155, document 269, dnd 111, query 151, zero 884).
+
+- [#641](https://github.com/pyreon/pyreon/pull/641) [`078b1e7`](https://github.com/pyreon/pyreon/commit/078b1e72343828b2d73f97c03e0b5b0f335fe979) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Repo sweep: duplication removal + two SSG correctness/robustness fixes.
+
+  **`@pyreon/document` — duplication removal (behaviour-preserving).**
+
+  - `getTextContent` (recursive node-tree → text flatten) was copy-pasted **byte-identically into 13 of the 18 renderers** (svg/pdf/pptx/xlsx/docx + every chat target). Consolidated into the package's `nodes.ts` as the single source of truth; the 13 copies replaced with an import. (text/markdown/html deliberately walk the tree differently and were left untouched.)
+  - The HTML/XML escape function (`& < > "`) was copy-pasted **4×** under three names (`escapeHtml`/`escapeXml`/`esc`) into html/svg/email/telegram. Consolidated into `sanitize.ts` as `escapeXml`; renderers import it (aliased to their local names — zero call-site churn). The intentionally-distinct escapes (csv quoting, runtime-server's 5-char+perf-counter variant, the standalone compiler escapes) were correctly left alone — different algorithm/layer.
+  - Net: ~80 LOC of true duplication removed, no API/behaviour change. Proven by the full `@pyreon/document` suite (441/441) — the per-renderer text/escape tests exercise the consolidated path; identical-body removal verified by `diff` (0 lines).
+
+  **`@pyreon/zero` — sitemap duplicate `<url>` (correctness bug).** `generateSitemap` built `allPaths = [...routeScan, ...additionalPaths]` with **no dedup**. The i18n cluster path dedups via `byUnPrefixed`, but the non-i18n branch is a raw 1:1 map — so a static route present in BOTH the route scan AND `additionalPaths` (routine: SSG-emitted paths merged via `seoPlugin`) emitted a **duplicate `<url>`/`<loc>`**. (The nearby "merge dedups" comment was itself inaccurate — that merge is a plain spread.) Now deduped by path (first-wins, order-preserving) at the single source, covering both branches. Regression test: a path in both inputs → exactly one `<loc>`, `<url>` count correct. Bisect-verified.
+
+  **`@pyreon/zero` — SSG path-escape + duplicate-path robustness (edge cases).**
+
+  - `expandUrlPattern` substituted `getStaticPaths` param values verbatim into what becomes a `dist/<path>/index.html` write target. An unsanitized CMS slug containing `/` (in a single non-catch-all `:slug`) or `.`/`..` traversal segments would escape the intended structure. Now rejected with a clear error (catch-all `:rest*` still spans segments but still rejects `.`/`..`). Bisect-verified.
+  - `autoDetectStaticPaths` had no dedup — a `getStaticPaths` returning a duplicate slug (CMS dup, pagination overlap) or i18n fan-out collision rendered the same `dist/<path>/index.html` twice (wasted work + last-write race) and fed a duplicate into the SSG→sitemap merge. Now order-preserving deduped. Bisect-verified.
+
+  Validation: lint 0 errors; typecheck clean (document + zero); `bun run coverage` exit 0 (document 94.27 %, zero 89.24 %, all thresholds met); `verify-modes` 16/16 (all SSG cells incl. `cpa-pw-blog × ssg` which exercises `getStaticPaths` dynamic-slug enumeration end-to-end through the changed path); zero suites seo 40/40 + ssg-plugin 111/111; document 441/441.
+
+  **Deferred (own focused PRs — analysis preserved):** router `findNotFoundFallback` cache — my earlier "just add a WeakMap" estimate was WRONG; its result depends on `urlPath` (not a pure fn of `routes`), so a correct cache needs an enumerate-candidates / pick-by-urlPath refactor, too risky for a sweep. `react-compat`/`preact-compat` `shallowEqual` + React-attr-mapping duplication → core consolidation (medium-risk cross-package). The [#626](https://github.com/pyreon/pyreon/issues/626)-documented styler `insertCache`/DOM-rule unbounded growth + `internElementBundle` css-prop. No new memory leak found this round (prior sweeps already fixed signal.\_d / computed.direct / useSortable / ISR).
+
+- [#596](https://github.com/pyreon/pyreon/pull/596) [`e8e95bc`](https://github.com/pyreon/pyreon/commit/e8e95bc2d6785d397f4b8f85039ce76c2a7f6cea) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Component-level HMR for zero/router apps — editing a route/page component now updates the DOM in place without a manual refresh, preserving module-scope signal state.
+
+  Previously `@pyreon/vite-plugin`'s `injectHmr` emitted a bare `import.meta.hot.accept()` (no callback): Vite re-evaluated the edited module but nothing re-rendered the mounted tree, and the self-accept suppressed Vite's full-reload fallback — so every component/JSX edit produced a silently-stale UI until a manual browser refresh.
+
+  Now the accept callback hands the fresh module to `globalThis.__pyreon_hmr_swap__` (registered by `@pyreon/router` in a dev browser, zero import coupling). The coordinator finds every active matched lazy route whose `_hmrId` matches (emitted by `@pyreon/zero`'s fs-router as `lazy(() => import(…), { hmrId })`), swaps the component, and bumps the loading signal so `RouterView` re-renders only that subtree in place — no page reload, so module-scope signals keep their values via the existing `__pyreon_hmr_registry__`. Edits outside the active route tree (nested components, unrelated routes, signal-only modules) or apps without the coordinator fall back to `import.meta.hot.invalidate()` → an automatic full reload (still no manual refresh). Production is unaffected (dev+browser gated).
+
+- Updated dependencies [[`c3d0a70`](https://github.com/pyreon/pyreon/commit/c3d0a7017ed2ef4468ec3fb4e4c09ec869d2917a), [`ecd8e52`](https://github.com/pyreon/pyreon/commit/ecd8e526943a1e6b07957ff96f4410fa482baa0d), [`ac1d375`](https://github.com/pyreon/pyreon/commit/ac1d37542b11cd95451a2f0b0a51cc43603d001a), [`21e465c`](https://github.com/pyreon/pyreon/commit/21e465c7957c3e57c838af58ffa995682908c5f8), [`c4b6e9a`](https://github.com/pyreon/pyreon/commit/c4b6e9a5850196171c2197fc918163f736708aa8), [`fb40906`](https://github.com/pyreon/pyreon/commit/fb409066e49e44c42f77084a92a68103a4e6c5ef), [`b4de7e0`](https://github.com/pyreon/pyreon/commit/b4de7e0f0eb9134325eb6d87db6250064a494d51), [`8e4b607`](https://github.com/pyreon/pyreon/commit/8e4b607b01c6399153bd504f1411f213db987a9a), [`7150368`](https://github.com/pyreon/pyreon/commit/7150368f85daa783e55f05541d0c45356c13b00d), [`9f03747`](https://github.com/pyreon/pyreon/commit/9f037478763d9f8cd2365feb63dc87fda2545e5d), [`3374150`](https://github.com/pyreon/pyreon/commit/33741500499dfb487d031bbffe77723d74b8f261), [`8a300bf`](https://github.com/pyreon/pyreon/commit/8a300bf0e6fe7532bb6ae4670a8d64258d64e25f), [`fa4e37f`](https://github.com/pyreon/pyreon/commit/fa4e37fa620cf0e3f240053bf789b84bd9668838), [`2ee82eb`](https://github.com/pyreon/pyreon/commit/2ee82eb340c515c16aaa7a652ffc5b0c97b59ed6), [`4f410b6`](https://github.com/pyreon/pyreon/commit/4f410b6403ce1c033f049aa6cd2700f64193b2d1), [`e8e95bc`](https://github.com/pyreon/pyreon/commit/e8e95bc2d6785d397f4b8f85039ce76c2a7f6cea)]:
+  - @pyreon/reactivity@0.19.0
+  - @pyreon/router@0.19.0
+  - @pyreon/server@0.19.0
+  - @pyreon/core@0.19.0
+  - @pyreon/head@0.19.0
+  - @pyreon/runtime-server@0.19.0
+  - @pyreon/vite-plugin@0.19.0
+  - @pyreon/runtime-dom@0.19.0
+  - @pyreon/meta@0.19.0
+
 ## 0.18.0
 
 ### Patch Changes

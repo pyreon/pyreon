@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/permissions",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "description": "Reactive permissions for Pyreon — type-safe, signal-driven, universal",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/permissions#readme",
   "bugs": {

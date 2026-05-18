@@ -1,5 +1,18 @@
 # @pyreon/document-primitives
 
+## 0.19.0
+
+### Patch Changes
+
+- Updated dependencies [[`c3d0a70`](https://github.com/pyreon/pyreon/commit/c3d0a7017ed2ef4468ec3fb4e4c09ec869d2917a), [`ac1d375`](https://github.com/pyreon/pyreon/commit/ac1d37542b11cd95451a2f0b0a51cc43603d001a), [`21e465c`](https://github.com/pyreon/pyreon/commit/21e465c7957c3e57c838af58ffa995682908c5f8), [`29788dc`](https://github.com/pyreon/pyreon/commit/29788dc7ae5a52daab204b6205fe39f56703d980), [`9f03747`](https://github.com/pyreon/pyreon/commit/9f037478763d9f8cd2365feb63dc87fda2545e5d), [`078b1e7`](https://github.com/pyreon/pyreon/commit/078b1e72343828b2d73f97c03e0b5b0f335fe979), [`fa4e37f`](https://github.com/pyreon/pyreon/commit/fa4e37fa620cf0e3f240053bf789b84bd9668838), [`5431467`](https://github.com/pyreon/pyreon/commit/5431467ac41ccd1374359120b3e71f4af5d6745e)]:
+  - @pyreon/document@0.19.0
+  - @pyreon/core@0.19.0
+  - @pyreon/styler@0.19.0
+  - @pyreon/ui-core@0.19.0
+  - @pyreon/elements@0.19.0
+  - @pyreon/connector-document@0.19.0
+  - @pyreon/rocketstyle@0.19.0
+
 ## 0.18.0
 
 ### Patch Changes

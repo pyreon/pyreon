@@ -1,5 +1,91 @@
 # @pyreon/head
 
+## 0.19.0
+
+### Minor Changes
+
+- [#643](https://github.com/pyreon/pyreon/pull/643) [`b4de7e0`](https://github.com/pyreon/pyreon/commit/b4de7e0f0eb9134325eb6d87db6250064a494d51) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `useHead({ speculationRules })` — declarative Speculation Rules support (E12).
+
+  **Origin: the Qwik architecture analysis.** A deep Pyreon-vs-Qwik review concluded the famous "resumability / zero-JS-for-free" thesis was already measured-and-shelved here (the Tier-2 spike: ~28% ceiling, depth-invariant, demo-vs-prod 38× variance — see `SPIKE.md` on `spike/tier2-resumability`). Decomposing Qwik into its separable ideas, **exactly one** cleared the "worth implementing" bar: native speculative loading (Q4) — and `@pyreon/head` already emits `<script>` tags with a body, so it collapses to a thin, idiomatic helper that mirrors the existing `jsonLd` convenience line-for-line. The resumability spike itself was NOT re-run (it would contradict its own measured verdict); the dead bytes thesis was NOT touched.
+
+  **What this adds.** A new opt-in `speculationRules?: SpeculationRules` field on `UseHeadInput` (plus exported `SpeculationRules` / `SpeculationRule` / `SpeculationEagerness` types). It auto-wraps the object as a single `<script type="speculationrules">` tag — supported browsers prefetch or fully prerender the next document(s) for near-instant navigation; unsupported browsers ignore it (no polyfill). Both `source: 'list'` (explicit URLs) and `source: 'document'` (CSS-selector predicate — the Qwik "prefetch by intent" shape) are typed. **Zero runtime JS, opt-in (nothing emitted unless called), SSR + client for free** (rides the existing head pipeline, including its `</script>`-breakout escaper), deduplicated by a single key. No default behavior change.
+
+  **Run as a bounded spike with kill-criteria fixed first** (the codebase's own Tier-2 methodology), shipped only because both load-bearing criteria passed:
+
+  1. **Correctness & SSR-safety — ✅ 0 defects.** 7 unit specs: SSR single-block emission + valid-JSON round-trip, CSR `document.head` sync, key dedup (innermost wins, never two blocks), reactive regen on signal change, `document`-source predicate round-trip, opt-in absence, and XSS-safety (`/x</script><b>pwn` URL → escaped, JSON still parses back to the original).
+  2. **Real-Chromium browser acceptance — ✅.** A `*.browser.test.tsx` spec asserts in real Chromium: the script lands in `<head>`, `HTMLScriptElement.type === 'speculationrules'`, the body is valid JSON that round-trips, and Chromium raises **zero** speculation-rules parse errors. (Whether Chromium then prefetches/prerenders is browser-discretionary + headless-flag-dependent and is **intentionally not asserted** — the framework's contract is "emit a correct, valid declarative hint", same as `<link rel=prefetch>`. The docs + manifest mistakes state this explicitly; no measured-TTI claim is made.)
+  3. **Net value over existing prefetch — qualitatively yes, honestly framed.** `RouterLink prefetch=intent` warms loader _data_ for in-app client-side nav; Speculation Rules warm the _document_ at the platform level for full navigations — a strictly additional, complementary capability the framework didn't expose. Not overclaimed as a guaranteed perf win.
+
+  **Validation.** `@pyreon/head`: 107 unit + 10 real-Chromium browser tests pass (+7/+1 new). Typecheck clean (head + mcp). `bun run lint` 0 errors. `gen-docs --check` in sync (manifest feature + mistakes added; `api-reference.ts` head region regenerated → the `@pyreon/mcp` patch). `@pyreon/mcp` 497 tests pass. Docs surfaces updated in-PR: `manifest.ts`, `docs/docs/head.md` (intro + `UseHeadInput` interface + a new `## Speculation Rules` section with the honest hint-not-guarantee framing), `index.ts` type exports. No new anti-pattern or lint rule discovered (the hint-not-guarantee caveat is documented as a manifest `mistakes[]` entry).
+
+  No bug fixed → the bisect-verify mandate (revert fix → assert failure) does not apply; this is a new additive capability, stated plainly rather than fabricating a regression.
+
+### Patch Changes
+
+- [#630](https://github.com/pyreon/pyreon/pull/630) [`21e465c`](https://github.com/pyreon/pyreon/commit/21e465c7957c3e57c838af58ffa995682908c5f8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix: make `pyreon doctor` objective + close the real first-party findings it then surfaced
+
+  `pyreon doctor` reported a meaningless **F (score 55, 987 errors)** because
+  its `lint` / `react-patterns` / `pyreon-patterns` gates scanned the WHOLE
+  repo: example apps (intentionally framework-idiomatic, incl. react-compat
+  demos), `e2e/`/`docs/`/`scripts/`, detector test-fixtures (which
+  _deliberately_ contain anti-patterns so the detectors can be tested), and
+  the `*-compat` packages (whose public API IS React/Vue/etc. by design).
+  ~705/987 errors were examples + fixtures; the rest a never-CI-enforced
+  advisory backlog or by-design.
+
+  **Objectivity (the deliverable):** the three gates now audit ONLY
+  first-party published source — `packages/<cat>/<pkg>/src/**`, excluding
+  tests/fixtures/`.d.ts` — via pure, unit-tested predicates
+  (`isFirstPartySourceFile` / `isCompatPackageFile`); `react-patterns`
+  additionally skips `*-compat` src (a React-API shim containing `useState`
+  is a definitional false positive). Errors **987 → 86**.
+
+  **Detector precision (false positives are the antithesis of objective):**
+
+  - `@pyreon/compiler` `dot-value-signal`: now requires the receiver to be a
+    tracked signal binding — no longer flags `input.value` / `cell.value` /
+    `o.value` (17 FPs; bisect-verified).
+  - `@pyreon/lint` `no-window-in-ssr`: recognizes field-captured typeof
+    (`this.isSSR = typeof document === 'undefined'`) and function-head
+    early-return guards covering nested closures (bisect-verified).
+  - `@pyreon/lint` `no-bare-signal-in-jsx`: now supports `exemptPaths`
+    (consistent with the other exemptable rules) — render-function
+    primitives read signals in JSX _attribute_ positions which the compiler
+    `_rp()`-wraps; the text-position heuristic over-fired there.
+
+  **Genuine first-party SSR bugs fixed** (the rule correctly did NOT silence
+  these — cross-function/method guards aren't lexically traceable):
+
+  - `@pyreon/head` `createNewTag` — added `typeof document` guard.
+  - `@pyreon/styler` `Sheet.mount()` — in-method `if (this.isSSR) return`.
+  - `@pyreon/hotkeys` `detachListener` — `typeof window` guard.
+  - `@pyreon/flow` flow-component — guarded `new ResizeObserver` with
+    `typeof ResizeObserver === 'function'`.
+  - `@pyreon/core` lifecycle — renamed a local `location` shadowing the
+    browser global (hygiene; also removed an SSR-analysis false positive).
+
+  **Curated `.pyreonlintrc.json`** exemptions (with rationale) for
+  genuinely-non-SSR-runtime surfaces: `@pyreon/compiler` (build-time Node)
+  and `*-compat` (DOM-runtime framework adapters, consistent with the
+  existing `runtime-dom` exemption) for `no-window-in-ssr`; `*-compat` for
+  `dev-guard-warnings` (intentional user-facing "[Pyreon] X not supported"
+  guidance that must reach prod).
+
+  **Result: errors 987 → 1.** The single remaining `no-window-in-ssr` in
+  `@pyreon/ui-core` (`_isBrowser && matchMedia(...)`) is provably SSR-safe
+  (short-circuit; `_isBrowser` is a `typeof`-AND const) — a documented
+  known rule-precision limitation, left visible (NOT exempted: silencing it
+  would hide future _real_ ui-core SSR bugs — anti-objective).
+
+  Verified: 8 touched packages, 3091 unit tests pass; typecheck clean;
+  full-repo `oxlint` 0 errors; e2e 127 specs pass (default 92 +
+  ui-regression 26 + app-showcase 9); each detector change bisect-verified.
+
+- Updated dependencies [[`c3d0a70`](https://github.com/pyreon/pyreon/commit/c3d0a7017ed2ef4468ec3fb4e4c09ec869d2917a), [`ecd8e52`](https://github.com/pyreon/pyreon/commit/ecd8e526943a1e6b07957ff96f4410fa482baa0d), [`ac1d375`](https://github.com/pyreon/pyreon/commit/ac1d37542b11cd95451a2f0b0a51cc43603d001a), [`21e465c`](https://github.com/pyreon/pyreon/commit/21e465c7957c3e57c838af58ffa995682908c5f8), [`c4b6e9a`](https://github.com/pyreon/pyreon/commit/c4b6e9a5850196171c2197fc918163f736708aa8), [`fb40906`](https://github.com/pyreon/pyreon/commit/fb409066e49e44c42f77084a92a68103a4e6c5ef), [`9f03747`](https://github.com/pyreon/pyreon/commit/9f037478763d9f8cd2365feb63dc87fda2545e5d), [`3374150`](https://github.com/pyreon/pyreon/commit/33741500499dfb487d031bbffe77723d74b8f261), [`8a300bf`](https://github.com/pyreon/pyreon/commit/8a300bf0e6fe7532bb6ae4670a8d64258d64e25f), [`fa4e37f`](https://github.com/pyreon/pyreon/commit/fa4e37fa620cf0e3f240053bf789b84bd9668838)]:
+  - @pyreon/reactivity@0.19.0
+  - @pyreon/core@0.19.0
+  - @pyreon/runtime-server@0.19.0
+
 ## 0.18.0
 
 ### Patch Changes

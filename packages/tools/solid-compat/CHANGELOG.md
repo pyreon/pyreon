@@ -1,5 +1,56 @@
 # @pyreon/solid-compat
 
+## 0.19.0
+
+### Minor Changes
+
+- [#619](https://github.com/pyreon/pyreon/pull/619) [`399ac5c`](https://github.com/pyreon/pyreon/commit/399ac5c11f9a787ed6af1a94df3720cd241c06fa) Thanks [@vitbokisch](https://github.com/vitbokisch)! - compat: close genuine missing-by-omission public APIs (near-full parity)
+
+  Audited the four compat layers (unit 770 → 804, browser smoke 4/4, e2e
+  compat-layers 12/12 all green). Added the commonly-used public APIs that
+  were missing by omission (not the intentional documented limitations like
+  React class setState or Vue Options API):
+
+  - **react-compat**: `useOptimistic` (React 19) — passthrough reduced
+    through pending optimistic actions; overlay clears when `passthrough`
+    changes (the non-concurrent-mode equivalent of React discarding
+    optimistic state when the action settles).
+  - **vue-compat**: `Transition`, `TransitionGroup` (← @pyreon/runtime-dom),
+    `Suspense` (← @pyreon/core), `getCurrentInstance`, `useSlots`,
+    `useAttrs`; `KeepAlive` upgraded from a no-op stub to wrap the real
+    @pyreon/runtime-dom `KeepAlive`.
+  - **solid-compat**: `Dynamic`, `Portal` (← @pyreon/core), `render` /
+    `hydrate` (← @pyreon/runtime-dom mount/hydrateRoot), `MountableElement`.
+
+  All additions map onto existing Pyreon primitives (no new deps), ship
+  with JSDoc `@example` + tests, and honestly document their compat
+  limitations in the JSDoc and docs pages. Backward-compatible.
+
+- [#625](https://github.com/pyreon/pyreon/pull/625) [`de05746`](https://github.com/pyreon/pyreon/commit/de05746863646359c223d8f8e604077da79e159b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - compat: close the cleanly-fixable fidelity gaps ([#619](https://github.com/pyreon/pyreon/issues/619) follow-up)
+
+  The partial-fidelity shims from [#619](https://github.com/pyreon/pyreon/issues/619) that COULD be faithfully implemented
+  are now real (the rest stay honestly documented as architectural limits):
+
+  - **solid-compat `Portal`**: `useShadow` → dedicated `<div>` host + open
+    shadow root; `isSVG` → SVG-namespaced `<g>` host; children render into
+    the host; host removed on unmount via `onCleanup` (no detached-host
+    leak). No `@pyreon/core` change.
+  - **vue-compat `useAttrs()` / `getCurrentInstance().attrs`**: now compute
+    the Vue declared-vs-fallthrough split when `defineComponent({ props })`
+    is used; full props object only when no props were declared.
+  - **vue-compat `getCurrentInstance().emit`**: now provided — invokes the
+    matching `on{Event}` prop handler.
+
+  Backward-compatible. Verified: unit 804 → 811, solid browser 2 → 4,
+  e2e compat-layers 12/12, typecheck clean.
+
+### Patch Changes
+
+- Updated dependencies [[`c3d0a70`](https://github.com/pyreon/pyreon/commit/c3d0a7017ed2ef4468ec3fb4e4c09ec869d2917a), [`ecd8e52`](https://github.com/pyreon/pyreon/commit/ecd8e526943a1e6b07957ff96f4410fa482baa0d), [`ac1d375`](https://github.com/pyreon/pyreon/commit/ac1d37542b11cd95451a2f0b0a51cc43603d001a), [`21e465c`](https://github.com/pyreon/pyreon/commit/21e465c7957c3e57c838af58ffa995682908c5f8), [`c4b6e9a`](https://github.com/pyreon/pyreon/commit/c4b6e9a5850196171c2197fc918163f736708aa8), [`fb40906`](https://github.com/pyreon/pyreon/commit/fb409066e49e44c42f77084a92a68103a4e6c5ef), [`9f03747`](https://github.com/pyreon/pyreon/commit/9f037478763d9f8cd2365feb63dc87fda2545e5d), [`3374150`](https://github.com/pyreon/pyreon/commit/33741500499dfb487d031bbffe77723d74b8f261), [`fa4e37f`](https://github.com/pyreon/pyreon/commit/fa4e37fa620cf0e3f240053bf789b84bd9668838)]:
+  - @pyreon/reactivity@0.19.0
+  - @pyreon/core@0.19.0
+  - @pyreon/runtime-dom@0.19.0
+
 ## 0.18.0
 
 ### Patch Changes
