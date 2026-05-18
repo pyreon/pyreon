@@ -635,6 +635,75 @@ Pure static call detection: 40+ functions treated as pure (Math._, JSON._, Objec
 Spread props on root element: when a root element has `{...props}`, emit `_tpl()` + `_applyProps()` instead of falling back to `h()` calls.
 Reactive props inlining: the compiler auto-detects `const` variables derived from `props.*` or `splitProps` results and inlines them at JSX use sites. `const x = props.y ?? 'default'; return <div>{x}</div>` compiles to `_bind(() => { t.data = (props.y ?? 'default') })` — fully reactive. Transitive resolution is fully AST-based: `collect_prop_derived_idents` walks `IdentifierReference` nodes in the expression subtree (never string-scans source text). `const a = props.x; const b = a + 1` inlines `b` as `((props.x) + 1)`. Only `const` is tracked (`let`/`var` are mutable, unsafe to inline). Non-JSX usage (e.g., `console.log(x)`) stays static (uses captured value). **Circular references are safe**: cycle detection via `resolving` set breaks infinite recursion, leaving the cyclic identifier as-is (falls back to captured const value at runtime).
 
+### Compile-time rocketstyle collapse (opt-in — `pyreon({ collapse: true })`)
+
+P0's vertical slice — shipped. A literal-prop rocketstyle call site
+(`<Button state="primary" size="medium">Save</Button>` — every dimension
+prop a string literal, no spread, static-text children) collapses from a
+5-layer wrapper mount (rocketstyle → attrs HOC → Element → Wrapper →
+styled) into ONE `_rsCollapse` cloneNode. E2 measured **44× wall-clock**,
+`mountChild` 9→1, `styler.resolve` 22→0. **OFF by default** (zero
+behaviour change); enable with `pyreon({ collapse: true })` or
+`pyreon({ collapse: { sources, components, provider, theme, mode } })`.
+
+**How it works (parity by construction — no chain reimplementation):**
+
+- **Resolve** (`@pyreon/vite-plugin:createCollapseResolver`): ONE
+  programmatic Vite-SSR server bound to the consumer's OWN `vite.config`
+  renders the REAL component twice (`<Provider mode="light">` /
+  `"dark"`), captures the root `class` per mode + the styler rule text
+  via `sheet.getStyleRules()`, strips the root class → a `_tpl` template.
+  Because it's the same `renderToString` + `@pyreon/styler` code path the
+  app uses (styler's FNV-1a class hash is identical SSR vs DOM — its
+  hydration contract), the resolved class is byte-for-byte the
+  client-mounted class. Memoised; `closeBundle` disposes the server.
+  Generalises beyond app-local — works cross-package too (the RFC's
+  "sidecar manifest" deferral proved unnecessary).
+- **Scan + detect** (`@pyreon/compiler:scanCollapsibleSites` +
+  `tryRocketstyleCollapse`): a SINGLE shared `detectCollapsibleShape`
+  bail catalogue used by BOTH the plugin scan (what to resolve) and the
+  compiler emit (what to collapse) — keys cannot drift.
+  `rocketstyleCollapseKey(localName, props, childrenText)` is the
+  canonical, order-independent key both sides compute. Bail (keep the
+  normal mount) on: any non-literal/`{expr}`/signal dimension prop,
+  `{...spread}`, element/expression children, non-candidate component,
+  or an unresolved key. Conservative — uncertain ⇒ no collapse.
+- **Emit** (`TransformOptions.collapseRocketstyle`, JS-path-forced — the
+  Rust binary doesn't implement it, so `transformJSX` short-circuits to
+  `transformJSX_JS` when the option is set): replaces the JSX with
+  `__rsCollapse(<templateHtml>, <lightClass>, <darkClass>, () =>
+  __pyrMode() === "dark")` + a once-per-module idempotent
+  `__rsSheet.injectRules(<rules>, <ruleKey>)` (RFC decision 1 dual-emit;
+  decision 4 hoisted `_tpl`). Only the CLIENT graph collapses — the SSR
+  graph keeps the real mount (renderToString needs the VNode tree, and
+  the resolver itself SSR-renders).
+- **Runtime** (`@pyreon/runtime-dom:_rsCollapse`): one html-keyed `_tpl`
+  cloneNode (shared parsed template across N mounts) whose class is
+  reactively bound to the live mode accessor — a mode swap re-runs ONLY
+  the className assignment on the SAME node (no remount). The styler
+  injection is the emitted code's job (`@pyreon/styler:injectRules` —
+  raw pre-resolved rule text, idempotent by key, NO re-hash since the
+  class is already baked into the template); `runtime-dom` stays
+  layer-pure (never imports styler/ui-core).
+
+**Proven:** 5 layers tested — styler `injectRules` (3 browser specs),
+`_rsCollapse` (4 real-Chromium specs: light class, mode-flip-no-remount,
+children dispose, shared template), resolver vs REAL ui-components Button
+via Vite SSR (8 specs incl. determinism + graceful bail), compiler
+detection/emission/bail-catalogue/dedupe (13 specs, bisect-verified:
+disable detection → 4 emission specs fail), end-to-end pipeline (real
+Button → resolver → scanner → compiler emits `__rsCollapse` with the real
+classes byte-for-byte). Additive: all 1079 compiler tests unchanged with
+collapse off. **Deferred follow-ups:** an `examples/ui-showcase`
+build-with-collapse + DOM-parity / perf-counter e2e gate (its Buttons all
+carry `onClick` → correctly bail; needs a literal-prop demo route + a
+verify-modes cell); dev-mode collapse (build-shaped today — dev keeps the
+normal mount, graceful). Reference: `packages/tools/vite-plugin/src/rocketstyle-collapse.ts`,
+`packages/core/compiler/src/jsx.ts` (`scanCollapsibleSites` /
+`tryRocketstyleCollapse` / `rocketstyleCollapseKey`),
+`packages/core/runtime-dom/src/template.ts:_rsCollapse`,
+`packages/ui-system/styler/src/sheet.ts:injectRules`.
+
 ### Reactivity Lens (experimental — surface the compiler's analysis back to the author)
 
 The compiler ALREADY decides per-expression whether code is reactive (`isDynamic`/`shouldWrap`/`unwrapAccessor`'s `isReactive`), emits codegen, and discards the analysis. The Lens pipes that ground truth back to the editor so Pyreon's silent rule — "components run once; reactivity depends on WHERE you read a signal" — becomes **visible at the cursor**. Prevention upstream, not another downstream detector.

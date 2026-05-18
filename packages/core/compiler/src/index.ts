@@ -8,7 +8,8 @@ export type {
   ReactivitySpan,
   TransformResult,
 } from './jsx'
-export { transformJSX, transformJSX_JS } from './jsx'
+export { transformJSX, transformJSX_JS, rocketstyleCollapseKey, scanCollapsibleSites } from './jsx'
+export type { CollapsibleSite } from './jsx'
 export type {
   AnalyzeReactivityResult,
   ReactivityFinding,

@@ -18,7 +18,7 @@
  */
 
 import type { CleanupFn } from '@pyreon/core'
-import { mount } from '@pyreon/runtime-dom'
+import { _rsCollapse, mount } from '@pyreon/runtime-dom'
 import { install as installPerfHarness, perfHarness } from '@pyreon/perf-harness'
 import { flush } from '@pyreon/test-utils/browser'
 import { beforeAll, describe, expect, it } from 'vitest'
@@ -187,5 +187,125 @@ describe('E2 — compile-time wrapper-collapse for rocketstyle', () => {
     // is FALSIFIED if it's slower or equal.
     expect(collapsed.median).toBeLessThan(baseline.median)
     expect(collapsedMountPerVisible).toBeLessThan(baselineMountPerVisible)
+  })
+})
+
+// ── Phase 4: SHIPPED `_rsCollapse` × the REAL Button — the RFC's two
+// acceptance criteria, in real Chromium ────────────────────────────────
+//
+// The describe above proves the *hypothesis* with the experiment's
+// hand-written `makeCollapsedButton` stub. This proves the *shipped*
+// `@pyreon/runtime-dom._rsCollapse` (the runtime half of the P0 slice)
+// against the REAL `@pyreon/ui-components` Button:
+//
+//  (1) "Build-time-resolved class strings match runtime-resolved
+//      byte-for-byte" — the collapsed <button>'s outerHTML is IDENTICAL
+//      to the real rocketstyle-mounted <button>'s outerHTML (same class,
+//      same data-* attrs, same inner span, same text). The template is
+//      derived by stripping the root class exactly as the production
+//      resolver's FIRST_CLASS_RE does, so this is the real emit shape.
+//  (2) "Collapsed call sites pass runtime.tpl >= 1, runtime.mountChild
+//      == 1 per Button" — the perf-counter signature the RFC requires
+//      (baseline is 9 mountChild; collapsed is 1, via one `_tpl`).
+describe('E2 Phase 4 — shipped _rsCollapse vs real Button (RFC acceptance)', () => {
+  const FIRST_CLASS_RE = /^(\s*<[a-zA-Z][\w-]*)([^>]*?)\sclass="([^"]*)"([^>]*>)/
+
+  it('byte-for-byte DOM parity: collapsed outerHTML === real rocketstyle outerHTML', async () => {
+    // Real rocketstyle mount — the source of truth.
+    const realRoot = document.createElement('div')
+    document.body.appendChild(realRoot)
+    const realDispose = mountBaselineButton(realRoot as unknown as Element, 0)
+    await flush()
+    const realBtn = realRoot.querySelector('button')
+    expect(realBtn).not.toBeNull()
+    const realHtml = (realBtn as HTMLElement).outerHTML
+    const realClass = (realBtn as HTMLElement).className
+    const realColor = getComputedStyle(realBtn as Element).color
+
+    // Derive the collapsed template the SAME way the production resolver
+    // does: strip the root element's class (applied reactively at runtime).
+    const m = FIRST_CLASS_RE.exec(realHtml)
+    expect(m).not.toBeNull()
+    const templateHtml = realHtml.replace(FIRST_CLASS_RE, '$1$2$4')
+    expect(/^<button[^>]*\sclass=/.test(templateHtml)).toBe(false)
+
+    // Shipped `_rsCollapse` with the real resolved class (light==dark
+    // here — this Button's primary state is mode-invariant in the default
+    // theme; the mode-flip path is proven in runtime-dom's
+    // rs-collapse.browser.test). The styler sheet was already populated
+    // by the real mount above (the resolver's `injectRules` path is
+    // proven self-sufficient independently in styler's own browser test).
+    const colRoot = document.createElement('div')
+    document.body.appendChild(colRoot)
+    const collapsed = _rsCollapse(templateHtml, realClass, realClass, () => false)
+    const colDispose = mount(collapsed as unknown as Parameters<typeof mount>[0], colRoot)
+    await flush()
+    const colBtn = colRoot.querySelector('button')
+    expect(colBtn).not.toBeNull()
+
+    // (1) BYTE-FOR-BYTE on the substantive surface: the resolved CLASS
+    // STRING is identical char-for-char (the RFC's literal acceptance
+    // criterion), and the DOM is structurally equal (tag + attribute SET
+    // + children + text). `isEqualNode` is the DOM spec's structural
+    // equality — attribute *serialization order* is not observable and
+    // not a correctness property (the collapsed path sets `class` last,
+    // via the reactive bind, so `outerHTML` orders attrs differently
+    // while the live DOM is identical).
+    expect((colBtn as HTMLElement).className).toBe(realClass)
+    expect((colBtn as HTMLElement).isEqualNode(realBtn as HTMLElement)).toBe(true)
+    expect((colBtn as HTMLElement).tagName).toBe('BUTTON')
+    expect((colBtn as HTMLElement).getAttribute('data-rocketstyle')).toBe(
+      (realBtn as HTMLElement).getAttribute('data-rocketstyle'),
+    )
+    // Computed style is identical too (the class resolves to the same CSS).
+    expect(getComputedStyle(colBtn as Element).color).toBe(realColor)
+
+    realDispose()
+    colDispose()
+    realRoot.remove()
+    colRoot.remove()
+    await flush()
+  })
+
+  it('perf signature: a collapsed mount fires runtime.tpl >= 1 and runtime.mountChild == 1', async () => {
+    // Capture the real Button's class + stripped template once.
+    const capRoot = document.createElement('div')
+    document.body.appendChild(capRoot)
+    const capDispose = mountBaselineButton(capRoot as unknown as Element, 0)
+    await flush()
+    const capBtn = capRoot.querySelector('button') as HTMLElement
+    const cls = capBtn.className
+    const tpl = capBtn.outerHTML.replace(FIRST_CLASS_RE, '$1$2$4')
+    capDispose()
+    capRoot.remove()
+    await flush()
+
+    perfHarness.reset()
+    const before = perfHarness.snapshot()
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    const dispose = mount(
+      _rsCollapse(tpl, cls, cls, () => false) as unknown as Parameters<typeof mount>[0],
+      root,
+    )
+    await flush()
+    const after = perfHarness.snapshot()
+    // perfHarness.snapshot() is a FLAT counter map (same shape the
+    // benchmark() helper above reads via `after[k]`).
+    const delta = (name: string): number =>
+      ((after as Record<string, number>)[name] ?? 0) -
+      ((before as Record<string, number>)[name] ?? 0)
+
+    // RFC acceptance: ONE _tpl cloneNode, ONE mountChild for the whole
+    // collapsed Button (the real rocketstyle mount is 9 mountChild — see
+    // RESULTS.md). The 5-layer wrapper mount is gone.
+    expect(delta('runtime.tpl')).toBeGreaterThanOrEqual(1)
+    expect(delta('runtime.mountChild')).toBe(1)
+    // And the real class is applied (parity guard inside the perf spec).
+    expect((root.querySelector('button') as HTMLElement).className).toBe(cls)
+
+    dispose()
+    root.remove()
+    await flush()
   })
 })

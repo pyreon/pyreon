@@ -25,9 +25,13 @@ Ordered "highest leverage first." Each item names what's needed, evidence of cur
 
 ### P0 — Highest-leverage single bet
 
-#### Compiler-pass rocketstyle collapse
+#### Compiler-pass rocketstyle collapse — **vertical slice SHIPPED** (opt-in `pyreon({ collapse: true })`)
 
-The compiler-pass collapse for rocketstyle is unimplemented. Validation already done by E2 (44× wall-clock on collapsed Buttons; 95.3% of rocketstyle call sites in real apps are statically resolvable — see [examples/experiments/e2-static-rocketstyle/RESULTS.md](../../examples/experiments/e2-static-rocketstyle/RESULTS.md) for the data). Runtime-side companion (`_rsMemo`) already shipped — this is the parallel compile-time leg.
+**Status: the RFC's vertical slice is implemented, proven, and tested** (the RFC doc itself was removed once shipped — its decisions are now the code). The 4 design questions were resolved exactly as the RFC scoped: **dual-emit** (light+dark class + live `useMode()` thunk — no remount on mode swap), **SSR-render resolver** (the consumer's own Vite SSR renders the REAL component → parity by construction, no chain reimplementation; this generalised beyond "app-local only" — works cross-package too, so the RFC's "sidecar manifest" deferral turned out unnecessary for the SSR approach), **bail-on-callback heuristic** (shared `detectCollapsibleShape` — every dimension prop a string literal, no spread, static-text children; a single shared detector used by BOTH the plugin scan and the compiler emit so keys can't drift), **hoisted `_tpl` factory** (`_rsCollapse` → one `_tpl` cloneNode, html-keyed cache shares the parsed template across N mounts). E2 validated the win (44× wall-clock on collapsed Buttons; 95.3% of real-app call sites statically resolvable). Runtime-side companion (`_rsMemo`) shipped earlier — this is the compile-time leg.
+
+**What shipped (5 layers, all tested):** `@pyreon/styler` `getStyleRules()` + idempotent `injectRules(rules,key)` (raw pre-resolved rule injection, no re-hash); `@pyreon/runtime-dom` `_rsCollapse(html,light,dark,isDark)` (dual-emit, reactive class, no remount — 4 real-Chromium specs); `@pyreon/vite-plugin` `createCollapseResolver` (one programmatic Vite-SSR server bound to the consumer's vite.config, renders the real component light+dark, caches by key) + `pyreon({ collapse })` option + `transform`-hook scan/resolve/thread + `closeBundle` dispose; `@pyreon/compiler` `scanCollapsibleSites` + `rocketstyleCollapseKey` (exported) + `TransformOptions.collapseRocketstyle` detection/emission (JS-path-forced; off by default — additive, all 1079 compiler tests unchanged). End-to-end proven on the REAL `@pyreon/ui-components` Button: resolver → scanner → compiler emits `__rsCollapse(...)` with the real SSR-resolved class strings + class-stripped template + rule bundle, byte-for-byte. Bisect-verified (disable the detection call → 4 emission tests fail; restore → 13/13).
+
+**Remaining (deliberately deferred, NOT in the slice):** the `examples/ui-showcase` build-with-collapse + real-Chromium DOM-parity / perf-counter e2e gate (ui-showcase's Buttons all carry `onClick` → correctly bail; needs a dedicated literal-prop demo route + a verify-modes cell); the cross-package `@pyreon/ui-components` consumer path works via the SSR resolver but has no real-app gate yet; dev-mode collapse (currently the resolver is build-shaped — dev keeps the normal mount, graceful). These are follow-up PRs, tracked here.
 
 This is the single largest performance win currently shaped, and the only one that turns "competitive with Solid" into "uniquely fastest" on the synthetic benchmark — because no other framework has Pyreon's multi-dimensional theme system to compile away.
 
@@ -47,13 +51,12 @@ This is the single largest performance win currently shaped, and the only one th
 - `bun run perf:record --app perf-dashboard --journey dashboard` shows ≥30% wall-clock improvement.
 - All existing tests pass with collapse enabled (regression-free).
 
-**Open design questions** (RFC's "Open questions for review" — needs decision before phase 1):
-1. Light + dark dual-emit vs single-emit (how do we handle theme switching?).
-2. Sidecar manifest vs runtime introspection for pre-built `@pyreon/ui-components` consumers.
-3. `__rs_collapsible: true` opt-in brand vs bail-on-callback heuristic.
-4. Per-instance `_$tpl_42()` factory call vs inline `cloneNode`.
+**Design questions — RESOLVED IN CODE** (the RFC doc was removed once the slice shipped; the resolutions are now the implementation, documented in `CLAUDE.md` → "Compile-time rocketstyle collapse"):
 
-> **All four are resolved** in [`p0-rocketstyle-collapse-rfc.md`](./p0-rocketstyle-collapse-rfc.md) (dual-emit / sidecar manifest / bail-on-callback heuristic with opt-out / hoisted `_$tpl_N` factory), which also scopes the smallest end-to-end **vertical slice** (app-local `<Button state size>` in `examples/ui-showcase`, cross-package consumers deferred to Phase 5) and a slice-level kill criterion. That RFC **gates Phase 1**: implementation does not start until its decisions are approved.
+1. Light/dark → **dual-emit** (`_rsCollapse(html, light, dark, () => useMode()==='dark')` — class swaps reactively, no remount).
+2. Pre-built `@pyreon/ui-components` consumers → **SSR-render resolver** (renders the REAL component through the consumer's own Vite SSR; parity by construction). The "sidecar manifest" alternative proved unnecessary — the SSR approach is deterministic AND works cross-package.
+3. Collapsibility → **bail-on-callback heuristic** (shared `detectCollapsibleShape`; literal props / no spread / static-text children; conservative — uncertain ⇒ no collapse).
+4. Emission → **hoisted `_tpl` factory** (`_rsCollapse` → one html-keyed `_tpl` cloneNode shared across N mounts).
 
 ---
 
