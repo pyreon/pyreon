@@ -97,6 +97,7 @@ export type PyreonDiagnosticCode =
   | 'static-return-null-conditional'
   | 'as-unknown-as-vnodechild'
   | 'island-never-with-registry-entry'
+  | 'query-options-as-function'
 
 export interface PyreonDiagnostic {
   /** Machine-readable code for filtering + programmatic handling */
@@ -468,6 +469,48 @@ function detectEmptyTheme(ctx: DetectContext, node: ts.CallExpression): void {
     '`.theme({})` is a no-op chain. If the component needs no base theme, skip `.theme()` entirely rather than calling it with an empty object.',
     getNodeText(ctx, node),
     getNodeText(ctx, callee.expression),
+    // No `migrate_pyreon` tool yet — claiming fixable would mislead.
+    false,
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Pattern: @pyreon/query hook options passed as an object literal
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// `useQuery` / `useInfiniteQuery` / `useQueries` / `useSuspenseQuery` take
+// options as a FUNCTION so `queryKey` (etc.) can read Pyreon signals —
+// changing a tracked signal re-runs the options and refetches. An object
+// LITERAL is evaluated once at call time, so the query never reacts to
+// signal changes. `useMutation` is deliberately NOT flagged: its options
+// are a plain object (mutations are imperative, no tracking).
+const QUERY_OPTS_HOOKS = new Set([
+  'useQuery',
+  'useInfiniteQuery',
+  'useQueries',
+  'useSuspenseQuery',
+])
+
+function detectQueryOptionsAsFunction(
+  ctx: DetectContext,
+  node: ts.CallExpression,
+): void {
+  if (!ts.isIdentifier(node.expression)) return
+  const hook = node.expression.text
+  if (!QUERY_OPTS_HOOKS.has(hook)) return
+  const arg0 = node.arguments[0]
+  // Only the unambiguous object-literal-first-arg shape. An identifier /
+  // call / function arg can't be statically proven wrong — stay silent.
+  if (!arg0 || !ts.isObjectLiteralExpression(arg0)) return
+
+  const objText = getNodeText(ctx, arg0)
+  pushDiag(
+    ctx,
+    node,
+    'query-options-as-function',
+    `\`${hook}\` takes options as a FUNCTION so \`queryKey\` can read signals and refetch reactively — an object literal is captured once and never reacts. Wrap it: \`${hook}(() => (...))\`.`,
+    getNodeText(ctx, node),
+    `${hook}(() => (${objText}))`,
     // No `migrate_pyreon` tool yet — claiming fixable would mislead.
     false,
   )
@@ -906,6 +949,7 @@ function visitNode(ctx: DetectContext, node: ts.Node): void {
     detectRawEventListener(ctx, node)
     detectSignalWriteAsCall(ctx, node)
     detectIslandNeverWithRegistry(ctx, node)
+    detectQueryOptionsAsFunction(ctx, node)
   }
   if (ts.isJsxAttribute(node)) {
     detectOnClickUndefined(ctx, node)
@@ -961,6 +1005,10 @@ export function hasPyreonPatterns(code: string): boolean {
     /\bif\s*\([^)]+\)\s*\{?\s*return\s+null\b/.test(code) ||
     // as-unknown-as-vnodechild
     /\bas\s+unknown\s+as\s+VNodeChild\b/.test(code) ||
+    // query-options-as-function: a query hook called with an object literal
+    /\b(?:useQuery|useInfiniteQuery|useQueries|useSuspenseQuery)\s*\(\s*\{/.test(
+      code,
+    ) ||
     // island-never-with-registry-entry: a never-strategy declaration AND a
     // hydrateIslands call must both appear in the same source for the bug
     // shape to trigger. Pre-filter on EITHER half — the AST walker fast-
