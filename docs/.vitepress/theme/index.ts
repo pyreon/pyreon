@@ -6,6 +6,9 @@ import PackageBadge from './components/PackageBadge.vue'
 import Playground from './components/Playground.vue'
 import PropTable from './components/PropTable.vue'
 import Since from './components/Since.vue'
+// Canonical Pyreon design tokens (verbatim from the brand handoff).
+// Imported first so custom.css can build on the variables.
+import './tokens.css'
 import './custom.css'
 
 export default {

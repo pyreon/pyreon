@@ -1,15 +1,271 @@
+/**
+ * Pyreon docs theme — bridges VitePress's `--vp-*` variables onto the
+ * canonical brand tokens (see ./tokens.css, copied verbatim from the
+ * brand handoff). This file holds NO raw hex values on purpose:
+ * tokens.css is the single source of truth, so the docs site can never
+ * drift from the brand system. Layout/chrome rules below follow the
+ * handoff §6.1 ("Docs site").
+ *
+ * Honesty guardrail (handoff §7 / CLAUDE.md): confident, precise, never
+ * benchmark-theater. Ember (`--ember-*`) is reserved for signal
+ * propagation / active state only — never a full-bleed background.
+ */
+
+/* ─── VitePress variable bridge (dark-only; appearance: force-dark) ───── */
 :root {
-  --vp-c-brand-1: #10b981;
-  --vp-c-brand-2: #059669;
-  --vp-c-brand-3: #047857;
-  --vp-c-brand-soft: rgba(16, 185, 129, 0.1);
-  --vp-home-hero-name-color: transparent;
-  --vp-home-hero-name-background: linear-gradient(135deg, #10b981 0%, #0ea5e9 100%);
+  --vp-c-bg: var(--ink-1);
+  --vp-c-bg-alt: var(--ink-0);
+  --vp-c-bg-elv: var(--ink-2);
+  --vp-c-bg-soft: var(--ink-3);
+
+  --vp-c-text-1: var(--paper-1);
+  --vp-c-text-2: var(--muted-1);
+  --vp-c-text-3: var(--muted-2);
+
+  --vp-c-divider: var(--ink-5);
+  --vp-c-border: var(--ink-4);
+  --vp-c-gutter: var(--ink-0);
+
+  /* Brand hue = cyan (links/interactivity per handoff §3). The ember
+     gradient is NOT the link color — it stays reserved for signal moments. */
+  --vp-c-brand-1: var(--cyan);
+  --vp-c-brand-2: var(--cyan);
+  --vp-c-brand-3: var(--cyan-dim);
+  --vp-c-brand-soft: rgba(34, 211, 238, 0.12);
+
+  --vp-c-default-soft: var(--ink-3);
+
+  --vp-code-block-bg: var(--ink-1);
+  --vp-code-block-divider-color: var(--ink-5);
+  --vp-code-line-highlight-color: rgba(255, 94, 26, 0.08);
+  --vp-code-line-number-color: var(--muted-3);
+
+  --vp-font-family-base: var(--font-sans);
+  --vp-font-family-mono: var(--font-mono);
+
+  color-scheme: dark;
 }
 
-.dark {
-  --vp-c-brand-1: #34d399;
-  --vp-c-brand-2: #10b981;
-  --vp-c-brand-3: #059669;
-  --vp-c-brand-soft: rgba(52, 211, 153, 0.1);
+/* Hero name uses the ember-suffix wordmark treatment (handoff §2) —
+   one ember use per page maximum. */
+:root {
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: var(--ember-grad);
+}
+
+/* ─── Buttons ──────────────────────────────────────────────────────────── */
+:root {
+  --vp-button-brand-bg: var(--cyan);
+  --vp-button-brand-hover-bg: var(--cyan);
+  --vp-button-brand-active-bg: var(--cyan-dim);
+  --vp-button-brand-text: var(--ink-0);
+  --vp-button-brand-hover-text: var(--ink-0);
+  --vp-button-brand-border: transparent;
+  --vp-button-brand-hover-border: transparent;
+
+  --vp-button-alt-bg: transparent;
+  --vp-button-alt-hover-bg: var(--ink-2);
+  --vp-button-alt-text: var(--paper-1);
+  --vp-button-alt-border: var(--ink-4);
+  --vp-button-alt-hover-border: var(--cyan);
+}
+.VPButton.alt {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+/* ─── Hero ─────────────────────────────────────────────────────────────── */
+.VPHero .name {
+  font-weight: 600;
+  letter-spacing: -0.035em;
+}
+.VPHero .text {
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--paper-0);
+}
+.VPHero .tagline {
+  color: var(--muted-1);
+  font-size: 1.1rem;
+  line-height: 1.55;
+  max-width: 40rem;
+  text-wrap: pretty;
+}
+
+/* ─── Nav + sidebar (handoff §6.1) ─────────────────────────────────────── */
+:root {
+  --vp-nav-bg-color: rgba(10, 10, 14, 0.72);
+  --vp-sidebar-bg-color: var(--ink-1);
+}
+.VPNavBar,
+.VPNavBar.has-sidebar .content-body {
+  backdrop-filter: saturate(140%) blur(12px);
+}
+
+/* Mono UPPERCASE group labels — the single brand vocabulary marker */
+.VPSidebarItem.level-0 > .item > .text,
+.VPSidebar .group .title-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+.VPSidebarItem .link .text {
+  font-size: 13.5px;
+  color: var(--muted-1);
+}
+/* Active item: --paper-1 text + 2px ember left-border (handoff §6.1) */
+.VPSidebarItem.is-active > .item .link .text {
+  color: var(--paper-1);
+  font-weight: 600;
+}
+.VPSidebarItem.is-active > .item {
+  position: relative;
+}
+.VPSidebarItem.is-active > .item::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 15px;
+  border-radius: 2px;
+  background: var(--ember-core);
+}
+
+/* ─── Doc typography (handoff §4 type rules) ───────────────────────────── */
+.vp-doc h1 {
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  font-size: 2.5rem;
+  line-height: 1;
+}
+.vp-doc h2 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  border-top: 1px solid var(--ink-5);
+  padding-top: 1.6rem;
+  margin-top: 2.6rem;
+}
+.vp-doc h3 {
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+.vp-doc p {
+  text-wrap: pretty;
+}
+.vp-doc a {
+  color: var(--cyan);
+  font-weight: 500;
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(34, 211, 238, 0.4);
+}
+.vp-doc a:hover {
+  text-decoration-color: var(--cyan);
+}
+
+/* Mono eyebrow utility — UPPERCASE · muted · +.12em (handoff §4).
+   Usable from markdown/components: <p class="pyreon-eyebrow">…</p> */
+.pyreon-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  margin: 0 0 0.75rem;
+}
+
+/* ─── Pills (firing / version) — mono, handoff §6 ──────────────────────── */
+.pyreon-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--ink-4);
+  color: var(--muted-1);
+  background: var(--ink-3);
+}
+.pyreon-pill--ember {
+  color: var(--ember-warm);
+  border-color: rgba(255, 94, 26, 0.4);
+  background: rgba(255, 94, 26, 0.07);
+}
+.pyreon-pill--ember::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ember-core);
+  animation: px-pulse 1.8s ease-out infinite; /* keyframe lives in tokens.css */
+}
+
+/* ─── Code ─────────────────────────────────────────────────────────────── */
+.vp-doc div[class*='language-'] {
+  border: 1px solid var(--ink-5);
+  border-radius: 4px; /* handoff §6.1 — 4px radius */
+}
+.vp-doc [class*='language-'] > span.lang {
+  font-family: var(--font-mono);
+  color: var(--muted-3);
+}
+.vp-doc :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--ember-warm);
+  background: rgba(255, 94, 26, 0.07);
+  border: 1px solid rgba(255, 94, 26, 0.16);
+  border-radius: 4px;
+  padding: 2px 5px;
+}
+
+/* ─── Feature cards — schematic panels, no fill, ember hairline on hover ─ */
+.VPFeature {
+  background: var(--ink-3);
+  border: 1px solid var(--ink-5);
+  border-radius: 10px;
+  transition:
+    border-color 0.18s ease,
+    transform 0.18s ease;
+}
+.VPFeature:hover {
+  border-color: rgba(255, 94, 26, 0.45);
+  transform: translateY(-2px);
+}
+.VPFeature .icon {
+  background: var(--ink-2);
+  border: 1px solid var(--ink-5);
+  font-family: var(--font-mono);
+  color: var(--cyan);
+}
+@media (prefers-reduced-motion: reduce) {
+  .VPFeature {
+    transition: none;
+  }
+}
+
+/* ─── Tables (benchmark / compat) — quiet, mono numerics ───────────────── */
+.vp-doc th {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  background: transparent;
+  border-bottom: 1px solid var(--ink-4);
+}
+.vp-doc td {
+  border-bottom: 1px solid var(--ink-5);
+}
+
+* {
+  scrollbar-color: var(--ink-4) transparent;
 }

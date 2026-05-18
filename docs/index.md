@@ -3,14 +3,14 @@ layout: home
 
 hero:
   name: Pyreon
-  text: Build UIs with signals
-  tagline: Fine-grained reactivity, no virtual DOM, streaming SSR, and 50+ packages — with compatibility layers for React, Vue, Solid, and Preact.
+  text: Reactivity that knows exactly where to fire.
+  tagline: Fine-grained signal tracking — no virtual DOM, no diffing, no wasted work. When a signal changes, only the nodes that read it run again. Competitive with Solid, honest about trade-offs.
   actions:
     - theme: brand
-      text: Get Started
+      text: Get started →
       link: /docs/getting-started
     - theme: alt
-      text: Browse Docs
+      text: npx create pyreon
       link: /docs/
 
 features:
