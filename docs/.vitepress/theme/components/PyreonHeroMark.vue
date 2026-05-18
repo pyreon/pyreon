@@ -1,11 +1,23 @@
 <!--
-  Animated hero lockup — brand handoff §5 + hero-variants 14–17.
+  Animated hero lockup — brand handoff §5 + pyreon-motion-hero.jsx
+  (canonical HeroTrace) + hero-variants 14–17.
 
-  ALL FOUR generated intros ship; one is picked at RANDOM per visit:
+  ELEVEN generated intros ship; one is picked at RANDOM per visit:
+    12 · Trace         — graph edges converge, ignite, n, wordmark, fire→
     14 · Particles     — discrete signals converge into the disc
     15 · Wavefront     — an ember flamefront sweeps across the glyph
     16 · Pulse cascade — three pulses, each triggers the next stage
     17 · Path-trace    — an ember bead runs a fuse, lighting the glyph
+    18 · Terminal      — cursor types the wordmark, glyph fires on n
+    19 · Rings         — disc emerges from expanding concentric rings
+    20 · Orbit         — particles orbit, then snap inward
+    21 · RGB-split     — channels offset, snap into register
+    22 · Spotlight     — a dim ring contracts, intensifies onto the disc
+    23 · ECG sweep     — a vertical scan; each element flashes as crossed
+
+  Reduced-motion is not just "freeze": per pyreon-motion-hero.jsx's
+  PxArtHeroReduced, the static end-state shows a 2px ember underline
+  beneath the wordmark — the "something just fired" signal still reads.
 
   Progressive enhancement / SSR safety: the *final* state (solid glyph +
   wordmark) is the default render. The random pick + the intro happen
@@ -33,9 +45,28 @@ const PARTICLES = [
   { x: 540, y: 60, s: 4, d: 50 },
 ]
 
+// Variant 12 (canonical HeroTrace) — signal-graph edges converging on
+// the o-disc centre (≈144,100 in this 760×200 stage), staggered draw.
+const EDGES = [
+  { x: 4, y: 24, d: 0 },
+  { x: 22, y: 184, d: 40 },
+  { x: 4, y: 110, d: 80 },
+  { x: 70, y: 8, d: 120 },
+]
+
+// Variant 19 ring delays / 20 orbiters (8) — deterministic.
+const RINGS = [0, 80, 160, 240]
+const ORBITERS = Array.from({ length: 8 }, (_, i) => ({
+  a: (i / 8) * 360,
+  d: i * 25,
+}))
+
+type V = 12 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23
+const POOL = [12, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] as const
+
 const root = ref<HTMLElement | null>(null)
 const playing = ref(false)
-const variant = ref<14 | 15 | 16 | 17 | 0>(0) // 0 = static (SSR / no-JS / reduced-motion)
+const variant = ref<V | 0>(0) // 0 = static (SSR / no-JS / reduced-motion)
 let io: IntersectionObserver | null = null
 
 onMounted(() => {
@@ -46,12 +77,11 @@ onMounted(() => {
     window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
   if (reduce || typeof IntersectionObserver === 'undefined') return // stay static-final
 
-  // Optional override for QA: ?hero=14|15|16|17 — otherwise random per visit.
+  // Optional override for QA: ?hero=12|14..23 — otherwise random per visit.
   const forced = Number(new URLSearchParams(window.location.search).get('hero'))
-  const pool = [14, 15, 16, 17] as const
   variant.value = (
-    pool.includes(forced as 14) ? forced : pool[Math.floor(Math.random() * pool.length)]
-  ) as 14 | 15 | 16 | 17
+    POOL.includes(forced as V) ? forced : POOL[Math.floor(Math.random() * POOL.length)]
+  ) as V
 
   io = new IntersectionObserver(
     (entries) => {
@@ -86,7 +116,37 @@ onBeforeUnmount(() => io?.disconnect())
           <stop offset="0.55" stop-color="var(--ember)" />
           <stop offset="1" stop-color="var(--ember-warm)" />
         </linearGradient>
+        <!-- 22 · spotlight (ember, fades to transparent) -->
+        <radialGradient id="px-spot-grad" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0" stop-color="var(--ember)" stop-opacity="0.5" />
+          <stop offset="1" stop-color="var(--ember)" stop-opacity="0" />
+        </radialGradient>
+        <!-- 23 · ECG scan bar (cyan/link, soft vertical edge) -->
+        <linearGradient id="px-scan-grad" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0" stop-color="var(--link)" stop-opacity="0" />
+          <stop offset="0.5" stop-color="var(--link)" stop-opacity="0.7" />
+          <stop offset="1" stop-color="var(--link)" stop-opacity="0" />
+        </linearGradient>
       </defs>
+
+      <!-- 12 · canonical Trace — graph edges converge + continuation -->
+      <template v-if="playing && variant === 12">
+        <line
+          v-for="(e, i) in EDGES"
+          :key="i"
+          :x1="e.x"
+          :y1="e.y"
+          x2="144"
+          y2="100"
+          class="px-edge"
+          :style="{ animationDelay: e.d + 'ms' }"
+        />
+        <line x1="144" y1="100" x2="752" y2="86" class="px-edge px-edge--cont" />
+        <g class="px-trace-cap">
+          <circle cx="748" cy="86" r="4" class="px-cap-dot" />
+          <text x="690" y="70" class="px-cap-txt">fire →</text>
+        </g>
+      </template>
 
       <!-- 17 · fuse trail + bead (client-only when that variant plays) -->
       <template v-if="playing && variant === 17">
@@ -108,6 +168,63 @@ onBeforeUnmount(() => io?.disconnect())
             animationDelay: p.d + 'ms',
           }"
         />
+      </template>
+
+      <!-- 18 · terminal type-on (prompt + walking cursor) -->
+      <template v-if="playing && variant === 18">
+        <text x="206" y="126" class="px-term-prompt">$</text>
+        <rect class="px-term-cursor" y="62" width="4" height="76" />
+      </template>
+
+      <!-- 19 · concentric rings -->
+      <template v-if="playing && variant === 19">
+        <circle
+          v-for="(d, i) in RINGS"
+          :key="i"
+          cx="144"
+          cy="100"
+          r="20"
+          class="px-ring19"
+          fill="none"
+          :style="{ animationDelay: d + 'ms' }"
+        />
+      </template>
+
+      <!-- 20 · orbit collapse -->
+      <template v-if="playing && variant === 20">
+        <circle
+          v-for="(o, i) in ORBITERS"
+          :key="i"
+          cx="144"
+          cy="100"
+          r="4"
+          class="px-orbiter"
+          :style="{ '--sa': o.a + 'deg', animationDelay: o.d + 'ms' }"
+        />
+      </template>
+
+      <!-- 21 · RGB-split resolve (3 drifting channel copies) -->
+      <template v-if="playing && variant === 21">
+        <g class="px-chan">
+          <text x="250" y="132" class="px-chan-a">pyreon</text>
+          <text x="250" y="132" class="px-chan-b">pyreon</text>
+          <text x="250" y="132" class="px-chan-c">pyreon</text>
+        </g>
+      </template>
+
+      <!-- 22 · spotlight focus -->
+      <template v-if="playing && variant === 22">
+        <circle cx="144" cy="100" r="300" class="px-spot" />
+      </template>
+
+      <!-- 23 · ECG sync sweep (baseline + scanning bar) -->
+      <template v-if="playing && variant === 23">
+        <path
+          d="M0 100 L300 100 L320 80 L340 120 L360 100 L760 100"
+          class="px-ecg-base"
+          fill="none"
+        />
+        <rect class="px-scan" y="0" width="6" height="200" />
       </template>
 
       <!-- ON glyph -->
@@ -146,6 +263,9 @@ onBeforeUnmount(() => io?.disconnect())
           y2="150"
           class="px-underline"
         />
+        <!-- reduced-motion "fired" cue — static 2px ember underline,
+             shown ONLY when motion is suppressed (per PxArtHeroReduced) -->
+        <line x1="250" y1="150" x2="600" y2="150" class="px-fired" />
       </g>
 
       <!-- 15 · wavefront wipe cover + ember sweep bar -->
@@ -217,6 +337,216 @@ onBeforeUnmount(() => io?.disconnect())
 .px-wf-cover,
 .px-wf-bar {
   opacity: 0;
+}
+.px-edge {
+  stroke: url(#px-ember-grad);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 320;
+  stroke-dashoffset: 320;
+  opacity: 0;
+}
+.px-edge--cont {
+  stroke-width: 2;
+  stroke-dasharray: 620;
+  stroke-dashoffset: 620;
+}
+.px-trace-cap {
+  opacity: 0;
+}
+.px-cap-dot {
+  fill: var(--ember-warm);
+}
+.px-cap-txt {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  fill: var(--text-dim);
+  letter-spacing: 0.6px;
+}
+/* reduced-motion "fired" cue — hidden unless motion is suppressed */
+.px-fired {
+  stroke: url(#px-ember-grad);
+  stroke-width: 2;
+  opacity: 0;
+}
+
+/* ── 12 · Trace (canonical · pyreon-motion-hero.jsx) ─────────────────── */
+.is-v12 .px-edge {
+  opacity: 1;
+  animation: px-edge-draw 360ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.is-v12 .px-edge--cont {
+  animation: px-edge-draw 380ms 760ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.is-v12 .px-disc {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: px-pc-disc 280ms 380ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+.is-v12 .px-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+  animation: px-pc-n 340ms 580ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.is-v12 .px-wordwrap {
+  animation: px-fade 280ms 880ms ease-out backwards;
+}
+.is-v12 .px-trace-cap {
+  animation: px-fade 240ms 1040ms ease-out forwards;
+}
+
+/* ── 18 · Terminal type-on ──────────────────────────────────────────── */
+.px-term-prompt {
+  font-family: var(--font-mono);
+  font-size: 30px;
+  fill: var(--link);
+}
+.px-term-cursor {
+  fill: var(--ember);
+}
+.is-v18 .px-word {
+  clip-path: inset(0 100% 0 0);
+  animation: px-type 700ms cubic-bezier(0.5, 0, 0.3, 1) forwards;
+}
+.is-v18 .px-term-cursor {
+  animation:
+    px-cursor 700ms cubic-bezier(0.5, 0, 0.3, 1) forwards,
+    px-blink 0.9s steps(1) infinite;
+}
+.is-v18 .px-glyph {
+  animation: px-pop 240ms 720ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+
+/* ── 19 · Concentric rings ──────────────────────────────────────────── */
+.px-ring19 {
+  stroke: url(#px-ember-grad);
+  stroke-width: 2;
+  opacity: 0;
+}
+.is-v19 .px-ring19 {
+  animation: px-ring 700ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.is-v19 .px-disc {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: px-rise 300ms 300ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+.is-v19 .px-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+  animation: px-pc-n 280ms 550ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.is-v19 .px-wordwrap {
+  animation: px-fade 280ms 760ms ease-out backwards;
+}
+
+/* ── 20 · Orbit collapse ────────────────────────────────────────────── */
+.px-orbiter {
+  fill: var(--link);
+  transform-box: view-box;
+  transform-origin: 144px 100px;
+}
+.is-v20 .px-orbiter {
+  animation:
+    px-orbit 500ms cubic-bezier(0.5, 0, 0.4, 1) forwards,
+    px-snap 240ms 500ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.is-v20 .px-disc {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: px-rise 200ms 580ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+.is-v20 .px-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+  animation: px-pc-n 240ms 660ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.is-v20 .px-wordwrap {
+  animation: px-fade 280ms 820ms ease-out backwards;
+}
+
+/* ── 21 · RGB-split resolve ─────────────────────────────────────────── */
+.px-chan {
+  mix-blend-mode: screen;
+}
+.px-chan-a,
+.px-chan-b,
+.px-chan-c {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 92px;
+  letter-spacing: -0.04em;
+}
+.px-chan-a {
+  fill: var(--ember-plasma);
+}
+.px-chan-b {
+  fill: var(--link);
+}
+.px-chan-c {
+  fill: var(--ember-warm);
+}
+.is-v21 .px-chan-a {
+  animation: px-chan-a 1000ms cubic-bezier(0.5, 0, 0.2, 1) both;
+}
+.is-v21 .px-chan-b {
+  animation: px-chan-b 1000ms cubic-bezier(0.5, 0, 0.2, 1) both;
+}
+.is-v21 .px-chan-c {
+  animation: px-chan-c 1000ms cubic-bezier(0.5, 0, 0.2, 1) both;
+}
+.is-v21 .px-wordwrap {
+  animation: px-fade 220ms 760ms ease-out backwards;
+}
+.is-v21 .px-glyph {
+  animation: px-pop 280ms 880ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+
+/* ── 22 · Spotlight focus ───────────────────────────────────────────── */
+.px-spot {
+  fill: url(#px-spot-grad);
+  transform-box: view-box;
+  transform-origin: 144px 100px;
+}
+.is-v22 .px-spot {
+  animation: px-spot 600ms cubic-bezier(0.4, 0, 0.3, 1) forwards;
+}
+.is-v22 .px-disc {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: px-rise 240ms 580ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+.is-v22 .px-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+  animation: px-pc-n 260ms 700ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.is-v22 .px-wordwrap {
+  animation: px-fade 260ms 820ms ease-out backwards;
+}
+
+/* ── 23 · ECG sync sweep ────────────────────────────────────────────── */
+.px-ecg-base {
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+.px-scan {
+  fill: url(#px-scan-grad);
+}
+.is-v23 .px-scan {
+  animation: px-scan 900ms cubic-bezier(0.5, 0, 0.3, 1) forwards;
+}
+.is-v23 .px-disc {
+  opacity: 0;
+  animation: px-fade 200ms 280ms ease-out forwards;
+}
+.is-v23 .px-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+  animation: px-pc-n 240ms 460ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.is-v23 .px-wordwrap {
+  animation: px-fade 240ms 720ms ease-out backwards;
 }
 
 /* ── 17 · Path-trace ────────────────────────────────────────────────── */
@@ -398,6 +728,155 @@ onBeforeUnmount(() => io?.disconnect())
     opacity: 1;
   }
 }
+@keyframes px-edge-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes px-rise {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  70% {
+    transform: scale(1.15);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes px-type {
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+@keyframes px-cursor {
+  from {
+    transform: translateX(250px);
+  }
+  to {
+    transform: translateX(706px);
+  }
+}
+@keyframes px-blink {
+  50% {
+    opacity: 0;
+  }
+}
+@keyframes px-ring {
+  0% {
+    r: 20;
+    opacity: 1;
+    stroke-width: 2.5;
+  }
+  60% {
+    opacity: 0.8;
+  }
+  100% {
+    r: 200;
+    opacity: 0;
+    stroke-width: 0.5;
+  }
+}
+@keyframes px-orbit {
+  from {
+    transform: rotate(var(--sa)) translateX(70px);
+  }
+  to {
+    transform: rotate(calc(var(--sa) + 540deg)) translateX(70px);
+  }
+}
+@keyframes px-snap {
+  from {
+    transform: rotate(calc(var(--sa) + 540deg)) translateX(70px);
+    fill: var(--link);
+    opacity: 1;
+  }
+  to {
+    transform: rotate(calc(var(--sa) + 540deg)) translateX(0);
+    fill: var(--ember);
+    opacity: 0;
+  }
+}
+@keyframes px-chan-a {
+  0% {
+    transform: translate(-18px, -4px);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  70% {
+    transform: translate(-22px, -3px);
+    opacity: 1;
+  }
+  85% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes px-chan-b {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  70% {
+    transform: translate(2px, 4px);
+    opacity: 1;
+  }
+  85% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes px-chan-c {
+  0% {
+    transform: translate(18px, 4px);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  70% {
+    transform: translate(20px, 5px);
+    opacity: 1;
+  }
+  85% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes px-spot {
+  from {
+    transform: scale(2);
+    opacity: 0.6;
+  }
+  to {
+    transform: scale(0.4);
+    opacity: 1;
+  }
+}
+@keyframes px-scan {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(760px);
+  }
+}
 
 /* Hard guarantee — reduced-motion never animates (JS also avoids it). */
 @media (prefers-reduced-motion: reduce) {
@@ -409,8 +888,26 @@ onBeforeUnmount(() => io?.disconnect())
   .px-ring,
   .px-underline,
   .px-wf-cover,
-  .px-wf-bar {
+  .px-wf-bar,
+  .px-edge,
+  .px-trace-cap,
+  .px-term-cursor,
+  .px-term-prompt,
+  .px-ring19,
+  .px-orbiter,
+  .px-chan,
+  .px-spot,
+  .px-scan,
+  .px-ecg-base {
     opacity: 0 !important;
+  }
+  /* v18 clips the wordmark while typing — undo so it stays readable */
+  .is-v18 .px-word {
+    clip-path: none;
+  }
+  /* ...but DO show the static "fired" underline (PxArtHeroReduced) */
+  .px-fired {
+    opacity: 1 !important;
   }
 }
 </style>
