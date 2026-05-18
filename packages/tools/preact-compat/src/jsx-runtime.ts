@@ -10,7 +10,7 @@
  */
 
 import type { ComponentFn, Props, VNode, VNodeChild } from '@pyreon/core'
-import { Fragment, h, isNativeCompat, onUnmount } from '@pyreon/core'
+import { Fragment, h, isNativeCompat, mapCompatDomProps, onUnmount } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import type { Component } from './index'
 
@@ -251,49 +251,9 @@ export function jsx(
   // DOM element or symbol (Fragment): children go in vnode.children
   const childArray = children === undefined ? [] : Array.isArray(children) ? children : [children]
 
-  // Map Preact-style attributes to standard HTML attributes
-  if (typeof type === 'string') {
-    if (propsWithKey.className !== undefined) {
-      propsWithKey.class = propsWithKey.className
-      delete propsWithKey.className
-    }
-    if (propsWithKey.htmlFor !== undefined) {
-      propsWithKey.for = propsWithKey.htmlFor
-      delete propsWithKey.htmlFor
-    }
-
-    // Preact's onChange fires on every keystroke for form elements (like onInput)
-    if (
-      (type === 'input' || type === 'textarea' || type === 'select') &&
-      propsWithKey.onChange !== undefined
-    ) {
-      if (propsWithKey.onInput === undefined) {
-        propsWithKey.onInput = propsWithKey.onChange
-      }
-      delete propsWithKey.onChange
-    }
-
-    // autoFocus → autofocus
-    if (propsWithKey.autoFocus !== undefined) {
-      propsWithKey.autofocus = propsWithKey.autoFocus
-      delete propsWithKey.autoFocus
-    }
-
-    // defaultValue / defaultChecked → value / checked when no controlled value
-    if (type === 'input' || type === 'textarea') {
-      if (propsWithKey.defaultValue !== undefined && propsWithKey.value === undefined) {
-        propsWithKey.value = propsWithKey.defaultValue
-        delete propsWithKey.defaultValue
-      }
-      if (propsWithKey.defaultChecked !== undefined && propsWithKey.checked === undefined) {
-        propsWithKey.checked = propsWithKey.defaultChecked
-        delete propsWithKey.defaultChecked
-      }
-    }
-
-    // Strip Preact-only props that have no DOM equivalent
-    delete propsWithKey.suppressHydrationWarning
-  }
+  // Map Preact-style attributes to standard HTML attributes.
+  // Shared with @pyreon/react-compat — see @pyreon/core/compat-shared.
+  mapCompatDomProps(propsWithKey, type)
 
   return h(type, propsWithKey, ...(childArray as VNodeChild[]))
 }

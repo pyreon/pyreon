@@ -23,6 +23,7 @@ import {
   nativeCompat,
   Portal,
   provide as pyreonProvide,
+  shallowEqualProps as shallowEqual,
   Suspense,
   useContext as pyreonUseContext,
 } from '@pyreon/core'
@@ -356,15 +357,7 @@ export function useId(): string {
 
 // ─── Optimization ────────────────────────────────────────────────────────────
 
-function shallowEqual<P extends Record<string, unknown>>(a: P, b: P): boolean {
-  const keysA = Object.keys(a)
-  const keysB = Object.keys(b)
-  if (keysA.length !== keysB.length) return false
-  for (const k of keysA) {
-    if (!Object.is(a[k], b[k])) return false
-  }
-  return true
-}
+// `shallowEqual` lives in @pyreon/core (shared with @pyreon/preact-compat).
 
 /**
  * React-compatible `memo` — wraps a component to skip re-render when props

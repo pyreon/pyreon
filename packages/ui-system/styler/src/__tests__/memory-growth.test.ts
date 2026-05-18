@@ -76,6 +76,74 @@ describe('memory growth', () => {
     })
   })
 
+  // Regression: `evictIfNeeded()` historically trimmed ONLY `this.cache`.
+  // `insertCache` (keyed by full CSS text — the large keys) and the live
+  // `<style>` tag's `cssRules` were never evicted, so `maxCacheSize`
+  // bounded the smallest of the three layers while the two memory-heavy
+  // ones grew for the process lifetime. These tests inspect the two
+  // previously-unbounded layers directly. Bisect-verified.
+  describe('lockstep eviction bounds insertCache + DOM cssRules', () => {
+    beforeEach(() => {
+      document.querySelectorAll('style[data-pyreon-styler]').forEach((el) => {
+        el.remove()
+      })
+    })
+
+    it('insertCache stays bounded under N >> maxCacheSize unique inserts', () => {
+      const maxSize = 50
+      const s = createSheet({ maxCacheSize: maxSize })
+      const N = maxSize * 6
+
+      for (let i = 0; i < N; i++) s.insert(`prop-${i}: value-${i};`)
+
+      const ic = (s as unknown as { insertCache: Map<string, string> }).insertCache
+      // Pre-fix: ic.size === N (insertCache never evicted). Post-fix it
+      // tracks `cache`, which trims oldest 10% on each overflow.
+      expect(s.cacheSize).toBeLessThanOrEqual(maxSize * 1.5)
+      expect(ic.size).toBeLessThanOrEqual(maxSize * 1.5)
+      expect(ic.size).toBeLessThan(N)
+    })
+
+    it('live DOM cssRules count does not grow unbounded', () => {
+      const maxSize = 30
+      const s = createSheet({ maxCacheSize: maxSize })
+
+      for (let i = 0; i < maxSize; i++) s.insert(`a-${i}: ${i};`)
+      const el = document.querySelector('style[data-pyreon-styler]') as HTMLStyleElement
+      expect(el?.sheet).toBeTruthy()
+
+      for (let i = 0; i < maxSize * 5; i++) s.insert(`b-${i}: ${i};`)
+
+      const after = el.sheet!.cssRules.length
+      // Pre-fix: `after` ≈ maxSize*6 (+@layer decl) — every unique insert
+      // appended a rule, none ever deleted. Post-fix: eviction calls
+      // deleteRule in lockstep, so the live rule count stays within
+      // ~1.5× maxSize no matter how many uniques flowed through.
+      expect(after).toBeLessThanOrEqual(maxSize * 1.5 + 2)
+    })
+
+    it('dedup still works after eviction cycles', () => {
+      const maxSize = 20
+      const s = createSheet({ maxCacheSize: maxSize })
+
+      const recent: string[] = []
+      for (let i = 0; i < 5; i++) recent.push(s.insert(`keep-${i}: v;`))
+      // Overflow to force eviction of older entries (not `recent`).
+      for (let i = 0; i < maxSize * 3; i++) s.insert(`churn-${i}: v;`)
+      // Recent entries: re-inserting yields the SAME deterministic
+      // className and exactly one live DOM rule each.
+      for (let i = 0; i < 5; i++) expect(s.insert(`keep-${i}: v;`)).toBe(recent[i])
+
+      const el = document.querySelector('style[data-pyreon-styler]') as HTMLStyleElement
+      let keepRules = 0
+      for (let i = 0; i < el.sheet!.cssRules.length; i++) {
+        const r = el.sheet!.cssRules[i]
+        if (r && r.cssText.includes('keep-0')) keepRules++
+      }
+      expect(keepRules).toBe(1)
+    })
+  })
+
   describe('SSR mode memory', () => {
     let originalDocument: typeof document
 

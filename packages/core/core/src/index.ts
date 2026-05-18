@@ -2,6 +2,7 @@
 
 export { defineComponent, dispatchToErrorBoundary, propagateError, runWithHooks } from './component'
 export { isNativeCompat, NATIVE_COMPAT_MARKER, nativeCompat } from './compat-marker'
+export { mapCompatDomProps, shallowEqualProps } from './compat-shared'
 export type { Context, ContextSnapshot, ReactiveContext } from './context'
 export {
   captureContextStack,
