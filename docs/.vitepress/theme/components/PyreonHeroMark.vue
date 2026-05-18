@@ -83,7 +83,7 @@ onBeforeUnmount(() => io?.disconnect())
       <defs>
         <linearGradient id="px-ember-grad" x1="0" x2="1">
           <stop offset="0" stop-color="var(--ember-plasma)" />
-          <stop offset="0.55" stop-color="var(--ember-core)" />
+          <stop offset="0.55" stop-color="var(--ember)" />
           <stop offset="1" stop-color="var(--ember-warm)" />
         </linearGradient>
       </defs>
@@ -171,23 +171,23 @@ onBeforeUnmount(() => io?.disconnect())
 
 /* ── Final state (SSR / no-JS / reduced-motion / pre-play) ───────────── */
 .px-disc {
-  fill: var(--ember-core);
+  fill: var(--ember);
 }
 .px-n {
-  stroke: var(--paper-1);
+  stroke: var(--text);
 }
 .px-word {
   font-family: var(--font-sans);
   font-weight: 600;
   font-size: 92px;
   letter-spacing: -0.04em;
-  fill: var(--paper-1);
+  fill: var(--text);
 }
 .px-word-on {
-  fill: var(--ember-core);
+  fill: var(--ember);
 }
 .px-fuse-guide {
-  stroke: var(--ink-4);
+  stroke: var(--border);
   stroke-width: 1.5;
 }
 .px-fuse-trail {
@@ -205,7 +205,7 @@ onBeforeUnmount(() => io?.disconnect())
   opacity: 0;
 }
 .px-ring {
-  stroke: var(--ember-core);
+  stroke: var(--ember);
   stroke-width: 2;
   opacity: 0;
 }
