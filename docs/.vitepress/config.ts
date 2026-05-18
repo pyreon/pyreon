@@ -8,9 +8,16 @@ export default defineConfig({
   cleanUrls: true,
   lastUpdated: true,
 
+  // Dark-only by design (see docs/.vitepress/theme/custom.css). The audience
+  // lives in dark editors and the brand identity is dark-first; the toggle
+  // is removed rather than shipping an unowned half-baked light theme.
+  appearance: 'force-dark',
+
   markdown: {
     // Prevent Vue from interpreting {{ }} inside code blocks
     defaultHighlightLang: 'text',
+    // Warm dark syntax theme — pairs with the ember palette.
+    theme: 'one-dark-pro',
   },
 
   vue: {
