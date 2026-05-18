@@ -1,4 +1,5 @@
 import type { VNode } from '@pyreon/core'
+import { splitProps } from '@pyreon/core'
 import type { CSSProperties, TransitionCallbacks } from '../types'
 import CollapseRenderer from './CollapseRenderer'
 import GroupRenderer from './GroupRenderer'
@@ -30,17 +31,25 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = '
   config: KineticConfig,
 ): KineticComponent<Tag, Mode> => {
   const Component = (props: Record<string, unknown>): VNode | null => {
-    // Separate kinetic-specific props from HTML pass-through props
-    const htmlProps: Record<string, unknown> = {}
-    const kineticProps: Record<string, unknown> = {}
-
-    for (const key in props) {
-      if (KINETIC_KEYS.has(key)) {
-        kineticProps[key] = props[key]
-      } else {
-        htmlProps[key] = props[key]
-      }
-    }
+    // Separate kinetic-specific props from HTML pass-through props.
+    // MUST use splitProps (descriptor-preserving) — a plain
+    // `htmlProps[key] = props[key]` value-copy fires every getter at
+    // component-setup time. The compiler emits `<KineticDiv class={sig()}>`
+    // as `_rp(() => sig())`, which `makeReactiveProps` turns into a getter
+    // on `props`; reading it here (outside any tracking scope) would
+    // collapse it to a static snapshot and freeze the HTML attr forever.
+    // splitProps copies DESCRIPTORS via Object.getOwnPropertyDescriptor +
+    // Object.defineProperty, so the getter survives to the renderer's
+    // `h(config.tag, htmlProps)` where runtime-dom's applyProps detects
+    // the descriptor and wraps the read in renderEffect.
+    // `props` is `Record<string, unknown>`, so `Omit<…, string>` collapses
+    // to `{}` at the type level — the runtime split is correct (splitProps
+    // copies descriptors for every own key not in the pick set), only the
+    // inferred result types degrade. Cast back to the real shape.
+    const [kineticProps, htmlPropsWithChildren] = splitProps(props, [...KINETIC_KEYS]) as [
+      Record<string, unknown>,
+      Record<string, unknown>,
+    ]
 
     const {
       show,
@@ -71,8 +80,12 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = '
       onAfterLeave: onAfterLeave ?? config.onAfterLeave,
     }
 
-    // Extract children from htmlProps (it's not an HTML attribute)
-    const { children, ...restHtml } = htmlProps
+    // Carve `children` out of the HTML pass-through set — also via
+    // splitProps so the remaining HTML attrs keep their getter
+    // descriptors (`const { children, ...restHtml } = …` is the same
+    // value-copy footgun as the split above).
+    const [childHolder, restHtml] = splitProps(htmlPropsWithChildren, ['children'])
+    const children = childHolder.children
 
     if (config.mode === 'collapse') {
       return (

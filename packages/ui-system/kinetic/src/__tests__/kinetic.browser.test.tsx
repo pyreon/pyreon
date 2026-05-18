@@ -1,11 +1,42 @@
 /** @jsxImportSource @pyreon/core */
 import { describe, expect, it } from 'vitest'
+import { _rp, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
+import kinetic from '../kinetic'
 import { nextFrame, mergeClassNames } from '../utils'
 import Transition from '../Transition'
 
 describe('@pyreon/kinetic browser smoke', () => {
+  // Regression: createKineticComponent + the 4 renderers used to value-copy
+  // user props (`for…in` / `const { children, ...rest }` / `{ ...htmlProps }`),
+  // firing every getter at component-setup time. The compiler emits a
+  // reactive HTML attr as `_rp(() => sig())`; mount.ts's makeReactiveProps
+  // turns it into a getter on `props`. The value-copy collapsed that getter
+  // to a static snapshot, freezing the attribute forever. The fix routes
+  // every hop through descriptor-preserving splitProps / mergeProps / by-ref
+  // so runtime-dom's applyProps detects the getter descriptor and wraps the
+  // read in a renderEffect. Bisect-verified: reverting createKineticComponent's
+  // splitProps split back to `for…in` fails this with `expected 'a' to be 'b'`.
+  it('forwards a reactive HTML attr through the kinetic pipeline (descriptor-preserving)', async () => {
+    const FadeDiv = kinetic('div')
+    const show = signal(true)
+    const v = signal('a')
+    const { container, unmount } = mountInBrowser(
+      h(
+        FadeDiv,
+        { show, 'data-testid': 'fd', 'data-variant': _rp(() => v()) },
+        h('span', { 'data-id': 'kc' }, 'hi'),
+      ),
+    )
+    const el = () => container.querySelector('[data-testid="fd"]')
+    expect(el()?.getAttribute('data-variant')).toBe('a')
+    v.set('b')
+    await flush()
+    expect(el()?.getAttribute('data-variant')).toBe('b')
+    unmount()
+  })
+
   it('Transition mounts a visible child into real DOM', async () => {
     const show = signal(true)
     const { container, unmount } = mountInBrowser(
@@ -49,6 +80,61 @@ describe('@pyreon/kinetic browser smoke', () => {
     expect(mergeClassNames('a', 'b')).toBe('a b')
     expect(mergeClassNames('a', undefined)).toBe('a')
     expect(mergeClassNames(undefined, undefined)).toBe(undefined)
+  })
+
+  // Regression: a kinetic-wrapped component must FORWARD a compiler-shaped
+  // reactive HTML attr (`<KineticDiv class={sig()}>` → `_rp(() => sig())`,
+  // which `makeReactiveProps` turns into a getter on `props`) so the DOM
+  // patches when the signal changes. The factory's prop split + the
+  // renderers' element spread used to value-copy props, firing the getter
+  // once at setup and freezing the attribute. We build the vnode with
+  // `h()` + `_rp()` directly because this browser config has no Pyreon
+  // compiler plugin — that faithfully reproduces the exact post-
+  // makeReactiveProps shape the mount pipeline sees in a real app.
+  //
+  // Bisect-verified: revert createKineticComponent's splitProps back to
+  // `htmlProps[key] = props[key]` → this fails with the className stuck
+  // at 'one' (`expected 'one' to be 'two'`). Restored → passes.
+  it('forwards a compiler-shaped reactive HTML attr — DOM patches on signal change (transition mode)', async () => {
+    const KineticDiv = kinetic('div')
+    const cls = signal('one')
+    const { container, unmount } = mountInBrowser(
+      h(
+        KineticDiv,
+        { show: () => true, class: _rp(() => cls()) },
+        h('span', { 'data-id': 'k' }, 'x'),
+      ),
+    )
+    const el = () => container.querySelector('div')
+    expect(el()?.querySelector('[data-id="k"]')?.textContent).toBe('x')
+    expect(el()?.className).toBe('one')
+
+    cls.set('two')
+    await flush()
+    expect(el()?.className).toBe('two')
+
+    cls.set('three')
+    await flush()
+    expect(el()?.className).toBe('three')
+    unmount()
+  })
+
+  it('forwards a compiler-shaped reactive HTML attr — collapse mode (mergeProps path)', async () => {
+    const KineticDiv = kinetic('div').collapse()
+    const cls = signal('a')
+    const { container, unmount } = mountInBrowser(
+      h(
+        KineticDiv,
+        { show: () => true, class: _rp(() => cls()) },
+        h('span', { 'data-id': 'c' }, 'y'),
+      ),
+    )
+    const el = () => container.querySelector('div')
+    expect(el()?.className).toBe('a')
+    cls.set('b')
+    await flush()
+    expect(el()?.className).toBe('b')
+    unmount()
   })
 
   it('runs in a real browser — Vitest defines `process.env.NODE_ENV !== "production"`', () => {

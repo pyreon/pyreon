@@ -82,7 +82,11 @@ const StaggerRenderer = ({
     )
   })
 
-  return h(config.tag, { ...htmlProps }, ...staggeredChildren)
+  // Pass htmlProps by reference — `{ ...htmlProps }` value-copies, firing
+  // any reactive getter the kinetic split preserved (frozen attr forever).
+  // runtime-dom's applyProps detects the getter descriptor on the live
+  // object and wraps it in renderEffect.
+  return h(config.tag, htmlProps, ...staggeredChildren)
 }
 
 export default StaggerRenderer
