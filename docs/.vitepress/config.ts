@@ -85,8 +85,14 @@ export default defineConfig({
   ],
 
   themeConfig: {
-    // Primary ON mark (mono, paper-on-transparent — reads on the dark nav).
-    logo: { src: '/brand/logo-on-mono-dark.svg', alt: 'Pyreon' },
+    // Primary ON mark — theme-aware: paper glyph on the dark nav, ink
+    // glyph on the light nav (the single mono-dark variant was invisible
+    // in light mode). VitePress swaps these on its `.dark` class.
+    logo: {
+      light: '/brand/logo-on-mono-light.svg',
+      dark: '/brand/logo-on-mono-dark.svg',
+      alt: 'Pyreon',
+    },
 
     search: {
       provider: 'local',

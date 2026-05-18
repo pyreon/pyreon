@@ -116,7 +116,7 @@ const footer = [
         <p class="px-lede">
           Fine-grained signal tracking — no virtual DOM, no diffing, no
           wasted work. When a signal changes, only the nodes that read it
-          run again. Competitive with Solid, honest about trade-offs.
+          run again. Measured, not marketed — honest about the trade-offs.
         </p>
         <div class="px-cta">
           <a class="px-btn-primary" href="/docs/getting-started">Get started →</a>
@@ -155,11 +155,12 @@ const footer = [
         <span class="px-mono-label">01 · benchmark · js framework benchmark (chromium / playwright)</span>
         <span class="px-rule" />
       </div>
-      <h2 class="px-h2">We tie with Solid. We don't claim to beat it.</h2>
+      <h2 class="px-h2">The measured numbers. Read them as data.</h2>
       <p class="px-sub">
-        Measured wall-clock (ms, lower = faster). Pyreon and Solid sit
-        inside measurement noise of each other; React and Vue are
-        meaningfully behind on these synthetic workloads.
+        Wall-clock milliseconds on the standard js-framework-benchmark
+        suite (Chromium via Playwright, lower = faster). These are
+        synthetic workloads — every framework here optimizes for
+        different real-world shapes. It's a data point, not a verdict.
       </p>
       <div class="px-bench-grid">
         <div class="px-panel">
@@ -191,13 +192,13 @@ const footer = [
           </p>
         </div>
         <div class="px-claim-col">
-          <div class="px-claim px-claim--ember">
-            <div class="px-claim-h">WE WON'T CLAIM</div>
-            <p>“Fastest.” Any real-app head-to-head superiority. A compiler-pass perf win that's still on the roadmap.</p>
-          </div>
           <div class="px-claim px-claim--cyan">
-            <div class="px-claim-h">WE WILL CLAIM</div>
-            <p>Synthetic-benchmark parity with Solid. Meaningfully ahead of React and Vue. 55 shipped packages, all tree-shakeable.</p>
+            <div class="px-claim-h">METHOD</div>
+            <p>Standard js-framework-benchmark suite, Chromium via Playwright, wall-clock ms — same machine, same run. Re-run it yourself; the config is in the repo.</p>
+          </div>
+          <div class="px-claim px-claim--ember">
+            <div class="px-claim-h">SCOPE</div>
+            <p>We report our own measured numbers and synthetic-benchmark parity with Solid. Real-app head-to-head isn't run yet — we won't claim it until it is. Every framework here is good work by good people.</p>
           </div>
         </div>
       </div>
