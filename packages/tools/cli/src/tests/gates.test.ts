@@ -134,10 +134,15 @@ describe('runDocClaimsGate', () => {
     const result = await runDocClaimsGate({ cwd: REPO_ROOT })
     assertGateResultShape(result, 'doc-claims')
     expect(result.category).toBe('documentation')
-    // The real repo has 7 claim sites configured today; verify the
+    // The real repo has 19 claim sites configured today (7 hook/doc +
+    // 6 lint-rule + 4 lint-category + 2 detector-code); verify the
     // scanner found them all (any missing files would surface as
     // file-missing findings, scanned count stays stable).
-    expect(result.meta.scanned).toBe(7)
+    expect(result.meta.scanned).toBe(19)
+    // The real repo must be drift-free — this gate runs in CI; if a
+    // count claim drifts, EVERY PR's doctor run fails until it's fixed.
+    const errs = result.findings.filter((f) => f.severity === 'error')
+    expect(errs).toHaveLength(0)
   })
 
   // Helpers to build a tmp repo with the hooks claim sources the
@@ -300,6 +305,95 @@ describe('runDocClaimsGate', () => {
       expect(f.severity).toBe('error')
       expect(f.location?.relPath).toBeTruthy()
     }
+
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it('lint-rule-count: drift when CLAUDE.md hard-codes the wrong allRules length', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-lr-'))
+    const rulesDir = path.join(tmp, 'packages', 'tools', 'lint', 'src', 'rules')
+    fs.mkdirSync(rulesDir, { recursive: true })
+    // 4 real rule entries; the doc will lie and say 99.
+    fs.writeFileSync(
+      path.join(rulesDir, 'index.ts'),
+      'export const allRules: Rule[] = [\n' +
+        '  // Reactivity (2)\n  ruleA,\n  ruleB,\n' +
+        '  // JSX (2)\n  ruleC,\n  ruleD,\n]\n',
+    )
+    fs.writeFileSync(
+      path.join(tmp, 'CLAUDE.md'),
+      'See `listRules()` — returns metadata for all 99 rules in the set.\n',
+    )
+
+    const result = await runDocClaimsGate({ cwd: tmp })
+    assertGateResultShape(result, 'doc-claims')
+    const drift = result.findings.find(
+      (f) => f.code === 'doc-claims/lint-rule-count-drift',
+    )!
+    expect(drift).toBeDefined()
+    expect(drift.severity).toBe('error')
+    expect(drift.message).toContain('claims 99')
+    expect(drift.message).toContain('actual 4')
+
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it('lint-rule-count `all`: flags ONE wrong occurrence among many in manifest.ts', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-all-'))
+    const rulesDir = path.join(tmp, 'packages', 'tools', 'lint', 'src', 'rules')
+    fs.mkdirSync(rulesDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(rulesDir, 'index.ts'),
+      'export const allRules: Rule[] = [\n  ruleA,\n  ruleB,\n  ruleC,\n]\n',
+    )
+    // manifest carries the count 3×: two correct (3), one stale (9).
+    fs.writeFileSync(
+      path.join(rulesDir, '..', 'manifest.ts'),
+      "summary: '3 rules across 1 categories. foo'\n" +
+        "// pyreon-lint --list  # list all 3 rules\n" +
+        "desc: 'covers stuff — 9 rules total. bar'\n",
+    )
+    // Plant CLAUDE.md so the gate doesn't skip (no rule claim in it).
+    fs.writeFileSync(path.join(tmp, 'CLAUDE.md'), 'nothing here\n')
+
+    const result = await runDocClaimsGate({ cwd: tmp })
+    const drifts = result.findings.filter(
+      (f) =>
+        f.code === 'doc-claims/lint-rule-count-drift' &&
+        f.location?.relPath === 'packages/tools/lint/src/manifest.ts',
+    )
+    // Exactly the single stale "9" occurrence — the two correct "3"s pass.
+    expect(drifts).toHaveLength(1)
+    expect(drifts[0]!.message).toContain('claims 9')
+    expect(drifts[0]!.message).toContain('actual 3')
+    expect(drifts[0]!.message).toContain('occurrences')
+
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it('detector-code-count: drift when anti-patterns.md mis-states the union size', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-dc-'))
+    const compilerDir = path.join(tmp, 'packages', 'core', 'compiler', 'src')
+    fs.mkdirSync(compilerDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(compilerDir, 'pyreon-intercept.ts'),
+      "export type PyreonDiagnosticCode =\n  | 'a-b'\n  | 'c-d'\n  | 'e-f'\n\nexport interface X {}\n",
+    )
+    const rulesDir = path.join(tmp, '.claude', 'rules')
+    fs.mkdirSync(rulesDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(rulesDir, 'anti-patterns.md'),
+      'the detector flags 12 of the patterns below statically, and more.\n',
+    )
+    fs.writeFileSync(path.join(tmp, 'CLAUDE.md'), 'no detector claim here\n')
+
+    const result = await runDocClaimsGate({ cwd: tmp })
+    const drift = result.findings.find(
+      (f) => f.code === 'doc-claims/detector-code-count-drift',
+    )!
+    expect(drift).toBeDefined()
+    expect(drift.message).toContain('claims 12')
+    expect(drift.message).toContain('actual 3')
 
     fs.rmSync(tmp, { recursive: true, force: true })
   })

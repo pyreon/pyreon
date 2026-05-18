@@ -7,6 +7,12 @@
  * new hook lands, the others don't. Audit caught the README claiming
  * 16 vs actual 34 — drift that shipped to users for weeks.
  *
+ * Five counters today: hook-export, doc-page, lint-rule, lint-category,
+ * detector-code. All TEXT-PARSE in-repo source via `repoRoot` (NOT
+ * `import`, which resolves to a stale bun cache snapshot). A ClaimSpec
+ * may set `all: true` to assert every occurrence of the pattern in a
+ * file agrees, for files that repeat the same count string.
+ *
  * Pure function — `scripts/check-doc-claims.ts` wraps this for the
  * standalone CLI invocation.
  */
@@ -22,6 +28,13 @@ interface ClaimSpec {
   pattern: RegExp
   /** Optional pattern variant for "X+" hedged claims (also wrong) */
   rejectHedged?: RegExp
+  /**
+   * Assert EVERY occurrence of the pattern in the file agrees (not just
+   * the first). Required for files that repeat the same count string —
+   * e.g. `lint/src/manifest.ts` carries the rule count 5× (3 prose + 2
+   * `--list` help comments); bumping 4 of 5 would otherwise pass silent.
+   */
+  all?: boolean
 }
 
 interface ClaimCheck {
@@ -84,6 +97,62 @@ const countDocPages = (repoRoot: string): number => {
   return count
 }
 
+// NOTE: these counters TEXT-PARSE the in-repo source rather than
+// `import { allRules } from '@pyreon/lint'`. A dynamic import resolves
+// via bun's module cache, which in a worktree/CI checkout points at a
+// STALE published snapshot (observed: 0.18.0 cache → 66 rules while the
+// working tree had 76). A doc-claims gate that asserts against a stale
+// cache is worse than no gate. `repoRoot`-relative file reads are the
+// only resolution that reflects the branch under test — same approach
+// `countHookExports` / `countDocPages` already use.
+
+const countLintRules = (repoRoot: string): number => {
+  const idx = join(repoRoot, 'packages/tools/lint/src/rules/index.ts')
+  if (!existsSync(idx)) return 0
+  const src = readFileSync(idx, 'utf8')
+  const m = src.match(/export const allRules: Rule\[\] = \[([\s\S]*?)\n\]/)
+  if (!m?.[1]) return 0
+  // One bare identifier per line; skip `// Category (n)` headers + blanks.
+  return m[1]
+    .split('\n')
+    .filter((l) => /^\s+[a-zA-Z][a-zA-Z0-9]*,?\s*$/.test(l)).length
+}
+
+const countLintCategories = (repoRoot: string): number => {
+  const rulesDir = join(repoRoot, 'packages/tools/lint/src/rules')
+  if (!existsSync(rulesDir)) return 0
+  const cats = new Set<string>()
+  for (const cat of readdirSync(rulesDir)) {
+    const sub = join(rulesDir, cat)
+    let isDir = false
+    try {
+      isDir = statSync(sub).isDirectory()
+    } catch {
+      continue
+    }
+    if (!isDir) continue
+    for (const f of readdirSync(sub)) {
+      if (!f.endsWith('.ts')) continue
+      const m = readFileSync(join(sub, f), 'utf8').match(
+        /category:\s*'([a-z0-9-]+)'/,
+      )
+      if (m?.[1]) cats.add(m[1])
+    }
+  }
+  return cats.size
+}
+
+const countDetectorCodes = (repoRoot: string): number => {
+  const file = join(repoRoot, 'packages/core/compiler/src/pyreon-intercept.ts')
+  if (!existsSync(file)) return 0
+  const src = readFileSync(file, 'utf8')
+  const m = src.match(
+    /export type PyreonDiagnosticCode =\n((?:\s*\|\s*'[a-z0-9-]+'\n?)+)/,
+  )
+  if (!m?.[1]) return 0
+  return (m[1].match(/\|\s*'[a-z0-9-]+'/g) ?? []).length
+}
+
 const checks: ClaimCheck[] = [
   {
     name: 'hook export count',
@@ -125,6 +194,79 @@ const checks: ClaimCheck[] = [
       {
         file: 'CLAUDE.md',
         pattern: /(\d+) doc pages covering all packages/,
+      },
+    ],
+  },
+  {
+    name: 'lint rule count',
+    codeId: 'lint-rule-count',
+    actual: countLintRules,
+    claims: [
+      {
+        file: 'CLAUDE.md',
+        pattern: /Pyreon-specific linter — (\d+) rules, \d+ categories/,
+      },
+      {
+        file: 'CLAUDE.md',
+        pattern: /returns metadata for all (\d+) rules/,
+      },
+      {
+        file: 'CLAUDE.md',
+        pattern: /^- (\d+) rules across \d+ categories: reactivity/m,
+      },
+      {
+        file: 'packages/tools/lint/README.md',
+        pattern: /— (\d+) rules across \d+ categories/,
+      },
+      {
+        file: 'docs/docs/lint.md',
+        pattern: /Pyreon-specific linter — (\d+) rules for signals/,
+      },
+      {
+        // 5 occurrences (3 prose + 2 CLI-help comments) — all must agree.
+        file: 'packages/tools/lint/src/manifest.ts',
+        pattern: /(\d+) rules(?: across \d+ categories| total|\b)/,
+        all: true,
+      },
+    ],
+  },
+  {
+    name: 'lint category count',
+    codeId: 'lint-category-count',
+    actual: countLintCategories,
+    claims: [
+      {
+        file: 'CLAUDE.md',
+        pattern: /Pyreon-specific linter — \d+ rules, (\d+) categories/,
+      },
+      {
+        file: 'CLAUDE.md',
+        pattern: /^- \d+ rules across (\d+) categories: reactivity/m,
+      },
+      {
+        file: 'packages/tools/lint/README.md',
+        pattern: /— \d+ rules across (\d+) categories/,
+      },
+      {
+        file: 'packages/tools/lint/src/manifest.ts',
+        pattern: /\d+ rules across (\d+) categories/,
+        all: true,
+      },
+    ],
+  },
+  {
+    name: 'detector code count',
+    codeId: 'detector-code-count',
+    actual: countDetectorCodes,
+    claims: [
+      {
+        file: '.claude/rules/anti-patterns.md',
+        pattern: /flags (\d+) of the patterns below statically/,
+      },
+      {
+        file: 'CLAUDE.md',
+        pattern:
+          /catches "using Pyreon wrong" mistakes — (\d+) detector codes today/,
       },
     ],
   },
@@ -198,6 +340,42 @@ export const runDocClaimsGate = async (
           })
           continue
         }
+      }
+
+      if (claim.all) {
+        const gre = new RegExp(
+          claim.pattern.source,
+          claim.pattern.flags.includes('g')
+            ? claim.pattern.flags
+            : claim.pattern.flags + 'g',
+        )
+        const matches = [...content.matchAll(gre)]
+        if (matches.length === 0) {
+          findings.push({
+            category: 'documentation',
+            severity: 'warning',
+            code: `doc-claims/${check.codeId}-pattern-miss`,
+            gate: 'doc-claims',
+            message: `${check.name}: pattern not found in ${claim.file} (claim was likely deleted or rephrased). Actual: ${actual}.`,
+            location: { path: filePath, relPath },
+          })
+          continue
+        }
+        for (const mm of matches) {
+          const n = parseInt(mm[1] ?? '', 10)
+          if (n !== actual) {
+            findings.push({
+              category: 'documentation',
+              severity: 'error',
+              code: `doc-claims/${check.codeId}-drift`,
+              gate: 'doc-claims',
+              message: `${check.name}: ${claim.file} claims ${Number.isNaN(n) ? '(unparseable)' : n} (one of ${matches.length} occurrences), actual ${actual}.`,
+              location: { path: filePath, relPath },
+              fix: `Update every occurrence in ${claim.file} to ${actual}`,
+            })
+          }
+        }
+        continue
       }
 
       const match = content.match(claim.pattern)
