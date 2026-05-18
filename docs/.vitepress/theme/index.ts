@@ -5,6 +5,7 @@ import CompatMatrix from './components/CompatMatrix.vue'
 import PackageBadge from './components/PackageBadge.vue'
 import Playground from './components/Playground.vue'
 import PropTable from './components/PropTable.vue'
+import PyreonHeroMark from './components/PyreonHeroMark.vue'
 import PyreonLanding from './components/PyreonLanding.vue'
 import Since from './components/Since.vue'
 // Canonical Pyreon design tokens (verbatim from the brand handoff).
@@ -22,5 +23,6 @@ export default {
     app.component('Since', Since)
     app.component('Playground', Playground)
     app.component('PyreonLanding', PyreonLanding)
+    app.component('PyreonHeroMark', PyreonHeroMark)
   },
 } satisfies Theme

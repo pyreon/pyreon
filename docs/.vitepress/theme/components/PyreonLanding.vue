@@ -39,6 +39,7 @@ const features = [
     <!-- ── Hero ───────────────────────────────────────────────── -->
     <section class="px-hero">
       <div class="px-hero-copy">
+        <PyreonHeroMark class="px-hero-mark" />
         <p class="pyreon-eyebrow">signal-based · full-stack · ai-native</p>
         <h1 class="px-h1">
           The framework with<br />a <span class="px-ember-text">flamegraph</span>.
@@ -142,6 +143,9 @@ const features = [
   grid-template-columns: 1.2fr 1fr;
   gap: 56px;
   align-items: center;
+}
+.px-hero-mark {
+  margin-bottom: 26px;
 }
 .px-h1 {
   font-family: var(--font-sans);
