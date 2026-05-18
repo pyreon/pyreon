@@ -60,6 +60,21 @@ interface Cell {
    */
   useExampleConfig?: boolean
   /**
+   * P0 compile-time rocketstyle collapse. When true the generated verify
+   * config calls `pyreon({ collapse: true })` so the plugin's collapse
+   * scan + programmatic Vite-SSR resolver fire during the real
+   * `vite build`. The cell's smoke (`assertProbeCollapsed`) checks the
+   * `rs-collapse-probe-*.js` route chunk by MINIFICATION-STABLE,
+   * collapse-EXCLUSIVE fingerprints (baked-children template literal +
+   * the `=== "dark"` mode accessor) — NOT the pre-minification
+   * `__rsCollapse(` identifier, which Vite renames in prod so a literal-
+   * identifier assertion can never match (the original gate bug). This
+   * is the build-artifact gate proving the full plugin→resolver→compiler
+   * →bundle pipeline end-to-end (the unit/e2 layers prove the pieces;
+   * only this proves the assembled production artifact).
+   */
+  collapse?: boolean
+  /**
    * i18n routing config (PR H). Forwarded to `zero({ i18n })` in the
    * generated verify config. Triggers `expandRoutesForLocales` which
    * fans every FileRoute into per-locale variants. Cells using this
@@ -108,6 +123,59 @@ function assertFileContains(path: string, needle: string): void {
 
 function assertFileDoesNotExist(path: string): void {
   if (existsSync(path)) throw new Error(`expected ${path} to NOT exist`)
+}
+
+/**
+ * Assert the `rs-collapse-probe` route chunk actually collapsed in a
+ * REAL production `vite build`.
+ *
+ * The chunk MUST be checked by minification-stable, collapse-EXCLUSIVE
+ * fingerprints — NOT the pre-minification identifier names. Vite's prod
+ * build renames imported bindings: the emitted
+ * `__rsCollapse(html, light, dark, () => __pyrMode() === "dark")` +
+ * `__rsSheet.injectRules(rules, ruleKey)` minify to e.g.
+ * `t(\`<button>…\`,\`pyr-…\`,\`pyr-…\`,()=>n()===\`dark\`)` +
+ * `e.injectRules([…],\`<key>\`)` — so asserting `"__rsCollapse("` would
+ * NEVER match a real build even when collapse works (the original gate
+ * bug). What IS stable across minification (string/template-literal
+ * CONTENTS are never renamed) AND emitted ONLY by `_rsCollapse`:
+ *   (A) static children baked into the template literal —
+ *       `Save</span></button>` (a non-collapsed Button route mounts
+ *       children via `mountChild`; it never serializes them to a string
+ *       literal in the route chunk), and
+ *   (B) the dual-emit live-mode accessor — `=== "dark"` / ``=== `dark` ``
+ *       (the 4th `_rsCollapse` arg threading the configured `useMode`;
+ *       unique to the collapse path).
+ * Bisect: with collapse OFF the probe builds the real 5-layer Button →
+ * neither fingerprint is present → this throws.
+ */
+function assertProbeCollapsed(distDir: string): void {
+  const assetsDir = join(distDir, 'assets')
+  if (!existsSync(assetsDir)) throw new Error(`expected ${assetsDir} to exist`)
+  const probe = readdirSync(assetsDir).find(
+    (f) => f.startsWith('rs-collapse-probe') && f.endsWith('.js'),
+  )
+  if (!probe) {
+    throw new Error(
+      `expected an \`rs-collapse-probe-*.js\` route chunk under ${assetsDir} ` +
+        `(the fs-router lazy chunk for the collapsible probe route). ` +
+        `Got: ${readdirSync(assetsDir)
+          .filter((f) => f.endsWith('.js'))
+          .join(', ')}`,
+    )
+  }
+  const src = readFileSync(join(assetsDir, probe), 'utf-8')
+  const bakedChildren = src.includes('Save</span></button>')
+  const modeAccessor = /===\s*[`"']dark[`"']/.test(src)
+  if (!bakedChildren || !modeAccessor) {
+    const preview = src.length > 600 ? `${src.slice(0, 600)}…` : src
+    throw new Error(
+      `expected probe chunk ${probe} to be COLLAPSED ` +
+        `(bakedChildren=${bakedChildren}, modeAccessor=${modeAccessor}). ` +
+        `A collapsed route emits a class-stripped \`<button>…Save</span></button>\` ` +
+        `template + a \`() => …() === "dark"\` accessor. Got:\n${preview}`,
+    )
+  }
 }
 
 interface ChunkGraphSpec {
@@ -372,6 +440,29 @@ const MATRIX: Cell[] = [
     },
   },
 
+  // P0 compile-time rocketstyle collapse — the build-artifact gate.
+  // `pyreon({ collapse: true })`, real `vite build`. The dedicated
+  // `routes/rs-collapse-probe.tsx` renders the canonical collapsible
+  // shape (`<Button state="primary" size="medium">Save</Button>` — every
+  // dimension prop a string literal, no spread, static-text children, NO
+  // onClick), so the plugin's collapse scan + the programmatic Vite-SSR
+  // resolver fire and the compiler emits `__rsCollapse(` +
+  // `__rsSheet.injectRules(` into the route's CLIENT chunk instead of the
+  // 5-layer wrapper mount. The unit + e2 layers prove the pieces; only
+  // this proves the fully-assembled artifact through a production build.
+  // Bisect-verified: flip `collapse` off (or break detection) → the
+  // probe falls back to the normal mount and neither needle is emitted →
+  // both asserts fail.
+  {
+    example: 'ui-showcase',
+    mode: 'spa',
+    collapse: true,
+    smoke: (dist) => {
+      assertFileContains(join(dist, 'index.html'), 'id="app"')
+      assertProbeCollapsed(dist)
+    },
+  },
+
   // playground — minimal three-route Pyreon shell. Smallest viable
   // app exercising the routing + layout chain.
   {
@@ -416,11 +507,7 @@ const MATRIX: Cell[] = [
       // Bisect-verifiable: revert the `transformDeferInline` call in
       // `@pyreon/vite-plugin`'s `transform()` hook and this cell fails
       // with `expected fingerprint in DeferredFixture chunk`.
-      assertStringInExactlyOneChunk(
-        dist,
-        'DEFER_INLINE_FIXTURE_MARKER_XYZ123',
-        'DeferredFixture',
-      )
+      assertStringInExactlyOneChunk(dist, 'DEFER_INLINE_FIXTURE_MARKER_XYZ123', 'DeferredFixture')
 
       // v2 prop-preservation gate. About.tsx passes
       // `<DeferredFixture label="DEFER_INLINE_FIXTURE_PROP_LABEL_ABC987" />` —
@@ -433,11 +520,7 @@ const MATRIX: Cell[] = [
       //
       // Bisect-verifiable: remove the `buildRenderPropBody` call (revert
       // to `{(__C) => <__C />}` constant) and this assertion fails.
-      assertStringInExactlyOneChunk(
-        dist,
-        'DEFER_INLINE_FIXTURE_PROP_LABEL_ABC987',
-        'about',
-      )
+      assertStringInExactlyOneChunk(dist, 'DEFER_INLINE_FIXTURE_PROP_LABEL_ABC987', 'about')
 
       // v3 namespace-import gate. About.tsx also uses
       // `import * as NS from '../components/NamespaceFixture'` +
@@ -910,7 +993,11 @@ const MATRIX: Cell[] = [
           { name: 'Counter', fingerprints: ['counter-inc', 'counter-value'], maxGzippedKb: 5 },
           { name: 'IdleClock', fingerprints: ['idle-clock-time'], maxGzippedKb: 5 },
           { name: 'VisibleComments', fingerprints: ['visible-comments-list'], maxGzippedKb: 5 },
-          { name: 'MobileMenu', fingerprints: ['mobile-menu-toggle', 'mobile-menu-state'], maxGzippedKb: 5 },
+          {
+            name: 'MobileMenu',
+            fingerprints: ['mobile-menu-toggle', 'mobile-menu-state'],
+            maxGzippedKb: 5,
+          },
           {
             name: 'CommandPalette',
             fingerprints: ['command-palette-trigger', 'command-palette-input'],
@@ -937,22 +1024,14 @@ function cellId(c: Cell): string {
 }
 
 function configSourceFor(cell: Cell): string {
-  const ssgConfig = cell.ssgPaths
-    ? `, ssg: { paths: ${JSON.stringify(cell.ssgPaths)} }`
-    : ''
-  const baseConfig = cell.base
-    ? `, base: ${JSON.stringify(cell.base)}`
-    : ''
-  const i18nConfig = cell.i18n
-    ? `, i18n: ${JSON.stringify(cell.i18n)}`
-    : ''
+  const ssgConfig = cell.ssgPaths ? `, ssg: { paths: ${JSON.stringify(cell.ssgPaths)} }` : ''
+  const baseConfig = cell.base ? `, base: ${JSON.stringify(cell.base)}` : ''
+  const i18nConfig = cell.i18n ? `, i18n: ${JSON.stringify(cell.i18n)}` : ''
   // PR F + K: optional seoPlugin wiring for sitemap + hreflang
   // assertions. Loaded AFTER zero() so closeBundle ordering matches
   // the canonical user-side pattern (seoPlugin's enforce: 'post' picks
   // up the SSG manifest after zero's closeBundle writes it).
-  const seoImport = cell.sitemap
-    ? `import { seoPlugin } from '@pyreon/zero/seo'\n`
-    : ''
+  const seoImport = cell.sitemap ? `import { seoPlugin } from '@pyreon/zero/seo'\n` : ''
   const seoPluginCall = cell.sitemap
     ? `, seoPlugin({ sitemap: ${JSON.stringify(cell.sitemap)} })`
     : ''
@@ -962,7 +1041,7 @@ ${seoImport}import { defineConfig } from 'vite'
 
 // Auto-generated by scripts/verify-modes.ts — do not commit.
 export default defineConfig({
-  plugins: [pyreon(), zero({ mode: ${JSON.stringify(cell.mode)}${baseConfig}${ssgConfig}${i18nConfig} })${seoPluginCall}],
+  plugins: [pyreon(${cell.collapse ? '{ collapse: true }' : ''}), zero({ mode: ${JSON.stringify(cell.mode)}${baseConfig}${ssgConfig}${i18nConfig} })${seoPluginCall}],
   resolve: { conditions: ['bun'] },
 })
 `
@@ -984,7 +1063,10 @@ async function runViteBuild(exampleDir: string, configFile: string): Promise<voi
     })
     proc.on('close', (code) => {
       if (code === 0) resolveFn()
-      else rejectFn(new Error(`vite build exited with code ${code}\nstdout:\n${stdout}\nstderr:\n${stderr}`))
+      else
+        rejectFn(
+          new Error(`vite build exited with code ${code}\nstdout:\n${stdout}\nstderr:\n${stderr}`),
+        )
     })
     proc.on('error', rejectFn)
   })
@@ -1066,12 +1148,13 @@ function parseArgs(argv: string[]): { example?: string; mode?: Mode } {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2))
   const cells = MATRIX.filter(
-    (c) =>
-      (!args.example || c.example === args.example) && (!args.mode || c.mode === args.mode),
+    (c) => (!args.example || c.example === args.example) && (!args.mode || c.mode === args.mode),
   )
 
   if (cells.length === 0) {
-    console.error(`[verify-modes] no cells match filter (example=${args.example ?? '*'}, mode=${args.mode ?? '*'})`)
+    console.error(
+      `[verify-modes] no cells match filter (example=${args.example ?? '*'}, mode=${args.mode ?? '*'})`,
+    )
     process.exit(2)
   }
 
