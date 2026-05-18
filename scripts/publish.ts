@@ -109,7 +109,43 @@ for (const dir of packageDirs) {
     dependencies: resolveWorkspaceDeps(pkg.dependencies),
     peerDependencies: resolveWorkspaceDeps(pkg.peerDependencies),
     devDependencies: resolveWorkspaceDeps(pkg.devDependencies),
+    // `optionalDependencies` was previously NOT resolved — the only
+    // package using it is `@pyreon/compiler` (its 7 per-platform native
+    // binary packages), so 0.18.0 shipped them as the literal
+    // `"workspace:^"`. Result: `npm i @pyreon/compiler@0.18.0` hard-fails
+    // for every consumer with `EUNSUPPORTEDPROTOCOL` (npm rejects the
+    // manifest before it can skip an optional dep). This is the missing
+    // 4th field.
+    optionalDependencies: resolveWorkspaceDeps(pkg.optionalDependencies),
   }
+
+  // Defense-in-depth: never publish a manifest that still carries a
+  // `workspace:` range in ANY dependency field. Catches a future field
+  // being added to package.json but not to the resolve list above
+  // (exactly how `optionalDependencies` slipped through and broke the
+  // 0.18.0 compiler release). Hard-fail BEFORE the manifest is written
+  // or published — a bad publish is immutable and unrecoverable.
+  for (const field of [
+    'dependencies',
+    'devDependencies',
+    'peerDependencies',
+    'optionalDependencies',
+  ] as const) {
+    const deps = resolved[field] as Record<string, string> | undefined
+    if (!deps) continue
+    for (const [name, range] of Object.entries(deps)) {
+      if (typeof range === 'string' && range.startsWith('workspace:')) {
+        console.error(
+          `✗ ${pkg.name}@${pkg.version}: unresolved \`workspace:\` range ` +
+            `for ${name} in ${field} ("${range}"). Refusing to publish a ` +
+            `broken manifest. Add ${field} to resolveWorkspaceDeps() in ` +
+            `scripts/publish.ts.`,
+        )
+        process.exit(1)
+      }
+    }
+  }
+
   await writeFile(pkgPath, `${JSON.stringify(resolved, null, 2)}\n`)
 
   try {
