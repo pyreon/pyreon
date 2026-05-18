@@ -1,8 +1,28 @@
 import { allRules } from '../rules/index'
 import type { LintConfig, PresetName, Severity } from '../types'
 
-/** Build a config where every rule uses its default severity. */
+/**
+ * Build a config where every rule uses its default severity, EXCEPT
+ * opt-in best-practice rules (`meta.optIn`) which are forced OFF — they
+ * never add noise/score-penalty in the standard presets unless the user
+ * explicitly enables them (per-rule config) or selects `best-practices`.
+ */
 function buildRecommended(): LintConfig {
+  const rules: Record<string, Severity> = {}
+  for (const rule of allRules) {
+    rules[rule.meta.id] = rule.meta.optIn ? 'off' : rule.meta.severity
+  }
+  return { rules }
+}
+
+/**
+ * `best-practices` preset — `recommended` PLUS every opt-in
+ * best-practice rule enabled at its declared `meta.severity`. A
+ * wholesale opt-in for projects that want the full best-practice
+ * surface; library-scoped rules still self-gate on package.json deps,
+ * so a project only sees rules for libraries it actually uses.
+ */
+function buildBestPractices(): LintConfig {
   const rules: Record<string, Severity> = {}
   for (const rule of allRules) {
     rules[rule.meta.id] = rule.meta.severity
@@ -69,10 +89,11 @@ const presetBuilders: Record<PresetName, () => LintConfig> = {
   strict: buildStrict,
   app: buildApp,
   lib: buildLib,
+  'best-practices': buildBestPractices,
 }
 
 export function getPreset(name: PresetName): LintConfig {
   return presetBuilders[name]()
 }
 
-export { buildApp, buildLib, buildRecommended, buildStrict }
+export { buildApp, buildBestPractices, buildLib, buildRecommended, buildStrict }

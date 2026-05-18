@@ -37,6 +37,7 @@ export type {
 } from './types'
 export { isPathExempt } from './utils/exempt-paths'
 export { isTestFile } from './utils/file-roles'
+export { isProjectDependency } from './utils/project-deps'
 export {
   extractImportInfo,
   getLocalName,

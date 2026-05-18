@@ -11,10 +11,20 @@ import { noDeepImport } from './architecture/no-deep-import'
 import { noErrorWithoutPrefix } from './architecture/no-error-without-prefix'
 import { noProcessDevGate } from './architecture/no-process-dev-gate'
 import { requireBrowserSmokeTest } from './architecture/require-browser-smoke-test'
+import { noSignalInFormInitialValues } from './form/no-signal-in-form-initial-values'
 import { noSubmitWithoutValidation } from './form/no-submit-without-validation'
 // Form
 import { noUnregisteredField } from './form/no-unregistered-field'
 import { preferFieldArray } from './form/prefer-field-array'
+// Frontend (opt-in best-practice)
+import { imgRequiresDimensions } from './frontend/img-requires-dimensions'
+import { noPositiveTabindex } from './frontend/no-positive-tabindex'
+import { preferZeroImage } from './frontend/prefer-zero-image'
+import { requireImgAlt } from './frontend/require-img-alt'
+// Query (opt-in best-practice)
+import { queryOptionsAsFunction } from './query/query-options-as-function'
+// Rx (opt-in best-practice)
+import { rxPreferPipe } from './rx/rx-prefer-pipe'
 // Hooks
 import { noRawAddEventListener } from './hooks/no-raw-addeventlistener'
 import { noRawLocalStorage } from './hooks/no-raw-localstorage'
@@ -135,10 +145,11 @@ export const allRules: Rule[] = [
   noStoreOutsideProvider,
   noMutateStoreState,
   noDuplicateStoreId,
-  // Form (3)
+  // Form (4)
   noUnregisteredField,
   noSubmitWithoutValidation,
   preferFieldArray,
+  noSignalInFormInitialValues,
   // Styling (4)
   noInlineStyleObject,
   noDynamicStyled,
@@ -161,6 +172,16 @@ export const allRules: Rule[] = [
   invalidLoaderExport,
   missingGetStaticPaths,
   revalidateNotPureLiteral,
+  // Frontend (4) — opt-in best-practice (off in standard presets;
+  // enabled via the `best-practices` preset or per-rule config)
+  requireImgAlt,
+  imgRequiresDimensions,
+  noPositiveTabindex,
+  preferZeroImage,
+  // Query (1) — opt-in, auto-gated on @pyreon/query dependency
+  queryOptionsAsFunction,
+  // Rx (1) — opt-in, auto-gated on @pyreon/rx dependency
+  rxPreferPipe,
 ]
 
 // Re-export all rules individually
