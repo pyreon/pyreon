@@ -140,18 +140,23 @@ When Pyreon goes 1.0 someday, **remove BOTH the CI guard and the release-time ca
 
 The 7 platform packages (`@pyreon/compiler-darwin-arm64`, `darwin-x64`, `linux-x64-gnu`, `linux-arm64-gnu`, `linux-x64-musl`, `linux-arm64-musl`, `win32-x64-msvc`) ship via `release-native.yml` triggered by tag push. The workflow uses **npm OIDC trusted publishing** — no long-lived `NPM_TOKEN` secret stored in the repo.
 
-**One-time pre-registration (required before the first publish for each package).** npm trusted publishing supports configuring a publisher BEFORE the package exists; the first publish via the configured workflow creates the package. For each of the 7 platform packages above:
+**One-time manual bootstrap (required once, because the packages don't exist yet).** Per [npm's docs](https://docs.npmjs.com/trusted-publishers), trusted publishing is configured on a package's **own settings page** (`npmjs.com → Packages → <package> → Settings → Trusted publishing`) — there is **no** account/org-level pre-registration page, and a trusted publisher **cannot** be configured for a package that has never been published. (An earlier revision of this doc claimed otherwise and pointed at a non-existent `/settings/<org>/publishing/oidc/new` URL — that was wrong; npm has no such flow.) The 7 platform packages therefore need a one-time manual first publish to bring them into existence, after which all future releases are fully automated via OIDC.
 
-1. Sign in to npmjs.com with an account that has publish rights to `@pyreon`.
-2. Open `https://www.npmjs.com/settings/<your-username-or-pyreon-org>/publishing/oidc/new` (Settings → Publishing access → "Add new").
-3. Fill in:
-   - **Package name**: `@pyreon/compiler-<short>` (e.g. `@pyreon/compiler-darwin-arm64`)
+Do this **once** (any maintainer with `@pyreon` publish rights):
+
+1. **Build the 7 binaries without publishing.** GitHub → Actions → `release-native.yml` → *Run workflow*, set input `publish: false`. The build matrix produces all 7 `pyreon-compiler-<triple>.node` artifacts (the publish job is gated off). Download all 7 artifacts.
+2. **Stage + print the publish commands.** Run `bun scripts/bootstrap-native-publish.ts <downloaded-artifacts-dir>` — it copies each binary into the matching `packages/core/compiler/npm/<short>/pyreon-compiler.node`, runs the >100 KB sanity check, and prints the exact per-package publish command. It does **not** publish anything itself.
+3. **Publish each, manually.** Confirm the account first (`npm whoami` → must have `@pyreon` rights), then run the printed command for each of the 7:
+   ```
+   cd packages/core/compiler/npm/<short> && npm publish --access public
+   ```
+   **No `--provenance` here** — provenance attestation requires the GitHub Actions OIDC runtime and fails on a local publish. (Provenance is added automatically by the OIDC path from the next release onward.) The packages publish at the current stub version (it tracks the release version via changesets), which backfills native binaries for that already-released `@pyreon/compiler` version too.
+4. **Now configure trusted publishing** (the packages exist, so this works). For **each** of the 7: `npmjs.com → Packages → @pyreon/compiler-<short> → Settings → Trusted publishing → Add publisher → GitHub Actions`:
    - **Repository**: `pyreon/pyreon`
    - **Workflow filename**: `release-native.yml`
-   - **Environment**: (leave blank — workflow doesn't use GitHub Environments)
-4. Save. Repeat for the other 6 packages.
+   - **Environment**: leave blank (the workflow doesn't use GitHub Environments)
 
-After all 7 are registered, the next `release-native.yml` run on a `v*.*.*` tag will publish all 7 successfully via OIDC — the workflow's `id-token: write` permission lets npm 11+ (Node 24) exchange a short-lived OIDC token for a per-publish npm token, scoped to this workflow + package + commit SHA.
+After the bootstrap, every subsequent `release-native.yml` run on a `v*.*.*` tag publishes all 7 via OIDC at the new version — the workflow's `id-token: write` permission lets npm 11+ (Node 24) exchange a short-lived OIDC token for a per-publish npm token, scoped to this workflow + package + commit SHA. npm versions are immutable, so the bootstrap runs exactly once; CI never re-publishes an existing version, only new ones.
 
 **Why no `NPM_TOKEN`**: long-lived tokens are an exfil surface during publish (they have full publish scope). OIDC trusted publishing replaces that with per-deploy attestation; the published tarballs also gain a `provenance` field that consumers can verify against the GitHub workflow run.
 
