@@ -31,6 +31,7 @@ import {
   type OrchestratorOptions,
 } from './doctor/orchestrator'
 import { renderGha, renderJson, renderText } from './doctor/render'
+import { isAdvisoryCategory } from './doctor/score'
 import type { DoctorReport } from './doctor/types'
 
 export type DoctorFormat = 'text' | 'json' | 'gha'
@@ -102,10 +103,16 @@ export const doctor = async (options: DoctorOptions): Promise<number> => {
     console.log(renderText(report, { cwd: options.cwd }))
   }
 
-  // Exit code: in --ci mode, any error finding fails. Otherwise, only
-  // a non-zero is returned when there are findings AT ALL — so
-  // `pyreon doctor && echo green` works as a quick gate.
-  if (options.ci) return report.totals.errors
+  // Exit code: in --ci mode, any NON-ADVISORY error finding fails.
+  // Advisory (`best-practices`) errors are opt-in/opinionated and must
+  // never break CI — they're surfaced for visibility, not enforcement.
+  // Otherwise, only a non-zero is returned when there are findings AT
+  // ALL — so `pyreon doctor && echo green` works as a quick gate.
+  if (options.ci) {
+    return report.findings.filter(
+      (f) => f.severity === 'error' && !isAdvisoryCategory(f.category),
+    ).length
+  }
   return report.totals.errors + report.totals.warnings + report.totals.infos
 }
 

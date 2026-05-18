@@ -40,7 +40,14 @@ const mapLintSeverity = (s: string): Severity | null => {
 const RULE_CATEGORY = (() => {
   const map = new Map<string, FindingCategory>()
   for (const rule of allRules) {
-    const cat = mapLintCategory(rule.meta.category)
+    // Opt-in best-practice rules (`meta.optIn`) route to the ADVISORY
+    // `best-practices` doctor category regardless of their lint
+    // category — so a project that enables them gets the findings
+    // surfaced WITHOUT tanking correctness/architecture or failing
+    // `--ci` (opinionated best practices ≠ a broken codebase).
+    const cat: FindingCategory = rule.meta.optIn
+      ? 'best-practices'
+      : mapLintCategory(rule.meta.category)
     map.set(rule.meta.id, cat)
   }
   return map

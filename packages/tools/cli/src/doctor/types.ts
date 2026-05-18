@@ -25,6 +25,13 @@ export type FindingCategory =
   | 'architecture'
   | 'testing'
   | 'documentation'
+  // Advisory: opt-in best-practice findings (the @pyreon/lint `meta.optIn`
+  // rules). Scored + displayed for visibility, but EXCLUDED from the
+  // overall grade and from `--ci` failure — enabling opinionated
+  // best-practice rules must never tank the objective health grade or
+  // break CI (resolves the objectivity tension from the doctor-objective
+  // work: opinionated ≠ broken).
+  | 'best-practices'
 
 export type Severity = 'error' | 'warning' | 'info'
 

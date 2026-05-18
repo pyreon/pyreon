@@ -1179,6 +1179,8 @@ pyreon doctor --audit-min-risk high       # tighten test-environment audit
 
 **Score formula**: per-finding penalty `error=10 / warning=3 / info=1`. Per-category subscore = `max(0, 100 - sum)`. Overall = mean of _included_ category subscores. Letter grades A ≥ 90, B ≥ 80, C ≥ 70, D ≥ 60, F otherwise. Categories with no gate coverage are excluded from the mean (an unmeasured category shouldn't pull the average up).
 
+**Advisory `best-practices` category** (`FindingCategory: 'best-practices'`, `score.ts:ADVISORY_CATEGORIES`). The `@pyreon/lint` opt-in best-practice rules (`meta.optIn`: the `frontend`/`query`/`rx`/`i18n` categories + form/router opt-in rules) route here in the lint gate **regardless of their lint category** (`gates/lint.ts` checks `rule.meta.optIn`). It is **scored + displayed** (its own bar/breakdown, labeled `advisory — excluded from grade & --ci` in the text renderer) but **always `included: false`** so it NEVER enters the overall mean/grade, AND `--ci` excludes advisory errors from the exit code (`doctor.ts` filters `!isAdvisoryCategory`). This resolves the objectivity tension from the doctor-objective work (#630): enabling opinionated best-practice rules surfaces their findings for visibility without tanking the objective health grade or breaking CI — opinionated ≠ broken. `isAdvisoryCategory(c)` is exported from `doctor/score` for consumers.
+
 **Output formats**:
 
 - `text` (default): big-score banner + per-category bars + top-N findings + skipped-gates footer. Uses ANSI colors when stdout is a TTY (respects `NO_COLOR` / `FORCE_COLOR`). OSC-8 hyperlinks on file paths so terminals that support them (iTerm2, WezTerm, kitty, VSCode) render clickable links.

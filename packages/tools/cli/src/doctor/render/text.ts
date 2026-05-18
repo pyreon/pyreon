@@ -28,6 +28,7 @@ import {
   red,
   yellow,
 } from './ansi'
+import { isAdvisoryCategory } from '../score'
 
 const BAR_WIDTH = 12
 const FILLED = '█'
@@ -61,8 +62,26 @@ const padRight = (s: string, n: number): string =>
   s.length >= n ? s : s + ' '.repeat(n - s.length)
 
 const renderCategory = (c: CategoryScore): string => {
-  if (!c.included) {
+  const advisory = isAdvisoryCategory(c.category)
+  if (!c.included && !advisory) {
     return `  ${dim(padRight(c.category, 14))} ${gray('skipped')}`
+  }
+  if (advisory) {
+    // Scored for visibility but NOT folded into the grade. Show the
+    // breakdown so the user sees opt-in best-practice findings, clearly
+    // labeled so they're never mistaken for a grade-affecting bug class.
+    const total = c.errors + c.warnings + c.infos
+    if (total === 0) {
+      return `  ${padRight(c.category, 14)} ${gray('clean')} ${dim('(advisory — not graded)')}`
+    }
+    const b = [
+      c.errors > 0 ? red(`${c.errors}E`) : '',
+      c.warnings > 0 ? yellow(`${c.warnings}W`) : '',
+      c.infos > 0 ? cyan(`${c.infos}i`) : '',
+    ]
+      .filter(Boolean)
+      .join(' ')
+    return `  ${padRight(c.category, 14)} ${b} ${dim('· advisory — opt-in best practices, excluded from grade & --ci')}`
   }
   const color = colorForGrade(c.grade)
   const bar = renderBar(c.score, color)
