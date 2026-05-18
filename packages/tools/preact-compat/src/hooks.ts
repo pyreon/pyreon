@@ -9,7 +9,7 @@
  */
 
 import type { VNodeChild } from '@pyreon/core'
-import { onErrorCaptured, useContext } from '@pyreon/core'
+import { onErrorCaptured, shallowEqualProps as shallowEqual, useContext } from '@pyreon/core'
 import type { EffectEntry } from './jsx-runtime'
 import { getCurrentCtx, getHookIndex } from './jsx-runtime'
 
@@ -32,15 +32,7 @@ function depsChanged(a: unknown[] | undefined, b: unknown[] | undefined): boolea
   return false
 }
 
-function shallowEqual<P extends Record<string, unknown>>(a: P, b: P): boolean {
-  const keysA = Object.keys(a)
-  const keysB = Object.keys(b)
-  if (keysA.length !== keysB.length) return false
-  for (const k of keysA) {
-    if (!Object.is(a[k], b[k])) return false
-  }
-  return true
-}
+// `shallowEqual` lives in @pyreon/core (shared with @pyreon/react-compat).
 
 // ─── useState ────────────────────────────────────────────────────────────────
 

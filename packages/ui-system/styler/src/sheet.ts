@@ -32,6 +32,16 @@ export interface StyleSheetOptions {
 export class StyleSheet {
   private cache = new Map<string, string>()
   private insertCache = new Map<string, string>()
+  // Reverse index: cache key (className / keyframe name / global key) →
+  // the insertCache keys that resolve to it. Lets eviction drop the
+  // (large) cssText-keyed insertCache entries in lockstep with `cache`,
+  // instead of letting them grow unbounded for the process lifetime.
+  private icKeysByClass = new Map<string, Set<string>>()
+  // Reverse index: cache key → the top-level CSSRule objects it inserted
+  // into the live sheet. Object references survive `deleteRule()`
+  // reindexing (only the numeric index shifts), so eviction can locate
+  // and remove the exact DOM rules without fragile index bookkeeping.
+  private domRules = new Map<string, CSSRule[]>()
   private sheet: CSSStyleSheet | null = null
   private ssrBuffer: string[] = []
   private isSSR: boolean
@@ -122,18 +132,80 @@ export class StyleSheet {
     }
   }
 
+  /** Record that `icKey` resolves to `cacheKey` (for lockstep eviction). */
+  private trackIcKey(cacheKey: string, icKey: string): void {
+    let s = this.icKeysByClass.get(cacheKey)
+    if (!s) {
+      s = new Set()
+      this.icKeysByClass.set(cacheKey, s)
+    }
+    s.add(icKey)
+  }
+
+  /** Record a top-level CSSRule this `cacheKey` inserted into the sheet. */
+  private trackDomRule(cacheKey: string, ref: CSSRule | null | undefined): void {
+    if (!ref) return
+    let a = this.domRules.get(cacheKey)
+    if (!a) {
+      a = []
+      this.domRules.set(cacheKey, a)
+    }
+    a.push(ref)
+  }
+
+  /**
+   * Evict the given cache keys across ALL three storage layers:
+   * the `cache` Map, the cssText-keyed `insertCache` Map, and the live
+   * DOM rules. Without the latter two, `maxCacheSize` bounded only the
+   * smallest of the three — `insertCache` keys (full CSS text) and the
+   * `<style>` tag's `cssRules` grew unbounded for the app's lifetime,
+   * which is the actual memory leak this method exists to prevent.
+   */
+  private evictKeys(keys: string[]): void {
+    const ruleRefs = new Set<CSSRule>()
+    for (const key of keys) {
+      this.cache.delete(key)
+      const ics = this.icKeysByClass.get(key)
+      if (ics) {
+        for (const ic of ics) this.insertCache.delete(ic)
+        this.icKeysByClass.delete(key)
+      }
+      const refs = this.domRules.get(key)
+      if (refs) {
+        for (const r of refs) ruleRefs.add(r)
+        this.domRules.delete(key)
+      }
+    }
+    if (this.sheet && ruleRefs.size > 0) {
+      // Descending walk: deleting at i never shifts a not-yet-visited
+      // lower index, so identity matching stays correct mid-loop.
+      for (let i = this.sheet.cssRules.length - 1; i >= 0; i--) {
+        const r = this.sheet.cssRules[i]
+        if (r && ruleRefs.has(r)) {
+          try {
+            this.sheet.deleteRule(i)
+          } catch {
+            // Rule already gone (e.g. external clearAll) — ignore.
+          }
+        }
+      }
+    }
+  }
+
   /** Evict oldest entries when cache exceeds max size. */
   private evictIfNeeded() {
     if (this.cache.size <= this.maxCacheSize) return
 
     // Map iteration order is insertion order — delete oldest 10%
     const toDelete = Math.floor(this.maxCacheSize * 0.1)
+    const evicted: string[] = []
     let count = 0
     for (const key of this.cache.keys()) {
       if (count >= toDelete) break
-      this.cache.delete(key)
+      evicted.push(key)
       count++
     }
+    this.evictKeys(evicted)
   }
 
   /**
@@ -230,6 +302,7 @@ export class StyleSheet {
 
     if (this.cache.has(className)) {
       this.insertCache.set(icKey, className)
+      this.trackIcKey(className, icKey)
       return className
     }
 
@@ -258,7 +331,8 @@ export class StyleSheet {
     } else if (this.sheet) {
       for (const rule of finalRules) {
         try {
-          this.sheet.insertRule(rule, this.sheet.cssRules.length)
+          const at = this.sheet.insertRule(rule, this.sheet.cssRules.length)
+          this.trackDomRule(className, this.sheet.cssRules[at])
         } catch (_e) {
           if (__DEV__) {
             // oxlint-disable-next-line no-console
@@ -269,6 +343,7 @@ export class StyleSheet {
     }
 
     this.insertCache.set(icKey, className)
+    this.trackIcKey(className, icKey)
     return className
   }
 
@@ -285,7 +360,8 @@ export class StyleSheet {
       this.ssrBuffer.push(rule)
     } else if (this.sheet) {
       try {
-        this.sheet.insertRule(rule, this.sheet.cssRules.length)
+        const at = this.sheet.insertRule(rule, this.sheet.cssRules.length)
+        this.trackDomRule(name, this.sheet.cssRules[at])
       } catch (_e) {
         if (__DEV__) {
           // oxlint-disable-next-line no-console
@@ -336,7 +412,8 @@ export class StyleSheet {
       const rules = this.splitRules(cssText)
       for (const rule of rules) {
         try {
-          this.sheet.insertRule(rule, this.sheet.cssRules.length)
+          const at = this.sheet.insertRule(rule, this.sheet.cssRules.length)
+          this.trackDomRule(key, this.sheet.cssRules[at])
         } catch (_e) {
           if (__DEV__) {
             // oxlint-disable-next-line no-console
@@ -383,12 +460,16 @@ export class StyleSheet {
     this.ssrBuffer = []
     this.cache.clear()
     this.insertCache.clear()
+    this.icKeysByClass.clear()
+    this.domRules.clear()
   }
 
   /** Clear the dedup cache. Useful for HMR / dev-time reloads. */
   clearCache(): void {
     this.cache.clear()
     this.insertCache.clear()
+    this.icKeysByClass.clear()
+    this.domRules.clear()
     clearNormCache()
   }
 
@@ -405,6 +486,8 @@ export class StyleSheet {
   clearAll(): void {
     this.cache.clear()
     this.insertCache.clear()
+    this.icKeysByClass.clear()
+    this.domRules.clear()
     clearNormCache()
     this.ssrBuffer = []
     if (this.sheet) {
