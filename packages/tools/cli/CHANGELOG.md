@@ -1,5 +1,142 @@
 # @pyreon/cli
 
+## 0.19.0
+
+### Minor Changes
+
+- [#638](https://github.com/pyreon/pyreon/pull/638) [`dcd2136`](https://github.com/pyreon/pyreon/commit/dcd21360cca7528cbfe87020428394a11aa30ea0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(cli): doc-claims gate covers lint-rule / lint-category / detector-code counts
+
+  Extends the `doc-claims` gate (consumed by `pyreon doctor` AND
+  `scripts/check-doc-claims.ts`) from 2 to 5 source-of-truth counters,
+  7 → 19 claim sites:
+
+  - **lint rule count** — the `allRules` array in
+    `packages/tools/lint/src/rules/index.ts`. Claim sites: CLAUDE.md (×3),
+    the package README, `docs/docs/lint.md`, `lint/src/manifest.ts` (6×).
+  - **lint category count** — distinct `category:` literals across the
+    rule files. Claim sites: CLAUDE.md (×2), README, manifest.
+  - **detector-code count** — the `PyreonDiagnosticCode` union in
+    `packages/core/compiler/src/pyreon-intercept.ts`. Claim sites:
+    `.claude/rules/anti-patterns.md`, CLAUDE.md.
+
+  New `ClaimSpec.all` flag asserts EVERY occurrence of a pattern in a file
+  agrees (not just the first) — `manifest.ts` carries the rule count 6×;
+  bumping 5 of 6 would otherwise pass silently.
+
+  **Counters TEXT-PARSE in-repo source via `repoRoot`, never
+  `import { allRules }`.** A dynamic import resolves via bun's module
+  cache to a STALE published snapshot (observed: 0.18.0 cache → 66 rules
+  while the working tree had 76); asserting against that is worse than no
+  gate. Same `repoRoot`-relative approach the existing hook/doc-page
+  counters already use.
+
+  Fixes the live drift this gate immediately surfaced on `main`:
+  `lint/src/manifest.ts` (`62`/`67`/`13` → `76`/`76`/`17` across 3
+  occurrences) and `.claude/rules/anti-patterns.md` ("flags 12" → 15).
+  The `@pyreon/lint` manifest correction regenerates `llms-full.txt` +
+  the MCP `api-reference.ts` region (`bun run gen-docs`).
+
+  Bisect-verified: stubbing `countLintRules → 0` fails the real-repo
+  shape + 2 new specs; restored → all 27 cli gate tests pass. Gate green
+  (19/19); `gen-docs --check`, lint manifest-snapshot, oxlint, cli +
+  lint typecheck all clean.
+
+- [#635](https://github.com/pyreon/pyreon/pull/635) [`c8d6f27`](https://github.com/pyreon/pyreon/commit/c8d6f27b8d207b25a2f378eedc21af11adfe3653) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(cli): non-grade-gating `best-practices` advisory category for `pyreon doctor`
+
+  Follow-up [#4](https://github.com/pyreon/pyreon/issues/4). Resolves the objectivity tension from the doctor-objective
+  work ([#630](https://github.com/pyreon/pyreon/issues/630)): enabling the opt-in `@pyreon/lint` best-practice rules
+  ([#632](https://github.com/pyreon/pyreon/issues/632)/[#634](https://github.com/pyreon/pyreon/issues/634) — `frontend`/`query`/`rx`/`i18n` + form/router opt-in) used
+  to fold into `correctness`/`architecture`, tanking the objective health
+  grade and failing `--ci` — punishing projects for adopting opinionated
+  best practices (opinionated ≠ broken).
+
+  New advisory `FindingCategory: 'best-practices'`. The lint gate routes
+  every `meta.optIn` rule's findings here regardless of its lint category
+  (`gates/lint.ts`). It is **scored + displayed** (own breakdown, labeled
+  `advisory — excluded from grade & --ci` in the text renderer; never
+  shown as "skipped") but **always `included: false`** so it never enters
+  the overall mean/grade, and `doctor.ts` excludes advisory errors from
+  the `--ci` exit code. `isAdvisoryCategory()` exported from `doctor/score`.
+
+  Verified: `@pyreon/cli` 141 tests pass (+3 advisory specs: always-
+  excluded-from-mean, scored-for-visibility, 10 advisory errors don't move
+  the grade); typecheck clean; full-repo oxlint 0 errors. Self-run proof:
+  doctor grade/score/errors **byte-identical** to baseline with the
+  category added (zero regression), advisory row renders correctly.
+  Doctor/CLI-only — runtime-inert (no e2e impact, same class as [#632](https://github.com/pyreon/pyreon/issues/632)/[#634](https://github.com/pyreon/pyreon/issues/634)).
+
+  NOTE — deferred (honest scope): [#4](https://github.com/pyreon/pyreon/issues/4)'s "more frontend a11y rules" half is
+  deliberately NOT in this PR. Adding lint rules off `main` while [#632](https://github.com/pyreon/pyreon/issues/632)'s
+  rule-count manifest claims and [#634](https://github.com/pyreon/pyreon/issues/634)'s are still unmerged would create
+  manifest/count-claim merge conflicts across the stack. Those a11y rules
+  land cleanly in a follow-up once [#632](https://github.com/pyreon/pyreon/issues/632)/[#634](https://github.com/pyreon/pyreon/issues/634) merge (rebased onto the real
+  76-rule baseline) — not faked into this PR.
+
+- [#630](https://github.com/pyreon/pyreon/pull/630) [`21e465c`](https://github.com/pyreon/pyreon/commit/21e465c7957c3e57c838af58ffa995682908c5f8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix: make `pyreon doctor` objective + close the real first-party findings it then surfaced
+
+  `pyreon doctor` reported a meaningless **F (score 55, 987 errors)** because
+  its `lint` / `react-patterns` / `pyreon-patterns` gates scanned the WHOLE
+  repo: example apps (intentionally framework-idiomatic, incl. react-compat
+  demos), `e2e/`/`docs/`/`scripts/`, detector test-fixtures (which
+  _deliberately_ contain anti-patterns so the detectors can be tested), and
+  the `*-compat` packages (whose public API IS React/Vue/etc. by design).
+  ~705/987 errors were examples + fixtures; the rest a never-CI-enforced
+  advisory backlog or by-design.
+
+  **Objectivity (the deliverable):** the three gates now audit ONLY
+  first-party published source — `packages/<cat>/<pkg>/src/**`, excluding
+  tests/fixtures/`.d.ts` — via pure, unit-tested predicates
+  (`isFirstPartySourceFile` / `isCompatPackageFile`); `react-patterns`
+  additionally skips `*-compat` src (a React-API shim containing `useState`
+  is a definitional false positive). Errors **987 → 86**.
+
+  **Detector precision (false positives are the antithesis of objective):**
+
+  - `@pyreon/compiler` `dot-value-signal`: now requires the receiver to be a
+    tracked signal binding — no longer flags `input.value` / `cell.value` /
+    `o.value` (17 FPs; bisect-verified).
+  - `@pyreon/lint` `no-window-in-ssr`: recognizes field-captured typeof
+    (`this.isSSR = typeof document === 'undefined'`) and function-head
+    early-return guards covering nested closures (bisect-verified).
+  - `@pyreon/lint` `no-bare-signal-in-jsx`: now supports `exemptPaths`
+    (consistent with the other exemptable rules) — render-function
+    primitives read signals in JSX _attribute_ positions which the compiler
+    `_rp()`-wraps; the text-position heuristic over-fired there.
+
+  **Genuine first-party SSR bugs fixed** (the rule correctly did NOT silence
+  these — cross-function/method guards aren't lexically traceable):
+
+  - `@pyreon/head` `createNewTag` — added `typeof document` guard.
+  - `@pyreon/styler` `Sheet.mount()` — in-method `if (this.isSSR) return`.
+  - `@pyreon/hotkeys` `detachListener` — `typeof window` guard.
+  - `@pyreon/flow` flow-component — guarded `new ResizeObserver` with
+    `typeof ResizeObserver === 'function'`.
+  - `@pyreon/core` lifecycle — renamed a local `location` shadowing the
+    browser global (hygiene; also removed an SSR-analysis false positive).
+
+  **Curated `.pyreonlintrc.json`** exemptions (with rationale) for
+  genuinely-non-SSR-runtime surfaces: `@pyreon/compiler` (build-time Node)
+  and `*-compat` (DOM-runtime framework adapters, consistent with the
+  existing `runtime-dom` exemption) for `no-window-in-ssr`; `*-compat` for
+  `dev-guard-warnings` (intentional user-facing "[Pyreon] X not supported"
+  guidance that must reach prod).
+
+  **Result: errors 987 → 1.** The single remaining `no-window-in-ssr` in
+  `@pyreon/ui-core` (`_isBrowser && matchMedia(...)`) is provably SSR-safe
+  (short-circuit; `_isBrowser` is a `typeof`-AND const) — a documented
+  known rule-precision limitation, left visible (NOT exempted: silencing it
+  would hide future _real_ ui-core SSR bugs — anti-objective).
+
+  Verified: 8 touched packages, 3091 unit tests pass; typecheck clean;
+  full-repo `oxlint` 0 errors; e2e 127 specs pass (default 92 +
+  ui-regression 26 + app-showcase 9); each detector change bisect-verified.
+
+### Patch Changes
+
+- Updated dependencies [[`bcc3cd5`](https://github.com/pyreon/pyreon/commit/bcc3cd50d3cc19b486a8169fbe941848edd793c7), [`82d78b4`](https://github.com/pyreon/pyreon/commit/82d78b4889344bad26175d4adf07c682d639dfa3), [`5fb461a`](https://github.com/pyreon/pyreon/commit/5fb461aaf9fcc8d2a624af1442f4db97fd7f33c9), [`5b69841`](https://github.com/pyreon/pyreon/commit/5b69841a6ab30963977e276d120c33d66682da23), [`e274fce`](https://github.com/pyreon/pyreon/commit/e274fceeb37d0893c7425463e443185388fce475), [`dcd2136`](https://github.com/pyreon/pyreon/commit/dcd21360cca7528cbfe87020428394a11aa30ea0), [`21e465c`](https://github.com/pyreon/pyreon/commit/21e465c7957c3e57c838af58ffa995682908c5f8), [`6472de0`](https://github.com/pyreon/pyreon/commit/6472de00ffdbcff1fd453c125c404b75fc5cc46d), [`0408e47`](https://github.com/pyreon/pyreon/commit/0408e475e63770996eff17bfb6ac318e89c45df4), [`8f1aad3`](https://github.com/pyreon/pyreon/commit/8f1aad3cc44d86f9248cfd4b7def10c914748bb0), [`7e0fe1a`](https://github.com/pyreon/pyreon/commit/7e0fe1a4f7cbb68f7647d85bef843de90d04d506), [`9de49da`](https://github.com/pyreon/pyreon/commit/9de49dab97c91c8707decd10ce89085d8d6942e0), [`c5b2ea2`](https://github.com/pyreon/pyreon/commit/c5b2ea2fe0df3f52b2af21e0d79b1e391ca9fad5), [`6581f07`](https://github.com/pyreon/pyreon/commit/6581f073293a72360fe9391990d08316e0dc5b4b), [`070a0ec`](https://github.com/pyreon/pyreon/commit/070a0ec687ad598cf15963e5615bb1d8c81933a3)]:
+  - @pyreon/lint@0.19.0
+  - @pyreon/compiler@0.19.0
+
 ## 0.18.0
 
 ### Patch Changes

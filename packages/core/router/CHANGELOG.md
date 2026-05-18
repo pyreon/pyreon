@@ -1,5 +1,101 @@
 # @pyreon/router
 
+## 0.19.0
+
+### Patch Changes
+
+- [#612](https://github.com/pyreon/pyreon/pull/612) [`c3d0a70`](https://github.com/pyreon/pyreon/commit/c3d0a7017ed2ef4468ec3fb4e4c09ec869d2917a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Security / memory-leak / correctness hardening sweep across core, fundamentals, and zero. 12 source-grounded defects fixed; every fix has a bisect-verified regression test (revert → fail → restore → pass).
+
+  **Security (prototype pollution / XSS / DoS)**
+
+  - `@pyreon/reactivity` `reconcile()` + `createStore` set trap — a documented "apply an untrusted API response into a store" path (`reconcile(JSON.parse(body), store)`) had no `__proto__`/`constructor`/`prototype` guard. Added on both the write and stale-key-removal passes + defense-in-depth in the proxy set trap.
+  - `@pyreon/i18n` `addMessages` — `nestFlatKeys` (dotted-key expansion) ran BEFORE `deepMerge`, so deepMerge's own pollution filter never saw the dotted form; `__proto__.x` walked into `Object.prototype` and wrote onto it. Message JSON is routinely CDN/community-sourced. Guarded.
+  - `@pyreon/document` HTML renderer — `language` was interpolated raw into `<html lang="…">` and `styleStr` emitted string values raw into `style="…"`; a CMS/author-supplied value containing `"><script>` broke out → stored XSS. `lang` is now charset-restricted + escaped; style values route through the renderer's existing `sanitizeCss`.
+  - `@pyreon/zero` rate-limit — `MAX_STORE_SIZE` was a declared-but-unenforced constant; the cleanup only evicted EXPIRED entries, so a flood of unique keys within one window (spoofable `X-Forwarded-For`) grew the Map unbounded — an unauthenticated memory-exhaustion DoS. Added a hard cap with oldest-first eviction (mirrors the ISR cache's proven `set()`).
+  - `@pyreon/zero` ISR — the cache stored ANY response and replayed it as a 200 for the whole revalidate window: a transient 5xx/3xx became a self-inflicted outage, and a `Set-Cookie` response was replayed cross-user. Now only 2xx, cookie-free responses are cached; everything else passes through verbatim with its original status (`x-isr-cache: BYPASS`).
+  - `@pyreon/server` `prerender` + `@pyreon/zero` SSG plugin (3 sites) — the path-traversal guard used a bare `startsWith(resolve(outDir))` (string-prefix, not path containment): a `getStaticPaths` slug resolving to the SIBLING `dist-evil/` passed and wrote outside the output root. Now separator-terminated containment (`isInsideDist`).
+  - `@pyreon/zero` API-route matcher — dangerous param names from the route pattern guarded (defense-in-depth; consistent with the reconcile / i18n guards).
+
+  **Memory leaks**
+
+  - `@pyreon/reactivity` `signal._d` — direct-updater disposal nulled an array slot but never compacted, so a long-lived signal (theme/locale/auth, or signals read in `<For>` rows) bound by churning components accumulated one permanent dead slot per ever-mounted binding — an app-lifetime leak that ALSO degraded the signal-write hot path (`notifyDirect` iterated O(total-ever), not O(live)). Switched to a `Set` (same as `_s`): O(1) disposal, O(live) iteration, bounded growth. Proven structurally — `_d.size` stays 0 after 10 000 register/dispose cycles.
+  - `@pyreon/dnd` `useSortable` — `itemRef` pushed every pdnd registration onto a shared array and the unmount (`ref(null)`) branch was a no-op, so a churning `<For>` sortable (todo list / kanban — the documented usage) leaked every removed item's draggable/dropTarget registration until the whole sortable unmounted. Now per-key disposal on unmount and re-register.
+  - `@pyreon/zero` ISR — a hung revalidation handler pinned its key in the in-flight set forever (`finally` never ran), so the entry could never recover from stale. Background revalidation is now timeout-bounded (`ISRConfig.revalidateTimeoutMs`, default 30 s).
+
+  **Correctness / silent-failure**
+
+  - `@pyreon/router` `stringifyLoaderData` — the cycle detector used an all-seen `WeakSet` that was never pruned, so a shared (DAG) reference — extremely common, e.g. `{ author: user, lastEditor: user }` from an ORM — falsely threw "circular reference" and 500'd the SSR response. Replaced with true ancestor-path detection (the original code's own comment anticipated exactly this remedy). **Behaviour change (bug fix, strictly more permissive):** payloads that previously 500'd now serialize; real cycles still throw.
+  - `@pyreon/server` `processTemplate` — used `String.prototype.replace` with string replacements, so rendered HTML containing literal `$&` / `$$` / `` $` `` / `$'` (prices, code, math) was corrupted by regex-pattern substitution. Switched to function replacements.
+  - `@pyreon/i18n` `interpolate` — a serialization failure (circular value, throwing `toString`) was swallowed silently, rendering `{{key}}` to end users with no signal. Now dev-warns (fallback behaviour unchanged).
+  - `@pyreon/query` `useSSE` — the reactive effect unconditionally reset `intentionalClose = false`, so an explicit `close()` was silently overridden by any later reactive `url`/`enabled` change. Now respects `intentionalClose` (mirrors `useSubscription`); `reconnect()` is the explicit resume.
+
+  **Disclosures (honest scope)**
+
+  - **An attempted SWR-swallow fix (surface the empty `.catch` via `__DEV__` warn + `_onError`) was REVERTED from this PR.** Probing empirically proved `revalidateSwrLoaders` is invoked **0 times** even by the canonical `staleWhileRevalidate` nav pattern: `resolveRoute` returns fresh `RouteRecord` objects per resolution, so `runLoaders`' `r.staleWhileRevalidate && router._loaderData.has(r)` gate is never true across navigations — the SWR branch is **dead code**, and the existing "revalidates in background" test's count actually comes from the blocking path running twice. Adding error-surfacing to provably-unreachable code is not hardening (and it dropped router coverage). **The real bug — `staleWhileRevalidate` is effectively non-functional for the nav-away/back case (record-identity-keyed gate)** — is a distinct, significant finding whose correct fix (key the gate by a stable path/loaderKey) is a non-trivial router behaviour change deserving its own focused, aligned PR. Documented in `router/src/tests/loader.test.ts` as a flagged follow-up; deliberately not bundled here (scope/risk).
+  - One audit finding (`decodeKeyFromMarker`) was investigated and **dropped as a false positive** — `%2D` never appears in `encodeURIComponent` output, so the manual substitution is uniquely reversible.
+  - Z5 (API-route param guard) is defense-in-depth: a string param value assigned to `__proto__` is a silent JS no-op (not exploitable); the guard prevents the real own-prop shadow for `constructor`/`prototype` and matches the repo-wide convention.
+
+  Validation: lint 0 errors; typecheck clean (8 touched packages); gen-docs in sync; audit-types `--all --strict` 0 HIGH; bundle-budgets 54/54 within budget. Per-package suites all green (reactivity 294, router 520, server 78, i18n 155, document 269, dnd 111, query 151, zero 884).
+
+- [#615](https://github.com/pyreon/pyreon/pull/615) [`8e4b607`](https://github.com/pyreon/pyreon/commit/8e4b607b01c6399153bd504f1411f213db987a9a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs: reconcile manifest doc-metadata with source
+
+  `useTransition()` / `useMiddlewareData()` manifest entries documented the
+  wrong shape (`{ isTransitioning }` / `<T>(): T`); source returns reactive
+  accessors (`() => boolean`, `() => Record<string, unknown>`). The mcp
+  `get_pattern` summary said "Eight foundational patterns" — actually 16.
+  Manifest-only / regenerated-api-reference; no runtime behavior change.
+
+- [#597](https://github.com/pyreon/pyreon/pull/597) [`7150368`](https://github.com/pyreon/pyreon/commit/7150368f85daa783e55f05541d0c45356c13b00d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `RouterLink` viewport-prefetch polish + prefetch discoverability docs.
+
+  **Code — `prefetch="viewport"` refinements** (`components.tsx`):
+
+  - IntersectionObserver now uses `rootMargin: '200px'` (was the implicit 0px). The prefetch starts _before_ the link is fully on screen, so a fast scroll-then-click typically lands on already-resolved loader data instead of waiting. Matches the margin instant.page / Astro use.
+  - The prefetch is scheduled via `requestIdleCallback` (falls back to `setTimeout(1)` on Safari < 16.4 / jsdom) instead of running synchronously inside the observer callback — so it never contends with the scroll the user is actively performing. The observer disconnects _synchronously_ on first intersection before the idle slice is queued, so scroll jitter can't double-schedule.
+
+  No behaviour change for `"intent"` (the default), `"hover"`, or `"none"`.
+
+  **Docs — closed a discoverability gap.** `docs/docs/router.md` previously:
+
+  - Omitted `'intent'` from the `prefetch` type entirely
+  - Documented the default as `"hover"` — the actual default is `'intent'` (hover **and** keyboard focus)
+
+  So readers couldn't discover that prefetch is on by default, and keyboard / screen-reader users' coverage (focus-triggered prefetch) was invisible. The Prefetch Strategies section is rewritten: corrected type + default, a strategy table, the accessibility rationale for why `"intent"` is the default, and a note on the viewport polish + dedup/eviction bound. CLAUDE.md's router prefetch line updated to match.
+
+  Bisect-verified: reverted the `components.tsx` polish to the pre-fix shape → the new regression test `viewport prefetch uses 200px rootMargin + idle scheduling` failed at `expect(capturedRootMargin).toBe('200px')`; restored → all 3 viewport-prefetch tests pass. Full `@pyreon/router` suite: 519 tests pass (518 prior + 1 new).
+
+- [#617](https://github.com/pyreon/pyreon/pull/617) [`2ee82eb`](https://github.com/pyreon/pyreon/commit/2ee82eb340c515c16aaa7a652ffc5b0c97b59ed6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix: `staleWhileRevalidate` route loaders now actually work for the realistic navigate-away-and-back case.
+
+  **The bug.** `commitNavigation` pruned `router._loaderData` on every navigation — deleting any entry whose `RouteRecord` was not in the _new_ matched chain. Navigating away from a `staleWhileRevalidate` route therefore deleted its loader data, so on return `runLoaders`' `r.staleWhileRevalidate && router._loaderData.has(r)` gate was always false and the route went through the **blocking** loader path every time. `revalidateSwrLoaders` never ran; SWR was effectively a no-op (it only worked if you re-navigated to the route _without_ navigating away first — never the real-world pattern).
+
+  **The fix.** The prune now skips `staleWhileRevalidate` records (`!to.matched.includes(record) && !record.staleWhileRevalidate`), so their last-loaded data survives navigating away — which is exactly SWR's contract: on return, serve the stale value immediately and revalidate in the background. Retained data is bounded by the number of SWR route _records_ (a developer-declared set; param routes share one record); per-key freshness/LRU is still handled by `_loaderCache`.
+
+  **Behaviour change (bug fix, not breaking).** Returning to a `staleWhileRevalidate` route now resolves the navigation instantly with stale data + a background revalidation, instead of blocking on a fresh fetch — i.e. the documented behaviour, which previously never happened. No app could have depended on SWR being broken.
+
+  **Note (corrects a prior disclosure).** PR [#612](https://github.com/pyreon/pyreon/issues/612) hypothesised the cause was `resolveRoute` returning fresh `RouteRecord` objects (identity-keyed gate never matching). That was **wrong** — record identity is stable. An instrumented probe pinned the true cause to the `commitNavigation` prune (SWR fires for `/data → /data`, but not `/data → / → /data`).
+
+  **Verification.** The pre-existing `staleWhileRevalidate` test was strengthened into a load-bearing regression guard: the revalidation (2nd) loader call now takes a real ~40 ms delay, and the test asserts that immediately after the return navigation the served data is still the STALE `data-v1` (SWR returned without blocking) — pre-fix that navigation went through the blocking path and the data was already `data-v2`. Bisect-verified (revert the prune-skip → the stale-window assertion fails with `expected 'data-v2' to be 'data-v1'`, and the nav even takes ~45 ms because it blocked on the 40 ms loader; restore → 520/520 router tests pass). `bun run coverage` exits 0 with `@pyreon/router` at 91.19 % (the strengthened test now exercises the real `revalidateSwrLoaders` path).
+
+- [#621](https://github.com/pyreon/pyreon/pull/621) [`4f410b6`](https://github.com/pyreon/pyreon/commit/4f410b6403ce1c033f049aa6cd2700f64193b2d1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix: a failing `staleWhileRevalidate` background revalidation no longer fails silently.
+
+  `revalidateSwrLoaders`' rejection handler was an empty `.catch(() => {})`. A persistently-failing background revalidation loader (auth expiry, API outage, a bug thrown in the loader) therefore produced **zero signal** — the developer saw permanently-stale data with nothing pointing at the cause: exactly the silent-failure anti-pattern the project's own `anti-patterns.md` forbids ("Silent plugin/init error swallowing — always log in `__DEV__` and call the user `onError`").
+
+  Now the rejection is surfaced like every other loader error: a `__DEV__` `console.warn` plus the user-supplied `router.onError(err, route)` hook. It does **not** act on the return value — the navigation already settled on stale data and must not be cancelled/redirected, and a failed revalidation must not clobber the still-valid stale value.
+
+  **Context (why this wasn't fixed before).** This `.catch` was unreachable dead code until [#617](https://github.com/pyreon/pyreon/issues/617): the `commitNavigation` prune deleted SWR loader data on every nav-away, so `revalidateSwrLoaders` never ran for the realistic nav-away/back case. An earlier attempt to surface this error (in [#612](https://github.com/pyreon/pyreon/issues/612)) was correctly **reverted** at the time precisely because the path was dead — adding error-surfacing to unreachable code is not hardening, and it couldn't be tested. [#617](https://github.com/pyreon/pyreon/issues/617) made the SWR path live; this PR is the now-worthwhile, now-**testable** completion.
+
+  **Verification.** New load-bearing regression test: `/data → / → /data` with the revalidation (2nd) loader call rejecting after a real 40 ms delay. Asserts the error reaches `onError` exactly once, the navigation is **not** cancelled (`currentRoute().path === '/data'`), and the stale value is retained (not clobbered by the failed revalidation). Bisect-verified: reverting the `.catch` to the empty body fails the test with `expected "vi.fn()" to be called 1 times, but got 0 times`; restored → 521/521 router tests pass. `bun run coverage` exit 0 (`@pyreon/router` 91.21 %); lint + typecheck clean.
+
+- [#596](https://github.com/pyreon/pyreon/pull/596) [`e8e95bc`](https://github.com/pyreon/pyreon/commit/e8e95bc2d6785d397f4b8f85039ce76c2a7f6cea) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Component-level HMR for zero/router apps — editing a route/page component now updates the DOM in place without a manual refresh, preserving module-scope signal state.
+
+  Previously `@pyreon/vite-plugin`'s `injectHmr` emitted a bare `import.meta.hot.accept()` (no callback): Vite re-evaluated the edited module but nothing re-rendered the mounted tree, and the self-accept suppressed Vite's full-reload fallback — so every component/JSX edit produced a silently-stale UI until a manual browser refresh.
+
+  Now the accept callback hands the fresh module to `globalThis.__pyreon_hmr_swap__` (registered by `@pyreon/router` in a dev browser, zero import coupling). The coordinator finds every active matched lazy route whose `_hmrId` matches (emitted by `@pyreon/zero`'s fs-router as `lazy(() => import(…), { hmrId })`), swaps the component, and bumps the loading signal so `RouterView` re-renders only that subtree in place — no page reload, so module-scope signals keep their values via the existing `__pyreon_hmr_registry__`. Edits outside the active route tree (nested components, unrelated routes, signal-only modules) or apps without the coordinator fall back to `import.meta.hot.invalidate()` → an automatic full reload (still no manual refresh). Production is unaffected (dev+browser gated).
+
+- Updated dependencies [[`c3d0a70`](https://github.com/pyreon/pyreon/commit/c3d0a7017ed2ef4468ec3fb4e4c09ec869d2917a), [`ecd8e52`](https://github.com/pyreon/pyreon/commit/ecd8e526943a1e6b07957ff96f4410fa482baa0d), [`ac1d375`](https://github.com/pyreon/pyreon/commit/ac1d37542b11cd95451a2f0b0a51cc43603d001a), [`21e465c`](https://github.com/pyreon/pyreon/commit/21e465c7957c3e57c838af58ffa995682908c5f8), [`c4b6e9a`](https://github.com/pyreon/pyreon/commit/c4b6e9a5850196171c2197fc918163f736708aa8), [`fb40906`](https://github.com/pyreon/pyreon/commit/fb409066e49e44c42f77084a92a68103a4e6c5ef), [`9f03747`](https://github.com/pyreon/pyreon/commit/9f037478763d9f8cd2365feb63dc87fda2545e5d), [`3374150`](https://github.com/pyreon/pyreon/commit/33741500499dfb487d031bbffe77723d74b8f261), [`fa4e37f`](https://github.com/pyreon/pyreon/commit/fa4e37fa620cf0e3f240053bf789b84bd9668838)]:
+  - @pyreon/reactivity@0.19.0
+  - @pyreon/core@0.19.0
+  - @pyreon/runtime-dom@0.19.0
+
 ## 0.18.0
 
 ### Patch Changes

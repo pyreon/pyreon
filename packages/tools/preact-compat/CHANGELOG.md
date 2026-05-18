@@ -1,5 +1,24 @@
 # @pyreon/preact-compat
 
+## 0.19.0
+
+### Patch Changes
+
+- [#642](https://github.com/pyreon/pyreon/pull/642) [`fa4e37f`](https://github.com/pyreon/pyreon/commit/fa4e37fa620cf0e3f240053bf789b84bd9668838) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Repo sweep (round 2): a real memory leak + cross-compat duplication removal.
+
+  **`@pyreon/styler` — unbounded `insertCache` + DOM `cssRules` growth (memory leak).** `evictIfNeeded()` trimmed ONLY the `cache` Map. The cssText-keyed `insertCache` (large keys — full CSS text) and the live `<style>` tag's `CSSStyleSheet.cssRules` were never evicted, so `maxCacheSize` bounded the _smallest_ of the three storage layers while the two memory-heavy ones grew for the entire process lifetime. Any app generating many distinct CSS strings (signal-driven dynamic styles, per-instance computed themes) leaked Map entries + live DOM rules forever. Fix: a `className → Set<icKey>` reverse index plus a `className → CSSRule[]` object-ref index (object refs survive `deleteRule()` reindexing) let `evictKeys()` drop all three layers in lockstep — `cache.delete` + `insertCache.delete` + descending-index `deleteRule()`. `reset()` / `clearCache()` / `clearAll()` clear the two new indices too. `maxCacheSize` now genuinely bounds memory. No API/behaviour change for steady-state apps; dedup correctness preserved (re-inserting an evicted rule yields the same deterministic className + exactly one live DOM rule). Bisect-verified: reverted `evictKeys` to pre-fix cache-only behaviour → `insertCache stays bounded` failed `expected 300 to be ≤ 75`, `live DOM cssRules count` failed `expected 180 to be ≤ 47`; restored → 13/13.
+
+  **`@pyreon/core` + `@pyreon/react-compat` + `@pyreon/preact-compat` — compat duplication removal (behaviour-preserving).** `shallowEqual` (memo / useState bailout) was copy-pasted byte-identically into `react-compat/index.ts` and `preact-compat/hooks.ts`; the React/Preact DOM-prop mapping (`className→class`, `htmlFor→for`, `onChange→onInput`, `autoFocus`, `defaultValue`/`defaultChecked`, authoring-only strip) was near-duplicated across both jsx-runtimes (only divergence: React also stripped `suppressContentEditableWarning` — a no-op for Preact, so unifying is behaviour-preserving). Consolidated into a new `@pyreon/core/compat-shared.ts` (`shallowEqualProps`, `mapCompatDomProps`) — core is already a dependency of every compat package and already hosts the sibling cross-compat module `compat-marker.ts` (`nativeCompat`/`isNativeCompat`). Both packages now import the canonical helpers (aliased to local names — zero call-site churn).
+
+  Validation: lint 0 errors; typecheck clean (styler + core + react-compat + preact-compat); styler 413/413, core 497/497, react-compat 224/224, preact-compat 157/157; styler browser smoke 9/9; e2e `ui-regression` 26/26 (styler/rocketstyle real-app gate); e2e `compat-layers` 12/12 (react/preact/vue/solid real-app gate); new `compat-shared.test.ts` 13/13.
+
+  **Deferred (own focused PRs — analysis preserved):** router `findNotFoundFallback` cache — its result depends on `urlPath` (not a pure fn of `routes`), so a correct cache needs an enumerate-candidates / pick-by-urlPath refactor. That's a correctness-sensitive perf refactor, not a mistake / edge case / leak / duplicate, so it's out of scope for a behaviour-preserving sweep. `@pyreon/styler` `internElementBundle` css-prop interning ([#626](https://github.com/pyreon/pyreon/issues/626)-documented) — a distinct optimization, not a leak; its own PR. No other new memory leak found this round (prior sweeps already fixed signal.\_d / computed.direct / useSortable / ISR).
+
+- Updated dependencies [[`c3d0a70`](https://github.com/pyreon/pyreon/commit/c3d0a7017ed2ef4468ec3fb4e4c09ec869d2917a), [`ecd8e52`](https://github.com/pyreon/pyreon/commit/ecd8e526943a1e6b07957ff96f4410fa482baa0d), [`ac1d375`](https://github.com/pyreon/pyreon/commit/ac1d37542b11cd95451a2f0b0a51cc43603d001a), [`21e465c`](https://github.com/pyreon/pyreon/commit/21e465c7957c3e57c838af58ffa995682908c5f8), [`c4b6e9a`](https://github.com/pyreon/pyreon/commit/c4b6e9a5850196171c2197fc918163f736708aa8), [`fb40906`](https://github.com/pyreon/pyreon/commit/fb409066e49e44c42f77084a92a68103a4e6c5ef), [`9f03747`](https://github.com/pyreon/pyreon/commit/9f037478763d9f8cd2365feb63dc87fda2545e5d), [`3374150`](https://github.com/pyreon/pyreon/commit/33741500499dfb487d031bbffe77723d74b8f261), [`fa4e37f`](https://github.com/pyreon/pyreon/commit/fa4e37fa620cf0e3f240053bf789b84bd9668838)]:
+  - @pyreon/reactivity@0.19.0
+  - @pyreon/core@0.19.0
+  - @pyreon/runtime-dom@0.19.0
+
 ## 0.18.0
 
 ### Patch Changes

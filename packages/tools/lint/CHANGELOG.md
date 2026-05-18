@@ -1,5 +1,261 @@
 # @pyreon/lint
 
+## 0.19.0
+
+### Minor Changes
+
+- [#632](https://github.com/pyreon/pyreon/pull/632) [`bcc3cd5`](https://github.com/pyreon/pyreon/commit/bcc3cd50d3cc19b486a8169fbe941848edd793c7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(lint): opt-in, dependency-auto-detected best-practice rules (frontend a11y/CLS + query/rx/form)
+
+  Adds 7 best-practice rules across 3 new categories plus a new opt-in
+  preset and the dependency-detection foundation that makes them
+  zero-config and zero-noise. `pyreon doctor` surfaces them automatically
+  (its lint gate already maps every lint category), so no `@pyreon/cli`
+  change is needed.
+
+  **New rules (74 rules / 16 categories total, up from 67/13):**
+
+  - `frontend` (4): `pyreon/require-img-alt` (a11y — error), `pyreon/img-requires-dimensions` (CLS/layout-shift — warn), `pyreon/no-positive-tabindex` (a11y, **auto-fixable** → `0`), `pyreon/prefer-zero-image` (asset optimization — info, gated on `@pyreon/zero`).
+  - `query` (1): `pyreon/query-options-as-function` — `useQuery`/`useInfiniteQuery`/`useQueries`/`useSuspenseQuery` with an options **object literal** breaks signal-tracked refetch; wrap in `() => ({ ... })` (error; `useMutation` excluded).
+  - `rx` (1): `pyreon/rx-prefer-pipe` — nested rx transforms → compose with `pipe(...)` for one computed (info).
+  - `form` (1, extends the existing category): `pyreon/no-signal-in-form-initial-values` — a signal read in `useForm({ initialValues })` snapshots once; pass the plain value / use a reactive field (warn).
+
+  **Configurability (all three levels):**
+
+  1. **Opt-in by default** — every new rule sets `meta.optIn: true`: forced
+     OFF in `recommended` / `strict` / `app` / `lib` (never a surprise
+     score/CI penalty). The new `best-practices` preset enables them
+     wholesale; per-rule `.pyreonlintrc.json` config always overrides.
+  2. **Dependency auto-detection** — library-scoped rules self-gate on the
+     project's `package.json` (`dependencies` / `devDependencies` /
+     `peerDependencies` / `optionalDependencies`, + the package's own name
+     for in-lib source) via the new `utils/project-deps:isProjectDependency`
+     (cached per manifest). A project that doesn't use `@pyreon/query`
+     never sees query rules.
+  3. **Path exemption** — all support `exemptPaths` like the other
+     exemptable rules.
+
+  **AI-actionable:** every rule's message is prescriptive (states the fix),
+  so an assistant reading `pyreon doctor` / `pyreon-lint` output knows
+  exactly how to resolve it; `no-positive-tabindex` autofixes with `--fix`.
+
+  New public surface: `PresetName` gains `'best-practices'`; `RuleCategory`
+  gains `'frontend' | 'query' | 'rx'`; `RuleMeta` gains optional `optIn`;
+  `isProjectDependency` exported from `@pyreon/lint`. Backward-compatible
+  (opt-in default = no behavior change for existing consumers).
+
+  Bisect-verified per rule (FIRES / DOES-NOT-FIRE + dep-absent specs);
+  `@pyreon/lint` 576 tests pass; foundation covered by dedicated
+  `project-deps.test.ts` + `best-practices-preset.test.ts`.
+
+- [#634](https://github.com/pyreon/pyreon/pull/634) [`82d78b4`](https://github.com/pyreon/pyreon/commit/82d78b4889344bad26175d4adf07c682d639dfa3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(lint): autofix `query-options-as-function` + extend best-practice rules to i18n & router (76 rules / 17 cat)
+
+  Follow-up to [#632](https://github.com/pyreon/pyreon/issues/632) (extend more libraries + autofix the mechanically-safe ones).
+
+  - **`pyreon/query-options-as-function` is now auto-fixable** (`--fix`): the
+    options object literal is wrapped in `() => (...)` (pure syntactic
+    thunk; the intended reactivity fix, no other behavior change).
+  - **New opt-in rule `pyreon/i18n-prefer-trans-for-rich-jsx`** (`i18n`
+    category — new; severity `info`; dep-gated `@pyreon/i18n`): flags
+    `{t('…')}` interleaved with JSX element siblings (rich content) —
+    use `<Trans>`. Zero-FP: a single element's children-array check;
+    plain-text `{t('title')}` never fires.
+  - **New opt-in rule `pyreon/prefer-typed-search-params`** (`router`
+    category; severity `info`; dep-gated `@pyreon/router`): manual
+    `new URLSearchParams(...)` in a router-aware file → use
+    `useTypedSearchParams()`. Zero-FP: literal `new URLSearchParams` +
+    in-file `@pyreon/router` import.
+
+  Both new rules follow the [#632](https://github.com/pyreon/pyreon/issues/632) contract: `meta.optIn: true` (off in
+  `recommended`/`strict`/`app`/`lib`; enabled by the `best-practices`
+  preset or per-rule config), `package.json` dependency auto-detection,
+  `exemptPaths`, prescriptive AI-actionable messages. `RuleCategory` gains
+  `'i18n'`. Backward-compatible (opt-in default = no behavior change).
+
+  Bisect-verified per rule + per autofix; `@pyreon/lint` 595 tests pass
+  (incl. updated count/category/opt-in-set meta-tests + a new
+  `bp-extend-rules.test.ts`). Docs (CLAUDE.md, lint.md, README,
+  anti-patterns.md, manifest) updated.
+
+- [#639](https://github.com/pyreon/pyreon/pull/639) [`8f1aad3`](https://github.com/pyreon/pyreon/commit/8f1aad3cc44d86f9248cfd4b7def10c914748bb0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(lint): 4 opt-in best-practice rules — frontend a11y + dep-gated @pyreon/storage
+
+  Adds 4 opt-in rules (80 rules / 18 categories, up from 76 / 17) on the
+  existing `meta.optIn` + dependency-auto-detection foundation. `pyreon
+doctor` surfaces them automatically (its lint gate is category-agnostic,
+  keyed on `meta.optIn`); the `recommended`/`strict`/`app`/`lib` presets
+  force them OFF, the `best-practices` preset enables them at declared
+  severity. Backward-compatible (opt-in default = no behavior change).
+
+  **Frontend a11y (category `frontend`, all `optIn`):**
+
+  - `pyreon/no-autofocus` (warn, **fixable**) — the `autoFocus`/`autofocus`
+    attribute moves focus on mount, disorienting screen-reader/keyboard
+    users. Skips `autoFocus={false}`. Fix removes the attribute.
+  - `pyreon/no-redundant-role` (warn, **fixable**) — a `role` that
+    duplicates the element's implicit ARIA role. Conservative tag→role map
+    (zero-FP: `a`→`link` only with a static `href`; dynamic values and
+    component elements skipped). Fix removes the attribute.
+  - `pyreon/anchor-is-valid` (warn) — `<a>` with no `href`, or `href` of
+    `""` / `#` / `javascript:`. Not fixable (button-vs-link intent is
+    ambiguous); `href={dynamic}` skipped.
+
+  **Library best-practice (new category `storage`, `optIn` + dep-gated):**
+
+  - `pyreon/no-storage-write-as-call` (error, **fixable**) — gated on a
+    declared `@pyreon/storage` dependency. `useStorage` /
+    `useSessionStorage` / `useCookie` / `useIndexedDB` / `useMemoryStorage`
+    return a `StorageSignal`; `s(next)` reads-and-discards the argument
+    like any signal call. Same proven conservative shape as the
+    `signal-write-as-call` detector (tracks the `const s = useStorage(...)`
+    binding, fires only on a bare-identifier call with ≥1 arg, skips
+    `.set`/`.update`/`.remove` and zero-arg reads). Fix: `s(x)` → `s.set(x)`.
+
+  Deferred with rationale (NOT silently dropped): `control-needs-label`
+  and broad machine/hotkeys/permissions/state-tree rules — label/aria
+  association and those surfaces need cross-element id / scope / type
+  resolution an AST walker can't do without false positives (the explicit
+  "high-risk cliff" the codebase avoids for detectors).
+
+  Each rule ships paired FIRES / DOES-NOT-FIRE specs (the dep-gated one
+  also a "dep absent → silent" spec); bisect-verified (disabling
+  `context.report` in `no-storage-write-as-call` fails its 3 fire/fix
+  specs, restored → 9/9). New public surface: `RuleCategory` gains
+  `'storage'`. Meta-tests updated (rule count 76→80, category counts,
+  `best-practices-preset` opt-in set 9→13). `@pyreon/lint` 634 tests
+  pass; manifest regenerated `llms-full.txt` + MCP `api-reference.ts`
+  (`gen-docs --check` clean); oxlint + typecheck clean.
+
+- [#601](https://github.com/pyreon/pyreon/pull/601) [`9de49da`](https://github.com/pyreon/pyreon/commit/9de49dab97c91c8707decd10ce89085d8d6942e0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - New rule `pyreon/no-heavy-import-only-in-handler` (performance, warn).
+
+  Flags a statically-imported heavy module (`@pyreon/charts` / `code` / `flow` / `document`, plus any extra modules configured via the `heavyModules` option) that is referenced **only** inside deferred scopes — JSX `on*` event handlers or `onMount` / `onUnmount` / `onCleanup` lifecycle callbacks. The static `import` forces the heavy chunk into the initial bundle even though nothing touches it until the user interacts; the fix is a dynamic `await import()` inside the handler.
+
+  ```tsx
+  // ✗ flagged — @pyreon/charts only used in a click handler
+  import { renderChart } from '@pyreon/charts'
+  <button onClick={() => renderChart(el)}>Show chart</button>
+
+  // ✓ heavy chunk stays out of the initial bundle
+  <button onClick={async () => {
+    const { renderChart } = await import('@pyreon/charts')
+    renderChart(el)
+  }}>Show chart</button>
+  ```
+
+  The precise, actionable counterpart to the blunt info-level `pyreon/no-eager-import` (which fires on every heavy static import including ones genuinely needed at render). This rule fires only when **every** reference is provably deferred, so the recommended fix is unambiguous. Conservative by construction: any eager reference at all — a `<Chart/>` JSX element, a module-eval `const x = heavy`, a plain helper called at render — suppresses the report (a false negative is acceptable; telling someone to defer an import they need at render is not).
+
+  `effect` / `renderEffect` are deliberately **not** treated as deferred: their callbacks run synchronously during component setup, so a heavy module used in an effect body is a render-time dependency, not a deferrable one.
+
+  Rule count 67, performance category 5. No breaking changes.
+
+- [#611](https://github.com/pyreon/pyreon/pull/611) [`070a0ec`](https://github.com/pyreon/pyreon/commit/070a0ec687ad598cf15963e5615bb1d8c81933a3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - **Reactivity Lens (experimental)** — surface the compiler's already-computed reactivity analysis back to the author at the source.
+
+  Pyreon's [#1](https://github.com/pyreon/pyreon/issues/1) silent footgun: whether code is reactive is invisible at the moment you write it. The compiler ALREADY decides this per-expression for codegen and discards the analysis. The Lens pipes it back.
+
+  - `@pyreon/compiler`: additive opt-in `TransformOptions.reactivityLens` → `TransformResult.reactivityLens: ReactivitySpan[]` (emitted code byte-identical with it on/off; all existing compiler tests pass unchanged). New exports `analyzeReactivity()` / `formatReactivityLens()` + `ReactivityKind` / `ReactivitySpan` / `ReactivityFinding` types. `analyzeReactivity` merges the structural compiler facts with the existing `detectPyreonPatterns` footgun detectors under one taxonomy.
+  - `@pyreon/lint`: the existing `--lsp` server gains an `inlayHintProvider` + `textDocument/inlayHint` handler rendering `live` / `static` / `live·prop` / `hoisted` ghost-text at each reactive/baked-once expression; footguns publish as `pyreon-lens` warning diagnostics. Adds a `@pyreon/compiler` dependency.
+
+  JS-backend only (native Rust sidecar parity is a follow-up). The positive "this is live" claim is a faithful record of the codegen branch, not a heuristic — drift-gated + bisect-verified.
+
+### Patch Changes
+
+- [#638](https://github.com/pyreon/pyreon/pull/638) [`dcd2136`](https://github.com/pyreon/pyreon/commit/dcd21360cca7528cbfe87020428394a11aa30ea0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(cli): doc-claims gate covers lint-rule / lint-category / detector-code counts
+
+  Extends the `doc-claims` gate (consumed by `pyreon doctor` AND
+  `scripts/check-doc-claims.ts`) from 2 to 5 source-of-truth counters,
+  7 → 19 claim sites:
+
+  - **lint rule count** — the `allRules` array in
+    `packages/tools/lint/src/rules/index.ts`. Claim sites: CLAUDE.md (×3),
+    the package README, `docs/docs/lint.md`, `lint/src/manifest.ts` (6×).
+  - **lint category count** — distinct `category:` literals across the
+    rule files. Claim sites: CLAUDE.md (×2), README, manifest.
+  - **detector-code count** — the `PyreonDiagnosticCode` union in
+    `packages/core/compiler/src/pyreon-intercept.ts`. Claim sites:
+    `.claude/rules/anti-patterns.md`, CLAUDE.md.
+
+  New `ClaimSpec.all` flag asserts EVERY occurrence of a pattern in a file
+  agrees (not just the first) — `manifest.ts` carries the rule count 6×;
+  bumping 5 of 6 would otherwise pass silently.
+
+  **Counters TEXT-PARSE in-repo source via `repoRoot`, never
+  `import { allRules }`.** A dynamic import resolves via bun's module
+  cache to a STALE published snapshot (observed: 0.18.0 cache → 66 rules
+  while the working tree had 76); asserting against that is worse than no
+  gate. Same `repoRoot`-relative approach the existing hook/doc-page
+  counters already use.
+
+  Fixes the live drift this gate immediately surfaced on `main`:
+  `lint/src/manifest.ts` (`62`/`67`/`13` → `76`/`76`/`17` across 3
+  occurrences) and `.claude/rules/anti-patterns.md` ("flags 12" → 15).
+  The `@pyreon/lint` manifest correction regenerates `llms-full.txt` +
+  the MCP `api-reference.ts` region (`bun run gen-docs`).
+
+  Bisect-verified: stubbing `countLintRules → 0` fails the real-repo
+  shape + 2 new specs; restored → all 27 cli gate tests pass. Gate green
+  (19/19); `gen-docs --check`, lint manifest-snapshot, oxlint, cli +
+  lint typecheck all clean.
+
+- [#630](https://github.com/pyreon/pyreon/pull/630) [`21e465c`](https://github.com/pyreon/pyreon/commit/21e465c7957c3e57c838af58ffa995682908c5f8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix: make `pyreon doctor` objective + close the real first-party findings it then surfaced
+
+  `pyreon doctor` reported a meaningless **F (score 55, 987 errors)** because
+  its `lint` / `react-patterns` / `pyreon-patterns` gates scanned the WHOLE
+  repo: example apps (intentionally framework-idiomatic, incl. react-compat
+  demos), `e2e/`/`docs/`/`scripts/`, detector test-fixtures (which
+  _deliberately_ contain anti-patterns so the detectors can be tested), and
+  the `*-compat` packages (whose public API IS React/Vue/etc. by design).
+  ~705/987 errors were examples + fixtures; the rest a never-CI-enforced
+  advisory backlog or by-design.
+
+  **Objectivity (the deliverable):** the three gates now audit ONLY
+  first-party published source — `packages/<cat>/<pkg>/src/**`, excluding
+  tests/fixtures/`.d.ts` — via pure, unit-tested predicates
+  (`isFirstPartySourceFile` / `isCompatPackageFile`); `react-patterns`
+  additionally skips `*-compat` src (a React-API shim containing `useState`
+  is a definitional false positive). Errors **987 → 86**.
+
+  **Detector precision (false positives are the antithesis of objective):**
+
+  - `@pyreon/compiler` `dot-value-signal`: now requires the receiver to be a
+    tracked signal binding — no longer flags `input.value` / `cell.value` /
+    `o.value` (17 FPs; bisect-verified).
+  - `@pyreon/lint` `no-window-in-ssr`: recognizes field-captured typeof
+    (`this.isSSR = typeof document === 'undefined'`) and function-head
+    early-return guards covering nested closures (bisect-verified).
+  - `@pyreon/lint` `no-bare-signal-in-jsx`: now supports `exemptPaths`
+    (consistent with the other exemptable rules) — render-function
+    primitives read signals in JSX _attribute_ positions which the compiler
+    `_rp()`-wraps; the text-position heuristic over-fired there.
+
+  **Genuine first-party SSR bugs fixed** (the rule correctly did NOT silence
+  these — cross-function/method guards aren't lexically traceable):
+
+  - `@pyreon/head` `createNewTag` — added `typeof document` guard.
+  - `@pyreon/styler` `Sheet.mount()` — in-method `if (this.isSSR) return`.
+  - `@pyreon/hotkeys` `detachListener` — `typeof window` guard.
+  - `@pyreon/flow` flow-component — guarded `new ResizeObserver` with
+    `typeof ResizeObserver === 'function'`.
+  - `@pyreon/core` lifecycle — renamed a local `location` shadowing the
+    browser global (hygiene; also removed an SSR-analysis false positive).
+
+  **Curated `.pyreonlintrc.json`** exemptions (with rationale) for
+  genuinely-non-SSR-runtime surfaces: `@pyreon/compiler` (build-time Node)
+  and `*-compat` (DOM-runtime framework adapters, consistent with the
+  existing `runtime-dom` exemption) for `no-window-in-ssr`; `*-compat` for
+  `dev-guard-warnings` (intentional user-facing "[Pyreon] X not supported"
+  guidance that must reach prod).
+
+  **Result: errors 987 → 1.** The single remaining `no-window-in-ssr` in
+  `@pyreon/ui-core` (`_isBrowser && matchMedia(...)`) is provably SSR-safe
+  (short-circuit; `_isBrowser` is a `typeof`-AND const) — a documented
+  known rule-precision limitation, left visible (NOT exempted: silencing it
+  would hide future _real_ ui-core SSR bugs — anti-objective).
+
+  Verified: 8 touched packages, 3091 unit tests pass; typecheck clean;
+  full-repo `oxlint` 0 errors; e2e 127 specs pass (default 92 +
+  ui-regression 26 + app-showcase 9); each detector change bisect-verified.
+
+- Updated dependencies [[`5fb461a`](https://github.com/pyreon/pyreon/commit/5fb461aaf9fcc8d2a624af1442f4db97fd7f33c9), [`5b69841`](https://github.com/pyreon/pyreon/commit/5b69841a6ab30963977e276d120c33d66682da23), [`e274fce`](https://github.com/pyreon/pyreon/commit/e274fceeb37d0893c7425463e443185388fce475), [`21e465c`](https://github.com/pyreon/pyreon/commit/21e465c7957c3e57c838af58ffa995682908c5f8), [`6472de0`](https://github.com/pyreon/pyreon/commit/6472de00ffdbcff1fd453c125c404b75fc5cc46d), [`0408e47`](https://github.com/pyreon/pyreon/commit/0408e475e63770996eff17bfb6ac318e89c45df4), [`7e0fe1a`](https://github.com/pyreon/pyreon/commit/7e0fe1a4f7cbb68f7647d85bef843de90d04d506), [`c5b2ea2`](https://github.com/pyreon/pyreon/commit/c5b2ea2fe0df3f52b2af21e0d79b1e391ca9fad5), [`6581f07`](https://github.com/pyreon/pyreon/commit/6581f073293a72360fe9391990d08316e0dc5b4b), [`070a0ec`](https://github.com/pyreon/pyreon/commit/070a0ec687ad598cf15963e5615bb1d8c81933a3)]:
+  - @pyreon/compiler@0.19.0
+
 ## 0.18.0
 
 ## 0.17.0
