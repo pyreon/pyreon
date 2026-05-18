@@ -1,74 +1,77 @@
 /**
  * Pyreon docs theme — bridges VitePress's `--vp-*` variables onto the
- * canonical brand tokens (see ./tokens.css, copied verbatim from the
- * brand handoff). This file holds NO raw hex values on purpose:
- * tokens.css is the single source of truth, so the docs site can never
- * drift from the brand system. Layout/chrome rules below follow the
- * handoff §6.1 ("Docs site").
+ * canonical SEMANTIC tokens in ./tokens.css (verbatim from the brand
+ * handoff: a two-layer system whose `--bg/--text/--border/--ember/--link`
+ * roles swap between dark + light). This file holds NO raw hex and never
+ * references the raw palette directly — only semantic tokens — so the
+ * docs site can't drift from the brand AND it themes correctly in both
+ * modes for free. Chrome rules follow handoff §6.1.
  *
- * Honesty guardrail (handoff §7 / CLAUDE.md): confident, precise, never
- * benchmark-theater. Ember (`--ember-*`) is reserved for signal
- * propagation / active state only — never a full-bleed background.
+ * Light/dark: tokens.css keys light off `[data-theme="light"]` (+ OS
+ * media). VitePress toggles `<html class="dark">`; theme/index.ts mirrors
+ * that onto `data-theme` so the one toggle drives the whole system.
+ *
+ * Honesty guardrail (§7 / CLAUDE.md): ember is signal/active-state only.
  */
 
-/* ─── VitePress variable bridge (dark-only; appearance: force-dark) ───── */
 :root {
-  --vp-c-bg: var(--ink-1);
-  --vp-c-bg-alt: var(--ink-0);
-  --vp-c-bg-elv: var(--ink-2);
-  --vp-c-bg-soft: var(--ink-3);
+  color-scheme: light dark;
 
-  --vp-c-text-1: var(--paper-1);
-  --vp-c-text-2: var(--muted-1);
-  --vp-c-text-3: var(--muted-2);
+  /* Surfaces */
+  --vp-c-bg: var(--bg);
+  --vp-c-bg-alt: var(--bg-deep);
+  --vp-c-bg-elv: var(--bg-elevated);
+  --vp-c-bg-soft: var(--bg-well);
+  --vp-c-default-soft: var(--bg-well);
 
-  --vp-c-divider: var(--ink-5);
-  --vp-c-border: var(--ink-4);
-  --vp-c-gutter: var(--ink-0);
+  /* Text */
+  --vp-c-text-1: var(--text);
+  --vp-c-text-2: var(--text-muted);
+  --vp-c-text-3: var(--text-dim);
 
-  /* Brand hue = cyan (links/interactivity per handoff §3). The ember
-     gradient is NOT the link color — it stays reserved for signal moments. */
-  --vp-c-brand-1: var(--cyan);
-  --vp-c-brand-2: var(--cyan);
+  /* Lines */
+  --vp-c-divider: var(--hairline);
+  --vp-c-border: var(--border);
+  --vp-c-gutter: var(--bg-deep);
+
+  /* Brand hue = link/cyan (handoff §3 — ember is NOT the link color) */
+  --vp-c-brand-1: var(--link);
+  --vp-c-brand-2: var(--link);
   --vp-c-brand-3: var(--cyan-dim);
-  --vp-c-brand-soft: rgba(34, 211, 238, 0.12);
+  --vp-c-brand-soft: var(--link-bg);
 
-  --vp-c-default-soft: var(--ink-3);
-
-  --vp-code-block-bg: var(--ink-1);
-  --vp-code-block-divider-color: var(--ink-5);
-  --vp-code-line-highlight-color: rgba(255, 94, 26, 0.08);
-  --vp-code-line-number-color: var(--muted-3);
+  /* Code chrome */
+  --vp-code-block-bg: var(--syn-bg);
+  --vp-code-block-divider-color: var(--hairline);
+  --vp-code-line-highlight-color: var(--ember-bg);
+  --vp-code-line-number-color: var(--text-hint);
 
   --vp-font-family-base: var(--font-sans);
   --vp-font-family-mono: var(--font-mono);
 
-  color-scheme: dark;
-}
-
-/* Hero name uses the ember-suffix wordmark treatment (handoff §2) —
-   one ember use per page maximum. */
-:root {
+  /* Hero name = ember-suffix wordmark (handoff §2, one ember/page) */
   --vp-home-hero-name-color: transparent;
   --vp-home-hero-name-background: var(--ember-grad);
-}
 
-/* ─── Buttons ──────────────────────────────────────────────────────────── */
-:root {
-  --vp-button-brand-bg: var(--cyan);
-  --vp-button-brand-hover-bg: var(--cyan);
+  /* Buttons — cyan fill takes near-black label in BOTH themes (AA) */
+  --vp-button-brand-bg: var(--link);
+  --vp-button-brand-hover-bg: var(--link);
   --vp-button-brand-active-bg: var(--cyan-dim);
   --vp-button-brand-text: var(--ink-0);
   --vp-button-brand-hover-text: var(--ink-0);
   --vp-button-brand-border: transparent;
   --vp-button-brand-hover-border: transparent;
-
   --vp-button-alt-bg: transparent;
-  --vp-button-alt-hover-bg: var(--ink-2);
-  --vp-button-alt-text: var(--paper-1);
-  --vp-button-alt-border: var(--ink-4);
-  --vp-button-alt-hover-border: var(--cyan);
+  --vp-button-alt-hover-bg: var(--bg-elevated);
+  --vp-button-alt-text: var(--text);
+  --vp-button-alt-border: var(--border);
+  --vp-button-alt-hover-border: var(--link);
+
+  /* Nav / sidebar */
+  --vp-nav-bg-color: var(--bg);
+  --vp-sidebar-bg-color: var(--bg);
 }
+
 .VPButton.alt {
   font-family: var(--font-mono);
   font-size: 13px;
@@ -82,10 +85,10 @@
 .VPHero .text {
   font-weight: 600;
   letter-spacing: -0.03em;
-  color: var(--paper-0);
+  color: var(--text-strong);
 }
 .VPHero .tagline {
-  color: var(--muted-1);
+  color: var(--text-muted);
   font-size: 1.1rem;
   line-height: 1.55;
   max-width: 40rem;
@@ -93,10 +96,6 @@
 }
 
 /* ─── Nav + sidebar (handoff §6.1) ─────────────────────────────────────── */
-:root {
-  --vp-nav-bg-color: rgba(10, 10, 14, 0.72);
-  --vp-sidebar-bg-color: var(--ink-1);
-}
 .VPNavBar,
 .VPNavBar.has-sidebar .content-body {
   backdrop-filter: saturate(140%) blur(12px);
@@ -110,15 +109,14 @@
   font-weight: 500;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--muted-2);
+  color: var(--text-dim);
 }
 .VPSidebarItem .link .text {
   font-size: 13.5px;
-  color: var(--muted-1);
+  color: var(--text-muted);
 }
-/* Active item: --paper-1 text + 2px ember left-border (handoff §6.1) */
 .VPSidebarItem.is-active > .item .link .text {
-  color: var(--paper-1);
+  color: var(--text);
   font-weight: 600;
 }
 .VPSidebarItem.is-active > .item {
@@ -133,10 +131,10 @@
   width: 2px;
   height: 15px;
   border-radius: 2px;
-  background: var(--ember-core);
+  background: var(--ember);
 }
 
-/* ─── Doc typography (handoff §4 type rules) ───────────────────────────── */
+/* ─── Doc typography (handoff §4) ──────────────────────────────────────── */
 .vp-doc h1 {
   font-weight: 600;
   letter-spacing: -0.035em;
@@ -146,7 +144,7 @@
 .vp-doc h2 {
   font-weight: 600;
   letter-spacing: -0.02em;
-  border-top: 1px solid var(--ink-5);
+  border-top: 1px solid var(--hairline);
   padding-top: 1.6rem;
   margin-top: 2.6rem;
 }
@@ -158,24 +156,24 @@
   text-wrap: pretty;
 }
 .vp-doc a {
-  color: var(--cyan);
+  color: var(--link);
   font-weight: 500;
   text-underline-offset: 3px;
-  text-decoration-color: rgba(34, 211, 238, 0.4);
+  text-decoration: none;
 }
 .vp-doc a:hover {
-  text-decoration-color: var(--cyan);
+  text-decoration: underline;
+  text-decoration-color: var(--link);
 }
 
-/* Mono eyebrow utility — UPPERCASE · muted · +.12em (handoff §4).
-   Usable from markdown/components: <p class="pyreon-eyebrow">…</p> */
+/* Mono eyebrow utility — UPPERCASE · dim · +.12em (handoff §4) */
 .pyreon-eyebrow {
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 400;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--muted-2);
+  color: var(--text-dim);
   margin: 0 0 0.75rem;
 }
 
@@ -190,61 +188,61 @@
   letter-spacing: 0.04em;
   padding: 3px 9px;
   border-radius: 999px;
-  border: 1px solid var(--ink-4);
-  color: var(--muted-1);
-  background: var(--ink-3);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  background: var(--bg-well);
 }
 .pyreon-pill--ember {
-  color: var(--ember-warm);
-  border-color: rgba(255, 94, 26, 0.4);
-  background: rgba(255, 94, 26, 0.07);
+  color: var(--ember);
+  border-color: var(--ember-ring);
+  background: var(--ember-bg);
 }
 .pyreon-pill--ember::before {
   content: '';
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--ember-core);
-  animation: px-pulse 1.8s ease-out infinite; /* keyframe lives in tokens.css */
+  background: var(--ember);
+  animation: px-pulse 1.8s ease-out infinite; /* keyframe in tokens.css */
 }
 
 /* ─── Code ─────────────────────────────────────────────────────────────── */
 .vp-doc div[class*='language-'] {
-  border: 1px solid var(--ink-5);
-  border-radius: 4px; /* handoff §6.1 — 4px radius */
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
 }
 .vp-doc [class*='language-'] > span.lang {
   font-family: var(--font-mono);
-  color: var(--muted-3);
+  color: var(--text-hint);
 }
 .vp-doc :not(pre) > code {
   font-family: var(--font-mono);
   font-size: 0.85em;
-  color: var(--ember-warm);
-  background: rgba(255, 94, 26, 0.07);
-  border: 1px solid rgba(255, 94, 26, 0.16);
+  color: var(--ember);
+  background: var(--ember-bg);
+  border: 1px solid var(--ember-ring);
   border-radius: 4px;
   padding: 2px 5px;
 }
 
-/* ─── Feature cards — schematic panels, no fill, ember hairline on hover ─ */
+/* ─── Feature cards — schematic panels, ember hairline on hover ────────── */
 .VPFeature {
-  background: var(--ink-3);
-  border: 1px solid var(--ink-5);
+  background: var(--bg-well);
+  border: 1px solid var(--hairline);
   border-radius: 10px;
   transition:
     border-color 0.18s ease,
     transform 0.18s ease;
 }
 .VPFeature:hover {
-  border-color: rgba(255, 94, 26, 0.45);
+  border-color: var(--ember-ring);
   transform: translateY(-2px);
 }
 .VPFeature .icon {
-  background: var(--ink-2);
-  border: 1px solid var(--ink-5);
+  background: var(--bg-elevated);
+  border: 1px solid var(--hairline);
   font-family: var(--font-mono);
-  color: var(--cyan);
+  color: var(--link);
 }
 @media (prefers-reduced-motion: reduce) {
   .VPFeature {
@@ -252,20 +250,20 @@
   }
 }
 
-/* ─── Tables (benchmark / compat) — quiet, mono numerics ───────────────── */
+/* ─── Tables — quiet, mono numerics ────────────────────────────────────── */
 .vp-doc th {
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--muted-2);
+  color: var(--text-dim);
   background: transparent;
-  border-bottom: 1px solid var(--ink-4);
+  border-bottom: 1px solid var(--border);
 }
 .vp-doc td {
-  border-bottom: 1px solid var(--ink-5);
+  border-bottom: 1px solid var(--hairline);
 }
 
 * {
-  scrollbar-color: var(--ink-4) transparent;
+  scrollbar-color: var(--border) transparent;
 }

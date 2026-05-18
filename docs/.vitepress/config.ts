@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitepress'
-import { pyreonSyntaxDark } from './theme/pyreon-syntax'
+import { pyreonSyntaxDark, pyreonSyntaxLight } from './theme/pyreon-syntax'
 
 export default defineConfig({
   title: 'Pyreon',
@@ -9,17 +9,18 @@ export default defineConfig({
   cleanUrls: true,
   lastUpdated: true,
 
-  // Dark-only by design (see docs/.vitepress/theme/custom.css). The audience
-  // lives in dark editors and the brand identity is dark-first; the toggle
-  // is removed rather than shipping an unowned half-baked light theme.
-  appearance: 'force-dark',
+  // Dark-first (audience lives in dark editors) but the brand handoff
+  // ships a paired light theme — so the toggle is enabled and defaults
+  // to dark. tokens.css owns the actual light/dark token values.
+  appearance: 'dark',
 
   markdown: {
     // Prevent Vue from interpreting {{ }} inside code blocks
     defaultHighlightLang: 'text',
-    // Canonical `pyreon` syntax theme (brand handoff §6.7). Single dark
-    // theme — the site is force-dark. Hex lives in ./theme/pyreon-syntax.ts.
-    theme: pyreonSyntaxDark,
+    // Canonical `pyreon` syntax theme (handoff §3/§6.7). Dual theme —
+    // VitePress applies the right one per `.dark` class. Hex lives in
+    // ./theme/pyreon-syntax.ts (mirrors tokens.css `--syn-*`).
+    theme: { light: pyreonSyntaxLight, dark: pyreonSyntaxDark },
   },
 
   vue: {
@@ -32,6 +33,17 @@ export default defineConfig({
   },
 
   head: [
+    // FOUC-safe theme sync: tokens.css keys light off `data-theme`, but
+    // VitePress toggles `<html class="dark">`. Mirror VitePress's stored
+    // appearance onto `data-theme` BEFORE first paint so the correct
+    // palette resolves with no flash. Runtime toggle is kept in sync by
+    // theme/index.ts. Mirrors VitePress's own appearance logic (default
+    // dark when unset, since `appearance: 'dark'`).
+    [
+      'script',
+      {},
+      ";(function(){try{var a=localStorage.getItem('vitepress-theme-appearance');var d=!a||a==='dark'||(a==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.dataset.theme=d?'dark':'light'}catch(e){document.documentElement.dataset.theme='dark'}})()",
+    ],
     // Brand fonts — Space Grotesk (sans) + JetBrains Mono (mono/accent),
     // exactly the family set + weights from brand handoff §4.
     ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
