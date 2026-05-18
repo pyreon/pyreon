@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitepress'
-import { pyreonSyntaxDark } from './theme/pyreon-syntax'
+import { pyreonSyntaxDark, pyreonSyntaxLight } from './theme/pyreon-syntax'
 
 export default defineConfig({
   title: 'Pyreon',
@@ -9,17 +9,17 @@ export default defineConfig({
   cleanUrls: true,
   lastUpdated: true,
 
-  // Dark-only by design (see docs/.vitepress/theme/custom.css). The audience
-  // lives in dark editors and the brand identity is dark-first; the toggle
-  // is removed rather than shipping an unowned half-baked light theme.
-  appearance: 'force-dark',
+  // Dark-first (the audience lives in dark editors) but the handoff ships
+  // a fully-specced paired light theme (§3), so the toggle is enabled and
+  // defaults to dark. Light values: theme/tokens-light.css.
+  appearance: 'dark',
 
   markdown: {
     // Prevent Vue from interpreting {{ }} inside code blocks
     defaultHighlightLang: 'text',
-    // Canonical `pyreon` syntax theme (brand handoff §6.7). Single dark
-    // theme — the site is force-dark. Hex lives in ./theme/pyreon-syntax.ts.
-    theme: pyreonSyntaxDark,
+    // Canonical `pyreon` syntax theme (brand handoff §6.7), per scheme.
+    // VitePress swaps these with the appearance toggle.
+    theme: { light: pyreonSyntaxLight, dark: pyreonSyntaxDark },
   },
 
   vue: {

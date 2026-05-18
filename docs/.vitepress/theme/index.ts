@@ -10,6 +10,9 @@ import Since from './components/Since.vue'
 // Imported first so custom.css can build on the variables.
 import './tokens.css'
 import './custom.css'
+// Paired light scheme (handoff §3) — re-points the ramp vars under
+// html:not(.dark). Loaded last so the light overrides win in light mode.
+import './tokens-light.css'
 
 export default {
   extends: DefaultTheme,

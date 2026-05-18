@@ -11,7 +11,10 @@
  * propagation / active state only — never a full-bleed background.
  */
 
-/* ─── VitePress variable bridge (dark-only; appearance: force-dark) ───── */
+/* ─── VitePress variable bridge (scheme-agnostic) ─────────────────────────
+   Reads the ramp variables by name; tokens.css supplies the dark values
+   and tokens-light.css re-points the same names under html:not(.dark), so
+   this bridge produces a correct light OR dark theme with no duplication. */
 :root {
   --vp-c-bg: var(--ink-1);
   --vp-c-bg-alt: var(--ink-0);
@@ -42,8 +45,7 @@
 
   --vp-font-family-base: var(--font-sans);
   --vp-font-family-mono: var(--font-mono);
-
-  color-scheme: dark;
+  /* color-scheme is set per-scheme in tokens-light.css */
 }
 
 /* Hero name uses the ember-suffix wordmark treatment (handoff §2) —

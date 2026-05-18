@@ -1,0 +1,56 @@
+/**
+ * Paired LIGHT scheme — brand handoff §3 ("Light theme (paired)").
+ *
+ * tokens.css (verbatim from the handoff) is dark-only and uses bare
+ * `:root`. The handoff never carried the light pairing in CSS — it
+ * lives in README §3 / pyreon-light.jsx. This file is that pairing,
+ * transcribed from the canonical §3 / PXL values.
+ *
+ * Strategy: re-point the SAME ramp variables to their light
+ * equivalents, scoped to VitePress light mode (`html:not(.dark)`,
+ * higher specificity than tokens.css's `:root`). custom.css's
+ * `--vp-*` bridge and every component read these vars by name, so the
+ * whole site + the bespoke landing flip with zero per-component code.
+ *
+ * Ember stays the desaturated light variant (§3) and keeps its
+ * "signal-only" restraint. Links use the darkened cyan (`#0891B2`)
+ * for WCAG AA on white (§3 note).
+ */
+html:not(.dark) {
+  /* Surfaces — dark ink ramp → light paper ramp (semantic equivalents) */
+  --ink-0: #f4efe6; /* well / recessed (was deepest)        */
+  --ink-1: #faf5eb; /* base canvas / paper                  */
+  --ink-2: #ffffff; /* raised surface                       */
+  --ink-3: #ffffff; /* card                                 */
+  --ink-4: #e6dfd2; /* border                               */
+  --ink-5: #ede6d6; /* hairline                             */
+
+  /* Text — paper ramp → ink ramp */
+  --paper-0: #14141c; /* primary text on light             */
+  --paper-1: #14141c; /* body text on light                */
+  --paper-2: #4a4654;
+  --muted-1: #4a4654; /* secondary                         */
+  --muted-2: #6b6776; /* tertiary                          */
+  --muted-3: #8e8a9a; /* hint                              */
+
+  /* Ember — slightly desaturated to hold on paper (§3) */
+  --ember-plasma: #e40c70;
+  --ember-core: #e84a0f;
+  --ember-warm: #e0a510;
+  --ember-grad: linear-gradient(
+    95deg,
+    var(--ember-plasma) 0%,
+    var(--ember-core) 55%,
+    var(--ember-warm) 100%
+  );
+
+  /* Cyan — darkened for AA on white (§3) */
+  --cyan: #0891b2;
+  --cyan-dim: #0b7a8c;
+
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
