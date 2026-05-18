@@ -1185,7 +1185,7 @@ pyreon doctor --audit-min-risk high       # tighten test-environment audit
 
 **Output formats**:
 
-- `text` (default): big-score banner + per-category bars + top-N findings + skipped-gates footer. Uses ANSI colors when stdout is a TTY (respects `NO_COLOR` / `FORCE_COLOR`). OSC-8 hyperlinks on file paths so terminals that support them (iTerm2, WezTerm, kitty, VSCode) render clickable links.
+- `text` (default): big-score banner + per-category bars + top-N findings + skipped-gates footer. Uses ANSI colors when stdout is a TTY (respects `NO_COLOR` / `FORCE_COLOR`). OSC-8 hyperlinks on file paths so terminals that support them (iTerm2, WezTerm, kitty, VSCode) render clickable links. **Colors follow the Pyreon brand handoff (#651), CLI spec §6.5 / `pyr doctor` §6.6**: the palette in `render/ansi.ts` maps each brand token to its nearest **xterm-256** index and emits 8-bit SGR (`38;5;N`) — the handoff mandates "256-color must survive (no truecolor-only colors)", so there is intentionally no `38;2;r;g;b`. Mapping: error/fail `red`→ember-core (202), warning/hint `yellow`→ember-warm (220), pass/grade-A `green`→ok-green (78), info/links `cyan`→brand cyan (45), muted/separators `gray`→muted-2 (245). Severity glyphs match §6.5: `✗` error, `!` warning, `ℹ` info. Ember stays scarce by construction (only error/fail states + worst grade), per the brand's "ember = signal/critical only, never decoration" rule.
 - `--json`: full `DoctorReport` — score, grade, per-category scores, findings array, gates array with meta, totals, elapsedMs, timestamp.
 - `--gha`: GitHub Actions annotation lines (`::error file=X,line=Y,col=Z::message`). Severity map: error → error, warning → warning, info → notice.
 

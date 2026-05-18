@@ -40,15 +40,40 @@ const wrap =
   (s: string): string =>
     colorEnabled ? `${CSI}${open}m${s}${CSI}${close}m` : s
 
+/**
+ * Pyreon brand palette → xterm-256.
+ *
+ * Source: the Claude Design brand handoff (committed in #651; CLI
+ * spec §6.5 / `pyr doctor` §6.6). Brand colors are 24-bit hex, but
+ * the handoff is explicit: **"256-color terminal palette must survive
+ * (no truecolor-only colors)."** Every brand role is mapped to its
+ * nearest xterm-256 index and emitted as an 8-bit SGR (`38;5;N`) —
+ * identical on truecolor terminals, still correct on 256-only ones.
+ * No `38;2;r;g;b`.
+ *
+ * | brand token  | hex     | 256 | role                               |
+ * |--------------|---------|-----|------------------------------------|
+ * | ember-core   | #FF5E1A | 202 | errors / fail grade / `✗`          |
+ * | ember-warm   | #FFC83D | 220 | warnings · hints · `!`             |
+ * | ember-plasma | #FF1F8C | 198 | reserved accent                    |
+ * | ok-green     | #4ADE80 | 78  | pass / grade A / `✓`               |
+ * | cyan         | #22D3EE | 45  | info · links · prompt `$`          |
+ * | muted-2      | #8A8696 | 245 | separators · headings · skipped    |
+ *
+ * Ember stays scarce by construction, exactly as the brand mandates:
+ * it only colors error/fail states + the worst grade, never decoration.
+ */
+const c256 = (code: number) => wrap(`38;5;${code}`, '39')
+
 export const bold = wrap('1', '22')
 export const dim = wrap('2', '22')
-export const red = wrap('31', '39')
-export const green = wrap('32', '39')
-export const yellow = wrap('33', '39')
-export const blue = wrap('34', '39')
-export const magenta = wrap('35', '39')
-export const cyan = wrap('36', '39')
-export const gray = wrap('90', '39')
+export const red = c256(202) // ember-core
+export const green = c256(78) // ok-green
+export const yellow = c256(220) // ember-warm
+export const blue = c256(45) // cyan (brand has no blue; cool accent)
+export const magenta = c256(198) // ember-plasma
+export const cyan = c256(45) // brand cyan
+export const gray = c256(245) // muted-2
 
 /**
  * OSC-8 hyperlink. iTerm2, WezTerm, kitty, modern VSCode terminals

@@ -34,9 +34,13 @@ const BAR_WIDTH = 12
 const FILLED = '█'
 const EMPTY = '░'
 
+// Brand status glyphs (handoff §6.5): `✗` ember-core (error),
+// `!` ember-warm (warning). `ℹ` cyan kept for info — the brand's `✓`
+// is for passing checks, which the findings list never renders (it
+// only lists problems), so `✓` would be misleading here.
 const SEV_ICON: Record<Severity, string> = {
-  error: '✖',
-  warning: '⚠',
+  error: '✗',
+  warning: '!',
   info: 'ℹ',
 }
 
