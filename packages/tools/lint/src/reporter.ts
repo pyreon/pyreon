@@ -1,24 +1,20 @@
+import { bold, cyan, dim, emberCore, emberWarm } from './ansi'
 import type { LintResult, Severity } from './types'
 
-// ANSI colors
-const BOLD = '\x1b[1m'
-const RED = '\x1b[31m'
-const YELLOW = '\x1b[33m'
-const BLUE = '\x1b[34m'
-const DIM = '\x1b[2m'
-const RESET = '\x1b[0m'
-
+// Brand status glyphs (handoff \u00A76.5): `\u2717` ember-core (error),
+// `!` ember-warm (warning), `\u2139` cyan (info). Helpers are color-gated
+// (NO_COLOR / FORCE_COLOR / TTY) and 256-color \u2014 see `./ansi`.
 const SEVERITY_SYMBOL: Record<Severity, string> = {
-  error: `${RED}\u2716${RESET}`,
-  warn: `${YELLOW}\u26A0${RESET}`,
-  info: `${BLUE}\u2139${RESET}`,
+  error: emberCore('\u2717'),
+  warn: emberWarm('!'),
+  info: cyan('\u2139'),
   off: '',
 }
 
 const SEVERITY_LABEL: Record<Severity, string> = {
-  error: `${RED}error${RESET}`,
-  warn: `${YELLOW}warning${RESET}`,
-  info: `${BLUE}info${RESET}`,
+  error: emberCore('error'),
+  warn: emberWarm('warning'),
+  info: cyan('info'),
   off: '',
 }
 
@@ -32,12 +28,12 @@ export function formatText(result: LintResult): string {
     if (file.diagnostics.length === 0) continue
 
     lines.push('')
-    lines.push(`${BOLD}${file.filePath}${RESET}`)
+    lines.push(bold(file.filePath))
 
     for (const d of file.diagnostics) {
-      const loc = `${DIM}${d.loc.line}:${d.loc.column}${RESET}`
+      const loc = dim(`${d.loc.line}:${d.loc.column}`)
       const severity = SEVERITY_LABEL[d.severity]
-      const ruleId = `${DIM}${d.ruleId}${RESET}`
+      const ruleId = dim(d.ruleId)
       lines.push(`  ${loc}  ${severity}  ${d.message}  ${ruleId}`)
     }
   }
@@ -47,12 +43,16 @@ export function formatText(result: LintResult): string {
     lines.push('')
     const parts: string[] = []
     if (result.totalErrors > 0)
-      parts.push(`${RED}${result.totalErrors} error${result.totalErrors === 1 ? '' : 's'}${RESET}`)
+      parts.push(
+        emberCore(`${result.totalErrors} error${result.totalErrors === 1 ? '' : 's'}`),
+      )
     if (result.totalWarnings > 0)
       parts.push(
-        `${YELLOW}${result.totalWarnings} warning${result.totalWarnings === 1 ? '' : 's'}${RESET}`,
+        emberWarm(
+          `${result.totalWarnings} warning${result.totalWarnings === 1 ? '' : 's'}`,
+        ),
       )
-    if (result.totalInfos > 0) parts.push(`${BLUE}${result.totalInfos} info${RESET}`)
+    if (result.totalInfos > 0) parts.push(cyan(`${result.totalInfos} info`))
     lines.push(`${SEVERITY_SYMBOL.error} ${parts.join(', ')}`)
     lines.push('')
   }
