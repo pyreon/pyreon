@@ -1,3 +1,13 @@
+<p align="center">
+  <img src=".github/assets/pyreon-banner.svg" alt="Pyreon — the signal-based UI framework: fine-grained reactivity, full-stack, AI-native" width="100%" />
+</p>
+
+<p align="center">
+  <a href="https://github.com/pyreon/pyreon/actions/workflows/ci.yml"><img src="https://github.com/pyreon/pyreon/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-22D3EE" alt="License: MIT" /></a>
+  <img src="https://img.shields.io/badge/js%20framework%20benchmark-tied%20w%2F%20Solid-F4EFE6?labelColor=0A0A0E" alt="JS Framework Benchmark: tied with Solid" />
+</p>
+
 # Pyreon
 
 A signal-based UI framework with fine-grained reactivity. No virtual DOM, no component re-renders — only the exact DOM nodes that depend on a changed signal are updated.
