@@ -16,6 +16,7 @@ export default defineManifest({
     'renderWithHead() for SSR — returns html + head string',
     'Keyed deduplication — innermost component wins per key',
     'JSON-LD shorthand: `jsonLd: {...}` auto-wraps as `<script type="application/ld+json">`',
+    'Speculation Rules shorthand: `speculationRules: {...}` auto-wraps as `<script type="speculationrules">` — native browser prefetch/prerender, opt-in',
   ],
   longExample: `import { useHead, HeadProvider } from '@pyreon/head'
 import { renderWithHead } from '@pyreon/head'
@@ -71,6 +72,7 @@ useHead(() => ({
         'Calling `useHead()` outside any `HeadProvider` / `renderWithHead()` boundary — silent no-op, the entries simply go nowhere',
         'Wrapping the input in `computed()` instead of a thunk — pass a plain `() => ({...})` arrow; `useHead` registers its own effect',
         'Expecting `</script>` inside an inline script body to render verbatim — the SSR escaper rewrites it as `<\\/script>` to prevent breaking out of the inline tag',
+        'Treating `speculationRules` as a guaranteed perf win — it is a declarative HINT (like `<link rel=prefetch>`); supported browsers prefetch/prerender at their own discretion, unsupported ones ignore it. It is opt-in and zero-runtime-JS; it does not replace `RouterLink prefetch` (which warms loader data for client-side nav)',
       ],
       seeAlso: ['HeadProvider', 'renderWithHead'],
     },

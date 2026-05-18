@@ -6,6 +6,9 @@ export type {
   LinkTag,
   MetaTag,
   ScriptTag,
+  SpeculationEagerness,
+  SpeculationRule,
+  SpeculationRules,
   StyleTag,
   UseHeadInput,
 } from './context'

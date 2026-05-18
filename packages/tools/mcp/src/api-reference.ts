@@ -1229,7 +1229,8 @@ useHead(() => ({
     mistakes: `- Using \`\${...}\` in a \`titleTemplate\` string — the placeholder is \`%s\` (or pass a function form \`(title) => …\`)
 - Calling \`useHead()\` outside any \`HeadProvider\` / \`renderWithHead()\` boundary — silent no-op, the entries simply go nowhere
 - Wrapping the input in \`computed()\` instead of a thunk — pass a plain \`() => ({...})\` arrow; \`useHead\` registers its own effect
-- Expecting \`</script>\` inside an inline script body to render verbatim — the SSR escaper rewrites it as \`<\/script>\` to prevent breaking out of the inline tag`,
+- Expecting \`</script>\` inside an inline script body to render verbatim — the SSR escaper rewrites it as \`<\/script>\` to prevent breaking out of the inline tag
+- Treating \`speculationRules\` as a guaranteed perf win — it is a declarative HINT (like \`<link rel=prefetch>\`); supported browsers prefetch/prerender at their own discretion, unsupported ones ignore it. It is opt-in and zero-runtime-JS; it does not replace \`RouterLink prefetch\` (which warms loader data for client-side nav)`,
   },
 
   'head/HeadProvider': {
