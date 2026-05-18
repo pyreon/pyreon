@@ -1,6 +1,6 @@
 ---
 title: '@pyreon/lint'
-description: Pyreon-specific linter — 74 rules for signals, JSX, SSR, performance, architecture, routing, SSG, and opt-in best practices (frontend a11y/CLS, query/rx/form library usage).
+description: Pyreon-specific linter — 76 rules for signals, JSX, SSR, performance, architecture, routing, SSG, and opt-in best practices (frontend a11y/CLS, query/rx/form/i18n/router library usage).
 ---
 
 `@pyreon/lint` is a framework-specific linter that catches Pyreon anti-patterns at the AST level. Powered by `oxc-parser` for fast ESTree/TS-ESTree parsing.
@@ -47,7 +47,7 @@ pyreon-lint --watch src/
 # JSON output for tooling integration
 pyreon-lint --format json
 
-# List all 74 rules
+# List all 76 rules
 pyreon-lint --list
 
 # Override a specific rule
@@ -203,11 +203,11 @@ Rules tagged opt-in (`meta.optIn`) are **off in `recommended` / `strict` / `app`
 
 Per-rule config in `.pyreonlintrc.json` **always wins** over the preset (enable one, disable another, change severity, scope via `exemptPaths`).
 
-**Dependency auto-detection.** Library-scoped opt-in rules (`query` / `rx` / form's signal rule, and `frontend`'s `prefer-zero-image`) only activate when the linted project actually declares the relevant `@pyreon/*` package in its `package.json` (`dependencies` / `devDependencies` / `peerDependencies`). A project that doesn't use `@pyreon/query` never sees `query-options-as-function` — zero config, zero noise. The check walks up to the nearest `package.json` and is cached per manifest. Per-rule config still overrides if you want to force a rule on/off regardless.
+**Dependency auto-detection.** Library-scoped opt-in rules (`query` / `rx` / `i18n`, form's signal rule, router's `prefer-typed-search-params`, and `frontend`'s `prefer-zero-image`) only activate when the linted project actually declares the relevant `@pyreon/*` package in its `package.json` (`dependencies` / `devDependencies` / `peerDependencies` / `optionalDependencies`). A project that doesn't use `@pyreon/query` never sees `query-options-as-function` — zero config, zero noise. The check walks up to the nearest `package.json` and is cached per manifest. Per-rule config still overrides if you want to force a rule on/off regardless.
 
 Every opt-in rule's message is prescriptive (states the fix) so an AI assistant reading lint output knows exactly how to resolve it; `no-positive-tabindex` is auto-fixable (`--fix`).
 
-## Rules (74)
+## Rules (76)
 
 ### Reactivity (13)
 
@@ -363,7 +363,7 @@ Auto-gated on a `@pyreon/query` dependency.
 
 | Rule                               | Severity | Description                                                                                          |
 | ---------------------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
-| `pyreon/query-options-as-function` | error    | `useQuery`/`useInfiniteQuery`/`useQueries`/`useSuspenseQuery` with an options **object literal** — wrap in `() => ({ ... })` so `queryKey` tracks signals and refetches reactively (`useMutation` excluded) |
+| `pyreon/query-options-as-function` | error (**auto-fixable**) | `useQuery`/`useInfiniteQuery`/`useQueries`/`useSuspenseQuery` with an options **object literal** — `--fix` wraps it in `() => ({ ... })` so `queryKey` tracks signals and refetches reactively (`useMutation` excluded). Also a proactive MCP `validate` detector (flagged before commit, not just in lint output). |
 
 ### Rx (1) ᵒ
 
@@ -372,6 +372,22 @@ Auto-gated on a `@pyreon/rx` dependency.
 | Rule                    | Severity | Description                                                                                  |
 | ----------------------- | -------- | -------------------------------------------------------------------------------------------- |
 | `pyreon/rx-prefer-pipe` | info     | Nested rx transforms (`map(filter(src, …), …)`) — compose via `pipe(src, filter(…), map(…))` for a single computed instead of N |
+
+### I18n (1) ᵒ
+
+Auto-gated on a `@pyreon/i18n` dependency.
+
+| Rule                                  | Severity | Description                                                                                  |
+| ------------------------------------- | -------- | -------------------------------------------------------------------------------------------- |
+| `pyreon/i18n-prefer-trans-for-rich-jsx` | info   | `{t('…')}` interleaved with JSX element siblings (rich content) — use the `<Trans>` component for safe JSX interpolation. Plain-text `{t('title')}` never fires (zero-FP: single element's children-array check) |
+
+### Router — opt-in (1) ᵒ
+
+Auto-gated on a `@pyreon/router` dependency. (The 4 non-opt-in router rules are listed under [Router](#router-4) above.)
+
+| Rule                             | Severity | Description                                                                              |
+| -------------------------------- | -------- | ---------------------------------------------------------------------------------------- |
+| `pyreon/prefer-typed-search-params` | info  | Manual `new URLSearchParams(...)` in a router-aware file — use `useTypedSearchParams()` for typed, auto-coerced, SSR-safe search params |
 
 ## Notable Rules
 

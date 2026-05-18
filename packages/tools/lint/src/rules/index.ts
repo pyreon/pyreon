@@ -21,8 +21,12 @@ import { imgRequiresDimensions } from './frontend/img-requires-dimensions'
 import { noPositiveTabindex } from './frontend/no-positive-tabindex'
 import { preferZeroImage } from './frontend/prefer-zero-image'
 import { requireImgAlt } from './frontend/require-img-alt'
+// I18n (opt-in best-practice)
+import { i18nPreferTransForRichJsx } from './i18n/i18n-prefer-trans-for-rich-jsx'
 // Query (opt-in best-practice)
 import { queryOptionsAsFunction } from './query/query-options-as-function'
+// Router (opt-in best-practice)
+import { preferTypedSearchParams } from './router/prefer-typed-search-params'
 // Rx (opt-in best-practice)
 import { rxPreferPipe } from './rx/rx-prefer-pipe'
 // Hooks
@@ -182,6 +186,10 @@ export const allRules: Rule[] = [
   queryOptionsAsFunction,
   // Rx (1) — opt-in, auto-gated on @pyreon/rx dependency
   rxPreferPipe,
+  // I18n (1) — opt-in, auto-gated on @pyreon/i18n dependency
+  i18nPreferTransForRichJsx,
+  // Router opt-in (1) — auto-gated on @pyreon/router dependency
+  preferTypedSearchParams,
 ]
 
 // Re-export all rules individually
