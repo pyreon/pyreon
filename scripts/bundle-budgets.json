@@ -8,7 +8,7 @@
   "@pyreon/compiler": 29952,
   "@pyreon/connector-document": 2304,
   "@pyreon/coolgrid": 2560,
-  "@pyreon/core": 4608,
+  "@pyreon/core": 5120,
   "@pyreon/create-zero": 14848,
   "@pyreon/dnd": 2816,
   "@pyreon/document": 3328,
