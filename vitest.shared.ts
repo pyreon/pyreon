@@ -151,6 +151,18 @@ export const sharedConfig: VitestUserConfig = {
     // their per-test `{ timeout: 30_000 }` / `{ timeout: 60_000 }`
     // overrides — those overrides win against this default.
     testTimeout: 20_000,
+    // CI-only retry — the unit-test parity of the e2e configs'
+    // `retries: process.env.CI ? 2 : 0`. The `Test` job runs
+    // `bun run --filter='*' test` across 60+ packages concurrently;
+    // under that contention, timing-sensitive specs flake non-
+    // deterministically (heavy cold `await import()` exceeding the
+    // timeout, async-fetch-race ordering, etc.) — a *different* spec
+    // each run, none reproducible in isolation. A genuine bug still
+    // fails all 3 attempts; a load flake self-heals. Local stays 0 for
+    // honest, fast feedback. This was the root cause of `Test` going
+    // red on unrelated PRs (e5-actor-model race, dnd cold-import
+    // timeout) — flakes that pass deterministically when run alone.
+    retry: process.env.CI ? 2 : 0,
   },
 }
 
