@@ -659,6 +659,40 @@ import { Image } from '@pyreon/zero'
 
 `'dominant-color'` is a deprecated alias of `'color'`. `quality` accepts a single number applied to all lossy formats, or a per-format object (`{ avif, webp, jpeg }`) — AVIF achieves comparable perceived quality at a much lower number than WebP/JPEG. Optional CDN delivery providers (`cloudinary`, `imgix`, `vercel`, `bunny`) are also available.
 
+## Favicons
+
+`faviconPlugin` (`@pyreon/zero/favicon`) generates the full favicon set from a **single source** (SVG or PNG) and injects every `<head>` tag automatically — no manual `<link>`/`<meta>` wiring. Like `imagePlugin`, it uses [sharp](https://sharp.pixelplumbing.com/) for image generation.
+
+```ts title="vite.config.ts"
+import { faviconPlugin } from '@pyreon/zero/favicon'
+
+export default {
+  plugins: [
+    faviconPlugin({
+      source: './src/assets/icon.svg', // required
+      darkSource: './src/assets/icon-dark.svg', // optional — light/dark variants
+      themeColor: '#6d28d9',
+      name: 'My App', // web-manifest app name
+      locales: { de: { source: './icon-de.svg' } }, // optional per-locale sets
+    }),
+  ],
+}
+```
+
+Generated at build time and emitted into `dist/`: `favicon.ico` (16+32), `favicon.svg`, `favicon-16x16.png`, `favicon-32x32.png`, `apple-touch-icon.png` (180), `icon-192.png`, `icon-512.png`, `site.webmanifest`. The plugin injects the matching `<link rel="icon">` (SVG + PNG), `apple-touch-icon`, `manifest`, and `<meta name="theme-color">` into every page's `<head>`, plus media-conditioned light/dark links and a no-flash blocking script when `darkSource` is set. In dev the assets are served on the fly.
+
+**Cache-busting.** Browsers cache favicons extremely aggressively (often per-session / effectively forever), so a stable URL means a changed icon is never re-fetched by returning visitors. Every injected `<link>` href carries a `?v=<hash>` derived from the **source file content** — same bytes produce the identical query (no needless cache churn), changed bytes produce a new query so the browser re-downloads. This is orthogonal to theme-reactive favicons (the light/dark swap toggles the `media` attribute, not `href`). Two URLs intentionally stay stable and rely on host cache headers instead: the bare `/favicon.ico` (browsers request it by convention with no `<link>` tag) and the `site.webmanifest`'s internal `icons[]` entries (re-resolved on PWA (re)install). Set a long `Cache-Control` on `/favicon.ico` at your host if you change it.
+
+**`sharp` is required.** It is an optional peer install — add it explicitly:
+
+```bash
+bun add -D sharp   # or: npm i -D sharp
+```
+
+In **dev**, a missing `sharp` is a one-time console warning (favicons just don't appear locally — iteration isn't blocked). In a **production `vite build`**, a configured `source` with `sharp` missing is a **hard, actionable build error** — the build fails rather than silently shipping a site with zero favicons. To intentionally build without favicons, remove `faviconPlugin()` from your Vite plugins.
+
+**Cache-busting.** Browsers cache favicons extremely aggressively (often per-session / effectively forever), so a stable URL means a changed icon is never re-fetched by returning visitors. The injected `<link>` hrefs therefore carry a `?v=<hash>` query derived from the **source file content** (FNV-1a): identical bytes → identical query (no needless cache churn), changed bytes → new query → the browser re-downloads. This is orthogonal to light/dark switching (the theme swap toggles each link's `media` attribute, not its `href`). **Caveat:** only `<link>`/manifest-referenced assets are versioned. The bare `/favicon.ico` convention request (browsers fetch it with no link tag) and the `site.webmanifest`'s internal icon entries keep stable URLs — those rely on your host's cache headers / are re-resolved on PWA (re)install.
+
 ## Environment Validation
 
 ```ts

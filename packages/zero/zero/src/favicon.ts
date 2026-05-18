@@ -1,7 +1,42 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Plugin } from 'vite'
+
+/**
+ * Stable content hash (FNV-1a, 32-bit) of the favicon source file(s),
+ * rendered as a `?v=<hex>` cache-bust query for the injected `<head>`
+ * links. Browsers cache favicons extremely aggressively (often per-
+ * session / effectively forever), so with a stable URL a changed icon
+ * is never re-fetched by returning visitors. Same source bytes →
+ * identical query (no needless cache churn); changed bytes → new query
+ * → browser re-downloads. Falls back to `''` (no query, prior
+ * behaviour) if a source can't be read — never break the build over a
+ * cache-bust nicety. NOTE: this versions everything referenced via
+ * `<link>` (svg/png/apple-touch/manifest). The bare `/favicon.ico`
+ * convention request (browsers fetch it with no link tag) and the
+ * `site.webmanifest`'s internal icon entries keep stable URLs — those
+ * rely on host cache headers / are re-resolved on PWA (re)install.
+ */
+export function faviconVersionQuery(paths: string[]): string {
+  let h = 0x811c9dc5
+  let any = false
+  for (const p of paths) {
+    let buf: Buffer
+    try {
+      buf = readFileSync(p)
+    } catch {
+      continue
+    }
+    any = true
+    for (let i = 0; i < buf.length; i++) {
+      h ^= buf[i]!
+      h = Math.imul(h, 0x01000193)
+    }
+  }
+  if (!any) return ''
+  return `?v=${(h >>> 0).toString(16).padStart(8, '0')}`
+}
 
 let sharpWarned = false
 function warnSharpMissing() {
@@ -126,6 +161,17 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
 
   let root = ''
   let isBuild = false
+  // Lazily computed once per build/dev session (source rarely changes
+  // within a run; recomputing per index.html transform is wasteful).
+  let versionQuery: string | null = null
+  function getVersionQuery(): string {
+    if (versionQuery === null) {
+      const paths = [join(root, config.source)]
+      if (config.darkSource) paths.push(join(root, config.darkSource))
+      versionQuery = faviconVersionQuery(paths)
+    }
+    return versionQuery
+  }
 
   return {
     name: 'pyreon-zero-favicon',
@@ -156,7 +202,11 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
       }
 
       server.middlewares.use(async (req, res, next) => {
-        const url = req.url ?? ''
+        // Strip the `?v=<hash>` cache-bust query (and any query) before
+        // matching — the injected links carry it; dev serves fresh
+        // (`Cache-Control: no-cache`) so the version is irrelevant here,
+        // but a query in the path would break every name match below.
+        const url = (req.url ?? '').split('?')[0]!
 
         // Resolve locale-specific source
         const localeSource = resolveLocaleSource(url, config, root)
@@ -316,11 +366,43 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
         } as any)
       }
 
+      // Cache-bust: stamp the source content hash onto every injected
+      // favicon/manifest link href so a changed icon is actually
+      // re-downloaded by returning visitors (theme-swap toggles `media`,
+      // not `href`, so this is orthogonal to the light/dark variants).
+      const v = getVersionQuery()
+      if (v) {
+        for (const t of tags) {
+          if (t.tag === 'link' && t.attrs.href) t.attrs.href += v
+        }
+      }
+
       return tags
     },
 
     async generateBundle() {
       if (!isBuild) return
+
+      // `faviconPlugin` is in the plugin list and a `source` is configured
+      // (it's a required field), so the user clearly WANTS favicons. If
+      // `sharp` is missing, the old behaviour was a single swallow-able
+      // `console.warn` + emit nothing — i.e. silently ship a production
+      // site with zero favicons. That's the footgun. Fail the build loudly
+      // with an actionable message instead. Dev keeps the soft warning
+      // (see `warnSharpMissing`) so local iteration isn't blocked.
+      try {
+        await import('sharp')
+      } catch {
+        this.error(
+          '[Pyreon] faviconPlugin: a favicon `source` is configured but ' +
+            '`sharp` is not installed — NO favicons would be generated and ' +
+            'the production build would silently ship none.\n' +
+            '  Fix:    bun add -D sharp   (or: npm i -D sharp)\n' +
+            `  Source: ${config.source}\n` +
+            'To intentionally build without favicons, remove faviconPlugin() ' +
+            'from your Vite plugins.',
+        )
+      }
 
       // Generate favicons for the base (default) source
       await generateFaviconSet.call(this, root, config.source, config.darkSource, '', config, themeColor, backgroundColor, generateManifest)
