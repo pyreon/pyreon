@@ -18,7 +18,8 @@
  */
 
 import type { CleanupFn } from '@pyreon/core'
-import { _rsCollapse, mount } from '@pyreon/runtime-dom'
+import { signal } from '@pyreon/reactivity'
+import { _rsCollapse, hydrateRoot, mount } from '@pyreon/runtime-dom'
 import { install as installPerfHarness, perfHarness } from '@pyreon/perf-harness'
 import { flush } from '@pyreon/test-utils/browser'
 import { beforeAll, describe, expect, it } from 'vitest'
@@ -306,6 +307,118 @@ describe('E2 Phase 4 — shipped _rsCollapse vs real Button (RFC acceptance)', (
 
     dispose()
     root.remove()
+    await flush()
+  })
+
+  // (3) SSR → HYDRATE parity — the thinnest unproven seam, now closed.
+  //
+  // The P0 design deliberately diverges the graphs: SSR keeps the REAL
+  // 5-layer rocketstyle mount; the CLIENT graph collapses to
+  // `_rsCollapse`. Under `hydrateRoot`, the collapsed component returns a
+  // NativeItem (`_tpl` cloneNode), so it hits `hydrate.ts`'s
+  // `__isNative === true` branch: the framework-wide, correctness-first
+  // `_tpl` hydration path SWAPS the SSR subtree for the freshly-built
+  // collapsed node — same final DOM, byte-for-byte class (FNV-1a SSR↔DOM
+  // contract), NO crash, NO hydration-mismatch warning. This is NOT a
+  // collapse-specific runtime path; `_rsCollapse` inherits it from `_tpl`
+  // for free. This spec proves it end-to-end against the REAL Button:
+  //   - SSR markup (the real rocketstyle outerHTML the server emits) is
+  //     placed as the container's existing DOM,
+  //   - `hydrateRoot` mounts the collapsed `_rsCollapse` against it,
+  //   - the resulting <button> is byte-for-byte the SSR class +
+  //     structurally `isEqualNode` the original, with NO `console.error`
+  //     hydration-mismatch fired, and
+  //   - reactivity SURVIVES hydration: a post-hydrate mode flip patches
+  //     `className` IN PLACE on the SAME node (no remount) — the real
+  //     contract, not just "didn't throw".
+  it('SSR markup → hydrateRoot(_rsCollapse): byte-for-byte parity + no mismatch + reactive after hydration', async () => {
+    // 1. Capture the REAL rocketstyle Button's server-equivalent markup.
+    //    Browser-only experiment: the real mounted outerHTML IS what
+    //    `renderToString` emits (styler's FNV-1a class hash is identical
+    //    SSR vs DOM — its hydration contract). Capture light + dark class.
+    const srcRoot = document.createElement('div')
+    document.body.appendChild(srcRoot)
+    const srcDispose = mountBaselineButton(srcRoot as unknown as Element, 0)
+    await flush()
+    const srcBtn = srcRoot.querySelector('button') as HTMLElement
+    const ssrHtml = srcBtn.outerHTML
+    const ssrClass = srcBtn.className
+    const ssrColor = getComputedStyle(srcBtn).color
+    const templateHtml = ssrHtml.replace(FIRST_CLASS_RE, '$1$2$4')
+    srcDispose()
+    srcRoot.remove()
+    await flush()
+
+    // 2. Stand up a container holding the SSR-delivered DOM (the real
+    //    5-layer Button markup — what the server graph rendered).
+    const app = document.createElement('div')
+    app.innerHTML = ssrHtml
+    document.body.appendChild(app)
+    const ssrNodeBefore = app.querySelector('button') as HTMLElement
+    expect(ssrNodeBefore).not.toBeNull()
+
+    // 3. Hydrate with the CLIENT (collapsed) graph. `isDark` is a live
+    //    signal; the dark class is a DISTINCT sentinel so a mode flip is
+    //    OBSERVABLE — this is what makes the spec discriminate the
+    //    `__isNative` swap (a non-swapped, un-bound SSR node can't change
+    //    class on flip). Light path uses the real SSR class (byte-for-
+    //    byte parity); the resolved dark class would equal light here
+    //    (mode-invariant primary Button) so the sentinel is the only way
+    //    to PROVE the reactive bind is live on the in-DOM node.
+    const darkSentinel = `${ssrClass} pyr-e2h-dark`
+    const isDark = signal(false)
+    const errors: string[] = []
+    const origError = console.error
+    console.error = (...a: unknown[]) => {
+      errors.push(a.map(String).join(' '))
+    }
+    let unmount: (() => void) | undefined
+    try {
+      unmount = hydrateRoot(
+        app,
+        _rsCollapse(templateHtml, ssrClass, darkSentinel, () =>
+          isDark(),
+        ) as unknown as Parameters<typeof hydrateRoot>[1],
+      )
+      await flush()
+    } finally {
+      console.error = origError
+    }
+
+    // No hydration-mismatch was reported. The `__isNative` swap branch is
+    // an intentional swap, NOT a mismatch — it must not console.error.
+    expect(errors.filter((e) => /hydrat|mismatch/i.test(e))).toEqual([])
+
+    const colBtn = app.querySelector('button') as HTMLElement
+    expect(colBtn).not.toBeNull()
+    // DISCRIMINATOR A — the swap actually happened: the in-DOM node is
+    // the freshly-built collapsed clone, NOT the original SSR node.
+    // (Bisected `__isNative` branch → still the SSR node → this fails.)
+    expect(colBtn).not.toBe(ssrNodeBefore)
+    // Byte-for-byte class parity with the SSR markup (light mode) +
+    // structural DOM equality + identical computed style (same CSS).
+    expect(colBtn.className).toBe(ssrClass)
+    expect(colBtn.isEqualNode(srcBtn)).toBe(true)
+    expect(getComputedStyle(colBtn).color).toBe(ssrColor)
+
+    // 4. DISCRIMINATOR B — reactivity SURVIVES hydration: flip mode; the
+    //    SAME in-DOM node's className must change to the dark sentinel
+    //    (proves the `_bindDirect` className bind is LIVE on the swapped-
+    //    in node — patched in place, NO remount). A non-swapped SSR node
+    //    has no bind and would stay on the light class → this fails.
+    const nodeId = colBtn
+    isDark.set(true)
+    await flush()
+    const afterFlip = app.querySelector('button') as HTMLElement
+    expect(afterFlip).toBe(nodeId) // patched in place — NO remount
+    expect(afterFlip.className).toBe(darkSentinel)
+    isDark.set(false)
+    await flush()
+    expect(app.querySelector('button')).toBe(nodeId)
+    expect((app.querySelector('button') as HTMLElement).className).toBe(ssrClass)
+
+    unmount?.()
+    app.remove()
     await flush()
   })
 })

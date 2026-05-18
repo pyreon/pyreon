@@ -700,12 +700,29 @@ via Vite SSR (8 specs incl. determinism + graceful bail), compiler
 detection/emission/bail-catalogue/dedupe (13 specs, bisect-verified:
 disable detection → 4 emission specs fail), end-to-end pipeline (real
 Button → resolver → scanner → compiler emits `__rsCollapse` with the real
-classes byte-for-byte). Additive: all 1079 compiler tests unchanged with
-collapse off. **Deferred follow-ups:** an `examples/ui-showcase`
-build-with-collapse + DOM-parity / perf-counter e2e gate (its Buttons all
-carry `onClick` → correctly bail; needs a literal-prop demo route + a
-verify-modes cell); dev-mode collapse (build-shaped today — dev keeps the
-normal mount, graceful). Reference: `packages/tools/vite-plugin/src/rocketstyle-collapse.ts`,
+classes byte-for-byte). **SSR→hydrate seam closed + proven** (the prior
+"thinnest unproven seam"): `_rsCollapse` returns a `NativeItem` via
+`_tpl`, so under `hydrateRoot` it hits `hydrate.ts`'s `__isNative === true`
+branch — the framework-wide, correctness-first `_tpl` hydration path
+SWAPS the SSR (real 5-layer) subtree for the freshly-built collapsed node
+(same final DOM, byte-for-byte class via the FNV-1a SSR↔DOM contract, NO
+crash, NO mismatch warning, reactivity intact). NOT collapse-specific —
+`_rsCollapse` inherits it from `_tpl` for free; no runtime change needed.
+Proven by a real-Chromium e2 spec (`examples/experiments/e2-static-rocketstyle/e2.browser.test.ts`
+— `SSR markup → hydrateRoot(_rsCollapse)`): real Button outerHTML placed
+as the container's SSR DOM → `hydrateRoot` the collapsed `_rsCollapse` →
+asserts (A) the in-DOM node is the swapped clone, not the SSR node, (B)
+byte-for-byte SSR class parity + `isEqualNode` + identical computed style
++ zero hydration-mismatch `console.error`, (C) reactivity SURVIVES — a
+post-hydrate mode flip patches `className` IN PLACE on the SAME node (no
+remount). Bisect-verified-with-restore: neutralizing the `__isNative`
+branch fails ONLY this spec with `expected <button> not to be <button>`
+(no swap → still the SSR node); restored → 11/11. Additive: all 1079
+compiler tests unchanged with collapse off. **Deferred follow-up
+(coverage extension, not a correctness gap):** an `examples/ui-showcase`
+build-with-collapse verify-modes cell (its Buttons all carry `onClick` →
+correctly bail; needs a literal-prop demo route first); dev-mode collapse
+(build-shaped today — dev keeps the normal mount, graceful). Reference: `packages/tools/vite-plugin/src/rocketstyle-collapse.ts`,
 `packages/core/compiler/src/jsx.ts` (`scanCollapsibleSites` /
 `tryRocketstyleCollapse` / `rocketstyleCollapseKey`),
 `packages/core/runtime-dom/src/template.ts:_rsCollapse`,
