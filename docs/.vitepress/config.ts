@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitepress'
+import { pyreonSyntaxDark } from './theme/pyreon-syntax'
 
 export default defineConfig({
   title: 'Pyreon',
@@ -16,8 +17,9 @@ export default defineConfig({
   markdown: {
     // Prevent Vue from interpreting {{ }} inside code blocks
     defaultHighlightLang: 'text',
-    // Warm dark syntax theme — pairs with the ember palette.
-    theme: 'one-dark-pro',
+    // Canonical `pyreon` syntax theme (brand handoff §6.7). Single dark
+    // theme — the site is force-dark. Hex lives in ./theme/pyreon-syntax.ts.
+    theme: pyreonSyntaxDark,
   },
 
   vue: {
@@ -30,6 +32,19 @@ export default defineConfig({
   },
 
   head: [
+    // Brand fonts — Space Grotesk (sans) + JetBrains Mono (mono/accent),
+    // exactly the family set + weights from brand handoff §4.
+    ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
+    ['link', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }],
+    [
+      'link',
+      {
+        rel: 'stylesheet',
+        href: 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap',
+      },
+    ],
+    // Brand favicon — rounded ink tile + ember disc (assets/favicon.svg).
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/pyreon/favicon.svg' }],
     [
       'meta',
       {
@@ -41,6 +56,9 @@ export default defineConfig({
   ],
 
   themeConfig: {
+    // Primary ON mark (mono, paper-on-transparent — reads on the dark nav).
+    logo: { src: '/brand/logo-on-mono-dark.svg', alt: 'Pyreon' },
+
     search: {
       provider: 'local',
     },

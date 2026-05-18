@@ -1,0 +1,75 @@
+/* Pyreon design tokens */
+:root {
+  /* Ink ramp (dark-mode-first) */
+  --ink-0: #06060A;          /* deepest, OLED-safe */
+  --ink-1: #0A0A0E;          /* base canvas */
+  --ink-2: #111118;          /* elevated surface */
+  --ink-3: #181822;          /* card / well */
+  --ink-4: #23232E;          /* border */
+  --ink-5: #2E2E3B;          /* hairline */
+
+  /* Warm off-white ramp */
+  --paper-0: #FFFCF5;
+  --paper-1: #F4EFE6;        /* primary off-white */
+  --paper-2: #E6E0D2;
+  --muted-1: #C9C4B8;        /* on dark, secondary text */
+  --muted-2: #8A8696;        /* on dark, tertiary */
+  --muted-3: #5C5867;        /* on dark, hint */
+
+  /* Ember / plasma — the SIGNAL highlight. Use sparingly. */
+  --ember-plasma: #FF1F8C;
+  --ember-core:   #FF5E1A;
+  --ember-warm:   #FFC83D;
+  --ember-grad: linear-gradient(95deg, var(--ember-plasma) 0%, var(--ember-core) 55%, var(--ember-warm) 100%);
+
+  /* Cool counter-accent — links/interactivity */
+  --cyan: #22D3EE;
+  --cyan-dim: #0B7A8C;
+
+  /* Functional */
+  --ok:   #4ADE80;
+  --warn: #FACC15;
+  --err:  #F87171;
+
+  /* Type */
+  --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+}
+
+/* Reusable scaffolding */
+.px-ink     { background: var(--ink-1); color: var(--paper-1); }
+.px-ink-2   { background: var(--ink-2); color: var(--paper-1); }
+.px-paper   { background: var(--paper-1); color: var(--ink-1); }
+
+.px-sans    { font-family: var(--font-sans); }
+.px-mono    { font-family: var(--font-mono); font-feature-settings: 'ss01', 'ss02', 'cv01'; }
+
+.px-ember-text {
+  background: var(--ember-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* The signature pulse: respects reduced motion */
+@keyframes px-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(255,94,26,.7), 0 0 0 0 rgba(255,31,140,.5); }
+  60%  { box-shadow: 0 0 0 8px rgba(255,94,26,0),  0 0 0 16px rgba(255,31,140,0); }
+  100% { box-shadow: 0 0 0 0 rgba(255,94,26,0),   0 0 0 0 rgba(255,31,140,0); }
+}
+@keyframes px-trace {
+  0%   { stroke-dashoffset: 100; opacity: 0; }
+  20%  { opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
+}
+@keyframes px-digit {
+  0%   { color: var(--paper-1); transform: translateY(0); }
+  50%  { color: var(--ember-core); transform: translateY(-2px); }
+  100% { color: var(--paper-1); transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .px-pulse, .px-trace, .px-digit { animation: none !important; }
+}
+
+/* Selection */
+::selection { background: rgba(255, 94, 26, .35); color: var(--paper-0); }
