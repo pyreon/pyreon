@@ -9,17 +9,23 @@ All packages under `@pyreon/*` scope.
 
 ## Benchmark Results (Chromium via Playwright)
 
-Pyreon (compiled) is in the top performance tier on the JS Framework Benchmark — **competitive with Solid**, ahead of Vue and React. **Not "fastest on all benchmarks"**: most rows are tied with Solid within measurement noise. Real-app head-to-head measurements pending.
+Pyreon (compiled) is in the top performance tier on the synthetic JS Framework Benchmark — **co-leader with Solid and Vue**, decisively ahead of React 19. **Not "fastest on all benchmarks"**: it wins 2 of 7 rows outright, ties ~3 within noise, and loses create/replace-1k to Vue by ~10%. Real-app head-to-head measurements still pending (see honest caveat below).
 
-| Benchmark          | Pyreon | Solid | Vue   | React | Honest read                    |
-| ------------------ | ------ | ----- | ----- | ----- | ------------------------------ |
-| Create 1,000 rows  | 9ms    | 10ms  | 11ms  | 33ms  | tied with Solid (within noise) |
-| Replace 1,000 rows | 10ms   | 10ms  | 11ms  | 31ms  | tied with Solid                |
-| Partial update     | 5ms    | 5ms   | 7ms   | 6ms   | tied with Solid                |
-| Select row         | 5ms    | 5ms   | 5ms   | 8ms   | tied with Solid                |
-| Create 10,000 rows | 103ms  | 104ms | 131ms | 540ms | tied with Solid                |
+Numbers below are a **single representative run** of `examples/benchmark`'s `bench:fair` harness (real Chromium via Playwright, `vite preview` of the production build, **median of 20 timed runs**, 5 warmup discarded, DOM-verified renders, genuine `react@19` / `solid-js@1.9` / `vue@3.5` deps). Wall-clock ms is **machine-dependent** — the column-to-column *ratios* on one run are the signal, not the absolute ms. Reproduce: `cd examples/benchmark && bun bench:fair`.
 
-**What this means in practice:** competitive with Solid on the synthetic JS Framework Benchmark, meaningfully ahead of React. The "fastest" framing was overstated — fix is in this PR. Earning legitimate "fastest" claims requires either (a) the compiler-pass collapse for rocketstyle (P0 in `.claude/plans/open-work-2026-q3.md` — no other framework has Pyreon's multi-dimensional theme system to compile away) or (b) real-app head-to-head measurements that we haven't run yet.
+| Benchmark          | Pyreon (compiled) | Solid   | Vue     | React 19 | Honest read                          |
+| ------------------ | ----------------- | ------- | ------- | -------- | ------------------------------------ |
+| Create 1,000 rows  | 11.9ms            | 11.8ms  | 10.7ms  | 13.3ms   | tied w/ Solid; Vue ~10% faster       |
+| Replace 1,000 rows | 12.0ms            | 11.9ms  | 10.6ms  | 13.0ms   | tied w/ Solid; Vue ~12% faster       |
+| Partial update     | **5.1ms (best)**  | 9.2ms   | 6.6ms   | 8.4ms    | Pyreon fastest of all 7              |
+| Select row         | 4.6ms             | 4.6ms   | 4.7ms   | 8.3ms    | 3-way tie (Pyreon/Solid/Vue)         |
+| Swap rows          | 5.2ms             | 5.9ms   | 5.0ms   | 8.7ms    | tied w/ Vue; ahead of Solid          |
+| Clear rows         | 4.7ms             | 4.6ms   | 4.8ms   | 8.3ms    | 3-way tie                            |
+| Create 10,000 rows | **100.2ms (best)**| 107.5ms | 112.6ms | 222.5ms  | Pyreon fastest; React 2.2× slower    |
+
+(Vanilla JS floor for context: 7-80ms — none of the frameworks reach it, expected. Preact trails the pack on this bench: ~1.4-2.9× the leader.)
+
+**What this means in practice:** Pyreon (compiled) is genuinely in the Solid/Vue tier and meaningfully ahead of React 19 — and it is the *outright fastest* on the two rows that matter most for large data tables (partial update, create-10k). It is **not** uniformly fastest: Vue edges it on cold create/replace-1k by ~10%. The earlier published table was **stale and inaccurate** (claimed create-1k 9ms vs measured 11.9ms, and React 33ms/540ms — predating React 19, which measures 13.3ms/222ms here); this section now reflects a measured current run. Earning a legitimate broad "fastest" claim still requires either (a) the compiler-pass collapse for rocketstyle (P0 in `.claude/plans/open-work-2026-q3.md` — no other framework has Pyreon's multi-dimensional theme system to compile away) or (b) a **real-app** head-to-head, which genuinely does not exist yet: the `examples/cpa-pw-app-{react,solid,vue,preact}` ports run on Pyreon's compat shims (Pyreon runtime, not the real frameworks), so they cannot serve as a fair Pyreon-vs-React real-app comparison. Building real-framework app ports is tracked, multi-day work — deliberately not faked here.
 
 Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextNode.data`, zero-alloc mount pipeline (lazy hooks, lazy EffectScope, devtools gated on `__DEV__`, per-definition WeakMap caches in rocketstyle, dimension-prop memo at the rocketstyle wrapper, `$element` bundle interning + styler classCache extension)
 
