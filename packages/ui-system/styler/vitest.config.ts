@@ -1,17 +1,20 @@
 import { createVitestConfig } from '@vitus-labs/tools-vitest'
 import { defineConfig, mergeConfig } from 'vitest/config'
-import { nodeExcludeBrowserTests } from '../../../vitest.shared'
+import { nodeExcludeBrowserTests, sharedConfig } from '../../../vitest.shared'
 
 export default mergeConfig(
   mergeConfig(
-    createVitestConfig({
-      environment: 'happy-dom',
-      coverageThresholds: {
-        statements: 90,
-        branches: 80,
-        functions: 90,
-      },
-    }),
+    mergeConfig(
+      sharedConfig,
+      createVitestConfig({
+        environment: 'happy-dom',
+        coverageThresholds: {
+          statements: 90,
+          branches: 80,
+          functions: 90,
+        },
+      }),
+    ),
     defineConfig({
       resolve: {
         conditions: ['bun'],
