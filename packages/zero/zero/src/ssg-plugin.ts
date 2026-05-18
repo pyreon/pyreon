@@ -373,6 +373,25 @@ export function expandUrlPattern(pattern: string, params: Record<string, string>
           `[zero:ssg] getStaticPaths for "${pattern}" returned params without "${name}"`,
         )
       }
+      // Path-escape guard. The value is substituted verbatim into the
+      // URL that becomes a `dist/<path>/index.html` write target. A
+      // single (non-catch-all) `:slug` is ONE segment — a value
+      // containing `/` or being `.`/`..` (e.g. an unsanitized CMS slug
+      // `../../secret`) would escape the intended structure and write
+      // outside it. Catch-all `:slug*` legitimately spans segments
+      // (`a/b/c`), so it's exempt from the `/` check but still rejects
+      // `.`/`..` traversal segments.
+      const segs = isCatchAll ? value.split('/') : [value]
+      if (
+        (!isCatchAll && value.includes('/')) ||
+        segs.some((s) => s === '.' || s === '..')
+      ) {
+        throw new Error(
+          `[zero:ssg] getStaticPaths for "${pattern}" produced an unsafe "${name}" value ` +
+            `(${JSON.stringify(value)}): a ${isCatchAll ? 'catch-all' : 'dynamic'} segment ` +
+            `must not contain path-traversal ("." / "..")${isCatchAll ? '' : ' or "/"'}.`,
+        )
+      }
       return value
     })
     .join('/')
@@ -443,10 +462,17 @@ async function autoDetectStaticPaths(
     }
   }
 
+  // Dedup (order-preserving). The same concrete path can be produced
+  // more than once — a `getStaticPaths` returning a duplicate slug, or
+  // i18n route fan-out colliding — which otherwise renders the same
+  // `dist/<path>/index.html` twice (wasted work + last-write race) and
+  // feeds a duplicate `<url>` into the SSG→sitemap merge.
+  const deduped = [...new Set(out)]
+
   // Always include "/" as a fallback if no static routes were found —
   // a project with only dynamic routes still needs an index.html for the
   // host to know where to send unmatched URLs.
-  return out.length > 0 ? out : ['/']
+  return deduped.length > 0 ? deduped : ['/']
 }
 
 async function resolvePaths(

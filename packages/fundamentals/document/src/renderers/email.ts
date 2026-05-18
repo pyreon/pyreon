@@ -1,4 +1,4 @@
-import { sanitizeColor, sanitizeHref, sanitizeImageSrc } from '../sanitize'
+import { escapeXml as esc, sanitizeColor, sanitizeHref, sanitizeImageSrc } from '../sanitize'
 import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
 
 /**
@@ -12,14 +12,6 @@ import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } 
  * - VML buttons for Outlook
  * - Max width 600px for compatibility
  */
-
-function esc(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
 
 function resolveColumn(col: string | TableColumn): TableColumn {
   return typeof col === 'string' ? { header: col } : col

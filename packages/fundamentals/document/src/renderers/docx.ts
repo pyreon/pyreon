@@ -8,6 +8,7 @@ import type {
   RenderOptions,
   TableColumn,
 } from '../types'
+import { getTextContent } from '../nodes'
 
 /**
  * DOCX renderer — lazy-loads the 'docx' npm package on first use.
@@ -17,11 +18,6 @@ function resolveColumn(col: string | TableColumn): TableColumn {
   return typeof col === 'string' ? { header: col } : col
 }
 
-function getTextContent(children: DocChild[]): string {
-  return children
-    .map((c) => (typeof c === 'string' ? c : getTextContent((c as DocNode).children)))
-    .join('')
-}
 
 /** Parse a data URL and return the base64 data and media type, or null for external URLs. */
 function parseDataUrl(src: string): { data: string; mime: string } | null {

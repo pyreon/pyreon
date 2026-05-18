@@ -135,10 +135,25 @@ export function generateSitemap(
     .filter((p): p is string => p !== null)
     .filter((p) => !exclude.some((e) => p.startsWith(e)))
 
-  const allPaths: SitemapEntry[] = [
-    ...paths.map((p) => ({ path: p, changefreq, priority })),
-    ...(config.additionalPaths ?? []),
-  ]
+  // Dedup by path (first-wins, order-preserving). The same static route
+  // routinely appears in BOTH the file-system route scan AND
+  // `additionalPaths` (e.g. SSG-emitted paths merged in via
+  // `seoPlugin`), which previously produced a DUPLICATE `<url>` entry —
+  // the i18n branch of `clusterPathsByLocale` dedups via `byUnPrefixed`,
+  // but the non-i18n branch is a raw 1:1 `entries.map(...)`, so without
+  // this the duplicate reached the emitted sitemap. Dedup here covers
+  // both branches at the single source. The route-scan entry wins so its
+  // configured `changefreq`/`priority` is kept over a bare dup.
+  const allPaths: SitemapEntry[] = (() => {
+    const byPath = new Map<string, SitemapEntry>()
+    for (const e of [
+      ...paths.map((p) => ({ path: p, changefreq, priority })),
+      ...(config.additionalPaths ?? []),
+    ]) {
+      if (!byPath.has(e.path)) byPath.set(e.path, e)
+    }
+    return [...byPath.values()]
+  })()
 
   // PR K: when i18n is set, cluster URLs by their un-prefixed (default-
   // locale) form so each `<url>` entry can carry the hreflang siblings

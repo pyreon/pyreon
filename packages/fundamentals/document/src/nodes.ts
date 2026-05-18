@@ -45,6 +45,19 @@ function normalizeChildren(children: unknown): DocChild[] {
   return [String(children)]
 }
 
+/**
+ * Recursively flatten a node tree to its concatenated text content.
+ * Format-agnostic — was copy-pasted byte-identically into 13 of the 18
+ * renderers (svg/pdf/pptx/xlsx/docx + every chat target); consolidated
+ * here as the single source of truth. The text/markdown/html renderers
+ * deliberately do NOT use this (they walk the tree structurally).
+ */
+export function getTextContent(children: DocChild[]): string {
+  return children
+    .map((c) => (typeof c === 'string' ? c : getTextContent((c as DocNode).children)))
+    .join('')
+}
+
 /** Type guard — checks if a value is a DocNode. */
 export function isDocNode(value: unknown): value is DocNode {
   return (

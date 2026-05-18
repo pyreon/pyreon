@@ -1,5 +1,6 @@
 import { sanitizeHref } from '../sanitize'
 import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
+import { getTextContent } from '../nodes'
 
 /**
  * WhatsApp renderer — outputs formatted text using WhatsApp's markup.
@@ -8,12 +9,6 @@ import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } 
 
 function resolveColumn(col: string | TableColumn): TableColumn {
   return typeof col === 'string' ? { header: col } : col
-}
-
-function getTextContent(children: DocChild[]): string {
-  return children
-    .map((c) => (typeof c === 'string' ? c : getTextContent((c as DocNode).children)))
-    .join('')
 }
 
 function renderNode(node: DocNode): string {
