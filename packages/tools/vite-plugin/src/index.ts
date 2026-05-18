@@ -369,6 +369,13 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
   }
 
   let isBuild = false
+  // Collapse is build-only by design: the resolver computes each site's
+  // class from a SEPARATE nested Vite SSR server's module graph and caches
+  // it. In dev that frozen class would NOT react to the user's theme-source
+  // HMR edits — strictly worse than the normal mount, which IS reactive.
+  // So dev keeps the normal mount; we surface that ONCE so an opted-in
+  // consumer running `vite dev` isn't left wondering why nothing collapsed.
+  let warnedDevCollapse = false
   let projectRoot = ''
 
   // ── Cross-module signal export registry ─────────────────────────────────
@@ -583,7 +590,13 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       let collapseRocketstyle:
         | NonNullable<Parameters<typeof transformJSX>[2]>['collapseRocketstyle']
         | undefined
-      if (collapseEnabled && !isSsr) {
+      if (collapseEnabled && !isBuild && !isSsr && !warnedDevCollapse) {
+        warnedDevCollapse = true
+        this.info(
+          '[Pyreon] collapse is build-only — `vite dev` keeps the normal rocketstyle mount so theme-source edits stay HMR-reactive. Production `vite build` collapses the literal-prop sites.',
+        )
+      }
+      if (collapseEnabled && isBuild && !isSsr) {
         const scanned: CollapsibleSite[] = scanCollapsibleSites(
           sourceForJsx,
           id,

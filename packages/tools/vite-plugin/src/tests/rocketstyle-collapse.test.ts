@@ -199,9 +199,10 @@ export const Save = () => <Button state="primary" size="medium">Save</Button>`
 describe('pyreon({ collapse }) plugin — transform hook drives the collapse', () => {
   type Ctx = {
     warn: (msg: string) => void
+    info: (msg: string) => void
     resolve: (id: string, importer?: string, opts?: { skipSelf: boolean }) => Promise<null>
   }
-  const ctx: Ctx = { warn: () => {}, resolve: async () => null }
+  const ctx: Ctx = { warn: () => {}, info: () => {}, resolve: async () => null }
   const ID = join(UI_SHOWCASE, 'src', 'CollapseProbe.tsx')
   const SRC = `
 import { Button } from '@pyreon/ui-components'
