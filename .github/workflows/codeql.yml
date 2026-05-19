@@ -41,6 +41,11 @@ jobs:
         with:
           languages: javascript-typescript
           queries: security-extended
+          # Scan only the runtime / published attack surface — test
+          # fixtures, examples, e2e and scripts have developer-controlled
+          # input and produce false positives (e.g. js/polynomial-redos on
+          # throwaway tag-strip regexes in *.test.ts). See the config file.
+          config-file: ./.github/codeql/codeql-config.yml
       - name: Analyze
         uses: github/codeql-action/analyze@458d36d7d4f47d0dd16ca424c1d3cda0060f1360
         with:
