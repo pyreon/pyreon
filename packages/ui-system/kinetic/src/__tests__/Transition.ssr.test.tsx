@@ -111,6 +111,34 @@ describe('Transition — SSR / initially-hidden children render', () => {
     expect(html).toContain('translateY(20px)')
   })
 
+  it('falls back to `enterStyle` as hidden style when leaveToStyle undefined (preset path)', async () => {
+    // The preset shape — `@pyreon/kinetic-presets` factories (fadeUp,
+    // blurInUp, slideLeft, …) populate `enterStyle` as the hidden state
+    // but may not set `leaveToStyle`. PR #717 shipped the
+    // `wasInitiallyShown` branch with `hiddenStyle = props.leaveToStyle`
+    // alone — so preset users SSR-rendered VISIBLE → flash-on-hydration.
+    // This regression test locks in the `?? props.enterStyle` fallback
+    // that aligns the style picker with the existing
+    // `hiddenClass = leaveTo ?? enterFrom` class picker.
+    //
+    // The companion `kinetic(tag).<mode>` paths (TransitionRenderer /
+    // TransitionItem / CollapseRenderer) got the same fallback in #719;
+    // this commit closes the matching gap on the direct `<Transition>`
+    // import path.
+    const html = await renderToString(
+      h(Transition, {
+        show: () => false,
+        enter: 'transition-all duration-300',
+        enterStyle: { opacity: 0, transform: 'translateY(16px)' },
+        enterToStyle: { opacity: 1, transform: 'translateY(0)' },
+        children: h('section', null, 'preset-shaped hidden state'),
+      }),
+    )
+    expect(html).toContain('preset-shaped hidden state')
+    expect(html).toContain('opacity: 0')
+    expect(html).toContain('translateY(16px)')
+  })
+
   it('merges the hidden class with any user-set class on the child', async () => {
     const html = await renderToString(
       h(Transition, {
