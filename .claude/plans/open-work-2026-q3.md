@@ -153,6 +153,18 @@ The experiment framework defined 13 experiments (E1-E13) with GRADUATE/KILL/DEFE
 
 ---
 
+### Maintenance — deferred cross-major dependency bumps (staged, 2026-05-19)
+
+Within-major tooling drift is kept current automatically (`bun update` — last done #688; CI actions #675). The following are **beyond-range and deliberately NOT auto-bumped** — all are `0.x` tooling deps where a minor is "may-break" per semver and the blast radius lands in a sensitive subsystem. Each needs its own reviewed PR with the named validation; a blind `bun update --latest` bundling them would be an unmergeable, high-risk mega-diff.
+
+- **`oxc-parser` / `oxc-transform` `0.129 → 0.132`** — powers all 67 `@pyreon/lint` rules' AST, the `@pyreon/compiler` JS path, and the audit AST walkers (test-audit / island-audit / bundle-budgets). oxc `0.x` minors routinely change AST node shapes. *Safe path*: dedicated PR, bump both together, run the full `@pyreon/lint` + `@pyreon/compiler` suites + re-validate the audit tools; bisect any rule that shifts.
+- **`oxfmt` `0.43 → 0.51`** (8 minors) — a formatter bump can reformat the entire repo. *Safe path*: its own PR = bump + `oxfmt --write .` + review the whole-repo reformat as the diff; never a rider on another change.
+- **`@changesets/changelog-github` `0.6 → 0.7`** — release-pipeline changelog formatter; the release pipeline was fragile this cycle (0.18.0 / 0.19.0 incidents, fixed in #644/#645/#650/#690). Low value (changelog cosmetics), real risk to a load-bearing subsystem. *Safe path*: bump only alongside a deliberate release-tooling review, off-cycle.
+
+No true `1.x → 2.x` majors are pending repo-wide. Priority: low — none blocks anything; this entry exists so the deferral is a **tracked, rationale-backed decision**, not a silent unknown.
+
+---
+
 ### P4 — Strategic direction (needs user decision)
 
 These were explicitly carved out as "user input required" in the original ecosystem plan. They've been open for ~5 weeks. **No code work blocked on them**, but every other decision (which experiments to run, where to spend doc effort, what to feature in marketing) compounds in the dark until they're answered.
