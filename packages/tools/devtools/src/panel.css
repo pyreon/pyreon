@@ -1,0 +1,302 @@
+/* ───────────────────────────────────────────────────────────────────────
+   Pyreon DevTools panel — Pyreon brand identity (dark)
+
+   Self-contained token layer (the extension ships standalone, so it can't
+   reference the docs `tokens.css`). Values mirror the canonical Pyreon
+   palette: ink surface ramp, paper text, gray muted, cyan for
+   interactivity, ember as the sparing signal accent.
+   ─────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --ink-0: #06060a;
+  --ink-1: #0a0a0e;
+  --ink-2: #111118;
+  --ink-3: #181822;
+  --ink-4: #23232e;
+  --ink-5: #2e2e3b;
+
+  --paper-1: #f4efe6;
+
+  --gray-1: #c9c4b8;
+  --gray-2: #8a8696;
+
+  --ember-core: #ff5e1a;
+  --ember-warm: #ffc83d;
+
+  --cyan: #22d3ee;
+
+  --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system,
+    'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo,
+    monospace;
+
+  --radius-sm: 3px;
+  --radius: 4px;
+
+  --bg: var(--ink-1);
+  --bg-elevated: var(--ink-2);
+  --bg-well: var(--ink-3);
+  --bg-deep: var(--ink-0);
+  --border: var(--ink-4);
+  --hairline: var(--ink-5);
+  --text: var(--paper-1);
+  --muted: var(--gray-2);
+  --accent: var(--cyan);
+  --signal: var(--ember-core);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* --- Toolbar --- */
+
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  min-height: 34px;
+  flex-shrink: 0;
+}
+
+#refresh-btn {
+  background: var(--ink-3);
+  color: var(--text);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  padding: 3px 10px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+#refresh-btn:hover {
+  background: var(--ink-4);
+  border-color: var(--signal);
+}
+
+#refresh-btn:active {
+  background: var(--ink-5);
+}
+
+#component-count {
+  color: var(--muted);
+  font-family: var(--font-sans);
+}
+
+#pyreon-version {
+  color: var(--ember-warm);
+  font-family: var(--font-sans);
+  font-weight: 600;
+  margin-left: auto;
+}
+
+/* --- Main area --- */
+
+#main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* --- Tree pane --- */
+
+#tree-pane {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 200px;
+}
+
+#tree-container {
+  padding: 4px 0;
+}
+
+.tree-empty {
+  padding: 24px 16px;
+  color: var(--muted);
+  text-align: center;
+  font-style: italic;
+}
+
+.tree-node {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  padding-right: 8px;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s;
+}
+
+.tree-node:hover {
+  background: var(--bg-well);
+}
+
+.tree-node.selected {
+  background: color-mix(in srgb, var(--signal) 16%, var(--bg));
+  border-left-color: var(--signal);
+}
+
+.tree-arrow {
+  display: inline-block;
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tree-arrow:hover {
+  color: var(--text);
+}
+
+.tree-name {
+  color: var(--accent);
+}
+
+.tree-node.selected .tree-name {
+  color: var(--signal);
+  font-weight: 600;
+}
+
+.tree-badge {
+  color: var(--muted);
+  font-size: 10px;
+  margin-left: 4px;
+  background: var(--ink-4);
+  padding: 0 5px;
+  border-radius: 8px;
+}
+
+/* --- Detail pane --- */
+
+#detail-pane {
+  width: 280px;
+  min-width: 200px;
+  background: var(--bg-deep);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 12px;
+  flex-shrink: 0;
+}
+
+#detail-placeholder {
+  color: var(--muted);
+  text-align: center;
+  padding-top: 40px;
+  font-style: italic;
+}
+
+#detail-content h3 {
+  color: var(--accent);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-section {
+  margin-bottom: 10px;
+}
+
+.detail-section label {
+  display: block;
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.detail-value {
+  color: var(--gray-1);
+  word-break: break-all;
+}
+
+.detail-value.clickable,
+.detail-child.clickable {
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.detail-value.clickable:hover,
+.detail-child.clickable:hover {
+  color: var(--signal);
+  text-decoration: underline;
+}
+
+.detail-child {
+  padding: 2px 0;
+}
+
+/* --- Stats bar --- */
+
+#stats-bar {
+  display: flex;
+  align-items: center;
+  padding: 3px 12px;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border);
+  min-height: 24px;
+  flex-shrink: 0;
+}
+
+#stats-text {
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 11px;
+}
+
+/* --- Scrollbar styling --- */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--ink-4);
+  border-radius: var(--radius);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-5);
+}

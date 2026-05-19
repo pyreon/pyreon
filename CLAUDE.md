@@ -506,6 +506,8 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 
 Stateful packages expose `./devtools` subpath exports with WeakRef-based registries for introspection. Tree-shakeable — zero cost unless imported. Available for: store, state-tree, form, i18n.
 
+**`@pyreon/devtools` (private, `packages/tools/devtools`)** — the Chrome DevTools extension. `@pyreon/runtime-dom`'s `installDevTools()` (auto-run on first browser `mount()`) attaches `window.__PYREON_DEVTOOLS__` with `version` / `getAllComponents()` / `highlight(id)` / `onComponentMount(cb)` / `onComponentUnmount(cb)`; the extension's `page-hook` reads exactly that surface and bridges it through content-script → background service worker → the **Pyreon** DevTools panel (live component tree, click-to-highlight, inspector). Built via `vl_rolldown_build` to `dist/` (5 entry bundles + manifest/html/css/icons copy; `scripts/sync-manifest.ts` stamps the manifest version from `package.json`). Pure logic (`messages.ts` / `serialize.ts` / `tree.ts`) is unit-tested at 100% under happy-dom; the four browser-sandbox context files are coverage-excluded. `scripts/generate-icons.ts` is a dependency-free PNG encoder rendering the ember-on-ink brand mark. Not published (no npm consumer can load a Chrome extension) — built and loaded unpacked.
+
 ## Key Architectural Patterns
 
 ### Workspace resolution (no build needed for dev)
@@ -923,11 +925,11 @@ cd docs && bun run preview   # preview production build
 
 ## Monorepo Structure
 
-55 published packages across 5 categories under `packages/`, plus 6 private support packages:
+55 published packages across 5 categories under `packages/`, plus 7 private support packages:
 
 - `packages/core/` — 8 packages: reactivity, core, compiler, runtime-dom, runtime-server, router, head, server
 - `packages/fundamentals/` — 22 packages: store, state-tree, form, validation, query, table, virtual, i18n, feature, charts, storage, hooks, hotkeys, permissions, machine, flow, code, document, rx, toast, url-state, dnd
-- `packages/tools/` — 10 packages: cli, lint, mcp, vite-plugin, typescript, storybook, react-compat, preact-compat, vue-compat, solid-compat
+- `packages/tools/` — 10 published packages: cli, lint, mcp, vite-plugin, typescript, storybook, react-compat, preact-compat, vue-compat, solid-compat; + `devtools` (private, not published — Chrome DevTools extension)
 - `packages/ui-system/` — 11 packages: ui-core, styler, unistyle, elements, attrs, rocketstyle, coolgrid, kinetic, kinetic-presets, connector-document, document-primitives
 - `packages/zero/` — 4 packages: zero, zero-cli, create-zero, meta
 - `packages/internals/` — 3 packages: test-utils, manifest, perf-harness (private, not published)

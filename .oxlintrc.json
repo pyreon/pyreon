@@ -53,11 +53,18 @@
         "scripts/**/*.ts",
         "packages/tools/cli/src/**",
         "packages/tools/mcp/src/**",
+        "packages/tools/devtools/scripts/**/*.ts",
         "packages/tools/lint/src/cli.ts",
         "packages/tools/lint/src/watcher.ts"
       ],
       "rules": {
         "no-console": "off"
+      }
+    },
+    {
+      "files": ["packages/tools/devtools/scripts/generate-icons.ts"],
+      "rules": {
+        "typescript/no-non-null-assertion": "off"
       }
     },
     {

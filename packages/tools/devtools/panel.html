@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <div id="app">
+      <div id="toolbar">
+        <button type="button" id="refresh-btn" title="Refresh component tree">&#x21bb; Refresh</button>
+        <span id="component-count">0 components</span>
+        <span id="pyreon-version"></span>
+      </div>
+      <div id="main">
+        <div id="tree-pane">
+          <div id="tree-container"></div>
+        </div>
+        <div id="detail-pane">
+          <div id="detail-placeholder">Select a component to inspect</div>
+          <div id="detail-content" style="display: none;">
+            <h3 id="detail-name"></h3>
+            <div class="detail-section">
+              <label>ID</label>
+              <span id="detail-id"></span>
+            </div>
+            <div class="detail-section">
+              <label>Parent</label>
+              <span id="detail-parent"></span>
+            </div>
+            <div class="detail-section">
+              <label>Children</label>
+              <div id="detail-children"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="stats-bar">
+        <span id="stats-text">Connecting...</span>
+      </div>
+    </div>
+    <script src="panel.js"></script>
+  </body>
+</html>
