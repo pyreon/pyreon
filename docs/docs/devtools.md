@@ -1,47 +1,50 @@
 ---
 title: '@pyreon/devtools'
-description: Chrome DevTools extension for inspecting Pyreon component trees, signals, and performance.
+description: Chrome DevTools extension for inspecting Pyreon component trees, the reactive graph, effects, and performance.
 ---
 
-`@pyreon/devtools` is a Chrome DevTools extension for inspecting Pyreon applications. It provides a component tree view, signal inspection, and performance monitoring.
+`@pyreon/devtools` is a Chrome DevTools extension for inspecting Pyreon applications — a component tree, a live reactive graph (signals / computeds / effects), fire timeline, and a page-world console. It is a private workspace package (`packages/tools/devtools`), built and loaded unpacked.
 
 <PackageBadge name="@pyreon/devtools" href="/docs/devtools" status="beta" />
 
 ## Installation
 
-Install from the [Chrome Web Store](https://chromewebstore.google.com/) or build from source:
+It lives in the Pyreon monorepo — build it from there:
 
 ```bash
-git clone https://github.com/pyreon/devtools.git
-cd devtools
 bun install
-bun run build
+bun run --filter='@pyreon/devtools' build
 ```
 
-Then load the `dist/` folder as an unpacked extension in `chrome://extensions`.
+Then open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select `packages/tools/devtools/dist/`. A **Pyreon** panel appears in Chrome DevTools.
 
-## Overview
+## How it connects
 
-### Execution Contexts
+The framework installs a hook automatically on the first `mount()` in the browser (no-op on the server, tree-shaken in production):
 
-The extension is composed of four execution contexts that work together:
+```ts
+window.__PYREON_DEVTOOLS__
+// component tree:  getComponentTree() · getAllComponents() · highlight(id)
+//                  onComponentMount(cb) · onComponentUnmount(cb)
+//                  enableOverlay() · disableOverlay()   (also Ctrl+Shift+P)
+// reactive bridge: reactive.activate() · reactive.deactivate()
+//                  reactive.getGraph() · reactive.getFires()
+```
 
-1. **Page hook** — injected into the inspected page to instrument Pyreon's runtime, capturing component mounts, signal updates, and render timings.
-2. **Content script** — bridges between the page hook and the extension background, forwarding messages across the isolated world boundary.
-3. **Background service worker** — coordinates communication between the content script and any open DevTools panels, maintaining connection state.
-4. **DevTools panel** — the UI you interact with inside Chrome DevTools, rendering the component tree, signal inspector, and performance graphs.
+`$p` is a console helper for the same data (`$p.tree()`, `$p.components()`, `$p.help()`).
 
-### Component Tree Visualization
+Four isolated execution contexts cooperate: a **page hook** (reads `__PYREON_DEVTOOLS__`), a **content script** (bridges the isolated-world boundary), a **background service worker** (routes panel ↔ page), and the **DevTools panel** UI.
 
-The component tree panel shows every mounted Pyreon component in a collapsible hierarchy. Selecting a component reveals its current props, internal signals, and computed values. Components re-rendering in real time are highlighted so you can spot unnecessary updates.
+## Panel tabs
 
-### Signal State Inspection
+The panel is skinned on the Pyreon brand identity (ink/ember/cyan, JetBrains Mono + Space Grotesk).
 
-The signals panel lists every signal and computed value in the selected component's scope. Each entry shows the current value, the number of subscribers, and a history of recent changes. You can manually set a signal's value from the panel for quick debugging.
-
-### Performance Monitoring
-
-The performance tab records render durations and signal propagation times. Use it to identify slow components or overly broad signal dependencies that trigger excessive re-renders.
+- **Components** — the mounted component tree (rebuilt from `parentId` — the framework registers post-order, so a parent's own `childIds` is empty when its children register first). A freshly-mounted component pulses with the signature ember signal-propagation animation (reduced-motion gated). Click to highlight the DOM node; the inspector shows id / parent / children. The toolbar **Inspect** toggle drives the element-picker overlay.
+- **Signals** — every tracked signal / computed / effect: name, kind, value preview, subscriber count, fire count, sorted by activity; hot rows ember-tinted.
+- **Graph** — a layered SVG dependency diagram (signals → derived → effects), ember edges on the recently-fired path.
+- **Effects** — per-node fire lanes across the observed time window.
+- **Profiler** — fires bucketed into 100 ms frames with a peak/frame summary.
+- **Console** — evaluates expressions in the inspected page's own world (e.g. `__PYREON_DEVTOOLS__.reactive.getGraph()`), result streamed back.
 
 ## Programmatic API
 
@@ -113,4 +116,6 @@ interface ReactiveFire {
 
 **Zero cost until attached.** Every instrumentation point early-returns until `activateReactiveDevtools()` is called, and the single call site per node creation / fire sits inside the standard `process.env.NODE_ENV !== 'production'` gate, so it is fully tree-shaken from production builds. **No retention.** Nodes are held via `WeakRef` and pruned by a `FinalizationRegistry` — the registry never keeps a signal/computed/effect alive; edges and the fire buffer hold only numeric ids and timestamps, never node references or values. `getReactiveGraph()` recomputes edges fresh from the live subscriber sets on each call, so it never drifts out of sync.
 
-This is the Foundation the extension's **Signals**, **Graph**, **Effects**, and **Console** tabs consume; the Profiler tab additionally needs per-frame duration instrumentation (deferred).
+This is the Foundation the extension's **Signals**, **Graph**, **Effects**, **Profiler**, and **Console** tabs consume. The Profiler tab buckets fire timestamps into 100 ms frames; a true per-frame _duration_ flamegraph additionally needs run-duration instrumentation in the Foundation (deferred).
+
+Only user `signal()` / `computed()` / `effect()` are tracked — compiler-emitted DOM-binding plumbing (`renderEffect` / `_bind`) is intentionally excluded so the graph stays meaningful and the hottest path untouched. The extension consumes `reactive` defensively: a page running an older `@pyreon/runtime-dom` (no Foundation) shows an explicit "needs the Foundation" notice rather than a fake/empty surface — Components works regardless, and polling runs only while a reactive tab is open.

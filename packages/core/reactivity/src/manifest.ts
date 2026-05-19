@@ -596,6 +596,52 @@ count.set(101)  // logs/reports via handler instead of crashing`,
       ],
       seeAlso: ['effect', 'renderEffect'],
     },
+    {
+      name: 'activateReactiveDevtools',
+      kind: 'function',
+      signature:
+        'activateReactiveDevtools(): void  ·  deactivateReactiveDevtools(): void  ·  isReactiveDevtoolsActive(): boolean',
+      summary:
+        'Opt-in lifecycle for the reactive-devtools bridge — the live signal/computed/effect graph the `@pyreon/devtools` Signals/Graph/Effects/Profiler tabs consume (surfaced on the browser hook as `window.__PYREON_DEVTOOLS__.reactive`). **Zero cost until activated**: every per-primitive instrumentation point early-returns on the inactive flag and sits inside the production dead-code gate, so it tree-shakes out of prod builds entirely (locked by a minified-bundle test) and, in dev, costs one predicted-false branch until a devtools client calls `activate()` — the same risk profile as the adjacent reactive-trace / perf-harness calls. `deactivate()` drops all retained registry + fire-buffer state (a closed panel leaves zero residue). Leak-free by construction: nodes are held via `WeakRef` + `FinalizationRegistry`, never pinned.',
+      example: `import { activateReactiveDevtools, getReactiveGraph } from '@pyreon/reactivity'
+
+// Only AFTER activation are subsequently-created signals tracked.
+activateReactiveDevtools()
+const price = signal(10, { name: '$price' })
+const total = computed(() => price() * 2)
+effect(() => total())
+getReactiveGraph().nodes // → [$price (signal), derived, effect]
+deactivateReactiveDevtools() // → registry cleared`,
+      mistakes: [
+        'Expecting nodes created BEFORE `activate()` to appear — registration is gated on the active flag (mirrors a devtools panel attaching). Activate first, then build/observe the graph',
+        'Calling it in production for app logic — the whole bridge is dev-gated and tree-shaken; `getReactiveGraph()` returns an empty graph in prod builds',
+        'Assuming it tracks compiler-emitted DOM bindings — only user `signal()` / `computed()` / `effect()` are registered; `renderEffect` / `_bind` plumbing is intentionally excluded (it would flood the graph and tax the hottest path)',
+      ],
+      seeAlso: ['getReactiveGraph', 'onSignalUpdate', 'getReactiveTrace'],
+    },
+    {
+      name: 'getReactiveGraph',
+      kind: 'function',
+      signature:
+        'getReactiveGraph(): { nodes: ReactiveNode[]; edges: { from: number; to: number }[] }  ·  getReactiveFires(): { id: number; ts: number }[]',
+      summary:
+        'Fresh snapshot of the live reactive graph + a bounded recent-fire timeline, for the reactive-devtools tabs. `getReactiveGraph()` returns every tracked node (`{ id, kind: "signal"|"derived"|"effect", name, value, subscribers, fires, lastFire }`) plus dependency edges recomputed on demand from the real subscriber `_s` Sets (source → subscriber: signal→derived, derived→effect) — always consistent with the framework’s actual subscription state, no incremental drift. `getReactiveFires()` returns a fixed-size ring buffer of recent fires (`{ id, ts }`, oldest → newest) powering the Effects/Profiler tabs. Both require `activateReactiveDevtools()` first and return empty otherwise. Names come from `signal(v, { name })` / the vite-plugin dev auto-naming; anonymous computeds/effects get a synthetic `derived#id` / `effect#id`.',
+      example: `activateReactiveDevtools()
+const a = signal(1, { name: '$a' })
+const b = computed(() => a() + 1)
+effect(() => b())
+a.set(2)
+getReactiveGraph()
+// nodes: [{ name:'$a', kind:'signal', value:'2', … }, { kind:'derived', … }, { kind:'effect', … }]
+// edges: [{ from:$a, to:derived }, { from:derived, to:effect }]
+getReactiveFires() // → [{ id, ts }, …]  (bounded, chronological)`,
+      mistakes: [
+        'Holding the returned arrays expecting them to update — they are point-in-time snapshots; call again (the devtools panel polls)',
+        'Reading `node.value` for non-string state as the real value — it is a bounded, safely-stringified PREVIEW (never a raw ref — no pinning). Inspect the signal directly for the live value',
+        'Expecting fires for every write in a long-running app — `getReactiveFires()` is a fixed-size ring; older entries roll off',
+      ],
+      seeAlso: ['activateReactiveDevtools', 'getReactiveTrace', 'onSignalUpdate'],
+    },
   ],
   gotchas: [
     {

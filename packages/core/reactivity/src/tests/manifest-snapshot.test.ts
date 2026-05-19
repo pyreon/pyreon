@@ -74,8 +74,9 @@ describe('gen-docs — reactivity snapshot', () => {
     // isStore, effectScope, getCurrentScope, setCurrentScope,
     // onSignalUpdate, inspectSignal, why, setErrorHandler) + 3 from M4
     // Vue parity (markRaw, shallowReactive, onScopeDispose) + 1
-    // getReactiveTrace (reactive-trace error-report enrichment).
-    expect(Object.keys(record).length).toBe(26)
+    // getReactiveTrace (reactive-trace error-report enrichment) + 2
+    // reactive-devtools bridge (activateReactiveDevtools, getReactiveGraph).
+    expect(Object.keys(record).length).toBe(28)
     expect(Object.keys(record)).toContain('reactivity/signal')
     expect(Object.keys(record)).toContain('reactivity/createResource')
     // Spot-check the flagship API — signal is the core primitive
