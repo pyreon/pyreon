@@ -23,7 +23,13 @@ function warnSharpMissing() {
 //
 // Usage in code:
 //   import heroImg from "./hero.jpg?optimize"
-//   // → { src, srcset, width, height, placeholder }
+//   // → ProcessedImage { src, srcset, width, height, placeholder }
+//
+// Type the `?optimize` / `?component` / `?raw` imports out of the box —
+// add ONE line to a tsconfig-covered `.d.ts` (e.g. `src/env.d.ts`):
+//   /// <reference types="@pyreon/zero/image-types" />
+// (ships the ambient `declare module "*?optimize"` etc. — reuses this
+//  module's own `ProcessedImage`, so it never drifts.)
 //
 // Or use the component helper:
 //   import { Image } from "@pyreon/zero/image"

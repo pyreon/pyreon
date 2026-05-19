@@ -649,6 +649,14 @@ import { Image } from '@pyreon/zero'
 ;<Image {...hero} alt="Hero" priority />
 ```
 
+**Typing the `?optimize` import.** `?optimize` (and `?component` / `?raw` for SVG) are custom Vite import queries — TypeScript doesn't know their shape by default. Zero ships the ambient declarations; add **one line** to any tsconfig-covered `.d.ts` (e.g. `src/env.d.ts`):
+
+```ts
+/// <reference types="@pyreon/zero/image-types" />
+```
+
+This makes `import hero from './x.jpg?optimize'` resolve to `ProcessedImage` (and `'./logo.svg?component'` to a component, `'./logo.svg?raw'` to a string) with zero hand-authored `declare module` blocks — the ambient reuses the plugin's own `ProcessedImage`, so it never drifts.
+
 **Placeholder strategies:**
 
 | Strategy           | Output                                                                       |

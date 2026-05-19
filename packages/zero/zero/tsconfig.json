@@ -11,5 +11,12 @@
     "jsx": "react-jsx"
   },
   "include": ["src"],
-  "exclude": ["src/tests"]
+  // image-types.ts is an ambient-only `declare module` source. The repo
+  // tsconfig sets moduleDetection:force → every .ts is a module, so
+  // `declare module '*.svg?raw'` would be read as an augmentation of a
+  // non-existent module (TS2664). It carries no logic; vl_rolldown_build
+  // emits it verbatim to lib/types/image-types.d.ts (a real .d.ts —
+  // always ambient + moduleDetection-exempt for consumers). Correctness
+  // is covered by the build's DTS emit + image-types-export.test.ts.
+  "exclude": ["src/tests", "src/image-types.ts"]
 }

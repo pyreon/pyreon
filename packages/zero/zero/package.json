@@ -84,6 +84,11 @@
       "import": "./lib/image-plugin.js",
       "types": "./lib/types/image-plugin.d.ts"
     },
+    "./image-types": {
+      "bun": "./src/image-types.ts",
+      "import": "./lib/image-types.js",
+      "types": "./lib/types/image-types.d.ts"
+    },
     "./actions": {
       "bun": "./src/actions.ts",
       "import": "./lib/actions.js",
