@@ -119,8 +119,9 @@ jobs:
           ref: ${{ inputs.ref || github.ref }}
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master — pinned (OpenSSF Pinned-Dependencies)
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
 
       - name: Install zig (for aarch64-linux cross-compile)

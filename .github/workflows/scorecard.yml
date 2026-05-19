@@ -1,0 +1,55 @@
+name: Scorecard
+
+# Closes the "no OpenSSF Scorecard" gap: runs the official scorecard analysis,
+# publishes the result (Security tab + the public scorecard.dev / deps.dev
+# badge) and uploads SARIF so regressions in security posture are visible.
+# This is the authoritative, continuously-recomputed score — the manual
+# inspection that motivated this PR was only a proxy for it.
+
+on:
+  branch_protection_rule:
+  schedule:
+    - cron: '41 5 * * 1' # weekly, Mondays 05:41 UTC
+  push:
+    branches: [main]
+
+concurrency:
+  group: scorecard-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write # upload the Scorecard SARIF to the Security tab
+      id-token: write # publish results to the OpenSSF API (provenance)
+      contents: read
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5
+        with:
+          egress-policy: audit
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Run analysis
+        uses: ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205a
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: scorecard-results
+          path: results.sarif
+          retention-days: 5
+      - name: Upload SARIF to code-scanning
+        uses: github/codeql-action/upload-sarif@458d36d7d4f47d0dd16ca424c1d3cda0060f1360
+        with:
+          sarif_file: results.sarif

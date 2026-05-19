@@ -1,0 +1,47 @@
+name: CodeQL
+
+# SAST gap (security-scorecard): static analysis of the JS/TS surface — the
+# dominant injection/XSS attack surface for a UI framework + its compiler.
+# Rust CodeQL support is still beta; the small native crate is covered by the
+# 180-test cross-backend-equivalence oracle + bisect discipline, so it is a
+# deliberate follow-up rather than a noisy day-one addition.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '27 4 * * 1' # weekly, Mondays 04:27 UTC
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (javascript-typescript)
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write # upload CodeQL SARIF to the Security tab
+      actions: read
+      contents: read
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5
+        with:
+          egress-policy: audit
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@458d36d7d4f47d0dd16ca424c1d3cda0060f1360
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+      - name: Analyze
+        uses: github/codeql-action/analyze@458d36d7d4f47d0dd16ca424c1d3cda0060f1360
+        with:
+          category: /language:javascript-typescript

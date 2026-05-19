@@ -1,0 +1,55 @@
+name: OSV-Scanner
+
+# Closes the "no dependency-vulnerability gate" gap. Deliberately ADVISORY:
+# it scans the lockfile against the OSV database and publishes findings to
+# the Security tab (SARIF), but does NOT fail the build. A hard-fail gate on
+# a ~1400-package tree on day one would red every PR for pre-existing
+# transitive advisories with no path to merge — the same advisory-first
+# rationale the repo applies to perf.yml. Once the baseline is triaged this
+# can be ratcheted to blocking (drop `continue-on-error`).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '13 6 * * 1' # weekly, Mondays 06:13 UTC
+
+concurrency:
+  group: osv-scanner-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: OSV dependency scan (advisory)
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write # upload OSV SARIF to the Security tab
+      contents: read
+      actions: read
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5
+        with:
+          egress-policy: audit
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Run OSV-Scanner (non-blocking)
+        id: osv
+        continue-on-error: true
+        uses: google/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2
+        with:
+          scan-args: |-
+            --recursive
+            --format=sarif
+            --output=osv-results.sarif
+            ./
+      - name: Upload SARIF to code-scanning
+        if: always() && hashFiles('osv-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@458d36d7d4f47d0dd16ca424c1d3cda0060f1360
+        with:
+          sarif_file: osv-results.sarif
