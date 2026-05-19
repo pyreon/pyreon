@@ -1,12 +1,6 @@
-import type { SerializedEntry } from './types'
+import type { DevtoolsComponentEntry, SerializedEntry } from './types'
 
-export interface DevtoolsComponentEntry {
-  id: string
-  name: string
-  el: Element | null
-  parentId: string | null
-  childIds: string[]
-}
+export type { DevtoolsComponentEntry } from './types'
 
 export function serialize(entry: DevtoolsComponentEntry): SerializedEntry {
   return {

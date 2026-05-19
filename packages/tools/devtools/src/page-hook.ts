@@ -1,23 +1,13 @@
 import { createPageWire, isContentWireMessage } from './messages'
-import { type DevtoolsComponentEntry, serialize } from './serialize'
-import type { HookMessage } from './types'
+import { serialize } from './serialize'
+import type { HookMessage, PyreonDevtools } from './types'
 
 // --- Pyreon DevTools page-world hook ---
-// Injected into the actual page context so it can access window.__PYREON_DEVTOOLS__
-
-interface PyreonDevtools {
-  readonly version: string
-  getAllComponents(): DevtoolsComponentEntry[]
-  highlight(id: string): void
-  onComponentMount(cb: (entry: DevtoolsComponentEntry) => void): () => void
-  onComponentUnmount(cb: (id: string) => void): () => void
-}
-
-declare global {
-  interface Window {
-    __PYREON_DEVTOOLS__?: PyreonDevtools
-  }
-}
+// Injected into the actual page context so it can access
+// window.__PYREON_DEVTOOLS__. The `PyreonDevtools` contract + Window
+// augmentation live in ./types and are pinned to @pyreon/runtime-dom's
+// real exported surface by a compile-time assignability check in
+// src/tests/framework-integration.test.ts.
 
 function postToContent(msg: HookMessage): void {
   window.postMessage(createPageWire(msg), location.origin)
@@ -52,6 +42,14 @@ function setup(devtools: PyreonDevtools): void {
       case 'highlight': {
         if (msg.id) {
           devtools.highlight(msg.id)
+        }
+        break
+      }
+      case 'toggle-overlay': {
+        if (msg.enabled) {
+          devtools.enableOverlay()
+        } else {
+          devtools.disableOverlay()
         }
         break
       }

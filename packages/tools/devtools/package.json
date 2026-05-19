@@ -22,6 +22,8 @@
     "lint": "oxlint ."
   },
   "devDependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
     "@types/chrome": "^0.1.38"
   }
 }

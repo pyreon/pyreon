@@ -81,7 +81,8 @@ body {
   flex-shrink: 0;
 }
 
-#refresh-btn {
+#refresh-btn,
+#inspect-btn {
   background: var(--ink-3);
   color: var(--text);
   border: 1px solid var(--hairline);
@@ -92,16 +93,26 @@ body {
   cursor: pointer;
   transition:
     background 0.15s,
-    border-color 0.15s;
+    border-color 0.15s,
+    color 0.15s;
 }
 
-#refresh-btn:hover {
+#refresh-btn:hover,
+#inspect-btn:hover {
   background: var(--ink-4);
   border-color: var(--signal);
 }
 
-#refresh-btn:active {
+#refresh-btn:active,
+#inspect-btn:active {
   background: var(--ink-5);
+}
+
+/* Inspector armed — ember signal accent (used sparingly, per brand). */
+#inspect-btn.active {
+  background: color-mix(in srgb, var(--signal) 18%, var(--bg));
+  border-color: var(--signal);
+  color: var(--signal);
 }
 
 #component-count {

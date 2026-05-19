@@ -1,5 +1,5 @@
 import { createPanelToBackground, isBackgroundForward } from './messages'
-import { buildMap, getRoots } from './tree'
+import { buildMap, getChildren, getRoots } from './tree'
 import type { PanelMessage, SerializedEntry } from './types'
 
 // --- Panel UI: component tree viewer ---
@@ -10,6 +10,9 @@ let selectedId: string | null = null
 const expandedIds = new Set<string>()
 let pyreonVersion = ''
 let currentMap: Map<string, SerializedEntry> = new Map()
+// children-by-parentId — the framework registers post-order so
+// entry.childIds is unreliable; the tree is built from parentId.
+let currentChildren: Map<string, SerializedEntry[]> = new Map()
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 let connected = true
 let pendingRequestTimer: ReturnType<typeof setTimeout> | null = null
@@ -37,6 +40,7 @@ const detailChildren = requireEl('detail-children')
 const componentCount = requireEl('component-count')
 const versionSpan = requireEl('pyreon-version')
 const refreshBtn = requireEl('refresh-btn')
+const inspectBtn = requireEl('inspect-btn')
 const statsText = requireEl('stats-text')
 
 // Connect to background service worker
@@ -70,6 +74,7 @@ function sendToPage(payload: PanelMessage): void {
 // Render the component tree
 function renderTree(): void {
   currentMap = buildMap(allEntries)
+  currentChildren = getChildren(allEntries)
   const roots = getRoots(allEntries)
   const totalCount = allEntries.length
   const rootCount = roots.length
@@ -101,7 +106,8 @@ function renderNode(
   depth: number,
   container: HTMLElement,
 ): void {
-  const hasChildren = entry.childIds.length > 0
+  const kids = currentChildren.get(entry.id) ?? []
+  const hasChildren = kids.length > 0
   const isExpanded = expandedIds.has(entry.id)
   const isSelected = entry.id === selectedId
 
@@ -138,7 +144,7 @@ function renderNode(
   if (hasChildren) {
     const badge = document.createElement('span')
     badge.className = 'tree-badge'
-    badge.textContent = `${entry.childIds.length}`
+    badge.textContent = `${kids.length}`
     node.appendChild(badge)
   }
 
@@ -154,11 +160,8 @@ function renderNode(
 
   // Render children if expanded
   if (hasChildren && isExpanded) {
-    for (const childId of entry.childIds) {
-      const child = currentMap.get(childId)
-      if (child) {
-        renderNode(child, depth + 1, container)
-      }
+    for (const child of kids) {
+      renderNode(child, depth + 1, container)
     }
   }
 }
@@ -206,14 +209,15 @@ function renderDetail(): void {
   }
 
   detailChildren.innerHTML = ''
-  if (entry.childIds.length === 0) {
+  const detailKids = currentChildren.get(entry.id) ?? []
+  if (detailKids.length === 0) {
     detailChildren.textContent = '(none)'
   } else {
-    for (const childId of entry.childIds) {
-      const child = currentMap.get(childId)
+    for (const child of detailKids) {
+      const childId = child.id
       const childEl = document.createElement('div')
       childEl.className = 'detail-child clickable'
-      childEl.textContent = child ? `${child.name} (${childId})` : childId
+      childEl.textContent = `${child.name} (${childId})`
       childEl.addEventListener('click', () => {
         selectedId = childId
         sendToPage({ type: 'highlight', id: childId })
@@ -288,6 +292,21 @@ port.onMessage.addListener((message: unknown) => {
 // Refresh button
 refreshBtn.addEventListener('click', () => {
   sendToPage({ type: 'get-all' })
+})
+
+// Inspect button — toggles the framework's element-picker overlay on the
+// inspected page (mirrors React/Vue DevTools' picker). The framework
+// auto-disables the overlay after a pick, so this reflects the panel's
+// last intent; clicking again re-arms it.
+let overlayEnabled = false
+function setOverlay(enabled: boolean): void {
+  overlayEnabled = enabled
+  inspectBtn.classList.toggle('active', enabled)
+  inspectBtn.setAttribute('aria-pressed', String(enabled))
+  sendToPage({ type: 'toggle-overlay', enabled })
+}
+inspectBtn.addEventListener('click', () => {
+  setOverlay(!overlayEnabled)
 })
 
 // Initial fetch

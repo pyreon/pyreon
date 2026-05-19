@@ -7,11 +7,45 @@ export interface SerializedEntry {
   childIds: string[]
 }
 
+// --- Live framework hook contract ---
+// Structural mirror of @pyreon/runtime-dom's exported `PyreonDevtools` /
+// `DevtoolsComponentEntry`. The page-hook runs in the inspected page's
+// world and must NOT import framework code, so the shape is declared
+// here — and pinned to the real framework surface by a compile-time
+// assignability check in `src/tests/framework-integration.test.ts`.
+
+export interface DevtoolsComponentEntry {
+  id: string
+  name: string
+  /** First DOM element produced by this component, if any */
+  el: Element | null
+  parentId: string | null
+  childIds: string[]
+}
+
+export interface PyreonDevtools {
+  readonly version: string
+  getComponentTree(): DevtoolsComponentEntry[]
+  getAllComponents(): DevtoolsComponentEntry[]
+  highlight(id: string): void
+  onComponentMount(cb: (entry: DevtoolsComponentEntry) => void): () => void
+  onComponentUnmount(cb: (id: string) => void): () => void
+  enableOverlay(): void
+  disableOverlay(): void
+}
+
+declare global {
+  interface Window {
+    __PYREON_DEVTOOLS__?: PyreonDevtools
+  }
+}
+
 // --- Panel -> Page messages ---
 
 export type PanelMessage =
   | { type: 'get-all' }
   | { type: 'highlight'; id: string }
+  | { type: 'toggle-overlay'; enabled: boolean }
 
 // --- Page -> Panel messages ---
 

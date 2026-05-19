@@ -6,8 +6,13 @@ Private workspace package — built and loaded unpacked, not published to npm.
 
 ## Features
 
-- Live component tree reflecting the current page state
+- Live component tree reflecting the current page state (rebuilt from
+  `parentId` — the framework registers post-order, so a parent's own
+  `childIds` is empty when its children register first)
 - Click any component to highlight its DOM element on the page
+- **Element picker** — the toolbar **Inspect** toggle drives the
+  framework's hover-to-inspect overlay (`enable/disableOverlay`), the
+  same picker as `Ctrl+Shift+P`
 - Inspector pane showing component details (id, parent, children)
 - Real-time mount/unmount tracking
 - Automatic Pyreon framework detection (`window.__PYREON_DEVTOOLS__`, installed by `@pyreon/runtime-dom` on first `mount()`)
@@ -54,6 +59,16 @@ DevTools Panel (panel.ts)
 The pure logic (`messages.ts`, `serialize.ts`, `tree.ts`) is unit-tested
 under happy-dom; the four context entry points are coverage-excluded
 because they only run inside the browser extension sandbox.
+
+`src/tests/framework-integration.test.ts` proves the contract against
+the **real** `@pyreon/runtime-dom`: it mounts a genuine component tree
+through the real `mount()` (which installs `window.__PYREON_DEVTOOLS__`
+and registers components via the true pipeline) and runs the
+extension's actual `serialize` / `buildMap` / `getChildren` / `getRoots`
+against the live hook — plus a compile-time bidirectional assignability
+lock against the framework's exported `PyreonDevtools` /
+`DevtoolsComponentEntry`, so a framework API drift fails `tsc` instead
+of the extension silently losing a capability.
 
 ## License
 

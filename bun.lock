@@ -1180,6 +1180,8 @@
       "name": "@pyreon/devtools",
       "version": "0.1.0",
       "devDependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
         "@types/chrome": "^0.1.38",
       },
     },
