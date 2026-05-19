@@ -128,4 +128,67 @@ describe('@pyreon/meta exports', () => {
       expect(name in meta).toBe(true)
     })
   }
+
+  // ─── Additions (ecosystem completion) ────────────────────────────────────
+  // Rx (namespace), Toast, URL state, DnD, Document, Document Primitives,
+  // Connector Document, UI Core provider surface.
+  const additions = [
+    // Rx — namespace + types only (operators reachable as `rx.filter` etc.).
+    'rx',
+    // Toast
+    'toast',
+    'Toaster',
+    // URL state
+    'useUrlState',
+    'setUrlRouter',
+    // DnD
+    'useDragMonitor',
+    'useDraggable',
+    'useDroppable',
+    'useFileDrop',
+    'useSortable',
+    // Document (builder + render only — generic JSX names skipped to avoid
+    // collisions with elements/coolgrid).
+    'createDocument',
+    'download',
+    'isDocNode',
+    'registerRenderer',
+    'render',
+    'unregisterRenderer',
+    // Document primitives (Doc*-prefixed JSX components)
+    'DocButton',
+    'DocCode',
+    'DocColumn',
+    'DocDivider',
+    'DocDocument',
+    'DocHeading',
+    'DocImage',
+    'DocLink',
+    'DocList',
+    'DocListItem',
+    'DocPage',
+    'DocPageBreak',
+    'DocQuote',
+    'DocRow',
+    'DocSection',
+    'DocSpacer',
+    'DocTable',
+    'DocText',
+    'DocumentPreview',
+    'createDocumentExport',
+    'documentTheme',
+    'extractDocNode',
+    // Connector document
+    'extractDocumentTree',
+    'resolveStyles',
+    // UI Core provider surface
+    'PyreonUI',
+    'useMode',
+  ]
+
+  for (const name of additions) {
+    it(`exports ${name}`, () => {
+      expect(name in meta).toBe(true)
+    })
+  }
 })

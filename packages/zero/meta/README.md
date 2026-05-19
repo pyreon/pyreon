@@ -32,6 +32,11 @@ bun add @pyreon/meta
 | `@pyreon/charts`      | `Chart` (reactive ECharts with lazy loading)                     |
 | `@pyreon/flow`        | `createFlow`, `Flow`, `Background`, `MiniMap`, `Controls`        |
 | `@pyreon/code`        | `createEditor`, `CodeEditor`, `DiffEditor`, `TabbedEditor`       |
+| `@pyreon/rx`          | `rx` namespace — filter/map/pipe/debounce/throttle/… (37 fns)    |
+| `@pyreon/toast`       | `toast()`, `Toaster`                                             |
+| `@pyreon/url-state`   | `useUrlState`, `setUrlRouter`                                    |
+| `@pyreon/dnd`         | `useDraggable`, `useDroppable`, `useSortable`, `useFileDrop`     |
+| `@pyreon/document`    | `createDocument`, `render` (PDF/DOCX/XLSX/… lazy-loaded)         |
 
 ### UI System
 
@@ -46,6 +51,20 @@ bun add @pyreon/meta
 | `@pyreon/kinetic-presets` | `createFade`, `createSlide`, `createScale`, `createRotate`, `createBlur` |
 | `@pyreon/attrs`           | `attrs`                                                                  |
 | `@pyreon/rocketstyle`     | `rocketstyle`                                                            |
+| `@pyreon/ui-core`         | `PyreonUI`, `useMode`                                                    |
+| `@pyreon/document-primitives` | `DocDocument`, `DocPage`, `DocText`, … + `extractDocNode`            |
+| `@pyreon/connector-document`  | `extractDocumentTree`, `resolveStyles`                               |
+
+## Bundle hygiene / lazy loading
+
+`@pyreon/meta` is a thin **barrel**: every entry is a named re-export, and meta itself + every re-exported source package declares `"sideEffects": false`. Modern bundlers (Vite/Rolldown, Webpack/Next.js, esbuild, Rollup, Parcel, Bun) **tree-shake** unused exports — `import { useStorage } from '@pyreon/meta'` only pulls the `@pyreon/storage` `useStorage` subgraph into your bundle, not the other 32 packages.
+
+Heavy renderers stay lazy at the source-package level:
+
+- `@pyreon/document` lazy-loads each format renderer (PDF / DOCX / XLSX / PPTX / …) via dynamic `import()` inside `render(doc, '<format>')` — calling `createDocument()` does not bundle them.
+- `@pyreon/charts`, `@pyreon/code`, `@pyreon/flow` lazy-load their heavy upstream deps (ECharts, CodeMirror grammars, elkjs) the same way.
+
+So `import { … } from '@pyreon/meta'` is bundle-safe by construction.
 
 ## Usage
 
