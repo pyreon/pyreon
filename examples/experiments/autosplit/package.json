@@ -1,0 +1,9 @@
+{
+  "name": "@pyreon/experiment-autosplit",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "analyze": "bun src/analyze.ts ../../.."
+  }
+}

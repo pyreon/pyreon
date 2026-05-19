@@ -1,0 +1,75 @@
+{
+  "appSrcFilesScanned": 95,
+  "heavyImportSites": 15,
+  "autoSplitCandidates": [],
+  "eagerHeavySites": [
+    {
+      "file": "examples/app-showcase/src/sections/resume/ExportButtons.tsx",
+      "pkg": "@pyreon/document",
+      "gz": 3328,
+      "renderRefs": 1
+    },
+    {
+      "file": "examples/app-showcase/src/sections/resume/ExportButtons.tsx",
+      "pkg": "@pyreon/document-primitives",
+      "gz": 2816,
+      "renderRefs": 1
+    },
+    {
+      "file": "examples/app-showcase/src/sections/invoice/ExportButtons.tsx",
+      "pkg": "@pyreon/document",
+      "gz": 3328,
+      "renderRefs": 1
+    },
+    {
+      "file": "examples/app-showcase/src/sections/invoice/template.ts",
+      "pkg": "@pyreon/document",
+      "gz": 3328,
+      "renderRefs": 57
+    },
+    {
+      "file": "examples/app-showcase/src/sections/invoice/LivePreview.tsx",
+      "pkg": "@pyreon/document",
+      "gz": 3328,
+      "renderRefs": 1
+    },
+    {
+      "file": "examples/app-showcase/src/sections/flow/JsonSidebar.tsx",
+      "pkg": "@pyreon/code",
+      "gz": 7168,
+      "renderRefs": 2
+    },
+    {
+      "file": "examples/app-showcase/src/sections/flow/JsonSidebar.tsx",
+      "pkg": "@pyreon/flow",
+      "gz": 15872,
+      "renderRefs": 2
+    },
+    {
+      "file": "examples/app-showcase/src/sections/flow/WorkflowNode.tsx",
+      "pkg": "@pyreon/flow",
+      "gz": 15872,
+      "renderRefs": 3
+    },
+    {
+      "file": "examples/app-showcase/src/sections/flow/data/seed.ts",
+      "pkg": "@pyreon/flow",
+      "gz": 15872,
+      "renderRefs": 2
+    },
+    {
+      "file": "examples/app-showcase/src/sections/flow/store.ts",
+      "pkg": "@pyreon/flow",
+      "gz": 15872,
+      "renderRefs": 2
+    },
+    {
+      "file": "examples/app-showcase/src/routes/dnd/index.tsx",
+      "pkg": "@pyreon/dnd",
+      "gz": 2816,
+      "renderRefs": 4
+    }
+  ],
+  "projectedInitialBytesRemovableGz": 0,
+  "totalHeavyGzReferenced": 112384
+}
