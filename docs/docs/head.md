@@ -36,10 +36,8 @@ yarn add @pyreon/head
 For CSR, wrap your application in a `HeadProvider` and use `useHead` in any descendant component:
 
 ```tsx
-import { createHeadContext, HeadProvider, useHead } from '@pyreon/head'
+import { HeadProvider, useHead } from '@pyreon/head'
 import { mount } from '@pyreon/runtime-dom'
-
-const headCtx = createHeadContext()
 
 function App() {
   useHead({
@@ -52,12 +50,14 @@ function App() {
 }
 
 mount(
-  <HeadProvider context={headCtx}>
+  <HeadProvider>
     <App />
   </HeadProvider>,
   document.getElementById('app')!,
 )
 ```
+
+`HeadProvider` auto-creates an internal head context here -- pass `context={createHeadContext()}` explicitly only when you need to share the registry with code outside the provider's subtree (e.g. a custom SSR pipeline that bypasses `renderWithHead`).
 
 ### Server-Side Rendering
 
@@ -723,13 +723,11 @@ description.set('updated description')
 The `HeadProvider` component provides a head context to all descendant components. Required for CSR -- `useHead()` is a silent no-op without it.
 
 ```tsx
-import { createHeadContext, HeadProvider } from '@pyreon/head'
-
-const headCtx = createHeadContext()
+import { HeadProvider } from '@pyreon/head'
 
 function Root() {
   return (
-    <HeadProvider context={headCtx}>
+    <HeadProvider>
       <App />
     </HeadProvider>
   )
@@ -740,12 +738,41 @@ function Root() {
 
 ```ts
 interface HeadProviderProps {
-  context: HeadContextValue
+  context?: HeadContextValue
   children?: VNodeChild
 }
 ```
 
-The `HeadProvider` pushes the context frame synchronously during its setup phase, so all descendants -- even those that mount synchronously -- can read the `HeadContext`.
+`HeadProvider` pushes the context frame synchronously during its setup phase, so all descendants -- even those that mount synchronously -- can read the `HeadContext`.
+
+### Context resolution
+
+`HeadProvider` resolves its context in this order, first non-null wins:
+
+1. **`props.context`** -- explicit context. Use this when you need an isolated registry (iframe / micro-frontend boundary) or when manually wiring a custom SSR pipeline.
+2. **An outer `HeadContext` already in scope** -- inherited transparently. This is what makes a `HeadProvider` mounted INSIDE `renderWithHead()` (or inside another `HeadProvider`) compose without manual context plumbing. The framework-level [`@pyreon/zero`](/docs/zero) SSG/SSR pipeline relies on this -- its `createApp` mounts `<HeadProvider>` unconditionally, and the outer ctx that `renderWithHead` pushes is inherited.
+3. **A freshly-created context** -- root-level fallback for pure CSR.
+
+```tsx
+// CSR root — auto-creates a fresh context:
+<HeadProvider>
+  <App />
+</HeadProvider>
+
+// SSR — composes with renderWithHead out of the box:
+const { html, head } = await renderWithHead(
+  <HeadProvider><App /></HeadProvider>
+)
+
+// Explicit isolation (e.g. micro-frontend) — opt out of inheritance:
+<HeadProvider context={createHeadContext()}>
+  <App />
+</HeadProvider>
+```
+
+::: warning Nested providers inherit, not isolate
+A `HeadProvider` nested inside another one (or inside `renderWithHead`) **inherits** the outer context by default -- both providers write into the same registry. If you genuinely want isolation, pass `context={createHeadContext()}` explicitly. Earlier versions auto-created a fresh context unconditionally, which silently shadowed the outer registry; the inheritance behavior is the structural fix.
+:::
 
 ## createHeadContext
 
