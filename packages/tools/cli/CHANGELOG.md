@@ -1,5 +1,21 @@
 # @pyreon/cli
 
+## 0.20.0
+
+### Patch Changes
+
+- [#656](https://github.com/pyreon/pyreon/pull/656) [`abda63c`](https://github.com/pyreon/pyreon/commit/abda63c541343cfe967a5c70ce223a6675ceaa8e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon doctor` text output now follows the Pyreon brand handoff ([#651](https://github.com/pyreon/pyreon/issues/651)) — CLI spec §6.5 / `pyr doctor` §6.6.
+
+  `render/ansi.ts` maps every brand token to its nearest **xterm-256** index and emits 8-bit SGR (`38;5;N`). The handoff is explicit — _"256-color terminal palette must survive (no truecolor-only colors)"_ — so there is no `38;2;r;g;b`; the codes render identically on truecolor terminals and remain correct on 256-only ones. Mapping: `red`→ember-core `#FF5E1A` (202, errors / fail grade / `✗`), `yellow`→ember-warm `#FFC83D` (220, warnings · hints · `!`), `green`→ok-green `#4ADE80` (78, pass / grade A), `cyan`→brand cyan `#22D3EE` (45, info · links), `gray`→muted-2 `#8A8696` (245, separators · headings · skipped), `magenta`→ember-plasma (198). Severity glyphs aligned to §6.5: `✗` error, `!` warning (`ℹ` kept for info — the findings list only renders problems, never passes, so the brand `✓` would mislead).
+
+  Ember stays scarce by construction, as the brand mandates — it only colors error/fail states and the worst grade, never decoration. No structural/output-shape change; `NO_COLOR` / `FORCE_COLOR` / TTY logic and OSC-8 hyperlinks untouched, so `--json` / `--gha` / `--ci` and all snapshots are unaffected (render tests run `FORCE_COLOR=0`).
+
+  Verified: dependency-free assertion that the emitted codes are exactly `38;5;{202,220,78,45,245,198}` with zero `38;2` (truecolor) sequences; `@pyreon/cli` render tests 14/14 pass; oxlint clean.
+
+- Updated dependencies [[`c3df9db`](https://github.com/pyreon/pyreon/commit/c3df9dbbcf9e939c92e1c4843b59686cdd25589e), [`9a54705`](https://github.com/pyreon/pyreon/commit/9a54705c645ff2c3bee54fa8c6d411d1530b3187), [`bbccaaf`](https://github.com/pyreon/pyreon/commit/bbccaaf3ec2f5dc3eed3e7195a09023fc59575d1), [`abda63c`](https://github.com/pyreon/pyreon/commit/abda63c541343cfe967a5c70ce223a6675ceaa8e), [`24a063c`](https://github.com/pyreon/pyreon/commit/24a063ccfa2ef267927dfd68886be24c397ccd72), [`a086769`](https://github.com/pyreon/pyreon/commit/a0867699bdeca87f34e60fef7aa867a75a24d815), [`65e61eb`](https://github.com/pyreon/pyreon/commit/65e61eba20741a012b753b4c8c69045f408768b7)]:
+  - @pyreon/compiler@0.20.0
+  - @pyreon/lint@0.20.0
+
 ## 0.19.0
 
 ### Minor Changes

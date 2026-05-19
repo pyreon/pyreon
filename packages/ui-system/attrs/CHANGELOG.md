@@ -1,5 +1,13 @@
 # @pyreon/attrs
 
+## 0.20.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.20.0
+  - @pyreon/ui-core@0.20.0
+
 ## 0.19.0
 
 ### Patch Changes
