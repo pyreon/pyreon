@@ -14,11 +14,15 @@ posture audit:
 - **OpenSSF Scorecard**: new `scorecard.yml` — the official, continuously
   recomputed score, published to the Security tab + the public
   scorecard.dev / deps.dev badge (the manual audit was only a proxy).
-- **Dependency vulnerabilities**: new `osv-scanner.yml` — OSV scan of the
-  lockfile, SARIF → Security tab. Deliberately ADVISORY (`continue-on-error`)
-  so it does not red every PR on day one for pre-existing transitive
-  advisories with no merge path — same advisory-first rationale the repo
-  applies to `perf.yml`; ratchet to blocking once the baseline is triaged.
+- **Dependency vulnerabilities**: new `dependency-audit.yml` — native
+  `bun audit` (bun.lock vs. advisory DB). Chosen over a third-party OSV
+  action deliberately: upstream OSV-Scanner's `action.yml` has no top-level
+  `runs:` at its pinned tags and its reusable workflow is
+  deprecated-and-self-failing — fragile supply-chain for zero benefit on a
+  bun monorepo. Deliberately ADVISORY (non-blocking) so it does not red
+  every PR on day one for pre-existing transitive advisories with no merge
+  path — same advisory-first rationale the repo applies to `perf.yml`;
+  ratchet to blocking once the baseline is triaged.
 - **Pinned-Dependencies**: the last unpinned action
   (`dtolnay/rust-toolchain@stable`) is now SHA-pinned with an explicit
   `toolchain: stable` in `ci.yml` + `release-native.yml`. Zero non-SHA

@@ -1,0 +1,71 @@
+name: Dependency Audit
+
+# Closes the "no dependency-vulnerability gate" (OpenSSF Vulnerabilities)
+# gap using the repo's NATIVE toolchain — `bun audit` checks bun.lock against
+# the advisory DB. Chosen over a third-party OSV action on purpose: the
+# upstream OSV-Scanner action.yml has no top-level `runs:` at its pinned
+# tags and its reusable workflow is deprecated-and-self-failing — fragile
+# supply-chain surface for zero benefit here. `bun audit` adds NO external
+# action, runs on the package manager already used everywhere in CI.
+#
+# Deliberately ADVISORY (`exit 0`): a hard-fail gate on a ~1400-package
+# tree on day one would red every PR for pre-existing transitive advisories
+# with no merge path — same advisory-first rationale the repo applies to
+# perf.yml. Ratchet to blocking once the baseline is clean.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '13 6 * * 1' # weekly, Mondays 06:13 UTC
+
+concurrency:
+  group: dependency-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: bun audit (advisory)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5
+        with:
+          egress-policy: audit
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: latest
+      - name: bun audit (non-blocking — reports known advisories in deps)
+        run: |
+          set +e
+          bun audit --json > bun-audit.json 2>bun-audit.err
+          code=$?
+          {
+            echo "## Dependency audit (\`bun audit\`)"
+            if [ "$code" -eq 0 ]; then
+              echo "No known advisories in the resolved dependency tree."
+            else
+              echo "Advisories reported (advisory-only — does not fail the build):"
+              echo '```'
+              bun audit 2>&1 | tail -60 || true
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+      - name: Upload audit JSON
+        if: always() && hashFiles('bun-audit.json') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: bun-audit
+          path: bun-audit.json
+          retention-days: 5
