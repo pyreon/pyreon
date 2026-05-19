@@ -39,7 +39,6 @@ import {
   Suspense,
   Switch,
 } from '@pyreon/core'
-import { effect as pyreonEffect, signal as pyreonSignal } from '@pyreon/reactivity'
 import { mount as pyreonMount } from '@pyreon/runtime-dom'
 import { getCurrentCtx, getHookIndex, jsx } from './jsx-runtime'
 
@@ -85,93 +84,108 @@ function plainSubscribe<R>(fn: () => R): R {
 // ─── writable ────────────────────────────────────────────────────────────────
 
 /**
- * Svelte-compatible `writable`. Backed by a Pyreon signal so `derived`
- * (Pyreon `computed`/`effect`) auto-tracks reads. `start` runs when the
- * subscriber count goes 0→1 and its returned `stop` runs at 1→0.
+ * Svelte's `safe_not_equal`: primitives dedup, objects/functions always
+ * notify (so in-place-mutated store objects still propagate).
+ */
+function safeNotEqual(a: unknown, b: unknown): boolean {
+  // eslint-disable-next-line no-self-compare
+  return a != a
+    ? // eslint-disable-next-line no-self-compare
+      b == b
+    : a !== b || (a !== null && typeof a === 'object') || typeof a === 'function'
+}
+
+interface SubEntry<T> {
+  run: Subscriber<T>
+  invalidate: Invalidator<T>
+  /** Component re-render trigger — set only for render-aware subscriptions. */
+  rerender?: () => void
+}
+
+/**
+ * Svelte-compatible `writable`. A faithful Svelte store: a Set of
+ * subscribers notified synchronously on `set`/`update`. NOT signal-
+ * backed — Svelte's own `writable` is signal-free, and `derived` here
+ * subscribes to its inputs explicitly, so no signal auto-tracking is
+ * needed.
+ *
+ * Subscribing inside a compat component body is the faithful equivalent
+ * of Svelte's `$store` auto-subscription: the subscriber carries the
+ * component's `scheduleRerender`, so a store write re-renders the
+ * component — the same "write drives re-render" model the sibling
+ * solid-compat layer uses. Crucially this is NOT a persistent tracking
+ * effect: such an effect, created inside the wrapper accessor's run, is
+ * collected as an inner effect and disposed on the NEXT re-render (the
+ * cached path never recreates it), so store changes stopped propagating
+ * after the first one. A plain subscriber Set has no such hazard — it
+ * lives until `unsub` (registered in `ctx.unmountCallbacks`).
+ *
+ * `start` runs when the subscriber count goes 0→1 and its returned
+ * `stop` runs at 1→0. Synchronous `set` calls inside `start` mutate the
+ * value but do NOT notify (the store isn't "ready" until `start`
+ * returns), so the first subscriber sees exactly the post-start value —
+ * matching Svelte's `derived` (one emission, no spurious initial).
  */
 export function writable<T>(value?: T, start: StartStopNotifier<T> = noop): Writable<T> {
-  const sig = pyreonSignal<T>(value as T)
+  let v = value as T
   let stop: Unsubscriber | void
-  const subscribers = new Set<Subscriber<T>>()
+  const subs = new Set<SubEntry<T>>()
 
-  const set = (next: T): void => {
-    sig.set(next)
+  const setVal = (next: T): void => {
+    if (!safeNotEqual(v, next)) return
+    v = next
+    if (!stop) return // not "ready" — Svelte's gate (start hasn't returned)
+    for (const s of subs) s.invalidate(v)
+    for (const s of subs) {
+      s.run(v) /* TEMP BISECT: rerender disabled */
+    }
   }
-  const update = (fn: Updater<T>): void => {
-    sig.set(fn(sig.peek()))
+  const set = (next: T): void => setVal(next)
+  const update = (fn: Updater<T>): void => setVal(fn(v))
+
+  const addSub = (entry: SubEntry<T>): Unsubscriber => {
+    subs.add(entry)
+    if (subs.size === 1) stop = start(set, update) || noop
+    entry.run(v) // Svelte: subscriber invoked immediately with current value
+    return () => {
+      subs.delete(entry)
+      if (subs.size === 0 && stop) {
+        stop()
+        stop = undefined
+      }
+    }
   }
 
   return {
     set,
     update,
     subscribe(run: Subscriber<T>, invalidate: Invalidator<T> = noop): Unsubscriber {
-      // Render-aware path: subscribing inside a compat component body is the
-      // faithful equivalent of Svelte's `$store` auto-subscription — it must
-      // (a) re-render the component when the store changes, (b) auto-clean on
-      // unmount, and (c) subscribe exactly ONCE per call-site across re-renders
-      // (hook-indexed, same shape as onMount). Outside a render it's a plain
-      // store subscription.
+      // Render-aware path: inside a compat component body (and not an
+      // internal `_plainDepth` subscription), carry the component's
+      // scheduleRerender so a store write re-renders it. Hook-indexed so
+      // the one live subscription is created exactly once across
+      // re-renders; the cached pass just refreshes the component-local.
       const ctx = _plainDepth === 0 ? getCurrentCtx() : null
       if (ctx) {
         const idx = getHookIndex()
         const cached = ctx.hooks[idx] as { unsub: Unsubscriber } | undefined
         if (cached) {
-          // Re-render pass: feed the current value to the new closure so the
-          // component body's local reflects it, reuse the live subscription.
-          run(sig.peek())
+          run(v)
           return cached.unsub
         }
-        subscribers.add(run)
-        // Svelte ordering: run `start` BEFORE the subscriber goes live. Its
-        // synchronous `set` calls mutate the backing value but do NOT notify
-        // (no live effect yet), so the effect's first read sees the post-start
-        // computed value — exactly one emission, matching Svelte's `derived`
-        // (no spurious initial-undefined for the sync form).
-        if (subscribers.size === 1) stop = start(set, update) || noop
-        let first = true
-        const e = pyreonEffect(() => {
-          const v = sig()
-          invalidate(v)
-          run(v)
-          if (first) {
-            first = false
-          } else if (!ctx.unmounted) {
-            ctx.scheduleRerender()
-          }
-        })
-        const unsub = () => {
-          e.dispose()
-          subscribers.delete(run)
-          if (subscribers.size === 0 && stop) {
-            stop()
-            stop = undefined
-          }
+        const entry: SubEntry<T> = {
+          run,
+          invalidate,
+          rerender: () => {
+            if (!ctx.unmounted) ctx.scheduleRerender()
+          },
         }
+        const unsub = addSub(entry)
         ctx.hooks[idx] = { unsub }
         ctx.unmountCallbacks.push(unsub)
         return unsub
       }
-
-      subscribers.add(run)
-      if (subscribers.size === 1) {
-        stop = start(set, update) || noop
-      }
-      // Per-subscriber Pyreon effect → fine-grained, auto-cleans. Created
-      // AFTER `start` so the first read sees the post-start value (Svelte
-      // `derived` sync form yields one emission, not initial-then-computed).
-      const e = pyreonEffect(() => {
-        const v = sig()
-        invalidate(v)
-        run(v)
-      })
-      return () => {
-        e.dispose()
-        subscribers.delete(run)
-        if (subscribers.size === 0 && stop) {
-          stop()
-          stop = undefined
-        }
-      }
+      return addSub({ run, invalidate })
     },
   }
 }

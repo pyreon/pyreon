@@ -108,8 +108,10 @@ describe('@pyreon/svelte-compat — svelte/store', () => {
       () => order.push('invalidate'),
     )
     store.set(1)
-    // first subscribe: invalidate(0) then run(0); set: invalidate(1) then run(1)
-    expect(order).toEqual(['invalidate', 'run', 'invalidate', 'run'])
+    // Real Svelte semantics: the initial subscribe calls `run` only (no
+    // `invalidate`); each subsequent change is the two-phase
+    // `invalidate` → `run`. So: run(0), then invalidate(1), run(1).
+    expect(order).toEqual(['run', 'invalidate', 'run'])
   })
 
   it('writable runs start on first subscriber and stop on last', () => {
