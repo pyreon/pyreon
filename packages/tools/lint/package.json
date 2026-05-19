@@ -53,9 +53,9 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@oxc-project/types": "^0.123.0",
+    "@oxc-project/types": "^0.132.0",
     "@pyreon/compiler": "workspace:*",
-    "oxc-parser": "^0.129.0"
+    "oxc-parser": "^0.132.0"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*"

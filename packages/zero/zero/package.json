@@ -181,10 +181,10 @@
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
-    "sharp": "^0.33.0"
+    "sharp": "^0.34.5"
   },
   "peerDependencies": {
-    "sharp": "^0.33.0"
+    "sharp": "^0.34.5"
   },
   "peerDependenciesMeta": {
     "sharp": {
