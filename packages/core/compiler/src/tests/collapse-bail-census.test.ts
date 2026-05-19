@@ -113,7 +113,6 @@ function classifySite(node: any): SiteClass {
   const attrs: any[] = opening.attributes ?? []
   let sawDynamic = false
   let everyDynamicIsHandler = true
-  let everyStaticAttrLiteral = true
   for (const a of attrs) {
     if (a.type === 'JSXSpreadAttribute') return { bucket: 'spread', partialAddressable: false }
     const nm = a.name?.type === 'JSXIdentifier' ? a.name.name : null
@@ -135,13 +134,13 @@ function classifySite(node: any): SiteClass {
     if (c.type === 'JSXElement' || c.type === 'JSXFragment') staticChildrenOnly = false
     else staticChildrenOnly = false // JSXExpressionContainer etc.
   }
-  // Re-derive "everyStaticAttrLiteral" precisely: a non-dynamic attr is a
-  // string literal by construction above (boolean already returned). So if
-  // we reach here with sawDynamic, every NON-dynamic attr is a literal.
-  everyStaticAttrLiteral = true
-
   if (sawDynamic) {
-    const partialAddressable = everyDynamicIsHandler && everyStaticAttrLiteral && staticChildrenOnly
+    // Every NON-dynamic attr is a string literal by construction: the loop
+    // above early-returns on spread / missing-name / boolean attrs, so any
+    // attr that didn't set `sawDynamic` is necessarily `isStr`. Hence the
+    // partial-addressable condition is just "every dynamic attr is on*" AND
+    // "children are static text" — no separate literal check needed.
+    const partialAddressable = everyDynamicIsHandler && staticChildrenOnly
     return { bucket: 'dynamic-prop', partialAddressable }
   }
   // No spread / boolean / dynamic attr. Bail can now only come from children.
