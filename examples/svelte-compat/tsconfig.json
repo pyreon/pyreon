@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "svelte": ["../../packages/tools/svelte-compat/src/index.ts"],
+      "svelte/store": ["../../packages/tools/svelte-compat/src/index.ts"],
+      "svelte/jsx-runtime": ["../../packages/tools/svelte-compat/src/jsx-runtime.ts"]
+    }
+  },
+  "include": ["src", "vite.config.ts"]
+}

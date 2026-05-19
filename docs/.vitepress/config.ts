@@ -162,6 +162,7 @@ export default defineConfig({
             { text: 'React Compat', link: '/docs/react-compat' },
             { text: 'Preact Compat', link: '/docs/preact-compat' },
             { text: 'Solid Compat', link: '/docs/solid-compat' },
+            { text: 'Svelte Compat', link: '/docs/svelte-compat' },
             { text: 'Vue Compat', link: '/docs/vue-compat' },
           ],
         },

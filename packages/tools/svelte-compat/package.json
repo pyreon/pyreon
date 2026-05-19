@@ -1,0 +1,72 @@
+{
+  "name": "@pyreon/svelte-compat",
+  "version": "0.15.0",
+  "description": "Svelte-compatible API shim for Pyreon — write Svelte-style stores / lifecycle code that runs on Pyreon's reactive engine",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/svelte-compat#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyreon/pyreon.git",
+    "directory": "packages/tools/svelte-compat"
+  },
+  "files": [
+    "lib",
+    "!lib/**/*.map",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    },
+    "./store": {
+      "bun": "./src/store.ts",
+      "import": "./lib/store.js",
+      "types": "./lib/types/store.d.ts"
+    },
+    "./jsx-runtime": {
+      "bun": "./src/jsx-runtime.ts",
+      "import": "./lib/jsx-runtime.js",
+      "types": "./lib/types/jsx-runtime.d.ts"
+    },
+    "./jsx-dev-runtime": {
+      "bun": "./src/jsx-runtime.ts",
+      "import": "./lib/jsx-runtime.js",
+      "types": "./lib/types/jsx-runtime.d.ts"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint .",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^20.8.9",
+    "@pyreon/test-utils": "workspace:^",
+    "@vitest/browser-playwright": "^4.1.4",
+    "happy-dom": "^20.8.3"
+  }
+}

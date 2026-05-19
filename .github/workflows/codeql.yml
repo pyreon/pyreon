@@ -41,6 +41,10 @@ jobs:
         with:
           languages: javascript-typescript
           queries: security-extended
+          # Scope to the shipped runtime/compiler surface; exclude test
+          # fixtures, e2e/examples, and build output (controlled-input
+          # false positives, not an attack surface). See the config file.
+          config-file: ./.github/codeql/codeql-config.yml
       - name: Analyze
         uses: github/codeql-action/analyze@458d36d7d4f47d0dd16ca424c1d3cda0060f1360
         with:

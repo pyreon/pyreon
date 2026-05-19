@@ -1,0 +1,29 @@
+# CodeQL config — scope analysis to the security-relevant surface.
+#
+# The workflow comment states the intent: "static analysis of the JS/TS
+# surface — the dominant injection/XSS attack surface for a UI framework
+# + its compiler." Test files, e2e specs, and example apps are NOT that
+# surface: their inputs are hardcoded fixtures under the author's
+# control, so findings like "polynomial regex on uncontrolled data" on a
+# test's tag-stripping helper are false positives for a security gate.
+#
+# Excluding them keeps the gate signal on shipped code (packages' src,
+# minus tests) and removes baseline noise surfaced when CodeQL was first
+# enabled (PR #695) — pre-existing test-fixture regexes attributed to the
+# next PR because there was no prior analyzed baseline on main.
+name: 'Pyreon CodeQL config'
+
+paths-ignore:
+  - '**/tests/**'
+  - '**/__tests__/**'
+  - '**/*.test.ts'
+  - '**/*.test.tsx'
+  - '**/*.spec.ts'
+  - '**/*.spec.tsx'
+  - '**/*.browser.test.ts'
+  - '**/*.browser.test.tsx'
+  - 'e2e/**'
+  - 'examples/**'
+  - 'docs/**'
+  - '**/lib/**'
+  - '**/dist/**'

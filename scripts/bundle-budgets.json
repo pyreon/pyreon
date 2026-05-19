@@ -44,6 +44,7 @@
   "@pyreon/store": 1792,
   "@pyreon/storybook": 512,
   "@pyreon/styler": 6400,
+  "@pyreon/svelte-compat": 2816,
   "@pyreon/table": 768,
   "@pyreon/toast": 3072,
   "@pyreon/ui-core": 3328,

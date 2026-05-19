@@ -107,10 +107,12 @@ const SUITES: Suite[] = [
       'packages/tools/preact-compat/',
       'packages/tools/vue-compat/',
       'packages/tools/solid-compat/',
+      'packages/tools/svelte-compat/',
       'examples/react-compat/',
       'examples/preact-compat/',
       'examples/vue-compat/',
       'examples/solid-compat/',
+      'examples/svelte-compat/',
     ],
   },
   {
