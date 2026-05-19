@@ -30,7 +30,7 @@ onMounted(() => {
   timer = setInterval(() => {
     count.value++
     pulseKey.value++
-  }, 1800)
+  }, 2600)
 })
 onBeforeUnmount(() => clearInterval(timer))
 
@@ -140,7 +140,7 @@ const footer = [
         </div>
         <pre class="px-code"><span class="c-cm">// counter.tsx</span>
 <span class="c-kw">const</span> <span class="c-var">$count</span> = <span class="c-fn">signal</span>(<span class="c-num">0</span>)
-<span class="c-fn">setInterval</span>(() =&gt; <span class="c-var">$count</span>.<span class="c-fn">set</span>(<span class="c-var">$count</span>+<span class="c-num">1</span>), <span class="c-num">1800</span>)
+<span class="c-fn">setInterval</span>(() =&gt; <span class="c-var">$count</span>.<span class="c-fn">set</span>(<span class="c-var">$count</span>+<span class="c-num">1</span>), <span class="c-num">2600</span>)
 &lt;<span class="c-fn">Counter</span>&gt;{{ '{' }}<span class="c-var">$count</span>{{ '}' }}&lt;/<span class="c-fn">Counter</span>&gt;</pre>
         <p class="px-demo-foot">
           The wrapping component, the layout, the page — never re-render.
@@ -549,7 +549,9 @@ const footer = [
   letter-spacing: -0.04em;
   line-height: 1;
   color: var(--text);
-  animation: px-digit 200ms cubic-bezier(0.2, 0.7, 0.3, 1);
+  /* 420ms eased — the 200ms pulse read as a skip/flicker (shared
+     px-digit keyframe in tokens.css left untouched; only timed here) */
+  animation: px-digit 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .px-demo-foot {
   margin: 14px 0 0;
