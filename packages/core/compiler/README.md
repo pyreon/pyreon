@@ -1,47 +1,38 @@
 # @pyreon/compiler
 
-JSX reactive transform for Pyreon. Automatically wraps dynamic expressions in reactive getters and hoists static JSX nodes to module scope.
+JSX reactive transform (Rust native + JS fallback) plus authoring-time analysis tools.
+
+`@pyreon/compiler` is the build-time toolchain Pyreon ships. It transforms JSX into `_tpl()` + `_bind()` cloneNode templates against `@pyreon/runtime-dom`, auto-wraps dynamic expressions in reactive getters, hoists fully-static subtrees to module scope, inlines `const`-from-`props` for end-to-end reactivity, and auto-calls bare signal references in JSX. The reactive transform ships as a Rust native binary (napi-rs, 3.7-8.9× faster) with a per-call JS fallback — cross-backend equivalence is asserted by 180+ tests. The package also exports authoring-time tools: a Reactivity-Lens sidecar, React-pattern detection + one-shot migration, a Pyreon anti-pattern detector (the MCP `validate` engine), and three project audits (`auditTestEnvironment`, `auditIslands`, `auditSsg`) consumed by `pyreon doctor`.
+
+Most users never call this package directly — `@pyreon/vite-plugin` wires it into Vite for you.
 
 ## Install
 
 ```bash
-bun add @pyreon/compiler
+bun add -D @pyreon/compiler
 ```
 
-## Quick Start
+## What it does
 
-```ts
-import { transformJSX } from '@pyreon/compiler'
+The compiler transforms JSX expression containers and props so the runtime receives reactive getters instead of eagerly-evaluated values.
 
-const result = transformJSX(
-  `
-  const App = () => <div class={color()}>{count()}</div>
-`,
-  'app.tsx',
-)
+| Input                     | Output                       | Reason            |
+| ------------------------- | ---------------------------- | ----------------- |
+| `<div>{expr}</div>`       | `<div>{() => expr}</div>`    | Dynamic child     |
+| `<div class={expr}>`      | `<div class={() => expr}>`   | Dynamic prop      |
+| `<div>{count}</div>` *    | `<div>{() => count()}</div>` | Signal auto-call  |
+| `<button onClick={fn}>`   | unchanged                    | Event handler     |
+| `<div>{() => expr}</div>` | unchanged                    | Already wrapped   |
+| `<div>{"literal"}</div>`  | unchanged                    | Static value      |
+| `<Comp {...src}>`         | `<Comp {..._wrapSpread(src)}>` | Reactive-safe spread |
 
-console.log(result.code)
-// Dynamic expressions are wrapped: {() => count()}, class={() => color()}
-// Static JSX nodes are hoisted to module scope
-```
+\* When `count` is declared as `const count = signal(...)` in the same module, or passed via the `knownSignals` option (the `@pyreon/vite-plugin` does this for cross-module signal exports automatically).
 
-## What It Does
+### Static hoisting
 
-The compiler transforms JSX expression containers and props so the Pyreon runtime receives reactive getters instead of eagerly-evaluated values.
+Fully static JSX subtrees are hoisted to module-level constants, so they're created once at module initialization:
 
-| Input                     | Output                     | Reason          |
-| ------------------------- | -------------------------- | --------------- |
-| `<div>{expr}</div>`       | `<div>{() => expr}</div>`  | Dynamic child   |
-| `<div class={expr}>`      | `<div class={() => expr}>` | Dynamic prop    |
-| `<button onClick={fn}>`   | unchanged                  | Event handler   |
-| `<div>{() => expr}</div>` | unchanged                  | Already wrapped |
-| `<div>{"literal"}</div>`  | unchanged                  | Static value    |
-
-### Static Hoisting
-
-Fully static JSX subtrees inside expression containers are hoisted to module-level constants, so they are created once at module initialization rather than per-render.
-
-```ts
+```tsx
 // Before
 const App = () => <div>{<span>Hello</span>}</div>
 
@@ -50,47 +41,140 @@ const _$h0 = <span>Hello</span>
 const App = () => <div>{_$h0}</div>
 ```
 
-## API
+### Template-based mount
 
-- **`transformJSX(code, filename?, options?): TransformResult`** -- Transforms JSX source code. Uses the Rust native binary when available, falls back to JS.
-- **`transformJSX_JS(code, filename?, options?): TransformResult`** -- JS-only transform (bypasses native binary). Useful for debugging or cross-backend testing.
-- **`loadNativeBinding(): NativeBinding | null`** -- Resolve the native `.node` binding via two paths: (1) in-tree at `packages/core/compiler/native/` (workspace-internal), (2) per-platform npm package (`@pyreon/compiler-<platform>-<arch>[-<libc>]`). Returns `null` when neither path resolves; `transformJSX()` then falls through to the JS path silently.
+Element trees with ≥1 DOM tag emit `_tpl()` + `_bind()` instead of nested `h()` calls — cloneNode for the static skeleton, per-text-node `_bind()` for surgical updates. Zero VNode allocations on the static parts.
 
-### Types
+## Reactive transform — Quick start
 
-- **`TransformResult`** -- `{ code: string; usesTemplates?: boolean; warnings: CompilerWarning[] }`
-- **`TransformOptions`** -- `{ ssr?: boolean }` -- Set `ssr: true` to skip `_tpl()` template emission for server-side rendering.
+```ts
+import { transformJSX } from '@pyreon/compiler'
 
-## Architecture
+const { code, warnings, usesTemplates } = transformJSX(
+  `const App = () => <div class={color()}>{count()}</div>`,
+  'App.tsx',
+  {
+    ssr: false,                           // Skip template emission for SSR
+    knownSignals: ['count', 'color'],     // Cross-module signal names → auto-call
+    reactivityLens: false,                // Opt-in sidecar
+    collapseRocketstyle: false,           // Advanced — see "Rocketstyle collapse" below
+  },
+)
+```
 
-**Dual-backend**: Rust native binary (napi-rs, 3.7-8.9x faster) with automatic JS fallback.
+`transformJSX_JS(...)` is the forced JS-backend variant — deterministic, used by `analyzeReactivity` and useful for debugging the native path.
 
-- **Rust path** (`native/`): full reactive pass using `oxc_parser`/`oxc_ast` Rust crates directly. Zero JSON serialization, zero JS AST traversal. Single-pass recursive walk with cached analysis.
-- **JS fallback** (`src/jsx.ts`): uses `oxc-parser` (Rust NAPI binding) for parsing + JS reactive pass. Activated automatically when the native binary isn't available.
-- **Auto-detection**: `transformJSX()` loads the native binary via `createRequire` (ESM-safe), falls back per-call with try/catch.
+## Authoring-time tools (editor-side)
 
-### Per-platform packages
+```ts
+import { analyzeReactivity, formatReactivityLens } from '@pyreon/compiler'
 
-The native binary ships as **separate optional dependencies**, one per platform. npm / bun installs only the matching one for the consumer's platform via `os` / `cpu` fields in each platform package's manifest:
+// Surface the compiler's reactive/static decisions back to the editor
+const { findings, spans } = analyzeReactivity(
+  `const A = (props) => <div>{props.name}</div>`,
+  'A.tsx',
+)
+// findings: ReactivityFinding[] — merged footgun + structural taxonomy
+// spans: ReactivitySpan[] — { kind: 'reactive' | 'static-text' | 'hoisted-static' | ... }
 
-| Platform | Arch    | libc   | Package                              |
-| -------- | ------- | ------ | ------------------------------------ |
-| darwin   | arm64   | —      | `@pyreon/compiler-darwin-arm64`      |
-| darwin   | x64     | —      | `@pyreon/compiler-darwin-x64`        |
-| linux    | x64     | gnu    | `@pyreon/compiler-linux-x64-gnu`     |
-| linux    | x64     | musl   | `@pyreon/compiler-linux-x64-musl`    |
-| linux    | arm64   | gnu    | `@pyreon/compiler-linux-arm64-gnu`   |
-| linux    | arm64   | musl   | `@pyreon/compiler-linux-arm64-musl`  |
-| win32    | x64     | —      | `@pyreon/compiler-win32-x64-msvc`    |
+console.log(formatReactivityLens(source, { findings, spans }))
+```
 
-`detectLibc()` distinguishes glibc vs musl on Linux at load time (the wrong libc silently fails to load, doesn't throw). If neither the in-tree binary nor the per-platform package is available (CI without the package, WASM, unsupported platform), the loader returns `null` and `transformJSX()` uses the JS path — no error.
+The Lens is **additive** — `TransformResult.code` is byte-identical with or without `reactivityLens: true`. Spans are RECORDS of a codegen branch; absence is "not asserted", never an implicit static claim.
 
-## Implementation Notes
+## React migration
+
+```ts
+import { detectReactPatterns, migrateReactCode, diagnoseError } from '@pyreon/compiler'
+
+const diagnostics = detectReactPatterns(reactSource, 'App.tsx')
+// diagnostics: ReactDiagnostic[] with codes like 'use-state', 'use-effect', 'class-name'
+
+const { code, changes } = migrateReactCode(reactSource, 'App.tsx')
+// One-shot codemod: useState → signal, useEffect → effect, className → class, etc.
+
+const err = new Error('useState is not defined')
+diagnoseError(err, source) // ErrorDiagnosis — points users at the migration step
+```
+
+The migration is a one-shot codemod, **not** a runtime adapter. For runtime compat layers, see `@pyreon/react-compat`.
+
+## Pyreon anti-pattern detector
+
+```ts
+import { detectPyreonPatterns, hasPyreonPatterns } from '@pyreon/compiler'
+
+const diags = detectPyreonPatterns(
+  `const C = ({ state }) => <div>{state}</div>`,
+  'C.tsx',
+)
+// PyreonDiagnostic[] — 15 codes today: 'for-missing-by', 'for-with-key',
+// 'props-destructured', 'props-destructured-body', 'process-dev-gate',
+// 'empty-theme', 'raw-add-event-listener', 'raw-remove-event-listener',
+// 'date-math-random-id', 'on-click-undefined', 'signal-write-as-call',
+// 'static-return-null-conditional', 'as-unknown-as-vnodechild',
+// 'island-never-with-registry-entry', 'query-options-as-function'
+```
+
+This is what the MCP `validate({ code })` tool runs. Some shapes are caught syntactically here AND also as lint rules in `@pyreon/lint` (proactive + reactive — the agent sees the fix before commit; CI catches it post-commit).
+
+## Project audits
+
+```ts
+import { auditIslands, auditSsg, auditTestEnvironment } from '@pyreon/compiler'
+
+const islandResult = auditIslands(projectRoot)
+const ssgResult = auditSsg(projectRoot)
+const testResult = auditTestEnvironment(projectRoot, { minRisk: 'high' })
+```
+
+Three syntactic project-wide audits consumed by `pyreon doctor --check-islands` / `--check-ssg` / `--audit-tests`. Pure-AST, no type-check pass — designed for CI speed.
+
+## Compiler-emitted runtime helpers
+
+The transform emits calls to symbols exported by `@pyreon/runtime-dom` and `@pyreon/core`:
+
+| Helper           | Where exported          | Purpose |
+|------------------|-------------------------|---------|
+| `_tpl(html)`     | `@pyreon/runtime-dom`   | Parse + clone an HTML template once per template literal |
+| `_bind(fn, …)`   | `@pyreon/runtime-dom`   | Per-binding reactive update wired to a template node |
+| `_bindText(…)`   | `@pyreon/runtime-dom`   | Fast path for reactive text nodes |
+| `_bindDirect(…)` | `@pyreon/runtime-dom`   | Fast path for reactive attributes |
+| `_applyProps(…)` | `@pyreon/runtime-dom`   | Spread props on a template element |
+| `_rp(thunk)`     | `@pyreon/core`          | Brand a reactive prop wrapper |
+| `_wrapSpread(s)` | `@pyreon/core`          | Preserve reactivity through `<Comp {...source}>` |
+
+## Architecture — dual backend
+
+**Rust native binary** (`native/`): full reactive pass via `oxc_parser`/`oxc_ast`. Zero JSON serialization, single-pass recursive walk with `FxHashMap`-cached `isDynamic` analysis. ~2,800 lines of Rust, compiled to a ~1MB `.node` binary.
+
+**JS fallback** (`src/jsx.ts`): uses `oxc-parser` (Rust NAPI binding) for parsing + a JS reactive pass. Activated automatically when the native binary isn't available (CI without the per-platform package, WASM, unsupported platform). The fallback path is silent — no error, just a slower transform.
+
+**Per-platform packages**: the native binary ships as separate optional dependencies, one per platform. npm / bun install only the matching one via `os` / `cpu` fields:
+
+| Platform | Arch | libc | Package                              |
+|----------|------|------|--------------------------------------|
+| darwin   | arm64 | —    | `@pyreon/compiler-darwin-arm64`      |
+| darwin   | x64   | —    | `@pyreon/compiler-darwin-x64`        |
+| linux    | x64   | gnu  | `@pyreon/compiler-linux-x64-gnu`     |
+| linux    | x64   | musl | `@pyreon/compiler-linux-x64-musl`    |
+| linux    | arm64 | gnu  | `@pyreon/compiler-linux-arm64-gnu`   |
+| linux    | arm64 | musl | `@pyreon/compiler-linux-arm64-musl`  |
+| win32    | x64   | —    | `@pyreon/compiler-win32-x64-msvc`    |
+
+A `detectLibc()` step distinguishes glibc vs musl on Linux at load time.
+
+## Implementation notes
 
 - Props named `key` and `ref` are never wrapped.
 - Props matching `on[A-Z]*` (event handlers) are never wrapped.
-- Prop-derived variable resolution is fully AST-based — walks `IdentifierReference` nodes, never scans source text.
-- 527 tests: 347 original + 180 cross-backend equivalence tests (Unicode, TypeScript syntax, control flow, string collision resistance).
+- Prop-derived variable resolution is fully AST-based — walks `IdentifierReference` nodes, never scans source text. Cycle detection via a `resolving` set prevents infinite recursion.
+- 527+ tests: 347 original + 180 cross-backend equivalence (Unicode, TypeScript syntax, control flow, string collision resistance).
+- `analyzeReactivity` always uses the JS backend — it's the deterministic oracle for the merged footgun + structural taxonomy.
+
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/compiler](https://docs.pyreon.dev/docs/compiler) (or `docs/docs/compiler.md` in this repo).
 
 ## License
 

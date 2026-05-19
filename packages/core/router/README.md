@@ -1,185 +1,274 @@
 # @pyreon/router
 
-Type-safe client-side router for Pyreon with hash and history modes, nested routes, guards, loaders, and scroll restoration.
+Type-safe client-side router with nested routes, loaders, View Transitions, middleware, and SSR.
+
+`@pyreon/router` provides `createRouter`, `<RouterProvider>`, `<RouterView>`, `<RouterLink>`, and a suite of hooks (`useRoute`, `useRouter`, `useLoaderData`, `useTransition`, `useIsActive`, `useSearchParams`, `useTypedSearchParams`, `useValidatedSearch`, `useMiddlewareData`, `useBlocker`). Path params are TypeScript-inferred from path strings (`'/user/:id'` → `{ id: string }`); named routes enable typed programmatic navigation. Supports hash, history, and SSR modes; per-route data loaders with TTL cache + in-flight dedup + SWR; navigation guards + middleware; View Transitions integration; `notFound()` / `redirect()` thrown from loaders with discriminated-union helpers; validated typed search params; `lazy(loader)` for code-split route components.
 
 ## Install
 
 ```bash
-bun add @pyreon/router
+bun add @pyreon/router @pyreon/core @pyreon/reactivity
 ```
 
-## Quick Start
+## Quick start
 
 ```tsx
-import { createRouter, RouterProvider, RouterView, RouterLink } from '@pyreon/router'
+import {
+  createRouter, RouterProvider, RouterView, RouterLink,
+  useRoute, useRouter, useLoaderData, useTypedSearchParams, useTransition,
+  notFound, NotFoundBoundary, redirect, lazy,
+} from '@pyreon/router'
+import { mount } from '@pyreon/runtime-dom'
 
-// Type-safe named navigation — route names are checked at compile time
 const router = createRouter<'home' | 'user'>({
   routes: [
     { path: '/', component: Home, name: 'home' },
-    { path: '/user/:id', component: UserPage, name: 'user' },
-    {
-      path: '/admin',
-      component: AdminLayout,
-      children: [{ path: 'users', component: AdminUsers }],
-    },
+    { path: '/user/:id', component: User, name: 'user',
+      loader: ({ params }) => fetchUser(params.id) },
+    { path: '/admin', component: AdminLayout,
+      children: [{ path: 'users', component: AdminUsers }] },
     { path: '/old-path', redirect: '/new-path' },
     { path: '/dashboard', component: lazy(() => import('./Dashboard')) },
-    { path: '(.*)', component: NotFound },
+    { path: '(.*)', component: NotFoundPage },
   ],
 })
 
-const App = () => (
-  <RouterProvider router={router}>
-    <RouterView />
-  </RouterProvider>
-)
+function App() {
+  return (
+    <RouterProvider router={router}>
+      <nav>
+        <RouterLink to="/" prefetch="intent">Home</RouterLink>
+        <RouterLink to={{ name: 'user', params: { id: '42' } }}>Profile</RouterLink>
+      </nav>
+      <NotFoundBoundary fallback={<p>404</p>}>
+        <RouterView />
+      </NotFoundBoundary>
+    </RouterProvider>
+  )
+}
+
+function User() {
+  const route = useRoute<'/user/:id'>()
+  const data = useLoaderData<{ name: string }>()
+  const params = useTypedSearchParams({ page: 'number', q: 'string' })
+  return <h1>{data.name} (id={route().params.id}, page={params().page})</h1>
+}
+
+mount(<App />, document.getElementById('app')!)
 ```
 
-## Typed Params
+## Modes
 
-Route parameters are inferred from path strings:
+```ts
+createRouter({ routes, mode: 'history' }) // default; uses pushState
+createRouter({ routes, mode: 'hash' })    // for static hosting; pushState w/ #
+createRouter({ routes, url: '/some/path' }) // SSR — pin to a URL for one render
+```
+
+Hash mode uses `history.pushState` under the hood (not `window.location.hash`) to avoid the double-update jank.
+
+## Typed params + named navigation
 
 ```tsx
+// Params inferred from the path string
 const route = useRoute<'/user/:id'>()
 route().params.id // string
-```
 
-## Named Navigation
-
-```tsx
-const router = useRouter()
+// Typed names — compile-time-checked
+const router = createRouter<'home' | 'user' | 'admin'>({ routes })
 router.push({ name: 'user', params: { id: '42' } })
+router.push({ name: 'typo' }) // ❌ TypeScript error
 ```
 
 ## RouterLink
 
 ```tsx
 <RouterLink to="/user/42">Profile</RouterLink>
-<RouterLink to={{ name: "user", params: { id: "42" } }}>Profile</RouterLink>
+<RouterLink to={{ name: 'user', params: { id: '42' } }}>Profile</RouterLink>
+<RouterLink to="/about" prefetch="hover">About</RouterLink>
+<RouterLink to="/feed" prefetch="viewport">Feed</RouterLink>
+<RouterLink to="/dashboard" activeClass="is-active">Dashboard</RouterLink>
 ```
 
-## Data Loaders
+**Prefetch strategies** (default: `"intent"`):
 
-```tsx
-import { useLoaderData, prefetchLoaderData } from '@pyreon/router'
+- `"intent"` — prefetches on hover AND focus (keyboard + mouse parity)
+- `"hover"` — hover only
+- `"viewport"` — once the link enters the viewport (`IntersectionObserver`, scheduled via `requestIdleCallback`)
+- `"none"` — disabled
 
-const data = useLoaderData<typeof loader>()
+`activeClass` is **merged** with the user-provided `class` via `cx` (not overridden). `aria-current="page"` is set automatically on active links.
+
+## Data loaders
+
+```ts
+{
+  path: '/user/:id',
+  component: User,
+  loader: async ({ params, request }) => {
+    const r = await fetch(`/api/users/${params.id}`)
+    if (!r.ok) notFound()
+    return r.json()
+  },
+  loaderKey: ({ params }) => `user-${params.id}`,
+  gcTime: 5 * 60_000,            // default; cache expiry
+  staleWhileRevalidate: true,    // serve cached, refetch in background
+}
 ```
 
-## API
+Loaders run before the route renders. In-flight calls for the same `loaderKey` dedupe; cached results are served until `gcTime` expires. `router.invalidateLoader(key?)` clears entries.
 
-### Router Creation
+Read loader data in the component:
 
-- `createRouter(options: RouterOptions)` -- create a router instance
-- `lazy(loader)` -- define a lazily loaded route component
+```ts
+const data = useLoaderData<{ name: string }>()
+```
 
-### Hooks
+`LoaderContext.request?: Request` is populated only on SSR (via `prefetchLoaderData(router, path, request)`); `undefined` on CSR.
 
-- `useRouter()` -- access the router instance
-- `useRoute<Path>()` -- access the current resolved route with typed params
-- `useLoaderData<T>()` -- access data returned by a route loader
+## Guards + middleware
 
-### Components
+```ts
+{
+  path: '/admin',
+  component: AdminLayout,
+  beforeEnter: (to, from) => isAdmin() || '/login',
+  children: [...],
+}
 
-- `RouterProvider` -- provides router context to the tree
-- `RouterView` -- renders the matched route component
-- `RouterLink` -- anchor element with client-side navigation
+createRouter({
+  routes,
+  middleware: [
+    async (to, from, ctx) => {
+      ctx.data.user = await fetchUserFromCookie(to.request)
+    },
+  ],
+})
 
-### Utilities
+// In components:
+const data = useMiddlewareData()
+data().user
+```
 
-- `resolveRoute(routes, path)` -- match a path against route definitions
-- `parseQuery(search)` / `parseQueryMulti(search)` -- parse query strings
-- `stringifyQuery(params)` -- serialize query parameters
-- `buildPath(pattern, params)` -- build a path from a pattern and params
-- `findRouteByName(routes, name)` -- look up a named route
-- `prefetchLoaderData(router, path)` -- prefetch loader data for a path
-- `serializeLoaderData(router)` / `hydrateLoaderData(router, data)` -- SSR serialization
+## notFound() / redirect()
 
-### Types
+```ts
+import { notFound, redirect } from '@pyreon/router'
 
-`ExtractParams`, `RouteMeta`, `ResolvedRoute`, `RouteRecord`, `RouterOptions`, `Router`, `NavigationGuard`, `AfterEachHook`, `ScrollBehaviorFn`, `LoaderContext`, `RouteLoaderFn`
-
-## View Transitions
-
-Route changes are wrapped in `document.startViewTransition()` automatically when the browser supports it. Opt out per-route with `meta: { viewTransition: false }`.
-
-`await router.push()` / `.replace()` resolves once the DOM has committed to the new route -- specifically, when the ViewTransition's `updateCallbackDone` promise settles. It does NOT wait for the full animation (`.finished`, 200-300ms), because blocking every programmatic navigation on an animation is unacceptable.
-
-| Promise | Resolves when | Router awaits? |
-| --- | --- | --- |
-| `updateCallbackDone` | Callback done; DOM swapped; state live | yes |
-| `ready` | Snapshot captured, pseudo-elements ready | no -- `.catch()` only |
-| `finished` | Full animation completed | no -- `.catch()` only |
-
-`afterEach` hooks and scroll restoration fire after the VT callback completes, so they observe the new route state when invoked.
-
-## notFound()
-
-Throw `notFound()` in a loader or component to render a 404 boundary:
-
-```tsx
-import { notFound, NotFoundBoundary, RouterView } from '@pyreon/router'
-
-// Route loader:
-{ path: '/user/:id', component: UserPage, loader: async ({ params }) => {
+// In a loader
+loader: async ({ params, request }) => {
   const user = await fetchUser(params.id)
-  if (!user) notFound()
+  if (!user) notFound()                     // → NotFoundBoundary fallback
+  if (!user.isVerified) redirect('/verify') // → router.replace, or HTTP 302/307 on SSR
   return user
-}}
-
-// App layout:
-<NotFoundBoundary fallback={<NotFoundPage />}>
-  <RouterView />
-</NotFoundBoundary>
+}
 ```
 
-## Pending Components
+`notFound()` and `redirect()` throw discriminated-union errors. The router catches them; `@pyreon/server`'s SSR handler returns real HTTP `404` / `302` / `307` responses (no layout HTML leaks server-side). Error-boundary code can introspect via `isNotFoundError(err)` / `isRedirectError(err)` / `getRedirectInfo(err)`.
 
-Show a skeleton while route loaders run:
+Pair with `<NotFoundBoundary fallback={<NotFoundPage />}>...</NotFoundBoundary>` at your layout root.
+
+## Pending components
 
 ```ts
 {
   path: '/dashboard',
   component: Dashboard,
-  loader: fetchDashboardData,
+  loader: fetchDashboard,
   pendingComponent: DashboardSkeleton,
-  pendingMs: 200,     // delay before showing skeleton (avoid flash)
-  pendingMinMs: 500,  // minimum display time (avoid flicker)
+  pendingMs: 200,    // delay before showing skeleton (avoid flash)
+  pendingMinMs: 500, // minimum display time (avoid flicker)
 }
 ```
 
-## Validated Search Params
+Hidden → pending → ready state machine, signal-driven.
 
-Type-safe query string validation per route — works with Zod, Valibot, or plain functions:
+## Validated search params
 
 ```ts
-import { useValidatedSearch } from '@pyreon/router'
+// Plain function
+{ path: '/search', validateSearch: (raw) => ({ page: Number(raw.page) || 1, q: raw.q ?? '' }) }
 
-// Route config:
-{
-  path: '/search',
-  component: SearchPage,
-  validateSearch: (raw) => ({
-    page: Number(raw.page) || 1,
-    q: raw.q ?? '',
-  }),
-}
+// Zod
+{ path: '/search', validateSearch: z.object({ page: z.coerce.number().default(1), q: z.string() }).parse }
 
-// With Zod:
-{
-  path: '/search',
-  component: SearchPage,
-  validateSearch: z.object({
-    page: z.coerce.number().default(1),
-    q: z.string().default(''),
-  }).parse,
-}
-
-// In component:
+// In component
 const search = useValidatedSearch<{ page: number; q: string }>()
-search().page // number — typed + validated
-search().q    // string — typed + validated
+search().page // number
 ```
 
-Structural sharing: `useValidatedSearch()` returns the same object reference when the validated values haven't changed, preventing unnecessary downstream re-renders.
+Structural sharing — returns the same object reference when validated values haven't changed.
+
+For untyped or single-shot reads:
+
+```ts
+const params = useSearchParams()         // accessor → URLSearchParams
+const typed = useTypedSearchParams({ page: 'number', q: 'string' })
+typed().page // number (NaN coerced to 0)
+```
+
+## View Transitions
+
+Route changes auto-wrap in `document.startViewTransition()` when supported. Opt out per-route with `meta: { viewTransition: false }`.
+
+**`await router.push()` / `.replace()` resolves on `updateCallbackDone`** — the DOM commit, NOT the full animation:
+
+| Promise | Resolves when | Router awaits? |
+|---|---|---|
+| `updateCallbackDone` | Callback done; DOM swapped; new state live | ✅ yes |
+| `ready` | Snapshot captured, pseudo-elements ready | no — `.catch()` only |
+| `finished` | Full animation completed (200-300ms) | no — `.catch()` only |
+
+Blocking every navigation on a 200-300ms animation is unacceptable; `.ready` and `.finished` get `.catch()` handlers so their `AbortError` (when a newer navigation interrupts) doesn't leak as unhandled.
+
+`afterEach` hooks + scroll restoration fire AFTER the VT callback completes — they observe the new route state.
+
+## Component-level hooks
+
+```ts
+onBeforeRouteLeave((to, from) => confirm('Leave?') || false)
+onBeforeRouteUpdate((to, from) => { /* same-route params changed */ })
+
+// Browser navigation guard for unsaved changes
+useBlocker(() => isDirty)
+```
+
+## SSR helpers
+
+```ts
+import {
+  prefetchLoaderData, hydrateLoaderData,
+  serializeLoaderData, stringifyLoaderData,
+} from '@pyreon/router'
+
+// Server: pre-fetch + serialize
+await prefetchLoaderData(router, url.pathname, request)
+const blob = serializeLoaderData(router)
+const json = stringifyLoaderData(blob)   // safe stringifier — drops fns, throws on cycles
+
+// Client: hydrate
+hydrateLoaderData(router, window.__PYREON_LOADER_DATA__)
+```
+
+`stringifyLoaderData` is the safe serializer: drops `function` / `symbol` values, throws `[Pyreon] Loader returned circular reference at "<path>"` on cycles, escapes `</script>` for inline embedding.
+
+## Match utilities
+
+```ts
+import {
+  resolveRoute, buildPath, findRouteByName,
+  parseQuery, parseQueryMulti, stringifyQuery,
+} from '@pyreon/router'
+
+const resolved = resolveRoute(routes, '/user/42?tab=settings')
+const url = buildPath('/user/:id', { id: '42' })       // '/user/42'
+const url2 = buildPath('/blog/:rest*', { rest: 'a/b' }) // '/blog/a/b' — catch-all
+```
+
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/router](https://docs.pyreon.dev/docs/router) (or `docs/docs/router.md` in this repo).
+
+## License
+
+MIT
