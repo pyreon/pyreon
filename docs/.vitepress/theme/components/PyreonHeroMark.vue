@@ -667,10 +667,7 @@ onBeforeUnmount(() => io?.disconnect())
 @keyframes px-pop {
   from {
     opacity: 0;
-    transform: scale(0.4);
-  }
-  60% {
-    transform: scale(1.12);
+    transform: scale(0.82);
   }
   to {
     opacity: 1;
@@ -700,12 +697,11 @@ onBeforeUnmount(() => io?.disconnect())
 }
 @keyframes px-pc-disc {
   0% {
-    transform: scale(0.4);
-  }
-  55% {
-    transform: scale(1.18);
+    opacity: 0;
+    transform: scale(0.82);
   }
   100% {
+    opacity: 1;
     transform: scale(1);
   }
 }
@@ -742,10 +738,7 @@ onBeforeUnmount(() => io?.disconnect())
 @keyframes px-rise {
   from {
     opacity: 0;
-    transform: scale(0.4);
-  }
-  70% {
-    transform: scale(1.15);
+    transform: scale(0.82);
   }
   to {
     opacity: 1;
