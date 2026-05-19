@@ -951,6 +951,85 @@ const MATRIX: Cell[] = [
       // PR F cleanup — the manifest is an internal artifact and must
       // NOT ship to the static host (no `_pyreon-ssg-paths.json` in dist).
       assertFileDoesNotExist(join(dist, '_pyreon-ssg-paths.json'))
+
+      // PR #715 (`@pyreon/head` HeadProvider ctx inheritance) — gate against
+      // the **empty-`<head>` shipped-to-prod bug class**. The original bug
+      // shipped silently for the entire lifetime of @pyreon/zero because
+      // NO gate diff-checked the prerendered `<head>` for `useHead`-
+      // registered tags. The SSG build succeeded, sitemaps emitted, route
+      // shells rendered — but every `<title>` / `<meta>` / OG tag dropped
+      // on the floor because zero's `App` mounted `<HeadProvider>` which
+      // silently shadowed `renderWithHead`'s ctx. Social scrapers (LinkedIn,
+      // Slack, Twitter, FB) and non-JS crawlers saw nothing; JS-executing
+      // bots like Googlebot saw the post-hydration values, masking the
+      // bug from standard SEO sweeps.
+      //
+      // This block asserts every route that calls `useHead()` has its
+      // tags in the prerendered HTML. If the head pipeline regresses —
+      // ctx shadowing, missing serialization, broken pushContext seam —
+      // these assertions fail loudly at build time instead of shipping
+      // empty `<head>` to production.
+      //
+      // The OG-tag assertions on `dist/blog/welcome/index.html` are
+      // load-bearing: those are the EXACT tags social scrapers read,
+      // and they're what got silently lost in the pre-fix bug.
+
+      // Home — useHead({ title: 'Blog', meta: [{ name: 'description', … }] })
+      assertFileContains(join(dist, 'index.html'), '<title>Blog</title>')
+      assertFileContains(join(dist, 'index.html'), 'name="description"')
+      assertFileContains(
+        join(dist, 'index.html'),
+        'A statically-rendered Pyreon Zero blog.',
+      )
+
+      // About — distinct title + description (proves per-route resolution)
+      assertFileContains(join(dist, 'about', 'index.html'), '<title>About</title>')
+      assertFileContains(join(dist, 'about', 'index.html'), 'About this blog.')
+
+      // Blog index — distinct title + description
+      assertFileContains(
+        join(dist, 'blog', 'index.html'),
+        '<title>All posts</title>',
+      )
+      assertFileContains(
+        join(dist, 'blog', 'index.html'),
+        'Every post on this blog, newest first.',
+      )
+
+      // Dynamic [slug] — title + description + 3 OG tags PER prerendered
+      // post. The OG-tag triplet is the killer assertion: it's the
+      // social-scraper surface, and it was EXACTLY what the pre-#715
+      // empty-`<head>` bug suppressed. PR A's getStaticPaths × PR #715's
+      // head fix together prove the full pipeline lands tags on EVERY
+      // enumerated dynamic-route output, not just the index.
+      const welcomeHtml = join(dist, 'blog', 'welcome', 'index.html')
+      assertFileContains(welcomeHtml, '<title>Welcome to your new Pyreon blog</title>')
+      assertFileContains(welcomeHtml, 'name="description"')
+      assertFileContains(welcomeHtml, 'A quick tour of how this blog is wired together')
+      assertFileContains(welcomeHtml, 'property="og:title"')
+      assertFileContains(welcomeHtml, 'property="og:description"')
+      assertFileContains(welcomeHtml, 'property="og:type"')
+      assertFileContains(welcomeHtml, 'content="article"')
+
+      // Cross-product (PR A × #715) — at least one other prerendered
+      // post must have its OWN title in its own file (not the home's
+      // title spilling across, which would prove a ctx-merge bug).
+      assertFileContains(
+        join(dist, 'blog', 'why-signals', 'index.html'),
+        '<title>Why signals beat hooks for content sites</title>',
+      )
+      assertFileContains(
+        join(dist, 'blog', 'static-vs-ssr', 'index.html'),
+        '<title>Static vs SSR — picking the right rendering mode</title>',
+      )
+
+      // 404 — _404.tsx calls useHead({ title: '404 — Not found',
+      // meta: [{ name: 'robots', content: 'noindex' }] }). The 404 path
+      // runs through a DIFFERENT pipeline (router-driven synthetic chain,
+      // skipLoaders), so it's a separate gate axis from the regular pages.
+      assertFileContains(join(dist, '404.html'), '<title>404 — Not found</title>')
+      assertFileContains(join(dist, '404.html'), 'name="robots"')
+      assertFileContains(join(dist, '404.html'), 'content="noindex"')
     },
   },
 
