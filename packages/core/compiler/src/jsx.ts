@@ -637,6 +637,7 @@ export function transformJSX_JS(
 
   // ── P0 rocketstyle-collapse state ─────────────────────────────────────────
   let needsCollapse = false
+  let needsCollapseH = false
   const collapseRuleKeys = new Set<string>()
   const collapseRules: Array<{ ruleKey: string; rules: string[] }> = []
 
@@ -663,7 +664,7 @@ export function transformJSX_JS(
     // plugin scans with the same predicate, so its resolved `sites`
     // keys match these lookups exactly; no drift possible).
     const shape = detectCollapsibleShape(node, tag)
-    if (!shape) return false
+    if (!shape) return tryPartialCollapse(node, tag) // PR 3: on*-handler-only fallback
     const { props, childrenText } = shape
     const key = rocketstyleCollapseKey(tag, props, childrenText)
     const site = cfg.sites.get(key)
@@ -679,6 +680,57 @@ export function transformJSX_JS(
       parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
     replacements.push({ start, end, text: needsBraces ? `{${call}}` : call })
     needsCollapse = true
+    if (!collapseRuleKeys.has(site.ruleKey)) {
+      collapseRuleKeys.add(site.ruleKey)
+      collapseRules.push({ ruleKey: site.ruleKey, rules: site.rules })
+    }
+    return true
+  }
+
+  /**
+   * PR 3 of the partial-collapse build (open-work #1). The `on*`-handler-
+   * only fallback `tryRocketstyleCollapse` defers to when the FULL
+   * `detectCollapsibleShape` bails. Identical site-resolution contract as
+   * the full path — handlers are orthogonal to the SSR-resolved styler
+   * class, so the literal-prop subset feeds the UNCHANGED
+   * `rocketstyleCollapseKey` and the resolver's pre-resolved
+   * `templateHtml`/`lightClass`/`darkClass` are byte-identical to a
+   * full-collapse site's. The ONLY difference vs the full emit is
+   * `__rsCollapseH(...)` with a handlers object literal built from the
+   * sliced source spans `detectPartialCollapsibleShape` (PR 1) returned;
+   * the runtime helper (`_rsCollapseH`, PR 2 / #681) re-attaches them
+   * through the canonical event path. Same conservative discipline: an
+   * unresolved key, the option absent, or any non-handler non-literal
+   * shape ⇒ keep the normal mount (return false).
+   */
+  function tryPartialCollapse(node: N, tag: string): boolean {
+    const cfg = options.collapseRocketstyle
+    if (!cfg) return false
+    const partial = detectPartialCollapsibleShape(node, tag)
+    if (!partial) return false
+    const { props, childrenText, handlers } = partial
+    const key = rocketstyleCollapseKey(tag, props, childrenText)
+    const site = cfg.sites.get(key)
+    if (!site) return false // not resolved → keep normal rocketstyle mount
+    // `{ "onClick": (<sliced expr>), … }` — each handler expression is
+    // re-emitted verbatim from its source span (paren-wrapped so an
+    // arrow / sequence expr stays a single argument).
+    const handlerObj =
+      `{ ${handlers
+        .map((h) => `${JSON.stringify(h.name)}: (${code.slice(h.exprStart, h.exprEnd)})`)
+        .join(', ')} }`
+    const call =
+      `__rsCollapseH(${JSON.stringify(site.templateHtml)}, ` +
+      `${JSON.stringify(site.lightClass)}, ${JSON.stringify(site.darkClass)}, ` +
+      `() => __pyrMode() === "dark", ${handlerObj})`
+    const start = node.start as number
+    const end = node.end as number
+    const parent = findParent(node)
+    const needsBraces =
+      parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
+    replacements.push({ start, end, text: needsBraces ? `{${call}}` : call })
+    needsCollapse = true
+    needsCollapseH = true
     if (!collapseRuleKeys.has(site.ruleKey)) {
       collapseRuleKeys.add(site.ruleKey)
       collapseRules.push({ ruleKey: site.ruleKey, rules: site.rules })
@@ -1279,7 +1331,7 @@ export function transformJSX_JS(
       )
       .join('')
     output =
-      `import { _rsCollapse as __rsCollapse } from "${rd}";\n` +
+      `import { _rsCollapse as __rsCollapse${needsCollapseH ? ', _rsCollapseH as __rsCollapseH' : ''} } from "${rd}";\n` +
       `import { sheet as __rsSheet } from "${st}";\n` +
       `import { ${cfg.mode.name} as __pyrMode } from "${cfg.mode.source}";\n` +
       `${inj}\n` +
