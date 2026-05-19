@@ -41,18 +41,35 @@ import type {
 } from '../types'
 
 // ── 1 · Compile-time drift lock ──────────────────────────────────────
-// Bidirectional assignability: an added/removed/renamed member on either
-// side breaks `tsc`. These are type-only — never executed.
-type _AssertExtractsFramework = ExtDevtools extends FrameworkDevtools
+// Bidirectional assignability on the STABLE COMPONENT SURFACE: an
+// added/removed/renamed member on either side breaks `tsc`. Type-only.
+//
+// `reactive` is deliberately Omit-ted from this lock. It is a forward-
+// looking field whose presence legitimately differs across the two-PR
+// transition: the Foundation PR (#703) adds `reactive` as a REQUIRED
+// member on the framework's `PyreonDevtools`, while this consumer keeps
+// it OPTIONAL (`reactive?`) so a page running an older
+// `@pyreon/runtime-dom` degrades gracefully instead of breaking. A
+// strict whole-interface bidirectional check would therefore false-fail
+// EITHER pre-merge (framework lacks `reactive`) OR post-merge (required
+// vs optional) — neither is real drift. The component surface stays
+// strictly locked; `reactive` is contract-checked two other ways: the
+// `ReactiveDevtools` mirror is an exact structural copy of #703's
+// `PyreonReactiveDevtools`, and the page-hook's structural use of it is
+// exercised by the runtime `reactive-available` path.
+type _OmitReactive<T> = Omit<T, 'reactive'>
+type _AssertExtractsFramework = _OmitReactive<ExtDevtools> extends _OmitReactive<FrameworkDevtools>
   ? true
   : never
-type _AssertFrameworkSatisfiesExt = FrameworkDevtools extends ExtDevtools
+type _AssertFrameworkSatisfiesExt = _OmitReactive<FrameworkDevtools> extends _OmitReactive<ExtDevtools>
   ? true
   : never
 const _driftEntryFwToExt: ExtEntry = null as unknown as FrameworkEntry
 const _driftEntryExtToFw: FrameworkEntry = null as unknown as ExtEntry
-const _driftFwToExt: ExtDevtools = null as unknown as FrameworkDevtools
-const _driftExtToFw: FrameworkDevtools = null as unknown as ExtDevtools
+const _driftFwToExt: _OmitReactive<ExtDevtools> =
+  null as unknown as _OmitReactive<FrameworkDevtools>
+const _driftExtToFw: _OmitReactive<FrameworkDevtools> =
+  null as unknown as _OmitReactive<ExtDevtools>
 const _t1: _AssertExtractsFramework = true
 const _t2: _AssertFrameworkSatisfiesExt = true
 void [
