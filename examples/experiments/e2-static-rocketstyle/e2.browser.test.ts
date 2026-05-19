@@ -19,7 +19,7 @@
 
 import type { CleanupFn } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { _rsCollapse, hydrateRoot, mount } from '@pyreon/runtime-dom'
+import { _rsCollapse, _rsCollapseH, hydrateRoot, mount } from '@pyreon/runtime-dom'
 import { install as installPerfHarness, perfHarness } from '@pyreon/perf-harness'
 import { flush } from '@pyreon/test-utils/browser'
 import { beforeAll, describe, expect, it } from 'vitest'
@@ -419,6 +419,95 @@ describe('E2 Phase 4 — shipped _rsCollapse vs real Button (RFC acceptance)', (
 
     unmount?.()
     app.remove()
+    await flush()
+  })
+})
+
+// ── Phase 5: SHIPPED `_rsCollapseH` × the REAL Button + a peeled handler
+// — PR 4/4 of the partial-collapse build (open-work #1). The named e2e.
+//
+// Mirrors Phase 4 EXACTLY (real `@pyreon/ui-components` Button is the
+// source of truth; class stripped the same way the production resolver
+// does → template; styler sheet populated by the real mount) — so it
+// needs NO plugin/resolver, identical to how Phase 4 proves `_rsCollapse`
+// without them. The ONLY additions vs Phase 4 are the partial-collapse
+// deltas: a peeled `onClick` is threaded into `_rsCollapseH`'s handlers
+// arg, and after asserting byte-for-byte DOM parity vs the real 5-layer
+// Button we assert the handler FIRES on a real Chromium click (delegated
+// `click` → exercised through the real `mount()` delegation root, the
+// production path). This is the RFC acceptance criterion for the
+// partial subset: a collapsed-with-handler `<Button onClick=…>` is
+// DOM-identical to the un-collapsed mount AND fully interactive.
+//
+// Real-Chromium gate (@vitest/browser); CI-authoritative — runs in the
+// `Test (browser)` job where `lib/` is built and `@pyreon/test-utils/
+// browser` resolves. Same disclosed environment as every `.browser.
+// test.ts` in this repo, including PR #681's `rs-collapse-h.browser.
+// test.ts` (accepted shape).
+describe('E2 Phase 5 — shipped _rsCollapseH vs real Button + handler (PR 4 RFC acceptance)', () => {
+  const FIRST_CLASS_RE = /^(\s*<[a-zA-Z][\w-]*)([^>]*?)\sclass="([^"]*)"([^>]*>)/
+
+  it('byte-for-byte DOM parity vs real Button AND the peeled handler fires on a real click', async () => {
+    // Real rocketstyle mount — the source of truth (identical to Phase 4).
+    const realRoot = document.createElement('div')
+    document.body.appendChild(realRoot)
+    const realDispose = mountBaselineButton(realRoot as unknown as Element, 0)
+    await flush()
+    const realBtn = realRoot.querySelector('button')
+    expect(realBtn).not.toBeNull()
+    const realHtml = (realBtn as HTMLElement).outerHTML
+    const realClass = (realBtn as HTMLElement).className
+    const realColor = getComputedStyle(realBtn as Element).color
+
+    // Same resolver-equivalent class strip as Phase 4.
+    const m = FIRST_CLASS_RE.exec(realHtml)
+    expect(m).not.toBeNull()
+    const templateHtml = realHtml.replace(FIRST_CLASS_RE, '$1$2$4')
+    expect(/^<button[^>]*\sclass=/.test(templateHtml)).toBe(false)
+
+    // Shipped `_rsCollapseH` with the real resolved class + a peeled
+    // handler (what PR 3's compiler emit produces for the on*-only
+    // subset). light==dark here (primary state is mode-invariant in the
+    // default theme; the mode-flip-survives-handler path is proven in
+    // runtime-dom's rs-collapse-h.browser.test from PR #681).
+    let clicks = 0
+    const colRoot = document.createElement('div')
+    document.body.appendChild(colRoot)
+    const collapsed = _rsCollapseH(templateHtml, realClass, realClass, () => false, {
+      onClick: () => {
+        clicks++
+      },
+    })
+    const colDispose = mount(collapsed as unknown as Parameters<typeof mount>[0], colRoot)
+    await flush()
+    const colBtn = colRoot.querySelector('button')
+    expect(colBtn).not.toBeNull()
+
+    // (1) Byte-for-byte DOM parity vs the real 5-layer Button —
+    // IDENTICAL assertions to Phase 4 (the handler must NOT perturb the
+    // rendered DOM: it is an event binding, orthogonal to the styler
+    // class — the whole premise of the partial-collapse subset).
+    expect((colBtn as HTMLElement).className).toBe(realClass)
+    expect((colBtn as HTMLElement).isEqualNode(realBtn as HTMLElement)).toBe(true)
+    expect((colBtn as HTMLElement).tagName).toBe('BUTTON')
+    expect((colBtn as HTMLElement).getAttribute('data-rocketstyle')).toBe(
+      (realBtn as HTMLElement).getAttribute('data-rocketstyle'),
+    )
+    expect(getComputedStyle(colBtn as Element).color).toBe(realColor)
+
+    // (2) Partial-collapse delta: the peeled handler is live. `click` is
+    // a DELEGATED event — it fires only through the root listener the
+    // real `mount()` above installed (production path). A working
+    // collapsed-with-handler site MUST respond.
+    ;(colBtn as HTMLElement).click()
+    expect(clicks).toBe(1)
+    ;(colBtn as HTMLElement).click()
+    expect(clicks).toBe(2)
+
+    realDispose()
+    colDispose()
+    realRoot.remove()
+    colRoot.remove()
     await flush()
   })
 })
