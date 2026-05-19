@@ -166,6 +166,39 @@ const CollapseRenderer = ({
     ...(stage() === 'hidden' ? { height: '0px' } : stage() === 'entered' ? { height: 'auto' } : {}),
   }
 
+  // Initially-visible Collapses keep the original Show-gated inner content,
+  // preserving the runtime-unmount semantic that frees the inner subtree
+  // when the collapse is closed long-term. The SSR bug fires only when
+  // `show: () => false` at setup — the outer wrapper renders (with
+  // `height: 0; overflow: hidden`) but its children are stripped by the
+  // inner `<Show when={false}>` → empty wrapper in the prerendered HTML.
+  // Bad for SEO / social scrapers / accessibility / no-JS.
+  //
+  // Mirrors the fix shape applied to `<Transition>` (PR #717), the
+  // `TransitionRenderer` and `TransitionItem` (this PR). Ecosystem norm:
+  // content is structural, animation is visual.
+  //
+  // For initially-hidden Collapses, the inner content always renders —
+  // the outer wrapper's `height: 0px; overflow: hidden` already provides
+  // the visual hiding (genuinely layout-safe — no flex slot collapse;
+  // the outer wrapper participates in flex as a 0-height box, which is
+  // the standard CSS collapse behavior). When `show` flips true, the
+  // existing `watch(stage)` measures `content.scrollHeight` and animates
+  // height from 0 → that value — no change to the animation path.
+  //
+  // Trade-off: for initially-hidden Collapses, the inner subtree is
+  // ALWAYS mounted (never unmounted after a later close). Initially-
+  // visible Collapses keep the unmount behavior. Matches the trade-off
+  // documented across the other three kinetic renderers.
+  const wasInitiallyShown = show()
+  const innerContent = wasInitiallyShown ? (
+    <Show when={shouldRender}>
+      <div ref={contentRef}>{children}</div>
+    </Show>
+  ) : (
+    <div ref={contentRef}>{children}</div>
+  )
+
   // mergeProps (descriptor-preserving) instead of `{ ...htmlProps }` —
   // every non-style HTML attr keeps its reactive getter; ref + the
   // collapse-controlled style come last so they win (mergeProps is
@@ -176,9 +209,7 @@ const CollapseRenderer = ({
   return h(
     config.tag,
     mergeProps(htmlProps, { ref: wrapperRef, style: wrapperStyle }),
-    <Show when={shouldRender}>
-      <div ref={contentRef}>{children}</div>
-    </Show>,
+    innerContent,
   )
 }
 

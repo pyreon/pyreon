@@ -211,4 +211,117 @@ describe('@pyreon/kinetic browser smoke', () => {
     expect(el()!.classList.contains('enter-active')).toBe(true)
     unmount()
   })
+
+  // ── Initially-hidden kinetic(tag).<mode> — client-side parity with SSR ──
+  //
+  // Companion to PR #717's `<Transition>` direct-import specs (the two
+  // above). These exercise the `kinetic(tag).<mode>` factory paths — the
+  // README's primary documented surface — whose per-mode renderers carried
+  // the same SSR-children-dropped bug until this PR fixed them. SSR specs
+  // in `kinetic-modes.ssr.test.tsx` prove children land in prerendered
+  // HTML; these specs prove the SAME render path works under a real DOM —
+  // the element mounts with the hidden-state class/style applied, and an
+  // `applyEnter` triggered by a `show` flip cleanly transitions it out.
+
+  it('kinetic("div").transition with initial show=false mounts element with hidden class', async () => {
+    const Reveal = kinetic('section').enterClass({
+      active: 'enter-active',
+      from: 'hide-state',
+      to: 'show-state',
+    })
+    const show = signal(false)
+    const { container, unmount } = mountInBrowser(
+      h(Reveal, { show, 'data-id': 'reveal-target' }, h('p', null, 'scroll-reveal content')),
+    )
+    // Pre-fix: container.querySelector returns null (children dropped).
+    const el = container.querySelector('[data-id="reveal-target"]') as HTMLElement | null
+    expect(el).not.toBeNull()
+    expect(el!.textContent).toContain('scroll-reveal content')
+    // enterFrom is the fallback hidden-state class (scroll-reveal pattern
+    // configures only the enter side).
+    expect(el!.classList.contains('hide-state')).toBe(true)
+    unmount()
+  })
+
+  it('kinetic("div").transition show=true flip cleans hidden class + runs enter animation', async () => {
+    const Reveal = kinetic('section').enterClass({
+      active: 'enter-active',
+      from: 'hide-state',
+      to: 'show-state',
+    })
+    const show = signal(false)
+    const { container, unmount } = mountInBrowser(
+      h(Reveal, { show, 'data-id': 'reveal-target' }, h('p', null, 'content')),
+    )
+    const el = () => container.querySelector('[data-id="reveal-target"]') as HTMLElement | null
+    expect(el()!.classList.contains('hide-state')).toBe(true)
+
+    show.set(true)
+    await flush()
+    // Double-rAF for the applyEnter nextFrame → enterTo applied.
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    )
+    await flush()
+
+    expect(el()!.classList.contains('show-state')).toBe(true)
+    // enterFrom (hide-state) was removed; the symmetric applyEnter cleanup
+    // ALSO removes leave-side classes (none here) — locks in the
+    // companion fix that prevents residual hidden classes from fighting
+    // enterTo's CSS rules.
+    expect(el()!.classList.contains('hide-state')).toBe(false)
+    expect(el()!.classList.contains('enter-active')).toBe(true)
+    unmount()
+  })
+
+  it('kinetic("ul").stagger() with initial show=false mounts all items with hidden class', async () => {
+    // The reported real-app cascading-Stagger pattern at SSR. Each per-item
+    // TransitionItem must render structurally; the hidden class lands on
+    // each item via the enterFrom fallback.
+    const Staggered = kinetic('ul')
+      .enterClass({ active: 'enter-active', from: 'item-hidden', to: 'item-shown' })
+      .stagger({ interval: 50 })
+    const show = signal(false)
+    const { container, unmount } = mountInBrowser(
+      h(Staggered, { show, 'data-id': 'stagger-list' }, [
+        h('li', { key: 'a' }, 'first item'),
+        h('li', { key: 'b' }, 'second item'),
+        h('li', { key: 'c' }, 'third item'),
+      ]),
+    )
+    const list = container.querySelector('[data-id="stagger-list"]') as HTMLElement | null
+    expect(list).not.toBeNull()
+    const items = list!.querySelectorAll('li')
+    expect(items.length).toBe(3)
+    // Every per-item TransitionItem applies the hidden class.
+    for (const item of items) {
+      expect(item.classList.contains('item-hidden')).toBe(true)
+    }
+    expect(list!.textContent).toContain('first item')
+    expect(list!.textContent).toContain('second item')
+    expect(list!.textContent).toContain('third item')
+    unmount()
+  })
+
+  it('kinetic("div").collapse() with initial show=false mounts inner content (visually hidden via height:0)', async () => {
+    // CollapseRenderer's fix: outer wrapper retains height:0 + overflow:hidden
+    // (layout-safe visual hiding); inner content is always rendered so SSG
+    // ships the structural HTML for SEO. Real-DOM parity check.
+    const Accordion = kinetic('div').collapse()
+    const show = signal(false)
+    const { container, unmount } = mountInBrowser(
+      h(Accordion, { show, 'data-id': 'accordion' },
+        h('div', { 'data-id': 'inner' }, 'accordion content'),
+      ),
+    )
+    const wrapper = container.querySelector('[data-id="accordion"]') as HTMLElement | null
+    const inner = container.querySelector('[data-id="inner"]') as HTMLElement | null
+    expect(wrapper).not.toBeNull()
+    expect(inner).not.toBeNull() // ← was null pre-fix (Show dropped it)
+    expect(inner!.textContent).toBe('accordion content')
+    // Outer wrapper visually hides via height:0 (computed style — real CSS).
+    expect(wrapper!.style.height).toBe('0px')
+    expect(wrapper!.style.overflow).toBe('hidden')
+    unmount()
+  })
 })

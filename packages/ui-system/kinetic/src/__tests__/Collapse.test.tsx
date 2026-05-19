@@ -397,14 +397,35 @@ const wireWrapperRef = (vnode: VNode | null, el: HTMLElement) => {
   }
 }
 
-/** Find and wire contentRef inside Show > div children. */
+/**
+ * Find and wire contentRef on the inner div. Walks two shapes:
+ *
+ *  1. Initially-visible Collapse: outer → <Show>{<div ref=contentRef/>}</Show>
+ *     (the pre-SSR-fix shape, kept for the `wasInitiallyShown=true` branch
+ *     in CollapseRenderer)
+ *
+ *  2. Initially-hidden Collapse: outer → <div ref=contentRef/>
+ *     (the SSR-correct shape — children always rendered structurally so
+ *     the prerendered HTML carries content for SEO / social scrapers /
+ *     no-JS users; visual hiding via the outer wrapper's `height: 0;
+ *     overflow: hidden`. See CollapseRenderer's `wasInitiallyShown`
+ *     branch.)
+ *
+ * Tries the direct-div shape first; falls back to the Show-wrapped walk.
+ */
 const wireContentRef = (vnode: VNode | null, contentEl: HTMLElement) => {
   if (!vnode?.children) return
   const vnodeChildren = Array.isArray(vnode.children) ? vnode.children : [vnode.children]
   for (const c of vnodeChildren) {
-    if (!c || typeof c !== 'object' || !('type' in (c as object))) continue
-    const showNode = c as any
-    const showChildren = showNode.props?.children ?? showNode.children
+    if (!c || typeof c !== 'object' || !('props' in (c as object))) continue
+    const directRef = (c as any).props?.ref
+    if (directRef) {
+      if (typeof directRef === 'function') directRef(contentEl)
+      else if (typeof directRef === 'object') directRef.current = contentEl
+      return
+    }
+    // Fall through to Show-wrapped walk.
+    const showChildren = (c as any).props?.children ?? (c as any).children
     if (!showChildren) continue
     const sc = Array.isArray(showChildren) ? showChildren : [showChildren]
     for (const s of sc) {
