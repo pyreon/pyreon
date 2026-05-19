@@ -1,5 +1,6 @@
 import { batch, enqueuePendingNotification, isBatching } from './batch'
 import { _notifyTraceListeners, isTracing } from './debug'
+import { _rdRecordFire, _rdRegister } from './reactive-devtools'
 import { _recordSignalWrite } from './reactive-trace'
 import { notifySubscribers, trackSubscriber } from './tracking'
 
@@ -95,8 +96,10 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
   // is opt-in (requires an onSignalUpdate listener) and captures a
   // stack (expensive); this is always-on in dev and intentionally
   // cheap (string preview, no stack).
-  if (process.env.NODE_ENV !== 'production')
+  if (process.env.NODE_ENV !== 'production') {
     _recordSignalWrite(this.label, prev, newValue)
+    _rdRecordFire(this)
+  }
   if (isTracing()) {
     // Trace listeners are user-supplied debug code that fires on every
     // signal write. A throwing listener here would leave `_v` updated but
@@ -230,6 +233,9 @@ export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
   read.direct = _directFn as (updater: () => void) => () => void
   read.debug = _debug as () => SignalDebugInfo<T>
   read.label = options?.name
+
+  if (process.env.NODE_ENV !== 'production')
+    _rdRegister(read, 'signal', read, null, read.label)
 
   return read as unknown as Signal<T>
 }

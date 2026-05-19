@@ -12,7 +12,18 @@
  *   window.__PYREON_DEVTOOLS__.onComponentMount(cb)  // subscribe to mount events
  *   window.__PYREON_DEVTOOLS__.onComponentUnmount(cb)// subscribe to unmount events
  *   window.__PYREON_DEVTOOLS__.enableOverlay()       // Ctrl+Shift+P: hover to inspect components
+ *   window.__PYREON_DEVTOOLS__.reactive.activate()   // opt-in: track the live signal/effect graph
+ *   window.__PYREON_DEVTOOLS__.reactive.getGraph()   // snapshot of signals/derived/effects + edges
  */
+
+import {
+  activateReactiveDevtools,
+  deactivateReactiveDevtools,
+  getReactiveFires,
+  getReactiveGraph,
+  type ReactiveFire,
+  type ReactiveGraph,
+} from '@pyreon/reactivity'
 
 export interface DevtoolsComponentEntry {
   id: string
@@ -33,6 +44,23 @@ export interface PyreonDevtools {
   /** Toggle the component inspector overlay (also: Ctrl+Shift+P) */
   enableOverlay(): void
   disableOverlay(): void
+  /**
+   * Reactive-graph bridge — powers the devtools Signals / Graph / Effects
+   * surfaces. Opt-in and zero-cost until `activate()` is called: nothing
+   * is tracked while a devtools client is not attached.
+   */
+  reactive: PyreonReactiveDevtools
+}
+
+export interface PyreonReactiveDevtools {
+  /** Start tracking the live signal/computed/effect graph. Idempotent. */
+  activate(): void
+  /** Stop tracking + drop all retained registry/timeline state. */
+  deactivate(): void
+  /** Fresh snapshot of the reactive graph (nodes + edges). */
+  getGraph(): ReactiveGraph
+  /** Bounded recent-fire timeline (oldest → newest). */
+  getFires(): ReactiveFire[]
 }
 
 // ─── Internal registry ────────────────────────────────────────────────────────
@@ -250,6 +278,13 @@ export function installDevTools(): void {
 
     enableOverlay,
     disableOverlay,
+
+    reactive: {
+      activate: activateReactiveDevtools,
+      deactivate: deactivateReactiveDevtools,
+      getGraph: getReactiveGraph,
+      getFires: getReactiveFires,
+    },
   }
 
   // Attach to window — compatible with browser devtools extensions

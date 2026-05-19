@@ -1,5 +1,6 @@
 import { _markRecompute } from './batch'
 import { _errorHandler } from './effect'
+import { _rdRecordFire, _rdRegister } from './reactive-devtools'
 import { getCurrentScope } from './scope'
 import {
   cleanupEffect,
@@ -108,8 +109,10 @@ function computedLazy<T>(fn: () => T): Computed<T> {
   const read = (): T => {
     trackSubscriber(host)
     if (dirty) {
-      if (process.env.NODE_ENV !== 'production')
+      if (process.env.NODE_ENV !== 'production') {
         _countSink.__pyreon_count__?.('reactivity.computedRecompute')
+        _rdRecordFire(read)
+      }
       try {
         if (tracked) {
           // Deps already established from first run — skip adding to
@@ -161,6 +164,9 @@ function computedLazy<T>(fn: () => T): Computed<T> {
     }
   }
 
+  if (process.env.NODE_ENV !== 'production')
+    _rdRegister(read, 'derived', host, recompute, undefined)
+
   getCurrentScope()?.add({ dispose: read.dispose })
   return read as Computed<T>
 }
@@ -190,8 +196,10 @@ function computedWithEquals<T>(fn: () => T, equals: (prev: T, next: T) => boolea
 
   const recompute = () => {
     if (disposed) return
-    if (process.env.NODE_ENV !== 'production')
+    if (process.env.NODE_ENV !== 'production') {
       _countSink.__pyreon_count__?.('reactivity.computedRecompute')
+      _rdRecordFire(read)
+    }
     cleanupLocalDeps(deps, recompute)
     try {
       const next = trackWithLocalDeps(deps, recompute, fn)
@@ -255,6 +263,9 @@ function computedWithEquals<T>(fn: () => T, equals: (prev: T, next: T) => boolea
       set.delete(updater)
     }
   }
+
+  if (process.env.NODE_ENV !== 'production')
+    _rdRegister(read, 'derived', host, recompute, undefined)
 
   getCurrentScope()?.add({ dispose: read.dispose })
   return read as Computed<T>
