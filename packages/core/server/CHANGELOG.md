@@ -1,5 +1,17 @@
 # @pyreon/server
 
+## 0.21.0
+
+### Patch Changes
+
+- Updated dependencies [[`2b39231`](https://github.com/pyreon/pyreon/commit/2b3923112e6b06b5fd2cd3a3daa1425e7a6f755c)]:
+  - @pyreon/head@0.21.0
+  - @pyreon/core@0.21.0
+  - @pyreon/reactivity@0.21.0
+  - @pyreon/router@0.21.0
+  - @pyreon/runtime-dom@0.21.0
+  - @pyreon/runtime-server@0.21.0
+
 ## 0.20.0
 
 ### Patch Changes
