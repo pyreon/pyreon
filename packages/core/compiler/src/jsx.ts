@@ -420,6 +420,86 @@ function detectCollapsibleShape(
   return { props, childrenText: childrenText.trim() }
 }
 
+/** A residual event handler peeled off a partially-collapsible site. */
+export interface CollapsibleHandler {
+  /** JSX attribute name, e.g. `onClick`. */
+  name: string
+  /** Source span of the handler expression (the `{...}` contents). */
+  exprStart: number
+  exprEnd: number
+}
+
+/**
+ * Partial-collapse detector — PR 1 of the partial-collapse spec
+ * (`.claude/plans/open-work-2026-q3.md` → #1). The `on*`-handler-only
+ * subset the bail-reason census measured at 7.8% of all
+ * `@pyreon/ui-components` call sites (`collapse-bail-census.test.ts`).
+ *
+ * It is the EXACT `detectCollapsibleShape` bail catalogue with ONE
+ * relaxation: a `{expr}`-valued attribute whose name matches `on[A-Z]…`
+ * (an event handler) does NOT bail — it is peeled into `handlers[]`
+ * instead. Handlers are orthogonal to the SSR-resolved styler class (an
+ * event binding never changes rendered CSS), so the literal-prop subset
+ * still feeds the UNCHANGED `rocketstyleCollapseKey` and the resolver's
+ * pre-resolved `templateHtml` / `lightClass` / `darkClass` are
+ * byte-identical to a full-collapse site's. The collapsed runtime node
+ * just re-attaches the residual handlers (PR 2 — `_rsCollapseH`).
+ *
+ * Every OTHER non-literal shape still bails (spread, non-handler
+ * `{expr}` prop, boolean attr, element/expression child) — conservative
+ * by construction, exactly like the full detector. Returns `null` when
+ * there are ZERO handlers so the full-collapse path stays byte-unchanged
+ * and the two detectors never both claim the same site (full-collapse
+ * sites have no handlers; partial sites have ≥1). A consistency test
+ * will lock this catalogue against the plugin scan in PR 3, mirroring
+ * the existing `detectCollapsibleShape` ↔ `scanCollapsibleSites`
+ * invariant — keys cannot drift.
+ */
+export function detectPartialCollapsibleShape(
+  node: N,
+  _tag: string,
+): { props: Record<string, string>; childrenText: string; handlers: CollapsibleHandler[] } | null {
+  const props: Record<string, string> = {}
+  const handlers: CollapsibleHandler[] = []
+  for (const attr of jsxAttrs(node)) {
+    if (attr.type !== 'JSXAttribute') return null // spread → bail
+    const nm = attr.name?.type === 'JSXIdentifier' ? attr.name.name : null
+    if (!nm) return null
+    const v = attr.value
+    if (!v) return null // boolean attr → bail
+    const isStr =
+      v.type === 'StringLiteral' || (v.type === 'Literal' && typeof v.value === 'string')
+    if (isStr) {
+      props[nm] = String(v.value)
+      continue
+    }
+    // Non-literal: ONLY an `on[A-Z]…` handler in a `{expr}` container is
+    // peelable. Everything else (non-handler dynamic prop, shorthand
+    // `onClick` without a container, etc.) is a hard bail — same
+    // conservatism as the full detector.
+    if (
+      /^on[A-Z]/.test(nm) &&
+      v.type === 'JSXExpressionContainer' &&
+      v.expression &&
+      typeof v.expression.start === 'number' &&
+      typeof v.expression.end === 'number'
+    ) {
+      handlers.push({ name: nm, exprStart: v.expression.start, exprEnd: v.expression.end })
+      continue
+    }
+    return null // `{expr}` non-handler / dynamic → bail
+  }
+  let childrenText = ''
+  for (const c of jsxChildren(node)) {
+    if (c.type === 'JSXText') childrenText += (c.value ?? '') as string
+    else return null // element / expression child → bail
+  }
+  // Zero handlers ⇒ this is the FULL-collapse shape; defer to
+  // `detectCollapsibleShape` so the existing path stays byte-unchanged.
+  if (handlers.length === 0) return null
+  return { props, childrenText: childrenText.trim(), handlers }
+}
+
 // ─── Main transform ─────────────────────────────────────────────────────────
 
 export function transformJSX(
