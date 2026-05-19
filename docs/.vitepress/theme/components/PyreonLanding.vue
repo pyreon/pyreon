@@ -368,7 +368,7 @@ const footer = [
     <footer class="px-footer">
       <div class="px-footer-grid">
         <div class="px-footer-brand">
-          <PyreonHeroMark />
+          <PyreonHeroMark no-motion />
           <p>The signal-based UI framework — fine-grained reactivity, full-stack, AI-native.</p>
         </div>
         <div v-for="c in footer" :key="c.h" class="px-footer-col">
