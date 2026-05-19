@@ -113,6 +113,17 @@ lock against the framework's exported `PyreonDevtools` /
 `DevtoolsComponentEntry`, so a framework API drift fails `tsc` instead
 of the extension silently losing a capability.
 
+`src/tests/reactive-e2e.test.ts` does the same for the reactive
+surfaces: it drives the real `@pyreon/reactivity` primitives
+(`signal`/`computed`/`effect`) through the real
+`__PYREON_DEVTOOLS__.reactive` hook, then feeds the live graph/fire
+snapshot into the extension's own `layoutGraph` / `bucketFires` (the
+code the Graph/Profiler tabs run) — proving the whole chain end-to-end:
+opt-in registry → hook → panel presentation. Includes a bidirectional
+drift lock against `@pyreon/reactivity`'s exported `ReactiveGraph` /
+`ReactiveNode` / `ReactiveFire` and an opt-in check (nothing tracked
+until `activate()`).
+
 ## License
 
 [MIT](LICENSE)

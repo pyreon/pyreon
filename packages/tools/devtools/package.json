@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@pyreon/core": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
     "@types/chrome": "^0.1.38"
   }
