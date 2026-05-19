@@ -28,9 +28,27 @@
  * Implementation: Rust native binary (napi-rs) when available, JS fallback via oxc-parser.
  */
 
+import MagicString from 'magic-string'
 import { parseSync } from 'oxc-parser'
 import { REACT_EVENT_REMAP } from './event-names'
 import { loadNativeBinding } from './load-native'
+
+/**
+ * V3 source map shape returned by the JS backend. Structurally exactly
+ * magic-string's `SourceMap` (a valid V3 map plus `.toString()`/`.toUrl()`),
+ * declared locally so `TransformResult` carries no hard type dependency on
+ * magic-string's exported types.
+ */
+export interface GeneratedSourceMap {
+  version: number
+  file?: string
+  sources: string[]
+  sourcesContent?: (string | null)[]
+  names: string[]
+  mappings: string
+  toString(): string
+  toUrl(): string
+}
 
 // ─── Native binary auto-detection ────────────────────────────────────────────
 // Two-path resolution: in-tree binary first (dev mode), then per-platform
@@ -108,6 +126,15 @@ export interface TransformResult {
   usesTemplates?: boolean
   /** Compiler warnings for common mistakes */
   warnings: CompilerWarning[]
+  /**
+   * Source map (V3) for the transform — present on the JS backend whenever a
+   * transformation actually occurred. `undefined` when nothing changed (the
+   * emitted code is byte-identical to the input, so no remapping is needed)
+   * and on the native backend (a Rust-side map is a scoped follow-up). The
+   * object is magic-string's `SourceMap`: it is a valid V3 map AND has
+   * `.toString()` / `.toUrl()`, so Vite/Rollup consume it directly.
+   */
+  map?: GeneratedSourceMap
   /**
    * Reactivity-lens spans — populated ONLY when `TransformOptions.reactivityLens`
    * is `true`. Additive: codegen output is byte-identical whether or not this is
@@ -1391,19 +1418,30 @@ export function transformJSX_JS(
   }
 
   replacements.sort((a, b) => a.start - b.start)
-  const outParts: string[] = []
-  let outPos = 0
+  // R12 fix: apply the disjoint, sorted {start,end,text} edits through
+  // MagicString instead of manual slice/join. `toString()` is byte-identical
+  // to the old concatenation (the full 1200-test suite + native-equivalence
+  // assert exact emitted strings), but `generateMap()` now yields a correct
+  // V3 source map — the previous transform emitted none AND shifted line
+  // counts (template emission expands one-line JSX into a multi-line _tpl
+  // factory), so every stack frame / breakpoint in a Pyreon component
+  // mislocated app-wide.
+  const s = new MagicString(code)
   for (const r of replacements) {
-    outParts.push(code.slice(outPos, r.start))
-    outParts.push(r.text)
-    outPos = r.end
+    if (r.start === r.end) s.appendLeft(r.start, r.text)
+    else s.update(r.start, r.end, r.text)
   }
-  outParts.push(code.slice(outPos))
-  let output = outParts.join('')
+
+  // Build the generated preamble (hoists + auto-imports + collapse prologue)
+  // in the SAME final top-to-bottom order the previous chained `X + output`
+  // produced, then `prepend` it ONCE. magic-string's prepend shifts every
+  // source mapping down by the preamble's line count, so original positions
+  // resolve to the correct OUTPUT lines despite the inserted preamble — the
+  // exact line-shift R12 measured. Innermost (closest to code) first.
+  let preamble = ''
 
   if (hoists.length > 0) {
-    const preamble = hoists.map((h) => `const ${h.name} = /*@__PURE__*/ ${h.text}\n`).join('')
-    output = preamble + output
+    preamble = hoists.map((h) => `const ${h.name} = /*@__PURE__*/ ${h.text}\n`).join('') + preamble
   }
 
   if (needsTplImport) {
@@ -1415,16 +1453,16 @@ export function transformJSX_JS(
     const reactivityImports = needsBindImportGlobal
       ? `\nimport { _bind } from "@pyreon/reactivity";`
       : ''
-    output =
+    preamble =
       `import { ${runtimeDomImports.join(', ')} } from "@pyreon/runtime-dom";${reactivityImports}\n` +
-      output
+      preamble
   }
 
   if (needsRpImport || needsWrapSpreadImport) {
     const coreImports: string[] = []
     if (needsRpImport) coreImports.push('_rp')
     if (needsWrapSpreadImport) coreImports.push('_wrapSpread')
-    output = `import { ${coreImports.join(', ')} } from "@pyreon/core";\n` + output
+    preamble = `import { ${coreImports.join(', ')} } from "@pyreon/core";\n` + preamble
   }
 
   if (needsCollapse) {
@@ -1442,17 +1480,26 @@ export function transformJSX_JS(
           `__rsSheet.injectRules(${JSON.stringify(r.rules)},${JSON.stringify(r.ruleKey)});`,
       )
       .join('')
-    output =
+    preamble =
       `import { _rsCollapse as __rsCollapse${needsCollapseH ? ', _rsCollapseH as __rsCollapseH' : ''} } from "${rd}";\n` +
       `import { sheet as __rsSheet } from "${st}";\n` +
       `import { ${cfg.mode.name} as __pyrMode } from "${cfg.mode.source}";\n` +
       `${inj}\n` +
-      output
+      preamble
   }
 
+  if (preamble) s.prepend(preamble)
+
+  const output = s.toString()
+  const map = s.generateMap({
+    source: filename,
+    includeContent: true,
+    hires: true,
+  }) as unknown as GeneratedSourceMap
+
   return collectLens
-    ? { code: output, usesTemplates: needsTplImport, warnings, reactivityLens }
-    : { code: output, usesTemplates: needsTplImport, warnings }
+    ? { code: output, usesTemplates: needsTplImport, warnings, map, reactivityLens }
+    : { code: output, usesTemplates: needsTplImport, warnings, map }
 
   // ── Template emission helpers ─────────────────────────────────────────────
 
@@ -1996,14 +2043,95 @@ export function transformJSX_JS(
 
   /** Auto-insert () after signal variable references in the expression source.
    *  Uses the AST to find exact Identifier positions — never scans raw text. */
+  // Recursively collect identifier names bound by a pattern (params /
+  // declarators). Self-contained twin of resolveIdentifiersInText's
+  // `patternBindingNames` (different closure scope; kept local to avoid a
+  // risky shared-helper hoist).
+  function sigPatternNames(p: N, out: string[]): void {
+    if (!p) return
+    switch (p.type) {
+      case 'Identifier':
+        out.push(p.name)
+        break
+      case 'ObjectPattern':
+        for (const pr of p.properties ?? []) {
+          if (pr.type === 'RestElement') sigPatternNames(pr.argument, out)
+          else sigPatternNames(pr.value ?? pr.key, out)
+        }
+        break
+      case 'ArrayPattern':
+        for (const el of p.elements ?? []) sigPatternNames(el, out)
+        break
+      case 'AssignmentPattern':
+        sigPatternNames(p.left, out)
+        break
+      case 'RestElement':
+        sigPatternNames(p.argument, out)
+        break
+    }
+  }
+
+  // Signal names a scope-introducing node binds FOR ITS OWN SUBTREE
+  // (block-accurate lexical scoping). Mirrors scopeBoundPropDerived but
+  // against `signalVars` — a same-named inner binding (callback param,
+  // nested const, catch/loop var) shadows the signal and must NOT be
+  // auto-called (doing so emits `paramValue()` → runtime TypeError).
+  function scopeBoundSignals(node: N): string[] {
+    const out: string[] = []
+    const t = node.type
+    const declNames = (declNode: N): void => {
+      for (const d of declNode.declarations ?? []) {
+        // A `const x = signal(...)` re-declaration is itself a signal, not a
+        // shadow — leave it for the normal signalVars path.
+        if (d.id?.type === 'Identifier' && d.init && isSignalCall(d.init)) continue
+        sigPatternNames(d.id, out)
+      }
+    }
+    if (
+      t === 'ArrowFunctionExpression' ||
+      t === 'FunctionExpression' ||
+      t === 'FunctionDeclaration'
+    ) {
+      for (const p of node.params ?? []) sigPatternNames(p, out)
+    } else if (t === 'CatchClause') {
+      sigPatternNames(node.param, out)
+    } else if (t === 'ForStatement') {
+      if (node.init?.type === 'VariableDeclaration') declNames(node.init)
+    } else if (t === 'ForInStatement' || t === 'ForOfStatement') {
+      if (node.left?.type === 'VariableDeclaration') declNames(node.left)
+    } else if (t === 'BlockStatement' || t === 'StaticBlock') {
+      const stmts = node.body ?? node.statements
+      if (Array.isArray(stmts)) {
+        for (const s of stmts) {
+          if (s.type === 'VariableDeclaration') declNames(s)
+          else if (s.type === 'FunctionDeclaration' && s.id?.type === 'Identifier') out.push(s.id.name)
+          else if (s.type === 'ClassDeclaration' && s.id?.type === 'Identifier') out.push(s.id.name)
+        }
+      }
+    }
+    return out.filter((n) => signalVars.has(n))
+  }
+
   function autoCallSignals(text: string, expr: N): string {
     const start = expr.start as number
     // Collect signal identifier positions that need auto-calling
     const idents: { start: number; end: number }[] = []
+    // Local lexical shadow set — a signal-named binding introduced INSIDE
+    // the rewritten expression (callback param, nested const, …) is NOT the
+    // signal and must not get `()` (R11: scope-blind rewrite emitted
+    // `({x}) => <li>{x()}</li>` → `1()` runtime crash).
+    const shadowed = new Set<string>()
 
     function findSignalIdents(node: N): void {
       if ((node.start as number) >= start + text.length || (node.end as number) <= start) return
-      if (node.type === 'Identifier' && isActiveSignal(node.name)) {
+      const introduced: string[] = []
+      for (const n of scopeBoundSignals(node)) {
+        if (!shadowed.has(n)) {
+          shadowed.add(n)
+          introduced.push(n)
+        }
+      }
+      if (node.type === 'Identifier' && isActiveSignal(node.name) && !shadowed.has(node.name)) {
         const parent = findParent(node)
         // Skip property name positions (obj.name)
         if (parent && parent.type === 'MemberExpression' && parent.property === node && !parent.computed) return
@@ -2041,6 +2169,7 @@ export function transformJSX_JS(
         idents.push({ start: node.start as number, end: node.end as number })
       }
       forEachChildFast(node, findSignalIdents)
+      for (const n of introduced) shadowed.delete(n)
     }
     findSignalIdents(expr)
 

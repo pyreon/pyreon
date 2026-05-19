@@ -1567,6 +1567,77 @@ fn collect_pd_in_stmt(stmt: &Statement, pd: &FxHashMap<String, Span>, out: &mut 
             }
         }
         Statement::BlockStatement(b) => collect_pd_in_body(&b.body, pd, out),
+        // R13: #687's walker skipped these — a prop-derived const used inside
+        // a callback whose body is a while/switch/try/labeled/for shape lost
+        // reactivity in the native backend (JS inlined, Rust did not). Same
+        // pd_minus/collect_bind_pattern_names shadow-filter discipline as the
+        // Block/If arms — byte-equivalent to the JS pass; loop/catch-param
+        // bindings shadow correctly (no R2 over-substitution regression).
+        Statement::ForStatement(f) => {
+            let mut bound = FxHashSet::default();
+            if let Some(ForStatementInit::VariableDeclaration(d)) = &f.init {
+                for decl in &d.declarations {
+                    collect_bind_pattern_names(&decl.id, &mut bound);
+                }
+            }
+            let inner = pd_minus(pd, &bound);
+            if let Some(ForStatementInit::VariableDeclaration(d)) = &f.init {
+                for decl in &d.declarations {
+                    if let Some(i) = &decl.init {
+                        collect_prop_derived_idents(i, &inner, out);
+                    }
+                }
+            }
+            if let Some(t) = &f.test {
+                collect_prop_derived_idents(t, &inner, out);
+            }
+            if let Some(u) = &f.update {
+                collect_prop_derived_idents(u, &inner, out);
+            }
+            collect_pd_in_stmt(&f.body, &inner, out);
+        }
+        Statement::ForInStatement(f) => {
+            collect_prop_derived_idents(&f.right, pd, out);
+            collect_pd_in_stmt(&f.body, pd, out);
+        }
+        Statement::ForOfStatement(f) => {
+            collect_prop_derived_idents(&f.right, pd, out);
+            collect_pd_in_stmt(&f.body, pd, out);
+        }
+        Statement::WhileStatement(w) => {
+            collect_prop_derived_idents(&w.test, pd, out);
+            collect_pd_in_stmt(&w.body, pd, out);
+        }
+        Statement::DoWhileStatement(d) => {
+            collect_pd_in_stmt(&d.body, pd, out);
+            collect_prop_derived_idents(&d.test, pd, out);
+        }
+        Statement::SwitchStatement(s) => {
+            collect_prop_derived_idents(&s.discriminant, pd, out);
+            for case in &s.cases {
+                if let Some(t) = &case.test {
+                    collect_prop_derived_idents(t, pd, out);
+                }
+                for st in &case.consequent {
+                    collect_pd_in_stmt(st, pd, out);
+                }
+            }
+        }
+        Statement::TryStatement(t) => {
+            collect_pd_in_body(&t.block.body, pd, out);
+            if let Some(h) = &t.handler {
+                let mut bound = FxHashSet::default();
+                if let Some(p) = &h.param {
+                    collect_bind_pattern_names(&p.pattern, &mut bound);
+                }
+                let inner = pd_minus(pd, &bound);
+                collect_pd_in_body(&h.body.body, &inner, out);
+            }
+            if let Some(f) = &t.finalizer {
+                collect_pd_in_body(&f.body, pd, out);
+            }
+        }
+        Statement::LabeledStatement(l) => collect_pd_in_stmt(&l.body, pd, out),
         _ => {}
     }
 }
