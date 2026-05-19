@@ -192,6 +192,24 @@ setSanitizer(DOMPurify.sanitize)
 const clean = sanitizeHtml(userInput)`,
       seeAlso: ['setSanitizer'],
     },
+    {
+      name: '__PYREON_DEVTOOLS__',
+      kind: 'constant',
+      signature:
+        'window.__PYREON_DEVTOOLS__: { version; getComponentTree(); getAllComponents(); highlight(id); onComponentMount(cb); onComponentUnmount(cb); enableOverlay(); disableOverlay(); reactive: PyreonReactiveDevtools }',
+      summary:
+        'Browser devtools hook, installed automatically on the first `mount()` (no-op on the server). Exposes the component tree + an element-picker overlay (also `Ctrl+Shift+P`) for the `@pyreon/devtools` Chrome extension, plus a `$p` console helper. The `reactive` namespace bridges `@pyreon/reactivity`’s opt-in graph: `reactive.activate()` / `deactivate()` start/stop tracking, `reactive.getGraph()` returns the live signal/computed/effect nodes + dependency edges, `reactive.getFires()` the bounded fire timeline — powering the extension’s Signals / Graph / Effects / Profiler / Console tabs. **Dev-only and tree-shaken from production builds**; `reactive` is zero-cost until `activate()` is called by an attached panel.',
+      example: `// In the browser console (after the app has mounted):
+$p.tree()                              // root component entries
+window.__PYREON_DEVTOOLS__.reactive.activate()
+window.__PYREON_DEVTOOLS__.reactive.getGraph()  // { nodes, edges }`,
+      mistakes: [
+        'Reading it before the first `mount()` — it is installed by mount; it is `undefined` until then (and always `undefined` on the server / in production builds)',
+        'Expecting `reactive.getGraph()` to return data without calling `reactive.activate()` first — tracking is opt-in (zero-cost until a panel attaches)',
+        'Depending on it in app code — it is a dev-tooling hook, tree-shaken in production; never branch runtime behavior on its presence',
+      ],
+      seeAlso: ['mount'],
+    },
   ],
   gotchas: [
     {

@@ -419,6 +419,40 @@ count.set(101)  // logs/reports via handler instead of crashing`,
 - Throwing inside the handler — the framework will swallow this too, but you lose visibility. Make handlers no-throw (try/catch internally if needed)
 - Expecting the handler to receive errors from \`signal.set()\` writes — only effect-runtime errors are routed. Synchronous errors at write time bubble up normally`,
   },
+
+  'reactivity/activateReactiveDevtools': {
+    signature: 'activateReactiveDevtools(): void  ·  deactivateReactiveDevtools(): void  ·  isReactiveDevtoolsActive(): boolean',
+    example: `import { activateReactiveDevtools, getReactiveGraph } from '@pyreon/reactivity'
+
+// Only AFTER activation are subsequently-created signals tracked.
+activateReactiveDevtools()
+const price = signal(10, { name: '$price' })
+const total = computed(() => price() * 2)
+effect(() => total())
+getReactiveGraph().nodes // → [$price (signal), derived, effect]
+deactivateReactiveDevtools() // → registry cleared`,
+    notes: 'Opt-in lifecycle for the reactive-devtools bridge — the live signal/computed/effect graph the `@pyreon/devtools` Signals/Graph/Effects/Profiler tabs consume (surfaced on the browser hook as `window.__PYREON_DEVTOOLS__.reactive`). **Zero cost until activated**: every per-primitive instrumentation point early-returns on the inactive flag and sits inside the production dead-code gate, so it tree-shakes out of prod builds entirely (locked by a minified-bundle test) and, in dev, costs one predicted-false branch until a devtools client calls `activate()` — the same risk profile as the adjacent reactive-trace / perf-harness calls. `deactivate()` drops all retained registry + fire-buffer state (a closed panel leaves zero residue). Leak-free by construction: nodes are held via `WeakRef` + `FinalizationRegistry`, never pinned. See also: getReactiveGraph, onSignalUpdate, getReactiveTrace.',
+    mistakes: `- Expecting nodes created BEFORE \`activate()\` to appear — registration is gated on the active flag (mirrors a devtools panel attaching). Activate first, then build/observe the graph
+- Calling it in production for app logic — the whole bridge is dev-gated and tree-shaken; \`getReactiveGraph()\` returns an empty graph in prod builds
+- Assuming it tracks compiler-emitted DOM bindings — only user \`signal()\` / \`computed()\` / \`effect()\` are registered; \`renderEffect\` / \`_bind\` plumbing is intentionally excluded (it would flood the graph and tax the hottest path)`,
+  },
+
+  'reactivity/getReactiveGraph': {
+    signature: 'getReactiveGraph(): { nodes: ReactiveNode[]; edges: { from: number; to: number }[] }  ·  getReactiveFires(): { id: number; ts: number }[]',
+    example: `activateReactiveDevtools()
+const a = signal(1, { name: '$a' })
+const b = computed(() => a() + 1)
+effect(() => b())
+a.set(2)
+getReactiveGraph()
+// nodes: [{ name:'$a', kind:'signal', value:'2', … }, { kind:'derived', … }, { kind:'effect', … }]
+// edges: [{ from:$a, to:derived }, { from:derived, to:effect }]
+getReactiveFires() // → [{ id, ts }, …]  (bounded, chronological)`,
+    notes: 'Fresh snapshot of the live reactive graph + a bounded recent-fire timeline, for the reactive-devtools tabs. `getReactiveGraph()` returns every tracked node (`{ id, kind: "signal"|"derived"|"effect", name, value, subscribers, fires, lastFire }`) plus dependency edges recomputed on demand from the real subscriber `_s` Sets (source → subscriber: signal→derived, derived→effect) — always consistent with the framework’s actual subscription state, no incremental drift. `getReactiveFires()` returns a fixed-size ring buffer of recent fires (`{ id, ts }`, oldest → newest) powering the Effects/Profiler tabs. Both require `activateReactiveDevtools()` first and return empty otherwise. Names come from `signal(v, { name })` / the vite-plugin dev auto-naming; anonymous computeds/effects get a synthetic `derived#id` / `effect#id`. See also: activateReactiveDevtools, getReactiveTrace, onSignalUpdate.',
+    mistakes: `- Holding the returned arrays expecting them to update — they are point-in-time snapshots; call again (the devtools panel polls)
+- Reading \`node.value\` for non-string state as the real value — it is a bounded, safely-stringified PREVIEW (never a raw ref — no pinning). Inspect the signal directly for the live value
+- Expecting fires for every write in a long-running app — \`getReactiveFires()\` is a fixed-size ring; older entries roll off`,
+  },
   // <gen-docs:api-reference:end @pyreon/reactivity>
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1471,6 +1505,18 @@ _bindText(() => count(), _$n.firstChild)`,
 setSanitizer(DOMPurify.sanitize)
 const clean = sanitizeHtml(userInput)`,
     notes: 'Sanitize an HTML string using the registered sanitizer (set via `setSanitizer()`). Falls back to the identity function if no sanitizer is registered. Used by the runtime when setting `innerHTML` on elements. See also: setSanitizer.',
+  },
+
+  'runtime-dom/__PYREON_DEVTOOLS__': {
+    signature: 'window.__PYREON_DEVTOOLS__: { version; getComponentTree(); getAllComponents(); highlight(id); onComponentMount(cb); onComponentUnmount(cb); enableOverlay(); disableOverlay(); reactive: PyreonReactiveDevtools }',
+    example: `// In the browser console (after the app has mounted):
+$p.tree()                              // root component entries
+window.__PYREON_DEVTOOLS__.reactive.activate()
+window.__PYREON_DEVTOOLS__.reactive.getGraph()  // { nodes, edges }`,
+    notes: 'Browser devtools hook, installed automatically on the first `mount()` (no-op on the server). Exposes the component tree + an element-picker overlay (also `Ctrl+Shift+P`) for the `@pyreon/devtools` Chrome extension, plus a `$p` console helper. The `reactive` namespace bridges `@pyreon/reactivity`’s opt-in graph: `reactive.activate()` / `deactivate()` start/stop tracking, `reactive.getGraph()` returns the live signal/computed/effect nodes + dependency edges, `reactive.getFires()` the bounded fire timeline — powering the extension’s Signals / Graph / Effects / Profiler / Console tabs. **Dev-only and tree-shaken from production builds**; `reactive` is zero-cost until `activate()` is called by an attached panel. See also: mount.',
+    mistakes: `- Reading it before the first \`mount()\` — it is installed by mount; it is \`undefined\` until then (and always \`undefined\` on the server / in production builds)
+- Expecting \`reactive.getGraph()\` to return data without calling \`reactive.activate()\` first — tracking is opt-in (zero-cost until a panel attaches)
+- Depending on it in app code — it is a dev-tooling hook, tree-shaken in production; never branch runtime behavior on its presence`,
   },
   // <gen-docs:api-reference:end @pyreon/runtime-dom>
 

@@ -74,7 +74,8 @@ describe('gen-docs — runtime-dom snapshot', () => {
 
   it('renders @pyreon/runtime-dom to MCP api-reference entries — one per api[] item', () => {
     const record = renderApiReferenceEntries(runtimeDomManifest)
-    expect(Object.keys(record).length).toBe(9)
+    // +1: __PYREON_DEVTOOLS__ (reactive-devtools hook surface).
+    expect(Object.keys(record).length).toBe(10)
     expect(Object.keys(record)).toContain('runtime-dom/mount')
     // Spot-check the flagship API — mount is the primary entry point
     const mount = record['runtime-dom/mount']!
