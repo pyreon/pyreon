@@ -24,7 +24,15 @@ export {
   sanitizeHtml,
   setSanitizer,
 } from './props'
-export { _bindDirect, _bindText, _mountSlot, _rsCollapse, _tpl, createTemplate } from './template'
+export {
+  _bindDirect,
+  _bindText,
+  _mountSlot,
+  _rsCollapse,
+  _rsCollapseH,
+  _tpl,
+  createTemplate,
+} from './template'
 export type { TransitionProps } from './transition'
 export { Transition } from './transition'
 export type { TransitionGroupProps } from './transition-group'
