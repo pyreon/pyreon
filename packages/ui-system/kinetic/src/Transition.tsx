@@ -232,8 +232,18 @@ const Transition = (props: TransitionProps): VNode | null => {
   // The `watch(stage)` effect above drives the enter animation when
   // `show` flips true; `applyEnter` (above) clears these residual
   // hidden-state classes so they don't fight `enterTo`.
+  // Picker mirrors what #719 introduced for the kinetic(tag).<mode>
+  // renderers (TransitionRenderer / TransitionItem / CollapseRenderer):
+  // prefer leave-end state, fall back to pre-enter state. The
+  // `enterStyle` fallback covers the preset path — `@pyreon/kinetic-presets`
+  // factories (fadeUp, blurInUp, slideLeft, …) populate `enterStyle` as
+  // the hidden state but may not set `leaveToStyle`. Without this
+  // fallback, preset users SSR-render VISIBLE → flash-on-hydration.
+  // (PR #717 shipped this branch with `leaveToStyle` alone; the class
+  // picker already had the `enterFrom` fallback. This commit aligns the
+  // style picker so both halves match.)
   const hiddenClass = props.leaveTo ?? props.enterFrom
-  const hiddenStyle = props.leaveToStyle
+  const hiddenStyle = props.leaveToStyle ?? props.enterStyle
   const childClass = childProps.class
   const mergedClass = hiddenClass
     ? cx([childClass as Parameters<typeof cx>[0], hiddenClass])
