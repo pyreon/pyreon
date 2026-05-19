@@ -663,7 +663,15 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
         output = injectSignalNames(output)
       }
 
-      return { code: output, map: null }
+      // R12: surface the compiler's V3 source map so stack traces /
+      // breakpoints in Pyreon components resolve to the right source line
+      // (the JS backend now emits one; substitutions shift line counts, so
+      // `map: null` previously mislocated every frame app-wide). Exact in
+      // build; in dev the small extra HMR / signal-name injections aren't
+      // re-mapped (still vastly better than no map). The native backend
+      // emits no map yet (its own scoped follow-up) → `null`, unchanged
+      // behaviour for that path.
+      return { code: output, map: result.map ?? null }
     },
 
     // ── SSR dev middleware ───────────────────────────────────────────────────

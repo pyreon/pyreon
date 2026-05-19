@@ -28,14 +28,32 @@ Compiler hardening rounds 11–20 — two more real reactivity bugs fixed
   (no shadowing-clobber regression); validated against all 180
   native-equivalence tests + full suite, binary rebuilt, bisect-verified.
 
-Also locked (proven, not yet fixed — scoped follow-ups, no behavior change
-here): R12 — `transformJSX` emits no sourcemap and substitutions shift line
-counts (`@pyreon/vite-plugin` returns `map:null`), so stack traces /
-breakpoints in components mislocate app-wide; R15 — a prop-derived-
-referencing element-valued const (`const el=<i class={cls}/>`) diverges
-between backends (JS inlines+duplicates the JSX reactively, native mounts the
-frozen const). Both carry self-discriminating `it.fails` locks that flip the
-moment the underlying semantics are unified.
+- R12 — `transformJSX` emitted NO source map and its substitutions shift
+  line counts (template emission expands one-line JSX into a multi-line
+  `_tpl(...)` factory), and `@pyreon/vite-plugin` returned `{ code, map: null }`
+  — so every runtime stack frame / debugger breakpoint in every Pyreon
+  component mislocated app-wide. Fixed: `transformJSX_JS` now applies its
+  existing disjoint `{start,end,text}` replacement set through MagicString
+  (`update`/`appendLeft`) and the generated preamble via `prepend`;
+  `toString()` is byte-identical to the prior concatenation (proven — the
+  full ~1240-test suite + 180 native-equivalence tests assert exact emitted
+  strings and stay green), while `generateMap()` yields a correct V3 map
+  (`prepend` shifts every mapping by the preamble's line count, accounting
+  for the line-shift). `@pyreon/vite-plugin` now returns that map. New
+  `magic-string` direct dependency on `@pyreon/compiler` (already a
+  transitive dep of the toolchain — +1 lockfile line, no new package in any
+  install). Build-mode maps are exact; dev-mode HMR / signal-name injections
+  add a small un-remapped offset (still vastly better than no map); the
+  native backend still emits no map (its own scoped follow-up). Bisect-
+  verified: neutralize the map production → the sourcemap specs fail while
+  byte-identity stays green; restore → pass.
+
+Still locked (proven, not yet fixed — scoped follow-up, no behavior change
+here): R15 — a prop-derived-referencing element-valued const
+(`const el=<i class={cls}/>`) diverges between backends (JS inlines+
+duplicates the JSX reactively, native mounts the frozen const); carries a
+self-discriminating `it.fails` lock that flips the moment the semantics are
+unified.
 
 No public API change. New tests only for the locks; the two fixes change
 emitted code for the buggy shapes (correctness) and are byte-equivalent
