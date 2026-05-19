@@ -1,7 +1,10 @@
 import type { ComponentFn, Props, VNodeChild } from '@pyreon/core'
 import { nativeCompat, provide, useContext } from '@pyreon/core'
 import type { HeadContextValue } from './context'
-import { createHeadContext, HeadContext } from './context'
+// Runtime VALUE import via self-package path so the build externalizes
+// the symbol — every sub-entry resolves to the same `lib/context.js` at
+// runtime. See `ssr.ts` for the full rationale + `tests/context-identity.test.ts`.
+import { createHeadContext, HeadContext } from '@pyreon/head/context'
 
 export interface HeadProviderProps extends Props {
   context?: HeadContextValue | undefined

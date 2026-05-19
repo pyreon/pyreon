@@ -30,6 +30,11 @@
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
     },
+    "./context": {
+      "bun": "./src/context.ts",
+      "import": "./lib/context.js",
+      "types": "./lib/types/context.d.ts"
+    },
     "./provider": {
       "bun": "./src/provider.ts",
       "import": "./lib/provider.js",

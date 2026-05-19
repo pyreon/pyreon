@@ -81,6 +81,7 @@ const subpaths: [string, string][] = [
   ['@pyreon/core/jsx-runtime', 'packages/core/core/src/jsx-runtime.ts'],
   ['@pyreon/core/jsx-dev-runtime', 'packages/core/core/src/jsx-dev-runtime.ts'],
   ['@pyreon/head/ssr', 'packages/core/head/src/ssr.ts'],
+  ['@pyreon/head/context', 'packages/core/head/src/context.ts'],
   ['@pyreon/server/client', 'packages/core/server/src/client.ts'],
   ['@pyreon/preact-compat/hooks', 'packages/tools/preact-compat/src/hooks.ts'],
   ['@pyreon/preact-compat/signals', 'packages/tools/preact-compat/src/signals.ts'],
