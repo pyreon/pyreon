@@ -1,5 +1,48 @@
 # @pyreon/zero
 
+## 0.20.0
+
+### Patch Changes
+
+- [#655](https://github.com/pyreon/pyreon/pull/655) [`cc3003c`](https://github.com/pyreon/pyreon/commit/cc3003c3e7ab2e8b9649c3aa6b5e001506916a0d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `faviconPlugin`: (1) fail the production build loudly when `sharp` is missing instead of silently shipping zero favicons; (2) cache-bust injected favicon `<link>` hrefs with a content-hash `?v=` query so a changed icon is actually re-downloaded by returning visitors.
+
+  Previously, if a `source` was configured but `sharp` wasn't installed, the plugin emitted a single swallow-able `console.warn` and generated nothing — `vite build` "succeeded" and the deployed site had **no favicons at all**, with no signal. That's the footgun.
+
+  Now: **dev** keeps the soft one-time warning (favicons just don't appear locally — iteration isn't blocked). A **production `vite build`** with a configured `source` and `sharp` missing is a **hard, actionable error** (`this.error` in `generateBundle`) — the build aborts with the install command, the source path, and the opt-out. To intentionally build without favicons, remove `faviconPlugin()`.
+
+  Bisect-proven via real `vite build`:
+
+  - `sharp` missing → build aborts with the actionable message, **no `dist`** (won't silently ship faviconless).
+  - `sharp` installed → build succeeds; all 8 assets (`favicon.ico/.svg`, 16/32 png, apple-touch-icon, icon-192/512, `site.webmanifest`) emitted **and** every `<head>` tag injected (`icon` svg+png, `apple-touch-icon`, `manifest`, `theme-color`).
+
+  **Cache-busting (same PR):** browsers cache favicons extremely aggressively, so a changed icon was never re-fetched by returning visitors (stable URLs, no hash). The injected `<link>` hrefs now carry a `?v=<hash>` derived from the source file content (FNV-1a) — same bytes → identical query (no cache churn), changed bytes → new query → browser re-downloads. The dev middleware strips the query before name-matching (dev serves fresh anyway). Theme-reactive favicons are unaffected — the light/dark swap toggles the `media` attribute, not `href`, so it's orthogonal. Documented caveat: the bare `/favicon.ico` convention request (no `<link>`) and the `site.webmanifest`'s internal icon entries keep stable URLs (host cache headers / re-resolved on PWA reinstall). Proven: real 3-build stable→change→revert; bisect-verified (stamp removed → 0 stamped links); pure unit test `favicon-version.test.ts` locks the hash contract.
+
+  Docs: new **Favicons** section in `docs/docs/zero.md` (one-source → full set + auto-injected head tags; `sharp` requirement + the dev-warn vs build-fail contract; cache-busting + caveats). No API change.
+
+- [#655](https://github.com/pyreon/pyreon/pull/655) [`cc3003c`](https://github.com/pyreon/pyreon/commit/cc3003c3e7ab2e8b9649c3aa6b5e001506916a0d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `imagePlugin`: resolve `?optimize` / `?component` imports importer-relative + alias-aware (the way Vite resolves `?url`).
+
+  `resolveId` embedded the raw, unresolved import id into the virtual id, so `load()` had to guess the path with cwd/`public` string math. Two documented patterns were broken (reported on bokisch.com, `@pyreon/zero@0.19.0`):
+
+  - `import x from './img.png?optimize'` — `load()` resolved `./img.png` against **cwd** (project root), not the **importer's** directory → `ENOENT` for the exact src-tree pattern the JSDoc advertises. (`?url` worked because Vite resolves it itself.)
+  - `import x from '~/assets/img.png?optimize'` (alias) — arrived already-absolute, then `join(root,'public',absPath)` **doubled** the path → `ENOENT`.
+
+  Only an image physically in `public/` imported as `/foo.png?optimize` worked.
+
+  Fix: `resolveId(id, importer)` now resolves the bare specifier via `this.resolve(bare, importer, { skipSelf: true })` (importer-relative + alias + extension resolution, identical to `?url`) and carries the **absolute** path through the virtual id. `load()` trusts an existing absolute path and only falls back to `<root>/public/…` for an unresolved leading-slash web path (`/foo.png?optimize`, where `this.resolve` returns null) — so that case keeps working. The same fix covers the SVG `?component` branch (same bug class).
+
+  Regression test `image-plugin-resolve.test.ts` (sharp-free): asserts the resolveId contract for relative + alias + public-path, and exercises `load()` end-to-end through the `?component` branch. Bisect-verified: reverting `resolveId` to the raw-id form fails 3/4 (the relative, alias, and load cases); restored → 4/4.
+
+- Updated dependencies [[`3499594`](https://github.com/pyreon/pyreon/commit/3499594585b7fcb650ac0f80be4bc355f741491b), [`2f38584`](https://github.com/pyreon/pyreon/commit/2f3858453c00e901b134dd4c15dad1eb3f793189), [`65e61eb`](https://github.com/pyreon/pyreon/commit/65e61eba20741a012b753b4c8c69045f408768b7), [`9aa21a0`](https://github.com/pyreon/pyreon/commit/9aa21a0ae858c9ca88744f4c0d3a730a5d35a29f), [`e348599`](https://github.com/pyreon/pyreon/commit/e3485990cb52c414efb4217d40d3ed24e9c461b7)]:
+  - @pyreon/reactivity@0.20.0
+  - @pyreon/runtime-dom@0.20.0
+  - @pyreon/vite-plugin@0.20.0
+  - @pyreon/core@0.20.0
+  - @pyreon/head@0.20.0
+  - @pyreon/router@0.20.0
+  - @pyreon/runtime-server@0.20.0
+  - @pyreon/server@0.20.0
+  - @pyreon/meta@0.20.0
+
 ## 0.19.0
 
 ### Minor Changes

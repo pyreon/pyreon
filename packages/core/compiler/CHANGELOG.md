@@ -1,5 +1,245 @@
 # @pyreon/compiler
 
+## 0.20.0
+
+### Minor Changes
+
+- [#659](https://github.com/pyreon/pyreon/pull/659) [`65e61eb`](https://github.com/pyreon/pyreon/commit/65e61eba20741a012b753b4c8c69045f408768b7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat: P0 compile-time rocketstyle wrapper-collapse (opt-in `pyreon({ collapse: true })`)
+
+  The vertical slice of the P0 RFC. A literal-prop rocketstyle call site
+  (`<Button state="primary" size="medium">Save</Button>` — every dimension
+  prop a string literal, no spread, static-text children) collapses from a
+  5-layer wrapper mount (rocketstyle → attrs HOC → Element → Wrapper →
+  styled) into ONE `_rsCollapse` cloneNode. E2 measured **44× wall-clock**,
+  `mountChild` 9→1, `styler.resolve` 22→0. **OFF by default** — zero
+  behaviour change unless `pyreon({ collapse: true })` is set.
+
+  Parity is guaranteed BY CONSTRUCTION, not by reimplementing the
+  rocketstyle chain in the compiler (RFC decision 2): the Vite plugin
+  spins ONE programmatic Vite-SSR server bound to the consumer's own
+  `vite.config`, renders the REAL component twice (light + dark), and
+  captures the resolved class + styler rule text — the same
+  `renderToString` + `@pyreon/styler` code path the app uses. Styler's
+  FNV-1a class hash is identical SSR vs DOM (its hydration contract), so
+  the build-resolved class is byte-for-byte the client-mounted class.
+
+  New public surface (all additive):
+
+  - `@pyreon/styler` — `StyleSheet.getStyleRules()` (raw SSR rule
+    snapshot) + `StyleSheet.injectRules(rules, key)` (idempotent
+    pre-resolved rule injection, no re-hash).
+  - `@pyreon/runtime-dom` — `_rsCollapse(html, lightClass, darkClass,
+isDark, bind?)` (one html-keyed `_tpl` cloneNode; class reactively
+    bound to the live mode accessor — RFC decision 1 dual-emit, mode swap
+    re-runs ONLY the className on the SAME node, no remount; decision 4
+    hoisted-factory). `runtime-dom` stays layer-pure (never imports
+    styler/ui-core — the styler injection is the emitted code's job).
+  - `@pyreon/compiler` — `scanCollapsibleSites()` +
+    `rocketstyleCollapseKey()` exports + `TransformOptions.collapseRocketstyle`.
+    Detection + emission live ONLY in the JS path; `transformJSX`
+    short-circuits to `transformJSX_JS` when the option is set (the Rust
+    binary doesn't implement it). A SINGLE shared `detectCollapsibleShape`
+    bail catalogue is used by both the plugin scan and the compiler emit
+    so resolution keys can't drift.
+  - `@pyreon/vite-plugin` — `pyreon({ collapse: true | PyreonCollapseOptions })`
+    - `createCollapseResolver` (Vite-SSR resolver, memoised, disposed in
+      `closeBundle`). Only the CLIENT graph collapses — the SSR graph keeps
+      the real mount.
+
+  Tested across 5 layers: styler `injectRules` (3 real-Chromium specs);
+  `_rsCollapse` (4 real-Chromium specs — light class, mode-flip-no-remount,
+  children dispose, shared parsed template); resolver vs the REAL
+  `@pyreon/ui-components` Button via Vite SSR (8 specs incl. determinism +
+  graceful bail on a non-existent export); compiler detection / emission /
+  full bail catalogue / once-per-module dedupe (13 specs); end-to-end
+  pipeline — real Button → resolver → scanner → compiler emits
+  `__rsCollapse` carrying the real SSR-resolved classes + class-stripped
+  template + rule bundle byte-for-byte. **Phase-4 RFC acceptance, real
+  Chromium, shipped `_rsCollapse` × the REAL `@pyreon/ui-components` Button**
+  (`examples/experiments/e2-static-rocketstyle/e2.browser.test.ts`, 2 specs):
+  (1) the collapsed `<button>` is `isEqualNode`-structurally-identical to
+  the real rocketstyle-mounted one with a char-for-char-equal `className`
+  and identical computed style; (2) the perf signature is exactly
+  `runtime.tpl ≥ 1` + `runtime.mountChild == 1` per Button (the real mount
+  is 8–9 mountChild) with **~27× wall-clock** (collapsed 0.20 ms vs
+  baseline 5.40 ms, in-suite benchmark). Additive guarantee: all 1079
+  `@pyreon/compiler` tests pass unchanged with collapse off.
+
+  Bisect-verified: disabling the compiler's `tryRocketstyleCollapse(node)`
+  detection call fails the 4 collapse-emission specs (`expected … to
+contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
+  specs still pass; restored → 13/13.
+
+  **Deliberately deferred (follow-up PRs, tracked in
+  `.claude/plans/open-work-2026-q3.md` §P0):** an `examples/ui-showcase`
+  build-with-collapse **verify-modes cell** (a build-artifact gate —
+  ui-showcase's Buttons all carry `onClick` → correctly bail, so it needs
+  a dedicated literal-prop demo route first; note the real-Chromium
+  DOM-parity + perf-counter acceptance is NOT deferred — it ships here as
+  the Phase-4 e2 specs above), and dev-mode collapse (build-shaped today —
+  dev keeps the normal mount, graceful). The
+  slice is fundamentally complete end-to-end (detect → resolve → emit →
+  parity-proven); these extend coverage, they are not gaps in the
+  mechanism. The RFC doc was removed once shipped — its decisions are now
+  the code, documented in `CLAUDE.md` → "Compile-time rocketstyle collapse".
+
+### Patch Changes
+
+- [#687](https://github.com/pyreon/pyreon/pull/687) [`c3df9db`](https://github.com/pyreon/pyreon/commit/c3df9dbbcf9e939c92e1c4843b59686cdd25589e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native (Rust) backend brought to 1:1 with the JS backend for the two
+  prop-derived/element-child fixes [#686](https://github.com/pyreon/pyreon/issues/686) landed on the JS side only. Without
+  this, the production-preferred native backend silently diverged.
+
+  - R7 — prop-derived inlining inside callback-nested JSX. `collect_prop_derived_idents`
+    (native/src/lib.rs) had empty `Arrow|FunctionExpression => {}` arms and no
+    JSX arm, so it never descended into a `.map(i => <li class={cls}/>)`
+    callback body: `const cls = props.t; items.map(i => <li class={cls}/>)` kept
+    `class={cls}` (const frozen at first render → reactivity SILENTLY LOST in
+    real builds) while the JS backend inlined `class={(props.t)}`. Fixed: the
+    arrow/function arms recurse into the body (concise + block) and JSX, with a
+    `pd_minus` scope filter that removes names a scope binds (params / nested
+    const-let / catch / loop) — byte-equivalent to the JS pass's scope-aware
+    enter/leave set, so recursing does NOT reintroduce the shadowing-param
+    clobber.
+
+  - R9 — element-valued binding as a bare JSX child. The JS backend (via [#686](https://github.com/pyreon/pyreon/issues/686))
+    mounts `const h=<h1/>; <div>{h}</div>` through `_mountSlot`; the native
+    backend still text-coerced it to `createTextNode(h)` ("[object Object]").
+    Fixed: the native backend tracks element-valued `const`/`let` bindings and
+    routes a bare `{h}` child through `_mountSlot`, mirroring the JS path.
+
+  No public API change; new cross-backend parity test only. native-equivalence
+  suite 244/244 (unchanged), full compiler suite green, all three mechanisms
+  bisect-verified (revert -> fail with the right error -> restore -> pass).
+
+  Known orthogonal limitation (pre-existing, NOT introduced here, NOT a
+  correctness bug): `{localArrowConst()}` whose body shadows via catch /
+  nested-const emits different but both semantically-correct representations
+  (JS inlines the arrow body; Rust binds the function reference). Outside the
+  native-equivalence contract and out of scope; disclosed for honesty.
+
+- [#686](https://github.com/pyreon/pyreon/pull/686) [`9a54705`](https://github.com/pyreon/pyreon/commit/9a54705c645ff2c3bee54fa8c6d411d1530b3187) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Compiler hardening sweep (10 systematic rounds — edge cases, miscompiles,
+  memory, cross-backend). Two real correctness bugs fixed; two more proven,
+  root-caused, and locked with self-discriminating tests (fixes scoped as
+  follow-ups); the rest disproved and locked with contract/characterization
+  tests so the verified behavior cannot silently regress.
+
+  Fixed (behavior changes):
+
+  - Scope-blind prop-derived inlining (silent miscompile + un-parseable emit).
+    The reactive-props inlining pass substituted any identifier whose NAME
+    matched a prop-derived const, with zero lexical-scope analysis. Idiomatic
+    code reusing a short name (a / x / i / item) as a later callback parameter
+    or nested local was MIS-COMPILED: a prop-derived const named the same as a
+    ".map" arrow parameter produced an arrow whose parameter was rewritten to a
+    member expression (un-parseable JS); a shadowing catch parameter likewise
+    produced un-parseable output; a nested "const a = 7; return a" silently
+    became "return props.x". The substitution is now lexically scope-aware
+    (scopeBoundPropDerived plus a shadowed set threaded through the walk),
+    mirroring the discipline the signal-auto-call pass already had. Genuine
+    (non-shadowed) and transitive inlining is unchanged. Bisect-verified.
+
+  - Raw C0 control bytes in source string/regex literals. The FNV-1a
+    rocketstyleCollapseKey builder embedded literal NUL and SOH bytes as field
+    separators (and a CLI ANSI module embedded a raw ESC), which classified the
+    compiler's primary source as binary (grep/rg silently skip it) and made a
+    cache-key separator silently mutable by formatters/editors. All replaced
+    with byte-identical Unicode escape sequences; the emitted FNV key is
+    provably unchanged. A repo-wide self-discriminating gate prevents
+    reintroduction.
+
+  Proven + locked (fixes scoped as tracked follow-ups, guarded by an it.fails
+  spec that flips green-to-red the moment the fix lands):
+
+  - JS-vs-Rust backend divergence: the native backend does not inline
+    prop-derived consts used inside callback-nested JSX (the
+    "const cls = props.t; items.map(i => <li class={cls}/>)" shape), so that
+    ubiquitous pattern silently loses reactivity under the production
+    (native-preferred) path. Root cause: collect_prop_derived_idents in
+    native/src/lib.rs has no recursion arm for arrow/function/JSX nodes.
+
+  - Element-valued const used as a bare JSX child is text-coerced
+    (createTextNode(x), which renders [object Object]) instead of mounted, even
+    though the compiler already lowered the const to a \_tpl(...) call and thus
+    knows it is an element.
+
+  No public API change. The new test suites add coverage only.
+
+- [#689](https://github.com/pyreon/pyreon/pull/689) [`bbccaaf`](https://github.com/pyreon/pyreon/commit/bbccaaf3ec2f5dc3eed3e7195a09023fc59575d1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Compiler hardening rounds 11–20 — two more real reactivity bugs fixed
+  (bisect-verified), plus regression locks for two proven gaps.
+
+  - R11 — signal auto-call was scope-blind. `autoCallSignals` inserted `()`
+    after every active-signal-named identifier with a hand-rolled skip-list
+    that did NOT cover callback parameter binding positions, and it walked the
+    wrapped expression scope-blind. A destructured/plain callback param
+    reusing a signal's name was wrongly auto-called:
+    `const x = signal(0); [{x:1}].map(({x}) => <li>{x}</li>)` emitted
+    `<li>{x()}</li>` — `x` is the map item (1) → `1()` runtime TypeError (the
+    signal twin of the R2 prop-derived scope bug). Fixed: `findSignalIdents` is
+    now block-accurate scope-aware (`scopeBoundSignals` + a `shadowed` set with
+    enter/leave, mirroring R2's `findIdents`); legitimate non-shadowed signal
+    reads still auto-call. The JS backend now converges onto the
+    already-correct native backend (no new divergence).
+
+  - R13 — native-backend R7 residual. The resolution gate `accesses_props`
+    (native/src/lib.rs) plus `collect_pd_in_stmt`'s statement coverage skipped
+    prop-derived refs nested inside a callback whose body is a
+    while/switch/try/labeled statement, so the production-preferred native
+    backend silently under-inlined (`class={c}`) where JS inlined
+    `class={(props.x)}` — reactivity lost. Fixed by completing the native
+    statement-walker coverage with the same `pd_minus` scope-filter discipline
+    (no shadowing-clobber regression); validated against all 180
+    native-equivalence tests + full suite, binary rebuilt, bisect-verified.
+
+  - R12 — `transformJSX` emitted NO source map and its substitutions shift
+    line counts (template emission expands one-line JSX into a multi-line
+    `_tpl(...)` factory), and `@pyreon/vite-plugin` returned `{ code, map: null }`
+    — so every runtime stack frame / debugger breakpoint in every Pyreon
+    component mislocated app-wide. Fixed: `transformJSX_JS` now applies its
+    existing disjoint `{start,end,text}` replacement set through MagicString
+    (`update`/`appendLeft`) and the generated preamble via `prepend`;
+    `toString()` is byte-identical to the prior concatenation (proven — the
+    full ~1240-test suite + 180 native-equivalence tests assert exact emitted
+    strings and stay green), while `generateMap()` yields a correct V3 map
+    (`prepend` shifts every mapping by the preamble's line count, accounting
+    for the line-shift). `@pyreon/vite-plugin` now returns that map. New
+    `magic-string` direct dependency on `@pyreon/compiler` (already a
+    transitive dep of the toolchain — +1 lockfile line, no new package in any
+    install). Build-mode maps are exact; dev-mode HMR / signal-name injections
+    add a small un-remapped offset (still vastly better than no map); the
+    native backend still emits no map (its own scoped follow-up). Bisect-
+    verified: neutralize the map production → the sourcemap specs fail while
+    byte-identity stays green; restore → pass.
+
+  Still locked (proven, not yet fixed — scoped follow-up, no behavior change
+  here): R15 — a prop-derived-referencing element-valued const
+  (`const el=<i class={cls}/>`) diverges between backends (JS inlines+
+  duplicates the JSX reactively, native mounts the frozen const); carries a
+  self-discriminating `it.fails` lock that flips the moment the semantics are
+  unified.
+
+  No public API change. New tests only for the locks; the two fixes change
+  emitted code for the buggy shapes (correctness) and are byte-equivalent
+  across backends for everything else (R20 adds a JS↔Rust equivalence sweep
+  gate over the rounds-11–19 corpus).
+
+- [#679](https://github.com/pyreon/pyreon/pull/679) [`24a063c`](https://github.com/pyreon/pyreon/commit/24a063ccfa2ef267927dfd68886be24c397ccd72) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `detectPartialCollapsibleShape` + `CollapsibleHandler` — PR 1 of the
+  partial-collapse build (open-work [#1](https://github.com/pyreon/pyreon/issues/1)). Purely additive: a new exported
+  detector for the `on*`-handler-only collapsible subset (literal dimension
+  props + peeled event handlers). No production path calls it yet (the
+  `tryRocketstyleCollapse` fallback + plugin scan land in a follow-up PR),
+  so existing compiler behaviour is byte-unchanged.
+
+- [#683](https://github.com/pyreon/pyreon/pull/683) [`a086769`](https://github.com/pyreon/pyreon/commit/a0867699bdeca87f34e60fef7aa867a75a24d815) Thanks [@vitbokisch](https://github.com/vitbokisch)! - PR 3 of the partial-collapse build (open-work [#1](https://github.com/pyreon/pyreon/issues/1)): `tryRocketstyleCollapse`
+  falls back to `tryPartialCollapse` (PR 1's `detectPartialCollapsibleShape`)
+  when the full `detectCollapsibleShape` bails, emitting `__rsCollapseH(...)`
+  - a residual-handlers object (consumed by PR 2's `_rsCollapseH`) for the
+    `on*`-handler-only subset. Purely additive — the full-collapse and
+    non-collapse code paths are byte-identical (the only delta is the
+    `if (!shape)` fallback line + a conditional `_rsCollapseH` import that is
+    byte-identical when no partial site fired). Off by default; emits only
+    when `collapseRocketstyle` is configured AND the plugin has resolved the
+    partial site (the resolver/plugin-scan half is the follow-up PR).
+
 ## 0.19.0
 
 ### Minor Changes

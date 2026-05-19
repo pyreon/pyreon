@@ -1,5 +1,20 @@
 # @pyreon/experiments
 
+## 0.1.5
+
+### Patch Changes
+
+- Updated dependencies [[`3499594`](https://github.com/pyreon/pyreon/commit/3499594585b7fcb650ac0f80be4bc355f741491b), [`65e61eb`](https://github.com/pyreon/pyreon/commit/65e61eba20741a012b753b4c8c69045f408768b7), [`9aa21a0`](https://github.com/pyreon/pyreon/commit/9aa21a0ae858c9ca88744f4c0d3a730a5d35a29f)]:
+  - @pyreon/reactivity@0.20.0
+  - @pyreon/runtime-dom@0.20.0
+  - @pyreon/styler@0.20.0
+  - @pyreon/perf-harness@0.13.1
+  - @pyreon/core@0.20.0
+  - @pyreon/elements@0.20.0
+  - @pyreon/ui-core@0.20.0
+  - @pyreon/ui-components@0.15.5
+  - @pyreon/ui-theme@0.13.7
+
 ## 0.1.4
 
 ### Patch Changes

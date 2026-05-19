@@ -1,5 +1,130 @@
 # @pyreon/vite-plugin
 
+## 0.20.0
+
+### Minor Changes
+
+- [#659](https://github.com/pyreon/pyreon/pull/659) [`65e61eb`](https://github.com/pyreon/pyreon/commit/65e61eba20741a012b753b4c8c69045f408768b7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat: P0 compile-time rocketstyle wrapper-collapse (opt-in `pyreon({ collapse: true })`)
+
+  The vertical slice of the P0 RFC. A literal-prop rocketstyle call site
+  (`<Button state="primary" size="medium">Save</Button>` — every dimension
+  prop a string literal, no spread, static-text children) collapses from a
+  5-layer wrapper mount (rocketstyle → attrs HOC → Element → Wrapper →
+  styled) into ONE `_rsCollapse` cloneNode. E2 measured **44× wall-clock**,
+  `mountChild` 9→1, `styler.resolve` 22→0. **OFF by default** — zero
+  behaviour change unless `pyreon({ collapse: true })` is set.
+
+  Parity is guaranteed BY CONSTRUCTION, not by reimplementing the
+  rocketstyle chain in the compiler (RFC decision 2): the Vite plugin
+  spins ONE programmatic Vite-SSR server bound to the consumer's own
+  `vite.config`, renders the REAL component twice (light + dark), and
+  captures the resolved class + styler rule text — the same
+  `renderToString` + `@pyreon/styler` code path the app uses. Styler's
+  FNV-1a class hash is identical SSR vs DOM (its hydration contract), so
+  the build-resolved class is byte-for-byte the client-mounted class.
+
+  New public surface (all additive):
+
+  - `@pyreon/styler` — `StyleSheet.getStyleRules()` (raw SSR rule
+    snapshot) + `StyleSheet.injectRules(rules, key)` (idempotent
+    pre-resolved rule injection, no re-hash).
+  - `@pyreon/runtime-dom` — `_rsCollapse(html, lightClass, darkClass,
+isDark, bind?)` (one html-keyed `_tpl` cloneNode; class reactively
+    bound to the live mode accessor — RFC decision 1 dual-emit, mode swap
+    re-runs ONLY the className on the SAME node, no remount; decision 4
+    hoisted-factory). `runtime-dom` stays layer-pure (never imports
+    styler/ui-core — the styler injection is the emitted code's job).
+  - `@pyreon/compiler` — `scanCollapsibleSites()` +
+    `rocketstyleCollapseKey()` exports + `TransformOptions.collapseRocketstyle`.
+    Detection + emission live ONLY in the JS path; `transformJSX`
+    short-circuits to `transformJSX_JS` when the option is set (the Rust
+    binary doesn't implement it). A SINGLE shared `detectCollapsibleShape`
+    bail catalogue is used by both the plugin scan and the compiler emit
+    so resolution keys can't drift.
+  - `@pyreon/vite-plugin` — `pyreon({ collapse: true | PyreonCollapseOptions })`
+    - `createCollapseResolver` (Vite-SSR resolver, memoised, disposed in
+      `closeBundle`). Only the CLIENT graph collapses — the SSR graph keeps
+      the real mount.
+
+  Tested across 5 layers: styler `injectRules` (3 real-Chromium specs);
+  `_rsCollapse` (4 real-Chromium specs — light class, mode-flip-no-remount,
+  children dispose, shared parsed template); resolver vs the REAL
+  `@pyreon/ui-components` Button via Vite SSR (8 specs incl. determinism +
+  graceful bail on a non-existent export); compiler detection / emission /
+  full bail catalogue / once-per-module dedupe (13 specs); end-to-end
+  pipeline — real Button → resolver → scanner → compiler emits
+  `__rsCollapse` carrying the real SSR-resolved classes + class-stripped
+  template + rule bundle byte-for-byte. **Phase-4 RFC acceptance, real
+  Chromium, shipped `_rsCollapse` × the REAL `@pyreon/ui-components` Button**
+  (`examples/experiments/e2-static-rocketstyle/e2.browser.test.ts`, 2 specs):
+  (1) the collapsed `<button>` is `isEqualNode`-structurally-identical to
+  the real rocketstyle-mounted one with a char-for-char-equal `className`
+  and identical computed style; (2) the perf signature is exactly
+  `runtime.tpl ≥ 1` + `runtime.mountChild == 1` per Button (the real mount
+  is 8–9 mountChild) with **~27× wall-clock** (collapsed 0.20 ms vs
+  baseline 5.40 ms, in-suite benchmark). Additive guarantee: all 1079
+  `@pyreon/compiler` tests pass unchanged with collapse off.
+
+  Bisect-verified: disabling the compiler's `tryRocketstyleCollapse(node)`
+  detection call fails the 4 collapse-emission specs (`expected … to
+contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
+  specs still pass; restored → 13/13.
+
+  **Deliberately deferred (follow-up PRs, tracked in
+  `.claude/plans/open-work-2026-q3.md` §P0):** an `examples/ui-showcase`
+  build-with-collapse **verify-modes cell** (a build-artifact gate —
+  ui-showcase's Buttons all carry `onClick` → correctly bail, so it needs
+  a dedicated literal-prop demo route first; note the real-Chromium
+  DOM-parity + perf-counter acceptance is NOT deferred — it ships here as
+  the Phase-4 e2 specs above), and dev-mode collapse (build-shaped today —
+  dev keeps the normal mount, graceful). The
+  slice is fundamentally complete end-to-end (detect → resolve → emit →
+  parity-proven); these extend coverage, they are not gaps in the
+  mechanism. The RFC doc was removed once shipped — its decisions are now
+  the code, documented in `CLAUDE.md` → "Compile-time rocketstyle collapse".
+
+### Patch Changes
+
+- [#674](https://github.com/pyreon/pyreon/pull/674) [`2f38584`](https://github.com/pyreon/pyreon/commit/2f3858453c00e901b134dd4c15dad1eb3f793189) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon({ collapse: true })` is now correctly **build-only**. Pre-fix the rocketstyle-collapse `transform`-hook block was gated only `!isSsr`, so it also ran under `vite dev`: a leaked per-process nested Vite SSR server (its `closeBundle` teardown is a build-only Rollup hook) plus a class frozen against the user's theme-source HMR edits — strictly worse than the HMR-reactive normal mount.
+
+  The block is now gated `if (collapseEnabled && isBuild && !isSsr)`. `vite dev` keeps the normal rocketstyle mount and the resolver is never constructed; the plugin surfaces the build-only contract once per dev process via `this.info` so an opted-in consumer isn't left wondering why nothing collapsed. Production `vite build` is unchanged. No public API change — `collapse` already behaved this way in build; this makes the dev no-op explicit, leak-free, and tested (stub-resolver bisect-verified `rocketstyle-collapse-dev.test.ts`).
+
+- [#704](https://github.com/pyreon/pyreon/pull/704) [`e348599`](https://github.com/pyreon/pyreon/commit/e3485990cb52c414efb4217d40d3ed24e9c461b7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(svelte-compat): new compat layer — Svelte importable runtime API on Pyreon
+
+  `@pyreon/svelte-compat` is the fifth compat layer (alongside
+  react / preact / vue / solid). It shims the Svelte APIs code actually
+  `import`s, backed by Pyreon's signal-based reactive engine:
+
+  - **`svelte/store`** — `writable`, `readable`, `derived` (single +
+    array, sync + async/cleanup forms), `get`, `readonly`. Store contract
+    (`subscribe(run, invalidate?) → unsubscribe`, lazy
+    `start(set, update?) → stop` notifier with `0→1` / `1→0` semantics)
+    matches Svelte exactly.
+  - **`svelte`** — `onMount` (returned cleanup runs on destroy, per
+    Svelte's contract), `onDestroy`, `beforeUpdate`, `afterUpdate`,
+    `tick`, `setContext`, `getContext`, `hasContext`, `getAllContexts`,
+    `createEventDispatcher`, `mount`, `unmount`, `flushSync`.
+  - Re-exports `For` / `Show` / `Switch` / `Match` / `Suspense` /
+    `ErrorBoundary` for control-flow parity.
+
+  Scope boundary (same as solid-compat draws around Solid's compiler):
+  no `.svelte` SFC compiler, no Svelte 5 rune _syntax_
+  (`$state` / `$derived` / `$effect` / `$store` sugar) — compiler
+  constructs, not runtime imports. A component that subscribes to a store
+  in its body is the faithful equivalent of `$store` auto-subscription:
+  it re-renders on store change and auto-cleans on unmount.
+
+  `@pyreon/vite-plugin` (patch): `pyreon({ compat: 'svelte' })` now
+  aliases `svelte` / `svelte/store` → `@pyreon/svelte-compat` and routes
+  JSX through the compat runtime.
+
+  Covered by unit tests (51, coverage 97.7% stmts / 87.8% branch),
+  real-Chromium browser smoke (4), and the compat-layers e2e gate
+  (`examples/svelte-compat`, port 5182).
+
+- Updated dependencies [[`c3df9db`](https://github.com/pyreon/pyreon/commit/c3df9dbbcf9e939c92e1c4843b59686cdd25589e), [`9a54705`](https://github.com/pyreon/pyreon/commit/9a54705c645ff2c3bee54fa8c6d411d1530b3187), [`bbccaaf`](https://github.com/pyreon/pyreon/commit/bbccaaf3ec2f5dc3eed3e7195a09023fc59575d1), [`24a063c`](https://github.com/pyreon/pyreon/commit/24a063ccfa2ef267927dfd68886be24c397ccd72), [`a086769`](https://github.com/pyreon/pyreon/commit/a0867699bdeca87f34e60fef7aa867a75a24d815), [`65e61eb`](https://github.com/pyreon/pyreon/commit/65e61eba20741a012b753b4c8c69045f408768b7)]:
+  - @pyreon/compiler@0.20.0
+
 ## 0.19.0
 
 ### Patch Changes

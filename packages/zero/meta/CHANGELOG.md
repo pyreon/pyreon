@@ -1,5 +1,38 @@
 # @pyreon/meta
 
+## 0.20.0
+
+### Patch Changes
+
+- Updated dependencies [[`9ae6f42`](https://github.com/pyreon/pyreon/commit/9ae6f42fa0990c28173fbc7898c073d696a7ffff), [`3499594`](https://github.com/pyreon/pyreon/commit/3499594585b7fcb650ac0f80be4bc355f741491b), [`65e61eb`](https://github.com/pyreon/pyreon/commit/65e61eba20741a012b753b4c8c69045f408768b7)]:
+  - @pyreon/kinetic@0.20.0
+  - @pyreon/reactivity@0.20.0
+  - @pyreon/styler@0.20.0
+  - @pyreon/charts@0.20.0
+  - @pyreon/code@0.20.0
+  - @pyreon/feature@0.20.0
+  - @pyreon/flow@0.20.0
+  - @pyreon/form@0.20.0
+  - @pyreon/hooks@0.20.0
+  - @pyreon/hotkeys@0.20.0
+  - @pyreon/i18n@0.20.0
+  - @pyreon/machine@0.20.0
+  - @pyreon/permissions@0.20.0
+  - @pyreon/query@0.20.0
+  - @pyreon/state-tree@0.20.0
+  - @pyreon/storage@0.20.0
+  - @pyreon/store@0.20.0
+  - @pyreon/table@0.20.0
+  - @pyreon/validation@0.20.0
+  - @pyreon/virtual@0.20.0
+  - @pyreon/coolgrid@0.20.0
+  - @pyreon/elements@0.20.0
+  - @pyreon/rocketstyle@0.20.0
+  - @pyreon/ui-core@0.20.0
+  - @pyreon/unistyle@0.20.0
+  - @pyreon/attrs@0.20.0
+  - @pyreon/kinetic-presets@0.20.0
+
 ## 0.19.0
 
 ### Patch Changes

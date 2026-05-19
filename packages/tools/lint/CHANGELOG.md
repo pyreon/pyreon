@@ -1,5 +1,20 @@
 # @pyreon/lint
 
+## 0.20.0
+
+### Patch Changes
+
+- [#656](https://github.com/pyreon/pyreon/pull/656) [`abda63c`](https://github.com/pyreon/pyreon/commit/abda63c541343cfe967a5c70ce223a6675ceaa8e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon-lint` text output now follows the Pyreon brand handoff ([#651](https://github.com/pyreon/pyreon/issues/651)) — CLI spec §6.5 — matching the `pyreon doctor` change.
+
+  New self-contained `lint/src/ansi.ts` (mirrors `@pyreon/cli`'s `doctor/render/ansi.ts`; no shared module — both are separate published packages that deliberately avoid a runtime ANSI dependency). Brand tokens map to their nearest **xterm-256** index, emitted as 8-bit SGR (`38;5;N`) — the handoff mandates _"256-color terminal palette must survive (no truecolor-only colors)"_, so there is no `38;2;r;g;b`. Mapping: error→ember-core `#FF5E1A` (202), warning→ember-warm `#FFC83D` (220), info→cyan `#22D3EE` (45); severity glyphs `✗` / `!` / `ℹ` per §6.5; file path `bold`, loc/ruleId `dim`. Ember stays scarce by construction (only the error + warning severities), as the brand mandates.
+
+  Also closes a pre-existing correctness gap: `reporter.ts` previously emitted raw ANSI (`\x1b[31m`) **unconditionally** — colored output even when piped to a file or under `NO_COLOR`. `ansi.ts` adds the standard gate (`NO_COLOR` → off, `FORCE_COLOR=0/set` → off/on, else `process.stdout.isTTY`), parity with the doctor renderer.
+
+  `--format json` and `--format compact` are untouched (machine formats, never colored). Verified: dependency-free proof the emitted codes are exactly `38;5;{202,220,45}` with zero `38;2` truecolor, and `NO_COLOR` yields plain text; `@pyreon/lint` reporter tests 10/10 pass; oxlint clean.
+
+- Updated dependencies [[`c3df9db`](https://github.com/pyreon/pyreon/commit/c3df9dbbcf9e939c92e1c4843b59686cdd25589e), [`9a54705`](https://github.com/pyreon/pyreon/commit/9a54705c645ff2c3bee54fa8c6d411d1530b3187), [`bbccaaf`](https://github.com/pyreon/pyreon/commit/bbccaaf3ec2f5dc3eed3e7195a09023fc59575d1), [`24a063c`](https://github.com/pyreon/pyreon/commit/24a063ccfa2ef267927dfd68886be24c397ccd72), [`a086769`](https://github.com/pyreon/pyreon/commit/a0867699bdeca87f34e60fef7aa867a75a24d815), [`65e61eb`](https://github.com/pyreon/pyreon/commit/65e61eba20741a012b753b4c8c69045f408768b7)]:
+  - @pyreon/compiler@0.20.0
+
 ## 0.19.0
 
 ### Minor Changes

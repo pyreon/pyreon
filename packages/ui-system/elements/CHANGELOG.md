@@ -1,5 +1,15 @@
 # @pyreon/elements
 
+## 0.20.0
+
+### Patch Changes
+
+- Updated dependencies [[`3499594`](https://github.com/pyreon/pyreon/commit/3499594585b7fcb650ac0f80be4bc355f741491b)]:
+  - @pyreon/reactivity@0.20.0
+  - @pyreon/core@0.20.0
+  - @pyreon/ui-core@0.20.0
+  - @pyreon/unistyle@0.20.0
+
 ## 0.19.0
 
 ### Patch Changes
