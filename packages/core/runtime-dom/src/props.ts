@@ -265,6 +265,22 @@ function applyEventProp(el: Element, key: string, value: unknown): Cleanup | nul
 }
 
 /**
+ * Bind ONE event handler through the CANONICAL event path
+ * (`applyEventProp` — the same delegation, batching, and exact
+ * `onXxx`→event-name normalization every compiler-emitted handler
+ * uses). PR 2 of the partial-collapse build (open-work #1): a
+ * collapsed-with-handler site (`_rsCollapseH`) re-attaches the residual
+ * handlers `detectPartialCollapsibleShape` (compiler PR 1) peeled off.
+ * Contract-consistent BY CONSTRUCTION — it IS `applyEventProp`, not a
+ * re-implementation — so a partially-collapsed `<Button onClick=…>`
+ * behaves byte-identically to the 5-layer mount it replaced (same
+ * delegated-event prop slot, same `batch()` wrapping, same cleanup).
+ */
+export function _bindEvent(el: Element, key: string, handler: unknown): Cleanup | null {
+  return applyEventProp(el, key, handler)
+}
+
+/**
  * Sink for a single prop's CALLED value (always a primitive / object /
  * `null` — never a function). Called both directly for static values and
  * from the reactive `renderEffect` for accessor-bound values.

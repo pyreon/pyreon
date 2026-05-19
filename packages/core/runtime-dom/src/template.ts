@@ -1,6 +1,7 @@
 import type { NativeItem, VNodeChild } from '@pyreon/core'
 import { renderEffect } from '@pyreon/reactivity'
 import { mountChild } from './mount'
+import { _bindEvent } from './props'
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
@@ -243,6 +244,50 @@ export function _rsCollapse(
     return () => {
       disposeClass()
       disposeChildren()
+    }
+  })
+}
+
+/**
+ * `_rsCollapse` PLUS residual-handler re-attach — PR 2 of the
+ * partial-collapse build (open-work #1). The compiler's
+ * `detectPartialCollapsibleShape` (PR 1) peels `on*` handlers off a
+ * literal-prop rocketstyle site (handlers are orthogonal to the
+ * SSR-resolved styler class — an event binding never changes rendered
+ * CSS — so the resolved `templateHtml`/`lightClass`/`darkClass` are
+ * byte-identical to a full-collapse site's). This is exactly
+ * `_rsCollapse` (one `_tpl` cloneNode, dual-emit reactive class via
+ * `_bindDirect`, NO remount on mode swap) with each peeled handler
+ * re-attached through the CANONICAL `_bindEvent` → `applyEventProp`
+ * path (delegation + batching + name normalization), so the collapsed
+ * node behaves byte-identically to the 5-layer mount it replaced.
+ *
+ * @param handlers  `{ onClick: fn, onPointerEnter: fn, … }` — the peeled
+ *   residual handlers; compiler PR 3 emits this object literal from the
+ *   sliced source spans `detectPartialCollapsibleShape` returned.
+ */
+export function _rsCollapseH(
+  html: string,
+  lightClass: string,
+  darkClass: string,
+  isDark: () => boolean,
+  handlers: Record<string, unknown>,
+  bind?: ((el: HTMLElement) => (() => void) | null) | null,
+): NativeItem {
+  return _tpl(html, (el) => {
+    const disposeClass = _bindDirect(isDark as unknown as { _v?: unknown }, (v) => {
+      el.className = v ? darkClass : lightClass
+    })
+    const handlerDisposers: (() => void)[] = []
+    for (const key in handlers) {
+      const d = _bindEvent(el, key, handlers[key])
+      if (d) handlerDisposers.push(d)
+    }
+    const disposeChildren = bind ? bind(el) : null
+    return () => {
+      disposeClass()
+      for (const d of handlerDisposers) d()
+      if (disposeChildren) disposeChildren()
     }
   })
 }
