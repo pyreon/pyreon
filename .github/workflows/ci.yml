@@ -867,6 +867,27 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
+      # The trufflehog action `docker run`s ghcr.io/trufflesecurity/
+      # trufflehog at job runtime. ghcr.io intermittently times out on
+      # the manifest fetch (exit 125, BEFORE any scan) — and since this
+      # is a REQUIRED check, that flake blocks every PR repo-wide on bad
+      # luck (observed on #656, #688). Pre-pull the image with retry +
+      # backoff into the local Docker cache so the action finds it
+      # locally and never performs the flaky network pull. This adds
+      # ZERO change to the trufflehog action SHA, `--only-verified`
+      # args, or scan scope — the security posture is identical; only
+      # the image fetch is made resilient. A genuine sustained ghcr.io
+      # outage still fails (correctly) after honest retries.
+      - name: Pre-pull trufflehog image (ghcr.io flake-resilient)
+        run: |
+          img="ghcr.io/trufflesecurity/trufflehog:latest"
+          for i in 1 2 3 4; do
+            if docker pull "$img"; then exit 0; fi
+            echo "::warning::ghcr.io pull attempt $i/4 failed for $img; backing off ${i}0s"
+            sleep "${i}0"
+          done
+          echo "::error::trufflehog image pull failed after 4 attempts — genuine ghcr.io outage, not a transient flake"
+          exit 1
       - uses: trufflesecurity/trufflehog@37b77001d0174ebec2fcca2bd83ff83a6d45a3ab # v3.95.3
         with:
           extra_args: --only-verified
