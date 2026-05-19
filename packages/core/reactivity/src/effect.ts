@@ -1,3 +1,4 @@
+import { _rdRecordFire, _rdRegister } from './reactive-devtools'
 import { getCurrentScope } from './scope'
 import { _restoreActiveEffect, _setActiveEffect, setDepsCollector, withTracking } from './tracking'
 
@@ -211,8 +212,10 @@ export function effect(fn: () => (() => void) | void): Effect {
 
   const run = () => {
     if (disposed) return
-    if (process.env.NODE_ENV !== 'production')
+    if (process.env.NODE_ENV !== 'production') {
       _countSink.__pyreon_count__?.('reactivity.effectRun')
+      _rdRecordFire(run)
+    }
     // Run previous cleanup before re-running
     runCleanup()
     // Start a new inner-effect collection window. Effects created during
@@ -253,6 +256,9 @@ export function effect(fn: () => (() => void) | void): Effect {
     if (!isFirstRun) scope?.notifyEffectRan()
     isFirstRun = false
   }
+
+  if (process.env.NODE_ENV !== 'production')
+    _rdRegister(run, 'effect', null, run, undefined)
 
   run()
 
@@ -408,6 +414,9 @@ export function renderEffect(fn: () => void): () => void {
       renderEffectFullTrack(deps, run, trackedFn)
     }
   }
+
+  if (process.env.NODE_ENV !== 'production')
+    _rdRegister(run, 'effect', null, run, undefined)
 
   run()
 
