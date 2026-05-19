@@ -1996,14 +1996,95 @@ export function transformJSX_JS(
 
   /** Auto-insert () after signal variable references in the expression source.
    *  Uses the AST to find exact Identifier positions — never scans raw text. */
+  // Recursively collect identifier names bound by a pattern (params /
+  // declarators). Self-contained twin of resolveIdentifiersInText's
+  // `patternBindingNames` (different closure scope; kept local to avoid a
+  // risky shared-helper hoist).
+  function sigPatternNames(p: N, out: string[]): void {
+    if (!p) return
+    switch (p.type) {
+      case 'Identifier':
+        out.push(p.name)
+        break
+      case 'ObjectPattern':
+        for (const pr of p.properties ?? []) {
+          if (pr.type === 'RestElement') sigPatternNames(pr.argument, out)
+          else sigPatternNames(pr.value ?? pr.key, out)
+        }
+        break
+      case 'ArrayPattern':
+        for (const el of p.elements ?? []) sigPatternNames(el, out)
+        break
+      case 'AssignmentPattern':
+        sigPatternNames(p.left, out)
+        break
+      case 'RestElement':
+        sigPatternNames(p.argument, out)
+        break
+    }
+  }
+
+  // Signal names a scope-introducing node binds FOR ITS OWN SUBTREE
+  // (block-accurate lexical scoping). Mirrors scopeBoundPropDerived but
+  // against `signalVars` — a same-named inner binding (callback param,
+  // nested const, catch/loop var) shadows the signal and must NOT be
+  // auto-called (doing so emits `paramValue()` → runtime TypeError).
+  function scopeBoundSignals(node: N): string[] {
+    const out: string[] = []
+    const t = node.type
+    const declNames = (declNode: N): void => {
+      for (const d of declNode.declarations ?? []) {
+        // A `const x = signal(...)` re-declaration is itself a signal, not a
+        // shadow — leave it for the normal signalVars path.
+        if (d.id?.type === 'Identifier' && d.init && isSignalCall(d.init)) continue
+        sigPatternNames(d.id, out)
+      }
+    }
+    if (
+      t === 'ArrowFunctionExpression' ||
+      t === 'FunctionExpression' ||
+      t === 'FunctionDeclaration'
+    ) {
+      for (const p of node.params ?? []) sigPatternNames(p, out)
+    } else if (t === 'CatchClause') {
+      sigPatternNames(node.param, out)
+    } else if (t === 'ForStatement') {
+      if (node.init?.type === 'VariableDeclaration') declNames(node.init)
+    } else if (t === 'ForInStatement' || t === 'ForOfStatement') {
+      if (node.left?.type === 'VariableDeclaration') declNames(node.left)
+    } else if (t === 'BlockStatement' || t === 'StaticBlock') {
+      const stmts = node.body ?? node.statements
+      if (Array.isArray(stmts)) {
+        for (const s of stmts) {
+          if (s.type === 'VariableDeclaration') declNames(s)
+          else if (s.type === 'FunctionDeclaration' && s.id?.type === 'Identifier') out.push(s.id.name)
+          else if (s.type === 'ClassDeclaration' && s.id?.type === 'Identifier') out.push(s.id.name)
+        }
+      }
+    }
+    return out.filter((n) => signalVars.has(n))
+  }
+
   function autoCallSignals(text: string, expr: N): string {
     const start = expr.start as number
     // Collect signal identifier positions that need auto-calling
     const idents: { start: number; end: number }[] = []
+    // Local lexical shadow set — a signal-named binding introduced INSIDE
+    // the rewritten expression (callback param, nested const, …) is NOT the
+    // signal and must not get `()` (R11: scope-blind rewrite emitted
+    // `({x}) => <li>{x()}</li>` → `1()` runtime crash).
+    const shadowed = new Set<string>()
 
     function findSignalIdents(node: N): void {
       if ((node.start as number) >= start + text.length || (node.end as number) <= start) return
-      if (node.type === 'Identifier' && isActiveSignal(node.name)) {
+      const introduced: string[] = []
+      for (const n of scopeBoundSignals(node)) {
+        if (!shadowed.has(n)) {
+          shadowed.add(n)
+          introduced.push(n)
+        }
+      }
+      if (node.type === 'Identifier' && isActiveSignal(node.name) && !shadowed.has(node.name)) {
         const parent = findParent(node)
         // Skip property name positions (obj.name)
         if (parent && parent.type === 'MemberExpression' && parent.property === node && !parent.computed) return
@@ -2041,6 +2122,7 @@ export function transformJSX_JS(
         idents.push({ start: node.start as number, end: node.end as number })
       }
       forEachChildFast(node, findSignalIdents)
+      for (const n of introduced) shadowed.delete(n)
     }
     findSignalIdents(expr)
 
