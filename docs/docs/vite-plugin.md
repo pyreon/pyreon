@@ -294,6 +294,16 @@ The Pyreon compiler transform does three things:
 
 Compiler warnings are surfaced in the terminal via Vite's warning system, including the file path, line, and column number.
 
+### Source maps
+
+The plugin returns the compiler's **V3 source map** to Vite, so runtime stack traces and debugger breakpoints in Pyreon components resolve to the original source line. This matters because the transform shifts line counts -- a one-line JSX element can expand into a multi-line `_tpl(...)` factory -- and without a map every frame would mislocate.
+
+Honest scope:
+
+- The map is produced by the compiler's **JS backend**. When the **native (Rust) binary** is active (the default in production builds) it does not emit a map yet -- a scoped follow-up -- so the plugin passes `null` for those files until it lands.
+- In dev mode the plugin's own post-compiler injections (signal-preserving HMR, signal debug names) are not re-mapped; the resulting offset is small and still far better than no map.
+- A file with nothing to transform produces no map (the code is byte-identical to the source, so no remapping is needed).
+
 ### File Extensions
 
 The plugin transforms files with these extensions:
