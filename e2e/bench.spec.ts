@@ -15,7 +15,7 @@ async function setupBench(page: import("@playwright/test").Page) {
 
   // Inject the benchmark app into the DOM
   await page.evaluate(() => {
-    const { h, mount, signal, batch } = (window as any).__pyreon
+    const { h, mount, signal } = (window as any).__pyreon
 
     // --- Data helpers ---
     const ADJ = [

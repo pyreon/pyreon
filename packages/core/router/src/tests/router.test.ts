@@ -17,7 +17,6 @@ import {
   useBlocker,
   useIsActive,
   useLoaderData,
-  useMiddlewareData,
   useRoute,
   useRouter,
   useSearchParams,
