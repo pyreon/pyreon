@@ -237,3 +237,60 @@ describe('reactive-devtools — bounded fire timeline', () => {
     expect(getReactiveFires().length).toBeLessThanOrEqual(512)
   })
 })
+
+describe('reactive-devtools — preview() edge branches (coverage lock)', () => {
+  // Lifts reactive-devtools.ts off the 8 uncovered `preview()` /
+  // performance-fallback branches that landed with #703 and dragged
+  // @pyreon/reactivity global branch coverage to 89.75% (< the 90%
+  // gate). With these: 90.7% (478/527) — the Coverage CI gate passes.
+  const valueOf = (name: string) =>
+    getReactiveGraph().nodes.find((n) => n.name === name)?.value
+
+  it('anonymous function → [Function anonymous] (|| fallback arm)', () => {
+    activateReactiveDevtools()
+    const s = signal<unknown>((() => () => {})(), { name: 'anonFn' })
+    void s()
+    expect(valueOf('anonFn')).toBe('[Function anonymous]')
+  })
+
+  it('plain object whose ctor IS Object → no ctor prefix (empty-arm)', () => {
+    activateReactiveDevtools()
+    const s = signal<unknown>({ a: 1 }, { name: 'plainObj' })
+    void s()
+    expect(valueOf('plainObj')).toBe('{a}')
+  })
+
+  it('object with more than 3 keys → truncates with ellipsis', () => {
+    activateReactiveDevtools()
+    const s = signal<unknown>({ a: 1, b: 2, c: 3, d: 4 }, { name: 'bigObj' })
+    void s()
+    expect(valueOf('bigObj')).toBe('{a, b, c, …}')
+  })
+
+  it('classed object → keeps the ctor prefix (truthy arm)', () => {
+    class Box {
+      x = 1
+    }
+    activateReactiveDevtools()
+    const s = signal<unknown>(new Box(), { name: 'boxObj' })
+    void s()
+    expect(valueOf('boxObj')).toBe('Box {x}')
+  })
+
+  it('records the Date.now fallback when performance is unavailable', () => {
+    const realPerf = globalThis.performance
+    try {
+      // Exercise the `typeof performance === 'undefined'` defensive arm.
+      delete (globalThis as { performance?: unknown }).performance
+      activateReactiveDevtools()
+      const s = signal(0, { name: 'noPerf' })
+      void s()
+      expect(() => s.set(1)).not.toThrow()
+      const fires = getReactiveFires()
+      expect(fires.length).toBeGreaterThanOrEqual(1)
+      expect(typeof fires[0]!.ts).toBe('number')
+    } finally {
+      ;(globalThis as { performance?: unknown }).performance = realPerf
+    }
+  })
+})
