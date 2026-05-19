@@ -89,8 +89,17 @@ try {
   // npm/ dir absent (non-monorepo checkout) — nothing to add
 }
 
+// Collects failures into `errors` instead of `process.exit(1)`. The old
+// exit-on-first-failure ran INSIDE the publish loop, so an unresolvable
+// workspace dep on package N aborted AFTER 1..N-1 had already published
+// (an immutable partial release — exactly what broke 0.19.0). Phase 1
+// below resolves the whole set first and aborts as a batch before any
+// `npm publish`, so a pre-detectable manifest problem can never leave a
+// partial release.
 function resolveWorkspaceDeps(
   deps: Record<string, string> | undefined,
+  pkgName: string,
+  errors: string[],
 ): Record<string, string> | undefined {
   if (!deps) return deps
   const resolved = { ...deps }
@@ -98,8 +107,11 @@ function resolveWorkspaceDeps(
     if (range.startsWith('workspace:')) {
       const version = versionMap.get(name)
       if (!version) {
-        console.error(`Cannot resolve ${name}`)
-        process.exit(1)
+        errors.push(
+          `${pkgName}: cannot resolve workspace dependency "${name}" ` +
+            `(no version found in the workspace) — range "${range}"`,
+        )
+        continue
       }
       const prefix = range.replace('workspace:', '')
       resolved[name] = prefix === '*' ? version : `${prefix}${version}`
@@ -111,6 +123,25 @@ function resolveWorkspaceDeps(
 const failed: string[] = []
 const published: string[] = []
 const skipped: string[] = []
+
+// ── Phase 1 — resolve + validate EVERY manifest. No `npm publish`
+// happens here. Skip logic (private / stub / already-published) is
+// applied so the plan reflects exactly what Phase 2 will publish. Any
+// deterministic manifest problem (unresolvable workspace dep, or a
+// `workspace:` range surviving resolution) is COLLECTED, not exited on
+// — Phase 1 reports every problem at once and aborts the whole release
+// BEFORE a single package publishes. This is the structural guarantee
+// that a pre-detectable failure can never leave an immutable partial
+// release (the failure mode that broke 0.19.0 mid-loop).
+type PlanEntry = {
+  dirPath: string
+  pkgPath: string
+  raw: string
+  pkg: { name: string; version: string }
+  resolved: Record<string, unknown>
+}
+const plan: PlanEntry[] = []
+const resolveErrors: string[] = []
 
 for (const dir of packageDirs) {
   const pkgPath = join(dir.path, 'package.json')
@@ -133,29 +164,25 @@ for (const dir of packageDirs) {
     continue
   }
 
-  console.log(`📦 ${pkg.name}@${pkg.version}`)
-
   const resolved = {
     ...pkg,
-    dependencies: resolveWorkspaceDeps(pkg.dependencies),
-    peerDependencies: resolveWorkspaceDeps(pkg.peerDependencies),
-    devDependencies: resolveWorkspaceDeps(pkg.devDependencies),
-    // `optionalDependencies` was previously NOT resolved — the only
-    // package using it is `@pyreon/compiler` (its 7 per-platform native
-    // binary packages), so 0.18.0 shipped them as the literal
-    // `"workspace:^"`. Result: `npm i @pyreon/compiler@0.18.0` hard-fails
-    // for every consumer with `EUNSUPPORTEDPROTOCOL` (npm rejects the
-    // manifest before it can skip an optional dep). This is the missing
-    // 4th field.
-    optionalDependencies: resolveWorkspaceDeps(pkg.optionalDependencies),
+    dependencies: resolveWorkspaceDeps(pkg.dependencies, pkg.name, resolveErrors),
+    peerDependencies: resolveWorkspaceDeps(pkg.peerDependencies, pkg.name, resolveErrors),
+    devDependencies: resolveWorkspaceDeps(pkg.devDependencies, pkg.name, resolveErrors),
+    // `optionalDependencies` is the field that broke the 0.18.0 compiler
+    // release (shipped as literal `"workspace:^"` → `npm i` hard-fails
+    // with `EUNSUPPORTEDPROTOCOL`). Must be resolved too.
+    optionalDependencies: resolveWorkspaceDeps(
+      pkg.optionalDependencies,
+      pkg.name,
+      resolveErrors,
+    ),
   }
 
-  // Defense-in-depth: never publish a manifest that still carries a
-  // `workspace:` range in ANY dependency field. Catches a future field
-  // being added to package.json but not to the resolve list above
-  // (exactly how `optionalDependencies` slipped through and broke the
-  // 0.18.0 compiler release). Hard-fail BEFORE the manifest is written
-  // or published — a bad publish is immutable and unrecoverable.
+  // Defense-in-depth: a `workspace:` range surviving into ANY dep field
+  // (e.g. a new field added to package.json but not to the resolve list
+  // above — exactly how `optionalDependencies` slipped through). Collect,
+  // don't exit — batched + aborted in Phase 1 before any publish.
   for (const field of [
     'dependencies',
     'devDependencies',
@@ -166,17 +193,38 @@ for (const dir of packageDirs) {
     if (!deps) continue
     for (const [name, range] of Object.entries(deps)) {
       if (typeof range === 'string' && range.startsWith('workspace:')) {
-        console.error(
-          `✗ ${pkg.name}@${pkg.version}: unresolved \`workspace:\` range ` +
-            `for ${name} in ${field} ("${range}"). Refusing to publish a ` +
-            `broken manifest. Add ${field} to resolveWorkspaceDeps() in ` +
-            `scripts/publish.ts.`,
+        resolveErrors.push(
+          `${pkg.name}: unresolved \`workspace:\` range for ${name} in ` +
+            `${field} ("${range}") — add ${field} to resolveWorkspaceDeps() ` +
+            `in scripts/publish.ts`,
         )
-        process.exit(1)
       }
     }
   }
 
+  plan.push({ dirPath: dir.path, pkgPath, raw, pkg, resolved })
+}
+
+if (resolveErrors.length > 0) {
+  console.error(
+    `\n✗ Refusing to publish — ${resolveErrors.length} manifest problem(s) ` +
+      `detected BEFORE any package was published. ZERO packages published:\n`,
+  )
+  for (const e of resolveErrors) console.error(`  • ${e}`)
+  console.error(
+    `\nFix the above and re-run. publish.ts skips already-published ` +
+      `versions, so a re-run resumes cleanly.`,
+  )
+  process.exit(1)
+}
+
+// ── Phase 2 — publish the fully-validated plan. Every manifest here is
+// guaranteed `workspace:`-free. The only failures possible now are
+// network / npm-side (transient) — reported via `failed[]` + exit 1,
+// and a re-run resumes (skip-if-published). The deterministic
+// manifest-resolution bug class can no longer cause a partial release.
+for (const { dirPath, pkgPath, raw, pkg, resolved } of plan) {
+  console.log(`📦 ${pkg.name}@${pkg.version}`)
   await writeFile(pkgPath, `${JSON.stringify(resolved, null, 2)}\n`)
 
   try {
@@ -187,7 +235,7 @@ for (const dir of packageDirs) {
     if (dryRun) args.push('--dry-run')
     if (tag) args.push('--tag', tag)
     const result = Bun.spawnSync(args, {
-      cwd: dir.path,
+      cwd: dirPath,
       stdout: 'inherit',
       stderr: 'inherit',
     })
