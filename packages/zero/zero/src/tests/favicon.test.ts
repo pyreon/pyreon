@@ -201,4 +201,29 @@ describe('faviconLinks', () => {
     const links = faviconLinks('de', localeConfig)
     expect(links.find((l) => l.rel === 'manifest')?.href).toBe('/de/site.webmanifest')
   })
+
+  it('darkSource → TWO theme-aware SVG links (SSR parity with transformIndexHtml)', () => {
+    // Regression: a single static /favicon.svg out-prioritises the
+    // theme-toggled PNGs in every SVG-capable browser, so SSR'd pages
+    // never switch the favicon either. The SSR helper must emit the
+    // same data-favicon-theme dual variants.
+    const links = faviconLinks(undefined, { source: './icon.svg', darkSource: './dark.svg' })
+    const svgs = links.filter((l) => l.type === 'image/svg+xml')
+    expect(svgs).toHaveLength(2)
+    const light = svgs.find((l) => l['data-favicon-theme'] === 'light')
+    const dark = svgs.find((l) => l['data-favicon-theme'] === 'dark')
+    expect(light?.href).toBe('/favicon-light.svg')
+    expect(dark?.href).toBe('/favicon-dark.svg')
+    expect(dark?.media).toBe('not all')
+    expect(svgs.some((l) => l.href === '/favicon.svg')).toBe(false)
+  })
+
+  it('no darkSource → unchanged single static /favicon.svg (no data-favicon-theme)', () => {
+    const svgs = faviconLinks(undefined, { source: './icon.svg' }).filter(
+      (l) => l.type === 'image/svg+xml',
+    )
+    expect(svgs).toHaveLength(1)
+    expect(svgs[0]!.href).toBe('/favicon.svg')
+    expect(svgs[0]!['data-favicon-theme']).toBeUndefined()
+  })
 })

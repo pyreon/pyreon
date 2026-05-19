@@ -108,3 +108,47 @@ describe('faviconPlugin generateBundle — dev is not blocked', () => {
     ).resolves.toBeUndefined()
   })
 })
+
+describe('faviconPlugin transformIndexHtml — SVG favicon is theme-aware (regression)', () => {
+  const svgLinks = (cfg: Record<string, unknown>) =>
+    tagsFor(cfg).filter(
+      (t) => t.tag === 'link' && t.attrs.type === 'image/svg+xml',
+    )
+
+  it('single-variant (no darkSource) → ONE static /favicon.svg, no data-favicon-theme', () => {
+    const svgs = svgLinks({})
+    expect(svgs).toHaveLength(1)
+    expect(svgs[0]!.attrs.href).toMatch(/^\/favicon\.svg(\?v=[0-9a-f]{8})?$/)
+    expect(svgs[0]!.attrs['data-favicon-theme']).toBeUndefined()
+  })
+
+  it('dark variant → TWO theme-aware SVG links (light active, dark media="not all"), NO static /favicon.svg', () => {
+    const svgs = svgLinks({ darkSource: 'dark.svg' })
+    // THE BUG: pre-fix this was a single `/favicon.svg` with no
+    // `data-favicon-theme`. Browsers prefer SVG over the theme-toggled
+    // PNGs, so the favicon never followed the theme. Post-fix: two
+    // links carrying the same `data-favicon-theme` contract the PNG
+    // dual-variant + theme-swap script use.
+    expect(svgs).toHaveLength(2)
+
+    const light = svgs.find((l) => l.attrs['data-favicon-theme'] === 'light')
+    const dark = svgs.find((l) => l.attrs['data-favicon-theme'] === 'dark')
+    expect(light).toBeDefined()
+    expect(dark).toBeDefined()
+    expect(light!.attrs.href).toMatch(/^\/favicon-light\.svg/)
+    expect(dark!.attrs.href).toMatch(/^\/favicon-dark\.svg/)
+    expect(light!.attrs.media).toBeUndefined() // light active by default
+    expect(dark!.attrs.media).toBe('not all') // dark hidden until swapped
+    // The static, non-theme-aware /favicon.svg must NOT be injected
+    // (it would out-prioritise the variants and re-introduce the bug).
+    expect(
+      svgs.some((l) => /^\/favicon\.svg/.test(l.attrs.href)),
+    ).toBe(false)
+
+    // Still carries the same data-favicon-theme contract the swap
+    // script toggles — proves it participates in reactive switching.
+    const tags = tagsFor({ darkSource: 'dark.svg' })
+    const script = tags.find((t) => t.tag === 'script')
+    expect(script?.children ?? '').toContain('data-favicon-theme')
+  })
+})
