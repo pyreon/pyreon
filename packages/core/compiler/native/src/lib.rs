@@ -343,6 +343,16 @@ struct Ctx<'a> {
     signal_vars: FxHashSet<String>,
     /// Shadowed signal names in current scope (for scope-aware auto-call)
     shadowed_signals: FxHashSet<String>,
+    /// Bindings whose initializer is DIRECTLY a JSX element/fragment
+    /// (optionally parenthesized) — e.g. `const header = <h1/>`. A bare
+    /// `{header}` child of such a binding must MOUNT via `_mountSlot`, not be
+    /// text-coerced through `createTextNode` (which stringifies the NativeItem
+    /// → "[object Object]"). Mirrors the JS backend's `elementVars` exactly so
+    /// the two backends stay 1:1. Tracks `let`/callback-scope too: routing to
+    /// `_mountSlot` renders strings/numbers/elements all correctly, so the
+    /// only cost of imprecision is skipping the text fast path, never a wrong
+    /// render.
+    element_vars: FxHashSet<String>,
 
     /// Reactivity-lens sidecar (opt-in via `transform_jsx`'s 5th arg).
     /// Mirrors `src/jsx.ts`'s `collectLens` / `reactivityLens` exactly:
@@ -381,6 +391,7 @@ impl<'a> Ctx<'a> {
             parent_is_jsx: false,
             signal_vars: FxHashSet::default(),
             shadowed_signals: FxHashSet::default(),
+            element_vars: FxHashSet::default(),
             collect_lens,
             reactivity_lens: Vec::new(),
         }
@@ -1423,9 +1434,147 @@ fn resolve_expr_with_props(expr: &Expression, ctx: &mut Ctx) -> String {
     result
 }
 
+/// Names a binding pattern introduces (recursive). Mirrors the JS backend's
+/// `collectPatternNames` — the compile-safe subset params/declarators use here.
+fn collect_bind_pattern_names(p: &BindingPattern, out: &mut FxHashSet<String>) {
+    match p {
+        BindingPattern::BindingIdentifier(id) => {
+            out.insert(id.name.to_string());
+        }
+        BindingPattern::ObjectPattern(obj) => {
+            for prop in &obj.properties {
+                collect_bind_pattern_names(&prop.value, out);
+            }
+        }
+        BindingPattern::ArrayPattern(arr) => {
+            for el in arr.elements.iter().flatten() {
+                collect_bind_pattern_names(el, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// prop-derived map minus a set of scope-bound names. R2 parity: a name a
+/// nested scope binds shadows the top-level prop-derived const within that
+/// subtree, so it must not be substituted there. Byte-equivalent to the JS
+/// pass's enter/leave `shadowed` set. Map is tiny (component-body consts) so
+/// the clone is cheap; identity is irrelevant (values are Spans).
+fn pd_minus(
+    pd: &FxHashMap<String, Span>,
+    bound: &FxHashSet<String>,
+) -> FxHashMap<String, Span> {
+    if bound.is_empty() {
+        return pd.clone();
+    }
+    pd.iter()
+        .filter(|(k, _)| !bound.contains(k.as_str()))
+        .map(|(k, v)| (k.clone(), *v))
+        .collect()
+}
+
+/// Recurse a JSX element's attributes + children collecting prop-derived
+/// idents. JSX introduces no bindings, so `pd` passes through unchanged.
+fn collect_pd_in_jsx_element(el: &JSXElement, pd: &FxHashMap<String, Span>, out: &mut Vec<(u32, u32, String)>) {
+    for attr in &el.opening_element.attributes {
+        match attr {
+            JSXAttributeItem::Attribute(a) => {
+                if let Some(JSXAttributeValue::ExpressionContainer(c)) = &a.value {
+                    if let Some(e) = jsx_expr_as_expression(&c.expression) {
+                        collect_prop_derived_idents(e, pd, out);
+                    }
+                }
+            }
+            JSXAttributeItem::SpreadAttribute(s) => {
+                collect_prop_derived_idents(&s.argument, pd, out);
+            }
+        }
+    }
+    for c in &el.children {
+        collect_pd_in_jsx_child(c, pd, out);
+    }
+}
+
+fn collect_pd_in_jsx_child(child: &JSXChild, pd: &FxHashMap<String, Span>, out: &mut Vec<(u32, u32, String)>) {
+    match child {
+        JSXChild::ExpressionContainer(c) => {
+            if let Some(e) = jsx_expr_as_expression(&c.expression) {
+                collect_prop_derived_idents(e, pd, out);
+            }
+        }
+        JSXChild::Element(el) => collect_pd_in_jsx_element(el, pd, out),
+        JSXChild::Fragment(frag) => {
+            for c in &frag.children {
+                collect_pd_in_jsx_child(c, pd, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Walk a block body's statements collecting prop-derived idents. First
+/// computes the block's own bound names (declarations) and filters `pd` for
+/// the whole block — byte-equivalent to the JS `bindingsIntroducedBy`
+/// (BlockStatement) + enter/leave discipline.
+fn collect_pd_in_body(stmts: &[Statement], pd: &FxHashMap<String, Span>, out: &mut Vec<(u32, u32, String)>) {
+    let mut bound = FxHashSet::default();
+    for s in stmts {
+        match s {
+            Statement::VariableDeclaration(d) => {
+                for decl in &d.declarations {
+                    collect_bind_pattern_names(&decl.id, &mut bound);
+                }
+            }
+            Statement::FunctionDeclaration(f) => {
+                if let Some(id) = &f.id {
+                    bound.insert(id.name.to_string());
+                }
+            }
+            Statement::ClassDeclaration(c) => {
+                if let Some(id) = &c.id {
+                    bound.insert(id.name.to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    let filtered = pd_minus(pd, &bound);
+    for s in stmts {
+        collect_pd_in_stmt(s, &filtered, out);
+    }
+}
+
+fn collect_pd_in_stmt(stmt: &Statement, pd: &FxHashMap<String, Span>, out: &mut Vec<(u32, u32, String)>) {
+    match stmt {
+        Statement::ExpressionStatement(s) => collect_prop_derived_idents(&s.expression, pd, out),
+        Statement::ReturnStatement(s) => {
+            if let Some(a) = &s.argument {
+                collect_prop_derived_idents(a, pd, out);
+            }
+        }
+        Statement::VariableDeclaration(d) => {
+            for decl in &d.declarations {
+                if let Some(init) = &decl.init {
+                    collect_prop_derived_idents(init, pd, out);
+                }
+            }
+        }
+        Statement::IfStatement(s) => {
+            collect_prop_derived_idents(&s.test, pd, out);
+            collect_pd_in_stmt(&s.consequent, pd, out);
+            if let Some(a) = &s.alternate {
+                collect_pd_in_stmt(a, pd, out);
+            }
+        }
+        Statement::BlockStatement(b) => collect_pd_in_body(&b.body, pd, out),
+        _ => {}
+    }
+}
+
 /// Walk an expression AST subtree, collecting IdentifierReference nodes whose
 /// name matches a prop-derived var. Skips property-name positions (static member
-/// `.property`), nested function scopes, and shorthand object property keys.
+/// `.property`) and shorthand object property keys. Recurses into nested
+/// function/JSX scopes with R2-parity shadow filtering (1:1 with the JS pass).
 fn collect_prop_derived_idents(
     expr: &Expression,
     prop_derived_vars: &FxHashMap<String, Span>,
@@ -1613,244 +1762,47 @@ fn collect_prop_derived_idents(
         Expression::AwaitExpression(a) => {
             collect_prop_derived_idents(&a.argument, prop_derived_vars, out);
         }
-        // JSX: a prop-derived const used inside callback-nested JSX
-        // (`items.map(i => <li class={cls}>)`) must still be inlined for
-        // reactivity. Pre-fix the JSX + function arms were skipped, so the
-        // native backend silently dropped reactivity that the JS backend
-        // kept (R7). Recurse with block-accurate shadowing (R2 parity).
-        Expression::JSXElement(el) => {
-            for attr in &el.opening_element.attributes {
-                match attr {
-                    JSXAttributeItem::Attribute(a) => {
-                        if let Some(JSXAttributeValue::ExpressionContainer(c)) = &a.value {
-                            if let Some(e) = jsx_expr_as_expression(&c.expression) {
-                                collect_prop_derived_idents(e, prop_derived_vars, out);
-                            }
-                        }
-                    }
-                    JSXAttributeItem::SpreadAttribute(s) => {
-                        collect_prop_derived_idents(&s.argument, prop_derived_vars, out);
-                    }
-                }
-            }
-            for child in &el.children {
-                collect_pd_in_jsx_child(child, prop_derived_vars, out);
-            }
-        }
-        Expression::JSXFragment(frag) => {
-            for child in &frag.children {
-                collect_pd_in_jsx_child(child, prop_derived_vars, out);
-            }
-        }
-        // Function scopes: recurse into the body, but with a map filtered to
-        // exclude names this function binds (params) — those references are
-        // the inner binding, NOT the top-level prop-derived const. Removing a
-        // name from the map at exactly the scope that binds it, for that
-        // scope's subtree, is byte-equivalent to the JS pass's enter/leave
-        // `shadowed` set (R2). Without this filter, recursing would
-        // re-introduce the over-substitution clobber R2 fixed in JS.
+        // Recurse into nested function scopes with R2-parity shadow filtering
+        // (1:1 with the JS pass, which walks the whole program AST). A param /
+        // body binding that reuses a prop-derived name is removed from `pd`
+        // for that subtree so it is NOT substituted there (no clobber); a
+        // non-shadowed prop-derived ident used inside a callback IS collected
+        // (closes the R7 native divergence — `items.map(i => <li class={cls}/>)`
+        // now inlines `cls` like JS).
         Expression::ArrowFunctionExpression(arrow) => {
-            let mut bound = Vec::new();
+            let mut bound = FxHashSet::default();
             for p in &arrow.params.items {
-                pd_pattern_names(&p.pattern, &mut bound);
+                collect_bind_pattern_names(&p.pattern, &mut bound);
             }
-            let filtered = pd_filter(prop_derived_vars, &bound);
-            let m = filtered.as_ref().unwrap_or(prop_derived_vars);
-            for stmt in &arrow.body.statements {
-                collect_pd_in_stmt(stmt, m, out);
+            let filtered = pd_minus(prop_derived_vars, &bound);
+            if let Some(e) = arrow.get_expression() {
+                collect_prop_derived_idents(e, &filtered, out);
+            } else {
+                collect_pd_in_body(&arrow.body.statements, &filtered, out);
             }
         }
         Expression::FunctionExpression(func) => {
-            let mut bound = Vec::new();
+            let mut bound = FxHashSet::default();
             for p in &func.params.items {
-                pd_pattern_names(&p.pattern, &mut bound);
+                collect_bind_pattern_names(&p.pattern, &mut bound);
             }
-            let filtered = pd_filter(prop_derived_vars, &bound);
-            let m = filtered.as_ref().unwrap_or(prop_derived_vars);
+            if let Some(id) = &func.id {
+                bound.insert(id.name.to_string());
+            }
+            let filtered = pd_minus(prop_derived_vars, &bound);
             if let Some(body) = &func.body {
-                for stmt in &body.statements {
-                    collect_pd_in_stmt(stmt, m, out);
-                }
+                collect_pd_in_body(&body.statements, &filtered, out);
+            }
+        }
+        // JSX produced by an expression (e.g. a concise arrow body
+        // `i => <li class={cls}>`): recurse attrs + children. No bindings.
+        Expression::JSXElement(el) => collect_pd_in_jsx_element(el, prop_derived_vars, out),
+        Expression::JSXFragment(frag) => {
+            for c in &frag.children {
+                collect_pd_in_jsx_child(c, prop_derived_vars, out);
             }
         }
         // Literals, ThisExpression, etc. — no identifiers to find
-        _ => {}
-    }
-}
-
-/// Recursively collect every binding-identifier name in a binding pattern.
-fn pd_pattern_names(pat: &BindingPattern, out: &mut Vec<String>) {
-    match pat {
-        BindingPattern::BindingIdentifier(id) => out.push(id.name.to_string()),
-        BindingPattern::ObjectPattern(obj) => {
-            for prop in &obj.properties {
-                pd_pattern_names(&prop.value, out);
-            }
-            if let Some(rest) = &obj.rest {
-                pd_pattern_names(&rest.argument, out);
-            }
-        }
-        BindingPattern::ArrayPattern(arr) => {
-            for el in arr.elements.iter().flatten() {
-                pd_pattern_names(el, out);
-            }
-            if let Some(rest) = &arr.rest {
-                pd_pattern_names(&rest.argument, out);
-            }
-        }
-        BindingPattern::AssignmentPattern(a) => pd_pattern_names(&a.left, out),
-    }
-}
-
-/// Owned clone of `map` with `exclude` names removed — only allocates when at
-/// least one excluded name actually collides (the common no-shadow path
-/// returns `None` and the caller reuses the borrowed map, zero cost).
-fn pd_filter(
-    map: &FxHashMap<String, Span>,
-    exclude: &[String],
-) -> Option<FxHashMap<String, Span>> {
-    if !exclude.iter().any(|n| map.contains_key(n.as_str())) {
-        return None;
-    }
-    let mut m = map.clone();
-    for n in exclude {
-        m.remove(n.as_str());
-    }
-    Some(m)
-}
-
-fn collect_pd_in_jsx_child(
-    child: &JSXChild,
-    map: &FxHashMap<String, Span>,
-    out: &mut Vec<(u32, u32, String)>,
-) {
-    match child {
-        JSXChild::ExpressionContainer(c) => {
-            if let Some(e) = jsx_expr_as_expression(&c.expression) {
-                collect_prop_derived_idents(e, map, out);
-            }
-        }
-        JSXChild::Element(el) => {
-            for attr in &el.opening_element.attributes {
-                match attr {
-                    JSXAttributeItem::Attribute(a) => {
-                        if let Some(JSXAttributeValue::ExpressionContainer(c)) = &a.value {
-                            if let Some(e) = jsx_expr_as_expression(&c.expression) {
-                                collect_prop_derived_idents(e, map, out);
-                            }
-                        }
-                    }
-                    JSXAttributeItem::SpreadAttribute(s) => {
-                        collect_prop_derived_idents(&s.argument, map, out);
-                    }
-                }
-            }
-            for c in &el.children {
-                collect_pd_in_jsx_child(c, map, out);
-            }
-        }
-        JSXChild::Fragment(frag) => {
-            for c in &frag.children {
-                collect_pd_in_jsx_child(c, map, out);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Block-accurate statement walker for prop-derived collection inside a
-/// function body. Mirrors the JS pass's scope semantics: a `const`/`let`/
-/// catch/loop binding that collides with a prop-derived name shadows it
-/// within that binding's subtree. Statement kinds not carrying the R7
-/// callback-JSX pattern are conservatively skipped — that only ever
-/// UNDER-inlines (matches prior behavior for them), never clobbers.
-fn collect_pd_in_stmt(
-    stmt: &Statement,
-    map: &FxHashMap<String, Span>,
-    out: &mut Vec<(u32, u32, String)>,
-) {
-    match stmt {
-        Statement::BlockStatement(b) => {
-            let mut bound = Vec::new();
-            for s in &b.body {
-                if let Statement::VariableDeclaration(d) = s {
-                    for decl in &d.declarations {
-                        pd_pattern_names(&decl.id, &mut bound);
-                    }
-                }
-            }
-            let filtered = pd_filter(map, &bound);
-            let m = filtered.as_ref().unwrap_or(map);
-            for s in &b.body {
-                collect_pd_in_stmt(s, m, out);
-            }
-        }
-        Statement::ReturnStatement(r) => {
-            if let Some(arg) = &r.argument {
-                collect_prop_derived_idents(arg, map, out);
-            }
-        }
-        Statement::ExpressionStatement(e) => {
-            collect_prop_derived_idents(&e.expression, map, out);
-        }
-        Statement::VariableDeclaration(d) => {
-            for decl in &d.declarations {
-                if let Some(init) = &decl.init {
-                    collect_prop_derived_idents(init, map, out);
-                }
-            }
-        }
-        Statement::IfStatement(i) => {
-            collect_prop_derived_idents(&i.test, map, out);
-            collect_pd_in_stmt(&i.consequent, map, out);
-            if let Some(alt) = &i.alternate {
-                collect_pd_in_stmt(alt, map, out);
-            }
-        }
-        Statement::ForStatement(f) => {
-            let mut bound = Vec::new();
-            if let Some(ForStatementInit::VariableDeclaration(d)) = &f.init {
-                for decl in &d.declarations {
-                    pd_pattern_names(&decl.id, &mut bound);
-                }
-            }
-            let filtered = pd_filter(map, &bound);
-            let m = filtered.as_ref().unwrap_or(map);
-            collect_pd_in_stmt(&f.body, m, out);
-        }
-        Statement::ForInStatement(f) => collect_pd_in_stmt(&f.body, map, out),
-        Statement::ForOfStatement(f) => collect_pd_in_stmt(&f.body, map, out),
-        Statement::WhileStatement(w) => collect_pd_in_stmt(&w.body, map, out),
-        Statement::DoWhileStatement(d) => collect_pd_in_stmt(&d.body, map, out),
-        Statement::TryStatement(t) => {
-            for s in &t.block.body {
-                collect_pd_in_stmt(s, map, out);
-            }
-            if let Some(h) = &t.handler {
-                let mut bound = Vec::new();
-                if let Some(p) = &h.param {
-                    pd_pattern_names(&p.pattern, &mut bound);
-                }
-                let filtered = pd_filter(map, &bound);
-                let m = filtered.as_ref().unwrap_or(map);
-                for s in &h.body.body {
-                    collect_pd_in_stmt(s, m, out);
-                }
-            }
-            if let Some(f) = &t.finalizer {
-                for s in &f.body {
-                    collect_pd_in_stmt(s, map, out);
-                }
-            }
-        }
-        Statement::SwitchStatement(s) => {
-            collect_prop_derived_idents(&s.discriminant, map, out);
-            for case in &s.cases {
-                for st in &case.consequent {
-                    collect_pd_in_stmt(st, map, out);
-                }
-            }
-        }
         _ => {}
     }
 }
@@ -3727,7 +3679,11 @@ fn process_one_child(
         FlatChild::Expression(expr) => {
             let needs_placeholder = use_mixed || use_multi_expr;
             let (expr_text, is_reactive) = unwrap_accessor(expr, ctx);
-            if is_children_expression(expr, &expr_text) {
+            let is_element_valued_ident = matches!(
+                expr,
+                Expression::Identifier(id) if ctx.element_vars.contains(id.name.as_str())
+            );
+            if is_children_expression(expr, &expr_text) || is_element_valued_ident {
                 tb.needs_mount_slot = true;
                 let placeholder = format!("{}.childNodes[{}]", parent_ref, child_node_idx);
                 let d = tb.next_disp();
@@ -3911,6 +3867,25 @@ fn collect_prop_derived(decl: &VariableDeclaration, ctx: &mut Ctx) {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    // Element-valued bindings (const OR let, any scope): initializer is
+    // DIRECTLY a JSX element/fragment, optionally parenthesized. Captured
+    // before the const-only / callback-depth gates below — a stored element
+    // used as a bare child must mount in every scope. Mirrors the JS
+    // backend's `elementVars` collection exactly (1:1).
+    for declarator in &decl.declarations {
+        if let BindingPattern::BindingIdentifier(id) = &declarator.id {
+            if let Some(init) = &declarator.init {
+                let mut e = init;
+                while let Expression::ParenthesizedExpression(p) = e {
+                    e = &p.expression;
+                }
+                if matches!(e, Expression::JSXElement(_) | Expression::JSXFragment(_)) {
+                    ctx.element_vars.insert(id.name.to_string());
                 }
             }
         }
