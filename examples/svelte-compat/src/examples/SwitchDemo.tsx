@@ -1,8 +1,9 @@
 import { Match, Switch, writable } from 'svelte'
 import Demo from './Demo'
 
+const step = writable(0)
+
 export default function SwitchDemo() {
-  const step = writable(0)
   let s = 0
   step.subscribe((v) => (s = v))
 

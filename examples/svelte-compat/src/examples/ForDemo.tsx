@@ -1,8 +1,9 @@
 import { For, writable } from 'svelte'
 import Demo from './Demo'
 
+const items = writable([1, 2, 3])
+
 export default function ForDemo() {
-  const items = writable([1, 2, 3])
   let list: number[] = []
   items.subscribe((v) => (list = v))
 

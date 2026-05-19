@@ -18,8 +18,9 @@ function Child(props: { onPing?: (e: CustomEvent<number>) => void }) {
   )
 }
 
+const last = writable('—')
+
 export default function EventDispatcherDemo() {
-  const last = writable('—')
   let v = '—'
   last.subscribe((x) => (v = x))
 

@@ -1,8 +1,9 @@
 import { Show, writable } from 'svelte'
 import Demo from './Demo'
 
+const on = writable(true)
+
 export default function ShowDemo() {
-  const on = writable(true)
   let flag = true
   on.subscribe((v) => (flag = v))
 
