@@ -1,5 +1,11 @@
 import { createPanelToBackground, isBackgroundForward } from './messages'
 import { buildMap, getChildren, getRoots } from './tree'
+import {
+  bucketFires,
+  layoutGraph,
+  type ReactiveFire,
+  type ReactiveGraph,
+} from './reactive-view'
 import type { PanelMessage, SerializedEntry } from './types'
 
 // --- Panel UI: component tree viewer ---
@@ -376,6 +382,20 @@ port.onMessage.addListener((message: unknown) => {
       sendToPage({ type: 'get-all' })
       break
     }
+    case 'reactive-available': {
+      setReactiveAvailable(msg.available)
+      break
+    }
+    case 'reactive-snapshot': {
+      lastGraph = msg.graph
+      lastFires = msg.fires
+      renderActiveReactiveView()
+      break
+    }
+    case 'reactive-eval-result': {
+      appendConsole(msg.result, msg.ok ? 'cl-out' : 'cl-err')
+      break
+    }
   }
 })
 
@@ -399,14 +419,325 @@ inspectBtn.addEventListener('click', () => {
   setOverlay(!overlayEnabled)
 })
 
-// Disabled chrome tabs — the five designed surfaces with no backing
-// framework API. Clicking surfaces the roadmap reason rather than a
-// dead no-op.
-for (const tab of document.querySelectorAll<HTMLElement>('.tab.disabled')) {
-  tab.addEventListener('click', () => {
-    statsText.textContent = `"${tab.textContent ?? ''}" needs the Pyreon signal-graph devtools API — roadmap`
+// ── Tab switching + reactive surfaces ───────────────────────────────────
+
+const SVG_NS = 'http://www.w3.org/2000/svg'
+const REACTIVE_TABS = new Set([
+  'signals',
+  'graph',
+  'effects',
+  'profiler',
+  'console',
+])
+const NEEDS_HTML =
+  'The reactive surfaces need <strong>@pyreon/runtime-dom</strong> with the ' +
+  'reactive-devtools Foundation (exposes <strong>__PYREON_DEVTOOLS__.reactive</strong>). ' +
+  'Upgrade the framework, then reload — Components works regardless.'
+
+let activeTab = 'components'
+let reactiveAvailable = false
+let reactiveActivated = false
+let lastGraph: ReactiveGraph = { nodes: [], edges: [] }
+let lastFires: ReactiveFire[] = []
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+const tabEls = Array.from(document.querySelectorAll<HTMLElement>('.tab'))
+const viewEls = Array.from(document.querySelectorAll<HTMLElement>('.view'))
+const consoleInput = requireEl('console-input') as HTMLInputElement
+const consoleLog = requireEl('console-log')
+
+function setActiveTab(tab: string): void {
+  activeTab = tab
+  for (const t of tabEls) t.classList.toggle('active', t.dataset.tab === tab)
+  for (const v of viewEls) v.classList.toggle('active', v.dataset.view === tab)
+  if (REACTIVE_TABS.has(tab)) {
+    ensurePolling()
+    if (reactiveAvailable) sendToPage({ type: 'reactive-poll' })
+    renderActiveReactiveView()
+  } else {
+    stopPolling()
+  }
+}
+
+for (const t of tabEls) {
+  t.addEventListener('click', () => {
+    const tab = t.dataset.tab
+    if (tab) setActiveTab(tab)
   })
 }
+
+function ensurePolling(): void {
+  if (pollTimer !== null) return
+  pollTimer = setInterval(() => {
+    if (reactiveAvailable && REACTIVE_TABS.has(activeTab)) {
+      sendToPage({ type: 'reactive-poll' })
+    }
+  }, 1000)
+}
+
+function stopPolling(): void {
+  if (pollTimer !== null) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+function setReactiveAvailable(available: boolean): void {
+  reactiveAvailable = available
+  for (const t of tabEls) {
+    if (t.classList.contains('reactive-tab')) {
+      t.classList.toggle('unavailable', !available)
+    }
+  }
+  for (const v of viewEls) {
+    const needs = v.querySelector<HTMLElement>('.rd-needs')
+    if (!needs) continue
+    if (available) {
+      needs.hidden = true
+    } else {
+      needs.hidden = false
+      needs.innerHTML = NEEDS_HTML
+    }
+  }
+  if (available && !reactiveActivated) {
+    reactiveActivated = true
+    sendToPage({ type: 'reactive-activate' })
+    if (REACTIVE_TABS.has(activeTab)) sendToPage({ type: 'reactive-poll' })
+  }
+}
+
+function renderActiveReactiveView(): void {
+  switch (activeTab) {
+    case 'signals':
+      renderSignals()
+      break
+    case 'graph':
+      renderGraph()
+      break
+    case 'effects':
+      renderEffects()
+      break
+    case 'profiler':
+      renderProfiler()
+      break
+  }
+}
+
+// Signals — design PxArtDevSignals table
+function renderSignals(): void {
+  const host = requireEl('signals-table')
+  host.innerHTML = ''
+  const head = document.createElement('div')
+  head.className = 'sig-row head'
+  for (const h of ['NAME', 'KIND', 'VALUE', 'SUBS', 'FIRES']) {
+    const c = document.createElement('div')
+    if (h === 'SUBS' || h === 'FIRES') c.className = 'num'
+    c.textContent = h
+    head.appendChild(c)
+  }
+  host.appendChild(head)
+
+  const rows = lastGraph.nodes
+    .slice()
+    .sort((a, b) => b.fires - a.fires || a.id - b.id)
+  for (const n of rows) {
+    const row = document.createElement('div')
+    const hot = n.lastFire !== null && performance.now() - n.lastFire < 1500
+    row.className = `sig-row${hot ? ' hot' : ''}`
+
+    const nm = document.createElement('div')
+    nm.className = 'nm'
+    if (hot) {
+      const d = document.createElement('span')
+      d.className = 'dot'
+      d.textContent = '●'
+      nm.appendChild(d)
+    }
+    const nmTxt = document.createElement('span')
+    nmTxt.textContent = n.name
+    nm.appendChild(nmTxt)
+    row.appendChild(nm)
+
+    const kind = document.createElement('div')
+    kind.className = `sig-kind ${n.kind}`
+    kind.textContent = n.kind
+    row.appendChild(kind)
+
+    const v = document.createElement('div')
+    v.className = 'v'
+    v.textContent = n.kind === 'effect' ? '—' : n.value
+    row.appendChild(v)
+
+    const subs = document.createElement('div')
+    subs.className = 'num'
+    subs.textContent = String(n.subscribers)
+    row.appendChild(subs)
+
+    const fires = document.createElement('div')
+    fires.className = `num${n.fires > 10 ? ' hot' : ''}`
+    fires.textContent = String(n.fires)
+    row.appendChild(fires)
+
+    host.appendChild(row)
+  }
+}
+
+// Graph — design PxArtDevGraph node/edge diagram
+function renderGraph(): void {
+  const svg = document.getElementById('graph-svg') as unknown as SVGSVGElement | null
+  if (!svg) return
+  const laid = layoutGraph(lastGraph)
+  svg.setAttribute('viewBox', `0 0 ${laid.width} ${laid.height}`)
+  while (svg.firstChild) svg.removeChild(svg.firstChild)
+
+  const pos = new Map(laid.nodes.map((n) => [n.id, n]))
+  const recent = new Set(
+    lastGraph.nodes
+      .filter((n) => n.lastFire !== null && performance.now() - n.lastFire < 1500)
+      .map((n) => n.id),
+  )
+
+  for (const e of laid.edges) {
+    const a = pos.get(e.from)
+    const b = pos.get(e.to)
+    if (!a || !b) continue
+    const line = document.createElementNS(SVG_NS, 'line')
+    line.setAttribute('x1', String(a.x + 55))
+    line.setAttribute('y1', String(a.y))
+    line.setAttribute('x2', String(b.x - 55))
+    line.setAttribute('y2', String(b.y))
+    const hot = recent.has(e.from) && recent.has(e.to)
+    line.setAttribute('class', `gedge${hot ? ' hot' : ''}`)
+    svg.appendChild(line)
+  }
+
+  for (const n of laid.nodes) {
+    const g = document.createElementNS(SVG_NS, 'g')
+    g.setAttribute('transform', `translate(${n.x},${n.y})`)
+    g.setAttribute(
+      'class',
+      `gnode${recent.has(n.id) ? ' hot' : ''}`,
+    )
+    const rect = document.createElementNS(SVG_NS, 'rect')
+    rect.setAttribute('x', '-55')
+    rect.setAttribute('y', '-12')
+    rect.setAttribute('width', '110')
+    rect.setAttribute('height', '24')
+    rect.setAttribute('rx', '3')
+    g.appendChild(rect)
+    const dot = document.createElementNS(SVG_NS, 'circle')
+    dot.setAttribute('cx', '-45')
+    dot.setAttribute('cy', '0')
+    dot.setAttribute('r', '3')
+    dot.setAttribute('class', `kdot ${n.kind}`)
+    g.appendChild(dot)
+    const text = document.createElementNS(SVG_NS, 'text')
+    text.setAttribute('x', '-37')
+    text.setAttribute('y', '4')
+    text.textContent =
+      n.name.length > 14 ? `${n.name.slice(0, 13)}…` : n.name
+    g.appendChild(text)
+    svg.appendChild(g)
+  }
+}
+
+// Effects — design PxArtDevEffects lanes (one lane per node that fired)
+function renderEffects(): void {
+  const host = requireEl('effects-lanes')
+  host.innerHTML = ''
+  if (lastFires.length === 0) {
+    const empty = document.createElement('div')
+    empty.className = 'tree-empty'
+    empty.textContent = 'No reactive activity recorded yet — interact with the page'
+    host.appendChild(empty)
+    return
+  }
+  const nameById = new Map(lastGraph.nodes.map((n) => [n.id, n]))
+  let lo = Infinity
+  let hi = -Infinity
+  for (const f of lastFires) {
+    if (f.ts < lo) lo = f.ts
+    if (f.ts > hi) hi = f.ts
+  }
+  const span = Math.max(1, hi - lo)
+  const byId = new Map<number, ReactiveFire[]>()
+  for (const f of lastFires) {
+    const arr = byId.get(f.id)
+    if (arr) arr.push(f)
+    else byId.set(f.id, [f])
+  }
+  const lanes = Array.from(byId.entries()).sort(
+    (a, b) => b[1].length - a[1].length,
+  )
+  for (const [id, fires] of lanes) {
+    const node = nameById.get(id)
+    const lane = document.createElement('div')
+    lane.className = 'fx-lane'
+    const nm = document.createElement('div')
+    nm.className = 'nm'
+    nm.textContent = node ? node.name : `#${id}`
+    lane.appendChild(nm)
+    const track = document.createElement('div')
+    track.className = 'fx-track'
+    for (const f of fires) {
+      const tick = document.createElement('i')
+      tick.className = node ? node.kind : 'effect'
+      tick.style.left = `${((f.ts - lo) / span) * 100}%`
+      track.appendChild(tick)
+    }
+    lane.appendChild(track)
+    host.appendChild(lane)
+  }
+}
+
+// Profiler — design PxArtDevProfiler per-frame fire bars
+function renderProfiler(): void {
+  const svg = document.getElementById(
+    'profiler-svg',
+  ) as unknown as SVGSVGElement | null
+  if (!svg) return
+  while (svg.firstChild) svg.removeChild(svg.firstChild)
+  const b = bucketFires(lastFires, 100)
+  const w = 600
+  const h = 220
+  const bw = w / b.frames.length
+  b.frames.forEach((count, i) => {
+    const barH = (count / b.max) * (h - 20)
+    const rect = document.createElementNS(SVG_NS, 'rect')
+    rect.setAttribute('class', 'pf-bar')
+    rect.setAttribute('x', String(i * bw + 1))
+    rect.setAttribute('y', String(h - barH))
+    rect.setAttribute('width', String(Math.max(1, bw - 2)))
+    rect.setAttribute('height', String(barH))
+    svg.appendChild(rect)
+  })
+  const summary = requireEl('profiler-summary')
+  summary.textContent =
+    `${b.total} fire${b.total === 1 ? '' : 's'} · ${b.frames.length} × ` +
+    `${b.frameMs}ms frame${b.frames.length === 1 ? '' : 's'} · peak ${b.max}/frame`
+}
+
+// Console — design PxArtDevConsole eval surface
+function appendConsole(text: string, cls: 'cl-in' | 'cl-out' | 'cl-err'): void {
+  const line = document.createElement('div')
+  line.className = cls
+  line.textContent = text
+  consoleLog.appendChild(line)
+  consoleLog.scrollTop = consoleLog.scrollHeight
+}
+
+consoleInput.addEventListener('keydown', (e: KeyboardEvent) => {
+  if (e.key !== 'Enter') return
+  const expr = consoleInput.value.trim()
+  if (!expr) return
+  appendConsole(expr, 'cl-in')
+  consoleInput.value = ''
+  if (!reactiveAvailable) {
+    appendConsole('reactive bridge unavailable — upgrade @pyreon/runtime-dom', 'cl-err')
+    return
+  }
+  sendToPage({ type: 'reactive-eval', expr })
+})
 
 // Initial fetch
 sendToPage({ type: 'get-all' })

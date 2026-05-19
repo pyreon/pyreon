@@ -329,13 +329,33 @@ body {
   color: var(--ok);
 }
 
-/* ── Main split (design PxArtDevTree grid 1.4fr 1fr) ─────────────────── */
-#main {
-  display: grid;
-  grid-template-columns: 1.4fr 1fr;
+/* ── View switcher ───────────────────────────────────────────────────── */
+#views {
   flex: 1;
-  overflow: hidden;
   min-height: 0;
+  overflow: hidden;
+  display: flex;
+}
+
+.view {
+  display: none;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.view.active {
+  display: flex;
+}
+
+/* ── Components split (design PxArtDevTree grid 1.4fr 1fr) ────────────── */
+#main {
+  grid-template-columns: 1.4fr 1fr;
+  min-height: 0;
+}
+
+#main.active {
+  display: grid;
 }
 
 #tree-pane {
@@ -573,6 +593,300 @@ body {
   .tree-node.hot.pulsing {
     animation: none !important;
   }
+}
+
+/* ── Reactive surfaces (Signals / Graph / Effects / Profiler / Console) ─ */
+.reactive-tab.unavailable {
+  color: var(--text-hint);
+  cursor: not-allowed;
+}
+
+.rd-needs {
+  margin: auto;
+  max-width: 460px;
+  padding: 24px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.7;
+}
+
+.rd-needs strong {
+  color: var(--ember);
+}
+
+.view .rd-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.view .rd-needs[hidden] {
+  display: none;
+}
+.view .rd-needs:not([hidden]) ~ .rd-body {
+  display: none;
+}
+
+/* Signals — design PxArtDevSignals table */
+#signals-table {
+  flex: 1;
+  overflow: auto;
+}
+
+.sig-row {
+  display: grid;
+  grid-template-columns: 1.4fr 0.7fr 1fr 0.5fr 0.5fr;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.sig-row.head {
+  position: sticky;
+  top: 0;
+  background: var(--bg-elevated);
+  color: var(--text-dim);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  z-index: 1;
+}
+
+.sig-row.hot {
+  background: var(--ember-bg);
+}
+
+.sig-row .nm {
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sig-row .nm .dot {
+  color: var(--ember);
+  font-size: 8px;
+}
+
+.sig-kind {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  width: max-content;
+}
+.sig-kind.signal {
+  color: var(--text);
+}
+.sig-kind.derived {
+  color: var(--cyan);
+  border-color: color-mix(in srgb, var(--cyan) 35%, transparent);
+}
+.sig-kind.effect {
+  color: var(--ember-warm);
+  border-color: color-mix(in srgb, var(--ember-warm) 35%, transparent);
+}
+
+.sig-row .v {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sig-row .num {
+  text-align: right;
+  color: var(--text-dim);
+}
+.sig-row .num.hot {
+  color: var(--ember);
+}
+
+/* Graph — design PxArtDevGraph node/edge diagram */
+#graph-svg {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+}
+.gnode rect {
+  fill: var(--bg-elevated);
+  stroke: var(--border);
+}
+.gnode.hot rect {
+  fill: var(--ember-bg);
+  stroke: var(--ember);
+}
+.gnode text {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--text-muted);
+}
+.gnode .kdot.signal {
+  fill: var(--text);
+}
+.gnode .kdot.derived {
+  fill: var(--cyan);
+}
+.gnode .kdot.effect {
+  fill: var(--ember-warm);
+}
+.gedge {
+  stroke: var(--hairline);
+  stroke-width: 1.25;
+  fill: none;
+}
+.gedge.hot {
+  stroke: var(--ember);
+  stroke-width: 2;
+}
+#graph-legend {
+  position: absolute;
+  bottom: 12px;
+  left: 16px;
+  display: flex;
+  gap: 14px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+#graph-legend i.lg {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+#graph-legend i.sig {
+  background: var(--text);
+}
+#graph-legend i.der {
+  background: var(--cyan);
+}
+#graph-legend i.eff {
+  background: var(--ember-warm);
+}
+#view-graph .rd-body {
+  position: relative;
+}
+
+/* Effects — design PxArtDevEffects lanes */
+#effects-lanes {
+  flex: 1;
+  overflow: auto;
+  padding: 4px 0;
+}
+.fx-lane {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+.fx-lane .nm {
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fx-track {
+  position: relative;
+  height: 28px;
+}
+.fx-track i {
+  position: absolute;
+  top: 9px;
+  height: 12px;
+  width: 4px;
+  border-radius: 1px;
+  background: var(--ember-warm);
+}
+.fx-track i.derived {
+  background: var(--cyan);
+}
+.fx-track i.signal {
+  background: var(--text);
+}
+
+/* Profiler — design PxArtDevProfiler frame bars */
+#profiler-svg {
+  width: 100%;
+  height: 220px;
+  margin: 8px 0;
+}
+.pf-bar {
+  fill: var(--ember);
+}
+#profiler-summary {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
+}
+#view-profiler .rd-body {
+  padding: 12px 16px;
+}
+
+/* Console — design PxArtDevConsole eval surface */
+#view-console .rd-body {
+  background: var(--bg-deep);
+}
+#console-log {
+  flex: 1;
+  overflow: auto;
+  padding: 12px 16px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.cl-in {
+  color: var(--text);
+}
+.cl-in::before {
+  content: '> ';
+  color: var(--cyan);
+}
+.cl-out {
+  color: var(--ember-warm);
+}
+.cl-err {
+  color: var(--err);
+}
+#console-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
+}
+#console-prompt {
+  color: var(--cyan);
+  font-family: var(--font-mono);
+}
+#console-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+#console-input::placeholder {
+  color: var(--text-hint);
 }
 
 /* ── Scrollbars ──────────────────────────────────────────────────────── */

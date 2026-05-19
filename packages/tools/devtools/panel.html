@@ -32,17 +32,17 @@
           <span class="wordmark">PYREON</span>
         </div>
 
-        <div class="tab disabled" title="Requires the Pyreon signal-graph devtools API — roadmap">Graph</div>
-        <div class="tab disabled" title="Requires the Pyreon signal introspection API — roadmap">Signals</div>
-        <div class="tab disabled" title="Requires the Pyreon effects-timeline API — roadmap">Effects</div>
+        <div class="tab reactive-tab" data-tab="graph">Graph</div>
+        <div class="tab reactive-tab" data-tab="signals">Signals</div>
+        <div class="tab reactive-tab" data-tab="effects">Effects</div>
         <div class="tab active" data-tab="components">Components</div>
-        <div class="tab disabled" title="Requires the Pyreon profiler API — roadmap">Profiler</div>
-        <div class="tab disabled" title="Requires a console-eval bridge — roadmap">Console</div>
+        <div class="tab reactive-tab" data-tab="profiler">Profiler</div>
+        <div class="tab reactive-tab" data-tab="console">Console</div>
 
         <div id="tabbar-status">
           <span class="status-live" id="tab-live">● live</span>
           <span class="status-count" id="component-count">0 components</span>
-          <button type="button" class="chrome-btn" id="refresh-btn" title="Refresh component tree">↻</button>
+          <button type="button" class="chrome-btn" id="refresh-btn" title="Refresh / poll">↻</button>
           <button
             type="button"
             class="chrome-btn"
@@ -64,30 +64,85 @@
         </span>
       </div>
 
-      <!-- Main split — design PxArtDevTree (1.4fr tree | 1fr inspector) -->
-      <div id="main">
-        <div id="tree-pane">
-          <div id="tree-container"></div>
+      <div id="views">
+        <!-- Components — design PxArtDevTree (1.4fr tree | 1fr inspector) -->
+        <div id="main" class="view active" data-view="components">
+          <div id="tree-pane">
+            <div id="tree-container"></div>
+          </div>
+          <div id="detail-pane">
+            <div id="detail-placeholder">Select a component to inspect</div>
+            <div id="detail-content" style="display: none">
+              <div class="eyebrow" id="detail-eyebrow">SELECTED</div>
+              <div id="detail-head">
+                <span id="detail-name"></span>
+                <span class="chip" id="detail-chip">component</span>
+              </div>
+              <div class="detail-section">
+                <div class="eyebrow">ID</div>
+                <span class="detail-value" id="detail-id"></span>
+              </div>
+              <div class="detail-section">
+                <div class="eyebrow">PARENT</div>
+                <span class="detail-value" id="detail-parent"></span>
+              </div>
+              <div class="detail-section">
+                <div class="eyebrow">CHILDREN</div>
+                <div id="detail-children"></div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div id="detail-pane">
-          <div id="detail-placeholder">Select a component to inspect</div>
-          <div id="detail-content" style="display: none">
-            <div class="eyebrow" id="detail-eyebrow">SELECTED</div>
-            <div id="detail-head">
-              <span id="detail-name"></span>
-              <span class="chip" id="detail-chip">component</span>
+
+        <!-- Reactive surfaces — backed by __PYREON_DEVTOOLS__.reactive -->
+        <div id="view-signals" class="view" data-view="signals">
+          <div class="rd-needs" hidden></div>
+          <div class="rd-body">
+            <div id="signals-table"></div>
+          </div>
+        </div>
+
+        <div id="view-graph" class="view" data-view="graph">
+          <div class="rd-needs" hidden></div>
+          <div class="rd-body">
+            <svg id="graph-svg" preserveAspectRatio="xMidYMid meet"></svg>
+            <div id="graph-legend">
+              <span><i class="lg sig"></i>signal</span>
+              <span><i class="lg der"></i>derived</span>
+              <span><i class="lg eff"></i>effect</span>
             </div>
-            <div class="detail-section">
-              <div class="eyebrow">ID</div>
-              <span class="detail-value" id="detail-id"></span>
-            </div>
-            <div class="detail-section">
-              <div class="eyebrow">PARENT</div>
-              <span class="detail-value" id="detail-parent"></span>
-            </div>
-            <div class="detail-section">
-              <div class="eyebrow">CHILDREN</div>
-              <div id="detail-children"></div>
+          </div>
+        </div>
+
+        <div id="view-effects" class="view" data-view="effects">
+          <div class="rd-needs" hidden></div>
+          <div class="rd-body">
+            <div id="effects-lanes"></div>
+          </div>
+        </div>
+
+        <div id="view-profiler" class="view" data-view="profiler">
+          <div class="rd-needs" hidden></div>
+          <div class="rd-body">
+            <div class="eyebrow">FIRES · PER 100&thinsp;MS FRAME</div>
+            <svg id="profiler-svg" preserveAspectRatio="none" viewBox="0 0 600 220"></svg>
+            <div id="profiler-summary"></div>
+          </div>
+        </div>
+
+        <div id="view-console" class="view" data-view="console">
+          <div class="rd-needs" hidden></div>
+          <div class="rd-body">
+            <div id="console-log"></div>
+            <div id="console-input-row">
+              <span id="console-prompt">&gt;</span>
+              <input
+                id="console-input"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="evaluate in the page — e.g. window.__PYREON_DEVTOOLS__.reactive.getGraph()"
+              />
             </div>
           </div>
         </div>
