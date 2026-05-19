@@ -14,9 +14,30 @@ Private workspace package — built and loaded unpacked, not published to npm.
   framework's hover-to-inspect overlay (`enable/disableOverlay`), the
   same picker as `Ctrl+Shift+P`
 - Inspector pane showing component details (id, parent, children)
-- Real-time mount/unmount tracking
+- Real-time mount/unmount tracking — a freshly-mounted component **pulses**
+  with the signature ember signal-propagation animation (reduced-motion
+  gated). Pyreon components mount once, so "just mounted" is the truthful
+  on-brand analog of the design's RE-RENDERED hot state
 - Automatic Pyreon framework detection (`window.__PYREON_DEVTOOLS__`, installed by `@pyreon/runtime-dom` on first `mount()`)
-- Pyreon brand identity (ink/ember/cyan palette, Space Grotesk + JetBrains Mono)
+
+## Design
+
+The panel implements the **Claude-Design handoff** (`pyreon-devtools.jsx` +
+`tokens.css`): the `PxDevChrome` shell — traffic-light title bar with the
+inspected origin, Pyreon glyph + wordmark, tab bar with an ember-gradient
+active underline, breadcrumb + live status — and the `PxArtDevTree`
+Components split (depth-indented mono tree with hot rows ┊ inspector with
+`SELECTED` eyebrows and chips). Full design token system (ink/paper/gray
+ramps, ember gradient, cyan), JetBrains Mono + Space Grotesk, dark by
+default with the light token block honoring DevTools' theme.
+
+The design's other five tabs — **Graph · Signals · Effects · Profiler ·
+Console** — require framework signal-graph / effect-timeline / profiler /
+console-eval APIs that `window.__PYREON_DEVTOOLS__` does not expose. They
+render as **disabled chrome tabs** with a roadmap tooltip rather than
+fake/empty surfaces (honesty over benchmark-theater, per the brand brief).
+Web fonts are intentionally not loaded (MV3 panel CSP + offline-safety);
+the design's font stacks degrade to system mono/sans.
 
 ## Install (development)
 

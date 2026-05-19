@@ -3,6 +3,11 @@ import { buildMap, getChildren, getRoots } from './tree'
 import type { PanelMessage, SerializedEntry } from './types'
 
 // --- Panel UI: component tree viewer ---
+// Implements the Claude-Design handoff (pyreon-devtools.jsx) Components
+// surface: PxDevChrome shell + PxArtDevTree split. The other five designed
+// tabs (Graph / Signals / Effects / Profiler / Console) need framework
+// signal-graph APIs that `window.__PYREON_DEVTOOLS__` does not expose yet —
+// they render as disabled chrome tabs with a roadmap tooltip.
 
 // State
 let allEntries: SerializedEntry[] = []
@@ -16,6 +21,11 @@ let currentChildren: Map<string, SerializedEntry[]> = new Map()
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 let connected = true
 let pendingRequestTimer: ReturnType<typeof setTimeout> | null = null
+// Freshly-mounted ids → the signature ember pulse. Pyreon components
+// mount once (no re-render in a signal model), so "just mounted" is the
+// truthful on-brand analog of the design's RE-RENDERED hot state.
+const recentlyMounted = new Map<string, ReturnType<typeof setTimeout>>()
+const HOT_MS = 1200
 
 // DOM refs — panel.html ships these ids, but resolve defensively so a
 // markup drift fails loudly with an actionable message instead of a
@@ -30,10 +40,14 @@ function requireEl(id: string): HTMLElement {
   return el
 }
 
+const titlebarCaption = requireEl('titlebar-caption')
+const tabLive = requireEl('tab-live')
+const breadcrumbLeft = requireEl('breadcrumb-left')
 const treeContainer = requireEl('tree-container')
 const detailPlaceholder = requireEl('detail-placeholder')
 const detailContent = requireEl('detail-content')
 const detailName = requireEl('detail-name')
+const detailChip = requireEl('detail-chip')
 const detailId = requireEl('detail-id')
 const detailParent = requireEl('detail-parent')
 const detailChildren = requireEl('detail-children')
@@ -47,8 +61,25 @@ const statsText = requireEl('stats-text')
 const tabId = chrome.devtools.inspectedWindow.tabId
 const port = chrome.runtime.connect({ name: `pyreon-panel-${tabId}` })
 
+// Fill the title-bar caption with the inspected origin + path (design
+// PxDevChrome shows `pyreon devtools · localhost:5173 · /app/cart`).
+chrome.devtools.inspectedWindow.eval(
+  'location.host + location.pathname',
+  (result: unknown) => {
+    if (typeof result === 'string' && result) {
+      titlebarCaption.textContent = `pyreon devtools · ${result}`
+    }
+  },
+)
+
+function setLive(on: boolean): void {
+  tabLive.style.display = on ? '' : 'none'
+}
+setLive(false)
+
 port.onDisconnect.addListener(() => {
   connected = false
+  setLive(false)
   statsText.textContent = 'Disconnected — reopen DevTools to reconnect'
 })
 
@@ -67,6 +98,7 @@ function sendToPage(payload: PanelMessage): void {
     }
   } catch {
     connected = false
+    setLive(false)
     statsText.textContent = 'Disconnected — reopen DevTools to reconnect'
   }
 }
@@ -80,7 +112,9 @@ function renderTree(): void {
   const rootCount = roots.length
 
   componentCount.textContent = `${totalCount} component${totalCount !== 1 ? 's' : ''}`
-  statsText.textContent = `${totalCount} components (${rootCount} root${rootCount !== 1 ? 's' : ''})`
+  breadcrumbLeft.textContent =
+    `component tree · subscription view · ${totalCount} mounted` +
+    (rootCount ? ` · ${rootCount} root${rootCount !== 1 ? 's' : ''}` : '')
 
   if (pyreonVersion) {
     versionSpan.textContent = `v${pyreonVersion}`
@@ -110,16 +144,23 @@ function renderNode(
   const hasChildren = kids.length > 0
   const isExpanded = expandedIds.has(entry.id)
   const isSelected = entry.id === selectedId
+  const isHot = recentlyMounted.has(entry.id)
 
   const node = document.createElement('div')
-  node.className = `tree-node${isSelected ? ' selected' : ''}`
-  node.style.paddingLeft = `${depth * 16 + 8}px`
+  node.className =
+    'tree-node' +
+    (isSelected ? ' selected' : '') +
+    (isHot ? ' hot pulsing' : '')
 
-  // Expand/collapse arrow
+  // Left: caret + hot dot + name (design `.tn-label`)
+  const label = document.createElement('div')
+  label.className = 'tn-label'
+  label.style.paddingLeft = `${depth * 18}px`
+
   const arrow = document.createElement('span')
   arrow.className = 'tree-arrow'
   if (hasChildren) {
-    arrow.textContent = isExpanded ? '\u25BE' : '\u25B8'
+    arrow.textContent = isExpanded ? '▾' : '▸'
     arrow.addEventListener('click', (e) => {
       e.stopPropagation()
       if (expandedIds.has(entry.id)) {
@@ -130,25 +171,37 @@ function renderNode(
       renderTree()
     })
   } else {
-    arrow.textContent = ' '
+    arrow.textContent = '·'
   }
-  node.appendChild(arrow)
+  label.appendChild(arrow)
 
-  // Component name
+  if (isHot) {
+    const dot = document.createElement('span')
+    dot.className = 'tree-dot'
+    dot.textContent = '●'
+    label.appendChild(dot)
+  }
+
   const name = document.createElement('span')
   name.className = 'tree-name'
   name.textContent = entry.name
-  node.appendChild(name)
+  label.appendChild(name)
+  node.appendChild(label)
 
-  // Child count badge
-  if (hasChildren) {
-    const badge = document.createElement('span')
-    badge.className = 'tree-badge'
-    badge.textContent = `${kids.length}`
-    node.appendChild(badge)
-  }
+  // Mid: subscription/child count (design `N sub`)
+  const sub = document.createElement('div')
+  sub.className = 'tree-sub'
+  sub.textContent = hasChildren
+    ? `${kids.length} sub${kids.length !== 1 ? 's' : ''}`
+    : ''
+  node.appendChild(sub)
 
-  // Click to select + highlight
+  // Right: state tag (design `RE-RENDERED` → `MOUNTED` for the signal model)
+  const tag = document.createElement('div')
+  tag.className = 'tree-tag'
+  tag.textContent = isHot ? 'MOUNTED' : ''
+  node.appendChild(tag)
+
   node.addEventListener('click', () => {
     selectedId = entry.id
     sendToPage({ type: 'highlight', id: entry.id })
@@ -158,7 +211,6 @@ function renderNode(
 
   container.appendChild(node)
 
-  // Render children if expanded
   if (hasChildren && isExpanded) {
     for (const child of kids) {
       renderNode(child, depth + 1, container)
@@ -166,7 +218,7 @@ function renderNode(
   }
 }
 
-// Render detail pane
+// Render detail pane (design PxArtDevTree right column)
 function renderDetail(): void {
   if (!selectedId) {
     detailPlaceholder.style.display = ''
@@ -185,7 +237,10 @@ function renderDetail(): void {
   detailPlaceholder.style.display = 'none'
   detailContent.style.display = ''
 
-  detailName.textContent = `<${entry.name}>`
+  detailName.textContent = `<${entry.name}/>`
+  const hot = recentlyMounted.has(entry.id)
+  detailChip.textContent = hot ? 'just mounted' : 'component'
+  detailChip.className = hot ? 'chip ember' : 'chip'
   detailId.textContent = entry.id
 
   if (entry.parentId) {
@@ -211,13 +266,23 @@ function renderDetail(): void {
   detailChildren.innerHTML = ''
   const detailKids = currentChildren.get(entry.id) ?? []
   if (detailKids.length === 0) {
-    detailChildren.textContent = '(none)'
+    const none = document.createElement('span')
+    none.className = 'detail-value'
+    none.style.color = 'var(--text-dim)'
+    none.textContent = '(none)'
+    detailChildren.appendChild(none)
   } else {
     for (const child of detailKids) {
       const childId = child.id
       const childEl = document.createElement('div')
       childEl.className = 'detail-child clickable'
-      childEl.textContent = `${child.name} (${childId})`
+      const nm = document.createElement('span')
+      nm.textContent = child.name
+      const cid = document.createElement('span')
+      cid.className = 'cid'
+      cid.textContent = childId
+      childEl.appendChild(nm)
+      childEl.appendChild(cid)
       childEl.addEventListener('click', () => {
         selectedId = childId
         sendToPage({ type: 'highlight', id: childId })
@@ -227,6 +292,20 @@ function renderDetail(): void {
       detailChildren.appendChild(childEl)
     }
   }
+}
+
+// Mark a freshly-mounted component hot for HOT_MS, then auto-clear.
+function markHot(id: string): void {
+  const existing = recentlyMounted.get(id)
+  if (existing !== undefined) clearTimeout(existing)
+  recentlyMounted.set(
+    id,
+    setTimeout(() => {
+      recentlyMounted.delete(id)
+      renderTree()
+      if (id === selectedId) renderDetail()
+    }, HOT_MS),
+  )
 }
 
 // Debounced tree refresh (for rapid mount/unmount events)
@@ -254,6 +333,9 @@ port.onMessage.addListener((message: unknown) => {
       }
       const isFirstLoad = allEntries.length === 0
       allEntries = msg.entries
+      connected = true
+      setLive(true)
+      statsText.textContent = ''
       // Auto-expand roots on first load
       if (isFirstLoad) {
         for (const entry of getRoots(allEntries)) {
@@ -265,12 +347,18 @@ port.onMessage.addListener((message: unknown) => {
       break
     }
     case 'component-mount': {
+      markHot(msg.entry.id)
       debouncedRefresh()
       break
     }
     case 'component-unmount': {
       if (msg.id === selectedId) {
         selectedId = null
+      }
+      const t = recentlyMounted.get(msg.id)
+      if (t !== undefined) {
+        clearTimeout(t)
+        recentlyMounted.delete(msg.id)
       }
       debouncedRefresh()
       break
@@ -282,6 +370,8 @@ port.onMessage.addListener((message: unknown) => {
       }
       pyreonVersion = msg.version
       versionSpan.textContent = `v${pyreonVersion}`
+      connected = true
+      setLive(true)
       statsText.textContent = 'Pyreon detected'
       sendToPage({ type: 'get-all' })
       break
@@ -289,15 +379,15 @@ port.onMessage.addListener((message: unknown) => {
   }
 })
 
-// Refresh button
+// Refresh control (design chrome ↻)
 refreshBtn.addEventListener('click', () => {
   sendToPage({ type: 'get-all' })
 })
 
-// Inspect button — toggles the framework's element-picker overlay on the
-// inspected page (mirrors React/Vue DevTools' picker). The framework
-// auto-disables the overlay after a pick, so this reflects the panel's
-// last intent; clicking again re-arms it.
+// Inspect control (design chrome ◉) — toggles the framework's
+// element-picker overlay on the inspected page (mirrors React/Vue
+// DevTools' picker). The framework auto-disables the overlay after a
+// pick, so this reflects the panel's last intent; clicking re-arms it.
 let overlayEnabled = false
 function setOverlay(enabled: boolean): void {
   overlayEnabled = enabled
@@ -308,6 +398,15 @@ function setOverlay(enabled: boolean): void {
 inspectBtn.addEventListener('click', () => {
   setOverlay(!overlayEnabled)
 })
+
+// Disabled chrome tabs — the five designed surfaces with no backing
+// framework API. Clicking surfaces the roadmap reason rather than a
+// dead no-op.
+for (const tab of document.querySelectorAll<HTMLElement>('.tab.disabled')) {
+  tab.addEventListener('click', () => {
+    statsText.textContent = `"${tab.textContent ?? ''}" needs the Pyreon signal-graph devtools API — roadmap`
+  })
+}
 
 // Initial fetch
 sendToPage({ type: 'get-all' })

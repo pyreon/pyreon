@@ -6,37 +6,91 @@
   </head>
   <body>
     <div id="app">
-      <div id="toolbar">
-        <button type="button" id="refresh-btn" title="Refresh component tree">&#x21bb; Refresh</button>
-        <button type="button" id="inspect-btn" title="Toggle the page element inspector" aria-pressed="false">&#x25C9; Inspect</button>
-        <span id="component-count">0 components</span>
-        <span id="pyreon-version"></span>
+      <!-- Title bar — design PxDevChrome -->
+      <div id="titlebar">
+        <span class="tl-dot r"></span>
+        <span class="tl-dot a"></span>
+        <span class="tl-dot g"></span>
+        <span id="titlebar-caption">pyreon devtools</span>
+        <span id="titlebar-shortcut">⌘⇧I</span>
       </div>
+
+      <!-- Tab bar — Pyreon glyph + wordmark + tabs + status cluster -->
+      <div id="tabbar">
+        <div id="brand">
+          <svg width="16" height="16" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+            <circle cx="36" cy="64" r="22" style="fill: var(--ember)" />
+            <path
+              d="M70 86 L70 42 L70 64 Q70 42 92 42 Q112 42 112 64 L112 86"
+              style="stroke: var(--text)"
+              stroke-width="10"
+              stroke-linecap="square"
+              stroke-linejoin="miter"
+              fill="none"
+            />
+          </svg>
+          <span class="wordmark">PYREON</span>
+        </div>
+
+        <div class="tab disabled" title="Requires the Pyreon signal-graph devtools API — roadmap">Graph</div>
+        <div class="tab disabled" title="Requires the Pyreon signal introspection API — roadmap">Signals</div>
+        <div class="tab disabled" title="Requires the Pyreon effects-timeline API — roadmap">Effects</div>
+        <div class="tab active" data-tab="components">Components</div>
+        <div class="tab disabled" title="Requires the Pyreon profiler API — roadmap">Profiler</div>
+        <div class="tab disabled" title="Requires a console-eval bridge — roadmap">Console</div>
+
+        <div id="tabbar-status">
+          <span class="status-live" id="tab-live">● live</span>
+          <span class="status-count" id="component-count">0 components</span>
+          <button type="button" class="chrome-btn" id="refresh-btn" title="Refresh component tree">↻</button>
+          <button
+            type="button"
+            class="chrome-btn"
+            id="inspect-btn"
+            title="Toggle the page element inspector"
+            aria-pressed="false"
+          >
+            ◉
+          </button>
+        </div>
+      </div>
+
+      <!-- Breadcrumb row — design PxDevChrome -->
+      <div id="breadcrumb">
+        <span id="breadcrumb-left">component tree · subscription view</span>
+        <span id="breadcrumb-right">
+          <span id="pyreon-version"></span>
+          <span id="stats-text">Connecting…</span>
+        </span>
+      </div>
+
+      <!-- Main split — design PxArtDevTree (1.4fr tree | 1fr inspector) -->
       <div id="main">
         <div id="tree-pane">
           <div id="tree-container"></div>
         </div>
         <div id="detail-pane">
           <div id="detail-placeholder">Select a component to inspect</div>
-          <div id="detail-content" style="display: none;">
-            <h3 id="detail-name"></h3>
-            <div class="detail-section">
-              <label>ID</label>
-              <span id="detail-id"></span>
+          <div id="detail-content" style="display: none">
+            <div class="eyebrow" id="detail-eyebrow">SELECTED</div>
+            <div id="detail-head">
+              <span id="detail-name"></span>
+              <span class="chip" id="detail-chip">component</span>
             </div>
             <div class="detail-section">
-              <label>Parent</label>
-              <span id="detail-parent"></span>
+              <div class="eyebrow">ID</div>
+              <span class="detail-value" id="detail-id"></span>
             </div>
             <div class="detail-section">
-              <label>Children</label>
+              <div class="eyebrow">PARENT</div>
+              <span class="detail-value" id="detail-parent"></span>
+            </div>
+            <div class="detail-section">
+              <div class="eyebrow">CHILDREN</div>
               <div id="detail-children"></div>
             </div>
           </div>
         </div>
-      </div>
-      <div id="stats-bar">
-        <span id="stats-text">Connecting...</span>
       </div>
     </div>
     <script src="panel.js"></script>

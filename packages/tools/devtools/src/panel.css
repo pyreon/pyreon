@@ -1,13 +1,16 @@
 /* ───────────────────────────────────────────────────────────────────────
-   Pyreon DevTools panel — Pyreon brand identity (dark)
+   Pyreon DevTools panel — implements the Claude-Design handoff
+   (pyreon/project/pyreon-devtools.jsx + tokens.css), Components surface.
 
    Self-contained token layer (the extension ships standalone, so it can't
-   reference the docs `tokens.css`). Values mirror the canonical Pyreon
-   palette: ink surface ramp, paper text, gray muted, cyan for
-   interactivity, ember as the sparing signal accent.
+   reference the docs `tokens.css`). Raw palette + semantic tokens are a
+   verbatim port of the design bundle. Dark by default; the light token
+   block activates when Chrome DevTools is in a light theme
+   (prefers-color-scheme: light).
    ─────────────────────────────────────────────────────────────────────── */
 
 :root {
+  /* ── Raw palette (design tokens.css §1) ─────────────────────────────── */
   --ink-0: #06060a;
   --ink-1: #0a0a0e;
   --ink-2: #111118;
@@ -15,15 +18,36 @@
   --ink-4: #23232e;
   --ink-5: #2e2e3b;
 
+  --paper-0: #fffcf5;
   --paper-1: #f4efe6;
+  --paper-2: #e6e0d2;
+  --paper-3: #faf5eb;
+  --paper-4: #ede6d6;
+  --paper-5: #e6dfd2;
 
   --gray-1: #c9c4b8;
   --gray-2: #8a8696;
+  --gray-3: #5c5867;
+  --gray-4: #4a4654;
+  --gray-5: #6b6776;
+  --gray-6: #8e8a9a;
+  --gray-7: #71707c;
 
+  --ember-plasma: #ff1f8c;
   --ember-core: #ff5e1a;
   --ember-warm: #ffc83d;
+  --ember-plasma-l: #e40c70;
+  --ember-core-l: #e84a0f;
+  --ember-warm-l: #e0a510;
 
   --cyan: #22d3ee;
+  --cyan-l: #0891b2;
+
+  --ok: #4ade80;
+  --warn: #facc15;
+  --err: #f87171;
+
+  --violet: #a78bfa;
 
   --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system,
     'Segoe UI', sans-serif;
@@ -32,17 +56,74 @@
 
   --radius-sm: 3px;
   --radius: 4px;
+  --radius-lg: 8px;
 
+  /* ── Semantic tokens · DARK (design tokens.css §2) ──────────────────── */
   --bg: var(--ink-1);
   --bg-elevated: var(--ink-2);
   --bg-well: var(--ink-3);
   --bg-deep: var(--ink-0);
+
+  --text: var(--paper-1);
+  --text-strong: var(--paper-0);
+  --text-muted: var(--gray-1);
+  --text-dim: var(--gray-2);
+  --text-hint: var(--gray-3);
+
   --border: var(--ink-4);
   --hairline: var(--ink-5);
-  --text: var(--paper-1);
-  --muted: var(--gray-2);
-  --accent: var(--cyan);
-  --signal: var(--ember-core);
+
+  --ember: var(--ember-core);
+  --ember-grad: linear-gradient(
+    95deg,
+    var(--ember-plasma) 0%,
+    var(--ember-core) 55%,
+    var(--ember-warm) 100%
+  );
+  --ember-bg: rgba(255, 94, 26, 0.06);
+  --ember-ring: rgba(255, 94, 26, 0.35);
+
+  --link: var(--cyan);
+  --link-bg: rgba(34, 211, 238, 0.06);
+
+  /* traffic-light dots (design PxDevChrome title bar) */
+  --tl-red: #ff5f57;
+  --tl-amber: #febc2e;
+  --tl-green: #28c840;
+}
+
+/* Light token block — Chrome DevTools light theme (design tokens.css §3) */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: var(--paper-3);
+    --bg-elevated: #ffffff;
+    --bg-well: var(--paper-1);
+    --bg-deep: var(--paper-3);
+
+    --text: #14141c;
+    --text-strong: #0a0a0e;
+    --text-muted: var(--gray-4);
+    --text-dim: var(--gray-5);
+    --text-hint: var(--gray-6);
+
+    --border: var(--paper-5);
+    --hairline: var(--paper-4);
+
+    --ember: var(--ember-core-l);
+    --ember-grad: linear-gradient(
+      95deg,
+      var(--ember-plasma-l) 0%,
+      var(--ember-core-l) 55%,
+      var(--ember-warm-l) 100%
+    );
+    --ember-bg: rgba(232, 74, 15, 0.05);
+    --ember-ring: rgba(232, 74, 15, 0.35);
+
+    --link: var(--cyan-l);
+    --link-bg: rgba(8, 145, 178, 0.06);
+
+    --violet: #5226c7;
+  }
 }
 
 * {
@@ -66,106 +147,228 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  background: var(--bg);
 }
 
-/* --- Toolbar --- */
+::selection {
+  background: var(--ember-ring);
+  color: var(--text-strong);
+}
 
-#toolbar {
+/* ── Title bar (design PxDevChrome) ──────────────────────────────────── */
+#titlebar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 6px 12px;
+  gap: 8px;
+  padding: 7px 12px;
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
-  min-height: 34px;
   flex-shrink: 0;
 }
 
-#refresh-btn,
-#inspect-btn {
-  background: var(--ink-3);
-  color: var(--text);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
-  padding: 3px 10px;
+.tl-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+.tl-dot.r {
+  background: var(--tl-red);
+}
+.tl-dot.a {
+  background: var(--tl-amber);
+}
+.tl-dot.g {
+  background: var(--tl-green);
+}
+
+#titlebar-caption {
+  margin-left: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#titlebar-shortcut {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-hint);
+  flex-shrink: 0;
+}
+
+/* ── Tab bar (design PxDevChrome) ────────────────────────────────────── */
+#tabbar {
+  display: flex;
+  align-items: flex-end;
+  padding: 0 12px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px 8px 0;
+  flex-shrink: 0;
+}
+
+#brand svg {
+  display: block;
+}
+
+#brand .wordmark {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-dim);
+  letter-spacing: 0.08em;
+}
+
+.tab {
   font-family: var(--font-sans);
+  font-size: 12.5px;
+  padding: 8px 14px;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+}
+
+.tab:hover:not(.disabled):not(.active) {
+  color: var(--text);
+}
+
+.tab.active {
+  color: var(--text);
+  border-image: var(--ember-grad) 1;
+  border-bottom: 2px solid var(--ember);
+}
+
+.tab.disabled {
+  color: var(--text-hint);
+  cursor: not-allowed;
+}
+
+#tabbar-status {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 0 6px;
+  flex-shrink: 0;
+}
+
+.status-live {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ok);
+}
+
+.status-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.chrome-btn {
+  font-family: var(--font-mono);
   font-size: 12px;
+  line-height: 1;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition:
-    background 0.15s,
-    border-color 0.15s,
-    color 0.15s;
+    color 0.15s,
+    background 0.15s;
 }
 
-#refresh-btn:hover,
-#inspect-btn:hover {
-  background: var(--ink-4);
-  border-color: var(--signal);
+.chrome-btn:hover {
+  color: var(--text);
+  background: var(--bg-well);
 }
 
-#refresh-btn:active,
-#inspect-btn:active {
-  background: var(--ink-5);
+.chrome-btn.active {
+  color: var(--ember);
 }
 
-/* Inspector armed — ember signal accent (used sparingly, per brand). */
-#inspect-btn.active {
-  background: color-mix(in srgb, var(--signal) 18%, var(--bg));
-  border-color: var(--signal);
-  color: var(--signal);
-}
-
-#component-count {
-  color: var(--muted);
-  font-family: var(--font-sans);
-}
-
-#pyreon-version {
-  color: var(--ember-warm);
-  font-family: var(--font-sans);
-  font-weight: 600;
-  margin-left: auto;
-}
-
-/* --- Main area --- */
-
-#main {
+/* ── Breadcrumb row (design PxDevChrome) ─────────────────────────────── */
+#breadcrumb {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+#breadcrumb .hl {
+  color: var(--text);
+}
+
+#breadcrumb-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.bc-live {
+  color: var(--ok);
+}
+
+/* ── Main split (design PxArtDevTree grid 1.4fr 1fr) ─────────────────── */
+#main {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
   flex: 1;
   overflow: hidden;
+  min-height: 0;
 }
 
-/* --- Tree pane --- */
-
 #tree-pane {
-  flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  min-width: 200px;
+  border-right: 1px solid var(--border);
+  min-width: 220px;
 }
 
 #tree-container {
-  padding: 4px 0;
+  padding: 0;
 }
 
 .tree-empty {
-  padding: 24px 16px;
-  color: var(--muted);
+  padding: 28px 16px;
+  color: var(--text-dim);
   text-align: center;
   font-style: italic;
 }
 
+/* Tree row — design: grid 1fr auto auto, 8px 16px, mono 12, hot=ember bg */
 .tree-node {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
   align-items: center;
-  gap: 4px;
-  padding-top: 2px;
-  padding-bottom: 2px;
-  padding-right: 8px;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
   border-left: 2px solid transparent;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.1s;
+  font-family: var(--font-mono);
+  font-size: 12px;
 }
 
 .tree-node:hover {
@@ -173,17 +376,34 @@ body {
 }
 
 .tree-node.selected {
-  background: color-mix(in srgb, var(--signal) 16%, var(--bg));
-  border-left-color: var(--signal);
+  background: var(--ember-bg);
+  border-left-color: var(--ember);
+}
+
+/* Freshly-mounted → the signature ember pulse (design tokens.css §5).
+   Pyreon components mount once; "just mounted" is the truthful on-brand
+   analog of the design's RE-RENDERED state. */
+.tree-node.hot {
+  background: var(--ember-bg);
+}
+.tree-node.hot.pulsing {
+  animation: px-pulse 1s ease-out 1;
+}
+
+.tn-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
 }
 
 .tree-arrow {
   display: inline-block;
-  width: 14px;
+  width: 12px;
   text-align: center;
   flex-shrink: 0;
-  color: var(--muted);
-  font-size: 10px;
+  color: var(--text-hint);
+  font-size: 9px;
   cursor: pointer;
   user-select: none;
 }
@@ -192,122 +412,181 @@ body {
   color: var(--text);
 }
 
-.tree-name {
-  color: var(--accent);
-}
-
-.tree-node.selected .tree-name {
-  color: var(--signal);
-  font-weight: 600;
-}
-
-.tree-badge {
-  color: var(--muted);
-  font-size: 10px;
-  margin-left: 4px;
-  background: var(--ink-4);
-  padding: 0 5px;
-  border-radius: 8px;
-}
-
-/* --- Detail pane --- */
-
-#detail-pane {
-  width: 280px;
-  min-width: 200px;
-  background: var(--bg-deep);
-  border-left: 1px solid var(--border);
-  overflow-y: auto;
-  padding: 12px;
+.tree-dot {
+  color: var(--ember);
+  font-size: 8px;
   flex-shrink: 0;
 }
 
+.tree-name {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-sub {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+.tree-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-hint);
+}
+
+.tree-node.hot .tree-tag {
+  color: var(--ember);
+}
+
+/* ── Detail pane (design PxArtDevTree right column) ──────────────────── */
+#detail-pane {
+  padding: 16px;
+  overflow-y: auto;
+  min-width: 200px;
+}
+
 #detail-placeholder {
-  color: var(--muted);
+  color: var(--text-dim);
   text-align: center;
-  padding-top: 40px;
+  padding-top: 48px;
   font-style: italic;
 }
 
-#detail-content h3 {
-  color: var(--accent);
-  font-family: var(--font-sans);
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border);
-}
-
-.detail-section {
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
   margin-bottom: 10px;
 }
 
-.detail-section label {
-  display: block;
-  color: var(--muted);
-  font-family: var(--font-sans);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 2px;
+#detail-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+#detail-name {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  color: var(--text);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  background: var(--bg-well);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.chip.ember {
+  background: var(--ember-bg);
+  border-color: var(--ember-ring);
+  color: var(--ember);
+}
+
+.detail-section {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.detail-section:first-of-type {
+  margin-top: 16px;
+  padding-top: 0;
+  border-top: none;
+}
+
+.detail-section .eyebrow {
+  margin-bottom: 8px;
 }
 
 .detail-value {
-  color: var(--gray-1);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
   word-break: break-all;
 }
 
 .detail-value.clickable,
 .detail-child.clickable {
-  color: var(--accent);
+  color: var(--link);
   cursor: pointer;
+  border-bottom: 1px solid transparent;
+  display: inline-block;
 }
 
 .detail-value.clickable:hover,
 .detail-child.clickable:hover {
-  color: var(--signal);
-  text-decoration: underline;
+  border-bottom-color: currentColor;
 }
 
 .detail-child {
-  padding: 2px 0;
-}
-
-/* --- Stats bar --- */
-
-#stats-bar {
   display: flex;
-  align-items: center;
-  padding: 3px 12px;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  margin-bottom: 4px;
   background: var(--bg-elevated);
-  border-top: 1px solid var(--border);
-  min-height: 24px;
-  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text);
 }
 
-#stats-text {
-  color: var(--muted);
-  font-family: var(--font-sans);
-  font-size: 11px;
+.detail-child .cid {
+  color: var(--text-dim);
 }
 
-/* --- Scrollbar styling --- */
+/* ── The signature pulse — design tokens.css §5 ──────────────────────── */
+@keyframes px-pulse {
+  0% {
+    box-shadow:
+      0 0 0 0 rgba(255, 94, 26, 0.7),
+      0 0 0 0 rgba(255, 31, 140, 0.5);
+  }
+  60% {
+    box-shadow:
+      0 0 0 8px rgba(255, 94, 26, 0),
+      0 0 0 16px rgba(255, 31, 140, 0);
+  }
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(255, 94, 26, 0),
+      0 0 0 0 rgba(255, 31, 140, 0);
+  }
+}
 
+@media (prefers-reduced-motion: reduce) {
+  .tree-node.hot.pulsing {
+    animation: none !important;
+  }
+}
+
+/* ── Scrollbars ──────────────────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
-
 ::-webkit-scrollbar-track {
   background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
   background: var(--ink-4);
   border-radius: var(--radius);
 }
-
 ::-webkit-scrollbar-thumb:hover {
   background: var(--ink-5);
 }
