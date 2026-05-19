@@ -18,7 +18,7 @@ bun add @pyreon/zero
 - **Components** — `<Image>` (lazy load, srcset, blur-up), `<Link>` (prefetch, active state), `<Script>` (loading strategies)
 - **Theme** — Dark/light/system with `theme` signal, `<ThemeToggle>`, and anti-flash inline script
 - **Fonts** — Google Fonts self-hosting at build time, local fonts, size-adjusted fallbacks
-- **Image optimization** — Build-time processing via `?optimize` imports (WebP/AVIF, blur placeholders)
+- **Image optimization** — Build-time processing via `?optimize` imports (WebP/AVIF, blur placeholders). Type the custom queries with one line — `/// <reference types="@pyreon/zero/image-types" />` — which ships ambient `declare module "*?optimize"` / `"*?component"` / `"*?raw"` reusing the plugin's own `ProcessedImage`.
 - **SEO** — Sitemap, robots.txt, JSON-LD helpers (Vite plugin + dev middleware)
 - **Middleware** — `cacheMiddleware()`, `securityHeaders()`, `corsMiddleware()`, `rateLimitMiddleware()`, `compressionMiddleware()`
 - **Adapters** — Node.js, Bun, static, Vercel, Cloudflare Pages, Netlify Functions
