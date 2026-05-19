@@ -210,8 +210,8 @@ export function rocketstyleCollapseKey(
   const propStr = Object.keys(props)
     .sort()
     .map((k) => `${k}=${props[k]}`)
-    .join('')
-  const src = `${componentName} ${propStr} ${childrenText}`
+    .join('\u0001')
+  const src = `${componentName}\u0000${propStr}\u0000${childrenText}`
   let h = 2166136261
   for (let i = 0; i < src.length; i++) {
     h ^= src.charCodeAt(i)
@@ -901,6 +901,15 @@ export function transformJSX_JS(
   // ── Prop-derived variable tracking (collected during the single walk) ─────
   const propsNames = new Set<string>()
   const propDerivedVars = new Map<string, { start: number; end: number }>()
+  // Round 9 fix: names of const/let bindings whose initializer is a JSX
+  // element (`const x = <El/>`). A bare `{x}` child of such a binding must be
+  // MOUNTED, not text-coerced — pre-fix it emitted `createTextNode(x)` which
+  // stringifies the NativeItem to "[object Object]". Routing through
+  // `_mountSlot` (the general child-insert `props.children` already uses) is
+  // safe even if a same-named binding is later shadowed by a string/number:
+  // `_mountSlot` renders those correctly too — the only cost of imprecision
+  // is skipping the createTextNode fast path, never a correctness regression.
+  const elementVars = new Set<string>()
 
   // ── Signal variable tracking (for auto-call in JSX) ──────────────────────
   // Tracks `const x = signal(...)` declarations. In JSX expressions, bare
@@ -1007,6 +1016,18 @@ export function transformJSX_JS(
           }
         }
       }
+      // Round 9: track element-valued bindings (`const`/`let`, any depth) so
+      // a bare `{x}` child routes to _mountSlot instead of createTextNode.
+      // Tight: only a DIRECT JSX element/fragment initializer (optionally
+      // parenthesized) — conditionals/calls go the existing reactive/text
+      // paths and must not be reclassified here.
+      if ((node.kind === 'const' || node.kind === 'let') && decl.id?.type === 'Identifier' && decl.init) {
+        let initNode = decl.init
+        while (initNode?.type === 'ParenthesizedExpression') initNode = initNode.expression
+        if (initNode?.type === 'JSXElement' || initNode?.type === 'JSXFragment') {
+          elementVars.add(decl.id.name)
+        }
+      }
       if (node.kind !== 'const') continue
       if (callbackDepth > 0) continue
       if (decl.id?.type === 'Identifier' && decl.init) {
@@ -1083,13 +1104,99 @@ export function transformJSX_JS(
     const endOffset = baseOffset + text.length
     const idents: { start: number; end: number; name: string }[] = []
 
+    // ── Scope-aware shadow tracking ──────────────────────────────────────────
+    // Prop-derived consts are only ever COLLECTED at component top level
+    // (callbackDepth === 0), so ANY same-named binding in a deeper lexical
+    // scope necessarily shadows it. Substituting a shadowed reference (or a
+    // binding occurrence) miscompiles idiomatic code — e.g.
+    // `const a = props.x; items.map(a => <li>{a}</li>)` would rewrite the
+    // arrow PARAMETER `a` into `(props.x)` (invalid `(props.x) =>`) and the
+    // body `{a}` (the map item) into `props.x`. The signal-auto-call pass is
+    // already scope-aware via `shadowedSignals`; this mirrors that discipline
+    // for the prop-derived inlining pass.
+    const shadowed = new Set<string>()
+
+    /** Collect identifier names bound by a pattern (params / declarators). */
+    function patternBindingNames(p: N, out: string[]): void {
+      if (!p) return
+      switch (p.type) {
+        case 'Identifier':
+          out.push(p.name)
+          break
+        case 'ObjectPattern':
+          for (const pr of p.properties ?? []) {
+            if (pr.type === 'RestElement') patternBindingNames(pr.argument, out)
+            else patternBindingNames(pr.value ?? pr.key, out)
+          }
+          break
+        case 'ArrayPattern':
+          for (const el of p.elements ?? []) patternBindingNames(el, out)
+          break
+        case 'AssignmentPattern':
+          patternBindingNames(p.left, out)
+          break
+        case 'RestElement':
+          patternBindingNames(p.argument, out)
+          break
+      }
+    }
+
+    /**
+     * Prop-derived names bound by `node` FOR ITS OWN SUBTREE (block-accurate
+     * lexical scoping). Excludes the prop-derived const's own defining
+     * declaration (matched by init span) so the binding we inline FROM is
+     * never mistaken for a shadow of itself.
+     */
+    function scopeBoundPropDerived(node: N): string[] {
+      const out: string[] = []
+      const t = node.type
+      const declNames = (declNode: N): void => {
+        for (const d of declNode.declarations ?? []) {
+          // The prop-derived defining declaration is NOT a shadow.
+          if (d.id?.type === 'Identifier' && propDerivedVars.has(d.id.name)) {
+            const span = propDerivedVars.get(d.id.name)!
+            if (d.init && (d.init.start as number) === span.start) continue
+          }
+          patternBindingNames(d.id, out)
+        }
+      }
+      if (
+        t === 'ArrowFunctionExpression' ||
+        t === 'FunctionExpression' ||
+        t === 'FunctionDeclaration'
+      ) {
+        for (const p of node.params ?? []) patternBindingNames(p, out)
+      } else if (t === 'CatchClause') {
+        patternBindingNames(node.param, out)
+      } else if (t === 'ForStatement') {
+        if (node.init?.type === 'VariableDeclaration') declNames(node.init)
+      } else if (t === 'ForInStatement' || t === 'ForOfStatement') {
+        if (node.left?.type === 'VariableDeclaration') declNames(node.left)
+      } else if (t === 'BlockStatement' || t === 'Program' || t === 'StaticBlock') {
+        const stmts = node.body ?? node.statements
+        if (Array.isArray(stmts)) {
+          for (const s of stmts) {
+            if (s.type === 'VariableDeclaration') declNames(s)
+            else if (s.type === 'FunctionDeclaration' && s.id?.type === 'Identifier') out.push(s.id.name)
+            else if (s.type === 'ClassDeclaration' && s.id?.type === 'Identifier') out.push(s.id.name)
+          }
+        }
+      }
+      return out.filter((n) => propDerivedVars.has(n))
+    }
+
     // Walk the AST to find identifiers in the span, passing parent context
     // to skip non-reference positions (property names, declarations, etc.)
+    // and a lexical shadow set so a same-named inner binding is never inlined.
     function findIdents(node: N, parent: N | null): void {
       const nodeStart = node.start as number
       const nodeEnd = node.end as number
       if (nodeStart >= endOffset || nodeEnd <= baseOffset) return
-      if (node.type === 'Identifier' && propDerivedVars.has(node.name)) {
+      if (
+        node.type === 'Identifier' &&
+        propDerivedVars.has(node.name) &&
+        !shadowed.has(node.name)
+      ) {
         if (parent) {
           if (parent.type === 'MemberExpression' && parent.property === node && !parent.computed) { /* skip */ }
           else if (parent.type === 'VariableDeclarator' && parent.id === node) { /* skip */ }
@@ -1102,7 +1209,12 @@ export function transformJSX_JS(
           idents.push({ start: nodeStart, end: nodeEnd, name: node.name })
         }
       }
+      // Names this node binds for its subtree shadow the top-level prop-derived
+      // const within that subtree (and the binding occurrence itself).
+      const introduced = scopeBoundPropDerived(node).filter((n) => !shadowed.has(n))
+      for (const n of introduced) shadowed.add(n)
       forEachChildFast(node, (child) => findIdents(child, node))
+      for (const n of introduced) shadowed.delete(n)
     }
     findIdents(program, null)
 
@@ -1718,7 +1830,14 @@ export function transformJSX_JS(
       }
       const needsPlaceholder = useMixed || useMultiExpr
       const { expr, isReactive } = unwrapAccessor(child.expression)
-      if (isChildrenExpression(child.expression, expr)) {
+      // Round 9 fix: a bare `{el}` where `el` is an element-valued binding
+      // (`const el = <X/>`) must be MOUNTED via _mountSlot, not text-coerced
+      // via createTextNode (which stringifies the NativeItem). Same emission
+      // as the children-slot path; _mountSlot handles every child type.
+      const isElementValuedIdent =
+        (child.expression?.type === 'Identifier' && elementVars.has(child.expression.name)) ||
+        (!isReactive && /^[A-Za-z_$][\w$]*$/.test(expr) && elementVars.has(expr))
+      if (isChildrenExpression(child.expression, expr) || isElementValuedIdent) {
         needsMountSlotImport = true
         const placeholder = `${parentRef}.childNodes[${childNodeIdx}]`
         const d = nextDisp()

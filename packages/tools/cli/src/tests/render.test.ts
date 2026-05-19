@@ -9,7 +9,7 @@ import type { Finding, GateResult } from '../doctor/types'
 // the test environment may still have a TTY — so strip defensively.
 const stripAnsi = (s: string): string =>
   // eslint-disable-next-line no-control-regex
-  s.replace(/\[[0-9;]*m/g, '').replace(/\][^]*\\/g, '')
+  s.replace(/\u001b\[[0-9;]*m/g, '').replace(/\u001b\][^\u001b]*\u001b\\/g, '')
 
 const f = (
   severity: Finding['severity'],
