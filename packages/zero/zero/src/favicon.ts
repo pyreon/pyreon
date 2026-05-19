@@ -81,9 +81,21 @@ export interface FaviconPluginConfig {
   /** Generate web manifest. Default: true */
   manifest?: boolean
   /**
-   * Dark mode favicon (SVG only).
-   * When provided, the SVG favicon uses prefers-color-scheme media query
-   * to switch between light and dark variants.
+   * Dark-mode favicon source.
+   *
+   * When provided, the plugin emits theme-aware `light`/`dark` variants
+   * (`favicon-light.svg` / `favicon-dark.svg` for SVG sources, plus the
+   * `*-light-*` / `*-dark-*` PNG/apple-touch set) tagged with
+   * `data-favicon-theme`. The injected blocking theme-swap script and
+   * `initTheme()` toggle their `media` attribute so the displayed
+   * favicon follows the app's resolved theme — including a manual
+   * in-app theme toggle, not just the OS `prefers-color-scheme`.
+   *
+   * For SVG sources a `favicon.svg` is also emitted that wraps both
+   * variants behind an OS `prefers-color-scheme` query — kept as the
+   * no-JS / direct-`/favicon.svg`-reference fallback only (it cannot
+   * follow a manual toggle, which is why the `data-favicon-theme`
+   * variants above are what the reactive mechanism actually uses).
    */
   darkSource?: string
   /**
@@ -214,6 +226,34 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
         const svgPath = localeSource ? localeSource.sourcePath : sourcePath
         const isSvgSource = localeSource ? localeSource.source.endsWith('.svg') : config.source.endsWith('.svg')
 
+        // Serve the per-theme SVG variants (the app-toggle path):
+        // /favicon-light.svg → source, /favicon-dark.svg → darkSource.
+        // Dev-badge / devSource override applies to the light variant
+        // only (it is the active default the swap toggles to), matching
+        // the /favicon.svg handler's intent.
+        if (
+          isSvgSource &&
+          (svgUrl.endsWith('/favicon-light.svg') ||
+            svgUrl.endsWith('/favicon-dark.svg'))
+        ) {
+          const isDarkVariant = svgUrl.endsWith('/favicon-dark.svg')
+          const variantPath = isDarkVariant ? (darkPath ?? svgPath) : svgPath
+          try {
+            let content = await readFile(variantPath, 'utf-8')
+            if (!isDarkVariant) {
+              if (autoDevBadge) content = addDevBadgeToSvg(content)
+              else if (devSourcePath && existsSync(devSourcePath)) {
+                content = await readFile(devSourcePath, 'utf-8')
+              }
+            }
+            res.setHeader('Content-Type', 'image/svg+xml')
+            res.end(content)
+            return
+          } catch {
+            /* fall through */
+          }
+        }
+
         // Serve favicon.svg — in dev, add dev badge overlay if configured
         if (svgUrl.endsWith('/favicon.svg') && isSvgSource) {
           try {
@@ -307,8 +347,22 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
         injectTo: 'head'
       }> = []
 
-      // SVG favicon (with prefers-color-scheme media query when dark variant exists)
-      if (isSvg) {
+      // SVG favicon. Browsers prefer an SVG favicon over PNG when both
+      // are present, so the SVG link MUST carry the same
+      // `data-favicon-theme` contract the PNG dual-variant uses —
+      // otherwise the theme-swap script / initTheme() (which only touch
+      // `[data-favicon-theme]`) can never change the displayed icon and
+      // the whole reactive-favicon feature is silently dead in every
+      // SVG-capable browser. When a dark variant exists, emit TWO
+      // theme-aware SVG links (mirroring the PNG pattern); the static
+      // `/favicon.svg` (an OS `prefers-color-scheme` wrapped dual) stays
+      // emitted as the no-JS / direct-reference fallback only.
+      if (isSvg && hasDark) {
+        tags.push(
+          { tag: 'link', attrs: { rel: 'icon', type: 'image/svg+xml', href: '/favicon-light.svg', 'data-favicon-theme': 'light' }, injectTo: 'head' },
+          { tag: 'link', attrs: { rel: 'icon', type: 'image/svg+xml', href: '/favicon-dark.svg', 'data-favicon-theme': 'dark', media: 'not all' }, injectTo: 'head' },
+        )
+      } else if (isSvg) {
         tags.push({
           tag: 'link',
           attrs: { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
@@ -502,6 +556,22 @@ async function generateFaviconSet(
       if (existsSync(darkPath)) {
         const darkSvg = await readFile(darkPath, 'utf-8')
         finalSvg = wrapSvgWithDarkMode(svgContent, darkSvg)
+        // Per-theme SVG variants for the app-toggle path:
+        // transformIndexHtml / faviconLinks emit
+        // `/favicon-light.svg` + `/favicon-dark.svg` with
+        // `data-favicon-theme` so the theme-swap actually changes the
+        // SVG (the wrapped `favicon.svg` is OS-`prefers-color-scheme`
+        // only — kept above as the no-JS / direct-ref fallback).
+        this.emitFile({
+          type: 'asset',
+          fileName: `${prefix}favicon-light.svg`,
+          source: svgContent,
+        })
+        this.emitFile({
+          type: 'asset',
+          fileName: `${prefix}favicon-dark.svg`,
+          source: darkSvg,
+        })
       }
     }
 
@@ -599,14 +669,39 @@ async function generateFaviconSet(
 export function faviconLinks(
   locale: string | undefined,
   config: FaviconPluginConfig,
-): Array<{ rel: string; type?: string; sizes?: string; href: string }> {
+): Array<{
+  rel: string
+  type?: string
+  sizes?: string
+  href: string
+  'data-favicon-theme'?: string
+  media?: string
+}> {
   const hasLocaleOverride = locale && config.locales?.[locale]
   const prefix = hasLocaleOverride ? `/${locale}` : ''
   const isSvg = (hasLocaleOverride ? config.locales![locale]!.source : config.source).endsWith('.svg')
+  const hasDark = !!config.darkSource
 
-  const links: Array<{ rel: string; type?: string; sizes?: string; href: string }> = []
+  const links: Array<{
+    rel: string
+    type?: string
+    sizes?: string
+    href: string
+    'data-favicon-theme'?: string
+    media?: string
+  }> = []
 
-  if (isSvg) {
+  // Mirror transformIndexHtml: a single static SVG link would always
+  // win over the theme-toggled PNGs (browsers prefer SVG), silently
+  // killing reactive switching for SSR'd pages too. Emit the two
+  // theme-aware SVG variants so initTheme()'s `[data-favicon-theme]`
+  // swap reaches the SVG. `/favicon.svg` stays the no-JS fallback.
+  if (isSvg && hasDark) {
+    links.push(
+      { rel: 'icon', type: 'image/svg+xml', href: `${prefix}/favicon-light.svg`, 'data-favicon-theme': 'light' },
+      { rel: 'icon', type: 'image/svg+xml', href: `${prefix}/favicon-dark.svg`, 'data-favicon-theme': 'dark', media: 'not all' },
+    )
+  } else if (isSvg) {
     links.push({ rel: 'icon', type: 'image/svg+xml', href: `${prefix}/favicon.svg` })
   }
 
