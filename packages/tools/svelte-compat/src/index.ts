@@ -19,9 +19,14 @@
  * here are plain functions returning JSX that run on Pyreon via the
  * shared compat JSX runtime (re-render on store change).
  *
- * Store backing: Pyreon `signal`, so `derived` auto-tracks. The store
- * contract (`subscribe(run, invalidate?) → unsubscribe`, lazy
- * `start(set, update?) → stop` notifier) matches Svelte exactly.
+ * Store model: a faithful Svelte store — a plain Set of subscribers
+ * notified synchronously on `set`/`update` (signal-free, exactly like
+ * Svelte's own `writable`; `derived` subscribes to its inputs
+ * explicitly). The store contract (`subscribe(run, invalidate?) →
+ * unsubscribe`, lazy `start(set, update?) → stop` notifier) matches
+ * Svelte exactly. Subscribing inside a compat component body re-renders
+ * it on store change (the faithful `$store` auto-subscription
+ * equivalent) without a disposable tracking effect.
  */
 
 import type { ComponentFn, Props, VNodeChild } from '@pyreon/core'
@@ -137,7 +142,8 @@ export function writable<T>(value?: T, start: StartStopNotifier<T> = noop): Writ
     if (!stop) return // not "ready" — Svelte's gate (start hasn't returned)
     for (const s of subs) s.invalidate(v)
     for (const s of subs) {
-      s.run(v) /* TEMP BISECT: rerender disabled */
+      s.run(v)
+      s.rerender?.()
     }
   }
   const set = (next: T): void => setVal(next)
