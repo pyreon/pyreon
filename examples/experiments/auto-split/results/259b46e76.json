@@ -1,0 +1,106 @@
+{
+  "target": "examples/app-showcase/src",
+  "baseline": "259b46e76",
+  "heavyImportingModules": 10,
+  "v1": {
+    "candidates": [],
+    "tp": 0,
+    "fp": 0,
+    "fn": 2,
+    "tn": 8,
+    "precision": null,
+    "recall": 0
+  },
+  "v2": {
+    "candidates": [
+      "examples/app-showcase/src/sections/resume/ExportButtons.tsx",
+      "examples/app-showcase/src/sections/invoice/ExportButtons.tsx"
+    ],
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tn": 8,
+    "precision": 1,
+    "recall": 1
+  },
+  "groundTruthSplit": [
+    "examples/app-showcase/src/sections/resume/ExportButtons.tsx",
+    "examples/app-showcase/src/sections/invoice/ExportButtons.tsx"
+  ],
+  "detail": [
+    {
+      "file": "examples/app-showcase/src/sections/resume/ExportButtons.tsx",
+      "heavyRefs": 1,
+      "v1": false,
+      "v2": true
+    },
+    {
+      "file": "examples/app-showcase/src/sections/dashboard/CategoryChart.tsx",
+      "heavyRefs": 0,
+      "v1": false,
+      "v2": false
+    },
+    {
+      "file": "examples/app-showcase/src/sections/dashboard/RevenueChart.tsx",
+      "heavyRefs": 0,
+      "v1": false,
+      "v2": false
+    },
+    {
+      "file": "examples/app-showcase/src/sections/invoice/ExportButtons.tsx",
+      "heavyRefs": 1,
+      "v1": false,
+      "v2": true
+    },
+    {
+      "file": "examples/app-showcase/src/sections/invoice/template.ts",
+      "heavyRefs": 54,
+      "v1": false,
+      "v2": false
+    },
+    {
+      "file": "examples/app-showcase/src/sections/invoice/LivePreview.tsx",
+      "heavyRefs": 1,
+      "v1": false,
+      "v2": false
+    },
+    {
+      "file": "examples/app-showcase/src/sections/flow/JsonSidebar.tsx",
+      "heavyRefs": 2,
+      "v1": false,
+      "v2": false
+    },
+    {
+      "file": "examples/app-showcase/src/sections/flow/WorkflowNode.tsx",
+      "heavyRefs": 2,
+      "v1": false,
+      "v2": false
+    },
+    {
+      "file": "examples/app-showcase/src/sections/flow/store.ts",
+      "heavyRefs": 1,
+      "v1": false,
+      "v2": false
+    },
+    {
+      "file": "examples/app-showcase/src/routes/flow/index.tsx",
+      "heavyRefs": 0,
+      "v1": false,
+      "v2": false
+    }
+  ],
+  "deferrableMass": {
+    "dep": "@pyreon/document",
+    "chunks": 24,
+    "gzBytes": 376108,
+    "gzKB": 367.3,
+    "note": "eager mass the resume/invoice ROUTE chunk ships today; already route-split by Zero fs-router, so NOT in the initial entry"
+  },
+  "verdict": {
+    "result": "DEFER",
+    "v1_lexical": "recall 0.00 \u2014 finds nothing in real code; the cheap lint-style heuristic is unshippable (KILL for v1)",
+    "v2_callgraph": "precision 1.00, recall 1.00, FP 0 \u2014 perfectly accurate + provably waterfall-free; but this is Qwik-Optimizer-class interprocedural analysis, not a cheap pass",
+    "incremental_clause": "NOT met: app-showcase is already Zero route-split, so @pyreon/document is in the resume/invoice ROUTE chunk, not the initial entry. Win is route-chunk-local (~367KB gz deferred to export click), not an initial-entry reduction. Frozen GRADUATE clause (>=20% of weight not-already-route-split) has denominator ~0.",
+    "recommendation": "Pursue ONLY as: (a) v2 call-graph reachability (v1 dead), (b) a per-route-chunk optimizer for interaction-only heavy deps, (c) measured per-route with the same kill-gate. Do NOT couple to resumability (already measured+killed E1). Do NOT market as eliminating manual lazy() wholesale \u2014 Pyreon already auto-route-splits the initial-entry win."
+  }
+}
