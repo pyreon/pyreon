@@ -1,5 +1,5 @@
 import type { VNode } from '@pyreon/core'
-import { createRef, Show } from '@pyreon/core'
+import { createRef, cx, Show } from '@pyreon/core'
 import { watch } from '@pyreon/reactivity'
 import type { ClassTransitionProps, StyleTransitionProps, TransitionProps } from './types'
 import useAnimationEnd from './useAnimationEnd'
@@ -16,8 +16,22 @@ const applyEnter = (
     enterStyle,
     enterToStyle,
     enterTransition,
+    leave,
+    leaveFrom,
+    leaveTo,
   }: ClassTransitionProps & StyleTransitionProps,
 ) => {
+  // Symmetric to applyLeave's `removeClasses(enter)` / `removeClasses(enterTo)`:
+  // clear any residual leave-cycle classes — including the `leaveTo` /
+  // `enterFrom` class the SSR / initial-hidden render path inlines for
+  // ecosystem-correct structural content (see the `wasInitiallyShown`
+  // branch below). Without this, the SSR-baked hidden-state class would
+  // compete with `enterTo`'s CSS rules and the enter animation would
+  // visually fight itself.
+  removeClasses(el, leave)
+  removeClasses(el, leaveFrom)
+  removeClasses(el, leaveTo)
+
   addClasses(el, enter)
   addClasses(el, enterFrom)
   if (enterStyle) Object.assign(el.style, enterStyle)
@@ -170,24 +184,73 @@ const Transition = (props: TransitionProps): VNode | null => {
     { immediate: true },
   )
 
-  return (
-    <Show
-      when={shouldMount}
-      fallback={
-        unmount
-          ? null
-          : cloneVNode(props.children, {
-              ref: mergedRef,
-              style: mergeStyles(
-                childProps.style as Record<string, string | number | undefined> | undefined,
-                { display: 'none' },
-              ),
-            })
-      }
-    >
-      {cloneVNode(props.children, { ref: mergedRef })}
-    </Show>
+  // Initially-visible Transitions keep the original Show-gated mount,
+  // which preserves the documented runtime-unmount semantic for the
+  // visible → hidden transition (modal close, dropdown collapse, etc.).
+  // The SSR bug (children dropped from prerendered HTML) only fires for
+  // the initially-HIDDEN case below, because `<Show when={false}>`
+  // renders `null` on the server.
+  const wasInitiallyShown = props.show()
+  if (wasInitiallyShown) {
+    return (
+      <Show
+        when={shouldMount}
+        fallback={
+          unmount
+            ? null
+            : cloneVNode(props.children, {
+                ref: mergedRef,
+                style: mergeStyles(
+                  childProps.style as Record<string, string | number | undefined> | undefined,
+                  { display: 'none' },
+                ),
+              })
+        }
+      >
+        {cloneVNode(props.children, { ref: mergedRef })}
+      </Show>
+    )
+  }
+
+  // Initially-hidden path — ecosystem-correct (Framer Motion / react-
+  // transition-group / react-spring all render children in SSR regardless
+  // of animation state; visual hiding is class/style only). Always emits
+  // children so SSG / SEO / social scrapers / no-JS users see the
+  // structural content. The hidden visual is supplied by `leaveTo`
+  // (explicit hidden-end state) or `enterFrom` (pre-enter state — covers
+  // the scroll-reveal pattern that only configures the enter side).
+  //
+  // Trade-off: for an initially-hidden Transition, `unmount: true` no
+  // longer triggers a true DOM removal after a later leave animation
+  // completes — the element stays in DOM with the leave-to class
+  // applied. Initially-visible Transitions keep the unmount semantic
+  // (the branch above). This matches Framer Motion / react-transition-
+  // group conventions and is the price of SSR correctness; the rare
+  // user who needs true unmount on a started-hidden element can drive
+  // mount/unmount themselves outside `<Transition>`.
+  //
+  // The `watch(stage)` effect above drives the enter animation when
+  // `show` flips true; `applyEnter` (above) clears these residual
+  // hidden-state classes so they don't fight `enterTo`.
+  const hiddenClass = props.leaveTo ?? props.enterFrom
+  const hiddenStyle = props.leaveToStyle
+  const childClass = childProps.class
+  const mergedClass = hiddenClass
+    ? cx([childClass as Parameters<typeof cx>[0], hiddenClass])
+    : undefined
+  const mergedStyle = mergeStyles(
+    childProps.style as Record<string, string | number | undefined> | undefined,
+    hiddenStyle,
   )
+
+  // Build extra-props carefully — undefined values must NOT be passed to
+  // cloneVNode because `{...vnode.props, ...extraProps}` spreads them and
+  // overrides any user-set `class`/`style` on the child vnode with undefined.
+  const extra: Record<string, unknown> = { ref: mergedRef }
+  if (mergedClass !== undefined) extra.class = mergedClass
+  if (mergedStyle !== undefined) extra.style = mergedStyle
+
+  return cloneVNode(props.children, extra)
 }
 
 export default Transition

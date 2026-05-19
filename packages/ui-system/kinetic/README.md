@@ -211,6 +211,29 @@ const AnimatedButton = kinetic(Button).preset(fade)
 AnimatedButton({ show: isVisible, primary: true, size: 'large', children: 'Click me' })
 ```
 
+## SSR / SSG
+
+`<Transition show={() => false}>` **always renders children in SSR**, with the hidden-state class inlined (`leaveTo` if defined, else `enterFrom`). This matches Framer Motion / react-transition-group / react-spring conventions: content is structural, animation is visual.
+
+This is load-bearing for the scroll-reveal pattern on SSG sites — `useIntersection` can't fire on the server, so `show` is false at SSR. Without structural rendering, the wrapped content would be absent from prerendered HTML (bad for SEO, social scrapers, no-JS users).
+
+```tsx
+const RevealSection = kinetic('section')
+  .enter('transition-all duration-700')
+  .enterFrom('opacity-0 translate-y-8') // ← this IS the SSR hidden state
+  .enterTo('opacity-100 translate-y-0')
+
+// In your route — show is driven by useIntersection on the client.
+// At SSR: <section class="opacity-0 translate-y-8">…full content here…</section>
+// On client: when scrolled into view, show flips true, enter animation runs.
+<RevealSection show={isInView}>
+  <h2>Work Experience</h2>
+  <p>…content reaches SEO crawlers and social scrapers…</p>
+</RevealSection>
+```
+
+**Trade-off**: for an initially-hidden Transition, `unmount: true` (the default) no longer triggers a true DOM removal after a later leave animation completes — the element stays in DOM with the leave-to class applied. **Initially-visible** Transitions (`show: () => true` at setup) keep the runtime-unmount semantic unchanged. If you need true unmount on a started-hidden element, drive mount/unmount yourself outside `<Transition>`.
+
 ## Peer Dependencies
 
 | Package            | Version  |
