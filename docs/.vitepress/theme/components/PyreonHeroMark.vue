@@ -30,6 +30,11 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
+// `noMotion`: render the static final lockup only — no IntersectionObserver,
+// no random variant, no transient overlay elements. Used by the footer
+// (the design's PxLandFooter is a static mark, not an animated intro).
+const props = defineProps<{ noMotion?: boolean }>()
+
 const N_PATH = 'M70 86 L70 42 L70 64 Q70 42 92 42 Q112 42 112 64 L112 86'
 const FUSE = 'M -40 130 L 96 130 L 168 130 L 168 90 L 204 90 L 204 130 L 760 130'
 
@@ -70,6 +75,7 @@ const variant = ref<V | 0>(0) // 0 = static (SSR / no-JS / reduced-motion)
 let io: IntersectionObserver | null = null
 
 onMounted(() => {
+  if (props.noMotion) return // stay static-final (footer)
   const el = root.value
   if (!el) return
   const reduce =
@@ -581,7 +587,7 @@ onBeforeUnmount(() => io?.disconnect())
 
 /* ── 15 · Wavefront ─────────────────────────────────────────────────── */
 .is-v15 .px-wf-cover {
-  fill: var(--ink-1);
+  fill: var(--bg); /* semantic page bg — flips for light (was raw --ink-1) */
   opacity: 1;
   animation: px-wf-wipe 640ms cubic-bezier(0.4, 0, 0.3, 1) forwards;
 }
