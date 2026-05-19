@@ -117,3 +117,55 @@ describe('imagePlugin resolveId — importer-relative + alias (regression)', () 
     expect(String(mod)).toContain('0 0 8 8')
   })
 })
+
+describe('imagePlugin loadDevImage — dev serves /@fs/ for absolute paths (regression)', () => {
+  // `placeholder: 'none'` keeps this sharp-free (the default 'blur'
+  // would pull sharp into loadDevImage's generatePlaceholder).
+  const devPlugin = () => {
+    const p: any = imagePlugin({ placeholder: 'none' })
+    p.configResolved({ root: tmp, build: { outDir: 'dist' }, command: 'serve' })
+    return p
+  }
+  const parse = (mod: string) =>
+    JSON.parse(String(mod).replace(/^export default /, '')) as {
+      src: string
+      sources: { src: string }[]
+    }
+
+  it('relative import → src is /@fs/<abs>, NOT the raw filesystem path', async () => {
+    const p = devPlugin()
+    const vid = await p.resolveId.call(ctx, '../images/hero.png?optimize', importer)
+    const abs = join(tmp, 'src/images/hero.png')
+    expect(vid).toBe(`\0virtual:zero-image:${abs}?optimize`)
+
+    const parsed = parse(String(await p.load.call(ctx, vid)))
+    // THE BUG: pre-fix `src` was the bare `${abs}` (e.g.
+    // `/Users/…/hero.png`) because `rawPath.startsWith('/')` is true for
+    // an absolute fs path → the browser fetched
+    // `http://host/Users/…/hero.png` → 404 in dev. Post-fix it must be
+    // routed through Vite's `/@fs/` prefix.
+    expect(parsed.src).toBe(`/@fs/${abs}`)
+    expect(parsed.src).not.toBe(abs)
+    expect(parsed.sources[0]?.src).toBe(`/@fs/${abs}`)
+  })
+
+  it('public-dir web path (/logo.png) is still served as-is — not over-corrected to /@fs/', async () => {
+    await mkdir(join(tmp, 'public'), { recursive: true })
+    await writeFile(
+      join(tmp, 'public/logo.png'),
+      Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAeImBZsAAAAASUVORK5CYII=',
+        'base64',
+      ),
+    )
+    const p = devPlugin()
+    const vid = await p.resolveId.call(ctx, '/logo.png?optimize', importer)
+    expect(vid).toBe('\0virtual:zero-image:/logo.png?optimize')
+
+    const parsed = parse(String(await p.load.call(ctx, vid)))
+    // Not a real fs file → public-dir web path → served at the web root
+    // unchanged (Vite serves `public/` at `/`). The fix must NOT rewrite
+    // this to `/@fs/<root>/public/logo.png`.
+    expect(parsed.src).toBe('/logo.png')
+  })
+})

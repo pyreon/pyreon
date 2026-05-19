@@ -389,7 +389,15 @@ async function loadDevImage(
   placeholderSize: number,
 ): Promise<ProcessedImage> {
   const metadata = await getImageMetadata(absPath)
-  const publicPath = rawPath.startsWith('/') ? rawPath : `/@fs/${absPath}`
+  // `rawPath` is a public-dir web path (e.g. `/logo.png`, served from
+  // `public/` at the web root) ONLY when it does NOT resolve to a real
+  // file on disk — the same discriminator the `absPath` derivation uses
+  // above. `resolveId` now hands absolute fs paths for relative/aliased
+  // imports (`/Users/…/img.png`); those ARE real files and must be
+  // served through Vite's `/@fs/` prefix, not as a literal `/Users/…`
+  // URL (which 404s in dev — build mode was unaffected).
+  const isPublicWebPath = rawPath.startsWith('/') && !existsSync(rawPath)
+  const publicPath = isPublicWebPath ? rawPath : `/@fs/${absPath}`
 
   return {
     src: publicPath,
