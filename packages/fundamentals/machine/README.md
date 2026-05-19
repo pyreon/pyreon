@@ -1,19 +1,21 @@
 # @pyreon/machine
 
-Reactive state machines for Pyreon. A machine is a constrained signal — it can only hold specific values and transition between them via specific events. Type-safe states and events inferred from the definition.
+Reactive state machines as constrained signals — type-safe states and events.
+
+A machine is a Pyreon signal that can only hold a fixed set of values and only transition between them via declared events. Reads (`machine()`) and predicates (`matches(...)` / `can(...)` / `nextEvents()`) are reactive in effects, computeds, and JSX. Everything else — data carried alongside state, side-effect orchestration, async — uses ordinary Pyreon primitives (`signal` / `computed` / `effect`); the machine owns transitions, signals own data. State and event names flow from the config object so `machine.send('TYPO')` is a TypeScript error.
 
 ## Install
 
 ```bash
-bun add @pyreon/machine
+bun add @pyreon/machine @pyreon/core @pyreon/reactivity
 ```
 
-## Quick Start
+## Quick start
 
 ```tsx
 import { createMachine } from '@pyreon/machine'
 
-const machine = createMachine({
+const fetcher = createMachine({
   initial: 'idle',
   states: {
     idle: { on: { FETCH: 'loading' } },
@@ -23,24 +25,40 @@ const machine = createMachine({
   },
 })
 
-machine() // 'idle' — reads like a signal
-machine.send('FETCH') // transition to 'loading'
-machine.matches('loading') // true — reactive in effects/JSX
+fetcher() // 'idle' — reads like a signal
+fetcher.send('FETCH') // transition to 'loading'
 
 // Reactive in JSX
-{
-  ;() => machine.matches('loading') && <Spinner />
-}
-{
-  ;() => machine.matches('done') && <Results />
+function View() {
+  return () => (
+    <>
+      {fetcher.matches('loading') && <Spinner />}
+      {fetcher.matches('error') && <button onClick={() => fetcher.send('RETRY')}>Retry</button>}
+      {fetcher.matches('done') && <Results />}
+    </>
+  )
 }
 ```
 
-## Guards
+## API
 
-Conditional transitions using guard functions:
+`createMachine({ initial, states })` returns a callable `Machine<TState, TEvent>`:
 
-```tsx
+| Member | Notes |
+|---|---|
+| `machine()` | Read current state — reactive in effects / computeds / JSX |
+| `machine.send(event, payload?)` | Trigger a transition. Silent no-op when no matching `on:` entry. |
+| `machine.matches(...states)` | True if current state is in the list — reactive |
+| `machine.can(event)` | True if `send(event)` would transition (guards evaluated) |
+| `machine.nextEvents()` | Valid event names from the current state — reactive |
+| `machine.reset()` | Return to `initial` |
+| `machine.onEnter(state, cb)` | Callback fires every time `state` is entered. Returns unsubscribe. |
+| `machine.onTransition(cb)` | Callback fires on any transition with `(from, to, event)`. Returns unsubscribe. |
+| `machine.dispose()` | Remove all listeners and clean up |
+
+## Guards — conditional transitions
+
+```ts
 const form = createMachine({
   initial: 'editing',
   states: {
@@ -51,28 +69,92 @@ const form = createMachine({
     done: {},
   },
 })
+
+form.send('SUBMIT') // no-op if !isValid()
+form.can('SUBMIT') // true only if guard passes
 ```
 
-## API
+The guard receives the event payload: `guard: (payload?: { force?: boolean }) => isValid() || payload?.force`.
 
-### `createMachine(config)`
+## Listeners — onEnter / onTransition
 
-Create a reactive state machine. Config: `initial` (starting state) and `states` (state/event map).
+```ts
+const unsubEnter = fetcher.onEnter('loading', (event) => {
+  console.log('Entered loading via', event.type, event.payload)
+})
 
-**Returns `Machine`:**
+const unsubAll = fetcher.onTransition((from, to, event) => {
+  analytics.track('state', { from, to, event: event.type })
+})
 
-| Property                   | Description                                     |
-| -------------------------- | ----------------------------------------------- |
-| `machine()`                | Read current state (reactive)                   |
-| `send(event, payload?)`    | Trigger a transition                            |
-| `matches(...states)`       | Check if in one of the given states (reactive)  |
-| `can(event)`               | Check if event would trigger a valid transition |
-| `nextEvents()`             | Available events from current state             |
-| `reset()`                  | Return to initial state                         |
-| `onEnter(state, callback)` | Fire callback when entering a state             |
-| `onTransition(callback)`   | Fire on any transition                          |
+// Later:
+unsubEnter()
+unsubAll()
+// Or wipe everything:
+fetcher.dispose()
+```
 
-Use signals alongside machines for data. The machine manages transitions, signals manage data.
+`onEnter` does NOT fire on the initial state — only on subsequent transitions INTO that state. Pair with explicit setup-time work if you need to model entering the initial state as an event.
+
+## Composing with signals
+
+The machine owns transitions; signals own data. Use them together:
+
+```ts
+const fetcher = createMachine({
+  initial: 'idle',
+  states: {
+    idle: { on: { FETCH: 'loading' } },
+    loading: { on: { SUCCESS: 'done', ERROR: 'error' } },
+    done: {},
+    error: { on: { RETRY: 'loading' } },
+  },
+})
+
+const data = signal<User[]>([])
+const error = signal<Error | null>(null)
+
+effect(async () => {
+  if (!fetcher.matches('loading')) return
+  try {
+    data.set(await api.fetchUsers())
+    fetcher.send('SUCCESS')
+  } catch (e) {
+    error.set(e as Error)
+    fetcher.send('ERROR')
+  }
+})
+
+fetcher.send('FETCH')
+```
+
+## Type inference
+
+State and event names are inferred from the config. The exported `InferStates<T>` and `InferEvents<T>` helpers extract those types when you need to pass the machine around:
+
+```ts
+import type { InferStates, InferEvents } from '@pyreon/machine'
+
+type FetcherState = InferStates<typeof fetcher> // 'idle' | 'loading' | 'done' | 'error'
+type FetcherEvent = InferEvents<typeof fetcher> // 'FETCH' | 'SUCCESS' | 'ERROR' | 'RETRY'
+
+function logState(s: FetcherState) {
+  /* … */
+}
+```
+
+## Gotchas
+
+- **`send(event)` to an unknown event is a silent no-op**. Use `machine.can(event)` to detect whether the transition would fire (e.g. to disable a button).
+- **Guards run on every `can(event)` check** as well as on `send(event)`. Keep guards cheap; for expensive predicates, wrap in `computed` upstream and have the guard read the result.
+- **`onEnter` doesn't fire for the initial state** — only subsequent entries. Model "first run" as an explicit event if you need that semantics.
+- **The machine does NOT orchestrate side effects.** Use `effect` (or async flow inside an effect) that reads `machine.matches(...)` and reacts. Keeps the machine pure.
+- **`dispose()` is final** — after it runs, every method becomes a no-op and listeners are dropped. Don't reuse a disposed machine.
+- **States with no `on:` map are terminal** for the framework's purposes — `nextEvents()` returns `[]` and every `send()` is a no-op until something else (a manual `reset()` or another machine) brings it out.
+
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/machine](https://docs.pyreon.dev/docs/machine) (or `docs/docs/machine.md` in this repo).
 
 ## License
 

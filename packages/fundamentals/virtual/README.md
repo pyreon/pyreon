@@ -1,14 +1,17 @@
 # @pyreon/virtual
 
-Pyreon adapter for TanStack Virtual. Efficient rendering of large lists with reactive `virtualItems`, `totalSize`, and `isScrolling` signals.
+Pyreon adapter for TanStack Virtual — efficient rendering of very large lists.
+
+`@pyreon/virtual` wraps `@tanstack/virtual-core` so a Pyreon app can render 10k+ items by only drawing the slice in the viewport. `useVirtualizer` is for element-scoped scrolling (an inner scroll container); `useWindowVirtualizer` is for window-scoped scrolling and is SSR-safe. Both take **options as a function** so reactive signals (count, estimateSize, scrollElement ref) trigger automatic recalculation. The exposed reactive surface — `virtualItems`, `totalSize`, `isScrolling` — is updated in a single `batch()` so consumers don't see torn state mid-scroll.
 
 ## Install
 
 ```bash
-bun add @pyreon/virtual @tanstack/virtual-core
+bun add @pyreon/virtual @pyreon/core @pyreon/reactivity
+# @tanstack/virtual-core is a hard dependency, installed automatically
 ```
 
-## Quick Start
+## Quick start (element-scoped)
 
 ```tsx
 import { signal } from '@pyreon/reactivity'
@@ -30,7 +33,6 @@ function VirtualList() {
       <div style={`height: ${totalSize()}px; position: relative;`}>
         {virtualItems().map((row) => (
           <div
-            key={row.key}
             style={`position: absolute; top: 0; width: 100%; height: ${row.size}px; transform: translateY(${row.start}px);`}
           >
             {items[row.index]}
@@ -42,26 +44,18 @@ function VirtualList() {
 }
 ```
 
-## API
+## `useVirtualizer(() => options)`
 
-### `useVirtualizer(options)`
+Element-scoped virtualizer. Pre-fills `observeElementRect`, `observeElementOffset`, and `scrollToFn` for DOM element scrolling — override if you need custom scroll handling.
 
-Create a reactive virtualizer for element-based scrolling. Options are passed as a function so reactive signals can be read inside, and the virtualizer updates automatically when they change.
+Returns `UseVirtualizerResult`:
 
-| Parameter | Type                          | Description                           |
-| --------- | ----------------------------- | ------------------------------------- |
-| `options` | `() => UseVirtualizerOptions` | Function returning virtualizer config |
-
-Options extend `VirtualizerOptions` from `@tanstack/virtual-core` with `observeElementRect`, `observeElementOffset`, and `scrollToFn` pre-filled (overridable).
-
-**Returns:** `UseVirtualizerResult` with:
-
-| Property       | Type                    | Description                                  |
-| -------------- | ----------------------- | -------------------------------------------- |
-| `instance`     | `Virtualizer`           | The underlying TanStack Virtualizer instance |
-| `virtualItems` | `Signal<VirtualItem[]>` | Currently visible virtual items              |
-| `totalSize`    | `Signal<number>`        | Total scrollable size in pixels              |
-| `isScrolling`  | `Signal<boolean>`       | Whether the user is currently scrolling      |
+| Property       | Type                                    | Notes                                                  |
+| -------------- | --------------------------------------- | ------------------------------------------------------ |
+| `instance`     | `Virtualizer<TScrollElement, TItemElement>` | Raw TanStack instance — use for `scrollToIndex`, etc. |
+| `virtualItems` | `Signal<VirtualItem[]>`                 | Visible items                                          |
+| `totalSize`    | `Signal<number>`                        | Total scrollable size (px)                             |
+| `isScrolling`  | `Signal<boolean>`                       | Active scroll                                          |
 
 ```ts
 const parentRef = signal<HTMLDivElement | null>(null)
@@ -74,19 +68,14 @@ const { virtualItems, totalSize, isScrolling, instance } = useVirtualizer(() => 
   overscan: 5,
 }))
 
-// Scroll programmatically:
+// Imperative scroll:
 instance.scrollToIndex(500)
+instance.scrollToOffset(2000)
 ```
 
-### `useWindowVirtualizer(options)`
+## `useWindowVirtualizer(() => options)`
 
-Create a reactive virtualizer for window-based scrolling. The scroll element is automatically set to `window`. SSR-safe — checks for `window` and `document` availability.
-
-| Parameter | Type                                | Description                                              |
-| --------- | ----------------------------------- | -------------------------------------------------------- |
-| `options` | `() => UseWindowVirtualizerOptions` | Function returning config (no `getScrollElement` needed) |
-
-**Returns:** `UseWindowVirtualizerResult` — same shape as `UseVirtualizerResult` but typed with `Window` as the scroll element.
+Window-scoped virtualizer. Pre-fills `observeElementRect: observeWindowRect`, `observeElementOffset: observeWindowOffset`, and `scrollToFn: windowScroll`. SSR-safe — checks for `window` / `document` availability before mounting observers.
 
 ```tsx
 function WindowList() {
@@ -101,7 +90,6 @@ function WindowList() {
     <div style={`height: ${totalSize()}px; position: relative;`}>
       {virtualItems().map((row) => (
         <div
-          key={row.key}
           style={`position: absolute; top: 0; width: 100%; height: ${row.size}px; transform: translateY(${row.start}px);`}
         >
           {items[row.index]}
@@ -114,9 +102,9 @@ function WindowList() {
 
 ## Patterns
 
-### Dynamic Item Sizes
+### Dynamic item sizes via `measureElement`
 
-Use `measureElement` for variable-height items that are measured after render.
+For variable-height items that need to be measured after render:
 
 ```tsx
 import { measureElement } from '@pyreon/virtual'
@@ -128,17 +116,15 @@ const { virtualItems, totalSize, instance } = useVirtualizer(() => ({
   measureElement,
 }))
 
-// In render, set the ref on each item:
+// Per row:
 virtualItems().map((row) => (
-  <div key={row.key} ref={(el) => instance.measureElement(el)} data-index={row.index}>
+  <div ref={(el) => instance.measureElement(el)} data-index={row.index}>
     {items[row.index]}
   </div>
 ))
 ```
 
-### Horizontal Lists
-
-Set the `horizontal` option for horizontal virtualization.
+### Horizontal lists
 
 ```ts
 const { virtualItems, totalSize } = useVirtualizer(() => ({
@@ -149,32 +135,38 @@ const { virtualItems, totalSize } = useVirtualizer(() => ({
 }))
 ```
 
-### Reactive Count
-
-Since options are a function, changing the count signal re-calculates virtual items automatically.
+### Reactive count (filtered lists)
 
 ```ts
 const filteredItems = signal(allItems)
+
 const { virtualItems } = useVirtualizer(() => ({
   count: filteredItems().length,
   getScrollElement: () => parentRef(),
   estimateSize: () => 40,
 }))
 
-// Updating filteredItems triggers recalculation
-filteredItems.set(allItems.filter((i) => i.includes(search())))
+// filteredItems.set(allItems.filter(…)) → automatic recalculation
 ```
 
 ## Re-exports from `@tanstack/virtual-core`
 
-**Runtime:** `defaultKeyExtractor`, `defaultRangeExtractor`, `observeElementOffset`, `observeElementRect`, `observeWindowOffset`, `observeWindowRect`, `elementScroll`, `windowScroll`, `measureElement`, `Virtualizer`
+**Runtime**: `defaultKeyExtractor`, `defaultRangeExtractor`, `observeElementOffset`, `observeElementRect`, `observeWindowOffset`, `observeWindowRect`, `elementScroll`, `windowScroll`, `measureElement`, `Virtualizer`.
 
-**Types:** `VirtualizerOptions`, `VirtualItem`, `Range`, `Rect`, `ScrollToOptions`
+**Types**: `VirtualizerOptions`, `VirtualItem`, `Range`, `Rect`, `ScrollToOptions`.
 
 ## Gotchas
 
-- Options must be a function `() => opts` for reactive tracking. The virtualizer re-calculates when signals read inside the function change.
-- The `instance` is the raw TanStack Virtualizer — use it for imperative methods like `scrollToIndex()` and `scrollToOffset()`.
-- `virtualItems`, `totalSize`, and `isScrolling` are Pyreon signals updated via `batch()` for efficient reactive notifications.
-- The virtualizer's DOM observers are mounted via `onMount` and cleaned up via `onUnmount`. The component must be mounted for scroll observation to work.
-- `useWindowVirtualizer` checks for `window` availability and provides a safe fallback for SSR.
+- **Options must be a function** `() => opts` for reactive tracking. Reading signals inside is the mechanism for live recalculation.
+- **`instance` is the raw TanStack Virtualizer** — use it for imperative methods (`scrollToIndex`, `scrollToOffset`, `getVirtualItemForOffset`). The signals are the reactive subset.
+- **Signals update via `batch()`** — `virtualItems`, `totalSize`, and `isScrolling` flip together; consumers don't see torn state mid-scroll frame.
+- **Observers mount via `onMount`, dispose via `onUnmount`** — the component must be mounted before scroll observation starts. SSR renders see an empty `virtualItems` array until hydration.
+- **`useWindowVirtualizer` is SSR-safe** — checks for `window` and `document` before mounting; non-browser environments get the safe fallback shape.
+
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/virtual](https://docs.pyreon.dev/docs/virtual) (or `docs/docs/virtual.md` in this repo).
+
+## License
+
+MIT

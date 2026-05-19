@@ -1,14 +1,17 @@
 # @pyreon/query
 
-Pyreon adapter for TanStack Query. Reactive `useQuery`, `useMutation`, `useInfiniteQuery`, and Suspense integration with fine-grained signal updates.
+Pyreon adapter for TanStack Query — reactive queries, mutations, suspense, subscriptions, SSE.
+
+`@pyreon/query` wraps `@tanstack/query-core` with Pyreon's fine-grained signal model: every observer field (`data`, `error`, `isFetching`, …) is its own `Signal<T>`, so reading `query.data()` doesn't re-run when `isFetching` flips. Query options are passed as a **function** so reactive values (signal-driven query keys, params) trigger automatic refetches; mutation options are a plain object because mutations are imperative. Ships `useQuery` / `useMutation` / `useInfiniteQuery` / `useQueries`, Suspense variants, `useSubscription` (WebSocket) + `useSSE` (Server-Sent Events) with QueryClient cache integration, and the full `@tanstack/query-core` re-export so consumers get one import surface.
 
 ## Install
 
 ```bash
-bun add @pyreon/query @tanstack/query-core
+bun add @pyreon/query @pyreon/core @pyreon/reactivity
+# @tanstack/query-core is a hard dependency, installed automatically
 ```
 
-## Quick Start
+## Quick start
 
 ```tsx
 import { QueryClient, QueryClientProvider, useQuery } from '@pyreon/query'
@@ -23,7 +26,7 @@ function UserProfile(props: { id: string }) {
 
   return () => {
     if (query.isLoading()) return <p>Loading...</p>
-    if (query.isError()) return <p>Error</p>
+    if (query.isError()) return <p>Error: {query.error()?.message}</p>
     return <h1>{query.data()?.name}</h1>
   }
 }
@@ -35,44 +38,9 @@ const App = () => (
 )
 ```
 
-## API
+## `useQuery(() => options)`
 
-### `QueryClientProvider`
-
-Provide a `QueryClient` to the component tree.
-
-| Parameter | Type          | Description                    |
-| --------- | ------------- | ------------------------------ |
-| `client`  | `QueryClient` | TanStack Query client instance |
-
-### `useQueryClient()`
-
-Access the `QueryClient` from the nearest `QueryClientProvider`.
-
-**Returns:** `QueryClient`
-
-### `useQuery(options)`
-
-Subscribe to a query with fine-grained reactive signals. Options are passed as a function so reactive values (e.g. signal-based query keys) trigger automatic refetches.
-
-| Parameter | Type                         | Description                      |
-| --------- | ---------------------------- | -------------------------------- |
-| `options` | `() => QueryObserverOptions` | Function returning query options |
-
-**Returns:** `UseQueryResult<TData, TError>` with:
-
-| Property     | Type                                        | Description             |
-| ------------ | ------------------------------------------- | ----------------------- |
-| `result`     | `Signal<QueryObserverResult>`               | Full observer result    |
-| `data`       | `Signal<TData \| undefined>`                | Query data              |
-| `error`      | `Signal<TError \| null>`                    | Query error             |
-| `status`     | `Signal<"pending" \| "error" \| "success">` | Query status            |
-| `isPending`  | `Signal<boolean>`                           | No data yet             |
-| `isLoading`  | `Signal<boolean>`                           | First fetch in progress |
-| `isFetching` | `Signal<boolean>`                           | Any fetch in progress   |
-| `isError`    | `Signal<boolean>`                           | Query errored           |
-| `isSuccess`  | `Signal<boolean>`                           | Query succeeded         |
-| `refetch()`  | `() => Promise<QueryObserverResult>`        | Trigger manual refetch  |
+Subscribe to a query with fine-grained signals. **Options are a function** — read signals inside and the observer reconfigures + refetches when they change.
 
 ```ts
 const userId = signal(1)
@@ -80,76 +48,56 @@ const query = useQuery(() => ({
   queryKey: ['user', userId()],
   queryFn: () => fetchUser(userId()),
 }))
-// Changing userId triggers automatic refetch
+// userId.set(2) → automatic refetch
 ```
 
-### `useMutation(options)`
+Returns `UseQueryResult<TData, TError>`:
 
-Run a mutation with reactive status signals.
+| Property      | Type                                            | Notes                                  |
+| ------------- | ----------------------------------------------- | -------------------------------------- |
+| `result`      | `Signal<QueryObserverResult>`                   | Full observer result (escape hatch)    |
+| `data`        | `Signal<TData \| undefined>`                    |                                        |
+| `error`       | `Signal<TError \| null>`                        |                                        |
+| `status`      | `Signal<'pending' \| 'error' \| 'success'>`     |                                        |
+| `isPending`   | `Signal<boolean>`                               | No data yet                            |
+| `isLoading`   | `Signal<boolean>`                               | First fetch in progress                |
+| `isFetching`  | `Signal<boolean>`                               | Any fetch (incl. background refetch)   |
+| `isError`     | `Signal<boolean>`                               |                                        |
+| `isSuccess`   | `Signal<boolean>`                               |                                        |
+| `refetch()`   | `() => Promise<QueryObserverResult>`            | Manual refetch                         |
 
-| Parameter | Type                      | Description     |
-| --------- | ------------------------- | --------------- |
-| `options` | `MutationObserverOptions` | Mutation config |
+**Lazy signal allocation**: each property is materialized on first access via getter (`??=`), so a consumer that only reads `data` and `isLoading` doesn't allocate the other 7 signals. Same `Signal<T>` identity is preserved across repeat access.
 
-**Returns:** `UseMutationResult<TData, TError, TVariables, TContext>` with:
+## `useMutation(options)`
 
-| Property                   | Type                                                  | Description                |
-| -------------------------- | ----------------------------------------------------- | -------------------------- |
-| `data`                     | `Signal<TData \| undefined>`                          | Mutation result            |
-| `error`                    | `Signal<TError \| null>`                              | Mutation error             |
-| `status`                   | `Signal<"idle" \| "pending" \| "success" \| "error">` | Status                     |
-| `isPending`                | `Signal<boolean>`                                     | Mutation in progress       |
-| `isSuccess`                | `Signal<boolean>`                                     | Mutation succeeded         |
-| `isError`                  | `Signal<boolean>`                                     | Mutation errored           |
-| `isIdle`                   | `Signal<boolean>`                                     | Not yet fired              |
-| `mutate(vars, opts?)`      | `Function`                                            | Fire-and-forget mutation   |
-| `mutateAsync(vars, opts?)` | `Function`                                            | Promise-returning mutation |
-| `reset()`                  | `() => void`                                          | Reset to idle state        |
+Mutations are imperative — options are a **plain object**, not a function.
 
 ```ts
 const mutation = useMutation({
-  mutationFn: (data: { title: string }) =>
-    fetch('/api/posts', { method: 'POST', body: JSON.stringify(data) }).then((r) => r.json()),
-  onSuccess: () => queryClient.invalidateQueries({ queryKey: ['posts'] }),
+  mutationFn: (post: { title: string }) =>
+    fetch('/api/posts', { method: 'POST', body: JSON.stringify(post) }).then((r) => r.json()),
+  // Auto-invalidate queries on success (extension of TanStack's interface)
+  invalidates: [['posts']],
+  onSuccess: (data) => console.log('Created', data),
 })
 
-mutation.mutate({ title: 'New Post' })
+mutation.mutate({ title: 'Hello' })       // fire-and-forget, errors land in mutation.error()
+await mutation.mutateAsync({ title: '!' }) // promise — use for try/catch
+mutation.reset()                           // back to idle
 ```
 
-### `useInfiniteQuery(options)`
+`UseMutationResult` shape mirrors `UseQueryResult` plus `mutate` / `mutateAsync` / `reset`, with status `'idle' | 'pending' | 'success' | 'error'`.
 
-Paginated/infinite query with the same fine-grained signal pattern as `useQuery`.
+## `useInfiniteQuery(() => options)` / `useSuspenseQuery` / `useSuspenseInfiniteQuery`
 
-| Parameter | Type                                 | Description                |
-| --------- | ------------------------------------ | -------------------------- |
-| `options` | `() => InfiniteQueryObserverOptions` | Function returning options |
-
-**Returns:** `UseInfiniteQueryResult<TData, TError>` — same shape as `UseQueryResult`.
-
-### `useQueries(options)`
-
-Run multiple queries in parallel.
-
-| Parameter | Type                | Description            |
-| --------- | ------------------- | ---------------------- |
-| `options` | `UseQueriesOptions` | Array of query configs |
-
-**Returns:** Array of `UseQueryResult` objects.
-
-### `useSuspenseQuery(options)` / `useSuspenseInfiniteQuery(options)`
-
-Suspense-enabled queries. Data is guaranteed non-undefined after the suspense boundary resolves.
-
-| Property | Type            | Description                    |
-| -------- | --------------- | ------------------------------ |
-| `data`   | `Signal<TData>` | Always defined (non-undefined) |
+Same shape as `useQuery`. Suspense variants narrow `data` to `Signal<TData>` (non-undefined after suspense resolves) and MUST be wrapped in `<QuerySuspense>`.
 
 ```tsx
 function UserList() {
-  const query = useSuspenseQuery({
+  const query = useSuspenseQuery(() => ({
     queryKey: ['users'],
     queryFn: fetchUsers,
-  })
+  }))
   return () => (
     <ul>
       {query.data().map((u) => (
@@ -158,49 +106,57 @@ function UserList() {
     </ul>
   )
 }
-```
 
-### `QuerySuspense`
-
-Suspense wrapper component with built-in error handling.
-
-| Parameter  | Type         | Description      |
-| ---------- | ------------ | ---------------- |
-| `fallback` | `VNodeChild` | Loading fallback |
-| `children` | `VNodeChild` | Content          |
-
-```tsx
-<QuerySuspense fallback={<p>Loading...</p>}>
+;<QuerySuspense fallback={<p>Loading...</p>}>
   <UserList />
 </QuerySuspense>
 ```
 
-### `QueryErrorResetBoundary` / `useQueryErrorResetBoundary()`
+## `useQueries(() => options)`
 
-Error boundary for resetting query errors on retry. Wrap `QueryErrorResetBoundary` around a `QuerySuspense` + `ErrorBoundary` pair so a sibling `ErrorBoundary` recovery automatically clears errored queries. `useQueryErrorResetBoundary()` returns `{ reset }` for imperative access from inside an `ErrorBoundary` fallback outside the render-prop form.
+Multiple parallel queries. Options as a function so the query array itself can be reactive.
 
-### `useSubscription(options)`
+```ts
+const ids = signal([1, 2, 3])
+const queries = useQueries(() =>
+  ids().map((id) => ({ queryKey: ['user', id], queryFn: () => fetchUser(id) })),
+)
+// queries is an array of UseQueryResult
+```
 
-Reactive WebSocket with auto-reconnect and QueryClient cache integration. `onMessage` receives the active `QueryClient` so push updates can invalidate or directly patch cached queries. Exponential backoff on reconnect (default 1s doubling, max 10 attempts). `url` and `enabled` may be signals.
+## `defineQueries({ a, b, c })`
 
-**Returns:** `UseSubscriptionResult` with `status` (signal), `send(data)`, `close()`, `reconnect()`.
+Named parallel queries returning a typed object instead of an array.
+
+```ts
+const queries = defineQueries({
+  user: () => ({ queryKey: ['user'], queryFn: fetchUser }),
+  posts: () => ({ queryKey: ['posts'], queryFn: fetchPosts }),
+})
+queries.user.data()
+queries.posts.data()
+```
+
+## `useSubscription(options)`
+
+Reactive WebSocket with auto-reconnect. `onMessage` receives the active `QueryClient` so pushes can directly invalidate cache. Exponential backoff (default 1s doubling, max 10 attempts). `url` and `enabled` may be signals.
 
 ```ts
 const sub = useSubscription({
   url: 'wss://api.example.com/feed',
   onMessage: (event, client) => {
-    if (JSON.parse(event.data).type === 'post-created') {
+    const msg = JSON.parse(event.data)
+    if (msg.type === 'post-created') {
       client.invalidateQueries({ queryKey: ['posts'] })
     }
   },
 })
+// sub.status() | sub.send(data) | sub.close() | sub.reconnect()
 ```
 
-### `useSSE(options)`
+## `useSSE(options)`
 
-Reactive Server-Sent Events hook — same pattern as `useSubscription` but read-only. `parse` deserializes each event; `events` filters named event types. Updates `lastEventId()` on every incoming `id` field so consumers can persist + resume across remount.
-
-**Returns:** `UseSSEResult<T>` with `data` (signal of last parsed message), `status` (signal), `error` (signal), `lastEventId()`, `readyState()`, `close()`, `reconnect()`.
+Server-Sent Events — same shape as `useSubscription`, read-only. `parse` deserializes each event; `events` filters named event types. `lastEventId()` updates on every incoming `id` field.
 
 ```ts
 const sse = useSSE({
@@ -214,11 +170,10 @@ const sse = useSSE({
 })
 ```
 
-**Resuming across remount.** Browser `EventSource` only auto-resumes (sends the `Last-Event-ID` header) within a single instance lifetime. A new instance — including a fresh hook call after navigation — starts from scratch. To persist the resume point, pair `useStorage` with the `initialLastEventId` option and put the ID in the URL so the server reads it as a query param:
+**Resuming across remount**: `EventSource` cannot set `Last-Event-ID` on the FIRST connection — pair `useStorage` with the `initialLastEventId` option and pass the ID in the URL so the server reads it as a query param:
 
 ```ts
 const lastId = useStorage('chat-last-id', '')
-
 const sse = useSSE({
   url: () => `/api/events?lastId=${lastId() || ''}`,
   initialLastEventId: lastId,
@@ -226,67 +181,75 @@ const sse = useSSE({
 })
 ```
 
-`initialLastEventId` is read **once at mount**. Subsequent changes to the seed accessor are intentionally ignored — use the reactive `url` (or call `reconnect()`) for runtime overrides.
+`initialLastEventId` is read **once at mount** — subsequent changes are ignored. Use the reactive `url` (or `sse.reconnect()`) for runtime overrides.
 
-### `useIsFetching(filters?)` / `useIsMutating(filters?)`
+## `useIsFetching(filters?)` / `useIsMutating(filters?)`
 
-Global counters of active queries/mutations as reactive signals.
-
-| Parameter | Type                               | Description                      |
-| --------- | ---------------------------------- | -------------------------------- |
-| `filters` | `QueryFilters` / `MutationFilters` | Optional filters to narrow scope |
-
-**Returns:** `Signal<number>`
+Global counters as reactive signals — useful for top-of-page spinners.
 
 ```ts
-const fetching = useIsFetching()
-// fetching() => number of active queries
+const fetching = useIsFetching() // Signal<number>
+const mutating = useIsMutating({ mutationKey: ['posts'] })
 ```
 
-## Patterns
+## `QueryErrorResetBoundary` / `useQueryErrorResetBoundary()`
 
-### SSR Dehydration
+Pair with a sibling `ErrorBoundary` so the fallback's retry button clears errored queries before retrying.
+
+```tsx
+<QueryErrorResetBoundary>
+  {({ reset }) => (
+    <ErrorBoundary fallback={(err, retry) => <button onClick={() => { reset(); retry() }}>Retry</button>}>
+      <UserList />
+    </ErrorBoundary>
+  )}
+</QueryErrorResetBoundary>
+```
+
+Or imperatively: `const { reset } = useQueryErrorResetBoundary()`.
+
+## `useQueryClient()`
+
+Access the nearest `QueryClient`. Throws if no provider is mounted above the call site.
+
+## SSR dehydration
 
 ```ts
 import { QueryClient, dehydrate, hydrate } from '@pyreon/query'
 
-// Server: prefetch and serialize
+// Server:
 const queryClient = new QueryClient()
 await queryClient.prefetchQuery({ queryKey: ['users'], queryFn: fetchUsers })
 const dehydratedState = dehydrate(queryClient)
 
-// Client: restore cache
+// Client:
 hydrate(queryClient, dehydratedState)
-```
-
-### Reactive Query Keys
-
-Options are a function, so reading signals inside auto-tracks dependencies.
-
-```ts
-const filter = signal('active')
-const query = useQuery(() => ({
-  queryKey: ['todos', filter()],
-  queryFn: () => fetchTodos(filter()),
-}))
-// Changing filter() triggers a new fetch
 ```
 
 ## Re-exports from `@tanstack/query-core`
 
-**Runtime:** `QueryClient`, `QueryCache`, `MutationCache`, `dehydrate`, `hydrate`, `keepPreviousData`, `hashKey`, `isCancelledError`, `CancelledError`, `defaultShouldDehydrateQuery`, `defaultShouldDehydrateMutation`
+Everything from `@tanstack/query-core` is re-exported, so `@pyreon/query` is your single import.
 
-**Types:** `QueryKey`, `QueryFilters`, `MutationFilters`, `DehydratedState`, `FetchQueryOptions`, `InvalidateQueryFilters`, `InvalidateOptions`, `RefetchQueryFilters`, `RefetchOptions`, `QueryClientConfig`
+**Runtime**: `QueryClient`, `QueryCache`, `MutationCache`, `dehydrate`, `hydrate`, `keepPreviousData`, `hashKey`, `isCancelledError`, `CancelledError`, `defaultShouldDehydrateQuery`, `defaultShouldDehydrateMutation`.
+
+**Types**: `QueryKey`, `QueryFilters`, `MutationFilters`, `DehydratedState`, `FetchQueryOptions`, `InvalidateQueryFilters`, `InvalidateOptions`, `RefetchQueryFilters`, `RefetchOptions`, `QueryClientConfig`.
 
 ## Gotchas
 
-- Each field on `UseQueryResult` is an independent signal. Reading `query.data()` does not re-run when `isFetching` changes, and vice versa.
-- `useQuery` options must be a function `() => opts`, not a plain object. This is required for reactive option tracking. Changing a signal inside the function re-evaluates options + refetches.
-- `useMutation` options are a plain object (not a function) — mutations are imperative, there are no reactive queryKeys to re-evaluate, so the function-wrapper overhead would add no value.
-- `mutate()` swallows errors into the `error` signal. Use `mutateAsync()` if you need try/catch.
-- `useQueries` accepts a function too — pass `useQueries(() => ids().map(...))` for reactive query lists. A static array loses tracking.
-- `useSuspenseQuery` / `useSuspenseInfiniteQuery` require a `QuerySuspense` boundary — without it, the narrowed `data: Signal<TData>` type lies: `data()` CAN be undefined during the first render cycle.
-- `QuerySuspense` children must be a function `{() => <UI />}` — plain JSX children evaluate eagerly, defeating the Suspense gate.
-- `useSubscription` `onMessage` runs on every WebSocket frame — debounce cache invalidations for high-frequency streams.
-- `useSSE` requires `parse` for typed data — without it, `data()` is raw `string` (the event payload as-is).
-- Observer subscriptions are cleaned up automatically on component unmount via `onUnmount`.
+- **`useQuery` / `useInfiniteQuery` / `useQueries` / `useSuspenseQuery` take options as a FUNCTION**, not an object. Reading signals inside is the mechanism for reactive refetches. Caught by the lint rule + MCP detector `pyreon/query-options-as-function` (auto-fixable). `useMutation` is the exception — plain object.
+- **Fields are independently subscribable** — `query.data()` does NOT re-run when `query.isFetching` flips, and vice versa. Read only what you need.
+- **`mutate()` swallows errors** into the `error` signal. Use `mutateAsync()` if you need try/catch.
+- **`useSuspenseQuery` / `useSuspenseInfiniteQuery` require `<QuerySuspense>`** — without it the narrowed `data: Signal<TData>` type lies (CAN be undefined during first render cycle).
+- **`<QuerySuspense>` children should be a function**: `{() => <UI />}`. Plain JSX evaluates eagerly and defeats the suspense gate.
+- **`useSubscription` `onMessage` runs on every WebSocket frame** — debounce cache invalidations for high-frequency streams.
+- **`useSSE.parse` is required for typed data** — without it, `data()` is the raw `string` event payload.
+- **`useSSE.initialLastEventId` is read once at mount** — runtime changes need the reactive `url` (or `reconnect()`).
+- **Observer subscriptions auto-clean on unmount** via `onUnmount` — no manual disposal needed.
+
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/query](https://docs.pyreon.dev/docs/query) (or `docs/docs/query.md` in this repo).
+
+## License
+
+MIT

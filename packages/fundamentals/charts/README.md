@@ -1,16 +1,18 @@
 # @pyreon/charts
 
-Reactive ECharts bridge for Pyreon. Lazy loading, signal-driven updates, Canvas by default.
+Reactive ECharts bridge — lazy module loading, signal-driven `setOption`, Canvas by default.
 
-Zero ECharts bytes in your bundle until a chart actually renders. Chart types and components are auto-detected from your config and dynamically imported on demand.
+`@pyreon/charts` wraps Apache ECharts in a Pyreon-native shape: `<Chart options={() => ({...})}>` reads signals inside the options function, and the chart's `setOption` is called whenever the tracked dependencies change. Zero ECharts bytes ship until a chart actually renders — the bridge inspects your config, detects which chart types + components are needed (BarChart, GridComponent, TooltipComponent, …), and dynamically imports only those. ECharts is ~300KB+ if you import it whole; a typical bar-with-tooltip chart loads ~35KB gzipped. Ships three entries: main (auto-detection), `/manual` (explicit `use(...)` for absolute tree-shake control), and `/vite` (a `chartsViteAlias()` helper for the recurring tslib bundler bug).
 
 ## Install
 
 ```bash
-bun add @pyreon/charts echarts
+bun add @pyreon/charts echarts @pyreon/core @pyreon/reactivity
 ```
 
-## Quick Start
+`echarts` is a peer dep (`>=5.6.0`). **You must add the [tslib alias](#bundler-fix-tslib-alias) to your `vite.config.ts`** or the page throws on ECharts load. The same alias is needed for browser tests; see `vitest.browser.ts` / `tslibBrowserAlias()` in `@pyreon/test-utils` for the test-side variant.
+
+## Quick start
 
 ```tsx
 import { Chart } from '@pyreon/charts'
@@ -33,23 +35,21 @@ function RevenueChart() {
 }
 ```
 
-Signal changes → chart updates automatically. No manual `setOption` calls.
+Signal changes → chart updates automatically. No manual `setOption`, no manual resize handler.
 
 ## How it works
 
-1. You write a config object with `type: 'bar'` in series
-2. The bridge detects: needs `BarChart` + `GridComponent` + `TooltipComponent` + `CanvasRenderer`
-3. Dynamically imports only those ECharts modules (~35KB vs 300KB+ full)
-4. Creates the chart instance with Canvas renderer
-5. Sets up a reactive effect — when signals in your config function change, `setOption()` is called
-6. ResizeObserver auto-resizes the chart
-7. On unmount, chart is disposed and observer disconnected
+1. You write a config with `type: 'bar'` somewhere in series.
+2. The bridge detects the chart type + components needed (BarChart + GridComponent + TooltipComponent + CanvasRenderer).
+3. Dynamically imports only those ECharts modules.
+4. Creates the chart instance with the chosen renderer.
+5. Wires a reactive effect — when signals in your options function change, `setOption()` runs.
+6. `ResizeObserver` auto-resizes on container changes.
+7. On unmount, the chart is disposed and the observer disconnected.
 
-## API
+## `<Chart />`
 
-### `<Chart />`
-
-Component shorthand wrapping `useChart`.
+Component shorthand wrapping `useChart` — pass a reactive options function, get a rendered chart.
 
 ```tsx
 <Chart
@@ -58,26 +58,31 @@ Component shorthand wrapping `useChart`.
     legend: {},
   })}
   theme="dark"
+  renderer="canvas"
   style="height: 300px"
   class="my-chart"
   onClick={(params) => console.log(params)}
 />
 ```
 
-| Prop           | Type                 | Description                    |
-| -------------- | -------------------- | ------------------------------ |
-| `options`      | `() => EChartOption` | Reactive config function       |
-| `theme?`       | `string \| object`   | ECharts theme                  |
-| `renderer?`    | `'canvas' \| 'svg'`  | Renderer (default: `'canvas'`) |
-| `style?`       | `string`             | CSS style for container        |
-| `class?`       | `string`             | CSS class for container        |
-| `onClick?`     | `(params) => void`   | Click event                    |
-| `onMouseover?` | `(params) => void`   | Mouseover event                |
-| `onMouseout?`  | `(params) => void`   | Mouseout event                 |
+| Prop           | Type                          | Description                                        |
+| -------------- | ----------------------------- | -------------------------------------------------- |
+| `options`      | `() => EChartsOption`         | Reactive config function — signal reads track here |
+| `theme?`       | `string \| object`            | ECharts theme                                      |
+| `renderer?`    | `'canvas' \| 'svg'`           | Default: `'canvas'`                                |
+| `locale?`      | `string`                      | ECharts locale                                     |
+| `notMerge?`    | `boolean`                     | Replace options instead of merging (default false) |
+| `lazyUpdate?`  | `boolean`                     | Batch updates (default `true`)                     |
+| `onInit?`      | `(instance: ECharts) => void` | Called once when chart is created                  |
+| `style?`       | `string`                      | CSS for the container                              |
+| `class?`       | `string`                      | CSS class                                          |
+| `onClick?`     | `(params) => void`            | Click event                                        |
+| `onMouseover?` | `(params) => void`            | Mouseover                                          |
+| `onMouseout?`  | `(params) => void`            | Mouseout                                           |
 
-### `useChart(options, config?)`
+## `useChart(() => options, config?)`
 
-Core hook for programmatic control.
+Programmatic core hook — use when you need direct access to the ECharts instance, custom container wiring, or a `loading` signal.
 
 ```tsx
 const chart = useChart(() => ({
@@ -88,29 +93,30 @@ const chart = useChart(() => ({
 return <div ref={chart.ref} style="height: 400px" />
 ```
 
-**Returns:**
+Returns `UseChartResult`:
 
-| Property   | Type                                | Description                          |
-| ---------- | ----------------------------------- | ------------------------------------ |
-| `ref`      | `(el: HTMLElement \| null) => void` | Bind to container div                |
-| `instance` | `Signal<ECharts \| null>`           | ECharts instance (null until loaded) |
-| `loading`  | `Signal<boolean>`                   | True while modules are loading       |
-| `resize`   | `() => void`                        | Manually trigger resize              |
+| Property   | Type                                | Description                                          |
+| ---------- | ----------------------------------- | ---------------------------------------------------- |
+| `ref`      | `(el: HTMLElement \| null) => void` | Bind to a container `<div>`                          |
+| `instance` | `Signal<ECharts \| null>`           | ECharts instance, `null` until modules load          |
+| `loading`  | `Signal<boolean>`                   | True while dynamic imports are in flight             |
+| `error`    | `Signal<Error \| null>`             | Captures option-function throws + ECharts init fails |
+| `resize`   | `() => void`                        | Manually trigger resize                              |
 
-**Config options:**
+Strict typing per chart-type set via the generic param:
 
-| Option       | Type                 | Default    | Description                        |
-| ------------ | -------------------- | ---------- | ---------------------------------- |
-| `theme`      | `string \| object`   | —          | ECharts theme                      |
-| `renderer`   | `'canvas' \| 'svg'`  | `'canvas'` | Rendering engine                   |
-| `locale`     | `string`             | `'EN'`     | ECharts locale                     |
-| `notMerge`   | `boolean`            | `false`    | Replace options instead of merging |
-| `lazyUpdate` | `boolean`            | `true`     | Batch updates                      |
-| `onInit`     | `(instance) => void` | —          | Called when chart is created       |
+```ts
+import type { ComposeOption, BarSeriesOption, LineSeriesOption } from '@pyreon/charts'
+type MyChartOption = ComposeOption<BarSeriesOption | LineSeriesOption>
 
-## Manual Registration (Tree-shaking)
+const chart = useChart<MyChartOption>(() => ({
+  series: [{ type: 'bar', data: revenue() }], // pie/scatter/etc. would be a TS error
+}))
+```
 
-For apps that want absolute minimal bundles, explicitly import only what you need:
+## Manual registration — `@pyreon/charts/manual`
+
+For absolute bundle control. Explicitly register the modules you need; the bundler eliminates the rest. No dynamic imports, no `loading` flicker on first render.
 
 ```tsx
 import { useChart, Chart, use } from '@pyreon/charts/manual'
@@ -120,8 +126,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 
 use(BarChart, LineChart, GridComponent, TooltipComponent, CanvasRenderer)
 
-// Same API — no dynamic imports, no loading state
-<Chart
+;<Chart
   options={() => ({
     series: [{ type: 'bar', data: values() }],
   })}
@@ -129,57 +134,70 @@ use(BarChart, LineChart, GridComponent, TooltipComponent, CanvasRenderer)
 />
 ```
 
-## Supported Chart Types
+Same API as the main entry — `Chart`, `useChart`, types — plus `use(...)` for registration.
 
-bar, line, pie, scatter, radar, heatmap, treemap, sunburst, sankey, funnel, gauge, graph, tree, boxplot, candlestick, parallel, themeRiver, effectScatter, lines, pictorialBar, custom, map
+## Bundler fix — tslib alias
 
-## Supported Components
-
-tooltip, legend, title, toolbox, dataZoom, visualMap, timeline, graphic, brush, calendar, dataset, aria, grid (also implied by xAxis/yAxis), polar, radar, geo
-
-## Bundle Size
-
-| Usage                 | ECharts loaded                                                 | Approx gzipped |
-| --------------------- | -------------------------------------------------------------- | -------------- |
-| No charts rendered    | Nothing                                                        | 0 KB           |
-| Bar + tooltip         | core + BarChart + Grid + Tooltip + Canvas                      | ~35 KB         |
-| Bar + Line + legend   | core + BarChart + LineChart + Grid + Legend + Tooltip + Canvas | ~42 KB         |
-| Pie only              | core + PieChart + Canvas                                       | ~25 KB         |
-| @pyreon/charts itself | Module map + hook                                              | ~3 KB          |
-
-## Why Canvas by default
-
-Canvas renders the entire chart as a single `<canvas>` element. SVG creates hundreds of DOM elements for complex charts. Canvas is better for:
-
-- Charts with many data points
-- Frequent signal-driven updates
-- Animations
-- Memory efficiency
-
-Use `renderer: 'svg'` only when you need CSS styling on individual elements or PDF export.
-
-## Bundler note: tslib alias
-
-ECharts imports TypeScript helpers from `tslib`. tslib's `package.json` `exports` map points the `import` condition at `./modules/index.js`, which destructures named helpers (`__extends`, `__assign`, etc.) from a CJS default export. Vite/esbuild's pre-bundler wraps the CJS via `__toESM(require_tslib())` and the destructure throws at runtime:
+ECharts imports `tslib` for TypeScript helpers (`__extends`, `__assign`, etc.). tslib's `package.json` `exports` map points the `import` condition at `./modules/index.js`, which destructures helpers from a `__toESM(require_tslib())` default — but the helpers live as top-level `var`s on the CJS factory, NOT as properties of `module.exports.default`. The destructure reads `undefined` and the page throws:
 
 ```text
 TypeError: Cannot destructure property '__extends' of '__toESM(...).default' as it is undefined
 ```
 
-Known upstream issue: [microsoft/tslib#189](https://github.com/microsoft/tslib/issues/189).
+(Upstream: [microsoft/tslib#189](https://github.com/microsoft/tslib/issues/189).)
 
-**Fix in your `vite.config.ts`:**
+**Fix via `@pyreon/charts/vite`:**
 
 ```ts
+// vite.config.ts
 import { defineConfig } from 'vite'
+import { chartsViteAlias } from '@pyreon/charts/vite'
 
 export default defineConfig({
   resolve: {
-    alias: {
-      tslib: 'tslib/tslib.es6.js', // flat ESM file with proper named exports
-    },
+    alias: { ...chartsViteAlias() },
   },
 })
 ```
 
-`tslib.es6.js` is a flat ESM module with proper `export function __extends(...)` declarations — sidesteps the broken `modules/index.js` indirection entirely. The Pyreon monorepo's browser test infrastructure handles this automatically via the `tslibBrowserAlias()` helper in `vitest.browser.ts`.
+`chartsViteAlias()` resolves `tslib.es6.js` (the flat ESM module with proper named exports) via echarts itself, falls back to walking up `node_modules`, and returns `{}` if tslib can't be located — apps that don't use `@pyreon/charts` aren't broken by the alias call.
+
+**For browser tests** (`vitest.browser.ts`), use `tslibBrowserAlias(import.meta.url)` from `@pyreon/test-utils`. The two helpers exist because Vite config runs under Node's `node` condition (needs the package's `lib/vite.js` build artifact), while vitest browser configs run inside the runner's bundler context (can reach the repo-root `vitest.browser.ts` directly).
+
+## Supported chart types
+
+bar, line, pie, scatter, radar, heatmap, treemap, sunburst, sankey, funnel, gauge, graph, tree, boxplot, candlestick, parallel, themeRiver, effectScatter, lines, pictorialBar, custom, map.
+
+## Supported components
+
+tooltip, legend, title, toolbox, dataZoom, visualMap, timeline, graphic, brush, calendar, dataset, aria, grid (also implied by `xAxis`/`yAxis`), polar, radar, geo.
+
+## Bundle size (rough)
+
+| Usage                      | ECharts loaded                                                 | Approx gzipped |
+| -------------------------- | -------------------------------------------------------------- | -------------- |
+| No charts rendered         | Nothing                                                        | 0 KB           |
+| Bar + tooltip              | core + BarChart + Grid + Tooltip + Canvas                      | ~35 KB         |
+| Bar + Line + legend        | core + BarChart + LineChart + Grid + Legend + Tooltip + Canvas | ~42 KB         |
+| Pie only                   | core + PieChart + Canvas                                       | ~25 KB         |
+| `@pyreon/charts` bridge     | Module map + hook                                              | ~3 KB          |
+
+## Why Canvas by default
+
+Canvas renders the whole chart as one `<canvas>` element. SVG creates hundreds of DOM nodes for complex charts. Canvas wins for: many data points, frequent signal-driven updates, animations, memory. Use `renderer: 'svg'` only when you need CSS styling on individual chart elements or PDF export.
+
+## Gotchas
+
+- **The tslib alias is mandatory** when consuming `@pyreon/charts` from a Vite app. Without it the page throws the moment any chart loads. Use `chartsViteAlias()` from `@pyreon/charts/vite`.
+- **Options must be a function** `() => ({...})`. Signal reads inside the function track for `setOption` updates. A plain object captures values once and never updates.
+- **`loading` is `true` until the first chart renders** — show a placeholder, or accept a brief blank container. The manual entry skips this since modules are registered up-front.
+- **Option-function throws are captured into `error`** — they do NOT crash the component. Read `chart.error()` to surface them.
+- **`onUnmount` disposes the chart + observer** — no manual cleanup needed. Storing `chart.instance()` elsewhere and using it after unmount throws.
+
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/charts](https://docs.pyreon.dev/docs/charts) (or `docs/docs/charts.md` in this repo).
+
+## License
+
+MIT

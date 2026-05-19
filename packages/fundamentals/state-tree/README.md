@@ -1,11 +1,13 @@
 # @pyreon/state-tree
 
-Structured reactive state trees with signal-backed models, computed views, actions, snapshots, JSON patches, and middleware.
+MobX-State-Tree-inspired structured models on signals — `model({ state, views, actions })`.
+
+Structured reactive state trees built on `@pyreon/reactivity`: `model({ state, views, actions })` composes signal-backed state, computed views, and the only legal mutation path (actions). Supports nested model composition, typed snapshots, JSON-patch record/replay (replace only), and action interception middleware. Fits when `@pyreon/store` is too flat — use it for tree-shaped domain models with undo/redo, time-travel, or audit-log requirements.
 
 ## Install
 
 ```bash
-bun add @pyreon/state-tree
+bun add @pyreon/state-tree @pyreon/reactivity
 ```
 
 ## Quick Start
@@ -247,3 +249,19 @@ applyPatch(counter, history) // replays to count: 2
 - `applySnapshot` leaves missing keys unchanged; it does not delete extra state.
 - `self` inside actions/views is loosely typed for non-state keys to prevent circular type resolution. Use explicit types if needed.
 - Always call `resetAllHooks()` in test `afterEach` to prevent singleton leakage between tests.
+
+## Devtools
+
+```ts
+import { stateTreeRegistry } from '@pyreon/state-tree/devtools'
+```
+
+WeakRef-based registry of live model instances — tree-shakeable. Used by the Pyreon devtools panel.
+
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/state-tree](https://docs.pyreon.dev/docs/state-tree) (or `docs/docs/state-tree.md` in this repo).
+
+## License
+
+MIT
