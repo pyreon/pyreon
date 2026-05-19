@@ -1,5 +1,14 @@
 # @pyreon/svelte-compat
 
+## 0.16.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.21.0
+  - @pyreon/reactivity@0.21.0
+  - @pyreon/runtime-dom@0.21.0
+
 ## 0.16.0
 
 ### Minor Changes

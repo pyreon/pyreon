@@ -1,5 +1,16 @@
 # @pyreon/islands-showcase
 
+## 0.0.7
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.21.0
+  - @pyreon/reactivity@0.21.0
+  - @pyreon/router@0.21.0
+  - @pyreon/runtime-dom@0.21.0
+  - @pyreon/server@0.21.0
+
 ## 0.0.6
 
 ### Patch Changes

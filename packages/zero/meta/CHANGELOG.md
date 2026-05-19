@@ -1,5 +1,86 @@
 # @pyreon/meta
 
+## 0.21.0
+
+### Minor Changes
+
+- [#716](https://github.com/pyreon/pyreon/pull/716) [`d04eca2`](https://github.com/pyreon/pyreon/commit/d04eca2eb8a91da3e660253a2f1cb47a96280adc) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(meta): complete the barrel — re-export the 8 missing fundamentals + UI-system packages
+
+  `@pyreon/meta` advertised itself as "a barrel re-exporting the full Pyreon
+  ecosystem" but had quietly drifted: 7 published fundamentals and 1
+  UI-system surface were missing from `src/index.ts` despite being stable
+  and published. The `docs/docs/meta.md` description even named
+  `@pyreon/document` as included — a doc/code mismatch.
+
+  This PR closes that gap. Added named re-exports for:
+
+  - **`@pyreon/rx`** — `rx` namespace + types (37 functional ops; namespace
+    form avoids `merge` / `throttle` / `debounce` collisions with other
+    meta entries; tree-shakes individual operators).
+  - **`@pyreon/toast`** — `toast()`, `Toaster` + types.
+  - **`@pyreon/url-state`** — `useUrlState`, `setUrlRouter` + types.
+  - **`@pyreon/dnd`** — `useDraggable` / `useDroppable` / `useSortable` /
+    `useFileDrop` / `useDragMonitor`.
+  - **`@pyreon/document`** — builder + `render` (skipped generic JSX names
+    like `Text` / `List` / `Row` that would collide with elements/coolgrid).
+  - **`@pyreon/document-primitives`** — the 18 `Doc*` JSX primitives +
+    `extractDocNode` / `createDocumentExport` / `documentTheme`.
+  - **`@pyreon/connector-document`** — `extractDocumentTree` / `resolveStyles`.
+  - **`@pyreon/ui-core`** — `PyreonUI` + `useMode` (the consumer-facing
+    provider surface; framework-internal utilities like `init` / `compose` /
+    `Provider` deliberately omitted to avoid generic-name collisions).
+
+  **Bundle hygiene (lazy by construction):** meta is `"sideEffects": false`
+  and every newly added source package is too — tree-shaking is end-to-end.
+  Heavy renderers stay lazy at the source: `@pyreon/document` lazy-loads
+  each format renderer (PDF/DOCX/XLSX/PPTX) inside `render(doc, '<format>')`
+  via dynamic `import()`; `@pyreon/charts`/`code`/`flow` do the same for
+  ECharts/CodeMirror grammars/elkjs. `import { … } from '@pyreon/meta'`
+  pulls only the reached subgraph — verified by `check-bundle-budgets`
+  (all 55 packages within budget post-change).
+
+  Test surface grows 105 → 149 (every new exported name asserted in
+  `src/tests/exports.test.ts`). Lint + typecheck clean. README + docs page
+  updated; docs description corrected to match what meta actually re-exports.
+
+### Patch Changes
+
+- Updated dependencies [[`89785b4`](https://github.com/pyreon/pyreon/commit/89785b4e8c1ac72e2a1ac2ea01e399b849bcf86e)]:
+  - @pyreon/kinetic@0.21.0
+  - @pyreon/reactivity@0.21.0
+  - @pyreon/charts@0.21.0
+  - @pyreon/code@0.21.0
+  - @pyreon/dnd@0.21.0
+  - @pyreon/document@0.21.0
+  - @pyreon/feature@0.21.0
+  - @pyreon/flow@0.21.0
+  - @pyreon/form@0.21.0
+  - @pyreon/hooks@0.21.0
+  - @pyreon/hotkeys@0.21.0
+  - @pyreon/i18n@0.21.0
+  - @pyreon/machine@0.21.0
+  - @pyreon/permissions@0.21.0
+  - @pyreon/query@0.21.0
+  - @pyreon/rx@0.21.0
+  - @pyreon/state-tree@0.21.0
+  - @pyreon/storage@0.21.0
+  - @pyreon/store@0.21.0
+  - @pyreon/table@0.21.0
+  - @pyreon/toast@0.21.0
+  - @pyreon/url-state@0.21.0
+  - @pyreon/validation@0.21.0
+  - @pyreon/virtual@0.21.0
+  - @pyreon/attrs@0.21.0
+  - @pyreon/connector-document@0.21.0
+  - @pyreon/coolgrid@0.21.0
+  - @pyreon/document-primitives@0.21.0
+  - @pyreon/elements@0.21.0
+  - @pyreon/kinetic-presets@0.21.0
+  - @pyreon/rocketstyle@0.21.0
+  - @pyreon/styler@0.21.0
+  - @pyreon/ui-core@0.21.0
+  - @pyreon/unistyle@0.21.0
+
 ## 0.20.0
 
 ### Patch Changes

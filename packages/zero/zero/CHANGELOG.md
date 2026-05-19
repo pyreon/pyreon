@@ -1,5 +1,59 @@
 # @pyreon/zero
 
+## 0.21.0
+
+### Patch Changes
+
+- [#713](https://github.com/pyreon/pyreon/pull/713) [`95ff116`](https://github.com/pyreon/pyreon/commit/95ff1160e43adceb024c0a897353fb675d20c7bf) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(favicon): SVG favicon now follows the theme toggle (was silently dead)
+
+  `faviconPlugin({ source: 'x.svg', darkSource: 'x-dark.svg' })` emitted a single static `<link rel="icon" type="image/svg+xml" href="/favicon.svg">` with no `data-favicon-theme`/`media`. The theme-swap script + `initTheme()` only toggle `[data-favicon-theme]` links, and browsers prefer an SVG favicon over PNG when both are present — so the carefully theme-toggled PNG variants were never displayed and the favicon never changed with the app theme, in dev or prod, in every modern browser. The `darkSource` JSDoc also documented a `prefers-color-scheme` mechanism that was unimplemented (and would only track the OS, not a manual in-app toggle).
+
+  Fix — the SVG favicon now participates in the same `data-favicon-theme` contract as the PNG dual-variant, across every surface:
+
+  - `transformIndexHtml` + `faviconLinks` (SSR): when `darkSource` is set, emit two theme-aware SVG links — `/favicon-light.svg` (`data-favicon-theme="light"`) and `/favicon-dark.svg` (`data-favicon-theme="dark"`, `media="not all"`) — instead of one static link. The existing swap script / `initTheme()` already toggle them; the `?v=` cache-bust loop already stamps them.
+  - Build (`generateFaviconSet`) emits `favicon-light.svg` (source) + `favicon-dark.svg` (darkSource) alongside the existing wrapped `favicon.svg` (kept as the no-JS / direct-`/favicon.svg`-reference OS-`prefers-color-scheme` fallback only).
+  - Dev (`configureServer`) serves `/favicon-light.svg` → source and `/favicon-dark.svg` → darkSource (locale-aware; dev-badge / `devSource` applies to the light/active variant, matching the `/favicon.svg` handler).
+  - `darkSource` JSDoc rewritten to describe the actual app-toggle behaviour.
+
+  No-dark and PNG sources are unchanged (single `/favicon.svg`, no `data-favicon-theme`). Bisect-verified regression tests added (`favicon-plugin-hooks.test.ts` transform path + `favicon.test.ts` SSR `faviconLinks`).
+
+- [#711](https://github.com/pyreon/pyreon/pull/711) [`82b2e3b`](https://github.com/pyreon/pyreon/commit/82b2e3b983d97039999da8d5a1518a387ad683a3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(image-plugin): dev-mode `?optimize` served raw filesystem paths → 404
+
+  `loadDevImage` decided the dev URL with `rawPath.startsWith('/') ? rawPath : '/@fs/' + absPath`. Since the build-mode `resolveId` fix made `rawPath` an absolute filesystem path for relative/aliased imports (`/Users/…/img.png`), `startsWith('/')` was `true`, so the browser fetched `http://localhost:5173/Users/…/img.png` → 404 / broken image in `vite dev`. Build mode was unaffected (separate `processImage` path, emits hashed `dist/` assets).
+
+  `loadDevImage` now uses the same `existsSync(rawPath)` discriminator the `absPath` derivation already uses: a real on-disk file (relative/aliased import) is routed through Vite's `/@fs/` prefix; only an unresolved `/foo.png`-style public-dir web path is served as-is (Vite serves `public/` at the web root). Bisect-verified regression test added covering both branches.
+
+- [#714](https://github.com/pyreon/pyreon/pull/714) [`9204800`](https://github.com/pyreon/pyreon/commit/9204800d79b5c8167ff176e78ba5f324f43de9e2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero): ship the `?optimize` / `?component` / `?raw` ambient types out of the box
+
+  `@pyreon/zero` documents `import hero from './x.jpg?optimize'` and exports the exact `ProcessedImage` return type, but shipped no resolvable ambient `declare module` for its custom Vite import queries — so the documented usage failed `tsc --noEmit` for every consumer, each forced to hand-author a `declare module "*?optimize"` and keep it manually in sync with `ProcessedImage` (silent drift). Ecosystem precedent: `vite/client`, `vite-imagetools/client`, `vite-plugin-pwa/client` all ship their query ambients.
+
+  Root cause was a **packaging gap, not missing types**: the correct ambient declarations (covering `*.{jpg,jpeg,png,webp,avif}?optimize` → `ProcessedImage`, `*.svg?component` → `ComponentFn`, `*.svg?raw` → `string`) already existed, but there was no `exports["./image-types"]`, so the documented `/// <reference types="@pyreon/zero/image-types" />` could not resolve.
+
+  Fix:
+
+  - Wire `./image-types` as a real build entry — `{ "bun": "./src/image-types.ts", "import": "./lib/image-types.js", "types": "./lib/types/image-types.d.ts" }` (mirroring `./client`). `vl_rolldown_build` derives a build **entry** from every exports subpath, so the source must be a buildable `src/image-types.ts` — a hand-authored `.d.ts` with no `.ts` failed the zero build with `[UNRESOLVED_ENTRY] src/image-types.ts`. The build compiles it to an empty `lib/image-types.js` and DTS-emits the ambients verbatim to `lib/types/image-types.d.ts` (a real `.d.ts` → always ambient + `moduleDetection`-exempt for consumers).
+  - `src/image-types.ts` is excluded from zero's own `tsc --noEmit`: the repo tsconfig sets `moduleDetection: force`, which would read `declare module '*.svg?raw'` in a `.ts` as an augmentation of a non-existent module (TS2664). It carries no logic; the emitted `.d.ts` is the contract (covered by the build's DTS emit + the regression test).
+  - The internal `ProcessedImage` import uses the package self-ref `import('@pyreon/zero/image-plugin')` — resolution-stable in the published layout (resolves through the consumer's `./image-plugin` export to the clean `lib/types` declaration, not the full `src` `.ts`) and re-uses the plugin's own type so the ambient **can never drift**.
+
+  Consumers now add one line to any tsconfig-covered `.d.ts`:
+
+  ```ts
+  /// <reference types="@pyreon/zero/image-types" />
+  ```
+
+  Additive, non-breaking. Packaging regression test added (`image-types-export.test.ts`, 7 specs) pinning the build-entry export shape, the deleted `.d.ts`, exclusion from zero's tsc, every declared query module, and the resolution-stable self-ref.
+
+- Updated dependencies [[`2b39231`](https://github.com/pyreon/pyreon/commit/2b3923112e6b06b5fd2cd3a3daa1425e7a6f755c), [`d04eca2`](https://github.com/pyreon/pyreon/commit/d04eca2eb8a91da3e660253a2f1cb47a96280adc)]:
+  - @pyreon/head@0.21.0
+  - @pyreon/meta@0.21.0
+  - @pyreon/core@0.21.0
+  - @pyreon/reactivity@0.21.0
+  - @pyreon/router@0.21.0
+  - @pyreon/runtime-dom@0.21.0
+  - @pyreon/runtime-server@0.21.0
+  - @pyreon/server@0.21.0
+  - @pyreon/vite-plugin@0.21.0
+
 ## 0.20.0
 
 ### Patch Changes
