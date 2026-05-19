@@ -379,10 +379,14 @@ onBeforeUnmount(() => io?.disconnect())
 /* ── 12 · Trace (canonical · pyreon-motion-hero.jsx) ─────────────────── */
 .is-v12 .px-edge {
   opacity: 1;
-  animation: px-edge-draw 360ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+  animation:
+    px-edge-draw 360ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards,
+    px-out 360ms 1300ms ease-out forwards;
 }
 .is-v12 .px-edge--cont {
-  animation: px-edge-draw 380ms 760ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+  animation:
+    px-edge-draw 380ms 760ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards,
+    px-out 360ms 1300ms ease-out forwards;
 }
 .is-v12 .px-disc {
   transform-box: fill-box;
@@ -398,7 +402,9 @@ onBeforeUnmount(() => io?.disconnect())
   animation: px-fade 280ms 880ms ease-out backwards;
 }
 .is-v12 .px-trace-cap {
-  animation: px-fade 240ms 1040ms ease-out forwards;
+  animation:
+    px-fade 240ms 1040ms ease-out forwards,
+    px-out 300ms 1320ms ease-out forwards;
 }
 
 /* ── 18 · Terminal type-on ──────────────────────────────────────────── */
@@ -415,9 +421,15 @@ onBeforeUnmount(() => io?.disconnect())
   animation: px-type 700ms cubic-bezier(0.5, 0, 0.3, 1) forwards;
 }
 .is-v18 .px-term-cursor {
+  /* travels with the type reveal, then fades out as typing completes —
+     NOT an infinite blink (that left a cursor bar stuck forever). */
   animation:
     px-cursor 700ms cubic-bezier(0.5, 0, 0.3, 1) forwards,
-    px-blink 0.9s steps(1) infinite;
+    px-out 200ms 700ms ease-out forwards;
+}
+.is-v18 .px-term-prompt {
+  /* `$` prompt clears once the wordmark is typed → clean lockup */
+  animation: px-out 240ms 760ms ease-out forwards;
 }
 .is-v18 .px-glyph {
   animation: px-pop 240ms 720ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
@@ -539,8 +551,13 @@ onBeforeUnmount(() => io?.disconnect())
 .px-scan {
   fill: url(#px-scan-grad);
 }
+.is-v23 .px-ecg-base {
+  animation: px-out 300ms 900ms ease-out forwards;
+}
 .is-v23 .px-scan {
-  animation: px-scan 900ms cubic-bezier(0.5, 0, 0.3, 1) forwards;
+  animation:
+    px-scan 900ms cubic-bezier(0.5, 0, 0.3, 1) forwards,
+    px-out 200ms 880ms ease-out forwards;
 }
 .is-v23 .px-disc {
   opacity: 0;
@@ -556,8 +573,13 @@ onBeforeUnmount(() => io?.disconnect())
 }
 
 /* ── 17 · Path-trace ────────────────────────────────────────────────── */
+.is-v17 .px-fuse-guide {
+  animation: px-out 320ms 1000ms ease-out forwards;
+}
 .is-v17 .px-fuse-trail {
-  animation: px-fz-draw 700ms cubic-bezier(0.3, 0.8, 0.2, 1) backwards;
+  animation:
+    px-fz-draw 700ms cubic-bezier(0.3, 0.8, 0.2, 1) backwards,
+    px-out 320ms 1000ms ease-out forwards;
 }
 .is-v17 .px-fuse-bead {
   offset-path: path('M -40 130 L 96 130 L 168 130 L 168 90 L 204 90 L 204 130 L 760 130');
@@ -589,7 +611,9 @@ onBeforeUnmount(() => io?.disconnect())
 .is-v15 .px-wf-cover {
   fill: var(--bg); /* semantic page bg — flips for light (was raw --ink-1) */
   opacity: 1;
-  animation: px-wf-wipe 640ms cubic-bezier(0.4, 0, 0.3, 1) forwards;
+  animation:
+    px-wf-wipe 640ms cubic-bezier(0.4, 0, 0.3, 1) forwards,
+    px-out 1ms 640ms linear forwards;
 }
 .is-v15 .px-wf-bar {
   fill: url(#px-ember-grad);
@@ -618,7 +642,9 @@ onBeforeUnmount(() => io?.disconnect())
 }
 .is-v16 .px-underline {
   transform-origin: left center;
-  animation: px-pc-under 320ms 640ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+  animation:
+    px-pc-under 320ms 640ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards,
+    px-out 300ms 1000ms ease-out forwards;
 }
 
 /* ── Keyframes ──────────────────────────────────────────────────────── */
@@ -859,13 +885,25 @@ onBeforeUnmount(() => io?.disconnect())
   }
 }
 @keyframes px-spot {
-  from {
+  0% {
     transform: scale(2);
+    opacity: 0;
+  }
+  45% {
     opacity: 0.6;
   }
+  100% {
+    transform: scale(0.35);
+    opacity: 0;
+  }
+}
+/* Universal cleanup: fade a lingering transient to nothing so EVERY
+   variant resolves to the identical clean glyph+wordmark lockup. No
+   `from` → fades from the element's current (visible) state, so there
+   is no jump when it kicks in after the reveal. */
+@keyframes px-out {
   to {
-    transform: scale(0.4);
-    opacity: 1;
+    opacity: 0;
   }
 }
 @keyframes px-scan {
