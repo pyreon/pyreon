@@ -485,7 +485,14 @@ onBeforeUnmount(() => io?.disconnect())
 
 /* ── 21 · RGB-split resolve ─────────────────────────────────────────── */
 .px-chan {
+  /* `screen` makes the 3 colour channels glow/combine on the dark
+     canvas (the RGB-split look). On the LIGHT cream bg `screen`
+     washes them to near-invisible — `multiply` is the correct
+     light-bg analog (darkens, so the channels read on paper). */
   mix-blend-mode: screen;
+}
+[data-theme='light'] .px-chan {
+  mix-blend-mode: multiply;
 }
 .px-chan-a,
 .px-chan-b,
