@@ -4,11 +4,14 @@
  * The dual backends MUST emit byte-identical output. This sweep locks the
  * adversarial corpus surfaced in rounds 11–19 where BOTH backends agree, so a
  * future one-backend change that introduces a divergence (the recurring
- * R7/R13/R15 failure mode) is caught immediately. The two KNOWN, proven
- * divergences are deliberately excluded here and tracked by their own
- * self-discriminating `it.fails` locks (r13-…, r15-…). R11's fix is included:
- * it CONVERGED the JS backend onto the (already-correct) Rust one, so these
- * shadow-param shapes must stay identical.
+ * R7/R13/R15 one-backend-change failure mode) is caught immediately. R11's
+ * and R13's fixes CONVERGED the backends (R11 brought JS onto the
+ * already-correct Rust; R13's gate/collector fix realigned native with JS,
+ * which also resolved the R15 element-const×prop-derived divergence) — those
+ * shapes must now stay identical, asserted here. The earlier self-
+ * discriminating `it.fails` divergence locks auto-flipped on resolution and
+ * were removed; R15's residual is a deterministic JS-backend
+ * characterization (r15-elemconst-propderived.test.ts).
  */
 import { describe, expect, it } from 'vitest'
 import { transformJSX, transformJSX_JS } from '../jsx'
