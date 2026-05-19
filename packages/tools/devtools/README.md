@@ -32,12 +32,34 @@ ramps, ember gradient, cyan), JetBrains Mono + Space Grotesk, dark by
 default with the light token block honoring DevTools' theme.
 
 The design's other five tabs — **Graph · Signals · Effects · Profiler ·
-Console** — require framework signal-graph / effect-timeline / profiler /
-console-eval APIs that `window.__PYREON_DEVTOOLS__` does not expose. They
-render as **disabled chrome tabs** with a roadmap tooltip rather than
-fake/empty surfaces (honesty over benchmark-theater, per the brand brief).
-Web fonts are intentionally not loaded (MV3 panel CSP + offline-safety);
-the design's font stacks degrade to system mono/sans.
+Console** — are implemented against the reactive-devtools Foundation
+(`window.__PYREON_DEVTOOLS__.reactive`, shipped by `@pyreon/runtime-dom`):
+
+- **Signals** — live table of every signal/derived/effect (name, kind,
+  value preview, subscriber count, fire count), sorted by activity, hot
+  rows ember-tinted.
+- **Graph** — layered SVG dependency diagram (signals → derived →
+  effects), ember edges on the recently-fired path.
+- **Effects** — per-node fire lanes across the observed time window.
+- **Profiler** — fires bucketed into 100&thinsp;ms frames (design
+  PxArtDevProfiler), peak/frame summary.
+- **Console** — evaluates expressions in the inspected page's world
+  (`> __PYREON_DEVTOOLS__.reactive.getGraph()`), result streamed back.
+
+**Graceful degradation:** the `reactive` namespace is OPTIONAL. Against
+a framework build without the Foundation, these tabs show an explicit
+"needs `@pyreon/runtime-dom` with the reactive-devtools Foundation"
+notice — never a fake/empty surface (honesty over theater, per the
+brand brief). Components works regardless. Polling is active only while
+a reactive tab is open. Web fonts are intentionally not loaded (MV3
+panel CSP + offline-safety); the design's font stacks degrade to system
+mono/sans.
+
+> **Requires the Foundation PR merged first.** This package only
+> *consumes* `__PYREON_DEVTOOLS__.reactive`; the framework side
+> (`@pyreon/reactivity` opt-in registry + `@pyreon/runtime-dom` hook
+> exposure) ships separately. Until that lands the five tabs show the
+> degradation notice — by design, not breakage.
 
 ## Install (development)
 

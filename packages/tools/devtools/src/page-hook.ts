@@ -26,6 +26,13 @@ function setup(devtools: PyreonDevtools): void {
     postToContent({ type: 'component-unmount', id })
   })
 
+  // Announce whether the framework ships the reactive-devtools
+  // Foundation. The panel uses this to enable/disable the Signals /
+  // Graph / Effects / Profiler / Console tabs (graceful degrade on
+  // older @pyreon/runtime-dom).
+  const reactive = devtools.reactive
+  postToContent({ type: 'reactive-available', available: !!reactive })
+
   // Listen for commands from content script
   window.addEventListener('message', (event: MessageEvent) => {
     if (event.source !== window) return
@@ -51,6 +58,51 @@ function setup(devtools: PyreonDevtools): void {
         } else {
           devtools.disableOverlay()
         }
+        break
+      }
+      case 'reactive-activate': {
+        reactive?.activate()
+        break
+      }
+      case 'reactive-deactivate': {
+        reactive?.deactivate()
+        break
+      }
+      case 'reactive-poll': {
+        if (!reactive) break
+        postToContent({
+          type: 'reactive-snapshot',
+          graph: reactive.getGraph(),
+          fires: reactive.getFires(),
+        })
+        break
+      }
+      case 'reactive-eval': {
+        // The devtools console is an eval surface by definition; this
+        // runs in the inspected page's own world (same trust boundary
+        // as the browser console the user already has). Bounded,
+        // never throws out.
+        let ok = true
+        let result: string
+        try {
+          // indirect eval → runs in global (page) scope
+          const r = (0, eval)(msg.expr) as unknown
+          result =
+            typeof r === 'string'
+              ? r
+              : (() => {
+                  try {
+                    return JSON.stringify(r) ?? String(r)
+                  } catch {
+                    return String(r)
+                  }
+                })()
+        } catch (err) {
+          ok = false
+          result = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+        }
+        if (result.length > 2000) result = `${result.slice(0, 2000)}…`
+        postToContent({ type: 'reactive-eval-result', ok, result })
         break
       }
     }
