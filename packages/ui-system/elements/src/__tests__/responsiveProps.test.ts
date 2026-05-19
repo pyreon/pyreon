@@ -3,7 +3,6 @@ import { h } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
 import { Element } from '../Element'
 import Content from '../helpers/Content/component'
-import Wrapper from '../helpers/Wrapper/component'
 
 const asVNode = (v: unknown) => v as VNode
 
