@@ -39,7 +39,16 @@ The compiler performs three sequential optimization passes on your JSX source co
 2. **Static VNode hoisting** -- Fully static JSX expressions inside expression containers are lifted to module scope.
 3. **Reactive wrapping** -- Dynamic expressions containing signal reads are wrapped in `() =>` arrow functions.
 
-Each pass is applied during a single AST walk. The compiler has a **dual-backend architecture**: a Rust native binary (napi-rs, 3.7-8.9x faster) using `oxc_parser`/`oxc_ast` Rust crates directly, with an automatic JS fallback via `oxc-parser` when the native binary isn't available. Both backends use positional string replacements via an O(n) left-to-right string builder, keeping the output close to the original source.
+Each pass is applied during a single AST walk. The compiler has a **dual-backend architecture**: a Rust native binary (napi-rs, 3.7-8.9x faster) using `oxc_parser`/`oxc_ast` Rust crates directly, with an automatic JS fallback via `oxc-parser` when the native binary isn't available. Both backends emit positional, non-overlapping `{start, end, text}` edits against the original source, so the output stays close to the input.
+
+### Source maps
+
+The transform shifts line counts (a one-line JSX element can expand into a multi-line `_tpl(...)` factory), so a source map is required for stack traces and debugger breakpoints in Pyreon components to resolve to the right source line. The **JS backend** applies its edits through [`magic-string`](https://github.com/Rich-Harris/magic-string) and returns a correct **V3 source map** alongside byte-identical code; `@pyreon/vite-plugin` forwards it to Vite. Caveats, stated honestly:
+
+- The **native (Rust) backend** does not emit a source map yet — a scoped follow-up. When the native binary is active (the default in production builds), the map is absent and frames fall back to the transformed positions until that lands.
+- In dev mode, the small extra HMR / signal-name injections the Vite plugin applies _after_ the compiler are not re-mapped — a minor residual offset, still far better than no map.
+
+A no-op compile (nothing to transform) returns no map, since the emitted code is byte-identical to the input and needs no remapping.
 
 ## Pass 1: Reactive Wrapping
 

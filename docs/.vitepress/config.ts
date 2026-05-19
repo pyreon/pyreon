@@ -111,6 +111,7 @@ export default defineConfig({
             { text: 'Overview', link: '/docs/' },
             { text: 'Getting Started', link: '/docs/getting-started' },
             { text: 'Reactivity Rules', link: '/docs/reactivity-rules' },
+            { text: 'Architecture & prior art', link: '/docs/architecture-and-prior-art' },
           ],
         },
         {
