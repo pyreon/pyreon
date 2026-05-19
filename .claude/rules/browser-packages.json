@@ -23,6 +23,7 @@
     "@pyreon/react-compat",
     "@pyreon/preact-compat",
     "@pyreon/vue-compat",
-    "@pyreon/solid-compat"
+    "@pyreon/solid-compat",
+    "@pyreon/svelte-compat"
   ]
 }

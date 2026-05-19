@@ -531,6 +531,21 @@
         "vite": "^8.0.0",
       },
     },
+    "examples/svelte-compat": {
+      "name": "@pyreon/example-svelte-compat",
+      "version": "0.0.1",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/svelte-compat": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/vite-plugin": "workspace:*",
+        "typescript": "^6.0.2",
+        "vite": "^8.0.0",
+      },
+    },
     "examples/ui-showcase": {
       "name": "@pyreon/example-ui-showcase",
       "version": "0.1.0",
@@ -1273,6 +1288,21 @@
       },
       "peerDependencies": {
         "storybook": ">=8.0.0",
+      },
+    },
+    "packages/tools/svelte-compat": {
+      "name": "@pyreon/svelte-compat",
+      "version": "0.15.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
+      },
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.8.9",
+        "@pyreon/test-utils": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
+        "happy-dom": "^20.8.3",
       },
     },
     "packages/tools/typescript": {
@@ -2285,6 +2315,8 @@
 
     "@pyreon/example-solid-compat": ["@pyreon/example-solid-compat@workspace:examples/solid-compat"],
 
+    "@pyreon/example-svelte-compat": ["@pyreon/example-svelte-compat@workspace:examples/svelte-compat"],
+
     "@pyreon/example-ui-showcase": ["@pyreon/example-ui-showcase@workspace:examples/ui-showcase"],
 
     "@pyreon/example-vue-compat": ["@pyreon/example-vue-compat@workspace:examples/vue-compat"],
@@ -2362,6 +2394,8 @@
     "@pyreon/storybook": ["@pyreon/storybook@workspace:packages/tools/storybook"],
 
     "@pyreon/styler": ["@pyreon/styler@workspace:packages/ui-system/styler"],
+
+    "@pyreon/svelte-compat": ["@pyreon/svelte-compat@workspace:packages/tools/svelte-compat"],
 
     "@pyreon/table": ["@pyreon/table@workspace:packages/fundamentals/table"],
 

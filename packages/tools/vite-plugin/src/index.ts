@@ -70,7 +70,7 @@ const HMR_RUNTIME_IMPORT = 'virtual:pyreon/hmr-runtime'
 const ISLANDS_REGISTRY_ID = '\0pyreon/islands-registry'
 const ISLANDS_REGISTRY_IMPORT = 'virtual:pyreon/islands-registry'
 
-export type CompatFramework = 'react' | 'preact' | 'vue' | 'solid'
+export type CompatFramework = 'react' | 'preact' | 'vue' | 'solid' | 'svelte'
 
 export interface PyreonPluginOptions {
   /**
@@ -83,6 +83,7 @@ export interface PyreonPluginOptions {
    * pyreon({ compat: "react" })   // react + react-dom → @pyreon/react-compat
    * pyreon({ compat: "vue" })     // vue → @pyreon/vue-compat
    * pyreon({ compat: "solid" })   // solid-js → @pyreon/solid-compat
+   * pyreon({ compat: "svelte" })  // svelte + svelte/store → @pyreon/svelte-compat
    * pyreon({ compat: "preact" })  // preact + hooks + signals → @pyreon/preact-compat
    */
   compat?: CompatFramework
@@ -196,6 +197,13 @@ const COMPAT_ALIASES: Record<CompatFramework, Record<string, string>> = {
     'solid-js/jsx-runtime': '@pyreon/solid-compat/jsx-runtime',
     'solid-js/jsx-dev-runtime': '@pyreon/solid-compat/jsx-runtime',
   },
+  svelte: {
+    svelte: '@pyreon/svelte-compat',
+    'svelte/store': '@pyreon/svelte-compat/store',
+    'svelte/internal': '@pyreon/svelte-compat',
+    'svelte/jsx-runtime': '@pyreon/svelte-compat/jsx-runtime',
+    'svelte/jsx-dev-runtime': '@pyreon/svelte-compat/jsx-runtime',
+  },
 }
 
 /**
@@ -280,6 +288,7 @@ function getCompatTarget(compat: CompatFramework | undefined, id: string): strin
     if (compat === 'preact') return '@pyreon/preact-compat/jsx-runtime'
     if (compat === 'vue') return '@pyreon/vue-compat/jsx-runtime'
     if (compat === 'solid') return '@pyreon/solid-compat/jsx-runtime'
+    if (compat === 'svelte') return '@pyreon/svelte-compat/jsx-runtime'
   }
   return undefined
 }
@@ -534,7 +543,13 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       // In compat mode, skip Pyreon's reactive JSX transform but apply
       // attribute renames (className → class, htmlFor → for) so source code
       // that uses React-style attribute names works correctly.
-      if (compat === 'react' || compat === 'preact' || compat === 'vue' || compat === 'solid') {
+      if (
+        compat === 'react' ||
+        compat === 'preact' ||
+        compat === 'vue' ||
+        compat === 'solid' ||
+        compat === 'svelte'
+      ) {
         if (compat === 'react' || compat === 'preact') {
           const transformed = transformCompatAttributes(code)
           if (transformed !== code) return { code: transformed, map: null }

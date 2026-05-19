@@ -1,12 +1,13 @@
 import { defineConfig } from '@playwright/test'
 
 /**
- * Playwright config — compat layers (`@pyreon/{react,preact,vue,solid}-compat`).
+ * Playwright config — compat layers
+ * (`@pyreon/{react,preact,vue,solid,svelte}-compat`).
  *
  * Separate from the main `playwright.config.ts` because Playwright's
  * `webServer` array boots ALL listed servers regardless of which
- * `--project` is selected. With 4 compat-layer apps each spawning a
- * Vite dev server, lumping them into the main config would put 4
+ * `--project` is selected. With 5 compat-layer apps each spawning a
+ * Vite dev server, lumping them into the main config would put 5
  * additional dev servers on every CI run — significant resource pressure.
  *
  * Sequential boot via a separate config = stable runs.
@@ -16,6 +17,7 @@ import { defineConfig } from '@playwright/test'
  *   `e2e/preact-compat.spec.ts`
  *   `e2e/vue-compat.spec.ts`
  *   `e2e/solid-compat.spec.ts`
+ *   `e2e/svelte-compat.spec.ts`
  *
  * Each spec exercises the same 3 surfaces:
  *   1. Mount + render — the example app boots and shows the expected
@@ -71,6 +73,12 @@ export default defineConfig({
       testMatch: /\/solid-compat\.spec\.ts$/,
       use: { baseURL: 'http://localhost:5180' },
     },
+    {
+      name: 'svelte-compat',
+      testMatch: /\/svelte-compat\.spec\.ts$/,
+      // 5182: port 5181 is taken by the app-showcase e2e config.
+      use: { baseURL: 'http://localhost:5182' },
+    },
   ],
   webServer: [
     {
@@ -98,6 +106,13 @@ export default defineConfig({
       command:
         'bun run --filter=@pyreon/example-solid-compat dev -- --port 5180 --strictPort',
       port: 5180,
+      timeout: 120_000,
+      reuseExistingServer: !process.env.CI,
+    },
+    {
+      command:
+        'bun run --filter=@pyreon/example-svelte-compat dev -- --port 5182 --strictPort',
+      port: 5182,
       timeout: 120_000,
       reuseExistingServer: !process.env.CI,
     },
