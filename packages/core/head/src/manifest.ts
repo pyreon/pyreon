@@ -81,19 +81,28 @@ useHead(() => ({
       kind: 'component',
       signature: '(props: HeadProviderProps) => VNodeChild',
       summary:
-        'Client-side context provider that collects every `useHead()` call from descendants and syncs the resolved tags into the live `document.head` element. Mount once near the application root. Auto-creates a `HeadContextValue` when no `context` prop is passed; nested providers each own an independent context.',
+        'Context provider that collects every `useHead()` call from descendants. Resolves its context as `props.context ?? outer HeadContext in scope ?? a fresh one`, so a `HeadProvider` mounted INSIDE `renderWithHead()` (or inside another `HeadProvider`) transparently inherits the outer registry instead of shadowing it with a write-only one. On the client it also syncs the resolved tags into the live `document.head`. Mount once near the application root for the canonical CSR shape; the inheritance step makes nested mounts and the SSR-wrapped shape work without manual context plumbing.',
       example: `<HeadProvider>{children}</HeadProvider>
 
-// Client-side setup:
+// CSR root — auto-creates a fresh context:
 mount(
   <HeadProvider>
     <App />
   </HeadProvider>,
   document.getElementById("app")!
-)`,
+)
+
+// SSR — composes with renderWithHead out of the box (no context prop needed):
+const { html, head } = await renderWithHead(
+  <HeadProvider><App /></HeadProvider>
+)
+
+// Explicit isolation (iframe / micro-frontend boundary):
+<HeadProvider context={createHeadContext()}><App /></HeadProvider>`,
       mistakes: [
-        'Mounting two `HeadProvider` instances at sibling roots — each owns an independent context, so a `useHead()` deeper in tree A is invisible to tree B',
-        'Forgetting to mount `HeadProvider` and expecting `useHead()` to still update `document.head` — silent no-op outside a provider',
+        'Mounting two `HeadProvider` instances at SIBLING roots — each owns an independent context, so a `useHead()` deeper in tree A is invisible to tree B (use a shared `context` prop or merge under a common parent provider)',
+        'Forgetting to mount `HeadProvider` (or `renderWithHead`) and expecting `useHead()` to still update `document.head` — silent no-op outside any provider',
+        'Assuming a NESTED `HeadProvider` isolates its subtree by default — it does the opposite, inheriting the outer context. Pass `context={createHeadContext()}` explicitly when you genuinely want isolation',
       ],
       seeAlso: ['useHead', 'renderWithHead', 'createHeadContext'],
     },
