@@ -1,749 +1,612 @@
 <!--
-  Animated hero lockup — brand handoff §5 + pyreon-motion-hero.jsx
-  (canonical HeroTrace) + hero-variants 14–17.
+  Animated hero lockup — faithful port of the brand handoff's canonical
+  reference implementation: design_handoff_pyreon_brand/hero-animations.html.
 
-  ELEVEN generated intros ship; one is picked at RANDOM per visit:
-    12 · Trace         — graph edges converge, ignite, n, wordmark, fire→
-    14 · Particles     — discrete signals converge into the disc
-    15 · Wavefront     — an ember flamefront sweeps across the glyph
-    16 · Pulse cascade — three pulses, each triggers the next stage
-    17 · Path-trace    — an ember bead runs a fuse, lighting the glyph
-    18 · Terminal      — cursor types the wordmark, glyph fires on n
-    19 · Rings         — disc emerges from expanding concentric rings
-    20 · Orbit         — particles orbit, then snap inward
-    21 · RGB-split     — channels offset, snap into register
-    22 · Spotlight     — a dim ring contracts, intensifies onto the disc
-    23 · ECG sweep     — a vertical scan; each element flashes as crossed
+  ELEVEN production hero-entry variants ship; one is picked at RANDOM per
+  visit (every variant gets shown over repeat visits):
 
-  Reduced-motion is not just "freeze": per pyreon-motion-hero.jsx's
-  PxArtHeroReduced, the static end-state shows a 2px ember underline
-  beneath the wordmark — the "something just fired" signal still reads.
+    trace      — signal-graph edges trace in, disc ignites, n strokes, word
+    pulse      — three-beat cascade: disc · n + glow ring · word + underline
+    wave       — an ember wavefront sweeps L→R revealing the hot composition
+    particles  — 8 ember particles fly in, the disc materializes on arrival
+    fuse       — a single ember bead runs a polyline fuse, lighting the glyph
+    term       — a mono `$ pyr show-mark` types on; the lockup fires after
+    rings      — 4 concentric rings expand; the glyph solidifies at max r
+    orbit      — 8 cyan particles orbit 1.5 turns then snap inward as ember
+    split      — three colored wordmark ghosts split, register, then resolve
+    spot       — a dim warm radial contracts to a focal point, igniting disc
+    ecg        — a vertical cyan scan runs L→R; each layer fills as crossed
 
-  Progressive enhancement / SSR safety: the *final* state (solid glyph +
-  wordmark) is the default render. The random pick + the intro happen
-  CLIENT-SIDE after mount, and every variant-specific transient element
-  is behind `v-if="playing"` — so server and client render identical
-  markup (no hydration mismatch) and SSR / no-JS / reduced-motion show a
-  correct static logo. Colour is 100% tokens.css variables (no raw hex),
-  so it also flips correctly under the paired light theme.
+  This is the handoff's *state machine, not JS animation* contract (README
+  §5 / hero-animations.html):
+    · Every variant is gated by `data-state="entering"` on the root.
+    · Default (no data-state) = static resting frame — SSR / JS-disabled
+      safe, zero hydration mismatch (server and first client render are
+      byte-identical: variant defaults to `trace`, no data-state).
+    · Trigger once on first paint via requestAnimationFrame, OR via an
+      IntersectionObserver (threshold .25, unobserve-after-first) for the
+      below-the-fold case. NEVER loops. NO replay-on-click in production.
+    · Reduced-motion is built into the CSS: a universal
+      `@media (prefers-reduced-motion: reduce)` block snaps every variant
+      to its end-state with no animation. Nothing extra shipped.
+
+  The random variant pick happens CLIENT-SIDE after mount (SSG can't do
+  per-visit random). The initial render — server and first client paint —
+  is always `trace` with no `data-state`, so hydration matches exactly;
+  Vue then patches to the chosen variant + sets `data-state` post-mount.
+
+  Theme: colours are the handoff's exact ember/paper/ink/cyan hex with the
+  handoff's `[data-theme="light"]` attribute-rewrite overrides (rebased
+  onto the docs' `<html data-theme="light">` root, which tokens.css and
+  the FOUC script already drive). Dark is the default; light flips with
+  no markup changes.
+
+  `noMotion`: render the static resting lockup only — no observer, no
+  random pick, no entering state. Used by the footer (a static mark, not
+  an animated intro).
 -->
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
-// `noMotion`: render the static final lockup only — no IntersectionObserver,
-// no random variant, no transient overlay elements. Used by the footer
-// (the design's PxLandFooter is a static mark, not an animated intro).
 const props = defineProps<{ noMotion?: boolean }>()
 
-const N_PATH = 'M70 86 L70 42 L70 64 Q70 42 92 42 Q112 42 112 64 L112 86'
-const FUSE = 'M -40 130 L 96 130 L 168 130 L 168 90 L 204 90 L 204 130 L 760 130'
-
-// 8 converging particles for variant 14 (fixed offsets — deterministic).
-const PARTICLES = [
-  { x: -120, y: -90, s: 6, d: 0 },
-  { x: 160, y: -70, s: 4, d: 60 },
-  { x: -150, y: 120, s: 5, d: 30 },
-  { x: -90, y: 40, s: 4, d: 120 },
-  { x: 520, y: -50, s: 4, d: 90 },
-  { x: 480, y: 140, s: 3, d: 180 },
-  { x: -130, y: -10, s: 5, d: 220 },
-  { x: 540, y: 60, s: 4, d: 50 },
-]
-
-// Variant 12 (canonical HeroTrace) — signal-graph edges converging on
-// the o-disc centre (≈144,100 in this 760×200 stage), staggered draw.
-const EDGES = [
-  { x: 4, y: 24, d: 0 },
-  { x: 22, y: 184, d: 40 },
-  { x: 4, y: 110, d: 80 },
-  { x: 70, y: 8, d: 120 },
-]
-
-// Variant 19 ring delays / 20 orbiters (8) — deterministic.
-const RINGS = [0, 80, 160, 240]
-const ORBITERS = Array.from({ length: 8 }, (_, i) => ({
-  a: (i / 8) * 360,
-  d: i * 25,
-}))
-
-type V = 12 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23
-const POOL = [12, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23] as const
+const VARIANTS = [
+  'trace',
+  'pulse',
+  'wave',
+  'particles',
+  'fuse',
+  'term',
+  'rings',
+  'orbit',
+  'split',
+  'spot',
+  'ecg',
+] as const
+type Variant = (typeof VARIANTS)[number]
 
 const root = ref<HTMLElement | null>(null)
-const playing = ref(false)
-const variant = ref<V | 0>(0) // 0 = static (SSR / no-JS / reduced-motion)
+// SSR + first client render = 'trace', no data-state → identical markup,
+// no hydration mismatch. Swapped to a random variant after mount.
+const variant = ref<Variant>('trace')
+const entering = ref(false)
 let io: IntersectionObserver | null = null
 
 onMounted(() => {
-  if (props.noMotion) return // stay static-final (footer)
+  if (props.noMotion) return // static resting lockup (footer)
   const el = root.value
   if (!el) return
-  const reduce =
-    typeof window !== 'undefined' &&
-    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-  if (reduce || typeof IntersectionObserver === 'undefined') return // stay static-final
+  if (typeof window === 'undefined') return
 
-  // Optional override for QA: ?hero=12|14..23 — otherwise random per visit.
-  const forced = Number(new URLSearchParams(window.location.search).get('hero'))
-  variant.value = (
-    POOL.includes(forced as V) ? forced : POOL[Math.floor(Math.random() * POOL.length)]
-  ) as V
+  // Optional QA override: ?hero=trace|pulse|… — otherwise random per visit.
+  const forced = new URLSearchParams(window.location.search).get('hero')
+  variant.value = (VARIANTS as readonly string[]).includes(forced ?? '')
+    ? (forced as Variant)
+    : VARIANTS[Math.floor(Math.random() * VARIANTS.length)]
 
+  const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  if (reduce) {
+    // CSS @media snaps to end-state; still set entering so the resting
+    // (pre-animation) defaults don't show through.
+    entering.value = true
+    return
+  }
+
+  const trigger = () => {
+    if (entering.value) return
+    // requestAnimationFrame so the browser observes the off→on transition.
+    requestAnimationFrame(() => {
+      entering.value = true
+    })
+  }
+
+  if (typeof IntersectionObserver === 'undefined') {
+    trigger() // first-paint fallback
+    return
+  }
   io = new IntersectionObserver(
     (entries) => {
       for (const e of entries) {
         if (e.isIntersecting) {
-          playing.value = true // one-shot
+          trigger()
           io?.disconnect()
           io = null
           break
         }
       }
     },
-    { threshold: 0.4 },
+    { threshold: 0.25 },
   )
   io.observe(el)
 })
 
-onBeforeUnmount(() => io?.disconnect())
+onBeforeUnmount(() => {
+  io?.disconnect()
+  io = null
+})
 </script>
 
 <template>
   <div
     ref="root"
     class="px-heromark"
-    :class="[playing ? `is-playing is-v${variant}` : '']"
+    :data-variant="variant"
+    :data-state="entering ? 'entering' : null"
     aria-hidden="true"
   >
-    <svg viewBox="0 0 760 200" class="px-heromark-svg" role="img">
+    <!-- 01 · Stroke-trace · canonical -->
+    <svg
+      v-if="variant === 'trace'"
+      viewBox="0 0 720 360"
+      preserveAspectRatio="xMidYMid meet"
+    >
       <defs>
-        <linearGradient id="px-ember-grad" x1="0" x2="1">
-          <stop offset="0" stop-color="var(--ember-plasma)" />
-          <stop offset="0.55" stop-color="var(--ember)" />
-          <stop offset="1" stop-color="var(--ember-warm)" />
-        </linearGradient>
-        <!-- 22 · spotlight (ember, fades to transparent) -->
-        <radialGradient id="px-spot-grad" cx="0.5" cy="0.5" r="0.5">
-          <stop offset="0" stop-color="var(--ember)" stop-opacity="0.5" />
-          <stop offset="1" stop-color="var(--ember)" stop-opacity="0" />
-        </radialGradient>
-        <!-- 23 · ECG scan bar (cyan/link, soft vertical edge) -->
-        <linearGradient id="px-scan-grad" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0" stop-color="var(--link)" stop-opacity="0" />
-          <stop offset="0.5" stop-color="var(--link)" stop-opacity="0.7" />
-          <stop offset="1" stop-color="var(--link)" stop-opacity="0" />
+        <linearGradient id="pyr-ember" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0" stop-color="#FF1F8C" />
+          <stop offset=".55" stop-color="#FF5E1A" />
+          <stop offset="1" stop-color="#FFC83D" />
         </linearGradient>
       </defs>
-
-      <!-- 12 · canonical Trace — graph edges converge + continuation -->
-      <template v-if="playing && variant === 12">
-        <line
-          v-for="(e, i) in EDGES"
-          :key="i"
-          :x1="e.x"
-          :y1="e.y"
-          x2="144"
-          y2="100"
-          class="px-edge"
-          :style="{ animationDelay: e.d + 'ms' }"
-        />
-        <line x1="144" y1="100" x2="752" y2="86" class="px-edge px-edge--cont" />
-        <g class="px-trace-cap">
-          <circle cx="748" cy="86" r="4" class="px-cap-dot" />
-          <text x="690" y="70" class="px-cap-txt">fire →</text>
-        </g>
-      </template>
-
-      <!-- 17 · fuse trail + bead (client-only when that variant plays) -->
-      <template v-if="playing && variant === 17">
-        <path :d="FUSE" class="px-fuse-guide" fill="none" />
-        <path :d="FUSE" class="px-fuse-trail" fill="none" stroke-linecap="round" />
-        <circle r="6" class="px-fuse-bead" />
-      </template>
-
-      <!-- 14 · converging particles -->
-      <template v-if="playing && variant === 14">
-        <circle
-          v-for="(p, i) in PARTICLES"
-          :key="i"
-          :r="p.s"
-          class="px-particle"
-          :style="{
-            '--fx': p.x + 'px',
-            '--fy': p.y + 'px',
-            animationDelay: p.d + 'ms',
-          }"
-        />
-      </template>
-
-      <!-- 18 · terminal type-on (prompt + walking cursor) -->
-      <template v-if="playing && variant === 18">
-        <text x="206" y="126" class="px-term-prompt">$</text>
-        <rect class="px-term-cursor" y="62" width="4" height="76" />
-      </template>
-
-      <!-- 19 · concentric rings -->
-      <template v-if="playing && variant === 19">
-        <circle
-          v-for="(d, i) in RINGS"
-          :key="i"
-          cx="144"
-          cy="100"
-          r="20"
-          class="px-ring19"
-          fill="none"
-          :style="{ animationDelay: d + 'ms' }"
-        />
-      </template>
-
-      <!-- 20 · orbit collapse -->
-      <template v-if="playing && variant === 20">
-        <circle
-          v-for="(o, i) in ORBITERS"
-          :key="i"
-          cx="144"
-          cy="100"
-          r="4"
-          class="px-orbiter"
-          :style="{ '--sa': o.a + 'deg', animationDelay: o.d + 'ms' }"
-        />
-      </template>
-
-      <!-- 21 · RGB-split resolve (3 drifting channel copies) -->
-      <template v-if="playing && variant === 21">
-        <g class="px-chan">
-          <text x="250" y="132" class="px-chan-a">pyreon</text>
-          <text x="250" y="132" class="px-chan-b">pyreon</text>
-          <text x="250" y="132" class="px-chan-c">pyreon</text>
-        </g>
-      </template>
-
-      <!-- 22 · spotlight focus -->
-      <template v-if="playing && variant === 22">
-        <circle cx="144" cy="100" r="300" class="px-spot" />
-      </template>
-
-      <!-- 23 · ECG sync sweep (baseline + scanning bar) -->
-      <template v-if="playing && variant === 23">
-        <path
-          d="M0 100 L300 100 L320 80 L340 120 L360 100 L760 100"
-          class="px-ecg-base"
-          fill="none"
-        />
-        <rect class="px-scan" y="0" width="6" height="200" />
-      </template>
-
-      <!-- ON glyph -->
-      <g class="px-glyph" transform="translate(108 36)">
-        <circle cx="36" cy="64" r="22" class="px-disc" />
-        <path
-          :d="N_PATH"
-          class="px-n"
-          stroke-width="10"
-          stroke-linecap="square"
-          stroke-linejoin="miter"
-          fill="none"
-        />
-        <!-- 16 · pulse-cascade glow ring -->
-        <circle
-          v-if="playing && variant === 16"
-          cx="91"
-          cy="64"
-          r="40"
-          class="px-ring"
-          fill="none"
-        />
+      <g class="pyr-grid">
+        <line x1="0" y1="48" x2="720" y2="48" /><line x1="0" y1="76" x2="720" y2="76" />
+        <line x1="0" y1="104" x2="720" y2="104" /><line x1="0" y1="132" x2="720" y2="132" />
+        <line x1="0" y1="160" x2="720" y2="160" /><line x1="0" y1="188" x2="720" y2="188" />
+        <line x1="0" y1="216" x2="720" y2="216" /><line x1="0" y1="244" x2="720" y2="244" />
+        <line x1="0" y1="272" x2="720" y2="272" /><line x1="0" y1="300" x2="720" y2="300" />
       </g>
-
-      <!-- wordmark — "pyre" paper + ember "on" (one ember/page, §2) -->
-      <g class="px-wordwrap">
-        <text x="250" y="132" class="px-word">
-          pyre<tspan class="px-word-on">on</tspan>
-        </text>
-        <!-- 16 · ember underline flash -->
-        <line
-          v-if="playing && variant === 16"
-          x1="250"
-          y1="150"
-          x2="600"
-          y2="150"
-          class="px-underline"
-        />
-        <!-- reduced-motion "fired" cue — static 2px ember underline,
-             shown ONLY when motion is suppressed (per PxArtHeroReduced) -->
-        <line x1="250" y1="150" x2="600" y2="150" class="px-fired" />
+      <line class="pyr-trace-edge" x1="30" y1="90" x2="210" y2="200" stroke="url(#pyr-ember)" stroke-width="1.5" stroke-dasharray="320" stroke-linecap="round" style="--d:0ms" />
+      <line class="pyr-trace-edge" x1="60" y1="280" x2="210" y2="200" stroke="url(#pyr-ember)" stroke-width="1.5" stroke-dasharray="320" stroke-linecap="round" style="--d:40ms" />
+      <line class="pyr-trace-edge" x1="30" y1="200" x2="210" y2="200" stroke="url(#pyr-ember)" stroke-width="1.5" stroke-dasharray="320" stroke-linecap="round" style="--d:80ms" />
+      <line class="pyr-trace-edge" x1="90" y1="40" x2="210" y2="200" stroke="url(#pyr-ember)" stroke-width="1.5" stroke-dasharray="320" stroke-linecap="round" style="--d:120ms" />
+      <line class="pyr-trace-edge" x1="210" y1="200" x2="690" y2="180" stroke="url(#pyr-ember)" stroke-width="2" stroke-dasharray="500" stroke-linecap="round" style="--d:760ms; animation-duration:380ms" />
+      <g transform="translate(138 72) scale(2)">
+        <g style="transform-origin: 36px 64px" class="pyr-trace-disc">
+          <circle class="pyr-disc" cx="36" cy="64" r="22" />
+        </g>
+        <path class="pyr-n pyr-trace-n" d="M70 86 L70 42 L70 64 Q70 42 92 42 Q112 42 112 64 L112 86" />
       </g>
+      <text class="pyr-word pyr-trace-word" x="405" y="230">pyreon</text>
+    </svg>
 
-      <!-- 15 · wavefront wipe cover + ember sweep bar -->
-      <template v-if="playing && variant === 15">
-        <rect x="0" y="0" width="780" height="200" class="px-wf-cover" />
-        <rect x="0" y="0" width="46" height="200" class="px-wf-bar" />
-      </template>
+    <!-- 02 · Pulse cascade -->
+    <svg
+      v-else-if="variant === 'pulse'"
+      viewBox="0 0 720 360"
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <defs>
+        <linearGradient id="pyr-ember-2" x1="0" x2="1">
+          <stop offset="0" stop-color="#FF1F8C" />
+          <stop offset=".55" stop-color="#FF5E1A" />
+          <stop offset="1" stop-color="#FFC83D" />
+        </linearGradient>
+      </defs>
+      <g transform="translate(138 72) scale(2)">
+        <g style="transform-origin: 36px 64px" class="pyr-pulse-disc">
+          <circle cx="36" cy="64" r="22" fill="url(#pyr-ember-2)" />
+        </g>
+        <path class="pyr-n pyr-pulse-n" d="M70 86 L70 42 L70 64 Q70 42 92 42 Q112 42 112 64 L112 86" />
+        <circle class="pyr-pulse-ring" cx="91" cy="64" r="40" fill="none" stroke="#FF5E1A" stroke-width="2" style="transform-origin:91px 64px" />
+      </g>
+      <g class="pyr-pulse-word">
+        <text class="pyr-word" x="405" y="230">pyreon</text>
+        <line class="pyr-pulse-under" x1="405" y1="248" x2="700" y2="248" stroke="url(#pyr-ember-2)" stroke-width="3" style="transform-origin:405px 248px" />
+      </g>
+    </svg>
+
+    <!-- 03 · Wavefront sweep -->
+    <svg
+      v-else-if="variant === 'wave'"
+      viewBox="0 0 720 360"
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <defs>
+        <linearGradient id="pyr-ember-3" x1="0" x2="1">
+          <stop offset="0" stop-color="#FF1F8C" />
+          <stop offset=".55" stop-color="#FF5E1A" />
+          <stop offset="1" stop-color="#FFC83D" />
+        </linearGradient>
+        <linearGradient id="pyr-wave-bar-grad" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0" stop-color="#FF1F8C" stop-opacity="0" />
+          <stop offset=".4" stop-color="#FF5E1A" />
+          <stop offset=".6" stop-color="#FFC83D" />
+          <stop offset="1" stop-color="#FFC83D" stop-opacity="0" />
+        </linearGradient>
+        <mask id="pyr-wave-mask">
+          <rect width="720" height="360" fill="black" />
+          <rect class="pyr-wave-mask" height="360" width="800" fill="white" />
+        </mask>
+      </defs>
+      <g transform="translate(138 72) scale(2)" opacity=".22">
+        <circle cx="36" cy="64" r="22" fill="#181822" />
+        <path class="pyr-n" d="M70 86 L70 42 L70 64 Q70 42 92 42 Q112 42 112 64 L112 86" stroke="#23232E" />
+      </g>
+      <text class="pyr-word" x="405" y="230" fill="#23232E">pyreon</text>
+      <g mask="url(#pyr-wave-mask)">
+        <g transform="translate(138 72) scale(2)">
+          <circle cx="36" cy="64" r="22" fill="url(#pyr-ember-3)" />
+          <path class="pyr-n" d="M70 86 L70 42 L70 64 Q70 42 92 42 Q112 42 112 64 L112 86" />
+        </g>
+        <text class="pyr-word" x="405" y="230">pyreon</text>
+      </g>
+      <rect class="pyr-wave-bar" width="48" height="360" fill="url(#pyr-wave-bar-grad)" />
+    </svg>
+
+    <!-- 04 · Particles converge -->
+    <svg
+      v-else-if="variant === 'particles'"
+      viewBox="0 0 720 360"
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <defs>
+        <radialGradient id="pyr-disc-radial">
+          <stop offset="0" stop-color="#FFC83D" />
+          <stop offset=".55" stop-color="#FF5E1A" />
+          <stop offset="1" stop-color="#FF1F8C" />
+        </radialGradient>
+      </defs>
+      <circle class="pyr-part" cx="210" cy="200" r="6" fill="#FF1F8C" style="--fx:-40px; --fy:40px;   --d:0ms" />
+      <circle class="pyr-part" cx="210" cy="200" r="4" fill="#FFC83D" style="--fx:80px;  --fy:-30px;  --d:60ms" />
+      <circle class="pyr-part" cx="210" cy="200" r="5" fill="#FF5E1A" style="--fx:-60px; --fy:320px;  --d:30ms" />
+      <circle class="pyr-part" cx="210" cy="200" r="4" fill="#FF5E1A" style="--fx:-30px; --fy:200px;  --d:120ms" />
+      <circle class="pyr-part" cx="210" cy="200" r="4" fill="#FF1F8C" style="--fx:400px; --fy:-20px;  --d:90ms" />
+      <circle class="pyr-part" cx="210" cy="200" r="3" fill="#FFC83D" style="--fx:380px; --fy:340px;  --d:180ms" />
+      <circle class="pyr-part" cx="210" cy="200" r="5" fill="#FF5E1A" style="--fx:-50px; --fy:80px;   --d:220ms" />
+      <circle class="pyr-part" cx="210" cy="200" r="4" fill="#FFC83D" style="--fx:420px; --fy:120px;  --d:50ms" />
+      <g transform="translate(138 72) scale(2)">
+        <g style="transform-origin: 36px 64px" class="pyr-part-disc">
+          <circle cx="36" cy="64" r="22" fill="url(#pyr-disc-radial)" />
+        </g>
+        <path class="pyr-n pyr-part-n" d="M70 86 L70 42 L70 64 Q70 42 92 42 Q112 42 112 64 L112 86" />
+      </g>
+      <text class="pyr-word pyr-part-word" x="405" y="230">pyreon</text>
+    </svg>
+
+    <!-- 05 · Ember bead fuse -->
+    <svg
+      v-else-if="variant === 'fuse'"
+      viewBox="0 0 720 360"
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <defs>
+        <linearGradient id="pyr-ember-5" x1="0" x2="1">
+          <stop offset="0" stop-color="#FF1F8C" /><stop offset=".55" stop-color="#FF5E1A" /><stop offset="1" stop-color="#FFC83D" />
+        </linearGradient>
+      </defs>
+      <path d="M -20 200 L 130 200 L 210 200 L 282 200 L 282 144 L 348 144 L 348 200 L 740 200" stroke="#23232E" stroke-width="1.5" fill="none" />
+      <path class="pyr-fuse-trail" d="M -20 200 L 130 200 L 210 200 L 282 200 L 282 144 L 348 144 L 348 200 L 740 200" stroke="url(#pyr-ember-5)" stroke-width="3" fill="none" stroke-linecap="round" />
+      <circle class="pyr-fuse-bead" r="7" fill="url(#pyr-ember-5)" style="offset-path: path('M -20 200 L 130 200 L 210 200 L 282 200 L 282 144 L 348 144 L 348 200 L 740 200'); filter: drop-shadow(0 0 8px rgba(255,94,26,.9))" />
+      <g transform="translate(138 72) scale(2)">
+        <circle class="pyr-fuse-disc" cx="36" cy="64" r="22" fill="url(#pyr-ember-5)" />
+        <path class="pyr-n pyr-fuse-n" d="M70 86 L70 42 L70 64 Q70 42 92 42 Q112 42 112 64 L112 86" />
+      </g>
+      <text class="pyr-word pyr-fuse-word" x="405" y="230">pyreon</text>
+    </svg>
+
+    <!-- 06 · Terminal type-on -->
+    <svg
+      v-else-if="variant === 'term'"
+      viewBox="0 0 720 360"
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <defs>
+        <linearGradient id="pyr-ember-6" x1="0" x2="1">
+          <stop offset="0" stop-color="#FF1F8C" /><stop offset=".55" stop-color="#FF5E1A" /><stop offset="1" stop-color="#FFC83D" />
+        </linearGradient>
+      </defs>
+      <g transform="translate(405 125)">
+        <text x="0" y="0" style="font-family:'JetBrains Mono', monospace; font-size: 18px; fill: #22D3EE">$</text>
+        <g class="pyr-term-clip">
+          <text x="20" y="0" style="font-family:'JetBrains Mono', monospace; font-size: 18px; fill: #F4EFE6">pyr show-mark</text>
+        </g>
+        <rect class="pyr-term-cursor" x="20" y="-15" width="3" height="20" fill="#FF5E1A" />
+      </g>
+      <g transform="translate(138 72) scale(2)">
+        <g style="transform-origin: 36px 64px" class="pyr-term-disc">
+          <circle cx="36" cy="64" r="22" fill="url(#pyr-ember-6)" />
+        </g>
+        <path class="pyr-n pyr-term-n" d="M70 86 L70 42 L70 64 Q70 42 92 42 Q112 42 112 64 L112 86" />
+      </g>
+      <text class="pyr-word pyr-term-word" x="405" y="230">pyreon</text>
+    </svg>
+
+    <!-- 07 · Concentric rings -->
+    <svg
+      v-else-if="variant === 'rings'"
+      viewBox="0 0 720 360"
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <defs>
+        <linearGradient id="pyr-ember-7" x1="0" x2="1">
+          <stop offset="0" stop-color="#FF1F8C" /><stop offset=".55" stop-color="#FF5E1A" /><stop offset="1" stop-color="#FFC83D" />
+        </linearGradient>
+        <radialGradient id="pyr-ring-grad">
+          <stop offset="0" stop-color="#FFC83D" /><stop offset=".55" stop-color="#FF5E1A" /><stop offset="1" stop-color="#FF1F8C" />
+        </radialGradient>
+      </defs>
+      <circle class="pyr-ring" cx="210" cy="200" r="20" fill="none" stroke="url(#pyr-ring-grad)" stroke-width="2" style="--d:0ms" />
+      <circle class="pyr-ring" cx="210" cy="200" r="20" fill="none" stroke="url(#pyr-ring-grad)" stroke-width="2" style="--d:80ms" />
+      <circle class="pyr-ring" cx="210" cy="200" r="20" fill="none" stroke="url(#pyr-ring-grad)" stroke-width="2" style="--d:160ms" />
+      <circle class="pyr-ring" cx="210" cy="200" r="20" fill="none" stroke="url(#pyr-ring-grad)" stroke-width="2" style="--d:240ms" />
+      <g transform="translate(138 72) scale(2)">
+        <g style="transform-origin: 36px 64px" class="pyr-rings-disc">
+          <circle cx="36" cy="64" r="22" fill="url(#pyr-ember-7)" />
+        </g>
+        <path class="pyr-n pyr-rings-n" d="M70 86 L70 42 L70 64 Q70 42 92 42 Q112 42 112 64 L112 86" />
+      </g>
+      <text class="pyr-word pyr-rings-word" x="405" y="230">pyreon</text>
+    </svg>
+
+    <!-- 08 · Orbit collapse -->
+    <svg
+      v-else-if="variant === 'orbit'"
+      viewBox="0 0 720 360"
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <defs>
+        <linearGradient id="pyr-ember-8" x1="0" x2="1">
+          <stop offset="0" stop-color="#FF1F8C" /><stop offset=".55" stop-color="#FF5E1A" /><stop offset="1" stop-color="#FFC83D" />
+        </linearGradient>
+      </defs>
+      <circle class="pyr-orbiter" cx="210" cy="200" r="4" fill="#22D3EE" style="transform-origin:210px 200px; --a:0deg;   --d:0ms" />
+      <circle class="pyr-orbiter" cx="210" cy="200" r="4" fill="#22D3EE" style="transform-origin:210px 200px; --a:45deg;  --d:25ms" />
+      <circle class="pyr-orbiter" cx="210" cy="200" r="4" fill="#22D3EE" style="transform-origin:210px 200px; --a:90deg;  --d:50ms" />
+      <circle class="pyr-orbiter" cx="210" cy="200" r="4" fill="#22D3EE" style="transform-origin:210px 200px; --a:135deg; --d:75ms" />
+      <circle class="pyr-orbiter" cx="210" cy="200" r="4" fill="#22D3EE" style="transform-origin:210px 200px; --a:180deg; --d:100ms" />
+      <circle class="pyr-orbiter" cx="210" cy="200" r="4" fill="#22D3EE" style="transform-origin:210px 200px; --a:225deg; --d:125ms" />
+      <circle class="pyr-orbiter" cx="210" cy="200" r="4" fill="#22D3EE" style="transform-origin:210px 200px; --a:270deg; --d:150ms" />
+      <circle class="pyr-orbiter" cx="210" cy="200" r="4" fill="#22D3EE" style="transform-origin:210px 200px; --a:315deg; --d:175ms" />
+      <g transform="translate(138 72) scale(2)">
+        <g style="transform-origin: 36px 64px" class="pyr-orbit-disc">
+          <circle cx="36" cy="64" r="22" fill="url(#pyr-ember-8)" />
+        </g>
+        <path class="pyr-n pyr-orbit-n" d="M70 86 L70 42 L70 64 Q70 42 92 42 Q112 42 112 64 L112 86" />
+      </g>
+      <text class="pyr-word pyr-orbit-word" x="405" y="230">pyreon</text>
+    </svg>
+
+    <!-- 09 · Channel-split resolve -->
+    <svg
+      v-else-if="variant === 'split'"
+      viewBox="0 0 720 360"
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <defs>
+        <linearGradient id="pyr-ember-9" x1="0" x2="1">
+          <stop offset="0" stop-color="#FF1F8C" /><stop offset=".55" stop-color="#FF5E1A" /><stop offset="1" stop-color="#FFC83D" />
+        </linearGradient>
+        <text id="pyr-split-word" x="380" y="230" style="font-family:'Space Grotesk', sans-serif; font-weight: 600; font-size: 92px; letter-spacing: -3.6px">pyreon</text>
+      </defs>
+      <use class="pyr-chan-l" href="#pyr-split-word" fill="#FF1F8C" />
+      <use class="pyr-chan-m" href="#pyr-split-word" fill="#22D3EE" />
+      <use class="pyr-chan-r" href="#pyr-split-word" fill="#FFC83D" />
+      <use class="pyr-split-final" href="#pyr-split-word" fill="#F4EFE6" />
+      <g transform="translate(138 72) scale(2)">
+        <g style="transform-origin: 36px 64px" class="pyr-split-disc">
+          <circle cx="36" cy="64" r="22" fill="url(#pyr-ember-9)" />
+        </g>
+        <path class="pyr-n pyr-split-n" d="M70 86 L70 42 L70 64 Q70 42 92 42 Q112 42 112 64 L112 86" />
+      </g>
+    </svg>
+
+    <!-- 10 · Spotlight focus -->
+    <svg
+      v-else-if="variant === 'spot'"
+      viewBox="0 0 720 360"
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <defs>
+        <linearGradient id="pyr-ember-10" x1="0" x2="1">
+          <stop offset="0" stop-color="#FF1F8C" /><stop offset=".55" stop-color="#FF5E1A" /><stop offset="1" stop-color="#FFC83D" />
+        </linearGradient>
+        <radialGradient id="pyr-spot-grad" cx="50%" cy="50%" r="50%">
+          <stop offset="0" stop-color="#FFC83D" stop-opacity="0.6" />
+          <stop offset="1" stop-color="#FFC83D" stop-opacity="0" />
+        </radialGradient>
+      </defs>
+      <circle class="pyr-spot" cx="210" cy="200" r="280" fill="url(#pyr-spot-grad)" style="transform-origin: 210px 200px" />
+      <g transform="translate(138 72) scale(2)">
+        <g style="transform-origin: 36px 64px" class="pyr-spot-disc">
+          <circle cx="36" cy="64" r="22" fill="url(#pyr-ember-10)" />
+        </g>
+        <path class="pyr-n pyr-spot-n" d="M70 86 L70 42 L70 64 Q70 42 92 42 Q112 42 112 64 L112 86" />
+      </g>
+      <text class="pyr-word pyr-spot-word" x="405" y="230">pyreon</text>
+    </svg>
+
+    <!-- 11 · ECG sync sweep -->
+    <svg
+      v-else
+      viewBox="0 0 720 360"
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <defs>
+        <linearGradient id="pyr-ember-11" x1="0" x2="1">
+          <stop offset="0" stop-color="#FF1F8C" /><stop offset=".55" stop-color="#FF5E1A" /><stop offset="1" stop-color="#FFC83D" />
+        </linearGradient>
+        <linearGradient id="pyr-ecg-bar" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0" stop-color="#22D3EE" stop-opacity="0" />
+          <stop offset=".5" stop-color="#22D3EE" stop-opacity=".7" />
+          <stop offset="1" stop-color="#22D3EE" stop-opacity="0" />
+        </linearGradient>
+      </defs>
+      <path d="M 0 200 L 220 200 L 240 180 L 260 220 L 280 200 L 720 200" stroke="#23232E" stroke-width="1.5" fill="none" />
+      <g transform="translate(138 72) scale(2)" opacity=".15">
+        <circle cx="36" cy="64" r="22" fill="#F4EFE6" />
+        <path class="pyr-n" d="M70 86 L70 42 L70 64 Q70 42 92 42 Q112 42 112 64 L112 86" stroke="#F4EFE6" />
+      </g>
+      <text class="pyr-word" x="405" y="230" fill="#F4EFE6" opacity=".12">pyreon</text>
+      <g transform="translate(138 72) scale(2)">
+        <g class="pyr-ecg-disc" style="transform-origin: 36px 64px">
+          <circle cx="36" cy="64" r="22" fill="url(#pyr-ember-11)" />
+        </g>
+      </g>
+      <path class="pyr-n pyr-ecg-n" transform="translate(138 72) scale(2)" d="M70 86 L70 42 L70 64 Q70 42 92 42 Q112 42 112 64 L112 86" />
+      <text class="pyr-word pyr-ecg-word" x="405" y="230">pyreon</text>
+      <rect class="pyr-ecg-scan" width="6" height="360" fill="url(#pyr-ecg-bar)" />
     </svg>
   </div>
 </template>
 
+<!--
+  PRODUCTION CSS — verbatim port of hero-animations.html's
+  <style id="pyr-hero-css">, with `.pyr-hero` rebased to `.px-heromark`
+  and the handoff's `.pyr-hero[data-theme="light"]` overrides rebased to
+  the docs' ancestor `[data-theme="light"]` root (driven by tokens.css +
+  the FOUC script in config.ts). Class names, keyframes, timings, and
+  geometry are unchanged from the handoff. `scoped` is safe here: Vue
+  scopes @keyframes consistently and appends the scope attr to the final
+  compound selector, so the [data-state]/[data-variant]/stop[stop-color]
+  selectors all still match the in-template SVG nodes.
+-->
 <style scoped>
+/* ── Base · the ON glyph + wordmark composition ────────────────── */
 .px-heromark {
+  position: relative;
   width: 100%;
   max-width: 520px;
+  aspect-ratio: 720 / 360;
 }
-.px-heromark-svg {
+.px-heromark svg {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  height: auto;
-  display: block;
+  height: 100%;
   overflow: visible;
 }
+.px-heromark .pyr-grid line {
+  stroke: #23232e;
+  stroke-width: 1;
+}
+.px-heromark .pyr-grid {
+  opacity: 0.3;
+}
 
-/* ── Final state (SSR / no-JS / reduced-motion / pre-play) ───────────── */
-.px-disc {
-  fill: var(--ember);
+/* The ON glyph — same path, same coords across every variant. */
+.px-heromark .pyr-disc {
+  fill: url(#pyr-ember);
 }
-.px-n {
-  stroke: var(--text);
+.px-heromark .pyr-n {
+  stroke: #f4efe6;
+  stroke-width: 10;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  fill: none;
 }
-.px-word {
-  font-family: var(--font-sans);
+
+/* The wordmark — set in Space Grotesk 600. */
+.px-heromark .pyr-word {
+  font-family: 'Space Grotesk', sans-serif;
   font-weight: 600;
-  font-size: 92px;
-  letter-spacing: -0.04em;
-  fill: var(--text);
+  font-size: 96px;
+  letter-spacing: -3.8px;
+  fill: #f4efe6;
 }
-.px-word-on {
-  fill: var(--ember);
+
+/* ── 01 · Stroke-trace · canonical (recommended) ──────────────── */
+.px-heromark[data-variant='trace'][data-state='entering'] .pyr-trace-edge {
+  animation: pyr-trace-edge 360ms var(--d, 0ms) cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
 }
-.px-fuse-guide {
-  stroke: var(--border);
-  stroke-width: 1.5;
-}
-.px-fuse-trail {
-  stroke: url(#px-ember-grad);
-  stroke-width: 3;
-  stroke-dasharray: 900;
-  stroke-dashoffset: 0;
-}
-.px-fuse-bead {
-  fill: url(#px-ember-grad);
-  opacity: 0;
-}
-.px-particle {
-  fill: url(#px-ember-grad);
-  opacity: 0;
-}
-.px-ring {
-  stroke: var(--ember);
-  stroke-width: 2;
-  opacity: 0;
-}
-.px-underline {
-  stroke: url(#px-ember-grad);
-  stroke-width: 3;
-  opacity: 0;
-}
-.px-wf-cover,
-.px-wf-bar {
-  opacity: 0;
-}
-.px-edge {
-  stroke: url(#px-ember-grad);
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  stroke-dasharray: 320;
+.px-heromark[data-variant='trace'] .pyr-trace-edge {
   stroke-dashoffset: 320;
   opacity: 0;
 }
-.px-edge--cont {
-  stroke-width: 2;
-  stroke-dasharray: 620;
-  stroke-dashoffset: 620;
+.px-heromark[data-variant='trace'][data-state='entering'] .pyr-trace-disc {
+  animation: pyr-trace-disc 280ms 380ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
 }
-.px-trace-cap {
+.px-heromark[data-variant='trace'][data-state='entering'] .pyr-trace-n {
+  animation: pyr-trace-n 340ms 580ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='trace'] .pyr-trace-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+}
+.px-heromark[data-variant='trace'][data-state='entering'] .pyr-trace-word {
+  animation: pyr-fade-in 280ms 880ms forwards;
+}
+.px-heromark[data-variant='trace'] .pyr-trace-word {
   opacity: 0;
 }
-.px-cap-dot {
-  fill: var(--ember-warm);
-}
-.px-cap-txt {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  fill: var(--text-dim);
-  letter-spacing: 0.6px;
-}
-/* reduced-motion "fired" cue — hidden unless motion is suppressed */
-.px-fired {
-  stroke: url(#px-ember-grad);
-  stroke-width: 2;
-  opacity: 0;
-}
-
-/* ── 12 · Trace (canonical · pyreon-motion-hero.jsx) ─────────────────── */
-.is-v12 .px-edge {
-  opacity: 1;
-  animation:
-    px-edge-draw 360ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards,
-    px-out 360ms 1300ms ease-out forwards;
-}
-.is-v12 .px-edge--cont {
-  animation:
-    px-edge-draw 380ms 760ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards,
-    px-out 360ms 1300ms ease-out forwards;
-}
-.is-v12 .px-disc {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: px-pc-disc 280ms 380ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
-}
-.is-v12 .px-n {
-  stroke-dasharray: 180;
-  stroke-dashoffset: 180;
-  animation: px-pc-n 340ms 580ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
-}
-.is-v12 .px-wordwrap {
-  animation: px-fade 280ms 880ms ease-out backwards;
-}
-.is-v12 .px-trace-cap {
-  animation:
-    px-fade 240ms 1040ms ease-out forwards,
-    px-out 300ms 1320ms ease-out forwards;
-}
-
-/* ── 18 · Terminal type-on ──────────────────────────────────────────── */
-.px-term-prompt {
-  font-family: var(--font-mono);
-  font-size: 30px;
-  fill: var(--link);
-}
-.px-term-cursor {
-  fill: var(--ember);
-}
-.is-v18 .px-word {
-  clip-path: inset(0 100% 0 0);
-  animation: px-type 700ms cubic-bezier(0.5, 0, 0.3, 1) forwards;
-}
-.is-v18 .px-term-cursor {
-  /* travels with the type reveal, then fades out as typing completes —
-     NOT an infinite blink (that left a cursor bar stuck forever). */
-  animation:
-    px-cursor 700ms cubic-bezier(0.5, 0, 0.3, 1) forwards,
-    px-out 200ms 700ms ease-out forwards;
-}
-.is-v18 .px-term-prompt {
-  /* `$` prompt clears once the wordmark is typed → clean lockup */
-  animation: px-out 240ms 760ms ease-out forwards;
-}
-.is-v18 .px-glyph {
-  animation: px-pop 240ms 720ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
-}
-
-/* ── 19 · Concentric rings ──────────────────────────────────────────── */
-.px-ring19 {
-  stroke: url(#px-ember-grad);
-  stroke-width: 2;
-  opacity: 0;
-}
-.is-v19 .px-ring19 {
-  animation: px-ring 700ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
-}
-.is-v19 .px-disc {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: px-rise 300ms 300ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
-}
-.is-v19 .px-n {
-  stroke-dasharray: 180;
-  stroke-dashoffset: 180;
-  animation: px-pc-n 280ms 550ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
-}
-.is-v19 .px-wordwrap {
-  animation: px-fade 280ms 760ms ease-out backwards;
-}
-
-/* ── 20 · Orbit collapse ────────────────────────────────────────────── */
-.px-orbiter {
-  fill: var(--link);
-  transform-box: view-box;
-  transform-origin: 144px 100px;
-}
-.is-v20 .px-orbiter {
-  animation:
-    px-orbit 500ms cubic-bezier(0.5, 0, 0.4, 1) forwards,
-    px-snap 240ms 500ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
-}
-.is-v20 .px-disc {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: px-rise 200ms 580ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
-}
-.is-v20 .px-n {
-  stroke-dasharray: 180;
-  stroke-dashoffset: 180;
-  animation: px-pc-n 240ms 660ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
-}
-.is-v20 .px-wordwrap {
-  animation: px-fade 280ms 820ms ease-out backwards;
-}
-
-/* ── 21 · RGB-split resolve ─────────────────────────────────────────── */
-.px-chan {
-  /* `screen` makes the 3 colour channels glow/combine on the dark
-     canvas (the RGB-split look). On the LIGHT cream bg `screen`
-     washes them to near-invisible — `multiply` is the correct
-     light-bg analog (darkens, so the channels read on paper). */
-  mix-blend-mode: screen;
-}
-[data-theme='light'] .px-chan {
-  mix-blend-mode: multiply;
-}
-.px-chan-a,
-.px-chan-b,
-.px-chan-c {
-  font-family: var(--font-sans);
-  font-weight: 600;
-  font-size: 92px;
-  letter-spacing: -0.04em;
-}
-.px-chan-a {
-  fill: var(--ember-plasma);
-}
-.px-chan-b {
-  fill: var(--link);
-}
-.px-chan-c {
-  fill: var(--ember-warm);
-}
-.is-v21 .px-chan-a {
-  animation: px-chan-a 1000ms cubic-bezier(0.5, 0, 0.2, 1) both;
-}
-.is-v21 .px-chan-b {
-  animation: px-chan-b 1000ms cubic-bezier(0.5, 0, 0.2, 1) both;
-}
-.is-v21 .px-chan-c {
-  animation: px-chan-c 1000ms cubic-bezier(0.5, 0, 0.2, 1) both;
-}
-.is-v21 .px-wordwrap {
-  animation: px-fade 220ms 760ms ease-out backwards;
-}
-.is-v21 .px-glyph {
-  animation: px-pop 280ms 880ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
-}
-
-/* ── 22 · Spotlight focus ───────────────────────────────────────────── */
-.px-spot {
-  fill: url(#px-spot-grad);
-  transform-box: view-box;
-  transform-origin: 144px 100px;
-}
-.is-v22 .px-spot {
-  animation: px-spot 600ms cubic-bezier(0.4, 0, 0.3, 1) forwards;
-}
-.is-v22 .px-disc {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: px-rise 240ms 580ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
-}
-.is-v22 .px-n {
-  stroke-dasharray: 180;
-  stroke-dashoffset: 180;
-  animation: px-pc-n 260ms 700ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
-}
-.is-v22 .px-wordwrap {
-  animation: px-fade 260ms 820ms ease-out backwards;
-}
-
-/* ── 23 · ECG sync sweep ────────────────────────────────────────────── */
-.px-ecg-base {
-  stroke: var(--border);
-  stroke-width: 1.5;
-}
-.px-scan {
-  fill: url(#px-scan-grad);
-}
-.is-v23 .px-ecg-base {
-  animation: px-out 300ms 900ms ease-out forwards;
-}
-.is-v23 .px-scan {
-  animation:
-    px-scan 900ms cubic-bezier(0.5, 0, 0.3, 1) forwards,
-    px-out 200ms 880ms ease-out forwards;
-}
-.is-v23 .px-disc {
-  opacity: 0;
-  animation: px-fade 200ms 280ms ease-out forwards;
-}
-.is-v23 .px-n {
-  stroke-dasharray: 180;
-  stroke-dashoffset: 180;
-  animation: px-pc-n 240ms 460ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
-}
-.is-v23 .px-wordwrap {
-  animation: px-fade 240ms 720ms ease-out backwards;
-}
-
-/* ── 17 · Path-trace ────────────────────────────────────────────────── */
-.is-v17 .px-fuse-guide {
-  animation: px-out 320ms 1000ms ease-out forwards;
-}
-.is-v17 .px-fuse-trail {
-  animation:
-    px-fz-draw 700ms cubic-bezier(0.3, 0.8, 0.2, 1) backwards,
-    px-out 320ms 1000ms ease-out forwards;
-}
-.is-v17 .px-fuse-bead {
-  offset-path: path('M -40 130 L 96 130 L 168 130 L 168 90 L 204 90 L 204 130 L 760 130');
-  animation: px-fz-bead 700ms cubic-bezier(0.3, 0.8, 0.2, 1) backwards;
-}
-.is-v17 .px-glyph {
-  animation: px-fade 240ms 360ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
-}
-.is-v17 .px-wordwrap {
-  animation: px-fade 280ms 640ms ease-out backwards;
-}
-
-/* ── 14 · Particles ─────────────────────────────────────────────────── */
-.is-v14 .px-particle {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: px-part 500ms cubic-bezier(0.3, 0.8, 0.2, 1) backwards;
-}
-.is-v14 .px-glyph {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: px-pop 240ms 500ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
-}
-.is-v14 .px-wordwrap {
-  animation: px-fade 260ms 760ms ease-out backwards;
-}
-
-/* ── 15 · Wavefront ─────────────────────────────────────────────────── */
-.is-v15 .px-wf-cover {
-  fill: var(--bg); /* semantic page bg — flips for light (was raw --ink-1) */
-  opacity: 1;
-  animation:
-    px-wf-wipe 640ms cubic-bezier(0.4, 0, 0.3, 1) forwards,
-    px-out 1ms 640ms linear forwards;
-}
-.is-v15 .px-wf-bar {
-  fill: url(#px-ember-grad);
-  opacity: 0.9;
-  animation: px-wf-sweep 640ms cubic-bezier(0.4, 0, 0.3, 1) forwards;
-}
-
-/* ── 16 · Pulse cascade ─────────────────────────────────────────────── */
-.is-v16 .px-disc {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: px-pc-disc 320ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
-}
-.is-v16 .px-n {
-  stroke-dasharray: 180;
-  stroke-dashoffset: 180;
-  animation: px-pc-n 220ms 320ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
-}
-.is-v16 .px-ring {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: px-pc-ring 360ms 320ms ease-out forwards;
-}
-.is-v16 .px-wordwrap {
-  animation: px-fade 280ms 640ms ease-out backwards;
-}
-.is-v16 .px-underline {
-  transform-origin: left center;
-  animation:
-    px-pc-under 320ms 640ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards,
-    px-out 300ms 1000ms ease-out forwards;
-}
-
-/* ── Keyframes ──────────────────────────────────────────────────────── */
-@keyframes px-fz-draw {
-  from {
-    stroke-dashoffset: 900;
-  }
+@keyframes pyr-trace-edge {
   to {
     stroke-dashoffset: 0;
-  }
-}
-@keyframes px-fz-bead {
-  from {
-    offset-distance: 0%;
-    opacity: 1;
-  }
-  99% {
-    opacity: 1;
-  }
-  to {
-    offset-distance: 100%;
-    opacity: 0;
-  }
-}
-@keyframes px-fade {
-  from {
-    opacity: 0;
-  }
-  to {
     opacity: 1;
   }
 }
-@keyframes px-part {
-  from {
-    transform: translate(var(--fx), var(--fy));
-    opacity: 0;
-  }
-  60% {
-    opacity: 1;
-  }
-  to {
-    transform: translate(0, 0);
-    opacity: 0;
-  }
-}
-@keyframes px-pop {
-  from {
-    opacity: 0;
-    transform: scale(0.82);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-@keyframes px-wf-wipe {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(780px);
-  }
-}
-@keyframes px-wf-sweep {
-  from {
-    transform: translateX(-60px);
-    opacity: 0.9;
-  }
-  90% {
-    opacity: 0.9;
-  }
-  to {
-    transform: translateX(760px);
-    opacity: 0;
-  }
-}
-@keyframes px-pc-disc {
+@keyframes pyr-trace-disc {
   0% {
-    opacity: 0;
-    transform: scale(0.82);
+    transform: scale(0);
+    filter: drop-shadow(0 0 16px rgba(255, 94, 26, 1));
+  }
+  70% {
+    transform: scale(1.15);
   }
   100% {
-    opacity: 1;
     transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(255, 94, 26, 0));
   }
 }
-@keyframes px-pc-n {
+@keyframes pyr-trace-n {
   to {
     stroke-dashoffset: 0;
   }
 }
-@keyframes px-pc-ring {
+@keyframes pyr-fade-in {
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── 02 · Pulse cascade · 3 beats ──────────────────────────────── */
+.px-heromark[data-variant='pulse'][data-state='entering'] .pyr-pulse-disc {
+  animation: pyr-pulse-disc 320ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+.px-heromark[data-variant='pulse'][data-state='entering'] .pyr-pulse-n {
+  animation: pyr-pulse-n 200ms 320ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='pulse'] .pyr-pulse-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+}
+.px-heromark[data-variant='pulse'][data-state='entering'] .pyr-pulse-ring {
+  animation: pyr-pulse-ring 360ms 320ms ease-out forwards;
+}
+.px-heromark[data-variant='pulse'] .pyr-pulse-ring {
+  opacity: 0;
+}
+.px-heromark[data-variant='pulse'][data-state='entering'] .pyr-pulse-word {
+  animation: pyr-fade-in 280ms 640ms forwards;
+}
+.px-heromark[data-variant='pulse'] .pyr-pulse-word {
+  opacity: 0;
+}
+.px-heromark[data-variant='pulse'][data-state='entering'] .pyr-pulse-under {
+  animation: pyr-pulse-under 320ms 640ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+@keyframes pyr-pulse-disc {
+  0% {
+    transform: scale(0.4);
+    filter: drop-shadow(0 0 16px rgba(255, 94, 26, 1));
+  }
+  50% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(255, 94, 26, 0));
+  }
+}
+@keyframes pyr-pulse-n {
+  0% {
+    stroke-dashoffset: 180;
+    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.7));
+  }
+  100% {
+    stroke-dashoffset: 0;
+    filter: drop-shadow(0 0 0 transparent);
+  }
+}
+@keyframes pyr-pulse-ring {
   0% {
     transform: scale(0.4);
     opacity: 0.9;
@@ -753,50 +616,234 @@ onBeforeUnmount(() => io?.disconnect())
     opacity: 0;
   }
 }
-@keyframes px-pc-under {
+@keyframes pyr-pulse-under {
   0% {
     transform: scaleX(0);
-    opacity: 1;
   }
   100% {
     transform: scaleX(1);
+  }
+}
+
+/* ── 03 · Wavefront sweep ─────────────────────────────────────── */
+.px-heromark[data-variant='wave'][data-state='entering'] .pyr-wave-mask {
+  animation: pyr-wave-sweep 700ms cubic-bezier(0.4, 0, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='wave'] .pyr-wave-mask {
+  transform: translateX(-820px);
+}
+.px-heromark[data-variant='wave'][data-state='entering'] .pyr-wave-bar {
+  animation: pyr-wave-bar 700ms cubic-bezier(0.4, 0, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='wave'] .pyr-wave-bar {
+  transform: translateX(-60px);
+  opacity: 0.85;
+}
+@keyframes pyr-wave-sweep {
+  from {
+    transform: translateX(-820px);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes pyr-wave-bar {
+  from {
+    transform: translateX(-60px);
+    opacity: 0.85;
+  }
+  90% {
+    opacity: 0.85;
+  }
+  to {
+    transform: translateX(720px);
+    opacity: 0;
+  }
+}
+
+/* ── 04 · Particles converge ──────────────────────────────────── */
+.px-heromark[data-variant='particles'][data-state='entering'] .pyr-part {
+  animation: pyr-part-fly 500ms var(--d, 0ms) cubic-bezier(0.3, 0.8, 0.2, 1) backwards;
+}
+.px-heromark[data-variant='particles'][data-state='entering'] .pyr-part-disc {
+  animation: pyr-part-disc 220ms 500ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+.px-heromark[data-variant='particles'][data-state='entering'] .pyr-part-n {
+  animation: pyr-trace-n 280ms 660ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='particles'] .pyr-part-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+}
+.px-heromark[data-variant='particles'][data-state='entering'] .pyr-part-word {
+  animation: pyr-fade-in 260ms 840ms forwards;
+}
+.px-heromark[data-variant='particles'] .pyr-part-word {
+  opacity: 0;
+}
+@keyframes pyr-part-fly {
+  from {
+    transform: translate(var(--fx), var(--fy));
+    opacity: 0;
+  }
+  60% {
+    opacity: 1;
+  }
+  to {
+    transform: translate(0, 0);
     opacity: 1;
   }
 }
-@keyframes px-edge-draw {
+@keyframes pyr-part-disc {
+  from {
+    transform: scale(0);
+    filter: drop-shadow(0 0 12px rgba(255, 94, 26, 1));
+  }
+  to {
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(255, 94, 26, 0));
+  }
+}
+
+/* ── 05 · Fuse · ember bead runs a polyline path ─────────────── */
+.px-heromark[data-variant='fuse'][data-state='entering'] .pyr-fuse-trail {
+  animation: pyr-fuse-draw 700ms cubic-bezier(0.3, 0.8, 0.2, 1) forwards;
+}
+.px-heromark[data-variant='fuse'] .pyr-fuse-trail {
+  stroke-dasharray: 900;
+  stroke-dashoffset: 900;
+}
+.px-heromark[data-variant='fuse'][data-state='entering'] .pyr-fuse-bead {
+  animation: pyr-fuse-bead 700ms cubic-bezier(0.3, 0.8, 0.2, 1) forwards;
+}
+.px-heromark[data-variant='fuse'] .pyr-fuse-bead {
+  offset-distance: 100%;
+}
+.px-heromark[data-variant='fuse'][data-state='entering'] .pyr-fuse-disc {
+  animation: pyr-fade-in 220ms 380ms forwards;
+}
+.px-heromark[data-variant='fuse'] .pyr-fuse-disc {
+  opacity: 0;
+}
+.px-heromark[data-variant='fuse'][data-state='entering'] .pyr-fuse-n {
+  animation: pyr-fade-in 220ms 480ms forwards;
+}
+.px-heromark[data-variant='fuse'] .pyr-fuse-n {
+  opacity: 0;
+}
+.px-heromark[data-variant='fuse'][data-state='entering'] .pyr-fuse-word {
+  animation: pyr-fade-in 280ms 720ms forwards;
+}
+.px-heromark[data-variant='fuse'] .pyr-fuse-word {
+  opacity: 0;
+}
+@keyframes pyr-fuse-draw {
   to {
     stroke-dashoffset: 0;
   }
 }
-@keyframes px-rise {
+@keyframes pyr-fuse-bead {
   from {
-    opacity: 0;
-    transform: scale(0.82);
+    offset-distance: 0%;
   }
   to {
-    opacity: 1;
-    transform: scale(1);
+    offset-distance: 100%;
   }
 }
-@keyframes px-type {
-  to {
-    clip-path: inset(0 0 0 0);
-  }
+
+/* ── 06 · Terminal type-on ─────────────────────────────────────── */
+.px-heromark[data-variant='term'][data-state='entering'] .pyr-term-clip {
+  animation: pyr-term-clip 600ms 80ms cubic-bezier(0.5, 0, 0.3, 1) forwards;
 }
-@keyframes px-cursor {
+.px-heromark[data-variant='term'] .pyr-term-clip {
+  clip-path: inset(0 0 0 0);
+}
+.px-heromark[data-variant='term'][data-state='entering'] .pyr-term-cursor {
+  animation:
+    pyr-term-cursor 600ms 80ms cubic-bezier(0.5, 0, 0.3, 1) forwards,
+    pyr-blink 0.9s steps(1) infinite;
+}
+.px-heromark[data-variant='term'] .pyr-term-cursor {
+  transform: translateX(160px);
+}
+.px-heromark[data-variant='term'] .pyr-term-disc {
+  opacity: 1;
+  transform: scale(1);
+}
+.px-heromark[data-variant='term'][data-state='entering'] .pyr-term-disc {
+  animation: pyr-term-disc 280ms 760ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+.px-heromark[data-variant='term'][data-state='entering'] .pyr-term-n {
+  animation: pyr-trace-n 280ms 940ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='term'] .pyr-term-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+}
+.px-heromark[data-variant='term'][data-state='entering'] .pyr-term-word {
+  animation: pyr-fade-in 280ms 820ms forwards;
+}
+.px-heromark[data-variant='term'] .pyr-term-word {
+  opacity: 0;
+}
+@keyframes pyr-term-clip {
   from {
-    transform: translateX(250px);
+    clip-path: inset(0 100% 0 0);
   }
   to {
-    transform: translateX(706px);
+    clip-path: inset(0 0% 0 0);
   }
 }
-@keyframes px-blink {
+@keyframes pyr-term-cursor {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(160px);
+  }
+}
+@keyframes pyr-blink {
   50% {
     opacity: 0;
   }
 }
-@keyframes px-ring {
+@keyframes pyr-term-disc {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+    filter: drop-shadow(0 0 16px rgba(255, 94, 26, 0.9));
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(255, 94, 26, 0));
+  }
+}
+
+/* ── 07 · Concentric rings ──────────────────────────────────── */
+.px-heromark[data-variant='rings'][data-state='entering'] .pyr-ring {
+  animation: pyr-ring 700ms var(--d, 0ms) cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='rings'] .pyr-ring {
+  opacity: 0;
+}
+.px-heromark[data-variant='rings'][data-state='entering'] .pyr-rings-disc {
+  animation: pyr-trace-disc 300ms 300ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+.px-heromark[data-variant='rings'][data-state='entering'] .pyr-rings-n {
+  animation: pyr-trace-n 280ms 550ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='rings'] .pyr-rings-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+}
+.px-heromark[data-variant='rings'][data-state='entering'] .pyr-rings-word {
+  animation: pyr-fade-in 280ms 760ms forwards;
+}
+.px-heromark[data-variant='rings'] .pyr-rings-word {
+  opacity: 0;
+}
+@keyframes pyr-ring {
   0% {
     r: 20;
     opacity: 1;
@@ -811,146 +858,431 @@ onBeforeUnmount(() => io?.disconnect())
     stroke-width: 0.5;
   }
 }
-@keyframes px-orbit {
+
+/* ── 08 · Orbit collapse ────────────────────────────────────── */
+.px-heromark[data-variant='orbit'][data-state='entering'] .pyr-orbiter {
+  animation:
+    pyr-orbit 500ms var(--d, 0ms) cubic-bezier(0.5, 0, 0.4, 1) forwards,
+    pyr-snap 240ms calc(500ms + var(--d, 0ms)) cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='orbit'][data-state='entering'] .pyr-orbit-disc {
+  animation: pyr-orbit-disc 200ms 580ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+.px-heromark[data-variant='orbit'][data-state='entering'] .pyr-orbit-n {
+  animation: pyr-trace-n 240ms 660ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='orbit'] .pyr-orbit-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+}
+.px-heromark[data-variant='orbit'][data-state='entering'] .pyr-orbit-word {
+  animation: pyr-fade-in 280ms 820ms forwards;
+}
+.px-heromark[data-variant='orbit'] .pyr-orbit-word {
+  opacity: 0;
+}
+@keyframes pyr-orbit {
   from {
-    transform: rotate(var(--sa)) translateX(70px);
+    transform: rotate(var(--a)) translateX(80px);
+    fill: #22d3ee;
   }
   to {
-    transform: rotate(calc(var(--sa) + 540deg)) translateX(70px);
+    transform: rotate(calc(var(--a) + 540deg)) translateX(80px);
+    fill: #22d3ee;
   }
 }
-@keyframes px-snap {
+@keyframes pyr-snap {
   from {
-    transform: rotate(calc(var(--sa) + 540deg)) translateX(70px);
-    fill: var(--link);
+    transform: rotate(calc(var(--a) + 540deg)) translateX(80px);
+    fill: #22d3ee;
     opacity: 1;
   }
   to {
-    transform: rotate(calc(var(--sa) + 540deg)) translateX(0);
-    fill: var(--ember);
+    transform: rotate(calc(var(--a) + 540deg)) translateX(0);
+    fill: #ff5e1a;
     opacity: 0;
   }
 }
-@keyframes px-chan-a {
-  0% {
-    transform: translate(-18px, -4px);
-    opacity: 0;
-  }
-  20% {
-    opacity: 1;
-  }
-  70% {
-    transform: translate(-22px, -3px);
-    opacity: 1;
-  }
-  85% {
-    transform: translate(0, 0);
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-@keyframes px-chan-b {
-  0% {
-    transform: translate(0, 0);
-    opacity: 0;
-  }
-  20% {
-    opacity: 1;
-  }
-  70% {
-    transform: translate(2px, 4px);
-    opacity: 1;
-  }
-  85% {
-    transform: translate(0, 0);
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-@keyframes px-chan-c {
-  0% {
-    transform: translate(18px, 4px);
-    opacity: 0;
-  }
-  20% {
-    opacity: 1;
-  }
-  70% {
-    transform: translate(20px, 5px);
-    opacity: 1;
-  }
-  85% {
-    transform: translate(0, 0);
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-@keyframes px-spot {
-  0% {
-    transform: scale(2);
-    opacity: 0;
-  }
-  45% {
-    opacity: 0.6;
-  }
-  100% {
-    transform: scale(0.35);
-    opacity: 0;
-  }
-}
-/* Universal cleanup: fade a lingering transient to nothing so EVERY
-   variant resolves to the identical clean glyph+wordmark lockup. No
-   `from` → fades from the element's current (visible) state, so there
-   is no jump when it kicks in after the reveal. */
-@keyframes px-out {
-  to {
-    opacity: 0;
-  }
-}
-@keyframes px-scan {
+@keyframes pyr-orbit-disc {
   from {
-    transform: translateX(0);
+    transform: scale(0.3);
+    filter: drop-shadow(0 0 16px rgba(255, 94, 26, 0.9));
   }
   to {
-    transform: translateX(760px);
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(255, 94, 26, 0));
   }
 }
 
-/* Hard guarantee — reduced-motion never animates (JS also avoids it). */
+/* ── 09 · Channel-split resolve ─────────────────────────────── */
+.px-heromark[data-variant='split'][data-state='entering'] .pyr-chan-l {
+  animation: pyr-chan-l 900ms cubic-bezier(0.5, 0, 0.3, 1) both;
+}
+.px-heromark[data-variant='split'][data-state='entering'] .pyr-chan-m {
+  animation: pyr-chan-m 900ms cubic-bezier(0.5, 0, 0.3, 1) both;
+}
+.px-heromark[data-variant='split'][data-state='entering'] .pyr-chan-r {
+  animation: pyr-chan-r 900ms cubic-bezier(0.5, 0, 0.3, 1) both;
+}
+.px-heromark[data-variant='split'] .pyr-chan-l,
+.px-heromark[data-variant='split'] .pyr-chan-m,
+.px-heromark[data-variant='split'] .pyr-chan-r {
+  opacity: 0;
+}
+.px-heromark[data-variant='split'][data-state='entering'] .pyr-split-final {
+  animation: pyr-fade-in 200ms 780ms forwards;
+}
+.px-heromark[data-variant='split'] .pyr-split-final {
+  opacity: 0;
+}
+.px-heromark[data-variant='split'][data-state='entering'] .pyr-split-disc {
+  animation: pyr-term-disc 240ms 880ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+.px-heromark[data-variant='split'][data-state='entering'] .pyr-split-n {
+  animation: pyr-trace-n 240ms 1020ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='split'] .pyr-split-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+}
+.px-heromark[data-variant='split'] .pyr-split-disc {
+  opacity: 1;
+  transform: scale(1);
+}
+@keyframes pyr-chan-l {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  15% {
+    transform: translate(-8px, -3px);
+    opacity: 0.9;
+  }
+  45% {
+    transform: translate(-22px, -6px);
+    opacity: 0.9;
+  }
+  65% {
+    transform: translate(-22px, -6px);
+    opacity: 0.9;
+  }
+  85% {
+    transform: translate(0, 0);
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes pyr-chan-m {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  15% {
+    transform: translate(1px, 2px);
+    opacity: 0.9;
+  }
+  45% {
+    transform: translate(3px, 6px);
+    opacity: 0.9;
+  }
+  65% {
+    transform: translate(3px, 6px);
+    opacity: 0.9;
+  }
+  85% {
+    transform: translate(0, 0);
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes pyr-chan-r {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  15% {
+    transform: translate(8px, 3px);
+    opacity: 0.9;
+  }
+  45% {
+    transform: translate(22px, 6px);
+    opacity: 0.9;
+  }
+  65% {
+    transform: translate(22px, 6px);
+    opacity: 0.9;
+  }
+  85% {
+    transform: translate(0, 0);
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ── 10 · Spotlight focus ───────────────────────────────────── */
+.px-heromark[data-variant='spot'][data-state='entering'] .pyr-spot {
+  animation: pyr-spot 600ms cubic-bezier(0.4, 0, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='spot'] .pyr-spot {
+  transform: scale(0.4);
+}
+.px-heromark[data-variant='spot'][data-state='entering'] .pyr-spot-disc {
+  animation: pyr-spot-disc 240ms 580ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='spot'] .pyr-spot-disc {
+  opacity: 0;
+}
+.px-heromark[data-variant='spot'][data-state='entering'] .pyr-spot-n {
+  animation: pyr-trace-n 260ms 700ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='spot'] .pyr-spot-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+}
+.px-heromark[data-variant='spot'][data-state='entering'] .pyr-spot-word {
+  animation: pyr-fade-in 260ms 820ms forwards;
+}
+.px-heromark[data-variant='spot'] .pyr-spot-word {
+  opacity: 0;
+}
+@keyframes pyr-spot {
+  from {
+    transform: scale(2);
+    opacity: 0.6;
+  }
+  to {
+    transform: scale(0.4);
+    opacity: 1;
+  }
+}
+@keyframes pyr-spot-disc {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+    filter: drop-shadow(0 0 20px rgba(255, 94, 26, 1));
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(255, 94, 26, 0));
+  }
+}
+
+/* ── 11 · ECG sync sweep ─────────────────────────────────────── */
+.px-heromark[data-variant='ecg'][data-state='entering'] .pyr-ecg-scan {
+  animation: pyr-ecg-scan 900ms cubic-bezier(0.5, 0, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='ecg'] .pyr-ecg-scan {
+  transform: translateX(720px);
+  opacity: 0;
+}
+.px-heromark[data-variant='ecg'][data-state='entering'] .pyr-ecg-disc {
+  animation: pyr-ecg-disc 200ms 280ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='ecg'] .pyr-ecg-disc {
+  opacity: 0;
+}
+.px-heromark[data-variant='ecg'][data-state='entering'] .pyr-ecg-n {
+  animation: pyr-trace-n 240ms 460ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.px-heromark[data-variant='ecg'] .pyr-ecg-n {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+}
+.px-heromark[data-variant='ecg'][data-state='entering'] .pyr-ecg-word {
+  animation: pyr-fade-in 240ms 720ms forwards;
+}
+.px-heromark[data-variant='ecg'] .pyr-ecg-word {
+  opacity: 0;
+}
+@keyframes pyr-ecg-scan {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(720px);
+    opacity: 0;
+  }
+}
+@keyframes pyr-ecg-disc {
+  from {
+    opacity: 0;
+    transform: scale(1.1);
+    filter: drop-shadow(0 0 14px rgba(255, 94, 26, 0.8));
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgba(255, 94, 26, 0));
+  }
+}
+
+/* ── Light theme overrides · driven by the docs' <html data-theme="light">
+   root (tokens.css + the FOUC script in config.ts). Recolours inline SVG
+   fills / strokes / gradient stops via attribute selectors — no markup
+   changes. Verbatim palette from the handoff. ─────────────────────── */
+[data-theme='light'] .px-heromark .pyr-grid line {
+  stroke: #e6dfd2;
+}
+[data-theme='light'] .px-heromark .pyr-word {
+  fill: #14141c;
+}
+[data-theme='light'] .px-heromark .pyr-n {
+  stroke: #14141c;
+}
+/* Ember palette · desaturated for paper · same role (the "hot" signal) */
+[data-theme='light'] .px-heromark stop[stop-color='#FF1F8C'] {
+  stop-color: #e40c70;
+}
+[data-theme='light'] .px-heromark stop[stop-color='#FF5E1A'] {
+  stop-color: #e84a0f;
+}
+[data-theme='light'] .px-heromark stop[stop-color='#FFC83D'] {
+  stop-color: #e0a510;
+}
+[data-theme='light'] .px-heromark [fill='#FF5E1A'] {
+  fill: #e84a0f;
+}
+[data-theme='light'] .px-heromark [fill='#FFC83D'] {
+  fill: #e0a510;
+}
+[data-theme='light'] .px-heromark [fill='#FF1F8C'] {
+  fill: #e40c70;
+}
+[data-theme='light'] .px-heromark [stroke='#FF5E1A'] {
+  stroke: #e84a0f;
+}
+/* Cyan · AA-darkened for body-text contrast on paper */
+[data-theme='light'] .px-heromark stop[stop-color='#22D3EE'] {
+  stop-color: #0891b2;
+}
+[data-theme='light'] .px-heromark [fill='#22D3EE'] {
+  fill: #0891b2;
+}
+[data-theme='light'] .px-heromark .pyr-orbiter {
+  fill: #0891b2;
+}
+/* Cold underlayer · paper tones replace inky ones */
+[data-theme='light'] .px-heromark [fill='#23232E'] {
+  fill: #e6dfd2;
+}
+[data-theme='light'] .px-heromark [fill='#181822'] {
+  fill: #ede6d6;
+}
+[data-theme='light'] .px-heromark [stroke='#23232E'] {
+  stroke: #e6dfd2;
+}
+[data-theme='light'] .px-heromark [stroke='#2E2E3B'] {
+  stroke: #e6dfd2;
+}
+[data-theme='light'] .px-heromark path[stroke='#23232E'] {
+  stroke: #c9c4b8;
+}
+[data-theme='light'] .px-heromark [fill='#F4EFE6'] {
+  fill: #14141c;
+}
+[data-theme='light'] .px-heromark [stroke='#F4EFE6'] {
+  stroke: #14141c;
+}
+
+/* ── Universal · reduced motion · hero variants ─────────────────
+   Snaps every animated element to its end-state with no animation.
+   Verbatim from the handoff. ────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .px-heromark * {
     animation: none !important;
+    transition: none !important;
   }
-  .px-fuse-bead,
-  .px-particle,
-  .px-ring,
-  .px-underline,
-  .px-wf-cover,
-  .px-wf-bar,
-  .px-edge,
-  .px-trace-cap,
-  .px-term-cursor,
-  .px-term-prompt,
-  .px-ring19,
-  .px-orbiter,
-  .px-chan,
-  .px-spot,
-  .px-scan,
-  .px-ecg-base {
+  .px-heromark .pyr-trace-edge,
+  .px-heromark .pyr-trace-n,
+  .px-heromark .pyr-pulse-n,
+  .px-heromark .pyr-part-n,
+  .px-heromark .pyr-rings-n,
+  .px-heromark .pyr-orbit-n,
+  .px-heromark .pyr-spot-n,
+  .px-heromark .pyr-ecg-n,
+  .px-heromark .pyr-fuse-trail {
+    stroke-dashoffset: 0 !important;
+    opacity: 1 !important;
+  }
+  .px-heromark .pyr-trace-word,
+  .px-heromark .pyr-pulse-word,
+  .px-heromark .pyr-pulse-ring,
+  .px-heromark .pyr-part-word,
+  .px-heromark .pyr-rings-word,
+  .px-heromark .pyr-orbit-word,
+  .px-heromark .pyr-spot-word,
+  .px-heromark .pyr-ecg-word,
+  .px-heromark .pyr-fuse-disc,
+  .px-heromark .pyr-fuse-n,
+  .px-heromark .pyr-fuse-word,
+  .px-heromark .pyr-split-final {
+    opacity: 1 !important;
+  }
+  .px-heromark .pyr-wave-mask,
+  .px-heromark .pyr-wave-bar,
+  .px-heromark .pyr-ecg-scan {
+    transform: translateX(0) !important;
     opacity: 0 !important;
   }
-  /* v18 clips the wordmark while typing — undo so it stays readable */
-  .is-v18 .px-word {
-    clip-path: none;
+  .px-heromark .pyr-trace-disc,
+  .px-heromark .pyr-part-disc,
+  .px-heromark .pyr-rings-disc,
+  .px-heromark .pyr-orbit-disc,
+  .px-heromark .pyr-spot-disc,
+  .px-heromark .pyr-ecg-disc {
+    opacity: 1 !important;
+    transform: scale(1) !important;
   }
-  /* ...but DO show the static "fired" underline (PxArtHeroReduced) */
-  .px-fired {
+  .px-heromark .pyr-pulse-under {
+    transform: scaleX(1) !important;
+  }
+  .px-heromark .pyr-term-clip {
+    clip-path: inset(0 0 0 0) !important;
+  }
+  .px-heromark .pyr-term-cursor {
+    opacity: 0 !important;
+  }
+  .px-heromark .pyr-term-disc {
+    opacity: 1 !important;
+    transform: scale(1) !important;
+  }
+  .px-heromark .pyr-term-n,
+  .px-heromark .pyr-term-word {
+    opacity: 1 !important;
+    stroke-dashoffset: 0 !important;
+  }
+  .px-heromark .pyr-fuse-bead {
+    opacity: 0 !important;
+  }
+  .px-heromark .pyr-spot {
+    transform: scale(0.4) !important;
+    opacity: 0 !important;
+  }
+  .px-heromark .pyr-orbiter {
+    opacity: 0 !important;
+  }
+  .px-heromark .pyr-ring {
+    opacity: 0 !important;
+  }
+  .px-heromark .pyr-chan-l,
+  .px-heromark .pyr-chan-m,
+  .px-heromark .pyr-chan-r {
+    opacity: 0 !important;
+  }
+  .px-heromark .pyr-split-disc {
+    opacity: 1 !important;
+    transform: scale(1) !important;
+  }
+  .px-heromark .pyr-split-n {
+    stroke-dashoffset: 0 !important;
     opacity: 1 !important;
   }
 }
