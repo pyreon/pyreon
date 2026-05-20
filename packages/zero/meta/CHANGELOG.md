@@ -1,5 +1,45 @@
 # @pyreon/meta
 
+## 0.22.0
+
+### Patch Changes
+
+- Updated dependencies [[`50afe21`](https://github.com/pyreon/pyreon/commit/50afe21856cf348eba8d096e1be0eedd6879850b), [`7cef86b`](https://github.com/pyreon/pyreon/commit/7cef86b68100034b70e47376ef26f22e3079f66f)]:
+  - @pyreon/kinetic@0.22.0
+  - @pyreon/reactivity@0.22.0
+  - @pyreon/charts@0.22.0
+  - @pyreon/code@0.22.0
+  - @pyreon/dnd@0.22.0
+  - @pyreon/document@0.22.0
+  - @pyreon/feature@0.22.0
+  - @pyreon/flow@0.22.0
+  - @pyreon/form@0.22.0
+  - @pyreon/hooks@0.22.0
+  - @pyreon/hotkeys@0.22.0
+  - @pyreon/i18n@0.22.0
+  - @pyreon/machine@0.22.0
+  - @pyreon/permissions@0.22.0
+  - @pyreon/query@0.22.0
+  - @pyreon/rx@0.22.0
+  - @pyreon/state-tree@0.22.0
+  - @pyreon/storage@0.22.0
+  - @pyreon/store@0.22.0
+  - @pyreon/table@0.22.0
+  - @pyreon/toast@0.22.0
+  - @pyreon/url-state@0.22.0
+  - @pyreon/validation@0.22.0
+  - @pyreon/virtual@0.22.0
+  - @pyreon/attrs@0.22.0
+  - @pyreon/connector-document@0.22.0
+  - @pyreon/coolgrid@0.22.0
+  - @pyreon/document-primitives@0.22.0
+  - @pyreon/elements@0.22.0
+  - @pyreon/kinetic-presets@0.22.0
+  - @pyreon/rocketstyle@0.22.0
+  - @pyreon/styler@0.22.0
+  - @pyreon/ui-core@0.22.0
+  - @pyreon/unistyle@0.22.0
+
 ## 0.21.0
 
 ### Minor Changes
