@@ -1,5 +1,309 @@
 # @pyreon/solid-compat
 
+## 0.23.0
+
+### Patch Changes
+
+- [#754](https://github.com/pyreon/pyreon/pull/754) [`6454cb7`](https://github.com/pyreon/pyreon/commit/6454cb794bb82db11e7842cb4a62a3765e3dd3ac) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(security): close 17 CodeQL alerts (real bugs + workflow hardening; 20 false positives dismissed)
+
+  Sweep through `github.com/pyreon/pyreon/security/code-scanning`. 37
+  open alerts triaged into **17 real fixes + 20 false-positive
+  dismissals**. The 4 remaining alerts are OpenSSF Scorecard project-
+  posture metrics (CodeReview, Maintained, CIIBestPractices, Fuzzing)
+  which can't be closed by a code PR — they're external posture
+  checks.
+
+  ### Real fixes (8 code + 9 polynomial-redos + 6 workflow)
+
+  **Code:**
+
+  - **[#27](https://github.com/pyreon/pyreon/issues/27) `@pyreon/zero` `fs-router.ts:1110`** — `import("${fullPath}")`
+    interpolated `fullPath` raw into emitted JS. Path is developer-
+    controlled (project's own filesystem scan), but a quote / backslash
+    / newline in the path would corrupt the generated module source.
+    Fixed: `JSON.stringify(fullPath)` — matches the existing `hmrId`
+    pattern two lines above.
+  - **[#37](https://github.com/pyreon/pyreon/issues/37) `@pyreon/lint` `anchor-is-valid.ts:67`** —
+    `trimmed.toLowerCase().startsWith('javascript:')` only catches the
+    one canonical scheme. CodeQL's `js/incomplete-url-scheme-check`
+    expects the curated dangerous-scheme set. Added `vbscript:`
+    (dead on modern browsers but a no-cost completion). `data:`
+    intentionally omitted — legitimate `data:image/png;base64,…`
+    href usage exists.
+  - **[#20](https://github.com/pyreon/pyreon/issues/20)/[#21](https://github.com/pyreon/pyreon/issues/21)/[#22](https://github.com/pyreon/pyreon/issues/22) `@pyreon/solid-compat` `createStore` setStore** —
+    `Object.assign(obj, value)` + dynamic `obj[key] = …` with user-
+    supplied path keys allowed prototype pollution via
+    `setStore('__proto__', evil)` or `setStore({ __proto__: … })`.
+    Added a `DANGEROUS_KEYS` Set (`__proto__` / `constructor` /
+    `prototype`) and a `safeAssign` helper — same shape as
+    `@pyreon/reactivity reconcile.ts:34`. Path-key writes at any
+    depth refuse the dangerous identifiers.
+
+  **Polynomial-redos (`@pyreon/compiler`, `@pyreon/vite-plugin`):**
+
+  - **[#9](https://github.com/pyreon/pyreon/issues/9)/[#10](https://github.com/pyreon/pyreon/issues/10)/[#11](https://github.com/pyreon/pyreon/issues/11) `pyreon-intercept.ts` pre-filter regexes** — bound
+    `[^}]+` / `[^)]+` greedy quantifiers with `{0,500}` / `{1,500}`
+    caps. Pre-filter is a SCAN before the precise AST walker; losing
+    detector recall on pathologically long single-line input is
+    acceptable.
+  - **[#12](https://github.com/pyreon/pyreon/issues/12)/[#13](https://github.com/pyreon/pyreon/issues/13) `ssg-audit.ts` dynamic-route detection** — replaced
+    `/\[.+\]/` with `/\[[^\]]+\]/`. Filename basenames are OS-bounded
+    (~255 chars) anyway, but `[^\]]+` removes the backtrack potential
+    entirely.
+  - **[#16](https://github.com/pyreon/pyreon/issues/16) `vite-plugin.ts` ISLAND_CALL_RE** — bound `[\s\S]*?` lazy
+    match to `[^}]{0,500}`. Real island() option blocks are tiny.
+  - **[#17](https://github.com/pyreon/pyreon/issues/17) `vite-plugin.ts` NAMED_EXPORT_RE** — bound `[^}]+` to
+    `[^}]{1,500}`. Real `export { … }` blocks fit easily.
+  - **[#18](https://github.com/pyreon/pyreon/issues/18)/[#19](https://github.com/pyreon/pyreon/issues/19) `vite-plugin.ts` `split(/\s+as\s+/)`** — replaced with
+    a pre-compiled `AS_SPLIT_RE = /\s{1,10}as\s{1,10}/` at module
+    scope. Bounded `{1,10}` quantifiers eliminate worst-case
+    backtracking while keeping every realistic import-specifier
+    formatting matchable.
+
+  **Workflows (`.github/workflows/`):**
+
+  - **[#1](https://github.com/pyreon/pyreon/issues/1) perf.yml + [#54](https://github.com/pyreon/pyreon/issues/54) audit-leak-classes.yml** — added top-level
+    `permissions: contents: read` block. Both workflows are read-only
+    (perf records artifacts; audit reports findings).
+  - **[#2](https://github.com/pyreon/pyreon/issues/2) release.yml** — restructured permissions: top-level
+    `contents: read` (default), per-job `contents: write` +
+    `pull-requests: write` + `id-token: write` on `stable` and
+    `prerelease` (both publish via OIDC trusted publishing).
+  - **[#55](https://github.com/pyreon/pyreon/issues/55)/[#56](https://github.com/pyreon/pyreon/issues/56)/[#57](https://github.com/pyreon/pyreon/issues/57) audit-leak-classes.yml** — pinned `actions/checkout`,
+    `oven-sh/setup-bun`, `actions/upload-artifact` by full commit SHA.
+    Same SHAs as the rest of `.github/workflows/` (the project's
+    existing pinning convention).
+
+  ### Dismissed via API (20 false positives / won't fix)
+
+  **True false positives (9):**
+
+  - **[#28](https://github.com/pyreon/pyreon/issues/28)** `js/clear-text-logging` on `batch.ts:120` — CodeQL matched
+    "MAX_PASSES" as if it contained "password". Log is about
+    effect-flush pass count.
+  - **[#25](https://github.com/pyreon/pyreon/issues/25)/[#26](https://github.com/pyreon/pyreon/issues/26)** `js/bad-code-sanitization` on `vite-plugin.ts:1037,1307`
+    — `JSON.stringify()` IS the canonical safe-embed for a string into
+    emitted JS code.
+  - **[#23](https://github.com/pyreon/pyreon/issues/23)/[#24](https://github.com/pyreon/pyreon/issues/24)** `js/prototype-pollution-utility` on `reconcile.ts:103,107`
+    — `DANGEROUS_KEYS.has(key)` guard at line 93 already blocks
+    `__proto__` / `constructor` / `prototype` before the assignment.
+  - **[#34](https://github.com/pyreon/pyreon/issues/34)/[#35](https://github.com/pyreon/pyreon/issues/35)/[#36](https://github.com/pyreon/pyreon/issues/36)** `js/incomplete-sanitization` on `manifest/render.ts`
+    - `mcp/index.ts` — `.replace(/\|/g, '\\|')` is markdown table-cell
+      escaping of INTERNAL manifest API metadata (built at gen-docs time
+      from `defineManifest()` values), not user-input sanitization.
+  - **[#52](https://github.com/pyreon/pyreon/issues/52)** `js/http-to-file-access` on `font.ts` — deterministic font-
+    file fetch resolved from CSS `@font-face` declarations parsed at
+    build time, then written to a per-project cache dir keyed by a
+    base64 hash of the URL. Not user-driven HTTP content writing to
+    arbitrary paths.
+
+  **Won't fix (internal dev tooling, not security boundaries):**
+
+  - **[#42](https://github.com/pyreon/pyreon/issues/42)/[#43](https://github.com/pyreon/pyreon/issues/43)/[#44](https://github.com/pyreon/pyreon/issues/44)/[#45](https://github.com/pyreon/pyreon/issues/45)/[#47](https://github.com/pyreon/pyreon/issues/47)/[#48](https://github.com/pyreon/pyreon/issues/48)** `js/file-system-race` — CLI scaffolding
+    (`pyreon context`, `create-zero`), build-time Vite plugin
+    (`icons-plugin`), internal scripts (`check-bundle-budgets`,
+    `serve-ssg`). Single-process, single-developer environments; no
+    malicious actor with concurrent filesystem access in the threat
+    model.
+  - **[#30](https://github.com/pyreon/pyreon/issues/30)/[#31](https://github.com/pyreon/pyreon/issues/31)** `js/shell-command-injection-from-environment` —
+    internal repo audit (`audit-codebase`) + benchmark harness
+    (`bench/run-all`). Args controlled entirely by the script author,
+    not external input.
+  - **[#49](https://github.com/pyreon/pyreon/issues/49)/[#50](https://github.com/pyreon/pyreon/issues/50)** `js/indirect-command-line-injection` — internal git-
+    affected-packages selectors (`affected.ts`, `e2e-affected.ts`).
+    Args are git refs from the GitHub Actions workflow event.
+  - **[#3](https://github.com/pyreon/pyreon/issues/3)** `PinnedDependenciesID` on `release-native.yml:252`
+    (`npm install -g npm@latest`) — npm 11.5.1+ is the documented
+    requirement for OIDC trusted publishing. Pinning an exact version
+    blocks security patches; the OIDC token + Sigstore provenance is
+    the actual supply-chain guarantee.
+
+  ### Remaining (cannot be closed by a code PR)
+
+  - **[#4](https://github.com/pyreon/pyreon/issues/4) CodeReviewID** — Scorecard counts review approvals per merge;
+    squash-merge with self-review by maintainer doesn't count.
+    Project-policy issue, not code.
+  - **[#5](https://github.com/pyreon/pyreon/issues/5) MaintainedID** — auto-tracks repo activity, improves
+    organically.
+  - **[#6](https://github.com/pyreon/pyreon/issues/6) CIIBestPracticesID** — requires registering at
+    bestpractices.coreinfrastructure.org. Out of scope for this PR.
+  - **[#8](https://github.com/pyreon/pyreon/issues/8) FuzzingID** — requires OSS-Fuzz integration. Significant
+    infra work, out of scope.
+
+  ### Validation
+
+  - `@pyreon/zero` 957/958 tests pass (1 pre-existing skip)
+  - `@pyreon/compiler` 1257/1257 tests pass
+  - `@pyreon/vite-plugin` 104/104 tests pass
+  - `@pyreon/solid-compat` 218/218 tests pass
+  - `@pyreon/lint` 672/672 tests pass
+  - Lint + typecheck clean across all 5 packages
+
+  ### Closes the security/code-scanning sweep
+
+  37 alerts → 17 fixed in code + 20 dismissed with rationale + 4
+  external-posture deferred. Net open count expected after CodeQL
+  re-scans: 4 (Scorecard meta-checks).
+
+- [#747](https://github.com/pyreon/pyreon/pull/747) [`802e88b`](https://github.com/pyreon/pyreon/commit/802e88b3d132d5c73901571c805e8987eec4612a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(perf-harness): 6 leak-class diagnostic counters across the [#725](https://github.com/pyreon/pyreon/issues/725)-[#741](https://github.com/pyreon/pyreon/issues/741) fix sites
+
+  Adds dev-gated perf-harness counters at every site fixed during the
+  8-PR leak-class sweep ([#725](https://github.com/pyreon/pyreon/issues/725)-[#741](https://github.com/pyreon/pyreon/issues/741)). The counters are zero-cost in
+  production (`process.env.NODE_ENV` gate folds to `false`; the optional-
+  chain on `globalThis.__pyreon_count__?.()` short-circuits when no
+  consumer is installed) and free in dev unless `perfHarness.install()`
+  is called by the consumer.
+
+  Diagnostic shape: each counter emits at a load-bearing point in the
+  fix's code path. If the fix regresses (clearTimeout falls out of a
+  finally, refcount guard fails, sweep doesn't fire), the counter
+  either stops emitting OR diverges from its expected pair. CI's
+  nightly perf-results comparison via `bun run perf:diff` will surface
+  the regression before it ships.
+
+  ### 6 new counters
+
+  | Counter                                      | Class | Fix site                                                                             | Healthy shape                        |
+  | -------------------------------------------- | ----- | ------------------------------------------------------------------------------------ | ------------------------------------ |
+  | `isr.revalidate.timerClear`                  | I     | [#734](https://github.com/pyreon/pyreon/issues/734) `isr.ts revalidate()`            | = revalidate-attempt count           |
+  | `theme.initRefAcquire`                       | D     | [#734](https://github.com/pyreon/pyreon/issues/734) `theme.tsx initTheme()`          | bounded by # of mounted ThemeToggles |
+  | `theme.initRefRelease`                       | D     | same                                                                                 | paired with acquire, monotonic       |
+  | `solid-compat.createResource.staleDiscarded` | F     | [#737](https://github.com/pyreon/pyreon/issues/737) `createResource`                 | non-zero under refetch races         |
+  | `solid-compat.createStore.signalEvicted`     | C     | [#737](https://github.com/pyreon/pyreon/issues/737) `createStore` sweep              | spikes during sweep cycles           |
+  | `svelte-compat.subscribe.cachedRePush`       | D     | [#739](https://github.com/pyreon/pyreon/issues/739) `writable.subscribe` cached path | non-zero during parent re-renders    |
+  | `vite-plugin.watchChange.delete`             | C     | [#741](https://github.com/pyreon/pyreon/issues/741) watchChange hook                 | grows with file-deletion count       |
+
+  ### Catalog wiring
+
+  `COUNTERS.md` gains 7 new entries (6 counters + the `theme.initRef*` pair).
+  Each documents:
+
+  - Exact source file
+  - "Healthy number looks like" description (the diagnostic semantics)
+  - The leak-class label + originating PR
+
+  `catalog-drift.test.ts` `INSTRUMENTED_PACKAGE_ROOTS` adds 3 new entries:
+
+  - `packages/tools/solid-compat/src`
+  - `packages/tools/svelte-compat/src`
+  - `packages/tools/vite-plugin/src`
+
+  The existing `packages/zero/zero/src` entry is unchanged (already
+  present for the `ssg.*` namespace). The bidirectional catalog gate
+  (every emit must be cataloged; every cataloged name must have an
+  emit) enforces the link going forward.
+
+  ### Validation
+
+  - 1555/1556 tests pass across the 5 modified packages (1 pre-existing
+    zero skip):
+    - `@pyreon/zero` 953/954
+    - `@pyreon/solid-compat` 218/218
+    - `@pyreon/svelte-compat` 55/55
+    - `@pyreon/vite-plugin` 104/104
+    - `@pyreon/perf-harness` 225/225 (including the catalog-drift gate)
+  - Lint + typecheck clean across all 5 packages
+  - Zero public-API surface change — counters are dev-only sink emissions
+
+  ### Closes the MEDIUM followup recommendation
+
+  Per the post-[#743](https://github.com/pyreon/pyreon/issues/743) review. Production monitoring stories for leak-class
+  regressions are now structurally observable via the existing
+  `perfHarness.snapshot()` / `perf:diff` flow. The LOW followup
+  (`scripts/audit-leak-classes.ts` static-analysis tool) follows in a
+  separate PR.
+
+- [#737](https://github.com/pyreon/pyreon/pull/737) [`d6e6ec0`](https://github.com/pyreon/pyreon/commit/d6e6ec07ee97098b9265da882a46ebed953a3a49) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(solid-compat): createResource stale-resolution race + createStore per-path signal map unbounded growth ([#733](https://github.com/pyreon/pyreon/issues/733) follow-up)
+
+  Closes 2 of the 4 MEDIUM patterns disclosed in [#733](https://github.com/pyreon/pyreon/issues/733)'s audit byproducts.
+
+  ### 1. `createResource` — Class F stale-resolution race ([#730](https://github.com/pyreon/pyreon/issues/730) charts/storage shape)
+
+  `fetchPromise` was overwritten on refetch with no signal to the OLD
+  promise's handlers. When the OLD promise (e.g. SLOW response) settled
+  AFTER a FAST refetch had already resolved, its `setData(oldVal)` /
+  `setError(oldErr)` clobbered the newer value. Same exact shape as
+  [#730](https://github.com/pyreon/pyreon/issues/730)'s charts/storage inflight-promise bug.
+
+  Fix: version-tracking. Each `doFetch()` bumps a counter; the
+  resolve/reject handlers compare their captured version against the
+  current one. Stale resolutions are silently discarded.
+
+  `AbortSignal` is the upstream solution for `fetch()` callers, but
+  we don't own the fetcher — version-tracking is the correct generic
+  fix that doesn't require user cooperation.
+
+  ### 2. `createStore` — Class C unbounded per-path signal map
+
+  `signals.Map<path, signal>` grew by one entry per UNIQUE read-path
+  string for the store's lifetime. Stores with dynamic key spaces
+  (dictionaries, pagination, log streams) leaked one signal per key
+  ever accessed: e.g. `store.items[0]` through `store.items[100000]`
+  produced 100k signal entries.
+
+  The fix is correctness-preserving: a subscriber-aware sweep runs
+  after `updateRaw()` once the cache crosses a threshold (256). The
+  sweep walks all entries and evicts any whose `_s` (subscriber set)
+  AND `_d` (direct-updater set) are both empty — i.e. truly unused
+  because the effect / DOM binding that read this path has since
+  disposed. The next read for an evicted path lazily re-creates a
+  fresh signal with the current value; correctness preserved.
+
+  A simple LRU cap would NOT work here — evicting a signal that an
+  active effect still tracks would silently break reactivity (the
+  effect wouldn't re-run on subsequent updates because the new
+  signal it'd lazily get on the next read has different identity).
+
+  The fix uses Pyreon's internal `_s` / `_d` subscriber-set fields —
+  same fields `trackSubscriber` populates and effect disposal removes
+  from. A non-empty either means at least one live effect / DOM
+  binding still depends on this signal.
+
+  Threshold is gated so the O(N) sweep fires at most once per
+  write-after-threshold, NOT on every write — small stores with
+  static key sets pay zero overhead.
+
+  ### Regression tests + bisect
+
+  `packages/tools/solid-compat/src/tests/leak-repro.test.ts` (4 specs):
+
+  1. **createResource SLOW + FAST refetch — FAST wins, SLOW ignored**.
+     Manual promise resolvers control ordering. Bisect-verified:
+     removed `if (myVersion !== fetchVersion) return` from both
+     then/catch handlers → spec fails with `expected 'SLOW' to be
+'FAST'`. Restored → passes.
+  2. **createResource latest value survives a stale rejection**. SLOW
+     rejects AFTER a FAST resolves. Bisect-verified: spec fails with
+     `expected Error: BOOM to be undefined`. Restored → passes.
+  3. **createStore signal map shrinks after subscriber-less reads**.
+     500 ad-hoc reads → cache pre-sweep ~500 entries → write triggers
+     sweep → cache <100 entries. Bisect-verified: disabled the
+     `sweepUnusedSignals()` call in `updateRaw` → spec fails with
+     `expected 501 to be less than 100`. Restored → passes.
+  4. **createStore actively-subscribed signals survive the sweep**.
+     Effect tracks `k0`; 300 ad-hoc reads + write fires sweep; the
+     effect re-runs with the new value (proving k0's signal wasn't
+     evicted because it had a subscriber).
+
+  ### Validation
+
+  - `@pyreon/solid-compat` 218/218 tests pass (+4 new regression specs)
+  - Lint + typecheck clean
+  - New `_STORE_SIGNAL_CACHE` symbol export is `@internal` (Symbol.for
+    registry — test-only)
+
+  ### Remaining LOW from [#733](https://github.com/pyreon/pyreon/issues/733)
+
+  - `@pyreon/svelte-compat` ChildInstance preservation discards
+    `unmountCallbacks` — separate PR (different package).
+  - `@pyreon/vite-plugin` per-instance caches eviction on file delete
+    — separate PR (different package).
+
+- Updated dependencies [[`6571df8`](https://github.com/pyreon/pyreon/commit/6571df8209c5dc72619194ffe19359765b1d2d7f), [`af4d5d8`](https://github.com/pyreon/pyreon/commit/af4d5d83fc087d738dbe5084950476566d488d77), [`441b5df`](https://github.com/pyreon/pyreon/commit/441b5dfa64ae52002d3e6612ec68566344ae999d)]:
+  - @pyreon/core@0.23.0
+  - @pyreon/runtime-dom@0.23.0
+  - @pyreon/reactivity@0.23.0
+
 ## 0.22.0
 
 ### Patch Changes

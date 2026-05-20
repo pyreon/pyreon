@@ -1,5 +1,480 @@
 # @pyreon/lint
 
+## 0.23.0
+
+### Minor Changes
+
+- [#743](https://github.com/pyreon/pyreon/pull/743) [`c19084c`](https://github.com/pyreon/pyreon/commit/c19084c6a57ca6651f62acdd584f17ad3a81aaab) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(lint): two new preventative rules distilled from the [#725](https://github.com/pyreon/pyreon/issues/725) → [#741](https://github.com/pyreon/pyreon/issues/741) leak-class sweep
+
+  Adds two preventative lint rules — `pyreon/promise-race-needs-cleartimeout`
+  (performance) and `pyreon/init-fn-needs-idempotency` (lifecycle) — that
+  would have caught the structural bugs fixed across the 8-PR leak-class
+  sweep ([#725](https://github.com/pyreon/pyreon/issues/725), [#729](https://github.com/pyreon/pyreon/issues/729), [#730](https://github.com/pyreon/pyreon/issues/730), [#733](https://github.com/pyreon/pyreon/issues/733), [#734](https://github.com/pyreon/pyreon/issues/734), [#735](https://github.com/pyreon/pyreon/issues/735), [#737](https://github.com/pyreon/pyreon/issues/737), [#739](https://github.com/pyreon/pyreon/issues/739), [#741](https://github.com/pyreon/pyreon/issues/741)) BEFORE
+  they shipped.
+
+  ### 1. `pyreon/promise-race-needs-cleartimeout` (performance, warn)
+
+  Flags `Promise.race([work, new Promise((_, reject) => setTimeout(reject,
+MS))])` inside a try block where the enclosing `finally` block does NOT
+  contain a `clearTimeout` call. The bug class: when `work` wins the race
+  (the success path — every healthy invocation), the rejection branch's
+  setTimeout fires later, pinning a closure + reject callback for up to
+  MS ms. Under sustained traffic, hundreds of pending timers pile up.
+
+  **Caught real cases (would have surfaced at edit time)**:
+
+  - [#734](https://github.com/pyreon/pyreon/issues/734) — `@pyreon/zero` `isr.ts revalidate()` — 30s setTimeout per
+    successful revalidation, hundreds piled up under load.
+  - [#735](https://github.com/pyreon/pyreon/issues/735) — `@pyreon/zero` `ssg-plugin.ts` per-path render + per-locale
+    404 render (×2), 30s setTimeout per successful render.
+
+  **Heuristic**: targets the canonical `new Promise((_, reject) =>
+setTimeout(...))` shape used in every real case. Conservative — doesn't
+  attempt to detect anonymous-arrow setTimeouts deeply nested in arbitrary
+  arguments.
+
+  **Tests (7 specs)**: 3 FIRES (canonical, no-finally, multi-line) + 4
+  DOES-NOT-FIRE (clearTimeout present, no setTimeout branch, plain
+  setTimeout outside race, no try/catch). **Bisect-verified**: disabled
+  the `TryStatement` visitor body → 3 FIRES specs fail with `expected
+[] to include 'pyreon/promise-race-needs-cleartimeout'`. Restored →
+  7/7 pass.
+
+  ### 2. `pyreon/init-fn-needs-idempotency` (lifecycle, warn)
+
+  Flags an exported `init*` function that:
+
+  1. Has at least one `onMount(...)` call in its body.
+  2. Is ALSO called from another function in the SAME module.
+  3. Lacks a module-level refcount / boolean guard variable
+     (`let _x = 0` / `let _flag = false` / `let _disposeShared = null`).
+
+  **Caught real case**:
+
+  - [#734](https://github.com/pyreon/pyreon/issues/734) — `@pyreon/zero` `initTheme()` ThemeToggle pile-up. `initTheme`
+    was exported from `theme.tsx` AND called from `ThemeToggle`'s render
+    body, with no refcount guard. Every mounted ThemeToggle registered a
+    fresh matchMedia listener + effect (N components → N listeners).
+
+  **Conservative by construction (deliberate FN tolerance)**:
+
+  - Same-module call requirement means cross-module reentrancy is out of
+    scope (would need a full project scan, way beyond per-file lint).
+    Legit one-shot inits (`initApp()` exported and called only from a
+    separate entry file) don't fire.
+  - Guard detection looks for module-level `let X = 0|false|null` — the
+    refcount / flag patterns the playbook PRs used. A WeakMap-keyed
+    dedup wouldn't match, but that's an acceptable false negative.
+  - Name pattern `/^init[A-Z]/` only — `useX` / `setupX` / lowercase
+    function names skip the rule (those have different semantics in
+    Pyreon's component conventions).
+
+  **Tests (7 specs)**: 2 FIRES ([#734](https://github.com/pyreon/pyreon/issues/734) shape, multi-callsite) + 5
+  DOES-NOT-FIRE (refcount guard, boolean guard, one-shot init with no
+  same-module call, useX hook, init with no onMount). **Bisect-verified**:
+  disabled the `Program` visitor's report loop → 2 FIRES specs fail
+  with `expected [] to include 'pyreon/init-fn-needs-idempotency'`.
+  Restored → 7/7 pass.
+
+  ### Validation
+
+  - `@pyreon/lint` 653/653 tests pass (+14 new — 7 per new rule)
+  - Lint + typecheck clean
+  - Manifest + CLAUDE.md + lint README + lint docs updated to 82 rules /
+    18 categories (lifecycle 5→6, performance 5→6)
+  - Doc-claims gate clean (`bun run check-doc-claims`)
+  - Generated llms.txt / llms-full.txt / MCP api-reference regenerated
+    via `bun run gen-docs`
+  - Both rules ship as `warn` severity, present in the `recommended`
+    preset by default (matches every other performance/lifecycle rule)
+
+  ### Closes the systemic-prevention arm of [#733](https://github.com/pyreon/pyreon/issues/733)/[#734](https://github.com/pyreon/pyreon/issues/734)'s follow-up sweep
+
+  The fixes-side of the audit-byproducts trail closed in [#735](https://github.com/pyreon/pyreon/issues/735), [#737](https://github.com/pyreon/pyreon/issues/737),
+  [#739](https://github.com/pyreon/pyreon/issues/739), [#741](https://github.com/pyreon/pyreon/issues/741) (the 4 MEDIUM patterns from [#733](https://github.com/pyreon/pyreon/issues/733)+[#734](https://github.com/pyreon/pyreon/issues/734)'s audit). These two
+  rules close the PREVENTION-side — going forward, the same bug shapes
+  fail at edit time instead of shipping.
+
+  Other rule categories the audit surfaced but didn't bottom out:
+
+  - "Wrapper-callable forwards .direct without \_v" — already covered
+    by `pyreon/storage-signal-v-forwarding` (existing rule).
+  - "Module-level mutable cross-request bleed" (the csp.ts pattern) —
+    too context-dependent to detect statically without high FP rates.
+    Documented in `.claude/rules/anti-patterns.md` as a manual checklist.
+
+### Patch Changes
+
+- [#736](https://github.com/pyreon/pyreon/pull/736) [`5c9e45b`](https://github.com/pyreon/pyreon/commit/5c9e45b4797bfc3043d6be9e0d5c022e49639f54) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(kinetic, elements, lint): audit + defense-in-depth for the iterate-children bug class
+
+  PR [#731](https://github.com/pyreon/pyreon/issues/731) fixed the kinetic-mode `StaggerRenderer` + `TransitionItem` against
+  the Pyreon-compiler-prop-inlining + iterate-children bug. PR [#732](https://github.com/pyreon/pyreon/issues/732) added the
+  compiler-side carve-out for stable references at the JSX call site. This PR
+  closes the **3 parallel library sites** the audit found and ships a lint
+  rule (`pyreon/no-iterate-children-without-resolve`) to prevent recurrence
+  in any future library code.
+
+  ## Background — the bug class
+
+  The Pyreon vite-plugin's prop-inlining pass rewrites `<Comp>{children}</Comp>`
+  (where `children` is a local `const` derived from a getter — typically
+  `const children = childHolder.children` after `splitProps`) as
+  `Comp({ ..., children: () => h.children })`. Receiving components see
+  `props.children` as a FUNCTION instead of the expected `VNode | VNode[]`.
+
+  DOM-consuming code routes through `mountChild` which handles function
+  children correctly via `mountReactive` — invisible bug for the common
+  forwarding pattern. Libraries that iterate children at the VNode level
+  or `cloneVNode` them directly are silently broken: the function spread
+  produces `{type: undefined}` and the DOM renders literal `<undefined>`
+  tags. Real-app reproducer: `examples/bokisch.com` Intro section.
+
+  ## Library fixes (3 sites — parallel to PR [#731](https://github.com/pyreon/pyreon/issues/731)'s renderers fix)
+
+  PR [#731](https://github.com/pyreon/pyreon/issues/731) fixed the kinetic-mode renderers under `packages/ui-system/kinetic/src/kinetic/`.
+  It missed the parallel TOP-LEVEL components in the same package + a
+  subtle Iterator shape.
+
+  - **`@pyreon/kinetic` top-level `Stagger.tsx`** — `(Array.isArray(own.children) ? own.children : [own.children]).filter(isVNode)` collapsed to `[]` when `own.children` is a function. Fixed by calling `resolveChildren(own.children)` at body entry (same helper PR [#731](https://github.com/pyreon/pyreon/issues/731) shipped in `kinetic/src/utils.ts`).
+  - **`@pyreon/kinetic` top-level `Transition.tsx`** — 3 × `cloneVNode(props.children, …)` + 1 × `(props.children.props ?? {})` reads. The cloneVNode-on-function shape produces `<undefined>` tags; the `.props` read returns undefined and silently drops the merge-ref. Fixed by resolving once at body entry (`const child = resolveChildren(props.children)`).
+  - **`@pyreon/elements` `Iterator`** — falls through to `renderChild(function)` which calls `render(function, props)` and interprets the function as a component. Doesn't crash but loses per-item metadata (`first`/`last`/`position`/`index`/`odd`/`even`). Fixed by unwrapping at body entry with the inline `typeof rawChildren === 'function' ? rawChildren() : rawChildren` ternary.
+
+  ## Lint rule — `pyreon/no-iterate-children-without-resolve`
+
+  New error-level rule under the `reactivity` category. Detects:
+
+  1. **`cloneVNode(EXPR, …)`** where EXPR ends with `.children`.
+  2. **`(Array.isArray(EXPR) ? EXPR : [EXPR]).METHOD(…)`** where METHOD is one of `filter` / `map` / `forEach` / `reduce` / `every` / `some` / `find` / `findIndex` / `flatMap`.
+  3. **`EXPR.props`** reads where EXPR ends with `.children` (the merge-ref pattern from `Transition.tsx`).
+
+  **Acceptable mitigations** (per-function scope, inherits through nested arrow functions):
+
+  - `resolveChildren(…)` call.
+  - `typeof EXPR === 'function' ? EXPR() : EXPR` ternary.
+  - `typeof EXPR === 'function'` guard anywhere.
+  - `const NAME = <mitigation expression>` — marks NAME as safe-aliased.
+
+  **Out of scope** (deliberate precision trade-offs):
+
+  - Pass-through `...(Array.isArray(EXPR) ? EXPR : [EXPR])` SpreadElement → mountChild handles function children. Naturally not flagged by the call-site detection.
+  - `if (Array.isArray(X)) return X.map(…)` IfStatement-guarded iteration. Framework primitives (`Dynamic`, `Show`, `Switch`) use this with direct h() rest args that never reach the auto-wrap; out of scope.
+  - Variable-bound iteration patterns (`const xs = COND; xs.METHOD(…)`). Out of scope — detection at the inline `.METHOD(…)` call site.
+
+  **Bisect-verified at two layers**: 19 unit specs (10 FIRES + 9 CONTROL + real-world shapes), reverting the rule fails all 10 FIRES; full repo sweep against `packages/**` after library fixes → 0 hits (zero false positives, zero remaining real bugs).
+
+  ## Surfaces updated
+
+  - `packages/ui-system/kinetic/src/Stagger.tsx` — top-level Stagger fix
+  - `packages/ui-system/kinetic/src/Transition.tsx` — top-level Transition fix
+  - `packages/ui-system/elements/src/helpers/Iterator/component.tsx` — Iterator fix
+  - `packages/ui-system/kinetic/src/__tests__/top-level-transition-stagger-function-children.test.tsx` — 4 regression specs (2 FIRES per component + 2 CONTROL)
+  - `packages/ui-system/elements/src/__tests__/iterator-function-children.test.tsx` — 2 regression specs (1 FIRES + 1 CONTROL)
+  - `packages/tools/lint/src/rules/reactivity/no-iterate-children-without-resolve.ts` — new rule
+  - `packages/tools/lint/src/tests/no-iterate-children-without-resolve.test.ts` — 19 unit specs
+  - `packages/tools/lint/src/rules/index.ts` — register rule + bump reactivity count to 14
+  - `packages/tools/lint/src/tests/runner.test.ts` — update rule count assertions (80 → 81, reactivity 13 → 14)
+  - `CLAUDE.md`, `packages/tools/lint/README.md`, `packages/tools/lint/src/manifest.ts`, `docs/docs/lint.md` — rule count claims updated (locked by `check-doc-claims`)
+  - `.claude/rules/anti-patterns.md` — new bug-class entry under Architecture Mistakes
+
+  ## Validation
+
+  - All 3 library packages pass tests (kinetic 220, elements 463 → +new regression specs)
+  - All 650 lint tests pass (19 new specs)
+  - `check-doc-claims` clean (count claims locked)
+  - Real-app sweep: 0 hits across 1041 source files (rule is precision-tuned to avoid false positives on framework primitives, pass-through patterns, and unrelated `Array.isArray` shapes in non-VNode domains)
+
+- [#754](https://github.com/pyreon/pyreon/pull/754) [`6454cb7`](https://github.com/pyreon/pyreon/commit/6454cb794bb82db11e7842cb4a62a3765e3dd3ac) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(security): close 17 CodeQL alerts (real bugs + workflow hardening; 20 false positives dismissed)
+
+  Sweep through `github.com/pyreon/pyreon/security/code-scanning`. 37
+  open alerts triaged into **17 real fixes + 20 false-positive
+  dismissals**. The 4 remaining alerts are OpenSSF Scorecard project-
+  posture metrics (CodeReview, Maintained, CIIBestPractices, Fuzzing)
+  which can't be closed by a code PR — they're external posture
+  checks.
+
+  ### Real fixes (8 code + 9 polynomial-redos + 6 workflow)
+
+  **Code:**
+
+  - **[#27](https://github.com/pyreon/pyreon/issues/27) `@pyreon/zero` `fs-router.ts:1110`** — `import("${fullPath}")`
+    interpolated `fullPath` raw into emitted JS. Path is developer-
+    controlled (project's own filesystem scan), but a quote / backslash
+    / newline in the path would corrupt the generated module source.
+    Fixed: `JSON.stringify(fullPath)` — matches the existing `hmrId`
+    pattern two lines above.
+  - **[#37](https://github.com/pyreon/pyreon/issues/37) `@pyreon/lint` `anchor-is-valid.ts:67`** —
+    `trimmed.toLowerCase().startsWith('javascript:')` only catches the
+    one canonical scheme. CodeQL's `js/incomplete-url-scheme-check`
+    expects the curated dangerous-scheme set. Added `vbscript:`
+    (dead on modern browsers but a no-cost completion). `data:`
+    intentionally omitted — legitimate `data:image/png;base64,…`
+    href usage exists.
+  - **[#20](https://github.com/pyreon/pyreon/issues/20)/[#21](https://github.com/pyreon/pyreon/issues/21)/[#22](https://github.com/pyreon/pyreon/issues/22) `@pyreon/solid-compat` `createStore` setStore** —
+    `Object.assign(obj, value)` + dynamic `obj[key] = …` with user-
+    supplied path keys allowed prototype pollution via
+    `setStore('__proto__', evil)` or `setStore({ __proto__: … })`.
+    Added a `DANGEROUS_KEYS` Set (`__proto__` / `constructor` /
+    `prototype`) and a `safeAssign` helper — same shape as
+    `@pyreon/reactivity reconcile.ts:34`. Path-key writes at any
+    depth refuse the dangerous identifiers.
+
+  **Polynomial-redos (`@pyreon/compiler`, `@pyreon/vite-plugin`):**
+
+  - **[#9](https://github.com/pyreon/pyreon/issues/9)/[#10](https://github.com/pyreon/pyreon/issues/10)/[#11](https://github.com/pyreon/pyreon/issues/11) `pyreon-intercept.ts` pre-filter regexes** — bound
+    `[^}]+` / `[^)]+` greedy quantifiers with `{0,500}` / `{1,500}`
+    caps. Pre-filter is a SCAN before the precise AST walker; losing
+    detector recall on pathologically long single-line input is
+    acceptable.
+  - **[#12](https://github.com/pyreon/pyreon/issues/12)/[#13](https://github.com/pyreon/pyreon/issues/13) `ssg-audit.ts` dynamic-route detection** — replaced
+    `/\[.+\]/` with `/\[[^\]]+\]/`. Filename basenames are OS-bounded
+    (~255 chars) anyway, but `[^\]]+` removes the backtrack potential
+    entirely.
+  - **[#16](https://github.com/pyreon/pyreon/issues/16) `vite-plugin.ts` ISLAND_CALL_RE** — bound `[\s\S]*?` lazy
+    match to `[^}]{0,500}`. Real island() option blocks are tiny.
+  - **[#17](https://github.com/pyreon/pyreon/issues/17) `vite-plugin.ts` NAMED_EXPORT_RE** — bound `[^}]+` to
+    `[^}]{1,500}`. Real `export { … }` blocks fit easily.
+  - **[#18](https://github.com/pyreon/pyreon/issues/18)/[#19](https://github.com/pyreon/pyreon/issues/19) `vite-plugin.ts` `split(/\s+as\s+/)`** — replaced with
+    a pre-compiled `AS_SPLIT_RE = /\s{1,10}as\s{1,10}/` at module
+    scope. Bounded `{1,10}` quantifiers eliminate worst-case
+    backtracking while keeping every realistic import-specifier
+    formatting matchable.
+
+  **Workflows (`.github/workflows/`):**
+
+  - **[#1](https://github.com/pyreon/pyreon/issues/1) perf.yml + [#54](https://github.com/pyreon/pyreon/issues/54) audit-leak-classes.yml** — added top-level
+    `permissions: contents: read` block. Both workflows are read-only
+    (perf records artifacts; audit reports findings).
+  - **[#2](https://github.com/pyreon/pyreon/issues/2) release.yml** — restructured permissions: top-level
+    `contents: read` (default), per-job `contents: write` +
+    `pull-requests: write` + `id-token: write` on `stable` and
+    `prerelease` (both publish via OIDC trusted publishing).
+  - **[#55](https://github.com/pyreon/pyreon/issues/55)/[#56](https://github.com/pyreon/pyreon/issues/56)/[#57](https://github.com/pyreon/pyreon/issues/57) audit-leak-classes.yml** — pinned `actions/checkout`,
+    `oven-sh/setup-bun`, `actions/upload-artifact` by full commit SHA.
+    Same SHAs as the rest of `.github/workflows/` (the project's
+    existing pinning convention).
+
+  ### Dismissed via API (20 false positives / won't fix)
+
+  **True false positives (9):**
+
+  - **[#28](https://github.com/pyreon/pyreon/issues/28)** `js/clear-text-logging` on `batch.ts:120` — CodeQL matched
+    "MAX_PASSES" as if it contained "password". Log is about
+    effect-flush pass count.
+  - **[#25](https://github.com/pyreon/pyreon/issues/25)/[#26](https://github.com/pyreon/pyreon/issues/26)** `js/bad-code-sanitization` on `vite-plugin.ts:1037,1307`
+    — `JSON.stringify()` IS the canonical safe-embed for a string into
+    emitted JS code.
+  - **[#23](https://github.com/pyreon/pyreon/issues/23)/[#24](https://github.com/pyreon/pyreon/issues/24)** `js/prototype-pollution-utility` on `reconcile.ts:103,107`
+    — `DANGEROUS_KEYS.has(key)` guard at line 93 already blocks
+    `__proto__` / `constructor` / `prototype` before the assignment.
+  - **[#34](https://github.com/pyreon/pyreon/issues/34)/[#35](https://github.com/pyreon/pyreon/issues/35)/[#36](https://github.com/pyreon/pyreon/issues/36)** `js/incomplete-sanitization` on `manifest/render.ts`
+    - `mcp/index.ts` — `.replace(/\|/g, '\\|')` is markdown table-cell
+      escaping of INTERNAL manifest API metadata (built at gen-docs time
+      from `defineManifest()` values), not user-input sanitization.
+  - **[#52](https://github.com/pyreon/pyreon/issues/52)** `js/http-to-file-access` on `font.ts` — deterministic font-
+    file fetch resolved from CSS `@font-face` declarations parsed at
+    build time, then written to a per-project cache dir keyed by a
+    base64 hash of the URL. Not user-driven HTTP content writing to
+    arbitrary paths.
+
+  **Won't fix (internal dev tooling, not security boundaries):**
+
+  - **[#42](https://github.com/pyreon/pyreon/issues/42)/[#43](https://github.com/pyreon/pyreon/issues/43)/[#44](https://github.com/pyreon/pyreon/issues/44)/[#45](https://github.com/pyreon/pyreon/issues/45)/[#47](https://github.com/pyreon/pyreon/issues/47)/[#48](https://github.com/pyreon/pyreon/issues/48)** `js/file-system-race` — CLI scaffolding
+    (`pyreon context`, `create-zero`), build-time Vite plugin
+    (`icons-plugin`), internal scripts (`check-bundle-budgets`,
+    `serve-ssg`). Single-process, single-developer environments; no
+    malicious actor with concurrent filesystem access in the threat
+    model.
+  - **[#30](https://github.com/pyreon/pyreon/issues/30)/[#31](https://github.com/pyreon/pyreon/issues/31)** `js/shell-command-injection-from-environment` —
+    internal repo audit (`audit-codebase`) + benchmark harness
+    (`bench/run-all`). Args controlled entirely by the script author,
+    not external input.
+  - **[#49](https://github.com/pyreon/pyreon/issues/49)/[#50](https://github.com/pyreon/pyreon/issues/50)** `js/indirect-command-line-injection` — internal git-
+    affected-packages selectors (`affected.ts`, `e2e-affected.ts`).
+    Args are git refs from the GitHub Actions workflow event.
+  - **[#3](https://github.com/pyreon/pyreon/issues/3)** `PinnedDependenciesID` on `release-native.yml:252`
+    (`npm install -g npm@latest`) — npm 11.5.1+ is the documented
+    requirement for OIDC trusted publishing. Pinning an exact version
+    blocks security patches; the OIDC token + Sigstore provenance is
+    the actual supply-chain guarantee.
+
+  ### Remaining (cannot be closed by a code PR)
+
+  - **[#4](https://github.com/pyreon/pyreon/issues/4) CodeReviewID** — Scorecard counts review approvals per merge;
+    squash-merge with self-review by maintainer doesn't count.
+    Project-policy issue, not code.
+  - **[#5](https://github.com/pyreon/pyreon/issues/5) MaintainedID** — auto-tracks repo activity, improves
+    organically.
+  - **[#6](https://github.com/pyreon/pyreon/issues/6) CIIBestPracticesID** — requires registering at
+    bestpractices.coreinfrastructure.org. Out of scope for this PR.
+  - **[#8](https://github.com/pyreon/pyreon/issues/8) FuzzingID** — requires OSS-Fuzz integration. Significant
+    infra work, out of scope.
+
+  ### Validation
+
+  - `@pyreon/zero` 957/958 tests pass (1 pre-existing skip)
+  - `@pyreon/compiler` 1257/1257 tests pass
+  - `@pyreon/vite-plugin` 104/104 tests pass
+  - `@pyreon/solid-compat` 218/218 tests pass
+  - `@pyreon/lint` 672/672 tests pass
+  - Lint + typecheck clean across all 5 packages
+
+  ### Closes the security/code-scanning sweep
+
+  37 alerts → 17 fixed in code + 20 dismissed with rationale + 4
+  external-posture deferred. Net open count expected after CodeQL
+  re-scans: 4 (Scorecard meta-checks).
+
+- [#751](https://github.com/pyreon/pyreon/pull/751) [`9be148b`](https://github.com/pyreon/pyreon/commit/9be148b21ef6a31a5e5c98ead363f5f532ee0399) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(lint): close the two scope gaps on `pyreon/no-iterate-children-without-resolve`
+
+  PR [#736](https://github.com/pyreon/pyreon/issues/736) shipped the rule with two deliberate scope deferrals: (a)
+  variable-bound iteration (`const xs = Array.isArray(X) ? X : [X];
+xs.filter(…)`) was only caught at the inline `.METHOD(…)` call site,
+  (b) the inner-component foot-gun (outer unwraps `props.children`,
+  inner inline-defined component iterates its own `innerProps.children`)
+  relied on per-source-path mitigation tracking that was implemented but
+  not regression-tested. This PR closes both gaps with bisect-verified
+  unit specs.
+
+  ## Gap 2 — variable-bound iteration
+
+  The risky shape now caught:
+
+  ```js
+  const Stagger = (props) => {
+    const [own] = splitProps(props, ["children"]);
+    const xs = Array.isArray(own.children) ? own.children : [own.children];
+    const filtered = xs.filter(isVNode); // ← FIRES (was silent pre-fix)
+    return h("div", null, ...filtered);
+  };
+  ```
+
+  Detection: a new per-scope `boundIterationTargets: Map<NAME, sourceKey>`
+  records `const NAME = Array.isArray(EXPR) ? EXPR : [EXPR]` bindings
+  (parenthesized form supported) at `VariableDeclarator` visit time. The
+  `CallExpression` visitor's `MemberExpression`/`ITER_METHODS` branch then
+  adds an `Identifier` case: if `obj.name` is in any enclosing scope's
+  `boundIterationTargets`, the same risky-iteration flag fires keyed on
+  the underlying source path.
+
+  The mitigation contract still wins by source-path:
+
+  ```js
+  // Does NOT fire — mitigation tracked per-source-path, applies to bound forms too.
+  const resolved = resolveChildren(own.children);
+  const xs = Array.isArray(resolved) ? resolved : [resolved];
+  xs.filter(isVNode);
+  ```
+
+  ## Gap 3 — per-source-path mitigation precision
+
+  The contract was already correct in the rule's `isCovered` lookup (keys
+  on `exprKey`, not "any mitigation in scope"), but no regression spec
+  locked it in. Added the canonical Outer/Inner shape that exercises it:
+
+  ```js
+  const Outer = (props) => {
+    const child = resolveChildren(props.children); // mitigates `props.children`
+    const Inner = (innerProps) => cloneVNode(innerProps.children, { ref }); // ← FIRES — different source path
+    return Inner({});
+  };
+  ```
+
+  `Outer`'s mitigation marks `unwrappedSources = {'props.children'}` +
+  `safeIdents = {'child'}`. `Inner` receives a fresh `innerProps`
+  parameter, so `innerProps.children` is a DIFFERENT source key the outer
+  mitigation never covered. The function-shape bug fires per-prop-source,
+  not per-component-tree, and now has the regression to prove it.
+
+  Bisect-verified at the over-permissive `isCovered` (returns true if ANY
+  mitigation exists in scope) — that spec fails; restored → 23/23 pass.
+
+  ## Coverage
+
+  - 4 new unit specs (now 23 total, up from 19): 2 FIRES for Gap 2 + 1
+    CONTROL for Gap 2 mitigation + 1 FIRES for Gap 3 cross-component
+    precision.
+  - Repo sweep across 988 source files in `packages/**` (excluding tests,
+    fixtures, manifest.ts) → **0 hits**: no new false positives from the
+    broader Gap-2 detection, and no remaining real bugs (consistent with
+    PR [#736](https://github.com/pyreon/pyreon/issues/736)'s library-side fixes leaving the tree clean).
+  - Gap 1 (Iterator-fallthrough shape: `if (Array.isArray(x)) return
+x.map(…); … return renderChild(x)`) remains intentionally out of
+    scope — that shape is the precise pattern framework primitives
+    (`Dynamic`, `Show`, `Switch`) use with direct `h()` rest args that
+    never reach the auto-wrap, so detection would false-positive on
+    every primitive's hot path.
+
+  ## Surfaces updated
+
+  - `packages/tools/lint/src/rules/reactivity/no-iterate-children-without-resolve.ts`
+    — `ScopeFrame.boundIterationTargets` + `findBoundIteration` helper +
+    `VariableDeclarator` extension + `CallExpression` `Identifier` branch
+  - `packages/tools/lint/src/tests/no-iterate-children-without-resolve.test.ts`
+    — 4 new specs (3 in "FIRES" + 1 in "DOES NOT FIRE (mitigation present)")
+
+- [#733](https://github.com/pyreon/pyreon/pull/733) [`441b5df`](https://github.com/pyreon/pyreon/commit/441b5dfa64ae52002d3e6612ec68566344ae999d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(tools): post-[#725](https://github.com/pyreon/pyreon/issues/725)/[#729](https://github.com/pyreon/pyreon/issues/729)/[#730](https://github.com/pyreon/pyreon/issues/730) leak-class sweep — vue-compat provide/createApp context-stack leaks + lint AstCache unbounded growth
+
+  Audit pass across all 12 `packages/tools/*` packages for the same patterns behind [#725](https://github.com/pyreon/pyreon/issues/725) (position-based pop on shared module-level stack under non-LIFO unmount), [#729](https://github.com/pyreon/pyreon/issues/729) (sibling-unmount LIFO violation), and [#730](https://github.com/pyreon/pyreon/issues/730) (refcount under-count + inflight-cache rejection). Found 3 HIGH suspects + 4 MEDIUM patterns. This PR fixes the three HIGH suspects.
+
+  ### 1. `@pyreon/core` — export `removeContextFrame`
+
+  The internal identity-based stack-frame remover already existed in `packages/core/core/src/context.ts` (used by `provide()` post-[#725](https://github.com/pyreon/pyreon/issues/725)) but wasn't exported. Compat layers and advanced consumers that call `pushContext` directly need this primitive to do safe identity-based cleanup. Now exported alongside `popContext` / `pushContext` from the package root. No behavior change for existing code — purely an additive export.
+
+  ### 2. `@pyreon/vue-compat` `provide(key, value)` — context-stack frame leak (exact [#725](https://github.com/pyreon/pyreon/issues/725) shape)
+
+  Vue's `provide(key, value)` semantics use string/symbol keys with a key→Context registry. The vue-compat implementation pushed a Map onto Pyreon's global context stack and registered `unmountCallbacks.push(() => popContext())` — the _position-based_ `stack.pop()` that [#725](https://github.com/pyreon/pyreon/issues/725) explicitly flagged as unsafe.
+
+  `@pyreon/core/context.ts` documents: _"The `provide()` helper does NOT use this — it uses identity-based removal via `removeContextFrame` because reactive boundaries can push snapshot frames between a component's `provide(ctx, value)` and its eventual unmount, making the top-of-stack unsafe to assume."_ vue-compat bypassed that safety.
+
+  Real-app symptom: two sibling components both call `provide('K', …)`. They unmount in renderer-driven order (keyed `<For>` removing a non-last item, `<Show>` flipping a non-last sibling, route nav unmounting an outer of nested provider chains). The first-unmounted's `popContext` removed the LAST sibling's frame instead of its own; the surviving sibling's frame was orphaned at the top of the global stack forever.
+
+  Fix: capture the frame at push, register `unmountCallbacks.push(() => removeContextFrame(frame))`. Mirror of the framework's own `provide()` fix from [#725](https://github.com/pyreon/pyreon/issues/725).
+
+  ### 3. `@pyreon/vue-compat` `createApp(C).provide(k, v).mount(el)` — app-level provisions pushed but never popped
+
+  `createApp.mount()` ran `pushContext(new Map([[ctx.id, value]]))` for each app-level provision but the returned unmount function only ran `pyreonMount`'s cleanup — leaving the app-level frames on the global stack forever, one per provision per mount cycle.
+
+  Real-app symptom: test harness or app entry calls `createApp(C).provide('A', a).provide('B', b).mount(el)` then unmounts. Two app-level frames stay on the context stack forever. SSG / re-mount cycles compound this.
+
+  Fix: track every pushed frame in a local array during `mount()`, remove each by identity (reverse order) in the returned unmount closure.
+
+  ### 4. `@pyreon/lint` `AstCache` — unbounded growth in LSP / `--watch` sessions
+
+  `AstCache` (used by `lint` programmatic API, the LSP server, and `pyreon-lint --watch`) keyed by FNV-1a hash of source text with `cache: Map<string, …>` and NO eviction strategy. Each entry holds a multi-MB oxc-parsed AST + `LineIndex`. A long-running LSP session editing across many files accumulates one entry per UNIQUE content snapshot ever seen — after hours of editing, hundreds of MB of heap.
+
+  Fix: LRU bound (default 256 entries). `Map` preserves insertion order, so the first key is the least-recently-used. `get` / `set` on an existing key refresh recency by re-inserting at the tail. Apps that lint thousands of distinct files in tight succession can bump the cap via `new AstCache(2048)`.
+
+  ### Regression tests + bisect
+
+  - `packages/tools/vue-compat/src/tests/provide-stack-leak-repro.test.ts` (2 specs) — `createApp().provide().mount(el); unmount()` returns the global context stack to baseline; 100 mount/unmount cycles do NOT accumulate frames. **Bisect-verified**: revert `vue-compat/src/index.ts` → both specs fail with stack-length assertions; restored → pass.
+  - `packages/tools/lint/src/tests/ast-cache-lru.test.ts` (5 specs) — cache never exceeds `maxEntries`, evicts LRU on overflow, `get`/`set` refresh recency, re-setting an existing key doesn't double-count, default cap is 256. **Bisect-verified**: revert `lint/src/cache.ts` → all 5 fail; restored → pass.
+
+  ### Validation
+
+  - `@pyreon/core` 510/510 tests pass
+  - `@pyreon/vue-compat` 218/218 tests pass (+ 2 new regression specs)
+  - `@pyreon/lint` 639/639 tests pass (+ 5 new LRU specs)
+  - Lint + typecheck clean across all 3 packages
+  - Zero public-API breakage (`removeContextFrame` is a purely additive export)
+
+  ### Audit byproducts (NOT in this PR — deliberately scoped follow-ups)
+
+  The 12-package audit also surfaced 4 MEDIUM-risk patterns documented in the audit report. Each filed-worthy as a separate small follow-up:
+
+  1. **`@pyreon/solid-compat` `createStore` per-path signal map grows unbounded** — one signal per UNIQUE read-path string. Problematic for stores with dynamic key spaces (dictionaries, pagination, logs).
+  2. **`@pyreon/solid-compat` `createResource` has the Class-F stale-resolution race** — `fetchPromise` overwritten on refetch with no AbortSignal; old promise's success handler still runs `setData`. Same shape as [#730](https://github.com/pyreon/pyreon/issues/730)-charts/storage inflight-promise bug.
+  3. **`@pyreon/svelte-compat` ChildInstance preservation discards `unmountCallbacks` without firing them** — the cached `writable.subscribe` short-circuit doesn't re-register the unsub after the reset. Subtle; needs a targeted reproducer.
+  4. **`@pyreon/vite-plugin` per-instance caches (`signalExportRegistry`, `resolveCache`, `pyreonWorkspaceDirCache`, `islandRegistry`) never evict** stale entries when source files are deleted/renamed during a long `vite dev` session. Bounded by source tree size in practice, but no invalidation on file delete.
+
+  Plus 6 LOW-risk patterns (devtools `expandedIds` accumulating across panel session, lint LSP debounceTimers not cleared on didClose, svelte-compat globalThis CTX_REGISTRY, vite-plugin HMR registry never deletes, vue-compat `_contextRegistry` global map, etc.) — none real leaks in practice, all bounded by user surface.
+
+  ### `pyreon doctor` baseline
+
+  Saved at `/tmp/doctor-tools-baseline.json`. 94 findings across `packages/tools/*`: 51 errors + 24 warnings + 19 infos. Top patterns: `lint/pyreon/no-window-in-ssr` (51, mostly devtools Chrome-extension false positives), `lint/pyreon/no-children-access` (10), `lint/pyreon/no-error-without-prefix` (10), `lint/pyreon/no-raw-addeventlistener` (9), `lint/pyreon/no-dom-in-setup` (7). Separate hardening pass; this PR addresses the structural bugs not caught by static lint rules.
+
+- Updated dependencies [[`6454cb7`](https://github.com/pyreon/pyreon/commit/6454cb794bb82db11e7842cb4a62a3765e3dd3ac), [`eea2972`](https://github.com/pyreon/pyreon/commit/eea29723e36088ec32d3e817e0f5f61606c9b949)]:
+  - @pyreon/compiler@0.23.0
+
 ## 0.22.0
 
 ### Patch Changes

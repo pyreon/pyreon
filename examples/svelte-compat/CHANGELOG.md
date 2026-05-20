@@ -1,5 +1,15 @@
 # @pyreon/example-svelte-compat
 
+## 0.0.5
+
+### Patch Changes
+
+- Updated dependencies [[`6571df8`](https://github.com/pyreon/pyreon/commit/6571df8209c5dc72619194ffe19359765b1d2d7f), [`af4d5d8`](https://github.com/pyreon/pyreon/commit/af4d5d83fc087d738dbe5084950476566d488d77), [`802e88b`](https://github.com/pyreon/pyreon/commit/802e88b3d132d5c73901571c805e8987eec4612a), [`165d452`](https://github.com/pyreon/pyreon/commit/165d45276bac894eb88ac469ec04e1313060fe41), [`441b5df`](https://github.com/pyreon/pyreon/commit/441b5dfa64ae52002d3e6612ec68566344ae999d)]:
+  - @pyreon/core@0.23.0
+  - @pyreon/svelte-compat@0.16.3
+  - @pyreon/runtime-dom@0.23.0
+  - @pyreon/reactivity@0.23.0
+
 ## 0.0.4
 
 ### Patch Changes
