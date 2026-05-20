@@ -1,115 +1,167 @@
 # @pyreon/test-utils
 
-Testing utilities for Pyreon UI system components — eliminates boilerplate when testing rocketstyle, styled, and provider-based components.
+> **Private — internal to the Pyreon monorepo. Not published to npm.**
 
-## Usage
+Testing utilities for Pyreon UI system + framework tests. Eliminates boilerplate when testing rocketstyle / styled / provider-based components, and ships the two helpers (`mountReactive`, `mountAndExpectOnce`) that catch fine-grained reactivity regressions — components patching DOM in place vs re-running their parent. Separate `/browser` subpath helpers for real-Chromium tests via `@vitest/browser`.
+
+## Subpath exports
+
+- `@pyreon/test-utils` — happy-dom / Node-vitest helpers (theme context, mocks, mount + reactive helpers).
+- `@pyreon/test-utils/browser` — real-Chromium helpers (`mountInBrowser`, `flush`) for `*.browser.test.ts(x)` files.
+
+## Main entry (`@pyreon/test-utils`)
 
 ```ts
 import {
   initTestConfig,
   withThemeContext,
+  buildThemeContextMap,
   getComputedTheme,
   renderProps,
+  resolveRocketstyle,
+  mountReactive,
+  mountAndExpectOnce,
   ThemeCapture,
   BaseComponent,
+  mockCss,
+  mockStyled,
 } from '@pyreon/test-utils'
+```
 
-// Setup mocks
+### Mock factories
+
+| Export | Purpose |
+|---|---|
+| `mockCss` | No-op CSS tagged template that returns `''` — drop-in for `@pyreon/ui-core`'s `config.css` in tests that don't need rendered CSS. |
+| `mockStyled` | Pass-through `styled` — returns the wrapped component unchanged. |
+| `initTestConfig(overrides?)` | Initialize `@pyreon/ui-core` `config` with the mocks. Returns a cleanup fn restoring the original. Pass `{ css, styled, component, textComponent }` to override individually. |
+
+```ts
 let cleanup: () => void
 beforeAll(() => { cleanup = initTestConfig() })
 afterAll(() => cleanup())
+```
 
-// Test theme computation
-it('computes theme correctly', () => {
-  const theme = getComputedTheme(MyButton, { state: 'primary' })
-  expect(theme.color).toBe('red')
-})
+### Theme context
 
-// Test rendered props
-it('renders with correct props', () => {
-  const props = renderProps(MyComponent, { label: 'Hello' })
-  expect(props.children).toBe('Hello')
-})
+| Export | Purpose |
+|---|---|
+| `withThemeContext(fn, options?)` | Run `fn()` inside a pushed rocketstyle theme context. Pops on the way out, even when `fn` throws. |
+| `buildThemeContextMap(options?)` | Lower-level — produces a `Map<symbol, unknown>` suitable for `pushContext()` directly. |
+| `TestThemeOptions` | `{ theme?, mode?: 'light' | 'dark', isDark?, isLight? }`. Defaults: `mode: 'light'`, `theme: { rootSize: 16 }`. |
 
-// Custom theme context
+```ts
 it('works in dark mode', () => {
-  const theme = getComputedTheme(MyButton, {}, { mode: 'dark' })
-  expect(theme.backgroundColor).toBe('#1a1a1a')
+  const theme = withThemeContext(
+    () => Button({ state: 'primary' }),
+    { mode: 'dark' },
+  )
 })
 ```
 
-## Mount-and-mutate helpers
+### Render helpers
 
-For testing fine-grained reactivity — i.e. proving a component patches its DOM in place when a signal changes, instead of re-running its parent — `@pyreon/test-utils` exposes two helpers built on `@pyreon/runtime-dom`:
-
-- **`mountReactive(vnode)`** — mounts a VNode tree into a fresh DOM container, returns `{ container, cleanup, unmount }`. Use this for any test that needs to assert DOM state after a signal mutation.
-- **`mountAndExpectOnce(factory, mutations)`** — mounts the factory's output and tracks how many times it was invoked across the supplied mutations. The canonical assertion is `parentCalls() === 1`, proving that signal-driven updates patch in place rather than re-instantiating the parent.
-
-Both require a DOM environment. Add `environment: 'happy-dom'` to your package's `vitest.config.ts`:
+| Export | Purpose |
+|---|---|
+| `getComputedTheme(Component, props?, ctx?)` | Render a rocketstyle component within theme context, resolve and return `$rocketstyle`. |
+| `renderProps(Component, props?, ctx?)` | Same render flow but returns the VNode's resolved props (after `attrs` / `theme` resolution). |
+| `resolveRocketstyle(value)` | Resolve a value that may be a function accessor or a plain object. |
 
 ```ts
-// packages/<your-package>/vitest.config.ts
-import { mergeConfig } from 'vite'
-import { defineConfig } from 'vitest/config'
-import { sharedConfig } from '../../vitest.shared'
+const theme = getComputedTheme(Button, { state: 'primary' })
+expect(theme.color).toBe('red')
 
-export default mergeConfig(
-  sharedConfig,
-  defineConfig({
-    test: { globals: true, environment: 'happy-dom' },
-  }),
-)
+const props = renderProps(MyComponent, { label: 'Hello' })
+expect(props.children).toBe('Hello')
 ```
 
-### Example: reactive text node patching
+### Mount-and-mutate helpers (require DOM)
+
+| Export | Purpose |
+|---|---|
+| `mountReactive(vnode)` | Mount a VNode into a fresh container appended to `document.body`. Returns `{ container, cleanup, unmount }`. Throws a clear error if `document` is undefined. |
+| `mountAndExpectOnce(factory, mutations)` | Mount `factory()`'s output, track how many times `factory` was invoked across the supplied mutations, return `{ container, parentCalls, cleanup }`. The canonical assertion is `expect(parentCalls()).toBe(1)`. |
+
+Both require `environment: 'happy-dom'` in your package's `vitest.config.ts` (or the merged `sharedConfig` from the repo root).
 
 ```ts
-import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { mountReactive } from '@pyreon/test-utils'
+import { h } from '@pyreon/core'
+import { mountReactive, mountAndExpectOnce } from '@pyreon/test-utils'
 
+// 1. text updates in place
 it('text updates when signal mutates', () => {
   const name = signal('Aisha')
   const { container, cleanup } = mountReactive(h('div', null, () => name()))
-
   expect(container.textContent).toBe('Aisha')
   name.set('Marcus')
   expect(container.textContent).toBe('Marcus')
-
   cleanup()
 })
-```
 
-### Example: parent-runs-once contract
-
-```ts
-import { h } from '@pyreon/core'
-import { DocText } from '@pyreon/document-primitives'
-import { signal } from '@pyreon/reactivity'
-import { mountAndExpectOnce } from '@pyreon/test-utils'
-
-it('parent runs once across 5 signal mutations', () => {
-  const headline = signal('Senior Engineer')
-
-  const { container, parentCalls, cleanup } = mountAndExpectOnce(
+// 2. parent-runs-once contract
+it('parent runs once across signal mutations', () => {
+  const headline = signal('A')
+  const { parentCalls, container, cleanup } = mountAndExpectOnce(
     () => h(DocText, null, () => headline()),
     () => {
-      headline.set('Staff Engineer')
-      headline.set('Principal Engineer')
-      headline.set('Distinguished Engineer')
-      headline.set('Fellow')
-      headline.set('CTO')
+      headline.set('B')
+      headline.set('C')
+      headline.set('D')
     },
   )
-
-  expect(parentCalls()).toBe(1)        // factory ran exactly once
-  expect(container.textContent).toBe('CTO')
+  expect(parentCalls()).toBe(1)
+  expect(container.textContent).toBe('D')
   cleanup()
 })
 ```
 
-The "parent runs once" pattern catches the bug fixed in PR #191 — a parent component mounted inside a reactive thunk like `{() => <Template prop={signal()} />}` would re-create the entire subtree on every signal change. The helper turns that bug into a one-line test assertion.
+The "parent runs once" pattern catches the bug fixed in PR #191 — a parent component mounted inside a reactive thunk like `{() => <Template prop={signal()} />}` would re-create the entire subtree on every signal change.
+
+### Component fixtures
+
+| Export | Purpose |
+|---|---|
+| `ThemeCapture` | Synthetic component that captures `$rocketstyle` / `$rocketstate` (resolving function accessors) for inspection in mock-vnode tests. |
+| `BaseComponent` | Synthetic component that exposes the resolved pseudo-state via data attributes — useful when asserting which dimension state the rocketstyle pipeline picked. |
+
+## Browser subpath (`@pyreon/test-utils/browser`)
+
+Real-Chromium helpers — import from `@pyreon/test-utils/browser` inside `*.browser.test.ts(x)` files that run under `@vitest/browser` with Playwright Chromium.
+
+| Export | Purpose |
+|---|---|
+| `mountInBrowser(vnode)` | Mount into a fresh `<div>` appended to `document.body` (isolated per-test root — no shared listeners between runs). Returns `{ container, unmount }`. |
+| `flush()` | Await a microtask + a `requestAnimationFrame` tick. Use after a signal write before asserting on DOM state that a reactive effect will apply. |
+| `MountInBrowserResult` | Type for `mountInBrowser`'s return value. |
+
+```ts
+import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
+import { signal } from '@pyreon/reactivity'
+import { h } from '@pyreon/core'
+
+it('renders in real Chromium', async () => {
+  const count = signal(0)
+  const { container, unmount } = mountInBrowser(
+    h('button', { onClick: () => count.update((n) => n + 1) }, () => count()),
+  )
+
+  expect(container.textContent).toBe('0')
+  container.querySelector('button')!.click()
+  await flush()
+  expect(container.textContent).toBe('1')
+
+  unmount()
+})
+```
+
+## Gotchas
+
+- **Mount helpers throw without `environment: 'happy-dom'`.** The error message points at the fix (add `environment: 'happy-dom'` to the package's `vitest.config.ts`). Browser-subpath helpers obviously need real Chromium via `@vitest/browser`.
+- **Always pair mock-vnode tests with real-`h()` tests.** The mock path is fast but doesn't exercise rocketstyle's attrs HOC pipeline. The real-`h()` test is the regression-net for PR #197-class bugs. `pyreon doctor --audit-tests` scans for files that have HIGH ratios of mock-vnode literals to real-`h()` calls.
+- **`mountAndExpectOnce` counts factory invocations, not effect re-runs.** The signal-driven re-run typically IS the effect (good — patches in place); the failure case is that the factory itself is re-invoked, which means a new VNode subtree is constructed and mounted.
+- **`initTestConfig` mutates `@pyreon/ui-core` config globally** — always pair with the returned `cleanup()` in an `afterAll` / `afterEach`. Otherwise theme assertions in unrelated test files will fail.
 
 ## License
 
-MIT
+MIT (private to the Pyreon monorepo).
