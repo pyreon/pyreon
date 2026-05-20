@@ -9,23 +9,38 @@ All packages under `@pyreon/*` scope.
 
 ## Benchmark Results (Chromium via Playwright)
 
-Pyreon (compiled) is in the top performance tier on the synthetic JS Framework Benchmark — **co-leader with Solid and Vue**, decisively ahead of React 19. **Not "fastest on all benchmarks"**: it wins 2 of 7 rows outright, ties ~3 within noise, and loses create/replace-1k to Vue by ~10%. Real-app head-to-head measurements still pending (see honest caveat below).
+Pyreon (compiled) is in the top performance tier on the synthetic JS Framework Benchmark — **co-leader with Solid / Vue / Svelte 5 on small lists**, decisively ahead of React 19, and **the only framework that's both fastest on partial-update AND fastest on create-10k** (signal-frameworks-with-template-cloning generally cluster ~105-113ms on large lists; React/Preact/Svelte 5 fall to 2-3× there). **Not "fastest on all benchmarks"**: it wins 4 of 7 rows outright, ties ~2-3 within noise, and loses create/replace-1k to Vue by ~1-3%. Real-app head-to-head measurements still pending (see honest caveat below).
 
-Numbers below are a **single representative run** of `examples/benchmark`'s `bench:fair` harness (real Chromium via Playwright, `vite preview` of the production build, **median of 20 timed runs**, 5 warmup discarded, DOM-verified renders, genuine `react@19` / `solid-js@1.9` / `vue@3.5` deps). Wall-clock ms is **machine-dependent** — the column-to-column *ratios* on one run are the signal, not the absolute ms. Reproduce: `cd examples/benchmark && bun bench:fair`.
+Numbers below are a **single representative run** of `examples/benchmark`'s `bench:fair` harness (real Chromium via Playwright, `vite preview` of the production build, **median of 20 timed runs**, 5 warmup discarded, DOM-verified renders, genuine `react@19` / `solid-js@1.9` / `vue@3.5` / `svelte@5` deps). Wall-clock ms is **machine-dependent** — the column-to-column *ratios* on one run are the signal, not the absolute ms. Reproduce: `cd examples/benchmark && bun bench:fair`.
 
-| Benchmark          | Pyreon (compiled) | Solid   | Vue     | React 19 | Honest read                          |
-| ------------------ | ----------------- | ------- | ------- | -------- | ------------------------------------ |
-| Create 1,000 rows  | 11.9ms            | 11.8ms  | 10.7ms  | 13.3ms   | tied w/ Solid; Vue ~10% faster       |
-| Replace 1,000 rows | 12.0ms            | 11.9ms  | 10.6ms  | 13.0ms   | tied w/ Solid; Vue ~12% faster       |
-| Partial update     | **5.1ms (best)**  | 9.2ms   | 6.6ms   | 8.4ms    | Pyreon fastest of all 7              |
-| Select row         | 4.6ms             | 4.6ms   | 4.7ms   | 8.3ms    | 3-way tie (Pyreon/Solid/Vue)         |
-| Swap rows          | 5.2ms             | 5.9ms   | 5.0ms   | 8.7ms    | tied w/ Vue; ahead of Solid          |
-| Clear rows         | 4.7ms             | 4.6ms   | 4.8ms   | 8.3ms    | 3-way tie                            |
-| Create 10,000 rows | **100.2ms (best)**| 107.5ms | 112.6ms | 222.5ms  | Pyreon fastest; React 2.2× slower    |
+| Benchmark          | Pyreon (compiled) | Solid    | Vue      | Svelte 5 | React 19 | Honest read                                          |
+| ------------------ | ----------------- | -------- | -------- | -------- | -------- | ---------------------------------------------------- |
+| Create 1,000 rows  | 11.9ms            | 11.5ms   | 11.8ms   | 13.2ms   | 13.6ms   | 3-way tie (Pyreon/Solid/Vue); Svelte/React ~15-18%   |
+| Replace 1,000 rows | 11.7ms            | 11.7ms   | **11.3ms** | 13.0ms | 14.2ms   | Vue wins by ~3%; Pyreon/Solid tied                   |
+| Partial update     | **5.2ms (best)**  | 8.9ms    | 7.5ms    | 7.0ms    | 8.2ms    | Pyreon fastest of all 7                              |
+| Select row         | 4.6ms             | **4.5ms** | 4.7ms   | 4.6ms    | 8.3ms    | 4-way tie within noise (Pyreon/Solid/Vue/Svelte)     |
+| Swap rows          | 5.5ms             | 5.3ms    | **5.0ms** | 6.5ms   | 8.3ms    | Vue wins; Pyreon/Solid within 10%; Svelte ~30% slow  |
+| Clear rows         | **4.6ms**         | 4.6ms    | 4.6ms    | 4.8ms    | 8.3ms    | 4-way tie at 4.6-4.8ms                               |
+| Create 10,000 rows | **102.6ms (best)**| 113.2ms  | 109.2ms  | 236.5ms  | 213.9ms  | Pyreon fastest; Svelte/React 2.1-2.3× slower         |
 
-(Vanilla JS floor for context: 7-80ms — none of the frameworks reach it, expected. Preact trails the pack on this bench: ~1.4-2.9× the leader.)
+(Vanilla JS floor for context: 0-78ms — none of the frameworks reach it, expected. Preact trails the pack: 1.0-2.9× the leader.)
 
-**What this means in practice:** Pyreon (compiled) is genuinely in the Solid/Vue tier and meaningfully ahead of React 19 — and it is the *outright fastest* on the two rows that matter most for large data tables (partial update, create-10k). It is **not** uniformly fastest: Vue edges it on cold create/replace-1k by ~10%. The earlier published table was **stale and inaccurate** (claimed create-1k 9ms vs measured 11.9ms, and React 33ms/540ms — predating React 19, which measures 13.3ms/222ms here); this section now reflects a measured current run. Earning a legitimate broad "fastest" claim still requires either (a) the compiler-pass collapse for rocketstyle (P0 in `.claude/plans/open-work-2026-q3.md` — no other framework has Pyreon's multi-dimensional theme system to compile away) or (b) a **real-app** head-to-head, which genuinely does not exist yet: the `examples/cpa-pw-app-{react,solid,vue,preact}` ports run on Pyreon's compat shims (Pyreon runtime, not the real frameworks), so they cannot serve as a fair Pyreon-vs-React real-app comparison. Building real-framework app ports is tracked, multi-day work — deliberately not faked here.
+**What this means in practice:** Pyreon (compiled) is genuinely in the Solid/Vue/Svelte 5 tier on small lists and pulls ahead at scale — it is the *outright fastest* on partial update AND create-10k, the two rows that matter most for large data tables. It is **not** uniformly fastest: Vue edges replace-1k and swap-rows by 1-3% each, Solid edges select-row by 0.1ms (within noise). The Svelte 5 finding is genuine: Svelte 5's runes are competitive on small/medium lists (matches Pyreon/Solid/Vue within noise) but pay per-row tracking cost at 10k scale — the same pattern that bites React/Preact. The earlier published table was **stale and inaccurate** before this update (claimed create-1k 9ms vs measured 11.9ms, and React 33ms/540ms — predating React 19, which measures 13.6ms/214ms here, AND missed Svelte 5 entirely); this section now reflects a measured current run with all 5 signal-based frameworks plus React 19. Earning a legitimate broad "fastest" claim still requires either (a) the compiler-pass collapse for rocketstyle (P0 in `.claude/plans/open-work-2026-q3.md` — no other framework has Pyreon's multi-dimensional theme system to compile away) or (b) a **real-app** head-to-head, which genuinely does not exist yet: the `examples/cpa-pw-app-{react,solid,vue,preact,svelte}` ports run on Pyreon's compat shims (Pyreon runtime, not the real frameworks), so they cannot serve as a fair Pyreon-vs-React real-app comparison. Building real-framework app ports is tracked, multi-day work — deliberately not faked here.
+
+**Methodology — what's strong, what's biased, what's missing:**
+- ✓ Real Chromium via Playwright on production `vite build` output (not happy-dom, not dev mode)
+- ✓ 20 timed runs + 5 warmup discarded; median + p90 (matches krausest convention)
+- ✓ DOM verification per iteration (`expectRows(N)` / `expectRowsWithSelected`) — frameworks that "win" by not committing throw, not pass
+- ✓ Seeded mulberry32 RNG with per-framework reset — every framework sees identical row labels
+- ✓ Fisher-Yates randomized execution order — no consistent first-run GC penalty
+- ✓ Real published deps (`react@19.2.4`, `solid-js@1.9.11`, `vue@3.5.x`, `svelte@5.x`) — no in-house ports
+- ✓ Per-framework idiomatic commit-wait strategy (React: `rAF + setTimeout(0)`; signal frameworks: `setTimeout(0)` after explicit commit; Svelte 5: `flushSync()` + tick)
+- ⚠ **Pyreon shows TWO entries** (uncompiled `h()` API + `(compiled)` template form); every other framework shows ONE. Justifiable because Solid is shown only via `solid-js/web template()` (its compiled form) and Svelte 5 only via its `.svelte` compiler output — apples-to-apples for "what users actually ship" is `Pyreon (compiled)` vs Solid vs Vue vs Svelte 5 vs React 19.
+- ⚠ `createSelector` for select-row in Pyreon/Solid vs `React.memo` for React — O(1) vs O(N). Each is idiomatic for its framework but is a genuine architectural advantage signal frameworks have over VDOM-diff.
+- ⚠ Memory accumulates across suites (all 8 framework bundles loaded into one page); order shuffle distributes which framework runs first under cold cache but later suites do measure under heavier heap pressure.
+- ⚠ No statistical-significance test on the 20 samples — a 5% difference may not be significant. Confidence-interval display is a follow-up.
+- ⚠ Numbers are machine-dependent (developer-class hardware). CI / lower-spec machines will produce different absolute ms; the *ratios* are the portable signal.
+- ❌ **Missing**: CPU throttling (Lighthouse-style), memory metrics (peak heap, GC pauses), and statistical significance tests.
 
 Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextNode.data`, zero-alloc mount pipeline (lazy hooks, lazy EffectScope, devtools gated on `__DEV__`, per-definition WeakMap caches in rocketstyle, dimension-prop memo at the rocketstyle wrapper, `$element` bundle interning + styler classCache extension)
 

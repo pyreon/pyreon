@@ -3,6 +3,7 @@ import { runPyreon } from './impl/pyreon'
 import { runPyreonTpl } from './impl/pyreon-tpl'
 import { runReact } from './impl/react'
 import { runSolid } from './impl/solid'
+import { runSvelte } from './impl/svelte'
 import { runVanilla } from './impl/vanilla'
 import { runVue } from './impl/vue'
 import type { BenchSuite } from './runner'
@@ -129,6 +130,7 @@ async function runAll(): Promise<BenchSuite[]> {
     { name: 'React 19', run: runReact },
     { name: 'Vue 3', run: runVue },
     { name: 'SolidJS', run: runSolid },
+    { name: 'Svelte 5', run: runSvelte },
     { name: 'Pyreon', run: runPyreon },
     { name: 'Pyreon (compiled)', run: runPyreonTpl },
   ]
