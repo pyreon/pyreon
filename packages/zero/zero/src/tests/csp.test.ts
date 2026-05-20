@@ -113,16 +113,36 @@ describe('cspMiddleware', () => {
     expect(headers.get('Content-Security-Policy')).toContain("'nonce-")
   })
 
-  it('useNonce returns the nonce set by middleware', () => {
+  it('useNonce returns empty string outside any request context (no cross-request bleed)', () => {
+    // REGRESSION (#734-followup) — pre-fix, the middleware wrote the
+    // nonce to a module-level `_clientNonce` variable; `useNonce()`
+    // returned that value as a "client-side fallback". The result
+    // was cross-request bleed on the server (request A's nonce leaked
+    // into request B's render if B's render path bypassed the
+    // provide-locals plumbing). Post-fix the fallback is `''` —
+    // nonces are SSR-only and read via per-request locals.
     const mw = cspMiddleware({
       directives: { scriptSrc: ["'self'", "'nonce'"] },
     })
-    const headers = new Headers()
-    const locals: Record<string, unknown> = {}
-    mw({ headers, locals } as any)
-    const nonce = useNonce()
-    expect(nonce).toBe(locals.cspNonce)
-    expect(nonce.length).toBeGreaterThan(0)
+    const headersA = new Headers()
+    const localsA: Record<string, unknown> = {}
+    mw({ headers: headersA, locals: localsA } as any)
+    expect(localsA.cspNonce).toBeDefined()
+
+    // useNonce called OUTSIDE any provideRequestLocals scope MUST NOT
+    // see localsA.cspNonce. Pre-fix returned localsA.cspNonce via
+    // _clientNonce; post-fix returns ''.
+    expect(useNonce()).toBe('')
+
+    const headersB = new Headers()
+    const localsB: Record<string, unknown> = {}
+    mw({ headers: headersB, locals: localsB } as any)
+    expect(localsB.cspNonce).toBeDefined()
+    expect(localsB.cspNonce).not.toBe(localsA.cspNonce)
+
+    // Even after a second request runs the middleware, useNonce
+    // outside any context still returns ''.
+    expect(useNonce()).toBe('')
   })
 
   it('useNonce returns empty string when no nonce middleware', () => {
