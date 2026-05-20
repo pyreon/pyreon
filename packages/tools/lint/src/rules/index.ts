@@ -52,6 +52,7 @@ import { noTernaryConditional } from './jsx/no-ternary-conditional'
 import { useByNotKey } from './jsx/use-by-not-key'
 import { noDomInSetup } from './lifecycle/no-dom-in-setup'
 import { noEffectInMount } from './lifecycle/no-effect-in-mount'
+import { initFnNeedsIdempotency } from './lifecycle/init-fn-needs-idempotency'
 import { noImperativeEffectOnCreate } from './lifecycle/no-imperative-effect-on-create'
 // Lifecycle
 import { noMissingCleanup } from './lifecycle/no-missing-cleanup'
@@ -62,6 +63,7 @@ import { noHeavyImportOnlyInHandler } from './performance/no-heavy-import-only-i
 // Performance
 import { noLargeForWithoutBy } from './performance/no-large-for-without-by'
 import { preferShowOverDisplay } from './performance/prefer-show-over-display'
+import { promiseRaceNeedsCleartimeout } from './performance/promise-race-needs-cleartimeout'
 // Reactivity
 import { noAsyncEffect } from './reactivity/no-async-effect'
 import { noBareSignalInJsx } from './reactivity/no-bare-signal-in-jsx'
@@ -128,18 +130,20 @@ export const allRules: Rule[] = [
   noMissingForBy,
   noPropsDestructure,
   noChildrenAccess,
-  // Lifecycle (5)
+  // Lifecycle (6)
   noMissingCleanup,
   noMountInEffect,
   noEffectInMount,
   noDomInSetup,
   noImperativeEffectOnCreate,
-  // Performance (5)
+  initFnNeedsIdempotency,
+  // Performance (6)
   noLargeForWithoutBy,
   noEffectInFor,
   noEagerImport,
   noHeavyImportOnlyInHandler,
   preferShowOverDisplay,
+  promiseRaceNeedsCleartimeout,
   // SSR (3)
   noWindowInSsr,
   noMismatchRisk,
@@ -208,6 +212,7 @@ export const allRules: Rule[] = [
 export {
   devGuardWarnings,
   dialogA11y,
+  initFnNeedsIdempotency,
   noAndConditional,
   // Reactivity
   noAsyncEffect,
@@ -278,6 +283,7 @@ export {
   preferRequestContext,
   preferShowOverDisplay,
   preferUseIsActive,
+  promiseRaceNeedsCleartimeout,
   // SSG (M3.5)
   invalidLoaderExport,
   missingGetStaticPaths,
