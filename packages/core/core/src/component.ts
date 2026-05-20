@@ -46,6 +46,22 @@ export function propagateError(err: unknown, hooks: LifecycleHooks): boolean {
 // Module-level stack of active ErrorBoundary handlers (innermost last).
 // ErrorBoundary pushes during its own setup (before children mount) so that
 // any child mountComponent error can dispatch up to the nearest boundary.
+//
+// Mutation contract: removal is IDENTITY-based (`lastIndexOf + splice`), not
+// position-based (`pop`). Sibling boundaries unmount in an order that's
+// driven by the renderer (keyed `<For>` reconciliation, `<Show>` flips,
+// route nav), NOT in strict LIFO push order. A position-based `pop()` would
+// remove the wrong frame whenever the unmount order diverges from the push
+// order — the first boundary's `onUnmount` would pop the last boundary's
+// handler, orphaning the first boundary's handler on the stack and removing
+// the surviving boundary's handler from it. Subsequent errors would then
+// route to the orphan (whose owning boundary's signal is already disposed,
+// so the error vanishes silently) and the surviving boundary's children's
+// errors would fall through to whichever boundary happens to sit at
+// `stack[length-1]`. Same root-cause shape as the `popContext()` bug
+// fixed in #725 for `provide()` — see
+// `.claude/rules/anti-patterns.md` "Position-based pop for stack frames
+// that may be pushed by reactive boundaries".
 
 const _errorBoundaryStack: ((err: unknown) => boolean)[] = []
 
@@ -53,8 +69,23 @@ export function pushErrorBoundary(handler: (err: unknown) => boolean): void {
   _errorBoundaryStack.push(handler)
 }
 
-export function popErrorBoundary(): void {
-  _errorBoundaryStack.pop()
+/**
+ * Remove a SPECIFIC handler from the error-boundary stack by reference
+ * identity. Each `ErrorBoundary` registers `onUnmount(() => popErrorBoundary(handler))`
+ * with its OWN handler — so unmount in any order (LIFO, FIFO, middle-out)
+ * correctly removes the right handler.
+ */
+export function popErrorBoundary(handler?: (err: unknown) => boolean): void {
+  if (handler === undefined) {
+    // Back-compat: legacy callers that don't pass a handler get the old
+    // pop-last behaviour. Internal `ErrorBoundary` setup always passes
+    // its handler now; any external direct callers (tests, advanced
+    // consumers) keep working with no-arg form.
+    _errorBoundaryStack.pop()
+    return
+  }
+  const idx = _errorBoundaryStack.lastIndexOf(handler)
+  if (idx !== -1) _errorBoundaryStack.splice(idx, 1)
 }
 
 /**
