@@ -118,8 +118,15 @@
       <h1>Pyreon — Framework Benchmark</h1>
       <p class="subtitle">
         Inspired by <a href="https://github.com/krausest/js-framework-benchmark" style="color:var(--accent)">js-framework-benchmark</a>.
-        Each test runs 5× in an off-screen container; mean ± stddev reported.<br>
-        <strong>Lower is better.</strong> All frameworks render the same row data (id + label).
+        Median + p90 across <strong>20 timed runs</strong> after <strong>adaptive warmup</strong> (5-15 iterations, stops when p90 stabilises within 10%).
+        DOM verification at every iteration — frameworks that fail to commit before the timer ends throw, not "win".<br>
+        <strong>Lower is better.</strong> All frameworks render the same row data (id + label) from a seeded mulberry32 RNG.<br>
+        <em>This in-page UI runs all 8 frameworks in one page (legacy mode, retained for click-to-run). The canonical
+        objective measurement is <code>bun bench:fair</code> — per-framework page isolation, forced GC,
+        bootstrap CI95, statistical tied-within-noise detection.</em><br>
+        <em>Pyreon is shown in two forms — <code>Pyreon</code> (the <code>h()</code> API directly) and
+        <code>Pyreon (compiled)</code> (what the compiler emits, what real apps run). Solid and Svelte are
+        compiled-only since that is their idiomatic shape; React/Vue/Preact run as their published packages.</em>
       </p>
     </header>
 

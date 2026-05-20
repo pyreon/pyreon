@@ -1,11 +1,32 @@
 /**
- * CLI benchmark — runs in Bun with happy-dom.
- * happy-dom must register BEFORE framework imports (React/Vue capture `document` at init).
+ * @deprecated NOT the canonical benchmark — use `bench-fair.ts` instead.
  *
- * Methodology:
- * - 5 warmup runs (discarded) + 20 timed runs per benchmark
- * - Labels reset between partial update runs to avoid accumulation
- * - Framework execution order randomized to avoid GC pressure bias
+ * CLI benchmark — runs in Bun with happy-dom. Retained ONLY for quick
+ * local sanity-checks during development; intentionally NOT updated in
+ * lockstep with `runner.ts` because the methodology gap below makes
+ * the absolute numbers untrustworthy regardless.
+ *
+ * **Why this runner is fundamentally less objective than `bench-fair.ts`**:
+ *   1. happy-dom has no real layout / paint engine — `getBoundingClientRect`
+ *      is a no-op, so the layout-flush step that's load-bearing in real
+ *      Chromium is dead code here.
+ *   2. There is NO DOM-verification step (React/Vue/Solid/Svelte may
+ *      "win" by not committing the render before the timer ends — the
+ *      whole point of the fair-bench methodology).
+ *   3. Sub-millisecond results land below `performance.now()` resolution
+ *      in happy-dom.
+ *   4. Adaptive warmup, forced GC, bootstrap CI95, CV, page isolation,
+ *      and Svelte 5 support are all `bench-fair.ts`-only.
+ *
+ * Use `bun bench:fair` for any number you'd report. This runner is fast
+ * (~10s vs 2-3min) but its numbers are NOT comparable to fair-bench
+ * output — different runtime, different methodology, different bias.
+ *
+ * Local-methodology (legacy):
+ * - Fixed 5 warmup runs (no stabilisation check)
+ * - 20 timed runs per benchmark
+ * - No GC forcing, no bootstrap CI, no DOM verification, no page isolation
+ * - Mean reported, not median + CI95
  */
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 

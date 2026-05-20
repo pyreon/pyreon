@@ -24,6 +24,22 @@ export interface BenchResult {
   min: number
   max: number
   runs: number
+  /**
+   * 95% bootstrap confidence interval on the median, in ms.
+   * `[lower, upper]`. Narrower interval = more stable measurement.
+   * Reported next to the median so a reader can tell a 5% delta apart
+   * from noise. Computed via 1000-resample percentile bootstrap.
+   */
+  ci95: [number, number]
+  /**
+   * Coefficient of variation (stddev / mean) on the timed samples,
+   * unitless. Lower = more stable. Common rule of thumb: <0.1 is
+   * tight, 0.1-0.3 is fine, >0.3 means the framework is jittery on
+   * this test and the median should be read with caution.
+   */
+  cv: number
+  /** Warmup iterations actually performed (≥ WARMUP_MIN, ≤ WARMUP_MAX). */
+  warmupUsed: number
 }
 
 export interface BenchSuite {
@@ -32,8 +48,25 @@ export interface BenchSuite {
   results: BenchResult[]
 }
 
-export const WARMUP = 5
+/**
+ * Warmup is now adaptive — we keep warming until the JS engine reaches
+ * steady state (rolling p90 over the last `STABILIZE_WINDOW` samples is
+ * within `STABILIZE_TOLERANCE` of the prior window). Bounded by
+ * `WARMUP_MIN`/`WARMUP_MAX` so a never-stabilizing framework can't
+ * deadlock the harness.
+ *
+ * Pre-fix `WARMUP = 5` was arbitrary — some frameworks reach steady
+ * state in 2-3 runs, others (React's MessageChannel scheduler) need
+ * 8-10. A fixed warmup either over-warms (wastes time on stable
+ * frameworks) or under-warms (penalises frameworks with longer
+ * stabilisation). Adaptive warmup is strictly more objective.
+ */
+export const WARMUP_MIN = 5
+export const WARMUP_MAX = 15
+export const STABILIZE_WINDOW = 3
+export const STABILIZE_TOLERANCE = 0.10 // 10% — rolling-window p90 deltas
 export const RUNS = 20
+export const BOOTSTRAP_RESAMPLES = 1000
 
 export interface BenchOptions {
   /** Reset hook fired before each (warmup + timed) iteration. */
@@ -48,22 +81,62 @@ export interface BenchOptions {
   verify?: (container: HTMLElement) => void
 }
 
+/**
+ * Force a GC pause between iterations when Chromium was launched with
+ * `--js-flags=--expose-gc`. Removes the dominant source of inter-run
+ * variance: heap growth from the previous iteration's allocations
+ * running an unsynchronised collection cycle DURING the next timed
+ * region. Bench-fair launches Chromium with the flag; in-page button
+ * runs without it (the optional chain short-circuits).
+ */
+function forceGc(): void {
+  const g = globalThis as { gc?: () => void }
+  g.gc?.()
+}
+
 export async function bench(
   name: string,
   suite: BenchSuite,
   fn: () => void | Promise<void>,
   options: BenchOptions = {},
 ): Promise<BenchResult> {
-  const samples: number[] = []
-
-  for (let i = 0; i < WARMUP + RUNS; i++) {
+  // Adaptive warmup. Track p90 of a rolling STABILIZE_WINDOW.
+  // Stop early when two consecutive windows agree within tolerance.
+  const warmupSamples: number[] = []
+  let warmupUsed = 0
+  while (warmupUsed < WARMUP_MAX) {
     if (options.reset) await options.reset()
+    const t0 = performance.now()
+    await fn()
+    suite.container.getBoundingClientRect()
+    const elapsed = performance.now() - t0
+    warmupSamples.push(elapsed)
+    warmupUsed++
+    if (options.verify) options.verify(suite.container)
+    forceGc()
+    await tick()
+    // Check stabilisation only after we have enough samples.
+    if (warmupUsed >= WARMUP_MIN && warmupUsed >= STABILIZE_WINDOW * 2) {
+      const recent = warmupSamples.slice(-STABILIZE_WINDOW)
+      const prior = warmupSamples.slice(-(STABILIZE_WINDOW * 2), -STABILIZE_WINDOW)
+      const recentP90 = quantile([...recent].sort((a, b) => a - b), 0.9)
+      const priorP90 = quantile([...prior].sort((a, b) => a - b), 0.9)
+      const delta = Math.abs(recentP90 - priorP90) / Math.max(priorP90, 1e-9)
+      if (delta < STABILIZE_TOLERANCE) break
+    }
+  }
+
+  // Timed run.
+  const samples: number[] = []
+  for (let i = 0; i < RUNS; i++) {
+    if (options.reset) await options.reset()
+    forceGc()
     const t0 = performance.now()
     await fn()
     // Force layout flush so DOM work is included in the measurement
     suite.container.getBoundingClientRect()
     const elapsed = performance.now() - t0
-    if (i >= WARMUP) samples.push(elapsed)
+    samples.push(elapsed)
     if (options.verify) options.verify(suite.container)
     // Yield to browser between runs
     await tick()
@@ -74,8 +147,24 @@ export async function bench(
   const p90 = quantile(sorted, 0.9)
   const min = sorted[0] ?? 0
   const max = sorted[sorted.length - 1] ?? 0
+  const mean = samples.reduce((s, x) => s + x, 0) / samples.length
+  const stddev = Math.sqrt(
+    samples.reduce((s, x) => s + (x - mean) ** 2, 0) / Math.max(samples.length - 1, 1),
+  )
+  const cv = mean > 0 ? stddev / mean : 0
+  const ci95 = bootstrapCI95(samples)
 
-  const result: BenchResult = { name, median, p90, min, max, runs: RUNS }
+  const result: BenchResult = {
+    name,
+    median,
+    p90,
+    min,
+    max,
+    runs: RUNS,
+    ci95,
+    cv,
+    warmupUsed,
+  }
   suite.results.push(result)
   return result
 }
@@ -90,6 +179,34 @@ function quantile(sorted: number[], q: number): number {
   if (lo === hi) return sorted[lo] ?? 0
   const frac = pos - lo
   return (sorted[lo] ?? 0) * (1 - frac) + (sorted[hi] ?? 0) * frac
+}
+
+/**
+ * 95% bootstrap CI on the median. Resamples `samples` with
+ * replacement `BOOTSTRAP_RESAMPLES` times, computes the median of
+ * each resample, takes the 2.5th and 97.5th percentiles of those
+ * resampled medians. Outputs `[lower, upper]` in ms.
+ *
+ * This is the standard non-parametric way to put error bars on a
+ * median that doesn't assume a normal distribution. Sample timing
+ * data is heavily skewed (GC pauses cause right-tail outliers) so
+ * normal-distribution CIs are wrong; bootstrap is appropriate.
+ */
+function bootstrapCI95(samples: number[]): [number, number] {
+  if (samples.length === 0) return [0, 0]
+  if (samples.length === 1) return [samples[0] ?? 0, samples[0] ?? 0]
+  const n = samples.length
+  const medians: number[] = []
+  for (let b = 0; b < BOOTSTRAP_RESAMPLES; b++) {
+    const resample: number[] = []
+    for (let i = 0; i < n; i++) {
+      resample.push(samples[Math.floor(Math.random() * n)] ?? 0)
+    }
+    resample.sort((a, b2) => a - b2)
+    medians.push(quantile(resample, 0.5))
+  }
+  medians.sort((a, b2) => a - b2)
+  return [quantile(medians, 0.025), quantile(medians, 0.975)]
 }
 
 export function tick(): Promise<void> {
