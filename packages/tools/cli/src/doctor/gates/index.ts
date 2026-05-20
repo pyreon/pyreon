@@ -8,6 +8,10 @@
  */
 
 export {
+  runAuditLeakClassesGate,
+  type AuditLeakClassesGateOptions,
+} from './audit-leak-classes'
+export {
   runAuditTypesGate,
   type AuditTypesGateOptions,
 } from './audit-types'

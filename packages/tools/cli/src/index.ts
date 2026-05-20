@@ -21,6 +21,7 @@ const VALID_GATES: GateName[] = [
   'audit-tests',
   'islands-audit',
   'ssg-audit',
+  'audit-leak-classes',
   'audit-types',
   'bundle-budgets',
 ]
@@ -34,7 +35,7 @@ function printUsage(): void {
 
   Commands:
     doctor [options]                 Project-wide health audit with 0-100 score.
-                                     Runs 8 fast gates by default; --full enables 2 slow gates.
+                                     Runs 9 fast gates by default; --full enables 2 slow gates.
     context [--out <path>]           Generate .pyreon/context.json for AI tools
 
   doctor options:
@@ -49,8 +50,8 @@ function printUsage(): void {
     --audit-min-risk high|medium|low Minimum risk for test-env audit (default: medium).
 
   doctor gates:
-    Fast: ${VALID_GATES.slice(0, 8).join(', ')}
-    Slow: ${VALID_GATES.slice(8).join(', ')} (require --full)
+    Fast: ${VALID_GATES.slice(0, 9).join(', ')}
+    Slow: ${VALID_GATES.slice(9).join(', ')} (require --full)
 
   Legacy doctor flags (still work — map to --only shortcuts):
     --audit-tests                    Equivalent to --only audit-tests
