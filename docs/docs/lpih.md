@@ -28,7 +28,7 @@ Three layers cooperate:
 
 Filesystem cache is the bridge because LSP servers are stdio-only — they can't easily IPC with a browser. The LSP re-reads on every inlay-hint request, so live edits land immediately.
 
-## Quick start
+## Quick start (zero config)
 
 ### 1. Activate the runtime registry in your dev mode
 
@@ -38,29 +38,38 @@ import { startLpihPolling } from '@pyreon/reactivity/lpih'
 
 if (import.meta.env.DEV) {
   activateReactiveDevtools()
-  startLpihPolling('/tmp/pyreon-lpih.json', 250)
+  startLpihPolling() // writes to <cwd>/.pyreon-lpih.json by default
 }
 ```
 
-### 2. Point your editor's LSP server at the cache
+### 2. Run `pyreon-lint --lsp` in your editor
 
-```bash
-PYREON_LPIH_CACHE=/tmp/pyreon-lpih.json pyreon-lint --lsp
+That's it — the LSP auto-discovers `<project-root>/.pyreon-lpih.json` by walking up from the file being linted to the nearest `package.json`. No env var required.
+
+### 3. Add the cache file to `.gitignore`
+
+```gitignore
+# Live Program Inlay Hints — runtime fire data (dev-mode only)
+.pyreon-lpih.json
 ```
 
-Or set the env var in your editor's LSP config (VS Code `settings.json`):
-
-```json
-{
-  "pyreon-lint.lsp.env": {
-    "PYREON_LPIH_CACHE": "/tmp/pyreon-lpih.json"
-  }
-}
-```
-
-### 3. Run your app
+### 4. Run your app
 
 On every signal write, the runtime bridge updates the cache file. The LSP picks it up on the next inlay-hint request (~150ms debounce). Ghost text appears at each creation line.
+
+### Custom paths (if needed)
+
+If you need to override the default location (e.g. shared dev environment, custom workspace layout), set the env var or pass an explicit path:
+
+```bash
+PYREON_LPIH_CACHE=/custom/path/lpih.json pyreon-lint --lsp
+```
+
+```ts
+startLpihPolling('/custom/path/lpih.json', 250)
+```
+
+The env var takes priority over the auto-discovered default.
 
 ## What you measure
 
@@ -194,7 +203,12 @@ import {
 ### `@pyreon/reactivity/lpih` (bridge / dev-mode integration)
 
 ```ts
-import { writeLpihCache, startLpihPolling } from '@pyreon/reactivity/lpih'
+import {
+  writeLpihCache,
+  startLpihPolling,
+  getDefaultLpihCachePath,
+  LPIH_DEFAULT_FILENAME,
+} from '@pyreon/reactivity/lpih'
 ```
 
 Subpath because the bridge depends on `node:fs/promises` (Node-only) and is dev-mode integration glue, not a core primitive. Separating it keeps the main entry slim and tree-shakes cleanly for browser-only consumers.
@@ -207,13 +221,23 @@ Turn on source-location capture + fire recording. Idempotent.
 
 Snapshot of fires aggregated by source location. Each entry: `{ loc, count, lastFire, kind }`.
 
-#### `writeLpihCache(path: string): Promise<number>`
+#### `writeLpihCache(path?: string): Promise<number>`
 
 Atomically write `getFireSummaries()` to a JSON file. Returns the number of fires written. Safe to call on every signal write; uses tmp+rename so readers never see a half-written file.
 
-#### `startLpihPolling(path: string, intervalMs?: number): () => void`
+When `path` is omitted, defaults to `<cwd>/.pyreon-lpih.json` (resolved via `getDefaultLpihCachePath()`). Throws if no default can be resolved (e.g. web worker without `process.cwd()`).
 
-Call `writeLpihCache(path)` at the given interval (default 250ms). Returns a disposer.
+#### `startLpihPolling(path?: string, intervalMs?: number): () => void`
+
+Call `writeLpihCache(path)` at the given interval (default 250ms). Returns a disposer. Same path-resolution as `writeLpihCache` — omit to use the zero-config default.
+
+#### `getDefaultLpihCachePath(): string | null`
+
+Returns `<cwd>/.pyreon-lpih.json` when `process.cwd` is available, `null` otherwise. The LSP server uses the same convention (walking up to the nearest `package.json`) so writer and reader agree without configuration.
+
+#### `LPIH_DEFAULT_FILENAME: '.pyreon-lpih.json'`
+
+The canonical filename constant. Stable identifier for tools that want to compose paths from a different directory root.
 
 ### `@pyreon/compiler`
 
@@ -244,7 +268,7 @@ The LSP server reads `PYREON_LPIH_CACHE` env var on every `textDocument/inlayHin
 
 ## What's next
 
-Foundation work — the editor extension (VS Code / Neovim) that auto-bridges devtools fire data to the cache file is a follow-up. The current setup requires manually wiring `startLpihPolling()` in your dev entry + setting `PYREON_LPIH_CACHE` for the LSP. A future VS Code extension will do both automatically.
+Foundation work — the editor extension (VS Code / Neovim) that auto-bridges devtools fire data to the cache file is a follow-up. The current setup requires manually wiring `startLpihPolling()` in your dev entry; the LSP auto-discovers the cache file from `<project-root>/.pyreon-lpih.json` so no env var is needed.
 
 A further follow-up: `@pyreon/vite-plugin` build-time location injection. This replaces the runtime stack capture with a compile-time literal (`signal(0, { __sourceLocation: { file, line, col } })`), eliminating the 2.2 µs/creation overhead even when devtools is active.
 
