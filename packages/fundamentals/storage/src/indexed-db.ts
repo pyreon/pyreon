@@ -32,8 +32,17 @@ function openDB(dbName: string, storeName: string): Promise<IDBDatabase> {
     request.onerror = () => reject(request.error)
   })
 
-  dbCache.set(cacheKey, promise)
-  return promise
+  // Cache the catching variant — without this, a rejected open promise
+  // (quota exceeded, browser settings, blocked upgrade) stays in
+  // `dbCache` forever; every subsequent `useIndexedDB(sameKey)` call
+  // returns the cached rejection. The `.catch` re-throws so callers
+  // still see the original error on this attempt.
+  const cachedPromise = promise.catch((err) => {
+    dbCache.delete(cacheKey)
+    throw err
+  })
+  dbCache.set(cacheKey, cachedPromise)
+  return cachedPromise
 }
 
 function idbGet(db: IDBDatabase, storeName: string, key: string): Promise<string | null> {

@@ -79,9 +79,16 @@ export function useStorage<T>(
   defaultValue: T,
   options?: StorageOptions<T>,
 ): StorageSignal<T> {
-  // Return existing signal if already registered
+  // Same-key consumers must each retain the cross-tab listener so a
+  // single consumer's `.remove()` doesn't detach the listener for
+  // siblings that still hold the (shared) signal. Pre-fix: only the
+  // FIRST call retained, but every `.remove()` released — driving
+  // refcount to 0 even with surviving consumers.
   const existing = getEntry<T>('local', key)
-  if (existing) return existing.signal
+  if (existing) {
+    retainStorageListener()
+    return existing.signal
+  }
 
   const storage = getWebStorage('local')
 
@@ -144,13 +151,24 @@ export function createStorageSignal<T>(
     storageSig.set(newValue)
   }
 
-  // Add remove method
+  // Add remove method.
+  //
+  // `.remove()` clears the underlying storage entry and resets the
+  // shared signal to its default. It also releases ONE refcount on the
+  // cross-tab listener (matching the per-consumer retain in `useStorage`).
+  // The REGISTRY entry intentionally STAYS — keeping it ensures surviving
+  // consumers continue receiving cross-tab `storage` events that match
+  // this key (the listener's dispatch table lives in the registry). Pre-
+  // fix `.remove()` deleted the registry entry, orphaning every other
+  // consumer holding the cached signal from cross-tab updates. The entry
+  // is small (one Map entry per key) and the key set is bounded by the
+  // user's storage-key vocabulary, so the residual cost is negligible
+  // compared to silently breaking cross-tab sync.
   storageSig.remove = () => {
     sig.set(defaultValue)
     if (storage) {
       storage.removeItem(key)
     }
-    removeEntry(backend, key)
     if (backend === 'local') {
       releaseStorageListener()
     }
