@@ -156,11 +156,23 @@ const rocketComponent: RocketComponent = (options) => {
   // mean the styler's classCache hits earlier and the resolves don't run.
   //
   // LRU bound prevents unbounded growth from prop-tuple churn (e.g. a
-  // table where every cell has a unique state). 32 entries per theme
-  // covers ~99% of unique combos in real apps.
+  // table where every cell has a unique state). 128 entries per theme
+  // covers the E2 perf-dashboard reference workload AND high-cardinality
+  // surfaces (data tables, design systems with many tokens crossed with
+  // size/variant axes, dashboards rendering many small interactive
+  // components). The previous cap of 32 was sized for the reference
+  // workload only and thrashed at higher cardinalities — measured 45%
+  // cache-miss rate (888/2000 lookups) on a 60-unique-tuple Button
+  // mount loop, 46% wall-clock regression vs the cap-fits-workload
+  // case. The rs-precompute spike (closed PR #761, results live on
+  // `spike/rocketstyle-precompute`) bisect-verified that raising the cap
+  // 32 → 128 zeroes the cold-resolves counter for that 60-tuple
+  // workload at zero implementation cost. Memory: ~12KB per definition
+  // per theme at 128 entries × ~100 bytes per entry — negligible vs
+  // the 46% runtime win.
   type RsMemoEntry = { readonly rocketstyle: object; readonly rocketstate: object }
   const _rsMemo = new WeakMap<object, Map<string, RsMemoEntry>>()
-  const RS_MEMO_CAP = 32
+  const RS_MEMO_CAP = 128
 
   // --------------------------------------------------------
   // COMPOSE - high-order components
