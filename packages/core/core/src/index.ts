@@ -8,6 +8,7 @@ export {
   captureContextStack,
   createContext,
   createReactiveContext,
+  getContextStackLength,
   popContext,
   provide,
   pushContext,

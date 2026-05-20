@@ -16,10 +16,10 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { ClassValue, ComponentFn, ForProps, VNode, VNodeChild } from '@pyreon/core'
 import {
-  captureContextStack,
   cx,
   ForSymbol,
   Fragment,
+  getContextStackLength,
   makeReactiveProps,
   normalizeStyleValue,
   popContext,
@@ -319,7 +319,7 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
   // remove its registered tags from the head store; running it during SSR
   // wipes the entries before `renderWithHead` reads them). See `renderComponent`
   // for the full architectural rationale.
-  const stackLenBefore = captureContextStack().length
+  const stackLenBefore = getContextStackLength()
   try {
     const { vnode: output } = runWithHooks(
       vnode.type as ComponentFn,
@@ -432,7 +432,7 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
   // signal).
   /* c8 ignore start */
   if (!ctx) {
-    const stackLenBefore = captureContextStack().length
+    const stackLenBefore = getContextStackLength()
     const { vnode: output } = runWithHooks(Suspense as ComponentFn, vnode.props)
     try {
       if (output !== null) await streamNode(output, enqueue)
@@ -608,7 +608,7 @@ async function renderComponent(vnode: VNode & { type: ComponentFn }): Promise<st
   // (the response ships, the process moves on); user-registered cleanup
   // is for the CSR lifecycle. `provide()`'s frame cleanup is the only
   // SSR-visible side effect and we handle it structurally below.
-  const stackLenBefore = captureContextStack().length
+  const stackLenBefore = getContextStackLength()
   const { vnode: output } = runWithHooks(vnode.type, mergeChildrenIntoProps(vnode))
 
   // Async component function (async function Component()) — await the promise
@@ -642,7 +642,7 @@ async function renderComponent(vnode: VNode & { type: ComponentFn }): Promise<st
  * effect of `provide()` (its context frame) without firing other hooks.
  */
 function trimContextStack(targetLen: number): void {
-  let current = captureContextStack().length
+  let current = getContextStackLength()
   while (current > targetLen) {
     popContext()
     current--
