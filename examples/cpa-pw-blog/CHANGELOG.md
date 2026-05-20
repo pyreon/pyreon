@@ -1,5 +1,20 @@
 # cpa-pw-blog
 
+## 0.0.8
+
+### Patch Changes
+
+- Updated dependencies [[`33ce726`](https://github.com/pyreon/pyreon/commit/33ce726710d776abc563f7a0fed6a8ac93c9213d)]:
+  - @pyreon/head@0.22.0
+  - @pyreon/server@0.22.0
+  - @pyreon/zero@0.22.0
+  - @pyreon/meta@0.22.0
+  - @pyreon/core@0.22.0
+  - @pyreon/reactivity@0.22.0
+  - @pyreon/router@0.22.0
+  - @pyreon/runtime-dom@0.22.0
+  - @pyreon/runtime-server@0.22.0
+
 ## 0.0.7
 
 ### Patch Changes
