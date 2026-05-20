@@ -7,10 +7,14 @@ on:
       - 'release/**'
   workflow_dispatch:
 
+# CodeQL #2 (TokenPermissionsID): default read-only at the top level;
+# per-job blocks below grant only what each step actually needs. Both
+# publishing jobs (`stable`, `prerelease`) need the same write grants:
+# `contents: write` (git tags + version commits), `pull-requests: write`
+# (changeset's Release PR), `id-token: write` (npm OIDC trusted
+# publishing).
 permissions:
-  contents: write
-  pull-requests: write
-  id-token: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -22,6 +26,10 @@ jobs:
     if: github.ref == 'refs/heads/main'
     name: Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
     # 15 min was too tight for a fresh full-monorepo publish — the 0.15.0
     # release timed out mid-publish at minute 15 with ~5 of 55 packages
     # still queued. Each `npm publish --provenance` takes 5-15s and the
@@ -182,6 +190,10 @@ jobs:
     name: Publish Prerelease
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
     steps:
       - name: Harden runner
         uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3

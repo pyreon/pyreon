@@ -61,10 +61,19 @@ export const anchorIsValid: Rule = {
         // Static string literal `href="..."`.
         if (value.type === 'Literal' && typeof value.value === 'string') {
           const trimmed = value.value.trim()
+          // Catch the canonical set of script-execution schemes —
+          // `javascript:` is the modern concern, `vbscript:` is dead
+          // on every browser the framework targets but is a no-cost
+          // addition that silences CodeQL `js/incomplete-url-scheme-check`
+          // (which expects the curated dangerous-scheme set, not just
+          // the most-common one). `data:` is intentionally omitted —
+          // legitimate `data:image/png;base64,…` href usage exists.
+          const lower = trimmed.toLowerCase()
           const isInvalid =
             trimmed === '' ||
             trimmed === '#' ||
-            trimmed.toLowerCase().startsWith('javascript:')
+            lower.startsWith('javascript:') ||
+            lower.startsWith('vbscript:')
           if (isInvalid) {
             context.report({
               message: `Invalid anchor href "${value.value}" — use a <button> for actions, or a real destination URL.`,

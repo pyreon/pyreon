@@ -1107,7 +1107,14 @@ export function generateRouteModuleFromRoutes(
     // so `_hmrId` is dead metadata once built.
     opts.push(`hmrId: ${JSON.stringify(fullPath)}`)
     const optsStr = `, { ${opts.join(', ')} }`
-    imports.push(`const ${name} = lazy(() => import("${fullPath}")${optsStr})`)
+    // CodeQL #27 — `import(${...})` was interpolating `fullPath` raw
+    // into emitted JS. While the path comes from the project's own
+    // filesystem scan (developer-controlled), any character that
+    // breaks the surrounding `"..."` literal (a stray quote, backslash,
+    // newline) would corrupt the generated module source. `JSON.stringify`
+    // is the canonical safe-embed for a string into JS code — same
+    // pattern the file uses for `hmrId` two lines above.
+    imports.push(`const ${name} = lazy(() => import(${JSON.stringify(fullPath)})${optsStr})`)
     return name
   }
 

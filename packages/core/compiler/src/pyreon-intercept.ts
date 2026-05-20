@@ -994,15 +994,19 @@ export function hasPyreonPatterns(code: string): boolean {
     /\b(?:add|remove)EventListener\s*\(/.test(code) ||
     (/\bDate\.now\s*\(/.test(code) && /\bMath\.random\s*\(/.test(code)) ||
     /on[A-Z]\w*\s*=\s*\{\s*undefined\s*\}/.test(code) ||
-    /=\s*\(\s*\{[^}]+\}\s*[:)]/.test(code) ||
-    // props-destructured-body: `const { … } = <ident>` anywhere. Loose
-    // on purpose — the AST walker is the precise gate; this only has to
-    // avoid skipping the full walk.
-    /\b(?:const|let|var)\s+\{[^}]*\}\s*=\s*[A-Za-z_$]/.test(code) ||
+    // CodeQL #9/#10/#11: bound the `[^}]+` / `[^)]+` ranges so a
+    // pathological single-line input can't drive polynomial backtracking.
+    // 500 chars is larger than any realistic destructure / if-condition
+    // in source; if a legitimate pattern exceeds it we lose detector
+    // recall on that one line, acceptable (this is a footgun-detector
+    // PRE-FILTER — the AST walker is the precise gate).
+    /=\s*\(\s*\{[^}]{1,500}\}\s*[:)]/.test(code) ||
+    // props-destructured-body: `const { … } = <ident>` anywhere.
+    /\b(?:const|let|var)\s+\{[^}]{0,500}\}\s*=\s*[A-Za-z_$]/.test(code) ||
     // signal-write-as-call: `const X = signal(` declaration anywhere
     /\b(?:signal|computed)\s*[<(]/.test(code) ||
     // static-return-null-conditional: `if (...) return null` anywhere
-    /\bif\s*\([^)]+\)\s*\{?\s*return\s+null\b/.test(code) ||
+    /\bif\s*\([^)]{1,500}\)\s*\{?\s*return\s+null\b/.test(code) ||
     // as-unknown-as-vnodechild
     /\bas\s+unknown\s+as\s+VNodeChild\b/.test(code) ||
     // query-options-as-function: a query hook called with an object literal

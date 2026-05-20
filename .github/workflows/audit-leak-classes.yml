@@ -29,6 +29,11 @@ on:
   pull_request:
     types: [labeled, synchronize]
 
+# CodeQL #54 (TokenPermissionsID): explicit top-level read-only block.
+# Per-job blocks below grant only what each step actually needs.
+permissions:
+  contents: read
+
 jobs:
   audit:
     # Only run on leak-audit-labelled PRs — skip by default.
@@ -39,9 +44,12 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      # CodeQL #55/#56 (PinnedDependenciesID) — pin actions by full
+      # commit SHA, not tag. Matches the pinning convention used
+      # everywhere else in `.github/workflows/`.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: latest
 
@@ -81,7 +89,8 @@ jobs:
             echo "</details>"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v4
+      # CodeQL #57 — SHA-pinned per the workflow convention.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.1
         with:
           name: audit-leak-classes-${{ github.run_id }}
           path: audit-out/
