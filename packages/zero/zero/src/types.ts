@@ -103,6 +103,46 @@ export interface ISRConfig {
    * }
    */
   cacheKey?: (req: Request) => string
+  /**
+   * Pluggable cache backing for multi-instance / horizontally-scaled
+   * production. Default: in-memory `Map` per-process (capped by
+   * `maxEntries`). Pass a Redis / Vercel KV / Cloudflare KV / Upstash
+   * adapter (anything matching the `ISRStore` interface from
+   * `@pyreon/zero/server`) for state shared across instances — a
+   * revalidation in one pod is visible to all pods.
+   *
+   * The store interface accepts BOTH sync and async returns; the
+   * handler `await`s the result either way, so an in-memory store
+   * stays cheap (no Promise allocation per request) while a Redis
+   * store can return its native promises directly.
+   *
+   * When set, `maxEntries` is ignored — the custom store owns its own
+   * eviction / TTL policy.
+   *
+   * @example
+   * // Redis adapter (uses `ioredis` or `@upstash/redis`):
+   * const redis = new Redis(...)
+   * const store: ISRStore = {
+   *   async get(key) {
+   *     const v = await redis.get(`isr:${key}`)
+   *     return v ? JSON.parse(v) : undefined
+   *   },
+   *   async set(key, entry) {
+   *     await redis.set(`isr:${key}`, JSON.stringify(entry), 'EX', 86400)
+   *   },
+   *   async delete(key) {
+   *     await redis.del(`isr:${key}`)
+   *   },
+   * }
+   *
+   * isr: { revalidate: 60, store }
+   */
+  // The actual type lives in `./isr` to avoid `types.ts` pulling the
+  // implementation file; we type it as `unknown` here and let consumers
+  // pass an `ISRStore` directly — `createISRHandler`'s signature checks
+  // the shape statically.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  store?: import('./isr').ISRStore<any>
 }
 
 // ─── Zero config ─────────────────────────────────────────────────────────────
