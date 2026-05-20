@@ -11,6 +11,7 @@ export {
   popContext,
   provide,
   pushContext,
+  removeContextFrame,
   restoreContextStack,
   setContextStackProvider,
   useContext,
