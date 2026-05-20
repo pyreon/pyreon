@@ -29,7 +29,11 @@
 // exactly this). The Lens only needs it when hints are actually
 // computed, so the value is lazy-loaded + memoized. The TYPE import is
 // `import type` → fully erased at runtime, zero eager-load cost.
-import type { ReactivityFinding, analyzeReactivity as AnalyzeFn } from '@pyreon/compiler'
+import type {
+  analyzeReactivity as AnalyzeFn,
+  firesToCreationSiteFindings as FiresToHintsFn,
+  ReactivityFinding,
+} from '@pyreon/compiler'
 import { AstCache } from '../cache'
 import { getPreset } from '../config/presets'
 import { allRules } from '../rules/index'
@@ -120,20 +124,123 @@ async function loadAnalyze(): Promise<typeof AnalyzeFn> {
   return _analyze
 }
 
+/**
+ * Live Program Inlay Hints (LPIH) — optional runtime fire-count cache.
+ *
+ * When the LSP starts with `PYREON_LPIH_CACHE=/path/to/fires.json` set,
+ * each `textDocument/inlayHint` request re-reads that file. The runtime
+ * side (`@pyreon/reactivity`'s `getFireSummaries()`) is written to the
+ * file by a bridge (devtools extension, dev server endpoint, or a test
+ * harness). Each fire datum becomes a creation-site inlay hint at the
+ * source line where `signal()` / `computed()` / `effect()` was called.
+ *
+ * Shape on disk:
+ *   { fires: [{ file, line, count, kind?, lastFire? }, ...] }
+ *
+ * Read errors (file missing, malformed JSON) are silent — LPIH degrades
+ * gracefully to the static Reactivity-Lens hints only.
+ */
+let _lpihLoaders:
+  | {
+      firesToHints: typeof FiresToHintsFn
+    }
+  | undefined
+
+async function loadLpih(): Promise<NonNullable<typeof _lpihLoaders>> {
+  if (!_lpihLoaders) {
+    const m = await import('@pyreon/compiler')
+    _lpihLoaders = { firesToHints: m.firesToCreationSiteFindings }
+  }
+  return _lpihLoaders
+}
+
+/** @internal — exported for the unit-testable roundtrip. */
+export interface LPIHCacheEntry {
+  file: string
+  line: number
+  count: number
+  kind?: 'signal' | 'derived' | 'effect'
+  lastFire?: number | null
+}
+
+/** @internal — readable shape of the LPIH cache file. */
+export interface LPIHCacheFile {
+  fires: LPIHCacheEntry[]
+}
+
+/**
+ * Read + parse the LPIH cache file. Returns null on any error
+ * (file missing, JSON malformed, shape unexpected). Silent failure is
+ * the right call — the cache is opportunistic enrichment, not a
+ * load-bearing dependency.
+ *
+ * @internal — exported for tests.
+ */
+export async function _readLpihCache(
+  path: string | undefined,
+): Promise<LPIHCacheEntry[]> {
+  if (!path) return []
+  try {
+    const fs = await import('node:fs/promises')
+    const raw = await fs.readFile(path, 'utf8')
+    const parsed = JSON.parse(raw) as unknown
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      !Array.isArray((parsed as { fires?: unknown }).fires)
+    ) {
+      return []
+    }
+    const fires = (parsed as { fires: unknown[] }).fires.filter(
+      (f): f is LPIHCacheEntry =>
+        typeof f === 'object' &&
+        f !== null &&
+        typeof (f as LPIHCacheEntry).file === 'string' &&
+        typeof (f as LPIHCacheEntry).line === 'number' &&
+        typeof (f as LPIHCacheEntry).count === 'number',
+    )
+    return fires
+  } catch {
+    return []
+  }
+}
+
 export async function computeReactivityHints(
   filePath: string,
   text: string,
+  options: { liveFires?: readonly LPIHCacheEntry[] } = {},
 ): Promise<{ inlayHints: LspInlayHint[]; footgunDiagnostics: LspDiagnostic[] }> {
   let findings: ReactivityFinding[]
   try {
     const analyzeReactivity = await loadAnalyze()
     findings = analyzeReactivity(text, filePath).findings
   } catch {
-    return { inlayHints: [], footgunDiagnostics: [] }
+    findings = []
   }
 
   const inlayHints: LspInlayHint[] = []
   const footgunDiagnostics: LspDiagnostic[] = []
+
+  // ── LPIH: synthesize creation-site hints from runtime fire data ──────
+  // These are LIVE inlay hints (label: "🔥 N×") at the line where the
+  // signal/computed/effect was created. Different from the static spans
+  // below (which sit at reactive READ sites in JSX).
+  if (options.liveFires && options.liveFires.length > 0) {
+    try {
+      const { firesToHints } = await loadLpih()
+      const liveFindings = firesToHints(options.liveFires, filePath)
+      for (const f of liveFindings) {
+        inlayHints.push({
+          position: { line: f.line - 1, character: 0 },
+          label: `🔥 ${f.detail}`,
+          tooltip: `Runtime: ${f.detail}`,
+          paddingLeft: true,
+        })
+      }
+    } catch {
+      // LPIH is opportunistic — degrade silently to static hints only.
+    }
+  }
 
   for (const f of findings) {
     if (f.kind === 'footgun') {
@@ -268,25 +375,30 @@ export function _handleMessage(
     if (text == null) {
       return { jsonrpc: '2.0', id: msg.id, result: [] }
     }
-    // Async — the compiler value is lazy-loaded on first use (see
-    // `loadAnalyze`). The transport awaits the returned promise.
-    return computeReactivityHints(uri.replace('file://', ''), text).then(
-      ({ inlayHints }) => {
-        // Honor the requested visible range if the client sent one (large
-        // files send a window; the editor re-requests on scroll).
-        const range = msg.params.range as
-          | { start: { line: number }; end: { line: number } }
-          | undefined
-        const hints = range
-          ? inlayHints.filter(
-              (h) =>
-                h.position.line >= range.start.line &&
-                h.position.line <= range.end.line,
-            )
-          : inlayHints
-        return { jsonrpc: '2.0', id: msg.id, result: hints }
-      },
-    )
+    const filePath = uri.replace('file://', '')
+    // LPIH cache file is configured via env var. Re-read on every request
+    // so live-edit + dev-server roundtrips reflect immediately. Read first,
+    // then compute hints once with the fires in hand — no double-pass.
+    const cachePath = process.env.PYREON_LPIH_CACHE
+    return _readLpihCache(cachePath).then(async (fires) => {
+      const { inlayHints } = await computeReactivityHints(
+        filePath,
+        text,
+        fires.length ? { liveFires: fires } : {},
+      )
+      // Honor the requested visible range if the client sent one (large
+      // files send a window; the editor re-requests on scroll).
+      const range = msg.params.range as
+        | { start: { line: number }; end: { line: number } }
+        | undefined
+      const hints = range
+        ? inlayHints.filter(
+            (h) =>
+              h.position.line >= range.start.line && h.position.line <= range.end.line,
+          )
+        : inlayHints
+      return { jsonrpc: '2.0', id: msg.id, result: hints }
+    })
   }
 
   if (msg.method === 'textDocument/didClose') {

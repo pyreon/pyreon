@@ -237,7 +237,10 @@ export default defineConfig({
         {
           text: 'Developer Tools',
           collapsed: true,
-          items: [{ text: 'DevTools', link: '/docs/devtools' }],
+          items: [
+            { text: 'DevTools', link: '/docs/devtools' },
+            { text: 'Live Program Inlay Hints', link: '/docs/lpih' },
+          ],
         },
       ],
     },

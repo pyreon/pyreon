@@ -16,6 +16,8 @@ export type {
   ReactivityFindingKind,
 } from './reactivity-lens'
 export { analyzeReactivity, formatReactivityLens } from './reactivity-lens'
+export type { LPIHFireDatum, LPIHMergeOptions } from './lpih'
+export { firesToCreationSiteFindings, mergeFireDataIntoFindings } from './lpih'
 export type { ComponentInfo, IslandInfo, ProjectContext, RouteInfo } from './project-scanner'
 export { generateContext } from './project-scanner'
 export type {

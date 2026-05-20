@@ -6,19 +6,23 @@ export { type Computed, type ComputedOptions, computed } from './computed'
 export { createSelector } from './createSelector'
 export { inspectSignal, onSignalUpdate, why } from './debug'
 export type {
+  FireSummary,
   ReactiveEdge,
   ReactiveFire,
   ReactiveGraph,
   ReactiveNode,
   ReactiveNodeKind,
+  SourceLocation,
 } from './reactive-devtools'
 export {
   activateReactiveDevtools,
   deactivateReactiveDevtools,
+  getFireSummaries,
   getReactiveFires,
   getReactiveGraph,
   isReactiveDevtoolsActive,
 } from './reactive-devtools'
+export { startLpihPolling, writeLpihCache } from './lpih-bridge'
 export type { ReactiveTraceEntry } from './reactive-trace'
 export { clearReactiveTrace, getReactiveTrace } from './reactive-trace'
 export {
