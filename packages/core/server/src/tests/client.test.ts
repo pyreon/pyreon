@@ -77,6 +77,44 @@ describe('startClient', () => {
 describe('hydrateIslands', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
+    // Reset the dev-mode HMR re-register guard so each spec starts clean.
+    delete (window as unknown as Record<string, unknown>).__pyreon_island_hydrate_active__
+  })
+
+  test('dev warns when called twice without invoking the previous cleanup (HMR footgun)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    // First call — no warning, registers the guard flag on window.
+    const cleanup1 = hydrateIslands({})
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('hydrateIslands() called again'),
+    )
+
+    // Second call WITHOUT calling cleanup1 — leaks listeners. Warn loudly.
+    const cleanup2 = hydrateIslands({})
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('hydrateIslands() called again without invoking the previous'),
+    )
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('import.meta.hot.dispose(cleanup)'),
+    )
+
+    // The second call still proceeds — HMR / route-change DOES require
+    // re-registration. The warning is informational, not blocking.
+    expect(typeof cleanup2).toBe('function')
+
+    // After invoking cleanup, the guard clears — subsequent re-register
+    // is silent again.
+    cleanup1()
+    cleanup2()
+    warnSpy.mockClear()
+    const cleanup3 = hydrateIslands({})
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('hydrateIslands() called again'),
+    )
+    cleanup3()
+
+    warnSpy.mockRestore()
   })
 
   test('returns cleanup function with no islands on page', () => {
