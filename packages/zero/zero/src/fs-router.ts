@@ -1107,7 +1107,8 @@ export function generateRouteModuleFromRoutes(
     // so `_hmrId` is dead metadata once built.
     opts.push(`hmrId: ${JSON.stringify(fullPath)}`)
     const optsStr = `, { ${opts.join(', ')} }`
-    imports.push(`const ${name} = lazy(() => import("${fullPath}")${optsStr})`)
+    // JSON.stringify for safe-embed — matches the `hmrId` line above.
+    imports.push(`const ${name} = lazy(() => import(${JSON.stringify(fullPath)})${optsStr})`)
     return name
   }
 

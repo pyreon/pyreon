@@ -37,6 +37,11 @@ on:
   schedule:
     - cron: '17 3 * * *'
 
+# Read-only default — this workflow checks out source + uploads artifacts;
+# no write surface needed.
+permissions:
+  contents: read
+
 jobs:
   perf:
     # Only run on perf-labelled PRs — skip by default.

@@ -977,15 +977,36 @@ export function createStore<T extends object>(
   /**
    * Applies a value at a path, supporting numeric indices (array access)
    * and filter predicates (functions that select matching array items).
+   *
+   * Prototype-pollution guard: `setStore` takes user-controlled path
+   * keys and value objects, so `setStore('__proto__', {…})` or
+   * `setStore({ __proto__: {…} })` could mutate `Object.prototype`
+   * without the `DANGEROUS_KEYS` filter. Same shape as
+   * `@pyreon/reactivity reconcile.ts:34`.
    */
+  const DANGEROUS_KEYS: Set<unknown> = new Set([
+    '__proto__',
+    'constructor',
+    'prototype',
+  ])
+  /** Object.assign equivalent that skips `__proto__` / `constructor` / `prototype`. */
+  function safeAssign(target: object, source: unknown): void {
+    if (!source || typeof source !== 'object') return
+    for (const k of Object.keys(source)) {
+      if (DANGEROUS_KEYS.has(k)) continue
+      ;(target as Record<string, unknown>)[k] = (source as Record<string, unknown>)[k]
+    }
+  }
+
   function applyAtPath(obj: unknown, path: unknown[], value: unknown): void {
     if (path.length === 0) {
-      // Apply value to obj itself (top-level update)
+      // Apply value to obj itself (top-level update). `safeAssign`
+      // instead of `Object.assign` filters `__proto__`-keyed payloads.
       if (typeof value === 'function') {
         const result = (value as (prev: unknown) => unknown)(obj)
-        Object.assign(obj as object, result)
+        safeAssign(obj as object, result)
       } else {
-        Object.assign(obj as object, value)
+        safeAssign(obj as object, value)
       }
       return
     }
@@ -1009,6 +1030,11 @@ export function createStore<T extends object>(
     }
 
     const key = head as string | number
+    // Refuse a dangerous string-keyed write at any depth — pollution
+    // through `setStore(['foo', '__proto__'], …)` is the same hazard
+    // as the top-level form.
+    if (typeof key === 'string' && DANGEROUS_KEYS.has(key)) return
+
     if (rest.length === 0) {
       // Last path segment — set the value
       ;(obj as Record<string | number, unknown>)[key] =

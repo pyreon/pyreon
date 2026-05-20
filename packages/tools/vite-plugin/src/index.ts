@@ -1231,8 +1231,11 @@ function scanIslandDeclarations(
   // `[\s\S]` lets the options block span multiple lines. The lazy `?` after
   // the options block prevents over-matching when several `island()` calls
   // appear in the same file.
+  // `[^}]{0,500}` instead of `[\s\S]*?` — real island() option blocks
+  // are tiny (`{ name: 'X', hydrate: 'load' }`); excluding `}` from
+  // the inner class also tightens the match against the outer `\}`.
   const ISLAND_CALL_RE =
-    /island\s*\(\s*\(\s*\)\s*=>\s*import\s*\(\s*['"]([^'"]+)['"]\s*\)\s*,\s*\{([\s\S]*?)\}\s*\)/g
+    /island\s*\(\s*\(\s*\)\s*=>\s*import\s*\(\s*['"]([^'"]+)['"]\s*\)\s*,\s*\{([^}]{0,500})\}\s*\)/g
   const decls: IslandDecl[] = []
   let match: RegExpExecArray | null
   while ((match = ISLAND_CALL_RE.exec(code)) !== null) {
@@ -1372,6 +1375,10 @@ async function prescanSignalExports(root: string, registry: Map<string, Set<stri
  *
  * Uses simple regex — no AST parse needed.
  */
+// Bounded `\s{1,10}` instead of unbounded `\s+` to remove worst-case
+// backtracking; real import specifiers have 1-2 spaces around `as`.
+const AS_SPLIT_RE = /\s{1,10}as\s{1,10}/
+
 function scanSignalExports(code: string, moduleId: string, registry: Map<string, Set<string>>): void {
   const normalizedId = normalizeModuleId(moduleId)
   let match: RegExpExecArray | null
@@ -1393,7 +1400,8 @@ function scanSignalExports(code: string, moduleId: string, registry: Map<string,
 
   // Then check named exports: export { x, y as z }
   if (localSignals.size > 0) {
-    const NAMED_EXPORT_RE = /export\s*\{([^}]+)\}/g
+    // Bounded `[^}]{1,500}` — real export blocks fit easily.
+    const NAMED_EXPORT_RE = /export\s*\{([^}]{1,500})\}/g
     while ((match = NAMED_EXPORT_RE.exec(code)) !== null) {
       // Skip re-exports (export { x } from '...')
       const afterBrace = code.slice(match.index + match[0].length).trimStart()
@@ -1402,7 +1410,7 @@ function scanSignalExports(code: string, moduleId: string, registry: Map<string,
       for (const spec of match[1]!.split(',')) {
         const trimmed = spec.trim()
         if (!trimmed) continue
-        const parts = trimmed.split(/\s+as\s+/)
+        const parts = trimmed.split(AS_SPLIT_RE)
         const localName = parts[0]!.trim()
         const exportedName = (parts[1] ?? parts[0])!.trim()
         if (localSignals.has(localName)) {
@@ -1478,7 +1486,7 @@ async function resolveImportedSignals(
       const trimmed = spec.trim()
       if (!trimmed) continue
 
-      const parts = trimmed.split(/\s+as\s+/)
+      const parts = trimmed.split(AS_SPLIT_RE)
       const importedName = parts[0]!.trim()
       const localName = (parts[1] ?? parts[0])!.trim()
 
