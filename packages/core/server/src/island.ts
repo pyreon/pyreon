@@ -77,6 +77,7 @@
 
 import type { ComponentFn, Props, VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
+import { encodeIslandProps } from './island-codec'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -166,22 +167,39 @@ export function island<P extends Props = Props>(
  *
  * **Prop contract** (what survives the SSR → client roundtrip):
  *
- * - ✅ JSON-native: strings, finite numbers, booleans, null, arrays, plain objects
- * - ❌ **Dropped silently**: `children`, functions, symbols, `undefined` (a warning
- *   fires in dev when `children` is dropped — it's the most common surprise)
- * - ❌ **Coerced**: `Date` becomes an ISO string (no auto-revival on the client),
- *   `Map` / `Set` / class instances lose their type
- * - ⚠️ **`BigInt` is unsupported**: `JSON.stringify` throws on `BigInt` values.
- *   We catch the throw, log in dev, and emit `{}` rather than 500ing the SSR.
- *   Convert to string yourself before passing as a prop.
+ * - ✅ **JSON-native**: strings, finite numbers, booleans, null, arrays, plain objects
+ * - ✅ **Roundtripped losslessly** (via the `encodeIslandProps` codec):
+ *   `Date`, `Map`, `Set`, `RegExp`, `BigInt`. The client receives the
+ *   real type, not an ISO string / empty object. An internal
+ *   `__pyreon_t` marker tags them on the wire; the inverse codec in the
+ *   client unwraps the marker before passing props to the hydrated
+ *   component. If your own data legitimately uses an object key called
+ *   `__pyreon_t`, an `'e'`-escape wrapping kicks in automatically.
+ * - ❌ **Dropped silently**: `children`, functions, symbols, `undefined`
+ *   on plain objects (mirrors `JSON.stringify`); replaced with `null` in
+ *   arrays / `Map` values / `Set` items (also matches `JSON.stringify`).
+ *   A dev-mode warning fires when `children` is dropped — it's the most
+ *   common surprise.
+ * - 🚨 **Fail-loud (was silently `{}`)**: instances of custom classes
+ *   (anything whose prototype is not `Object.prototype` and isn't one
+ *   of the tagged types above) emit a dev-mode error naming the offending
+ *   prop path + constructor name, then fall back to empty props. The
+ *   prior behaviour silently dropped class instances to `{}` and let
+ *   the bug surface at runtime on the hydrated client. Pass an ID +
+ *   restore the rich value on the client, or convert to a plain object.
+ * - 🚨 **Fail-loud on circular references** (same path as above —
+ *   detected during walking, no throw escapes to break the SSR).
  *
- * For anything more complex than JSON, pass an ID and have the island component
- * fetch / restore the rich value on the client.
+ * For anything more complex than JSON, pass an ID and have the island
+ * component fetch / restore the rich value on the client.
  */
 function serializeIslandProps(
   props: Record<string, unknown>,
   islandName: string,
 ): string {
+  // The `children` key is dropped explicitly (with a dev warning) BEFORE
+  // the codec sees them — children carry VNode trees / closures and are
+  // never portable, so the dev message about them stays focused.
   const clean: Record<string, unknown> = {}
   let droppedChildren = false
   for (const [key, value] of Object.entries(props)) {
@@ -189,9 +207,6 @@ function serializeIslandProps(
       if (value !== undefined) droppedChildren = true
       continue
     }
-    if (typeof value === 'function') continue
-    if (typeof value === 'symbol') continue
-    if (value === undefined) continue
     clean[key] = value
   }
   if (droppedChildren && process.env.NODE_ENV !== 'production') {
@@ -202,19 +217,22 @@ function serializeIslandProps(
         `the island component itself.`,
     )
   }
+
   // The SSR renderer's renderProp() already applies escapeHtml() to attribute
   // values, so the JSON is safe to embed in HTML attributes without double-escaping.
   try {
-    return JSON.stringify(clean)
+    const encoded = encodeIslandProps(clean, islandName)
+    return JSON.stringify(encoded)
   } catch (err) {
-    // JSON.stringify throws on BigInt and on circular references. Don't 500
-    // the SSR — emit empty props and warn so the dev sees it before users do.
+    // Encoder threw on a class instance, depth overflow, or circular
+    // reference (the codec catches each with a named-path message). Don't
+    // 500 the SSR — emit empty props and surface the full error in dev so
+    // the offending site is visible before users hit it on the client.
     if (process.env.NODE_ENV !== 'production') {
       // eslint-disable-next-line no-console
       console.error(
-        `[Pyreon] island "${islandName}" props could not be serialized (likely ` +
-          `BigInt or circular reference). Falling back to empty props. Original ` +
-          `error: ${(err as Error).message}`,
+        `[Pyreon] island "${islandName}" props could not be serialized. ` +
+          `Falling back to empty props. ${(err as Error).message}`,
       )
     }
     return '{}'

@@ -28,6 +28,7 @@
 import type { ComponentFn } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { createRouter, hydrateLoaderData, type RouteRecord, RouterProvider } from '@pyreon/router'
+import { decodeIslandProps } from './island-codec'
 import { hydrateRoot, mount } from '@pyreon/runtime-dom'
 import type { HydrationStrategy, PrefetchStrategy } from './island'
 
@@ -526,10 +527,15 @@ async function hydrateIsland(
   try {
     let props: Record<string, unknown>
     try {
-      props = JSON.parse(propsJson)
-      if (typeof props !== 'object' || props === null || Array.isArray(props)) {
+      const raw = JSON.parse(propsJson)
+      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
         throw new TypeError('Expected object')
       }
+      // Inverse of `encodeIslandProps` — restores Date / Map / Set /
+      // RegExp / BigInt the SSR codec tagged with `__pyreon_t`. Plain
+      // objects without markers round-trip unchanged.
+      const decoded = decodeIslandProps(raw) as Record<string, unknown>
+      props = decoded
     } catch (parseErr) {
       console.error(`Invalid island props JSON for "${name}"`, parseErr)
       el.setAttribute('data-island-error', 'invalid-props')

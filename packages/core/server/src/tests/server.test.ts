@@ -675,23 +675,22 @@ describe('island', () => {
     expect(vnode.props['data-props']).toBe('{}')
   })
 
-  test('island() falls back to {} on BigInt props instead of throwing the SSR', async () => {
+  test('island() roundtrips BigInt props losslessly via the codec', async () => {
     const Inner: ComponentFn = () => h('div', null)
     const Widget = island(() => Promise.resolve({ default: Inner }), { name: 'BigIntProps' })
 
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const vnode = await (Widget as unknown as (props: Record<string, unknown>) => Promise<VNode>)({
-      // BigInt is not JSON-serializable; would throw inside JSON.stringify pre-fix
       huge: BigInt('9007199254740993'),
     })
-    expect(vnode.props['data-props']).toBe('{}')
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('BigInt or circular reference'),
-    )
-    errorSpy.mockRestore()
+    // Contract change (vs. pre-codec behaviour where BigInt fell back to {}):
+    // the codec emits a `__pyreon_t:'B'` tag on the wire; the client's
+    // `decodeIslandProps` restores a real BigInt on hydrate.
+    const dataProps = vnode.props['data-props'] as string
+    const parsed = JSON.parse(dataProps) as Record<string, unknown>
+    expect(parsed.huge).toEqual({ __pyreon_t: 'B', v: '9007199254740993' })
   })
 
-  test('island() falls back to {} on circular-reference props', async () => {
+  test('island() falls back to {} on circular-reference props (with named-path dev error)', async () => {
     const Inner: ComponentFn = () => h('div', null)
     const Widget = island(() => Promise.resolve({ default: Inner }), { name: 'CircularProps' })
 
@@ -702,7 +701,31 @@ describe('island', () => {
       data: cyclic,
     })
     expect(vnode.props['data-props']).toBe('{}')
-    expect(errorSpy).toHaveBeenCalled()
+    // Codec catches circulars with a named-path error now (vs. the prior
+    // generic "BigInt or circular reference" message).
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Circular'),
+    )
+    errorSpy.mockRestore()
+  })
+
+  test('island() fails loud on class-instance props (was: silently dropped to {})', async () => {
+    const Inner: ComponentFn = () => h('div', null)
+    const Widget = island(() => Promise.resolve({ default: Inner }), { name: 'ClassInstance' })
+
+    class User {
+      constructor(public name: string) {}
+    }
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const vnode = await (Widget as unknown as (props: Record<string, unknown>) => Promise<VNode>)({
+      user: new User('Alice'),
+    })
+    // Same fallback shape as before (empty props → no client surprise),
+    // but the dev error now NAMES the offender so the user spots it.
+    expect(vnode.props['data-props']).toBe('{}')
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('User'),
+    )
     errorSpy.mockRestore()
   })
 
