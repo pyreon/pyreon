@@ -29,6 +29,7 @@ export {
   _bindText,
   _mountSlot,
   _rsCollapse,
+  _rsCollapseDyn,
   _rsCollapseH,
   _tpl,
   createTemplate,
