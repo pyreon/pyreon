@@ -378,15 +378,29 @@ function scheduleHydration(
 /**
  * Default events for the `interaction` strategy. Picked to cover the common
  * "user reaches for it" surface: keyboard (`focus`), mouse (`pointerenter`,
- * `click`), and touch (`touchstart`). First matching event triggers hydrate
- * + removes ALL listeners (one-shot).
+ * `click`), touch (`touchstart`), and form `submit` (a form inside an island
+ * — newsletter signup, search, comment, etc.). First matching event triggers
+ * hydrate + removes ALL listeners (one-shot).
  */
 const DEFAULT_INTERACTION_EVENTS: readonly string[] = [
   'focus',
   'click',
   'pointerenter',
   'touchstart',
+  // `submit` bubbles to the island root from any descendant form. Without
+  // capturing + preventing it pre-hydrate, the browser performs the form's
+  // default action (full-page POST/GET) BEFORE the live handler exists.
+  'submit',
 ]
+
+/**
+ * Pre-hydrate user interaction we captured for replay. Discriminated by
+ * event type so post-hydrate re-dispatch builds the right synthetic event
+ * (clicks → `MouseEvent`, form submits → `SubmitEvent`).
+ */
+type CapturedInteraction =
+  | { type: 'click'; path: ReplayPath }
+  | { type: 'submit'; path: ReplayPath }
 
 function scheduleInteractionHydration(
   el: HTMLElement,
@@ -395,9 +409,10 @@ function scheduleInteractionHydration(
 ): () => void {
   let hydrationStarted = false
   let hydrated = false
-  // Holds replay info if a click came in during in-flight hydration —
-  // we replay the click on the equivalent post-hydration element so the
-  // user's first click both wakes the island AND fires the live handler.
+  // Holds replay info if a user interaction came in during in-flight
+  // hydration — we replay it on the equivalent post-hydration element so
+  // the user's first click / form submit both wakes the island AND fires
+  // the live handler.
   //
   // Hydration may REPLACE DOM nodes (mismatch fallback, or even successful
   // hydrate-as-mount on some shapes). The original `event.target` reference
@@ -405,7 +420,7 @@ function scheduleInteractionHydration(
   // we capture an identifying "replay path" — preferring `data-testid` (a
   // stable, semantic identifier) and falling back to a tag-based child
   // index walk relative to `el`. After hydration we re-query the live tree.
-  let replayPath: ReplayPath | null = null
+  let captured: CapturedInteraction | null = null
   // Stamp a "scheduled" marker for tests / devtools introspection.
   el.setAttribute('data-island-state', 'awaiting-interaction')
 
@@ -419,9 +434,21 @@ function scheduleInteractionHydration(
       for (const ev of events) {
         el.removeEventListener(ev, dispatch, INTERACTION_LISTENER_OPTS)
       }
-      if (!replayPath) return
-      const liveTarget = resolveReplayPath(el, replayPath)
-      if (liveTarget && liveTarget.isConnected) {
+      if (!captured) return
+      const liveTarget = resolveReplayPath(el, captured.path)
+      if (!liveTarget || !liveTarget.isConnected) return
+      if (captured.type === 'submit' && liveTarget instanceof HTMLFormElement) {
+        // The browser exposes `SubmitEvent` in real browsers and modern
+        // happy-dom — fall back to a plain `Event('submit')` if the
+        // global is missing (older happy-dom builds, exotic runtimes).
+        const SubmitEventCtor =
+          typeof SubmitEvent === 'function'
+            ? SubmitEvent
+            : (Event as unknown as typeof SubmitEvent)
+        liveTarget.dispatchEvent(
+          new SubmitEventCtor('submit', { bubbles: true, cancelable: true }),
+        )
+      } else {
         liveTarget.dispatchEvent(
           new MouseEvent('click', { bubbles: true, cancelable: true }),
         )
@@ -443,7 +470,24 @@ function scheduleInteractionHydration(
       event.stopImmediatePropagation()
       event.preventDefault()
       const target = event.target as HTMLElement | null
-      if (target) replayPath = captureReplayPath(el, target)
+      if (target) {
+        const path = captureReplayPath(el, target)
+        if (path) captured = { type: 'click', path }
+      }
+    } else if (event.type === 'submit') {
+      // Same logic as click but for forms: without preventDefault the
+      // browser would do a full-page navigation BEFORE the live handler
+      // mounts. Capture the form element so we can re-dispatch `submit`
+      // post-hydrate against the live form (which now has the user's
+      // listeners bound).
+      event.stopImmediatePropagation()
+      event.preventDefault()
+      const target = event.target as HTMLElement | null
+      // `submit` only fires on form elements, but type-narrow defensively.
+      if (target instanceof HTMLFormElement) {
+        const path = captureReplayPath(el, target)
+        if (path) captured = { type: 'submit', path }
+      }
     }
     startHydration()
   }
