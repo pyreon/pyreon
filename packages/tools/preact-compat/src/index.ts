@@ -188,6 +188,19 @@ export function toChildArray(children: NestedChildren): VNodeChild[] {
 
 function flatten(value: NestedChildren, out: VNodeChild[]): void {
   if (value == null || typeof value === 'boolean') return
+  // Unwrap the Pyreon compiler's `() => x` accessor wrap. When a parent
+  // emits `<MyComp>{data.map(fn)}</MyComp>` (any non-stable expression
+  // as children — CallExpression, ConditionalExpression, etc.), the
+  // compiler's prop-inlining pass rewrites it as
+  // `MyComp({ children: () => data.map(fn) })`. Iterating the function
+  // as a child would silently treat the function as ONE child and the
+  // downstream `toChildArray` call would lose every real child after
+  // position 0. Mirrors the kinetic Iterator + elements Iterator fix
+  // from PRs #731 / #736.
+  if (typeof value === 'function') {
+    flatten((value as () => NestedChildren)(), out)
+    return
+  }
   if (Array.isArray(value)) {
     for (const child of value) {
       flatten(child, out)

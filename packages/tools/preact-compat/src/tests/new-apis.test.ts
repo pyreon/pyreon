@@ -548,6 +548,49 @@ describe('toChildArray', () => {
   test('handles single non-array child', () => {
     expect(toChildArray('hello')).toEqual(['hello'])
   })
+
+  // Regression: the Pyreon compiler's prop-inlining pass rewrites
+  // `<MyComp>{data.map(fn)}</MyComp>` (any non-stable children
+  // expression) as `MyComp({ children: () => data.map(fn) })`. Pre-fix
+  // `flatten()` treated the wrapping function as a single child —
+  // `toChildArray()` silently returned `[function]` instead of the N
+  // real children. Same bug class as PR #197 / PR #736.
+  //
+  // Fix: `flatten()` unwraps function children at entry, mirroring the
+  // kinetic / Iterator pattern.
+  //
+  // Bisect-verified: removing the `typeof value === 'function'` branch
+  // from `flatten()` fails every spec below with "expected … to have a
+  // length of N but got 1".
+  describe('compiler function-wrap unwrap', () => {
+    const realChildren = [pyreonH('div', null, 'a'), pyreonH('div', null, 'b')] as VNodeChild[]
+
+    test('function-wrapped children expand to N real children', () => {
+      const wrapped = (() => realChildren) as unknown as VNodeChild
+      expect(toChildArray(wrapped)).toHaveLength(2)
+    })
+
+    test('function wrapping a single child unwraps', () => {
+      const wrapped = (() => pyreonH('span', null, 'only')) as unknown as VNodeChild
+      const arr = toChildArray(wrapped)
+      expect(arr).toHaveLength(1)
+    })
+
+    test('function wrapping null returns empty array', () => {
+      const wrappedNull = (() => null) as unknown as VNodeChild
+      expect(toChildArray(wrappedNull)).toEqual([])
+    })
+
+    test('function wrapping nested arrays still flattens', () => {
+      const wrapped = (() =>
+        [pyreonH('a', null), [pyreonH('b', null), pyreonH('c', null)]]) as unknown as VNodeChild
+      expect(toChildArray(wrapped)).toHaveLength(3)
+    })
+
+    test('plain (non-wrapped) children still work — fix is additive', () => {
+      expect(toChildArray(realChildren)).toHaveLength(2)
+    })
+  })
 })
 
 describe('Component class', () => {
