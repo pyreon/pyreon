@@ -61,3 +61,45 @@ bun run perf:diff perf-results/before.json perf-results/*-perf-dashboard-shuffle
 - `schedule` — nightly drift check (artefact only, no auto-commit)
 
 Baselines are committed manually to `perf-results/baseline-<app>-<journey>.json` after reviewing a nightly artefact. The workflow does NOT auto-commit baselines — intentional, since they're load-bearing.
+
+## `../leak-audit.ts` — heap-growth leak detector
+
+A separate script in `scripts/leak-audit.ts` (not under `perf/` because it answers a different question — "is the heap growing over time?" rather than "what's the per-counter cost of one journey?").
+
+```bash
+bun run scripts/leak-audit.ts --app perf-dashboard --journey toggleTheme --cycles 50 [--threshold 50000] [--json out.json]
+```
+
+What it does:
+
+1. Builds + serves the example (production-mode `preview` by default — measures real-shape behavior, not dev with sourcemaps inlined)
+2. Launches Chromium with `--js-flags=--expose-gc` so the script can call `globalThis.gc()` between samples (removes the dominant source of `usedJSHeapSize` noise: async V8 collection cycles running mid-sample)
+3. Boots + warms up (5 cycles, discarded)
+4. Runs `cycles` iterations:
+   - Runs the journey
+   - Force GCs twice (first call frees, second compacts)
+   - Samples `performance.memory.usedJSHeapSize`
+5. Least-squares linear regression on (cycle, heap-size). Reports slope (bytes/cycle), intercept, R² (fit quality), CV (jitter)
+6. Asserts slope is below `--threshold` (default 50_000 bytes/cycle)
+
+Exit codes:
+
+| Code | Meaning |
+| --- | --- |
+| 0 | no leak — slope within threshold |
+| 1 | argv / config problem |
+| 2 | server didn't start |
+| 3 | browser navigation or journey threw |
+| 4 | `performance.memory` unavailable (need Chrome / Chromium) |
+| 5 | `globalThis.gc` unavailable (`--expose-gc` not honored) |
+| 6 | LEAK DETECTED — slope exceeds threshold |
+
+**Intentionally NOT a required CI gate.** Heap-growth is environmentally noisy (background GC, JIT warmup, allocator fragmentation) — false positives would erode the gate's credibility. Use cases:
+
+- Local diagnostics when you suspect a leak ("does heap stay flat across N route navigations?")
+- Nightly job against a known-clean baseline
+- Pre/post comparison around a specific PR ("did this change introduce per-cycle heap growth?")
+
+Companion to the unit-test regression locks in `@pyreon/core/src/tests/context.test.ts` (the structural bug-shape that motivated #768). Those tests catch the deterministic fingerprint of the context-snapshot leak class; this harness catches heap-growth patterns the unit tests can't see (event listener accumulation, observer leaks, signal-subscriber leaks, etc.).
+
+The pure `linearRegression()` math export is unit-tested at `packages/internals/test-utils/src/tests/leak-audit.test.ts` — including a "bug-replication shape" spec that proves the harness CAN detect the original 5 MB/cycle context-snapshot leak class (so the smoke-test "no leak" result on a clean codebase is falsifiable evidence, not just absence of evidence).

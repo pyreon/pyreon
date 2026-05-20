@@ -33,6 +33,7 @@
     "bench:bundle-size": "bun scripts/bench/bundle-size.ts",
     "perf:record": "bun scripts/perf/record.ts",
     "perf:diff": "bun scripts/perf/diff.ts",
+    "perf:leak-audit": "bun scripts/leak-audit.ts",
     "test:e2e": "bunx playwright test --project=playground --project=ssr-showcase --project=fundamentals",
     "test:e2e:ui-regression": "bunx playwright test --config=playwright.ui-regression.config.ts",
     "test:e2e:compat": "bunx playwright test --config=playwright.compat-layers.config.ts",
