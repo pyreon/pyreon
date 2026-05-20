@@ -12,18 +12,15 @@
  *   - Subsequent errors in the SURVIVING boundary's children route to whatever
  *     handler is now at `stack[length-1]`, which is the stale handler of an
  *     ALREADY-UNMOUNTED boundary. Calling `error.set(err)` on that handler's
- *     captured signal is a no-op (the boundary's reactive effect was disposed)
- *     → the error is silently swallowed AND the surviving boundary's fallback
- *     never renders.
- *   - The stale handler's closure (referencing the unmounted boundary's
- *     `signal` + `reset` + downstream UI) leaks for as long as any sibling
- *     ErrorBoundary remains mounted.
+ *     captured signal is a no-op → the error is silently swallowed AND the
+ *     surviving boundary's fallback never renders.
  *
  * Fix (#725-class): `popErrorBoundary(handler)` uses `lastIndexOf + splice`
  * to remove by IDENTITY. Each ErrorBoundary's `onUnmount` passes its own
  * handler reference, so unmount in any order correctly removes the right
  * handler.
  */
+import type { VNodeChild } from '@pyreon/core'
 import { ErrorBoundary, h, Show } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -36,9 +33,6 @@ describe('ErrorBoundary — module-level stack cleanup is identity-safe (#725 cl
   beforeEach(() => {
     container = document.createElement('div')
     document.body.appendChild(container)
-    // Suppress the dev "throw during render" console.error from the
-    // throwing-child path. Tests want clean output even when the runtime
-    // legitimately logs the caught throw.
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
   })
   afterEach(() => {
@@ -46,16 +40,26 @@ describe('ErrorBoundary — module-level stack cleanup is identity-safe (#725 cl
     errorSpy.mockRestore()
   })
 
+  // Tiny `h`-builder helpers so the tests stay readable.
+  const eb = (testId: string, ...children: VNodeChild[]) =>
+    h(
+      ErrorBoundary,
+      {
+        fallback: (err: unknown) =>
+          h('div', { 'data-testid': `fb-${testId}` }, `caught(${testId}): ${String(err)}`),
+        children: children.length === 1 ? children[0] : children,
+      },
+    )
+
+  const showWhen = (when: () => boolean, child: () => VNodeChild) =>
+    h(Show, { when, children: child })
+
   it('REGRESSION: surviving sibling boundary still catches errors after a sibling unmounts (FIRST unmounted)', () => {
-    // Two sibling boundaries. Each has a `<Show>` that lazily mounts a
-    // throw-on-mount component when a signal flips true. The `<Show>`
-    // triggers a fresh `mountComponent` call → fresh `dispatchToErrorBoundary`
-    // → routes to whichever handler is currently at the top of the stack.
     const showA = signal(false)
     const showB = signal(false)
     const aliveA = signal(true)
 
-    function Bomb({ name }: { name: string }) {
+    function Bomb({ name }: { name: string }): never {
       throw new Error(`boom-${name}`)
     }
 
@@ -65,44 +69,21 @@ describe('ErrorBoundary — module-level stack cleanup is identity-safe (#725 cl
         null,
         // Boundary A — wrapped in Show so we can UNMOUNT it without
         // touching boundary B.
-        h(Show as Parameters<typeof h>[0], {
-          when: () => aliveA(),
-          children: () =>
-            h(
-              ErrorBoundary,
-              {
-                fallback: (err: unknown) =>
-                  h('div', { 'data-testid': 'fb-A' }, `caught(A): ${String(err)}`),
-              },
-              // Lazy throw via Show inside A
-              h(Show as Parameters<typeof h>[0], {
-                when: () => showA(),
-                children: () => h(Bomb, { name: 'A' }),
-              }) as unknown as Parameters<typeof h>[1],
-            ),
-        }),
-        // Boundary B — always mounted.
-        h(
-          ErrorBoundary,
-          {
-            fallback: (err: unknown) =>
-              h('div', { 'data-testid': 'fb-B' }, `caught(B): ${String(err)}`),
-          },
-          h(Show as Parameters<typeof h>[0], {
-            when: () => showB(),
-            children: () => h(Bomb, { name: 'B' }),
-          }) as unknown as Parameters<typeof h>[1],
+        showWhen(
+          () => aliveA(),
+          () => eb('A', showWhen(() => showA(), () => h(Bomb, { name: 'A' }))),
         ),
+        // Boundary B — always mounted.
+        eb('B', showWhen(() => showB(), () => h(Bomb, { name: 'B' }))),
       )
 
     const unmount = mount(h(App, null), container)
 
-    // Both boundaries mounted, no throws yet.
     expect(container.querySelector('[data-testid="fb-A"]')).toBeNull()
     expect(container.querySelector('[data-testid="fb-B"]')).toBeNull()
 
-    // UNMOUNT boundary A (FIRST sibling). Pre-fix: this calls popErrorBoundary()
-    // which pops the LAST frame — B's handler — instead of A's.
+    // UNMOUNT boundary A (FIRST sibling). Pre-fix: popErrorBoundary() pops
+    // the LAST frame — B's handler — instead of A's.
     aliveA.set(false)
 
     // Now trigger a throw inside B's children. With B's handler correctly
@@ -119,13 +100,13 @@ describe('ErrorBoundary — module-level stack cleanup is identity-safe (#725 cl
     unmount()
   })
 
-  it('REGRESSION: surviving FIRST boundary catches errors after a LATER sibling unmounts', () => {
-    // Pre-fix this case actually worked (LIFO holds for last-unmount), but
-    // we include it as a guard: the fix must not regress the LIFO case.
+  it('LIFO case: surviving FIRST boundary catches errors after a LATER sibling unmounts', () => {
+    // Pre-fix this case worked (LIFO held for last-unmount). Included
+    // as a guard against the fix regressing the LIFO case.
     const showA = signal(false)
     const aliveB = signal(true)
 
-    function Bomb({ name }: { name: string }) {
+    function Bomb({ name }: { name: string }): never {
       throw new Error(`boom-${name}`)
     }
 
@@ -133,35 +114,13 @@ describe('ErrorBoundary — module-level stack cleanup is identity-safe (#725 cl
       h(
         'div',
         null,
-        h(
-          ErrorBoundary,
-          {
-            fallback: (err: unknown) =>
-              h('div', { 'data-testid': 'fb-A' }, `caught(A): ${String(err)}`),
-          },
-          h(Show as Parameters<typeof h>[0], {
-            when: () => showA(),
-            children: () => h(Bomb, { name: 'A' }),
-          }) as unknown as Parameters<typeof h>[1],
-        ),
-        h(Show as Parameters<typeof h>[0], {
-          when: () => aliveB(),
-          children: () =>
-            h(
-              ErrorBoundary,
-              {
-                fallback: (err: unknown) =>
-                  h('div', { 'data-testid': 'fb-B' }, `caught(B): ${String(err)}`),
-              },
-              null as unknown as Parameters<typeof h>[1],
-            ),
-        }),
+        eb('A', showWhen(() => showA(), () => h(Bomb, { name: 'A' }))),
+        showWhen(() => aliveB(), () => eb('B', null)),
       )
 
     const unmount = mount(h(App, null), container)
 
-    // Unmount B — this is the LAST-unmount case which LIFO handles
-    // correctly even pre-fix. Verify it still works post-fix.
+    // Unmount B — LIFO case (last sibling). Both pre- and post-fix correct.
     aliveB.set(false)
 
     showA.set(true)
