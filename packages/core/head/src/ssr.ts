@@ -2,16 +2,7 @@ import type { ComponentFn, VNode } from '@pyreon/core'
 import { h, pushContext } from '@pyreon/core'
 import { renderToString } from '@pyreon/runtime-server'
 import type { HeadTag } from './context'
-// Runtime VALUE imports go through the self-package path so the build
-// emits an external `import` instead of inlining `createContext(null)`
-// into this sub-bundle. The bundler externalizes `@pyreon/head/context`
-// per the package's `build.external` config — every sub-entry resolves to
-// the SAME `lib/context.js` at runtime, so `HeadContext` is one Symbol
-// across `lib/index.js` / `lib/ssr.js` / `lib/use-head.js` / `lib/provider.js`.
-// See `tests/context-identity.test.ts` for the post-build identity contract.
-// Type-only imports (`HeadTag` above) keep the relative path — types erase
-// at build, no externalization needed.
-import { createHeadContext, HeadContext } from '@pyreon/head/context'
+import { createHeadContext, HeadContext } from './context'
 
 const VOID_TAGS = new Set(['meta', 'link', 'base'])
 

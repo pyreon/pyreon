@@ -78,7 +78,7 @@
     "@unhead/vue": "^3.1.0",
     "@vitest/browser": "^4.1.6",
     "@vitest/coverage-v8": "^4.1.6",
-    "@vitus-labs/tools-rolldown": "^2.3.1",
+    "@vitus-labs/tools-rolldown": "^2.4.0",
     "@vitus-labs/tools-typescript": "^2.3.1",
     "@vitus-labs/tools-vitest": "^2.3.1",
     "esbuild": "^0.28.0",

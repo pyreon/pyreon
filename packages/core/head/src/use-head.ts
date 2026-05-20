@@ -1,10 +1,7 @@
 import { onMount, onUnmount, useContext } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import type { HeadEntry, HeadTag, UseHeadInput } from './context'
-// Runtime VALUE import via self-package path so the build externalizes
-// the symbol — every sub-entry resolves to the same `lib/context.js` at
-// runtime. See `ssr.ts` for the full rationale + `tests/context-identity.test.ts`.
-import { HeadContext } from '@pyreon/head/context'
+import { HeadContext } from './context'
 import { syncDom } from './dom'
 
 /** Cast a strict tag interface to the internal props format, stripping undefined values */
