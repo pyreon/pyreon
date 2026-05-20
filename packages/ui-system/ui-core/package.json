@@ -39,7 +39,7 @@
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
     "@pyreon/typescript": "workspace:^",
-    "@vitus-labs/tools-rolldown": "^2.3.0"
+    "@vitus-labs/tools-rolldown": "^2.4.0"
   },
   "engines": {
     "node": ">= 22"
