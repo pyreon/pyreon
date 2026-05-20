@@ -1,6 +1,6 @@
 # @pyreon/hooks
 
-35 signal-based hooks across six categories for Pyreon apps.
+34 signal-based reactive utilities across six categories for Pyreon apps.
 
 A reactive-primitives library for the patterns Pyreon components reach for every day: controllable state, DOM observers, responsive layout, timing, interaction, and ref composition. Every hook is SSR-safe (browser-API access is guarded), auto-cleans on unmount (registers `onUnmount` for listeners / observers / timers), and signal-native (returns `Signal<T>` / `Computed<T>` / accessor objects — never plain values) so consumers compose directly with `effect` / `computed` without re-bridging. Used as the foundation by every `@pyreon/ui-primitives` component.
 
