@@ -46,6 +46,13 @@ interface StreamCtx {
   mainEnqueue: (s: string) => void
   /** Depth counter — non-zero when rendering inside a Suspense child resolution. */
   suspenseDepth: number
+  /**
+   * Abort signal fired when EITHER the upstream caller's signal aborts
+   * OR the stream consumer (`ReadableStream.cancel()`) closes. Boundary
+   * resolvers check this before enqueuing post-resolve HTML so they
+   * stop streaming once the client has hung up.
+   */
+  signal?: AbortSignal
 }
 
 const _streamCtxAls = new AsyncLocalStorage<StreamCtx>()
@@ -119,32 +126,107 @@ export function runWithRequestContext<T>(fn: () => Promise<T>): Promise<T> {
  *
  * Each renderToStream call gets its own isolated ALS context stack.
  */
-export function renderToStream(root: VNode | null): ReadableStream<string> {
+export interface RenderToStreamOptions {
+  /**
+   * AbortSignal to cancel in-flight Suspense work when the client
+   * disconnects (browser back-button, navigation, fetch reader closes,
+   * etc.). On abort, the stream's `cancel()` fires the signal —
+   * pending Suspense boundaries are abandoned (the fallback HTML they
+   * already wrote stays in the buffer that's now closed) and the
+   * background async work they spawned is no longer awaited. The work
+   * itself isn't forcibly killed (JS has no async cancellation
+   * primitive at the language level), but the framework stops blocking
+   * on it. Pass your own signal from upstream (e.g. a `Request.signal`)
+   * to chain abort propagation.
+   */
+  signal?: AbortSignal
+}
+
+export function renderToStream(
+  root: VNode | null,
+  options: RenderToStreamOptions = {},
+): ReadableStream<string> {
   if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.stream')
+  // Internal AbortController — fires when EITHER the caller's signal
+  // aborts (upstream cancellation, e.g. `Request.signal`) OR the consumer
+  // of the stream calls `.cancel()` (client closed the fetch reader).
+  const ac = new AbortController()
+  const signal = ac.signal
+  if (options.signal) {
+    if (options.signal.aborted) ac.abort(options.signal.reason)
+    else options.signal.addEventListener('abort', () => ac.abort(options.signal!.reason), { once: true })
+  }
   return new ReadableStream<string>({
     start(controller) {
-      const enqueue = (chunk: string) => controller.enqueue(chunk)
+      const enqueue = (chunk: string) => {
+        if (signal.aborted) return // stop appending after abort
+        controller.enqueue(chunk)
+      }
       let bid = 0
       const ctx: StreamCtx = {
         pending: [],
         nextId: () => bid++,
         mainEnqueue: enqueue,
         suspenseDepth: 0,
+        signal,
       }
+      // One shared abort-promise — registered ONCE, resolved on signal
+      // abort. Racing each pending batch against this lets the drain
+      // loop exit promptly when the consumer hangs up, without accruing
+      // one abort listener per loop iteration.
+      const abortPromise: Promise<void> = signal.aborted
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => {
+            signal.addEventListener('abort', () => resolve(), { once: true })
+          })
+
       return withStoreContext(() =>
         _contextAls.run([], () =>
           _streamCtxAls
             .run(ctx, async () => {
               await streamNode(root, enqueue)
-              // Drain all pending Suspense resolutions (may spawn nested ones)
+              // Drain all pending Suspense resolutions (may spawn nested
+              // ones). Each batch is RACED against the abort signal so a
+              // mid-flight Suspense child doesn't keep us blocked after
+              // the consumer hung up. Per-boundary work also checks
+              // `ctx.signal.aborted` to skip its post-resolve enqueue.
               while (ctx.pending.length > 0) {
-                await Promise.all(ctx.pending.splice(0))
+                if (signal.aborted) break
+                const batch = Promise.all(ctx.pending.splice(0))
+                await Promise.race([batch, abortPromise])
               }
-              controller.close()
+              // ALWAYS close — gracefully on natural completion AND on
+              // abort. (Pre-fix: `if (!aborted) close()` left the stream
+              // open forever on cancel, hanging the reader.) Wrap in
+              // try/catch because the stream may have already been
+              // closed by `cancel()` upstream.
+              try {
+                controller.close()
+              } catch {
+                /* already closed (e.g. cancel raced ahead) */
+              }
             })
-            .catch((err) => controller.error(err)),
+            .catch((err) => {
+              // Aborts are expected, not errors — close silently to mirror
+              // a normal end-of-stream when the consumer hung up.
+              if (signal.aborted) {
+                try {
+                  controller.close()
+                } catch {
+                  /* already closed */
+                }
+                return
+              }
+              controller.error(err)
+            }),
         ),
       )
+    },
+    cancel(reason) {
+      // Consumer (browser fetch reader) closed the stream — propagate to
+      // the internal controller so in-flight Suspense work stops being
+      // awaited.
+      ac.abort(reason)
     },
   })
 }
@@ -361,6 +443,12 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
           // Fallback stays visible — no swap
           return
         }
+
+        // Client disconnected (or upstream aborted) while we were
+        // resolving — don't bother enqueueing the post-resolve content.
+        // The drain loop also checks `signal.aborted` so the stream
+        // closes promptly without us racing it.
+        if (ctx.signal?.aborted) return
 
         // Escape </template> in buffered content to prevent early close + XSS
         const content = buf.join('').replace(/<\/template/gi, '<\\/template')

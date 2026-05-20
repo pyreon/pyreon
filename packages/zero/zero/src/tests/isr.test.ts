@@ -236,6 +236,74 @@ describe('createISRHandler', () => {
       expect(inner).toHaveBeenCalledTimes(2)
     })
 
+    it('revalidateRequest: returning null SKIPS revalidation (auth-gated safe-mode)', async () => {
+      // The auth-gated cacheKey footgun: pre-fix, a stale entry triggered
+      // a revalidation that re-used the ORIGINAL user's cookies. If user A's
+      // session expired between the cache-write and the revalidation,
+      // the new render either redirects or — worse — embeds A's stale
+      // data. `revalidateRequest: () => null` opts out of revalidation
+      // for the entries the user can't safely re-render.
+      let n = 0
+      const inner = vi.fn(async () => {
+        n++
+        return new Response(`v${n}`, { status: 200 })
+      })
+      const handler = createISRHandler(inner, {
+        revalidate: 0, // immediately stale
+        cacheKey: (req) => {
+          const session = req.headers.get('cookie')?.match(/session=([^;]+)/)?.[1] ?? 'anon'
+          return `${new URL(req.url).pathname}::${session}`
+        },
+        // Refuse to revalidate anything authenticated.
+        revalidateRequest: (req) =>
+          /session=(?!anon)/.test(req.headers.get('cookie') ?? '')
+            ? null
+            : new Request(req.url, { method: 'GET' }),
+      })
+
+      const authedReq = new Request('http://localhost/dash', {
+        headers: { cookie: 'session=alice' },
+      })
+
+      await handler(authedReq) // MISS → cache v1
+      await new Promise((r) => setTimeout(r, 5)) // immediately stale
+      await handler(authedReq) // STALE → revalidateRequest returns null → SKIP
+      await new Promise((r) => setTimeout(r, 20)) // give any background work time
+      // inner only ran ONCE — the auth-gated entry was not re-rendered.
+      expect(inner).toHaveBeenCalledTimes(1)
+    })
+
+    it('revalidateRequest: returning a custom Request uses it instead of the original', async () => {
+      const seen: Array<string | null> = []
+      let n = 0
+      const inner = vi.fn(async (req: Request) => {
+        n++
+        seen.push(req.headers.get('cookie'))
+        return new Response(`v${n}`, { status: 200 })
+      })
+      const handler = createISRHandler(inner, {
+        revalidate: 0,
+        revalidateRequest: (req) =>
+          // Strip cookies — revalidate as anonymous.
+          new Request(req.url, { method: 'GET' }),
+      })
+
+      const authedReq = new Request('http://localhost/page', {
+        headers: { cookie: 'session=alice' },
+      })
+
+      await handler(authedReq) // MISS → render WITH cookies
+      await new Promise((r) => setTimeout(r, 5))
+      await handler(authedReq) // STALE → revalidateRequest scrubs cookies
+      await new Promise((r) => setTimeout(r, 30))
+
+      // First render: original request had cookies.
+      expect(seen[0]).toContain('session=alice')
+      // Second render (background revalidation): cookies stripped by hook.
+      expect(seen[1]).toBeNull()
+      expect(inner).toHaveBeenCalledTimes(2)
+    })
+
     it('custom cacheKey varies cache by query string', async () => {
       let calls = 0
       const inner = vi.fn(async (req: Request) => {

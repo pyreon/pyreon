@@ -135,6 +135,36 @@ describe('cloudflare adapter build', () => {
     const worker = await readFile(join(outDir, '_worker.js'), 'utf-8')
     expect(worker).toContain('_server/entry-server.js')
 
+    // Runtime-contract gate: the emitted `_worker.js` runs inside the
+    // Cloudflare Worker runtime, which does NOT have Node APIs available
+    // by default (only Web standards: fetch, Request, Response, URL,
+    // ReadableStream, crypto.subtle, etc.). If the worker template ever
+    // grows a `node:` import / `process.env` / `Buffer` / `fs.` / `path.` /
+    // `__dirname` / `__filename` / `fileURLToPath`, the deploy will
+    // silently 500 in production (or worse, require users to flip the
+    // `nodejs_compat` wrangler flag without warning). Locks the
+    // Web-standard contract so any future drift fails CI loudly here.
+    //
+    // The `node:fs/promises` + `node:path` USE in cloudflare.ts itself
+    // is fine — they run at BUILD time in Node during `vite build` to
+    // emit this file. It's the EMITTED file that must stay Web-standard.
+    const forbiddenAtRuntime = [
+      /\bnode:[\w/]+/, // node:fs, node:path, node:async_hooks, etc.
+      /\bfrom\s+["']fs["']/,
+      /\bfrom\s+["']path["']/,
+      /\brequire\(["']fs["']\)/,
+      /\brequire\(["']path["']\)/,
+      /\b__dirname\b/,
+      /\b__filename\b/,
+      /\bfileURLToPath\b/,
+      /\bBuffer\b/,
+      // `process.env.X` / `process.env["X"]` — Workers don't expose `process` by default
+      /\bprocess\.env\b/,
+    ]
+    for (const pattern of forbiddenAtRuntime) {
+      expect(worker, `emitted _worker.js must not use ${pattern} (Cloudflare Workers default runtime has no Node APIs)`).not.toMatch(pattern)
+    }
+
     await cleanup()
   })
 })

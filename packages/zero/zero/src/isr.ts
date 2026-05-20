@@ -165,12 +165,27 @@ export function createISRHandler(
     // they self-clear.
     let timeoutId: ReturnType<typeof setTimeout> | undefined
     try {
-      // Forward the original request shape (headers + method) so the
-      // re-render sees the same auth context as the user's read.
-      const req = new Request(url.href, {
-        method: 'GET',
-        headers: originalReq.headers,
-      })
+      // Default: forward the original request shape (headers + method)
+      // so the re-render sees the same auth context as the user's read.
+      // Opt-in `revalidateRequest` hook lets auth-gated callers scope
+      // the revalidation explicitly — e.g. return `null` to skip
+      // revalidation for authenticated entries (stale stays stale until
+      // the next live request), or return an anonymous Request for
+      // non-personalized entries.
+      let req: Request
+      if (typeof config.revalidateRequest === 'function') {
+        const custom = config.revalidateRequest(originalReq)
+        if (custom === null) {
+          revalidating.delete(key)
+          return
+        }
+        req = custom
+      } else {
+        req = new Request(url.href, {
+          method: 'GET',
+          headers: originalReq.headers,
+        })
+      }
       // Bound the revalidation so a hung handler can't pin `key` in
       // `revalidating` forever (which would freeze the entry stale).
       const res = await Promise.race([
