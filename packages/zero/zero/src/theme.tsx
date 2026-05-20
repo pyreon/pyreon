@@ -75,52 +75,95 @@ export function setTheme(t: Theme) {
   }
 }
 
+// Refcount + shared-teardown for `initTheme()`. The first mount runs the
+// real setup (localStorage read + matchMedia listener + effect); subsequent
+// mounts (other ThemeToggles, or an explicit `initTheme()` call in a
+// layout alongside `<ThemeToggle>`) only bump the refcount. Each unmount
+// decrements; when the count returns to 0 the shared teardown runs.
+//
+// Pre-fix every `initTheme()` call ran its own `onMount(setup)` — N
+// mounted ThemeToggles → N matchMedia listeners + N effects, all writing
+// the SAME values to the SAME `document.documentElement.dataset.theme`.
+// Class D event-listener pile-up, real production case for any app with
+// header + footer ThemeToggle widgets.
+let _initRefCount = 0
+let _disposeShared: (() => void) | null = null
+
+function _setupShared(): () => void {
+  // Read persisted preference
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY) as Theme | null
+    if (stored === 'light' || stored === 'dark' || stored === 'system') {
+      theme.set(stored)
+    }
+  } catch {
+    // localStorage may not be available
+  }
+
+  // Apply to document
+  document.documentElement.dataset.theme = resolvedTheme()
+
+  // Watch for system preference changes. Seed the signal from the
+  // current media-query state, then update reactively on each OS
+  // preference flip. Components reading `resolvedTheme()` pick up the
+  // change automatically (they subscribe to `_osPrefersDark` when
+  // `theme === 'system'`).
+  const mq = window.matchMedia('(prefers-color-scheme: dark)')
+  _osPrefersDark.set(mq.matches)
+  function onChange(e: MediaQueryListEvent) {
+    _osPrefersDark.set(e.matches)
+  }
+  mq.addEventListener('change', onChange)
+
+  // Re-apply when theme signal changes — updates data-theme + favicons
+  const dispose = effect(() => {
+    const mode = resolvedTheme()
+    document.documentElement.dataset.theme = mode
+
+    // Swap favicon variants (if dual-variant favicons are present)
+    const faviconLinks = document.querySelectorAll<HTMLLinkElement>('[data-favicon-theme]')
+    for (const link of faviconLinks) {
+      link.media = link.dataset.faviconTheme === mode ? '' : 'not all'
+    }
+  })
+
+  return () => {
+    mq.removeEventListener('change', onChange)
+    dispose?.dispose()
+  }
+}
+
 /**
- * Initialize the theme system. Call once in your app entry or layout.
+ * Reset the refcount + shared teardown. Useful for tests.
+ * @internal
+ */
+export function _resetInitThemeForTests(): void {
+  if (_disposeShared) _disposeShared()
+  _initRefCount = 0
+  _disposeShared = null
+}
+
+/**
+ * Initialize the theme system. Safe to call multiple times — uses a
+ * mount-based refcount so multiple `<ThemeToggle>` instances (or
+ * `<ThemeToggle>` plus an explicit `initTheme()` in your layout) share
+ * a SINGLE matchMedia listener + effect.
+ *
  * Reads from localStorage, listens for system preference changes.
  */
 export function initTheme() {
   onMount(() => {
-    // Read persisted preference
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY) as Theme | null
-      if (stored === 'light' || stored === 'dark' || stored === 'system') {
-        theme.set(stored)
-      }
-    } catch {
-      // localStorage may not be available
+    if (_initRefCount === 0) {
+      _disposeShared = _setupShared()
     }
-
-    // Apply to document
-    document.documentElement.dataset.theme = resolvedTheme()
-
-    // Watch for system preference changes. Seed the signal from the
-    // current media-query state, then update reactively on each OS
-    // preference flip. Components reading `resolvedTheme()` pick up the
-    // change automatically (they subscribe to `_osPrefersDark` when
-    // `theme === 'system'`).
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    _osPrefersDark.set(mq.matches)
-    function onChange(e: MediaQueryListEvent) {
-      _osPrefersDark.set(e.matches)
-    }
-    mq.addEventListener('change', onChange)
-
-    // Re-apply when theme signal changes — updates data-theme + favicons
-    const dispose = effect(() => {
-      const mode = resolvedTheme()
-      document.documentElement.dataset.theme = mode
-
-      // Swap favicon variants (if dual-variant favicons are present)
-      const faviconLinks = document.querySelectorAll<HTMLLinkElement>('[data-favicon-theme]')
-      for (const link of faviconLinks) {
-        link.media = link.dataset.faviconTheme === mode ? '' : 'not all'
-      }
-    })
+    _initRefCount++
 
     return () => {
-      mq.removeEventListener('change', onChange)
-      dispose?.dispose()
+      _initRefCount--
+      if (_initRefCount === 0 && _disposeShared) {
+        _disposeShared()
+        _disposeShared = null
+      }
     }
   })
 }
