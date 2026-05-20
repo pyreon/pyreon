@@ -34,6 +34,8 @@ export function bunAdapter(): Adapter {
 
       const port = options.config.port ?? 3000
       const serverEntry = `
+import { normalize } from "node:path"
+
 const handler = (await import("./server/entry-server.js")).default
 const clientDir = new URL("./client/", import.meta.url).pathname
 
@@ -42,19 +44,45 @@ Bun.serve({
   async fetch(req) {
     const url = new URL(req.url)
 
-    // Try static files first
+    // Try static files first (GET only).
+    //
+    // Path safety: decode percent-encoding, normalize \`..\` segments,
+    // then assert the resulting path doesn't escape the clientDir
+    // prefix. The previous implementation used \`Bun.resolveSync\`,
+    // which is MODULE resolution — it throws on any non-existent
+    // path, so it crashed every SSR route (URLs without a matching
+    // static file) with a 500 before the SSR handler ran.
+    // \`node:path.normalize\` is pure-string path arithmetic and
+    // doesn't touch the filesystem — safe for arbitrary input.
     if (req.method === "GET") {
-      const filePath = clientDir + (url.pathname === "/" ? "index.html" : url.pathname)
-      // Prevent path traversal — ensure resolved path stays within clientDir
-      const resolved = Bun.resolveSync(filePath, ".")
-      if (!resolved.startsWith(Bun.resolveSync(clientDir, "."))) {
+      let decoded
+      try {
+        decoded = decodeURIComponent(url.pathname)
+      } catch {
+        // Malformed %-encoding → reject (don't fall through to SSR
+        // with a corrupt URL).
+        return new Response("Bad Request", { status: 400 })
+      }
+      // Reject null bytes outright — no legitimate use in a URL,
+      // and they can confuse downstream filesystem code.
+      if (decoded.includes("\\0")) {
         return new Response("Forbidden", { status: 403 })
       }
-      const file = Bun.file(filePath)
+      const reqPath = decoded === "/" ? "/index.html" : decoded
+      // Prepend clientDir then normalize. If the normalized result
+      // no longer starts with clientDir, a \`..\` segment escaped —
+      // reject. Using string-startsWith with clientDir (which ends
+      // in "/") prevents the "/clientdir-evil/" sibling-prefix
+      // bypass.
+      const candidate = normalize(clientDir + reqPath)
+      if (!candidate.startsWith(clientDir)) {
+        return new Response("Forbidden", { status: 403 })
+      }
+      const file = Bun.file(candidate)
       if (await file.exists()) {
         return new Response(file, {
           headers: {
-            "cache-control": filePath.endsWith(".js") || filePath.endsWith(".css")
+            "cache-control": candidate.endsWith(".js") || candidate.endsWith(".css")
               ? "public, max-age=31536000, immutable"
               : "public, max-age=3600",
           },
