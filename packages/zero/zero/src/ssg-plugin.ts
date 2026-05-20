@@ -1152,12 +1152,23 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         // `ssg.pathWrite` / `ssg.pathRedirect` / `ssg.pathError` to see
         // per-path settle distribution.
         if (__DEV__) _countSink.__pyreon_count__?.('ssg.pathRender')
+        // Hold the timer id outside try/Promise.race so the finally
+        // block can `clearTimeout` it on the success path. Pre-fix the
+        // rejection setTimeout was left pending until 30s every time
+        // `renderPath(p)` won the race (i.e. every successful render).
+        // Concurrent worker pool × N paths under default `concurrency: 4`
+        // → up to N pending timer closures across the whole build,
+        // each pinning a rejection callback.
+        let timeoutId: ReturnType<typeof setTimeout> | undefined
         try {
           const result = await Promise.race([
             renderPath(p),
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error(`Prerender timeout for "${p}" (30s)`)), 30_000),
-            ),
+            new Promise<never>((_, reject) => {
+              timeoutId = setTimeout(
+                () => reject(new Error(`Prerender timeout for "${p}" (30s)`)),
+                30_000,
+              )
+            }),
           ])
 
           if (result.kind === 'redirect') {
@@ -1225,6 +1236,8 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
               errors.push({ path: `${p} (onPathError)`, error: callbackError })
             }
           }
+        } finally {
+          if (timeoutId !== undefined) clearTimeout(timeoutId)
         }
       }
 
@@ -1395,11 +1408,16 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
               : []
 
         for (const locale of localeEntries) {
+          // Hold the timer id outside try/Promise.race so the finally
+          // block can `clearTimeout` it on the success path. Same shape
+          // as the per-path render timeout above — every successful
+          // 404 render leaked a 30s pending timer pre-fix.
+          let timeoutId: ReturnType<typeof setTimeout> | undefined
           try {
             const result = await Promise.race([
               handlerMod.__renderNotFound(locale),
-              new Promise<never>((_, reject) =>
-                setTimeout(
+              new Promise<never>((_, reject) => {
+                timeoutId = setTimeout(
                   () =>
                     reject(
                       new Error(
@@ -1407,8 +1425,8 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
                       ),
                     ),
                   30_000,
-                ),
-              ),
+                )
+              }),
             ])
             if (result) {
               const html = injectIntoTemplate(template, result)
@@ -1433,6 +1451,8 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
               path: locale == null ? '404.html' : `${locale}/404.html`,
               error,
             })
+          } finally {
+            if (timeoutId !== undefined) clearTimeout(timeoutId)
           }
         }
       }
