@@ -404,6 +404,32 @@ export function scanCollapsibleSites(
             childrenText: site.childrenText,
             key: rocketstyleCollapseKey(tag, site.props, site.childrenText),
           })
+        } else {
+          // Dynamic-prop fallthrough (PR 3 of the dynamic-prop partial-
+          // collapse build): if the full detector bailed but the site
+          // matches the ternary-of-two-literals shape AND has no `on*`
+          // handlers (handler-combined dynamic sites are a future PR's
+          // scope — see `tryDynamicCollapse` in this file), expand into
+          // TWO CollapsibleSite entries — one per literal value. Each
+          // expanded site is byte-identical to a static-collapse site
+          // for that value, so the resolver pre-renders both via the
+          // existing SSR pipeline and the compiler emit looks up both
+          // by their respective keys to build the `_rsCollapseDyn`
+          // dispatcher.
+          const dyn = detectDynamicCollapsibleShape(node, tag)
+          if (dyn && dyn.handlers.length === 0) {
+            for (const value of [dyn.dynamicProp.valueTruthy, dyn.dynamicProp.valueFalsy]) {
+              const expandedProps = { ...dyn.props, [dyn.dynamicProp.name]: value }
+              out.push({
+                componentName: tag,
+                source: imp.source,
+                importedName: imp.imported,
+                props: expandedProps,
+                childrenText: dyn.childrenText,
+                key: rocketstyleCollapseKey(tag, expandedProps, dyn.childrenText),
+              })
+            }
+          }
         }
       }
     }
@@ -817,6 +843,7 @@ export function transformJSX_JS(
   // ── P0 rocketstyle-collapse state ─────────────────────────────────────────
   let needsCollapse = false
   let needsCollapseH = false
+  let needsCollapseDyn = false
   const collapseRuleKeys = new Set<string>()
   const collapseRules: Array<{ ruleKey: string; rules: string[] }> = []
 
@@ -843,7 +870,11 @@ export function transformJSX_JS(
     // plugin scans with the same predicate, so its resolved `sites`
     // keys match these lookups exactly; no drift possible).
     const shape = detectCollapsibleShape(node, tag)
-    if (!shape) return tryPartialCollapse(node, tag) // PR 3: on*-handler-only fallback
+    // Fallthrough chain — same conservative discipline at each layer:
+    //   1. on*-handler-only partial (literal dim props + handlers)
+    //   2. dynamic-prop partial (ternary-of-two-literals on ≤1 dim prop,
+    //      no handlers — handler-combined dynamic is a future PR's scope)
+    if (!shape) return tryPartialCollapse(node, tag) || tryDynamicCollapse(node, tag)
     const { props, childrenText } = shape
     const key = rocketstyleCollapseKey(tag, props, childrenText)
     const site = cfg.sites.get(key)
@@ -913,6 +944,98 @@ export function transformJSX_JS(
     if (!collapseRuleKeys.has(site.ruleKey)) {
       collapseRuleKeys.add(site.ruleKey)
       collapseRules.push({ ruleKey: site.ruleKey, rules: site.rules })
+    }
+    return true
+  }
+
+  /**
+   * PR 3 of the dynamic-prop partial-collapse build (open-work #1
+   * dynamic-prop bucket = 15.3% of all real-corpus sites; the
+   * next-bigger bite after the just-shipped `on*`-handler partial).
+   * The dynamic-prop fallback `tryRocketstyleCollapse` defers to when
+   * BOTH the full and the on*-handler-partial paths bail.
+   *
+   * Same site-resolution contract as the full path — the dynamic prop
+   * is replaced with EACH literal value to compute TWO keys; the
+   * resolver pre-renders both via the existing SSR pipeline; if both
+   * lookups succeed AND the structural template is byte-identical
+   * across values, emit `__rsCollapseDyn(html, [classes...], () =>
+   * cond ? 0 : 1, () => __pyrMode() === "dark")` — the PR 1 runtime
+   * helper (#765) dispatches across `(value × mode)` with a stride-2
+   * value-major class layout.
+   *
+   * Conservative discipline:
+   *   - Either expanded key missing from sites map ⇒ bail (an
+   *     intermittent resolver failure on one value mustn't half-collapse)
+   *   - Divergent template HTML across values ⇒ bail (the dispatcher
+   *     assumes a shared template; deriveCollapseDyn cannot be done
+   *     across values that produce structurally different markup —
+   *     this is the cross-value parallel of `deriveCollapse`'s
+   *     light↔dark template-divergence bail)
+   *   - Handlers present on the detected dynamic site ⇒ bail (PR 3
+   *     scope is no-handler dynamic-collapse; a combined helper +
+   *     emit is a future PR's scope)
+   *
+   * Rule injection unions the rule sets across both values (each value
+   * may inject distinct CSS rules — e.g. `state="primary"` and
+   * `state="secondary"` produce different background-color rules); the
+   * union is the byte-set the dispatcher will need at runtime regardless
+   * of which value the cond resolves to. Idempotent by per-value
+   * `ruleKey` so a re-resolve / HMR is a no-op.
+   */
+  function tryDynamicCollapse(node: N, tag: string): boolean {
+    const cfg = options.collapseRocketstyle
+    if (!cfg) return false
+    const dyn = detectDynamicCollapsibleShape(node, tag)
+    if (!dyn) return false
+    if (dyn.handlers.length > 0) return false // PR 3 scope: no-handler only
+    const { props, childrenText, dynamicProp } = dyn
+    // Look up BOTH expanded sites (one per literal value). The scan's
+    // dynamic-prop fallthrough (above in this file) emits a CollapsibleSite
+    // for each value with identical key construction, so these lookups
+    // must succeed iff both resolved.
+    const truthyProps = { ...props, [dynamicProp.name]: dynamicProp.valueTruthy }
+    const falsyProps = { ...props, [dynamicProp.name]: dynamicProp.valueFalsy }
+    const truthyKey = rocketstyleCollapseKey(tag, truthyProps, childrenText)
+    const falsyKey = rocketstyleCollapseKey(tag, falsyProps, childrenText)
+    const truthySite = cfg.sites.get(truthyKey)
+    const falsySite = cfg.sites.get(falsyKey)
+    if (!truthySite || !falsySite) return false // half-resolved ⇒ keep normal mount
+    // Cross-value template parity — the dispatcher reuses ONE `_tpl`
+    // across both values; divergent markup means we'd silently pick
+    // the truthy variant's HTML for falsy too. Bail conservatively.
+    if (truthySite.templateHtml !== falsySite.templateHtml) return false
+
+    // Build the stride-2 value-major class array (consumed by
+    // `_rsCollapseDyn`): `[v0_light, v0_dark, v1_light, v1_dark]` where
+    // v0 = truthy (cond → 0), v1 = falsy (cond → 1).
+    const classes = [
+      truthySite.lightClass,
+      truthySite.darkClass,
+      falsySite.lightClass,
+      falsySite.darkClass,
+    ]
+    const condSrc = code.slice(dynamicProp.condStart, dynamicProp.condEnd)
+    const call =
+      `__rsCollapseDyn(${JSON.stringify(truthySite.templateHtml)}, ` +
+      `${JSON.stringify(classes)}, ` +
+      `() => (${condSrc}) ? 0 : 1, ` +
+      `() => __pyrMode() === "dark")`
+    const start = node.start as number
+    const end = node.end as number
+    const parent = findParent(node)
+    const needsBraces =
+      parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
+    replacements.push({ start, end, text: needsBraces ? `{${call}}` : call })
+    needsCollapseDyn = true
+    // Union BOTH value's rule bundles into the per-module injection.
+    // De-dupe by ruleKey (the FNV-1a hash from the resolver) so two
+    // dynamic sites sharing a value pay one injection.
+    for (const site of [truthySite, falsySite]) {
+      if (!collapseRuleKeys.has(site.ruleKey)) {
+        collapseRuleKeys.add(site.ruleKey)
+        collapseRules.push({ ruleKey: site.ruleKey, rules: site.rules })
+      }
     }
     return true
   }
@@ -1720,7 +1843,7 @@ export function transformJSX_JS(
     preamble = `import { ${coreImports.join(', ')} } from "@pyreon/core";\n` + preamble
   }
 
-  if (needsCollapse) {
+  if (needsCollapse || needsCollapseDyn) {
     const cfg = options.collapseRocketstyle!
     const rd = cfg.runtimeDomSource ?? '@pyreon/runtime-dom'
     const st = cfg.stylerSource ?? '@pyreon/styler'
@@ -1735,8 +1858,16 @@ export function transformJSX_JS(
           `__rsSheet.injectRules(${JSON.stringify(r.rules)},${JSON.stringify(r.ruleKey)});`,
       )
       .join('')
+    // Only import the helpers actually emitted into this module — keeps
+    // the bundle bytes per-feature and tree-shakable. needsCollapse
+    // (full) gates `_rsCollapse`; the partial / dynamic flags gate
+    // their respective helpers independently.
+    const rdImports: string[] = []
+    if (needsCollapse) rdImports.push('_rsCollapse as __rsCollapse')
+    if (needsCollapseH) rdImports.push('_rsCollapseH as __rsCollapseH')
+    if (needsCollapseDyn) rdImports.push('_rsCollapseDyn as __rsCollapseDyn')
     preamble =
-      `import { _rsCollapse as __rsCollapse${needsCollapseH ? ', _rsCollapseH as __rsCollapseH' : ''} } from "${rd}";\n` +
+      `import { ${rdImports.join(', ')} } from "${rd}";\n` +
       `import { sheet as __rsSheet } from "${st}";\n` +
       `import { ${cfg.mode.name} as __pyrMode } from "${cfg.mode.source}";\n` +
       `${inj}\n` +
