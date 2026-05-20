@@ -325,6 +325,47 @@ function printMarkdownTable(suites: SuiteResult[]): void {
     })
     console.log(`${t.padEnd(28)}${cells.join('')}`)
   }
+
+  // Statistically-honest verdict per test — list every framework
+  // whose CI95 overlaps with the leader's. Removes the "is a 5%
+  // difference real?" judgement call from the reader; the bench
+  // itself reports "🤝 tied within noise" when intervals overlap
+  // and "🥇 outright" when the leader's CI95 lo > runner-up's CI95 hi.
+  console.log()
+  console.log('Statistically-honest verdict per test (CI95-overlap = tied within noise)')
+  console.log('─'.repeat(120))
+  const fwOnlyForVerdict = suites.filter((s) => s.framework !== 'Vanilla JS')
+  for (const t of tests) {
+    type Row = { framework: string; median: number; ci95: [number, number] }
+    const rows: Row[] = fwOnlyForVerdict
+      .map((s) => {
+        const r = s.results.find((x) => x.name === t)
+        if (!r) return null
+        return { framework: s.framework, median: r.median, ci95: r.ci95 }
+      })
+      .filter((x): x is Row => x !== null)
+    rows.sort((a, b) => a.median - b.median)
+    if (rows.length === 0) {
+      console.log(`  ${t}: no data`)
+      continue
+    }
+    const leader = rows[0]
+    if (!leader) continue
+    const tied: string[] = [leader.framework]
+    // Walk down the sorted list; include any framework whose lower
+    // CI95 bound is at or below the leader's upper CI95 bound.
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i]
+      if (!r) continue
+      if (r.ci95[0] <= leader.ci95[1]) {
+        tied.push(r.framework)
+      } else {
+        break
+      }
+    }
+    const marker = tied.length === 1 ? '🥇 outright' : `🤝 tied (n=${tied.length})`
+    console.log(`  ${t.padEnd(28)} ${marker} ${tied.join(' = ')} — leader ${fmtMs(leader.median)}`)
+  }
 }
 
 function printDiffTable(baseline: SuiteResult[], current: SuiteResult[]): void {
