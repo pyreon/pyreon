@@ -12,6 +12,7 @@
     "test:browser:e2": "vitest run --config ./vitest.browser.config.ts e2-static-rocketstyle",
     "test:browser:e2-probe": "vitest run --config ./vitest.browser.config.ts probe-resolves",
     "test:browser:e2-probe-element": "vitest run --config ./vitest.browser.config.ts probe-element-resolves",
+    "test:browser:rs-precompute": "vitest run --config ./vitest.browser.config.ts rs-precompute",
     "build": "echo 'no build — experiments package is documentation + result archives'"
   },
   "dependencies": {
