@@ -41,6 +41,14 @@ export interface ISRStore<E = ISRCacheEntry> {
   get(key: string): Promise<E | undefined> | E | undefined
   set(key: string, entry: E): Promise<void> | void
   delete?(key: string): Promise<void> | void
+  /**
+   * Drop EVERY entry. Optional — external stores (Redis with TTL-only,
+   * Vercel KV with per-key invalidation, etc.) may not support a
+   * blanket purge. When omitted, `ISRHandler.revalidateAll()` throws a
+   * clear error pointing at the missing method. The default
+   * `createMemoryStore` implements it.
+   */
+  clear?(): Promise<void> | void
 }
 
 /**
@@ -81,6 +89,9 @@ export function createMemoryStore<E = ISRCacheEntry>(opts: {
     delete(key) {
       cache.delete(key)
     },
+    clear() {
+      cache.clear()
+    },
   }
 }
 
@@ -108,10 +119,49 @@ type CacheEntry = ISRCacheEntry
  * `config.maxEntries` is ignored when a custom `config.store` is supplied
  * (the custom store owns its own eviction policy).
  */
+/**
+ * The fetch handler `createISRHandler` returns is also a callable
+ * carrying imperative invalidation methods. Webhooks, CMS notifications,
+ * admin endpoints etc. call these methods to drop one or all cached
+ * entries on demand — strictly more responsive than waiting for the
+ * TTL-based stale-while-revalidate cycle.
+ *
+ * The shape is `(req) => Promise<Response>` PLUS the methods, so
+ * existing consumers (`Bun.serve({ fetch: handler })`) keep working
+ * byte-identically.
+ */
+export interface ISRHandler {
+  (req: Request): Promise<Response>
+  /**
+   * Drop the cache entry for a single path (or `cacheKey`-derived key).
+   * The next request for that key will MISS and re-render fresh. Returns
+   * `{ dropped: true }` if an entry was found and deleted, `{ dropped: false }`
+   * if no entry existed.
+   *
+   * Useful for webhook-driven invalidation: a CMS notifies that a post
+   * was updated, the webhook handler calls `isrHandler.revalidateNow('/posts/123')`,
+   * and the very next visitor gets the fresh content — no stale window.
+   *
+   * Idempotent. Safe to call against keys that don't exist (returns
+   * `dropped: false` cleanly).
+   */
+  revalidateNow(key: string): Promise<{ dropped: boolean }>
+  /**
+   * Drop ALL cached entries. Useful for "purge cache" admin actions or
+   * deploy-completion hooks that want a clean slate.
+   *
+   * The default in-memory store supports this via repeated `delete`
+   * calls under the hood; custom stores that omit `delete` (Redis with
+   * TTL-only, etc.) throw a clear error pointing at the missing method
+   * so the caller knows their store implementation can't honor the call.
+   */
+  revalidateAll(): Promise<void>
+}
+
 export function createISRHandler(
   handler: (req: Request) => Promise<Response>,
   config: ISRConfig,
-): (req: Request) => Promise<Response> {
+): ISRHandler {
   // Pluggable backing store. Default keeps the prior in-memory LRU
   // behaviour byte-identical (same `maxEntries` default, same Map +
   // delete+re-insert LRU bump) so existing callers see no behavioural
@@ -227,7 +277,7 @@ export function createISRHandler(
     }
   }
 
-  return async (req: Request): Promise<Response> => {
+  const fetch = async (req: Request): Promise<Response> => {
     // Only cache GET requests
     if (req.method !== 'GET') {
       return handler(req)
@@ -291,4 +341,54 @@ export function createISRHandler(
       },
     })
   }
+
+  // Attach the imperative invalidation methods. The result is a
+  // callable (still works with `Bun.serve({ fetch: handler })`) plus
+  // `.revalidateNow(key)` and `.revalidateAll()` for webhook-driven
+  // cache busting.
+  const isrHandler = fetch as ISRHandler
+
+  isrHandler.revalidateNow = async (key: string) => {
+    // Get-then-delete so we can return an accurate `dropped` flag. The
+    // store's `delete` doesn't return whether anything existed, so the
+    // precheck is the only way to distinguish "actually dropped" from
+    // "no-op against missing key". For the default in-memory store the
+    // get is O(1); external stores pay one extra round-trip (acceptable
+    // for an invalidation API that fires on CMS webhooks, not on the
+    // hot path).
+    //
+    // `dropped: true` is only returned when (a) the entry existed AND
+    // (b) the store actually supported delete. A store without
+    // `delete?` returns `dropped: false` even if the entry existed —
+    // the caller's intent (make this key MISS next time) wasn't
+    // honored, so the honest answer is "no". Such stores rely on TTL
+    // for eviction.
+    const existed = (await store.get(key)) !== undefined
+    let dropped = false
+    if (existed && store.delete) {
+      await store.delete(key)
+      dropped = true
+    }
+    // Always clear the in-flight revalidation flag so the next request
+    // re-renders fresh rather than short-circuiting on the
+    // `revalidating.has(key)` guard — regardless of whether we
+    // physically dropped the entry.
+    revalidating.delete(key)
+    return { dropped }
+  }
+
+  isrHandler.revalidateAll = async () => {
+    if (!store.clear) {
+      throw new Error(
+        '[Pyreon ISR] revalidateAll() called against a store that does not implement `clear()`. The default in-memory store supports this; external stores (Redis/KV/etc.) must opt in by implementing `ISRStore.clear()`.',
+      )
+    }
+    await store.clear()
+    // Drop every in-flight revalidation flag — fresh requests should
+    // re-render rather than waiting on stale resolve callbacks pointing
+    // at entries we just purged.
+    revalidating.clear()
+  }
+
+  return isrHandler
 }

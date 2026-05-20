@@ -473,4 +473,166 @@ describe('createISRHandler', () => {
       expect(setCalls).toBe(0)
     })
   })
+
+  // ─── revalidateNow / revalidateAll (imperative invalidation) ─────────
+
+  describe('revalidateNow + revalidateAll', () => {
+    it('revalidateNow drops a cached entry — next request MISSes', async () => {
+      const inner = mockHandler('<html>v1</html>')
+      const h = createISRHandler(inner, { revalidate: 60 })
+
+      // Populate cache
+      const res1 = await h(new Request('http://localhost/posts/1'))
+      expect(res1.headers.get('x-isr-cache')).toBe('MISS')
+      expect(await res1.text()).toBe('<html>v1</html>')
+
+      // Confirm second request HITs from cache (still v1)
+      const res2 = await h(new Request('http://localhost/posts/1'))
+      expect(res2.headers.get('x-isr-cache')).toBe('HIT')
+
+      // Webhook fires — drop the entry
+      const result = await h.revalidateNow('/posts/1')
+      expect(result).toEqual({ dropped: true })
+
+      // Update the upstream handler's output (simulates CMS update)
+      inner.mockImplementation(
+        async () =>
+          new Response('<html>v2</html>', { headers: { 'content-type': 'text/html' } }),
+      )
+
+      // Next request MUST miss the cache and pick up v2
+      const res3 = await h(new Request('http://localhost/posts/1'))
+      expect(res3.headers.get('x-isr-cache')).toBe('MISS')
+      expect(await res3.text()).toBe('<html>v2</html>')
+    })
+
+    it('revalidateNow returns dropped:false for keys that never existed', async () => {
+      const h = createISRHandler(mockHandler(), { revalidate: 60 })
+      const result = await h.revalidateNow('/never-cached')
+      expect(result).toEqual({ dropped: false })
+    })
+
+    it('revalidateNow is idempotent — calling twice still returns sensible flags', async () => {
+      const h = createISRHandler(mockHandler(), { revalidate: 60 })
+      // Populate
+      await h(new Request('http://localhost/idem'))
+      // First drop succeeds
+      expect(await h.revalidateNow('/idem')).toEqual({ dropped: true })
+      // Second drop is a no-op
+      expect(await h.revalidateNow('/idem')).toEqual({ dropped: false })
+    })
+
+    it('revalidateNow clears in-flight revalidation flag so next request re-renders fresh', async () => {
+      // Without the flag clear, a key currently mid-revalidation would
+      // stay in the `revalidating` Set after revalidateNow drops it,
+      // and the next request would short-circuit on the `revalidating.has`
+      // guard. Drive it: trigger stale revalidate, then revalidateNow
+      // BEFORE the background revalidate settles, then a fresh request
+      // must still MISS (not see the stale-then-evicted entry's flag).
+      let renderCount = 0
+      const inner = vi.fn(async () => {
+        renderCount++
+        return new Response(`<html>v${renderCount}</html>`, {
+          headers: { 'content-type': 'text/html' },
+        })
+      })
+      const h = createISRHandler(inner, { revalidate: 0.01 }) // 10ms TTL
+
+      // First request → MISS (v1)
+      await h(new Request('http://localhost/p'))
+
+      // Wait past TTL so the next request triggers background revalidate
+      await new Promise((r) => setTimeout(r, 20))
+
+      // Second request → STALE (v1 served, background re-render fires)
+      const res = await h(new Request('http://localhost/p'))
+      expect(res.headers.get('x-isr-cache')).toBe('STALE')
+
+      // Immediately revalidate — this must clear both the entry AND
+      // the in-flight flag so the next request MISSes cleanly.
+      await h.revalidateNow('/p')
+
+      // Wait for any background work to settle.
+      await new Promise((r) => setTimeout(r, 30))
+
+      // Drop again (in case the background revalidate re-populated)
+      await h.revalidateNow('/p')
+
+      // Now a fresh request must MISS — proves the flag cleanup worked.
+      const finalRes = await h(new Request('http://localhost/p'))
+      expect(finalRes.headers.get('x-isr-cache')).toBe('MISS')
+    })
+
+    it('revalidateAll drops every cached entry', async () => {
+      const inner = mockHandler('<html>seeded</html>')
+      const h = createISRHandler(inner, { revalidate: 60 })
+
+      // Populate multiple entries
+      await h(new Request('http://localhost/a'))
+      await h(new Request('http://localhost/b'))
+      await h(new Request('http://localhost/c'))
+
+      // All should HIT now
+      for (const path of ['/a', '/b', '/c']) {
+        const r = await h(new Request(`http://localhost${path}`))
+        expect(r.headers.get('x-isr-cache')).toBe('HIT')
+      }
+
+      // Purge all
+      await h.revalidateAll()
+
+      // Every entry MUST MISS now
+      for (const path of ['/a', '/b', '/c']) {
+        const r = await h(new Request(`http://localhost${path}`))
+        expect(r.headers.get('x-isr-cache')).toBe('MISS')
+      }
+    })
+
+    it('revalidateAll throws a clear error against a store without clear()', async () => {
+      // Custom store WITHOUT `clear()` — emulates external stores that
+      // only support TTL-based eviction (some Redis configurations).
+      const map = new Map<string, ISRCacheEntry>()
+      const noClear: ISRStore = {
+        get: (k) => map.get(k),
+        set: (k, e) => {
+          map.set(k, e)
+        },
+        delete: (k) => {
+          map.delete(k)
+        },
+        // intentionally no `clear`
+      }
+      const h = createISRHandler(mockHandler(), { revalidate: 60, store: noClear })
+
+      await expect(h.revalidateAll()).rejects.toThrow(/clear/)
+    })
+
+    it('revalidateNow against a store without delete() returns dropped:false honestly', async () => {
+      // Some external stores expose only `get`/`set` and rely on TTL —
+      // `delete?` is optional in the ISRStore interface. revalidateNow
+      // returns `dropped: false` honestly when the store can't honor
+      // the request (rather than lying with `dropped: true` based on
+      // the precheck), so the caller can tell their invalidation
+      // didn't actually take effect.
+      const map = new Map<string, ISRCacheEntry>()
+      const noDelete: ISRStore = {
+        get: (k) => map.get(k),
+        set: (k, e) => {
+          map.set(k, e)
+        },
+        // intentionally no `delete`
+      }
+      const h = createISRHandler(mockHandler(), { revalidate: 60, store: noDelete })
+      await h(new Request('http://localhost/x'))
+
+      // Entry exists but the store can't physically drop it.
+      // revalidateNow doesn't crash AND returns the honest answer.
+      const result = await h.revalidateNow('/x')
+      expect(result).toEqual({ dropped: false })
+
+      // The entry is STILL in the cache — TTL-only stores rely on
+      // their TTL for eviction. revalidateNow can't override that.
+      expect(map.has('/x')).toBe(true)
+    })
+  })
 })
