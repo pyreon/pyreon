@@ -68,7 +68,7 @@ export function netlifyAdapter(): Adapter {
         recursive: true,
       })
 
-      // Generate Netlify Function (v2 format — ESM, Web-standard Request/Response)
+      // Generate Netlify Function (v2 format — ESM, Web-standard Request/Response).
       const funcEntry = `
 import handler from "./_server/entry-server.js"
 
@@ -76,6 +76,12 @@ export default async function(req, context) {
   try {
     return await handler(req)
   } catch (err) {
+    // Surface the error to Netlify Function logs so production
+    // crashes give real diagnostic info — pre-fix the catch
+    // swallowed \`err\` entirely and the operator saw only a
+    // bare "Internal Server Error". \`console.error\` lands in
+    // Netlify's function runtime logs panel + \`netlify functions:log\`.
+    console.error("[Pyreon SSR] handler failed:", err)
     return new Response("Internal Server Error", { status: 500 })
   }
 }

@@ -72,26 +72,31 @@ export function cloudflareAdapter(): Adapter {
         recursive: true,
       })
 
-      // Generate Cloudflare Pages _worker.js (ES module format)
+      // Generate Cloudflare Pages _worker.js (ES module format).
+      //
+      // Static assets are handled by Cloudflare Pages itself via the
+      // asset binding (Cloudflare's CDN serves files from the dist
+      // root before invoking the worker). The pre-fix harness had an
+      // \`if (ext && ...) { /* comment */ }\` block here computing an
+      // \`ext\` variable and checking a condition with an EMPTY body —
+      // pure dead code that did nothing at runtime. Removed for
+      // clarity.
       const workerEntry = `
 import handler from "./_server/entry-server.js"
 
 export default {
   async fetch(request, env, ctx) {
-    const url = new URL(request.url)
-
-    // Let Cloudflare serve static assets (files with extensions)
-    // This check is a fallback — Pages routes static files automatically
-    const ext = url.pathname.split(".").pop()
-    if (ext && ext !== url.pathname && !url.pathname.endsWith("/")) {
-      // Cloudflare Pages handles static assets automatically via its asset binding
-      // Only reach here if the file doesn't exist — fall through to SSR
-    }
-
-    // SSR handler
     try {
       return await handler(request)
     } catch (err) {
+      // Surface the error to Cloudflare Tail logs so production
+      // crashes give real diagnostic info — pre-fix the catch
+      // swallowed \`err\` entirely and the operator saw only a
+      // bare "Internal Server Error" with no stack, no message,
+      // no path. Logging via \`console.error\` is the standard
+      // Workers logging surface (lands in \`wrangler tail\` + the
+      // Cloudflare dashboard log stream).
+      console.error("[Pyreon SSR] handler failed:", err)
       return new Response("Internal Server Error", { status: 500 })
     }
   },
