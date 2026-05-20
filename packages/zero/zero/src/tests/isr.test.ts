@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createISRHandler } from '../isr'
+import {
+  createISRHandler,
+  createMemoryStore,
+  type ISRCacheEntry,
+  type ISRStore,
+} from '../isr'
 
 function mockHandler(html = '<html>test</html>') {
   return vi.fn(
@@ -252,6 +257,152 @@ describe('createISRHandler', () => {
       expect(await asc.text()).toBe('call 1 sort=asc')
       expect(await desc.text()).toBe('call 2 sort=desc')
       expect(inner).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  // ─── Pluggable store ─────────────────────────────────────────────────────
+  // Multi-instance production needs a SHARED cache (Redis / Vercel KV /
+  // Cloudflare KV / etc.) so a revalidation in pod A is visible to pod B.
+  // The store interface accepts sync OR async returns so the default
+  // in-memory impl stays cheap while external stores can use their native
+  // promise APIs directly. These tests lock the contract.
+
+  describe('pluggable store', () => {
+    it('default in-memory store keeps prior behaviour (backwards-compat)', async () => {
+      let calls = 0
+      const inner = vi.fn(async (_req: Request) => new Response(`call ${++calls}`))
+      // No `store` field → uses createMemoryStore by default.
+      const handler = createISRHandler(inner, { revalidate: 60 })
+      const r1 = await handler(new Request('http://localhost/a'))
+      const r2 = await handler(new Request('http://localhost/a'))
+      expect(await r1.text()).toBe('call 1')
+      expect(await r2.text()).toBe('call 1') // cached
+      expect(inner).toHaveBeenCalledTimes(1)
+    })
+
+    it('createMemoryStore exposes get / set / delete + LRU bump on get', () => {
+      const store = createMemoryStore<ISRCacheEntry>({ maxEntries: 2 })
+      const e1: ISRCacheEntry = { html: '1', headers: {}, timestamp: 1 }
+      const e2: ISRCacheEntry = { html: '2', headers: {}, timestamp: 2 }
+      const e3: ISRCacheEntry = { html: '3', headers: {}, timestamp: 3 }
+      store.set('a', e1)
+      store.set('b', e2)
+      // Touch 'a' → moves to newest position → 'b' is now oldest.
+      expect(store.get('a')).toBe(e1)
+      // Adding 'c' evicts 'b' (oldest), not 'a'.
+      store.set('c', e3)
+      expect(store.get('a')).toBe(e1) // survives
+      expect(store.get('b')).toBeUndefined() // evicted
+      expect(store.get('c')).toBe(e3)
+    })
+
+    it('custom store: handler calls get(key) before render, set(key, entry) after', async () => {
+      const calls: Array<{ op: string; key: string }> = []
+      const inner = vi.fn(async (_req: Request) => new Response('hi'))
+      // Fake store recording every call — simulates a Redis adapter shape.
+      const fake: ISRStore<ISRCacheEntry> = {
+        get(key) {
+          calls.push({ op: 'get', key })
+          return undefined // always miss → handler must run + set
+        },
+        set(key, _entry) {
+          calls.push({ op: 'set', key })
+        },
+      }
+      const handler = createISRHandler(inner, { revalidate: 60, store: fake })
+      await handler(new Request('http://localhost/page'))
+      expect(calls).toEqual([
+        { op: 'get', key: '/page' },
+        { op: 'set', key: '/page' },
+      ])
+      expect(inner).toHaveBeenCalledTimes(1)
+    })
+
+    it('async store: get / set return Promises and handler awaits them', async () => {
+      // Simulates a Redis-shape adapter with real-async ops.
+      const backing = new Map<string, ISRCacheEntry>()
+      const asyncStore: ISRStore<ISRCacheEntry> = {
+        async get(key) {
+          await new Promise((r) => setTimeout(r, 1))
+          return backing.get(key)
+        },
+        async set(key, entry) {
+          await new Promise((r) => setTimeout(r, 1))
+          backing.set(key, entry)
+        },
+        async delete(key) {
+          backing.delete(key)
+        },
+      }
+      let calls = 0
+      const inner = vi.fn(async (_req: Request) => new Response(`call ${++calls}`))
+      const handler = createISRHandler(inner, { revalidate: 60, store: asyncStore })
+
+      // First call: store.get awaits + misses → render → store.set awaits.
+      const r1 = await handler(new Request('http://localhost/x'))
+      expect(await r1.text()).toBe('call 1')
+
+      // Second call: store.get awaits + hits → no render.
+      const r2 = await handler(new Request('http://localhost/x'))
+      expect(await r2.text()).toBe('call 1')
+      expect(inner).toHaveBeenCalledTimes(1)
+      expect(backing.size).toBe(1)
+    })
+
+    it('custom store: cache hit serves stored entry without invoking handler', async () => {
+      const stored: ISRCacheEntry = {
+        html: 'pre-warmed',
+        headers: { 'content-type': 'text/html' },
+        timestamp: Date.now(),
+      }
+      const fake: ISRStore<ISRCacheEntry> = {
+        get(key) {
+          return key === '/cached' ? stored : undefined
+        },
+        set() {
+          /* unused for this test — get returns a hit */
+        },
+      }
+      const inner = vi.fn(async (_req: Request) => new Response('SHOULD NOT RUN'))
+      const handler = createISRHandler(inner, { revalidate: 60, store: fake })
+      const res = await handler(new Request('http://localhost/cached'))
+      expect(await res.text()).toBe('pre-warmed')
+      expect(res.headers.get('x-isr-cache')).toBe('HIT')
+      expect(inner).not.toHaveBeenCalled()
+    })
+
+    it('custom store: non-cacheable response (5xx / Set-Cookie) does NOT call store.set', async () => {
+      let setCalls = 0
+      const fake: ISRStore<ISRCacheEntry> = {
+        get() {
+          return undefined
+        },
+        set() {
+          setCalls++
+        },
+      }
+      // 5xx response
+      const fivexx = vi.fn(async () => new Response('err', { status: 500 }))
+      const h1 = createISRHandler(fivexx, { revalidate: 60, store: fake })
+      const r1 = await h1(new Request('http://localhost/err'))
+      expect(r1.status).toBe(500)
+      expect(r1.headers.get('x-isr-cache')).toBe('BYPASS')
+
+      // Set-Cookie response
+      const cooked = vi.fn(
+        async () =>
+          new Response('ok', {
+            status: 200,
+            headers: { 'set-cookie': 'session=x' },
+          }),
+      )
+      const h2 = createISRHandler(cooked, { revalidate: 60, store: fake })
+      const r2 = await h2(new Request('http://localhost/auth'))
+      expect(r2.status).toBe(200)
+      expect(r2.headers.get('x-isr-cache')).toBe('BYPASS')
+
+      // store.set should never have been called for either uncacheable path.
+      expect(setCalls).toBe(0)
     })
   })
 })

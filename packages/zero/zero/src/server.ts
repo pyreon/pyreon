@@ -35,7 +35,8 @@ export {
 
 // ─── ISR ────────────────────────────────────────────────────────────────────
 
-export { createISRHandler } from "./isr";
+export type { ISRCacheEntry, ISRStore } from "./isr";
+export { createISRHandler, createMemoryStore } from "./isr";
 
 // ─── Vercel revalidate handler (M3.1) ───────────────────────────────────────
 
