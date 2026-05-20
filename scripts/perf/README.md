@@ -103,3 +103,19 @@ Exit codes:
 Companion to the unit-test regression locks in `@pyreon/core/src/tests/context.test.ts` (the structural bug-shape that motivated #768). Those tests catch the deterministic fingerprint of the context-snapshot leak class; this harness catches heap-growth patterns the unit tests can't see (event listener accumulation, observer leaks, signal-subscriber leaks, etc.).
 
 The pure `linearRegression()` math export is unit-tested at `packages/internals/test-utils/src/tests/leak-audit.test.ts` — including a "bug-replication shape" spec that proves the harness CAN detect the original 5 MB/cycle context-snapshot leak class (so the smoke-test "no leak" result on a clean codebase is falsifiable evidence, not just absence of evidence).
+
+## `../leak-sweep.ts` — multi-journey audit driver
+
+Runs `leak-audit`'s methodology across every journey in an example, sharing one server + browser session for the whole sweep (10-15× faster than invoking `leak-audit.ts` N times with per-invocation overhead).
+
+```bash
+bun run perf:leak-sweep --app perf-dashboard [--cycles 15] [--warmup 3] [--threshold 50000] [--journeys j1,j2] [--json out.json]
+```
+
+Output: markdown table sorted by slope descending (worst first), plus JSON archive. Each journey gets the same statistical treatment (linear-regression slope, R², CV — same machinery as `leak-audit.ts`). Exit codes match `leak-audit.ts`: 0 = all clean, 6 = at least one journey exceeded threshold.
+
+Baseline captured at `perf-results/baseline-leak-sweep-perf-dashboard.json` — full 43-journey result against the dedup-merged state (post-#768). **All 43 journeys had slope = 0 KB/cycle** (heap rock-solid at 9.54 MB across 15 cycles each). This is the "everything is clean" reference point for future diff runs.
+
+**Important caveat**: Chrome's `performance.memory.usedJSHeapSize` is bucketed to ~100 KB increments for privacy. With ~10 MB baseline heaps, this means changes below ~100 KB/cycle aren't detectable by this harness. The 9.54 MB readings are honest "no detectable growth" but not "provably zero allocation"; deeper analysis would need CDP `HeapProfiler.takeHeapSnapshot` + retained-class-size analysis. Filed as future work.
+
+**Real bug surfaced by the sweep** (filed as separate work, not addressed in this PR): the `domConditionalToggle-1000` journey (1000 `<Show>` items inside a `<For>` with `toggleDrive(2)` mass-toggling all signals) triggers an `Unhandled effect error: NotFoundError: Failed to execute 'insertBefore'…` in `mountReactive`. Heap stays bounded (the framework catches the error), but the symptom indicates a real DOM-reconciliation race under deeply-batched signal writes. The sweep is the first tool to surface this — none of the existing browser-test suites assert on `console.error` output during reactive batches. Separate PR will land a defensive guard + a regression-locking browser test.
