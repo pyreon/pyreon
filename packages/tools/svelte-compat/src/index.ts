@@ -177,6 +177,18 @@ export function writable<T>(value?: T, start: StartStopNotifier<T> = noop): Writ
         const cached = ctx.hooks[idx] as { unsub: Unsubscriber } | undefined
         if (cached) {
           run(v)
+          // Re-push the cached unsub into the (possibly-reset)
+          // unmountCallbacks array. When a parent re-renders and
+          // preserves the ChildInstance, the wrapper resets
+          // `ctx.unmountCallbacks = []` to drop stale cycle-N
+          // callbacks before cycle-N+1 begins (`jsx-runtime.ts:172`).
+          // Without this re-push the cached subscription's unsub is
+          // lost from the array and the subscription stays active on
+          // the store forever — one leaked subscriber per
+          // `writable.subscribe()` call per parent re-render cycle.
+          if (!ctx.unmountCallbacks.includes(cached.unsub)) {
+            ctx.unmountCallbacks.push(cached.unsub)
+          }
           return cached.unsub
         }
         const entry: SubEntry<T> = {
