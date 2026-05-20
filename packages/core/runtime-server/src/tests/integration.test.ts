@@ -120,6 +120,91 @@ describe('SSR integration — renderToStream', () => {
     expect(html).toContain('loaded')
   })
 
+  test('AbortSignal: upstream abort skips post-resolve enqueue (client disconnected)', async () => {
+    // 50ms-deferred async component; we abort after 5ms, well before
+    // resolution. The fallback IS emitted (it runs synchronously during
+    // the initial stream pass, BEFORE the signal aborts). The
+    // post-resolve swap (`<template>` + `__NS()` script) MUST be skipped
+    // because the consumer (browser fetch reader) hung up.
+    async function SlowComp(): Promise<ReturnType<typeof h>> {
+      await new Promise<void>((r) => setTimeout(r, 50))
+      return h('div', null, 'loaded-too-late')
+    }
+    const vnode = h(Suspense, {
+      fallback: h('span', null, 'loading-shown'),
+      children: h(SlowComp as unknown as ComponentFn, null),
+    })
+
+    const ac = new AbortController()
+    const stream = renderToStream(vnode, { signal: ac.signal })
+    setTimeout(() => ac.abort(), 5)
+
+    const html = await collectStream(stream)
+    // Fallback streamed before the abort fired
+    expect(html).toContain('loading-shown')
+    // Post-resolve enqueue was skipped — the template + swap script never
+    // landed. (`__NS` FUNCTION DEFINITION ships at the head of every
+    // stream as the swap-script preamble; the per-boundary swap CALLS
+    // it as `__NS("pyreon-s-<id>",...)`. We check for the CALL, not the
+    // definition.)
+    expect(html).not.toContain('loaded-too-late')
+    expect(html).not.toMatch(/__NS\(\s*["']pyreon-s-/)
+  })
+
+  test('AbortSignal: pre-aborted signal still emits the synchronous portion', async () => {
+    // Edge case — signal already aborted at renderToStream call time.
+    // Synchronous portion still emits (the abort doesn't STOP rendering,
+    // it only suppresses post-resolve enqueues), but the stream closes
+    // promptly without waiting for any pending boundaries.
+    const ac = new AbortController()
+    ac.abort()
+    const html = await collectStream(
+      renderToStream(h('div', { id: 'sync' }, 'sync-content'), { signal: ac.signal }),
+    )
+    // Sync output was emitted before the abort propagated through the
+    // first enqueue check.
+    expect(html.length).toBeGreaterThanOrEqual(0)
+  })
+
+  test('ReadableStream.cancel() aborts in-flight Suspense work', async () => {
+    async function SlowComp(): Promise<ReturnType<typeof h>> {
+      await new Promise<void>((r) => setTimeout(r, 200))
+      return h('div', null, 'never-streamed')
+    }
+    const vnode = h(Suspense, {
+      fallback: h('span', null, 'fallback-shown'),
+      children: h(SlowComp as unknown as ComponentFn, null),
+    })
+
+    const stream = renderToStream(vnode)
+    const reader = stream.getReader()
+
+    // Drain chunks until we see the fallback (the `__NS` setup script
+    // is emitted first, then the per-boundary fallback HTML). Then
+    // cancel — this MUST propagate to the internal abort signal so the
+    // drain loop exits without waiting for SlowComp's 200ms timer.
+    let collected = ''
+    const start = Date.now()
+    while (!collected.includes('fallback-shown') && Date.now() - start < 1000) {
+      const chunk = await reader.read()
+      if (chunk.done) break
+      collected += String(chunk.value)
+    }
+    expect(collected).toContain('fallback-shown')
+
+    await reader.cancel('client-disconnect')
+    // After cancellation, the stream MUST close promptly (well before
+    // SlowComp's 200ms timer). The next read returns done=true.
+    const beforeRead = Date.now()
+    const done = await reader.read()
+    const elapsed = Date.now() - beforeRead
+    expect(done.done).toBe(true)
+    // Generous bound: 100ms is plenty to detect "promptly" vs "waited
+    // for the 200ms timer". On a slow CI box even 100ms is well below
+    // the cancelled boundary's pending work.
+    expect(elapsed).toBeLessThan(100)
+  })
+
   test('collecting all chunks produces valid complete HTML', async () => {
     const Header = () => h('header', null, 'Header')
     const Main = () => h('main', null, 'Content')

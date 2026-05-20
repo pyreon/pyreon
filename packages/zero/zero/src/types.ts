@@ -143,6 +143,42 @@ export interface ISRConfig {
   // the shape statically.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   store?: import('./isr').ISRStore<any>
+  /**
+   * Construct the `Request` used for background revalidation. Default:
+   * the ORIGINAL user's request (headers, method, URL) — which means a
+   * `cacheKey`-bearing entry triggered by user A is revalidated against
+   * A's cookies / auth headers. For auth-gated `cacheKey` setups this
+   * is risky: if A's session expires before the revalidation runs, the
+   * new render may misbehave (auth-gate hits redirect path, or worse,
+   * still emits A's personalized HTML because the server hasn't yet
+   * invalidated the session token).
+   *
+   * Supply `revalidateRequest` to construct a request scoped to the
+   * cache key — e.g. anonymous for anonymous entries, service-account
+   * for shared entries. Returning `null` SKIPS revalidation entirely
+   * for this entry (stale stays stale until the next live request).
+   *
+   * Compatible with `store`: the revalidate path still reads/writes
+   * the configured store; this hook only controls what request the
+   * re-render runs against.
+   *
+   * @example
+   * isr: {
+   *   revalidate: 60,
+   *   cacheKey: (req) => {
+   *     const session = req.headers.get('cookie')?.match(/session=([^;]+)/)?.[1] ?? 'anon'
+   *     return `${new URL(req.url).pathname}::${session}`
+   *   },
+   *   revalidateRequest: (req) => {
+   *     // Anonymous entries re-revalidate as anonymous (safe default).
+   *     // Authenticated entries skip revalidation — the user's next
+   *     // hit will re-render with their current cookies on cache miss.
+   *     const hasAuth = /session=(?!anon)/.test(req.headers.get('cookie') ?? '')
+   *     return hasAuth ? null : new Request(req.url, { method: 'GET' })
+   *   },
+   * }
+   */
+  revalidateRequest?: (req: Request) => Request | null
 }
 
 // ─── Zero config ─────────────────────────────────────────────────────────────
