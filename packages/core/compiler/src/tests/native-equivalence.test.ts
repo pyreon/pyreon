@@ -830,3 +830,95 @@ describeNative('Reactivity-lens — JS↔Rust span parity', () => {
   test('signal auto-call shape — declared signal, bare {count} → reactive', () =>
     compareLens('const count = signal(0); const App = () => <div>{count}</div>', 'auto.tsx'))
 })
+
+describeNative('cross-backend: component-child stable-reference carve-out', () => {
+  test('bare Identifier (splitProps-derived const) emitted bare in component child', () =>
+    compare(`
+      const Kinetic = (props) => {
+        const [childHolder, restHtml] = splitProps(props, ['children'])
+        const children = childHolder.children
+        return <StaggerRenderer htmlProps={restHtml}>{children}</StaggerRenderer>
+      }
+    `))
+
+  test('simple MemberExpression chain emitted bare in component child', () =>
+    compare(`
+      const Comp = (props) => {
+        const [obj] = splitProps(props, ['deep'])
+        return <Inner>{obj.deep.x}</Inner>
+      }
+    `))
+
+  test('CallExpression keeps the wrap in component child', () =>
+    compare(`
+      const count = signal(0)
+      const Comp = () => <Inner>{count()}</Inner>
+    `))
+
+  test('BinaryExpression keeps the wrap in component child', () =>
+    compare(`
+      const Comp = (props) => {
+        const [own] = splitProps(props, ['a', 'b'])
+        return <Inner>{own.a + own.b}</Inner>
+      }
+    `))
+
+  test('DOM-element parent keeps reactive binding (no carve-out)', () =>
+    compare(`
+      const Comp = (props) => {
+        const [own] = splitProps(props, ['children'])
+        const children = own.children
+        return <div>{children}</div>
+      }
+    `))
+
+  test('user-written accessor child passes through unchanged', () =>
+    compare(`
+      const x = signal('a')
+      const Comp = () => <Inner>{() => x()}</Inner>
+    `))
+
+  test('bare signal identifier in component child — KEEPS wrap (auto-call + reactivity)', () =>
+    compare(`
+      function C() {
+        const count = signal(0)
+        return <MyComp>{count}</MyComp>
+      }
+    `))
+
+  test('TS-cast wrapper (`children as VNode[]`) is transparent — both backends', () =>
+    compare(`
+      const Kinetic = (props) => {
+        const [childHolder] = splitProps(props, ['children'])
+        const children = childHolder.children
+        return <Inner>{children as VNode[]}</Inner>
+      }
+    `))
+
+  test('non-null `!` postfix is transparent — both backends', () =>
+    compare(`
+      const Comp = (props) => {
+        const [own] = splitProps(props, ['children'])
+        return <Inner>{own.children!}</Inner>
+      }
+    `))
+
+  test('fragment child of component does NOT propagate component context', () =>
+    compare(`
+      const Comp = (props) => {
+        const [own] = splitProps(props, ['children'])
+        const children = own.children
+        return <Inner><>{children}</></Inner>
+      }
+    `))
+
+  test('static-array children (rest-args form, no expression container) — unchanged', () =>
+    compare(`
+      const Comp = (props) => (
+        <Inner>
+          <A />
+          <B />
+        </Inner>
+      )
+    `))
+})

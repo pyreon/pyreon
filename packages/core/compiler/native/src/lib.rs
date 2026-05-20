@@ -339,6 +339,15 @@ struct Ctx<'a> {
     /// Whether the current JSX element's parent is another JSX element/fragment.
     parent_is_jsx: bool,
 
+    /// Whether the IMMEDIATE parent JSX element is a COMPONENT (uppercase
+    /// tag). Set inside `handle_jsx_element` for the duration of the
+    /// component's children walk, then restored. Consumed by
+    /// `handle_jsx_expression_child` to decide whether to skip the
+    /// accessor wrap for stable-reference children — see the JS backend's
+    /// `handleJsxExpression(node, parentJsx)` for the rationale + bisect
+    /// reference (`packages/core/compiler/src/tests/component-child-no-wrap.test.ts`).
+    parent_is_component_jsx_element: bool,
+
     /// Signal variables: `const x = signal(...)` or `const x = computed(...)`
     signal_vars: FxHashSet<String>,
     /// Shadowed signal names in current scope (for scope-aware auto-call)
@@ -389,6 +398,7 @@ impl<'a> Ctx<'a> {
             is_dynamic_cache: FxHashMap::default(),
             callback_depth: 0,
             parent_is_jsx: false,
+            parent_is_component_jsx_element: false,
             signal_vars: FxHashSet::default(),
             shadowed_signals: FxHashSet::default(),
             element_vars: FxHashSet::default(),
@@ -2638,11 +2648,22 @@ fn walk_jsx_child(child: &JSXChild, ctx: &mut Ctx) {
         JSXChild::Element(el) => handle_jsx_element(el, ctx),
         JSXChild::Fragment(frag) => {
             let old = ctx.parent_is_jsx;
+            // Mirror the JS backend: fragments are transparent in JSX
+            // semantics but they DO break the "direct parent is a
+            // component" relationship. The JS walker passes `parentJsx`
+            // to `handleJsxExpression` only from the immediate JSXElement
+            // iteration — fragment-nested expression children fall through
+            // generic descent and lose the parent context. Clear here so
+            // a `{x}` inside `<Comp><>{x}</></Comp>` still goes through
+            // the wrap path (matches JS-backend equivalence).
+            let old_component = ctx.parent_is_component_jsx_element;
             ctx.parent_is_jsx = true;
+            ctx.parent_is_component_jsx_element = false;
             for child in &frag.children {
                 walk_jsx_child(child, ctx);
             }
             ctx.parent_is_jsx = old;
+            ctx.parent_is_component_jsx_element = old_component;
         }
         JSXChild::ExpressionContainer(container) => {
             handle_jsx_expression_child(container, ctx);
@@ -2687,11 +2708,14 @@ fn handle_jsx_element(el: &JSXElement, ctx: &mut Ctx) {
 
     // Process children
     let old_parent_is_jsx = ctx.parent_is_jsx;
+    let old_parent_is_component = ctx.parent_is_component_jsx_element;
     ctx.parent_is_jsx = true;
+    ctx.parent_is_component_jsx_element = is_component;
     for child in &el.children {
         walk_jsx_child(child, ctx);
     }
     ctx.parent_is_jsx = old_parent_is_jsx;
+    ctx.parent_is_component_jsx_element = old_parent_is_component;
 }
 
 fn check_for_warnings(el: &JSXElement, ctx: &mut Ctx) {
@@ -2847,6 +2871,37 @@ fn handle_jsx_expression_child(container: &JSXExpressionContainer, ctx: &mut Ctx
 
     // Wrap if dynamic
     if should_wrap(expr, ctx) {
+        // Carve-out: stable references passed as JSX children of a
+        // COMPONENT parent are emitted bare (no accessor wrap). Mirrors
+        // the JS backend's `handleJsxExpression(node, parentJsx)` —
+        // see `packages/core/compiler/src/jsx.ts` + the bisect tests at
+        // `packages/core/compiler/src/tests/component-child-no-wrap.test.ts`.
+        // Background: the kinetic Stagger + bokisch.com Intro reproducer
+        // (PR #731 shipped the library-side workaround). The compiler
+        // wrapping `{children}` as `() => h.children` in component child
+        // position breaks libraries that iterate / cloneVNode children
+        // directly.
+        if ctx.parent_is_component_jsx_element
+            && is_stable_reference(expr)
+            && !references_signal_var(expr, ctx)
+        {
+            // Skip the carve-out for signal references — `<Comp>{count}</Comp>`
+            // (bare signal identifier) is the user's deliberate "make this
+            // reactive at the call site" pattern. Auto-call + wrap converts
+            // to `() => count()` so the receiving component re-evaluates
+            // inside its mountReactive/mountChild scope. Prop-derived
+            // stable refs (the kinetic / bokisch fix shape) take the bare
+            // path.
+            //
+            // Slice the UNWRAPPED expression (TS type-only layers stripped)
+            // so cross-backend equivalence holds — the JS backend does
+            // the same. Esbuild strips TS casts at the next stage anyway.
+            let sp = expr.span();
+            let unwrapped = unwrap_type_layers(expr);
+            let sliced = slice_expr(unwrapped, ctx);
+            ctx.add_replacement(sp.start, sp.end, sliced);
+            return;
+        }
         wrap_expr(expr, ctx);
         return;
     }
@@ -2902,6 +2957,59 @@ fn maybe_hoist_expr(expr: &Expression, ctx: &mut Ctx) -> Option<String> {
             }
         }
         _ => None,
+    }
+}
+
+/// Stable reference — bare Identifier or non-computed MemberExpression chain
+/// terminating in an Identifier or `this`. Reading once captures the same
+/// value as reading repeatedly inside an effect (the underlying getter
+/// resolves identically either way), so the no-wrap path doesn't lose
+/// reactivity. Mirrors `isStableReference` in `src/jsx.ts`.
+///
+/// TS type-only layers (`as T` / `satisfies T` / non-null `!` /
+/// `<T>expr`) and parentheses are transparent — they don't change runtime
+/// semantics so we unwrap to look at the underlying expression. Real-app
+/// reproducer: `<Comp>{children as VNode[]}</Comp>` in kinetic's
+/// `createKineticComponent.tsx` — without unwrap the carve-out misses
+/// the very pattern it was written for.
+fn is_stable_reference(expr: &Expression) -> bool {
+    let u = unwrap_type_layers(expr);
+    match u {
+        Expression::Identifier(_) => true,
+        Expression::StaticMemberExpression(member) => {
+            // StaticMemberExpression is the non-computed form `obj.prop`.
+            // Walk down the object chain — must terminate in Identifier or
+            // `this`. Computed accesses (`obj[key]`) come through
+            // `ComputedMemberExpression` and are NOT stable references
+            // (the index might be dynamic).
+            walk_member_chain(&member.object)
+        }
+        _ => false,
+    }
+}
+
+fn walk_member_chain(expr: &Expression) -> bool {
+    let u = unwrap_type_layers(expr);
+    match u {
+        Expression::Identifier(_) => true,
+        Expression::ThisExpression(_) => true,
+        Expression::StaticMemberExpression(member) => walk_member_chain(&member.object),
+        _ => false,
+    }
+}
+
+/// Strip TS type-only layers + parens that don't affect runtime value.
+fn unwrap_type_layers<'a>(expr: &'a Expression<'a>) -> &'a Expression<'a> {
+    let mut cur = expr;
+    loop {
+        cur = match cur {
+            Expression::TSAsExpression(e) => &e.expression,
+            Expression::TSSatisfiesExpression(e) => &e.expression,
+            Expression::TSNonNullExpression(e) => &e.expression,
+            Expression::TSTypeAssertion(e) => &e.expression,
+            Expression::ParenthesizedExpression(e) => &e.expression,
+            _ => return cur,
+        };
     }
 }
 

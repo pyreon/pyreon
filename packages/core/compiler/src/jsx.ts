@@ -910,7 +910,7 @@ export function transformJSX_JS(
     }
   }
 
-  function handleJsxExpression(node: N): void {
+  function handleJsxExpression(node: N, parentJsx?: N): void {
     const expr = node.expression
     if (!expr || expr.type === 'JSXEmptyExpression') return
     const hoistName = maybeHoist(expr)
@@ -919,10 +919,113 @@ export function transformJSX_JS(
       return
     }
     if (shouldWrap(expr)) {
+      // Skip the accessor wrap for stable references passed as JSX children
+      // of a COMPONENT parent (uppercase tag). The compiler's prop-inlining
+      // pass replaces `{children}` with `() => h.children` for component
+      // parents too (the kinetic Stagger + bokisch.com Intro reproducer);
+      // most consumer libraries (rocketstyle/styler/ui-core/elements) route
+      // children through `mountChild` which handles function children via
+      // `mountReactive`, but libraries that iterate children at the VNode
+      // level (kinetic's StaggerRenderer/TransitionItem) or `cloneVNode`
+      // them directly are silently broken — the function spread produces
+      // `{type: undefined}` and the DOM renders `<undefined>` tags.
+      //
+      // Narrow contract — only stable references are emitted bare:
+      //   - Bare Identifier (`{children}` referencing a prop-derived const)
+      //   - Simple MemberExpression chain (`{obj.x}`, `{obj.x.y}`)
+      // These shapes evaluate the same way whether called once at JSX-
+      // emit time or repeatedly in a `mountReactive` effect — no
+      // reactivity is lost because the underlying value is just a
+      // property read. Other dynamic shapes (CallExpression, BinaryExpression,
+      // LogicalExpression, etc.) keep the wrap so `<Comp>{count()}</Comp>`
+      // and similar patterns stay reactive end-to-end.
+      //
+      // Without this carve-out, library authors are forced to write
+      // defensive `typeof children === 'function' ? children() : children`
+      // unwraps everywhere they consume `props.children` structurally.
+      if (
+        parentJsx &&
+        isComponentTag(jsxTagName(parentJsx)) &&
+        isStableReference(expr) &&
+        !referencesSignalVar(expr)
+      ) {
+        // Skip the carve-out for signal references — `<Comp>{count}</Comp>`
+        // (bare signal identifier) is the user's deliberate "make this
+        // reactive at the call site" pattern. Auto-call + wrap converts to
+        // `() => count()` so the receiving component re-evaluates inside
+        // its mountReactive/mountChild scope. Prop-derived stable refs
+        // (the kinetic / bokisch fix shape) take the bare path.
+        //
+        // Slice the UNWRAPPED expression — TS type-only layers (`as T`,
+        // `satisfies T`, `!`) are stripped because the receiving component
+        // doesn't care about the static type and esbuild strips casts at
+        // the next stage anyway. Also keeps cross-backend equivalence
+        // with the Rust path (whose `accesses_props` doesn't recurse into
+        // TSAsExpression).
+        const start = expr.start as number
+        const end = expr.end as number
+        const unwrapped = unwrapTypeLayers(expr)
+        const sliced = sliceExpr(unwrapped)
+        replacements.push({ start, end, text: sliced })
+        return
+      }
       wrap(expr)
       return
     }
     walkNode(expr)
+  }
+
+  /** Component tag — uppercase first letter. Lowercase = DOM element. */
+  function isComponentTag(tag: string): boolean {
+    return tag.length > 0 && tag.charAt(0) !== tag.charAt(0).toLowerCase()
+  }
+
+  /**
+   * Stable reference — an expression whose value is a bare property read.
+   * Bare Identifier (`children`) or a non-computed MemberExpression chain
+   * (`obj.x.y`) terminating in an Identifier or `this`. These are the
+   * shapes that survive the no-wrap path without losing reactivity:
+   * reading them once captures the same value as reading them N times,
+   * because the underlying getter (if any) is the source of truth either
+   * way. Excludes CallExpression / TaggedTemplateExpression / BinaryExpression
+   * / LogicalExpression / ConditionalExpression / etc. — those keep the
+   * wrap so consumers can re-evaluate inside reactive scopes.
+   *
+   * TS type-only layers (`as T` / `satisfies T` / non-null `!`) and
+   * parentheses are transparent — they don't change runtime semantics
+   * so we unwrap to look at the underlying expression. Reproducer:
+   * `<Comp>{children as VNode[]}</Comp>` in `createKineticComponent.tsx`
+   * — the TS cast wraps the Identifier as a `TSAsExpression`; without
+   * unwrap the carve-out misses the very pattern it was written for.
+   */
+  function isStableReference(expr: N): boolean {
+    const u = unwrapTypeLayers(expr)
+    if (u.type === 'Identifier') return true
+    if (u.type === 'MemberExpression') {
+      let cur: N = u
+      while (cur.type === 'MemberExpression') {
+        if (cur.computed) return false
+        if (cur.property?.type !== 'Identifier') return false
+        cur = cur.object
+      }
+      return cur.type === 'Identifier' || cur.type === 'ThisExpression'
+    }
+    return false
+  }
+
+  /** Strip TS type-only layers + parens that don't affect runtime value. */
+  function unwrapTypeLayers(expr: N): N {
+    let cur: N = expr
+    while (
+      cur.type === 'TSAsExpression' ||
+      cur.type === 'TSSatisfiesExpression' ||
+      cur.type === 'TSNonNullExpression' ||
+      cur.type === 'TSTypeAssertion' ||
+      cur.type === 'ParenthesizedExpression'
+    ) {
+      cur = cur.expression
+    }
+    return cur
   }
 
   // ── Prop-derived variable tracking (collected during the single walk) ─────
@@ -1387,7 +1490,7 @@ export function transformJSX_JS(
         else if (attr.type === 'JSXSpreadAttribute') handleJsxSpreadAttribute(attr, node)
       }
       for (const child of jsxChildren(node)) {
-        if (child.type === 'JSXExpressionContainer') handleJsxExpression(child)
+        if (child.type === 'JSXExpressionContainer') handleJsxExpression(child, node)
         else walkNode(child)
       }
       // Note: JSXElement is never a function, so no callback depth or scope cleanup needed here
