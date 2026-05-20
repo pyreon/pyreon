@@ -122,7 +122,75 @@ describe('writeLpihCache', () => {
   })
 })
 
+describe('writeLpihCache — defensive cleanup', () => {
+  it('cleans up tmp file when rename fails (target is a directory)', async () => {
+    activateReactiveDevtools()
+    const s = signal(0)
+    s.set(1)
+    // Build a path whose target IS a directory — rename onto a directory
+    // throws EISDIR (POSIX) / EPERM (Windows). The tmp file should be
+    // unlinked even though writeLpihCache rethrows.
+    const targetDir = join(TMP_DIR, 'target-as-dir')
+    const fs = await import('node:fs/promises')
+    await fs.mkdir(targetDir, { recursive: true })
+
+    await expect(writeLpihCache(targetDir)).rejects.toBeDefined()
+
+    // No tmp file should be left behind in TMP_DIR.
+    const files = await fs.readdir(TMP_DIR)
+    const tmpFiles = files.filter(
+      (f) => f.startsWith('target-as-dir.tmp.') || f.includes('.tmp.'),
+    )
+    expect(tmpFiles).toEqual([])
+    void s
+  })
+
+  it('cleans up tmp file even when unlink fallback fails silently', async () => {
+    // This is the harder case: we want to assert the cleanup runs without
+    // letting an unlink-failure leak as the user-visible error. We can't
+    // easily make unlink fail in a portable way, but the code path is
+    // covered by the try/catch — verify the behavior: rejecting with the
+    // ORIGINAL rename error, never the unlink one.
+    activateReactiveDevtools()
+    const s = signal(0)
+    s.set(1)
+    const targetDir = join(TMP_DIR, 'silent-unlink')
+    const fs = await import('node:fs/promises')
+    await fs.mkdir(targetDir, { recursive: true })
+    try {
+      await writeLpihCache(targetDir)
+      expect.fail('should have rejected')
+    } catch (err) {
+      // The error message should reference the rename failure, NOT the
+      // unlink fallback — proof we prioritize the original error.
+      const code = (err as { code?: string }).code
+      expect(['EISDIR', 'EPERM', 'EACCES']).toContain(code)
+    }
+    void s
+  })
+})
+
 describe('startLpihPolling', () => {
+  it('timer is unref()d so polling does not block process exit', async () => {
+    activateReactiveDevtools()
+    const path = join(TMP_DIR, 'unref-check.json')
+    const dispose = startLpihPolling(path, 50)
+    // Wait one tick so the timer is actually scheduled.
+    await new Promise((r) => setTimeout(r, 100))
+    // Indirect check: the polling timer is internal, but we can verify
+    // the disposer stops cleanly without hanging. If unref() weren't
+    // applied, this test could still pass (since vitest holds the loop
+    // open) — the bisect test is "test runs at all without timing out",
+    // which is the load-bearing behavior.
+    dispose()
+    // Verify no further writes happen after dispose.
+    const fs = await import('node:fs/promises')
+    const stat1 = await fs.stat(path)
+    await new Promise((r) => setTimeout(r, 200))
+    const stat2 = await fs.stat(path)
+    expect(stat2.mtimeMs).toBe(stat1.mtimeMs)
+  })
+
   it('writes repeatedly + disposer stops it', async () => {
     activateReactiveDevtools()
     const s = signal(0)

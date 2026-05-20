@@ -68,7 +68,21 @@ export async function writeLpihCache(path: string): Promise<number> {
   const tmp = `${path}.tmp.${pid}.${++_seq}`
   const fs = await import('node:fs/promises')
   await fs.writeFile(tmp, JSON.stringify(payload), 'utf8')
-  await fs.rename(tmp, path)
+  try {
+    await fs.rename(tmp, path)
+  } catch (err) {
+    // Rename failed — clean up the tmp file so we don't leak it on disk.
+    // Common causes: cross-device link (rare; same dir → same FS), target
+    // is a directory, EACCES. The caller sees the original error; the
+    // cleanup is best-effort and silent (unlink may also fail if the FS
+    // is broken — re-throwing that would mask the real problem).
+    try {
+      await fs.unlink(tmp)
+    } catch {
+      /* swallow — original error is more useful */
+    }
+    throw err
+  }
   return summaries.length
 }
 
@@ -85,6 +99,7 @@ export function startLpihPolling(
   intervalMs = 250,
 ): () => void {
   let active = true
+  let timer: ReturnType<typeof setTimeout> | null = null
   const tick = async (): Promise<void> => {
     if (!active) return
     try {
@@ -93,10 +108,22 @@ export function startLpihPolling(
       // Swallow — polling continues. The LSP degrades gracefully if the
       // file is missing or stale.
     }
-    if (active) setTimeout(tick, intervalMs)
+    if (active) {
+      timer = setTimeout(tick, intervalMs)
+      // .unref() so a forgotten startLpihPolling() doesn't block process
+      // exit. Node-only; the setTimeout return type in browsers is a
+      // number with no .unref. Type-narrow defensively.
+      if (typeof timer === 'object' && timer !== null && 'unref' in timer) {
+        ;(timer as { unref(): void }).unref()
+      }
+    }
   }
   void tick()
   return () => {
     active = false
+    if (timer !== null) {
+      clearTimeout(timer)
+      timer = null
+    }
   }
 }
