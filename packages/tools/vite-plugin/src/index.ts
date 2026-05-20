@@ -44,6 +44,10 @@ import {
 import type { CollapseResolver } from './rocketstyle-collapse'
 import type { Plugin, ViteDevServer } from 'vite'
 
+// Dev-mode counter sink — see packages/internals/perf-harness for contract.
+const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 // Lazy — the resolver module (and its `vite` SSR machinery) must NOT be
 // on the static import path of this cheap entry. It loads ONLY when
 // `pyreon({ collapse })` is enabled AND a collapsible site is scanned;
@@ -516,6 +520,13 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
     // stale entry. So watchChange only needs to handle `'delete'`.
     watchChange(id: string, change: { event: 'create' | 'update' | 'delete' }) {
       if (change.event !== 'delete') return
+
+      // Leak-class C diagnostic — emit per handled delete event. Bounded
+      // by file-deletion count in a dev session; should grow strictly
+      // monotonically with developer edit activity. Zero in a session
+      // with known deletes = the watchChange hook regressed (and the
+      // 4 per-instance caches will leak again).
+      if (__DEV__) _countSink.__pyreon_count__?.('vite-plugin.watchChange.delete')
 
       const normalized = normalizeModuleId(id)
 
