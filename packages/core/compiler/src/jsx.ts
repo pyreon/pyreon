@@ -527,6 +527,158 @@ export function detectPartialCollapsibleShape(
   return { props, childrenText: childrenText.trim(), handlers }
 }
 
+/**
+ * A dynamic dimension prop on a collapsible call site. A ConditionalExpression
+ * (ternary) where both branches are string literals — `state={cond ? 'a' : 'b'}`
+ * is the canonical shape. Pre-resolution: the prop's value belongs to the
+ * enumerable set `[valueA, valueB]`. The compiler emits one collapsed
+ * variant per literal value + a dispatcher on the original `cond`.
+ */
+export interface DynamicCollapsibleProp {
+  /** JSX attribute name, e.g. `state`. */
+  name: string
+  /** Source span of the ternary condition (the `cond` part), re-emitted into the runtime dispatcher. */
+  condStart: number
+  condEnd: number
+  /** Literal value for the `cond === truthy` branch (consequent). */
+  valueTruthy: string
+  /** Literal value for the `cond === falsy` branch (alternate). */
+  valueFalsy: string
+}
+
+/**
+ * Dynamic-prop partial-collapse detector — PR 2 of the dynamic-prop
+ * partial-collapse build (`.claude/plans/open-work-2026-q3.md` → #1
+ * dynamic-prop bucket = 15.3% of all real-corpus sites; the next-bigger
+ * bite after the `on*`-handler partial-collapse).
+ *
+ * Mirrors `detectPartialCollapsibleShape`'s "extend the bail catalogue
+ * with ONE relaxation" pattern (see that detector's docstring + `PR 1`
+ * `_rsCollapseDyn` runtime helper, PR #765). The single relaxation: a
+ * `JSXExpressionContainer` wrapping a `ConditionalExpression` whose
+ * `consequent` AND `alternate` are BOTH `StringLiteral` is acceptable as
+ * a "ternary-of-two-literals" dynamic prop — captured as a {@link DynamicCollapsibleProp}
+ * with the cond source span + the two literal values.
+ *
+ * Constraint: **AT MOST ONE** such dynamic prop per site. Multiple
+ * ternaries would compound into a 2^N value-set per site at build time
+ * and an N-axis dispatcher at runtime — that's a separable scope
+ * (potential PR 5+), NOT this PR. Sites with 2+ ternaries bail (return
+ * null), keeping the normal mount; same conservative shape as the rest
+ * of the detector family.
+ *
+ * Constraint: the FULL `on*`-handler relaxation is also folded in — a
+ * site can have ONE ternary AND `on*` handlers in the same call. This
+ * matches the real-corpus shape (a Button with `state={cond ? 'a' : 'b'}`
+ * almost always also has an `onClick`). The two relaxations compose
+ * cleanly because they're orthogonal at the resolver layer (handlers
+ * don't change rendered CSS; the ternary picks among pre-resolved
+ * classes). PR 3's emit will use `_rsCollapseDyn` when handlers are
+ * absent and a future combined helper when both are present — for THIS
+ * PR (detector-only) the structure carries both so PR 3 can dispatch.
+ *
+ * Every OTHER non-literal shape still bails (spread, non-handler
+ * non-ternary `{expr}` prop, multi-literal ternary anywhere, computed-
+ * expression ternary, element/expression child, boolean attr) —
+ * conservative by construction, exactly like the rest of the family.
+ * Returns `null` when there are ZERO ternaries so the on*-only path
+ * (`detectPartialCollapsibleShape`) and the full-collapse path
+ * (`detectCollapsibleShape`) stay byte-unchanged and no detector both
+ * claims the same site.
+ *
+ * A consistency test (PR 3) will lock this catalogue against the
+ * plugin scan, mirroring the `detectCollapsibleShape` ↔ `scanCollapsibleSites`
+ * + `detectPartialCollapsibleShape` ↔ scan invariants — keys cannot drift.
+ */
+export function detectDynamicCollapsibleShape(
+  node: N,
+  _tag: string,
+): {
+  props: Record<string, string>
+  childrenText: string
+  handlers: CollapsibleHandler[]
+  dynamicProp: DynamicCollapsibleProp
+} | null {
+  const props: Record<string, string> = {}
+  const handlers: CollapsibleHandler[] = []
+  const dynamicProps: DynamicCollapsibleProp[] = []
+  for (const attr of jsxAttrs(node)) {
+    if (attr.type !== 'JSXAttribute') return null // spread → bail
+    const nm = attr.name?.type === 'JSXIdentifier' ? attr.name.name : null
+    if (!nm) return null
+    const v = attr.value
+    if (!v) return null // boolean attr → bail
+    const isStr =
+      v.type === 'StringLiteral' || (v.type === 'Literal' && typeof v.value === 'string')
+    if (isStr) {
+      props[nm] = String(v.value)
+      continue
+    }
+    // Non-literal in a `{expr}` container — three possible relaxations:
+    //   (a) `on[A-Z]…` handler with any expression → peeled
+    //   (b) any other prop whose expression is a ternary of two string
+    //       literals → peeled as a DynamicCollapsibleProp
+    //   (c) anything else → bail
+    if (
+      v.type === 'JSXExpressionContainer' &&
+      v.expression &&
+      typeof v.expression.start === 'number' &&
+      typeof v.expression.end === 'number'
+    ) {
+      if (/^on[A-Z]/.test(nm)) {
+        handlers.push({ name: nm, exprStart: v.expression.start, exprEnd: v.expression.end })
+        continue
+      }
+      const expr = v.expression
+      if (
+        expr.type === 'ConditionalExpression' &&
+        expr.test &&
+        typeof expr.test.start === 'number' &&
+        typeof expr.test.end === 'number' &&
+        expr.consequent &&
+        expr.alternate
+      ) {
+        // Both branches must be StringLiteral. We deliberately do NOT
+        // accept TemplateLiteral / `as`-casted literals / any other
+        // shape — keep the static-resolvable set narrow + provable.
+        const isLitStr = (n: unknown): n is { type: 'StringLiteral'; value: string } => {
+          const x = n as { type?: string; value?: unknown }
+          return (
+            x?.type === 'StringLiteral' ||
+            (x?.type === 'Literal' && typeof x.value === 'string')
+          )
+        }
+        if (isLitStr(expr.consequent) && isLitStr(expr.alternate)) {
+          dynamicProps.push({
+            name: nm,
+            condStart: expr.test.start,
+            condEnd: expr.test.end,
+            valueTruthy: String((expr.consequent as { value: string }).value),
+            valueFalsy: String((expr.alternate as { value: string }).value),
+          })
+          continue
+        }
+      }
+    }
+    return null // `{expr}` non-handler non-ternary, or non-literal ternary branch → bail
+  }
+  let childrenText = ''
+  for (const c of jsxChildren(node)) {
+    if (c.type === 'JSXText') childrenText += (c.value ?? '') as string
+    else return null // element / expression child → bail
+  }
+  // Exactly ONE dynamic prop is the scope of this PR. Zero ⇒ defer to
+  // the existing detectors (full / on*-handler partial); 2+ ⇒ bail
+  // (multi-axis combinatorics is a separable scope).
+  if (dynamicProps.length !== 1) return null
+  return {
+    props,
+    childrenText: childrenText.trim(),
+    handlers,
+    dynamicProp: dynamicProps[0]!,
+  }
+}
+
 // ─── Main transform ─────────────────────────────────────────────────────────
 
 export function transformJSX(
