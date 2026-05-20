@@ -498,6 +498,22 @@ export function cloneElement(
 
 function flattenChildren(children: VNodeChild | VNodeChild[]): VNodeChild[] {
   if (children == null) return []
+  // Unwrap the Pyreon compiler's `() => x` accessor wrap. When a parent
+  // emits `<MyComp>{data.map(fn)}</MyComp>` (any non-stable expression as
+  // children — CallExpression, ConditionalExpression, etc.), the
+  // compiler's prop-inlining pass rewrites it as
+  // `MyComp({ children: () => data.map(fn) })`. Iterating the function
+  // as a child would silently treat the function as ONE child and the
+  // downstream `React.Children.map / forEach / count / toArray / only`
+  // call would lose every real child after position 0. Mirrors the
+  // kinetic Iterator + elements Iterator fix from PRs #731 / #736.
+  if (typeof children === 'function') {
+    children = (children as () => VNodeChild | VNodeChild[])()
+    // Recurse — the unwrapped value may itself be null / a single child
+    // / an array / nested arrays; one normalization pass is sufficient
+    // because the compiler never double-wraps.
+    return flattenChildren(children as VNodeChild | VNodeChild[])
+  }
   if (!Array.isArray(children)) return [children]
   const result: VNodeChild[] = []
   for (const child of children) {

@@ -1,5 +1,5 @@
 import { createContext as pyreonCreateContext, h } from '@pyreon/core'
-import type { VNodeChild } from '@pyreon/core'
+import type { VNode, VNodeChild } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import type { RenderContext } from '../jsx-runtime'
 import { beginRender, endRender, jsx } from '../jsx-runtime'
@@ -1316,6 +1316,82 @@ describe('Children.toArray deep nesting', () => {
     const children = [h('a', null), [h('b', null), [h('c', null)]]] as VNodeChild[]
     const arr = Children.toArray(children)
     expect(arr).toHaveLength(3)
+  })
+})
+
+// Regression: the Pyreon compiler's prop-inlining pass rewrites
+// `<MyComp>{data.map(fn)}</MyComp>` (any non-stable children expression)
+// as `MyComp({ children: () => data.map(fn) })`. Pre-fix the
+// `flattenChildren` helper treated the wrapping function as a single
+// child — `React.Children.map / forEach / count / toArray / only` would
+// silently see ONE entry (the function) instead of the N real children.
+// Same bug class as PR #197 (connector-document silent metadata drop)
+// and PR #736 (kinetic / Iterator function-shape iteration).
+//
+// Fix: `flattenChildren` unwraps the function at entry, mirroring the
+// kinetic / Iterator pattern.
+//
+// Bisect-verified: removing the `typeof children === 'function'` branch
+// from `flattenChildren` fails every spec below with "expected 1 to be 2"
+// (or similar) — the function shape silently appears as 1 child.
+describe('Children utilities — compiler function-wrap unwrap', () => {
+  // The exposure path: Pyreon's compiler wraps non-stable children
+  // expressions (CallExpression, ConditionalExpression, etc.) as
+  // `() => expr` at the JSX call site. The wrap surfaces here as a
+  // raw function value passed in `children`.
+  const realChildren = [h('div', null, 'a'), h('div', null, 'b')] as VNodeChild[]
+  const compilerWrappedChildren = (() => realChildren) as unknown as VNodeChild
+
+  test('Children.map: function-wrapped children expand to N real children', () => {
+    const mapped = Children.map(compilerWrappedChildren, (_child, i) => i)
+    // Pre-fix: 1 (the wrapper function counts as a single child).
+    expect(mapped).toHaveLength(2)
+    expect(mapped).toEqual([0, 1])
+  })
+
+  test('Children.forEach: callback fires once per REAL child, not once with the function', () => {
+    let count = 0
+    Children.forEach(compilerWrappedChildren, () => count++)
+    expect(count).toBe(2)
+  })
+
+  test('Children.count: returns the unwrapped count, not 1', () => {
+    expect(Children.count(compilerWrappedChildren)).toBe(2)
+  })
+
+  test('Children.toArray: flattens through the function wrap', () => {
+    const arr = Children.toArray(compilerWrappedChildren)
+    expect(arr).toHaveLength(2)
+    expect(arr.every((c) => typeof c === 'object' && c != null && 'type' in c)).toBe(true)
+  })
+
+  test('Children.only: throws expected error when wrapped children resolve to >1 entries', () => {
+    expect(() => Children.only(compilerWrappedChildren)).toThrow()
+  })
+
+  test('Children.only: single wrapped child passes through', () => {
+    const single = (() => h('div', null, 'a')) as unknown as VNodeChild
+    const only = Children.only(single)
+    expect(only && typeof only === 'object' && 'type' in only).toBe(true)
+  })
+
+  test('function wrapping a single child (not array) still unwraps', () => {
+    const wrappedSingle = (() => h('span', null, 'only')) as unknown as VNodeChild
+    const arr = Children.toArray(wrappedSingle)
+    expect(arr).toHaveLength(1)
+    expect((arr[0] as VNode).type).toBe('span')
+  })
+
+  test('function wrapping null returns empty array', () => {
+    const wrappedNull = (() => null) as unknown as VNodeChild
+    expect(Children.toArray(wrappedNull)).toEqual([])
+    expect(Children.count(wrappedNull)).toBe(0)
+  })
+
+  test('plain (non-wrapped) children still work — fix is additive', () => {
+    const direct = [h('a', null), h('b', null)] as VNodeChild[]
+    expect(Children.count(direct)).toBe(2)
+    expect(Children.toArray(direct)).toHaveLength(2)
   })
 })
 
