@@ -2,7 +2,7 @@ import type { VNode } from '@pyreon/core'
 import { splitProps } from '@pyreon/core'
 import Transition from './Transition'
 import type { CSSProperties, StaggerProps } from './types'
-import { cloneVNode } from './utils'
+import { cloneVNode, resolveChildren } from './utils'
 
 const isVNode = (child: unknown): child is VNode =>
   child != null && typeof child === 'object' && 'type' in (child as object)
@@ -22,7 +22,12 @@ const Stagger = (props: StaggerProps): VNode | null => {
   const appear = own.appear ?? false
   const timeout = own.timeout ?? 5000
 
-  const childArray = (Array.isArray(own.children) ? own.children : [own.children]).filter(isVNode)
+  // Unwrap the compiler's `() => x` accessor wrap — see `resolveChildren`
+  // jsdoc. PR #731 fixed this on `StaggerRenderer` (the internal kinetic-
+  // mode renderer); this is the parallel fix for the top-level `<Stagger>`
+  // component, which has the same iteration shape and the same bug.
+  const resolved = resolveChildren(own.children)
+  const childArray = (Array.isArray(resolved) ? resolved : [resolved]).filter(isVNode)
   const count = childArray.length
 
   return (

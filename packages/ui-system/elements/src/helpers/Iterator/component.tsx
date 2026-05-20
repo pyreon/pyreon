@@ -82,13 +82,26 @@ const Component = (props: LooseProps) => {
   const {
     itemKey,
     valueName,
-    children,
+    children: rawChildren,
     component,
     data,
     wrapComponent: Wrapper,
     wrapProps,
     itemProps,
   } = props
+
+  // Unwrap the Pyreon compiler's `() => x` accessor wrap. When the parent
+  // emits `<Iterator>{items}</Iterator>` and the compiler-emitted form is
+  // `Iterator({ children: () => items })`, the downstream `Array.isArray`
+  // check returns false, the Fragment check returns false (function is not
+  // an object), and the fallthrough `renderChild(function)` calls
+  // `render(function, props)` which interprets the function as a component
+  // function — wrong shape, lost per-item metadata. Resolving eagerly here
+  // keeps every downstream branch correct. Mirrors the kinetic Stagger /
+  // TransitionItem fix (PR #731 + parallel top-level fixes).
+  const children = typeof rawChildren === 'function'
+    ? (rawChildren as () => VNodeChild)()
+    : rawChildren
 
   const injectItemProps = typeof itemProps === 'function' ? itemProps : () => itemProps
 

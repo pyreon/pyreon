@@ -67,6 +67,7 @@ import { noAsyncEffect } from './reactivity/no-async-effect'
 import { noBareSignalInJsx } from './reactivity/no-bare-signal-in-jsx'
 import { noContextDestructure } from './reactivity/no-context-destructure'
 import { noEffectAssignment } from './reactivity/no-effect-assignment'
+import { noIterateChildrenWithoutResolve } from './reactivity/no-iterate-children-without-resolve'
 import { noNestedEffect } from './reactivity/no-nested-effect'
 import { noPeekInTracked } from './reactivity/no-peek-in-tracked'
 import { noSignalCallWrite } from './reactivity/no-signal-call-write'
@@ -100,7 +101,7 @@ import { noThemeOutsideProvider } from './styling/no-theme-outside-provider'
 import { preferCx } from './styling/prefer-cx'
 
 export const allRules: Rule[] = [
-  // Reactivity (13)
+  // Reactivity (14)
   noAsyncEffect,
   noBareSignalInJsx,
   noContextDestructure,
@@ -114,6 +115,7 @@ export const allRules: Rule[] = [
   noSignalLeak,
   noSignalCallWrite,
   storageSignalVForwarding,
+  noIterateChildrenWithoutResolve,
   // JSX (11)
   noMapInJsx,
   useByNotKey,
@@ -231,6 +233,7 @@ export {
   noImperativeEffectOnCreate,
   noImperativeNavigateInRender,
   noIndexAsBy,
+  noIterateChildrenWithoutResolve,
   // Styling
   noInlineStyleObject,
   // Performance

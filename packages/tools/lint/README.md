@@ -1,6 +1,6 @@
 # @pyreon/lint
 
-Pyreon-specific linter — 80 rules across 18 categories, CLI + LSP + programmatic API.
+Pyreon-specific linter — 81 rules across 18 categories, CLI + LSP + programmatic API.
 
 `@pyreon/lint` is a custom linter focused on Pyreon-specific correctness (signals, JSX-as-reactivity, SSR safety, lifecycle, architecture) — complementary to oxlint, not a replacement. Powered by `oxc-parser` for fast AST traversal with an FNV-1a-hashed AST cache for repeat runs. Ships a `pyreon-lint` CLI, a `lint()` programmatic API, a `--lsp` LSP server for IDE inlay hints + diagnostics, and `.pyreonlintrc.json` config files with per-rule options. Opt-in best-practice rules (frontend a11y/CLS, library-scoped query/rx/i18n/storage/form/router) auto-gate on the project's `package.json` deps — a project that doesn't use `@pyreon/query` never sees query rules.
 
@@ -73,7 +73,7 @@ ESLint-style tuple form: `[severity, options]`. Rules declare their option shape
 
 | Category        | Count | Notes                                                                      |
 | --------------- | ----- | -------------------------------------------------------------------------- |
-| `reactivity`    | 13    | Signal misuse, peek-in-tracked, unbatched-updates, nested-effect, …        |
+| `reactivity`    | 14    | Signal misuse, peek-in-tracked, unbatched-updates, nested-effect, …        |
 | `jsx`           | 11    | `class` over `className`, `<For by>` keying, no-props-destructure, …       |
 | `lifecycle`     | 5     | onMount cleanup, mount-in-effect, missing fallback                         |
 | `performance`   | 5     | Eager heavy imports, large `<For>` without `by`, heavy-import-in-handler   |
