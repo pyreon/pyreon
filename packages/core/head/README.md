@@ -98,13 +98,13 @@ useHead({ titleTemplate: (t) => (t === 'Home' ? 'My App' : `${t} | My App`) })
 
 Tags with the same `key` replace each other — innermost component wins.
 
-| Tag    | Key generation                                     |
-|--------|---------------------------------------------------|
-| `title` | always `'title'`                                  |
-| `meta`  | `name` → `property` → `http-equiv` → array index  |
-| `link`  | `href + rel` → `rel` → index                      |
-| `script` | `src` → index                                    |
-| `style` / `noscript` | unkeyed — always accumulated         |
+| Tag                  | Key generation                                   |
+| -------------------- | ------------------------------------------------ |
+| `title`              | always `'title'`                                 |
+| `meta`               | `name` → `property` → `http-equiv` → array index |
+| `link`               | `href + rel` → `rel` → index                     |
+| `script`             | `src` → index                                    |
+| `style` / `noscript` | unkeyed — always accumulated                     |
 
 ## HeadProvider — context resolution
 
@@ -161,9 +161,12 @@ const page = `<!DOCTYPE html>
 import { useHead } from '@pyreon/head/use-head'         // tree-shake fine-grained
 import { HeadProvider } from '@pyreon/head/provider'    // tree-shake fine-grained
 import { renderWithHead } from '@pyreon/head/ssr'       // SSR-only
+import { HeadContext, createHeadContext } from '@pyreon/head/context'  // sub-bundle-stable
 ```
 
-The main entry re-exports everything from the first two for ergonomics. The `/ssr` entry is intentionally separate so client bundles don't pull in `renderToString` from `@pyreon/runtime-server`.
+The main entry re-exports everything from `/use-head` + `/provider` for ergonomics. The `/ssr` entry is intentionally separate so client bundles don't pull in `renderToString` from `@pyreon/runtime-server`.
+
+**`@pyreon/head/context` is the canonical address for `HeadContext`** across every sub-bundle. The build pipeline runs rolldown once per sub-entry (no cross-entry shared chunks), so without externalizing `HeadContext` each sub-bundle minted its own `Symbol` ID and `useContext` lookups silently missed `provide` calls from sibling bundles. Externalizing `/context` gives `HeadContext` a stable runtime address every sub-bundle resolves to. Consumers should rarely need to import directly — but if you wire a custom SSR pipeline that crosses sub-bundles (rare), use `@pyreon/head/context` for the symbol.
 
 ## Caveats
 
