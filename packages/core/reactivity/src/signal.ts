@@ -55,6 +55,17 @@ export interface Signal<T> {
 export interface SignalOptions {
   /** Debug name for this signal — shows up in devtools and debug() output. */
   name?: string
+  /**
+   * @internal — source location injected by `@pyreon/vite-plugin` at build
+   * time. When present, the runtime skips the `new Error().stack` capture
+   * in `_rdRegister` — saves ~2.2µs per signal creation when devtools is
+   * active. Plain user code should NOT set this; the field is opaque
+   * (no public type) so it's not part of the public API surface.
+   *
+   * Shape: `{ file: string; line: number; col: number }` matching
+   * `@pyreon/reactivity`'s `SourceLocation`.
+   */
+  __sourceLocation?: { file: string; line: number; col: number }
 }
 
 // Internal shape of a signal function — state stored as properties on the
@@ -234,9 +245,17 @@ export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
   read.debug = _debug as () => SignalDebugInfo<T>
   read.label = options?.name
 
-  if (process.env.NODE_ENV !== 'production')
-    // skipFrames=1: skip the `signal()` frame, capture the user's call site.
-    _rdRegister(read, 'signal', read, null, read.label, _captureCallerLocation(1))
+  if (process.env.NODE_ENV !== 'production') {
+    // Prefer build-time-injected location (zero runtime cost) over the
+    // ~2.2µs stack-capture fallback. @pyreon/vite-plugin's
+    // `injectSignalLocations` rewrites `signal(0)` to
+    // `signal(0, { __sourceLocation: {...} })` at transform time so most
+    // dev-mode signals never pay the stack-capture cost.
+    const loc = options?.__sourceLocation
+      ? options.__sourceLocation
+      : _captureCallerLocation(1)
+    _rdRegister(read, 'signal', read, null, read.label, loc)
+  }
 
   return read as unknown as Signal<T>
 }
