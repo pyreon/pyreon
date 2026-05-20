@@ -661,10 +661,25 @@ export function createResource<T, S = true>(
 
   let latestValue: T | undefined = initialValue
   let fetchPromise: Promise<T> | null = null
+  // Version counter — each doFetch() bumps it. The success/error
+  // handlers compare their captured version against the current one;
+  // when a refetch overlaps an in-flight resolution, the OLD handlers
+  // become stale and their writes are discarded.
+  //
+  // Pre-fix `fetchPromise` was overwritten on refetch with no signal
+  // to the old promise's handlers — when the OLD promise resolved
+  // (e.g. SLOW response after a FAST refetch), `setData(oldVal)`
+  // would clobber the newer value with stale data. Same Class F
+  // stale-resolution shape as #730's charts/storage inflight-promise
+  // bug. AbortSignal is the upstream solution for fetch() callers, but
+  // we don't own the fetcher — version-tracking is the correct,
+  // generic fix that doesn't require user cooperation.
+  let fetchVersion = 0
 
   const doFetch = () => {
     const src = typeof source === 'function' ? (source as () => S)() : source
     if (src === false || src === null || src === undefined) return
+    const myVersion = ++fetchVersion
     setLoading(true)
     setError(undefined)
     try {
@@ -673,12 +688,16 @@ export function createResource<T, S = true>(
         fetchPromise = result
         result.then(
           (val) => {
+            // Discard stale resolution — a refetch ran while we awaited.
+            if (myVersion !== fetchVersion) return
             latestValue = val
             fetchPromise = null
             setData(() => val)
             setLoading(false)
           },
           (err) => {
+            // Discard stale rejection — a refetch ran while we awaited.
+            if (myVersion !== fetchVersion) return
             fetchPromise = null
             setError(() => (err instanceof Error ? err : new Error(String(err))))
             setLoading(false)
@@ -691,6 +710,8 @@ export function createResource<T, S = true>(
         setLoading(false)
       }
     } catch (err) {
+      // Discard stale sync error too — symmetry with the async path.
+      if (myVersion !== fetchVersion) return
       setError(() => (err instanceof Error ? err : new Error(String(err))))
       setLoading(false)
     }
@@ -782,6 +803,33 @@ export type SetStoreFunction<_T> = {
   (...args: unknown[]): void
 }
 
+/**
+ * Soft cap for per-path signal cache. Signals beyond this count get
+ * subject to a subscriber-aware sweep after each updateRaw() — only
+ * signals with NO active subscribers / direct-updaters are evicted, so
+ * actively-tracked reads always survive (correctness preserved).
+ *
+ * Without the sweep, stores with dynamic key spaces (dictionaries,
+ * pagination, log streams) accumulated one signal per unique read-path
+ * string for the lifetime of the store — e.g. `store.items[0]` through
+ * `store.items[100000]` produces 100k signal entries. With realistic
+ * effect lifetimes most reads come from now-disposed effects, so the
+ * sweep reclaims the bulk of the memory while leaving the hot set
+ * intact.
+ */
+const STORE_SIGNAL_SWEEP_THRESHOLD = 256
+
+/**
+ * Symbol used to attach an `@internal` debug view of the per-path
+ * signal cache to the store proxy. Tests reach in via this to assert
+ * on cache size — production consumers never see it (string-keyed
+ * proxy traps short-circuit on symbol props in the existing `get`
+ * trap; the symbol is exported for test access only).
+ *
+ * @internal
+ */
+export const _STORE_SIGNAL_CACHE = Symbol.for('pyreon/solid-compat:store-signal-cache')
+
 export function createStore<T extends object>(
   initialValue: T,
 ): [T, SetStoreFunction<T>] {
@@ -803,6 +851,32 @@ export function createStore<T extends object>(
     return sig
   }
 
+  /**
+   * Subscriber-aware sweep — remove signals that no longer have any
+   * active subscribers (`_s` empty) and no direct updaters (`_d`
+   * empty). The next read for a swept path lazily re-creates a fresh
+   * signal with the current value, so correctness is preserved for
+   * any future read; only the in-memory entry is reclaimed.
+   *
+   * Gated on `STORE_SIGNAL_SWEEP_THRESHOLD` so the O(N) walk fires
+   * at most once per write-after-threshold, NOT on every write.
+   * Uses Pyreon's internal `_s` / `_d` subscriber-set fields — same
+   * fields `trackSubscriber` populates and effect disposal removes
+   * from. A non-empty either means at least one live effect / DOM
+   * binding still depends on this signal.
+   */
+  function sweepUnusedSignals(): void {
+    if (signals.size < STORE_SIGNAL_SWEEP_THRESHOLD) return
+    for (const [path, sig] of signals) {
+      const sigInternal = sig as unknown as { _s: Set<unknown> | null; _d: Set<unknown> | null }
+      const hasSubscribers = sigInternal._s && sigInternal._s.size > 0
+      const hasDirect = sigInternal._d && sigInternal._d.size > 0
+      if (!hasSubscribers && !hasDirect) {
+        signals.delete(path)
+      }
+    }
+  }
+
   function resolveValue(basePath: string): unknown {
     return basePath ? getByPath(raw, basePath) : raw
   }
@@ -811,7 +885,14 @@ export function createStore<T extends object>(
     // Use a dummy target — all reads go through `raw` via `resolveValue`
     return new Proxy({} as object, {
       get(_target, prop) {
-        if (typeof prop === 'symbol') return (resolveValue(basePath) as Record<symbol, unknown>)?.[prop]
+        if (typeof prop === 'symbol') {
+          // @internal — tests inspect the per-path signal cache via
+          // this symbol. Only the root proxy exposes it (basePath ===
+          // ''); nested proxies still forward symbol reads to the
+          // underlying value.
+          if (prop === _STORE_SIGNAL_CACHE && basePath === '') return signals
+          return (resolveValue(basePath) as Record<symbol, unknown>)?.[prop]
+        }
         const path = basePath ? `${basePath}.${String(prop)}` : String(prop)
         const sig = getSignal(path)
         sig() // track read
@@ -863,6 +944,12 @@ export function createStore<T extends object>(
         sig.set(newVal)
       }
     }
+
+    // Reclaim signals whose subscribers all disposed. Throttled by the
+    // SWEEP_THRESHOLD gate so this is amortised over many writes for
+    // small stores; large dynamic-key-space stores get periodic
+    // reclamation that bounds long-running memory.
+    sweepUnusedSignals()
   }
 
   /**
