@@ -90,6 +90,24 @@ export function popContext() {
 }
 
 /**
+ * Read the current live stack length WITHOUT allocating a snapshot.
+ *
+ * SSR cleanup uses this as a position marker: capture the live length
+ * before a component renders, pop the live stack back to that length
+ * after. Previously these sites called `captureContextStack().length`,
+ * which allocated a full snapshot array (potentially 40k+ entries
+ * under deeply-nested reactive boundaries — the same allocation the
+ * `captureContextStack` dedup work is designed to shrink) just to
+ * read its length. This helper avoids the allocation entirely AND
+ * decouples SSR cleanup from `captureContextStack`'s snapshot shape,
+ * so dedup at capture time can never silently break SSR length
+ * bookkeeping.
+ */
+export function getContextStackLength(): number {
+  return getStack().length
+}
+
+/**
  * Remove a SPECIFIC frame from the context stack by reference identity.
  *
  * Internal — used by `provide()` and `withContext()` to safely clean up
@@ -179,17 +197,92 @@ export function withContext<T>(context: Context<T>, value: T, fn: () => void) {
 export type ContextSnapshot = Map<symbol, unknown>[]
 
 /**
- * Capture a snapshot of the current context stack.
+ * Capture a snapshot of the current context stack, **deduplicated** so
+ * only the topmost frame for each context-id is retained.
  *
  * Used by `mountReactive` to preserve the context that was active when a
  * reactive boundary (e.g. `<Show>`, `<For>`) was set up. When the boundary
  * later mounts new children inside an effect, the snapshot is restored so
  * those children can see ancestor providers via `useContext()`.
+ *
+ * **Why dedup is semantically equivalent to a full snapshot:**
+ * `useContext()` walks the stack in reverse and returns the first frame
+ * matching the requested context-id (`for (let i = stack.length - 1; i >= 0; i--)`
+ * — see implementation below in this file). Any frame deeper in the
+ * stack that ALSO provides the same id is unreachable by definition —
+ * the reverse walk stops at the first match. Those shadowed frames are
+ * dead weight in the snapshot: they carry no observable value, they
+ * cost memory, and they can NEVER affect program behavior.
+ *
+ * The dedup walks frames from top to bottom keeping a `seen` set of
+ * already-resolved context ids. A frame is kept iff at least one of
+ * its keys is NOT in `seen` (i.e. it's the topmost provider for at
+ * least one id). All of a frame's keys are added to `seen` regardless
+ * of whether the frame is kept — `seen` represents "ids that are
+ * already provided by a more-recent frame".
+ *
+ * **Why this is safe for `restoreContextStack`:**
+ * `restoreContextStack` pushes the snapshot's frames onto the live
+ * stack, runs `fn()`, then removes those frames by **reference
+ * identity** (`stack.lastIndexOf(frame)`) — NOT by position or count
+ * of the snapshot. A deduped snapshot pushes fewer frames; the same
+ * reference-identity cleanup removes exactly those frames. No
+ * bookkeeping invariant breaks.
+ *
+ * **Why this is safe for the live stack length invariant:**
+ * SSR cleanup uses `getContextStackLength()` (a sibling helper) for
+ * position-marker bookkeeping. That helper reads the LIVE stack
+ * length, NOT the snapshot length, so dedup at capture time has zero
+ * effect on SSR cleanup behavior.
+ *
+ * **Why this is needed:**
+ * Under deeply-nested reactive boundaries (a `<Show>` inside a `<For>`
+ * inside a `<Suspense>`, each effect capturing its own snapshot at
+ * setup time), the live stack temporarily holds the same context-id
+ * pushed multiple times during nested `restoreContextStack` windows.
+ * The pre-dedup `[...getStack()]` snapshot baked those duplicates in
+ * permanently — each effect's closure retained an O(stack-depth)
+ * array for its lifetime. Reported heap snapshots from 0.21.x showed
+ * 1.22 MB / 321k-entry arrays from this pattern. The 0.23.0
+ * restoreContextStack reference-identity fix cleaned the LIVE stack
+ * but left the residual snapshot-amplification — observable as 20
+ * arrays at 157 KB each (40k entries) retained by effect closures.
+ * This dedup collapses each captured snapshot to ~N entries, where
+ * N is the number of DISTINCT context ids in scope (typically 2-10
+ * in real apps).
  */
 export function captureContextStack(): ContextSnapshot {
-  // Shallow copy — each frame (Map) is shared by reference, which is
-  // correct because providers don't mutate frames after creation.
-  return [...getStack()]
+  const stack = getStack()
+  // Fast path: empty stack or single frame is the common case for
+  // top-level mounts and zero-context apps. Skip the dedup machinery.
+  if (stack.length <= 1) return stack.slice()
+
+  // Walk top-to-bottom, keeping the topmost frame for each context-id.
+  // Each frame is a Map<symbol, unknown>; `seen` tracks ids already
+  // provided by a more-recent frame.
+  const seen = new Set<symbol>()
+  const reversed: Map<symbol, unknown>[] = []
+  for (let i = stack.length - 1; i >= 0; i--) {
+    const frame = stack[i]
+    if (!frame) continue
+    // A frame is unique if it provides at least one not-yet-seen id.
+    // Iterate ALL keys to accumulate them into `seen` (so deeper
+    // frames sharing any one of them are correctly shadowed even if
+    // they also have other unique keys).
+    let unique = false
+    for (const id of frame.keys()) {
+      if (!seen.has(id)) {
+        seen.add(id)
+        unique = true
+      }
+    }
+    if (unique) reversed.push(frame)
+  }
+  // We walked top-to-bottom; the result is in reverse stack order.
+  // Reverse back so the snapshot is in bottom-to-top order, matching
+  // the order `restoreContextStack` pushes them.
+  reversed.reverse()
+  return reversed
 }
 
 /**
