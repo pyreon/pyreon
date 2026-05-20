@@ -122,6 +122,31 @@ type IslandLoader = () => Promise<{ default: ComponentFn } | ComponentFn>
 export function hydrateIslands(registry: Record<string, IslandLoader>): () => void {
   /* v8 ignore next */
   if (typeof document === 'undefined') return () => {}
+
+  // Dev-mode footgun guard: calling `hydrateIslands()` twice without
+  // invoking the previous call's cleanup function leaks the old
+  // IntersectionObservers / requestIdleCallback IDs / matchMedia + event
+  // listeners. This bites HMR users who don't wire up
+  // `import.meta.hot.dispose(cleanup)` (or its sub-route equivalent).
+  // We warn loudly in dev — production stays silent (tree-shaken). The
+  // current call still proceeds (HMR / route-change DOES require
+  // re-registration; we just want the user to know they should clean up
+  // the previous one first).
+  if (__DEV__) {
+    const w = window as Window & { __pyreon_island_hydrate_active__?: boolean }
+    if (w.__pyreon_island_hydrate_active__) {
+      console.warn(
+        '[Pyreon] hydrateIslands() called again without invoking the previous ' +
+          "call's cleanup function. The previous call's listeners / observers / " +
+          'timers are now leaked. Wire up cleanup in your entry file:\n' +
+          '  const cleanup = hydrateIslands({ ... })\n' +
+          "  if (import.meta.hot) import.meta.hot.dispose(cleanup)  // HMR\n" +
+          '  // or on SPA route change: cleanup() before re-registering',
+      )
+    }
+    w.__pyreon_island_hydrate_active__ = true
+  }
+
   const islands = document.querySelectorAll('pyreon-island')
   const cleanups: (() => void)[] = []
 
@@ -181,6 +206,10 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
 
   return () => {
     for (const fn of cleanups) fn()
+    if (__DEV__) {
+      const w = window as Window & { __pyreon_island_hydrate_active__?: boolean }
+      w.__pyreon_island_hydrate_active__ = false
+    }
   }
 }
 
