@@ -37,10 +37,14 @@ import { getSpan } from '../../utils/ast'
  *      — ALWAYS risky. No safe variant.
  *
  *   2. `(Array.isArray(EXPR) ? EXPR : [EXPR]).METHOD(…)` where METHOD
- *      is `filter` / `map` / `forEach` / `reduce` / `every` / `some` —
- *      VNode-level iteration. Differs from the pass-through pattern
- *      `...(Array.isArray(EXPR) ? EXPR : [EXPR])` (spread into h() rest
- *      args) which is SAFE because mountChild handles function children.
+ *      is `filter` / `map` / `forEach` / `reduce` / `every` / `some` /
+ *      `find` / `findIndex` / `flatMap` — VNode-level iteration. Differs
+ *      from the pass-through pattern `...(Array.isArray(EXPR) ? EXPR :
+ *      [EXPR])` (spread into h() rest args) which is SAFE because
+ *      mountChild handles function children. ALSO covers the
+ *      variable-bound form: `const NAME = Array.isArray(X) ? X : [X];
+ *      NAME.METHOD(…)` — tracked via `boundIterationTargets`, flagged
+ *      with the same per-source-path precision as the inline form.
  *
  *   3. `EXPR.props` reads where EXPR ends with `.children` — reads
  *      `function.props` (undefined) and silently breaks the merge-ref
@@ -61,27 +65,37 @@ import { getSpan } from '../../utils/ast'
  * does the `Array.isArray(children)` iteration — the inner scope sees
  * the outer's mitigation via inheritance, no false positive.
  *
+ * Per-source-path mitigation precision
+ *
+ *   Mitigations are keyed on the SOURCE expression's `exprKey`, not on
+ *   "any mitigation in scope chain." If an outer component unwraps
+ *   `props.children` and an INNER inline-defined component iterates its
+ *   own `innerProps.children`, the inner iteration is correctly flagged
+ *   — `innerProps.children` is a DIFFERENT source path the outer
+ *   mitigation never covered. The function-shape bug fires per-prop-
+ *   source, not per-component-tree.
+ *
  * Out of scope (deliberate)
  *
  *   - Pass-through patterns: `...(Array.isArray(EXPR) ? EXPR : [EXPR])`
  *     SpreadElement → mountChild handles function children via
  *     mountReactive. Filtered out at the call-site check by requiring
  *     a `.METHOD(…)` member access parent.
- *   - Different-prop-in-inner-component shape: if an outer component
- *     unwraps `props.children` and an INNER component-inline iterates
- *     `innerProps.children`, the rule treats the outer mitigation as
- *     covering the inner. False negative, but rare and benign — the
- *     inner is structurally distinct enough to warrant explicit
- *     handling anyway.
+ *   - IfStatement-guarded iteration: `if (Array.isArray(x)) return
+ *     x.map(…)` — framework primitives (`Dynamic` / `Show` / `Switch`)
+ *     use this with direct h() rest args that never reach the auto-wrap.
+ *     Detection would false-positive on every primitive's hot path.
  *
  * History
  *
  *   - PR #731 — kinetic library-side fix for StaggerRenderer + TransitionItem.
  *   - PR #732 — compiler-side carve-out for stable references.
- *   - This rule (PR #?) — defense-in-depth + audit catch
- *     (3 vulnerable parallel sites found and fixed in the same PR:
- *     kinetic top-level Stagger.tsx, kinetic top-level Transition.tsx,
+ *   - PR #736 — initial rule + 3 parallel library fixes (kinetic
+ *     top-level Stagger.tsx, kinetic top-level Transition.tsx,
  *     elements Iterator).
+ *   - PR #751 — closed two scope gaps: variable-bound iteration
+ *     (`const xs = COND; xs.METHOD(…)`) + per-source-path mitigation
+ *     precision regression spec for the inner-component shape.
  */
 
 interface ScopeFrame {
@@ -90,6 +104,16 @@ interface ScopeFrame {
   unwrappedSources: Set<string>
   /** Root identifiers known to alias the resolved value (e.g. `const child = …`). */
   safeIdents: Set<string>
+  /**
+   * Identifiers bound to the iteration-pattern ternary
+   * `const NAME = Array.isArray(EXPR) ? EXPR : [EXPR]`. A later
+   * `NAME.METHOD(…)` iteration in the same OR descendant scope is risky
+   * for the same reason the inline form is — the conditional preserves
+   * the function-shape if EXPR was function-wrapped. Map value is the
+   * source key (`exprKey(EXPR)`) so the risky check can ask "is the
+   * underlying source covered by a mitigation?"
+   */
+  boundIterationTargets: Map<string, string>
 }
 
 /** Stable string key for an expression — covers Identifier and MemberExpression chains. */
@@ -199,7 +223,21 @@ export const noIterateChildrenWithoutResolve: Rule = {
     }
 
     const enter = () => {
-      stack.push({ risky: [], unwrappedSources: new Set(), safeIdents: new Set() })
+      stack.push({
+        risky: [],
+        unwrappedSources: new Set(),
+        safeIdents: new Set(),
+        boundIterationTargets: new Map(),
+      })
+    }
+
+    /** Look up a NAME across all scopes — returns the source key it's bound to. */
+    const findBoundIteration = (name: string): string | null => {
+      for (let i = stack.length - 1; i >= 0; i--) {
+        const target = stack[i]!.boundIterationTargets.get(name)
+        if (target !== undefined) return target
+      }
+      return null
     }
 
     const exit = () => {
@@ -310,7 +348,20 @@ export const noIterateChildrenWithoutResolve: Rule = {
           if (unwrappedKey) {
             scope.safeIdents.add(name)
             scope.unwrappedSources.add(unwrappedKey)
+            return
           }
+        }
+
+        // Gap-2 tracking: `const NAME = Array.isArray(EXPR) ? EXPR : [EXPR]`
+        // (or its parenthesized form). Later `NAME.METHOD(…)` iteration
+        // is flagged with the same precision as the inline shape.
+        // Unwrap parens — oxc preserves source-level `()` as
+        // `ParenthesizedExpression`.
+        let unwrapped = init
+        while (unwrapped?.type === 'ParenthesizedExpression') unwrapped = unwrapped.expression
+        if (unwrapped?.type === 'ConditionalExpression') {
+          const info = matchArrayIsArrayChildrenTernary(unwrapped)
+          if (info) scope.boundIterationTargets.set(name, info.key)
         }
       },
 
@@ -353,6 +404,13 @@ export const noIterateChildrenWithoutResolve: Rule = {
         // require the iteration intent. Spread context (`...COND`)
         // doesn't have a METHOD member call, so it's naturally excluded
         // — no parent-pointer dance needed.
+        //
+        // Also covers Gap 2: variable-bound iteration. When `callee.object`
+        // is an Identifier `NAME` that was bound to the iteration-pattern
+        // ternary via `const NAME = Array.isArray(EXPR) ? EXPR : [EXPR]`,
+        // the same NAME.METHOD(…) call is flagged because the binding
+        // preserves the function-shape — `[function].filter(…)` produces
+        // an empty array, and `function.METHOD()` throws at runtime.
         if (
           callee?.type === 'MemberExpression' &&
           callee.property?.type === 'Identifier' &&
@@ -364,10 +422,20 @@ export const noIterateChildrenWithoutResolve: Rule = {
           // the conditional, not the conditional directly.
           let obj = callee.object
           while (obj?.type === 'ParenthesizedExpression') obj = obj.expression
+
           if (obj?.type === 'ConditionalExpression') {
+            // Inline shape: `(Array.isArray(X) ? X : [X]).METHOD(…)`.
             const condInfo = matchArrayIsArrayChildrenTernary(obj)
             if (condInfo && !isCovered(condInfo.key)) {
               scope.risky.push({ kind: 'isArray', expr: condInfo.key, node: obj })
+            }
+          } else if (obj?.type === 'Identifier') {
+            // Bound shape: `NAME.METHOD(…)` where NAME was previously
+            // bound via `const NAME = Array.isArray(X) ? X : [X]`. Walk
+            // the scope stack to find the binding.
+            const sourceKey = findBoundIteration(obj.name)
+            if (sourceKey && !isCovered(sourceKey)) {
+              scope.risky.push({ kind: 'isArray', expr: sourceKey, node })
             }
           }
         }
