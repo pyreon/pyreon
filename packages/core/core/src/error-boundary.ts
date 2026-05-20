@@ -68,7 +68,13 @@ export function ErrorBoundary(props: {
 
   // Push synchronously — before children are mounted — so child errors see this boundary
   pushErrorBoundary(handler)
-  onUnmount(() => popErrorBoundary())
+  // Identity-based pop: pass our own handler reference. Sibling boundaries
+  // can unmount in any order driven by the renderer (keyed `<For>` removal
+  // of a non-last item, `<Show>` flipping on the FIRST of N siblings, route
+  // nav, etc.) — without passing the handler reference, the position-based
+  // `pop()` would remove the WRONG boundary's handler. Same bug class as
+  // #725 (`popContext()` orphaning provider frames under reactive remount).
+  onUnmount(() => popErrorBoundary(handler))
 
   return (): VNodeChildAtom => {
     const err = error()
