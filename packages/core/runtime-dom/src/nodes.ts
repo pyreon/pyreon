@@ -100,8 +100,18 @@ export function mountReactive(
       // Child components set up their OWN effects for reactivity
       // (e.g. DynamicStyled's class swap effect). Those effects track
       // their own dependencies independently.
+      //
+      // Use the marker's LIVE parent (not the closure-captured `parent`):
+      // when this mountReactive was created inside a DocumentFragment that
+      // mountFor later moved into the live tree via `insertBefore(frag, ...)`,
+      // the captured `parent` becomes a stale reference to the now-empty
+      // fragment. The marker, in contrast, was moved with the fragment's
+      // contents and `marker.parentNode` reflects the current live parent.
+      // Falling back to the captured `parent` only when the marker is
+      // detached (cleanup edge case) preserves prior behavior.
+      const liveParent = marker.parentNode ?? parent
       const cleanup = runUntracked(() =>
-        restoreContextStack(contextSnapshot, () => mount(value, parent, marker)),
+        restoreContextStack(contextSnapshot, () => mount(value, liveParent, marker)),
       )
       // Guard: a re-entrant signal update (e.g. ErrorBoundary catching a child
       // throw) may have already re-run this effect and updated currentCleanup.
