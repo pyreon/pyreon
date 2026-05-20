@@ -5,7 +5,15 @@ import type { ClassTransitionProps, StyleTransitionProps, TransitionProps } from
 import useAnimationEnd from './useAnimationEnd'
 import { useReducedMotion } from './useReducedMotion'
 import useTransitionState from './useTransitionState'
-import { addClasses, cloneVNode, mergeRefs, mergeStyles, nextFrame, removeClasses } from './utils'
+import {
+  addClasses,
+  cloneVNode,
+  mergeRefs,
+  mergeStyles,
+  nextFrame,
+  removeClasses,
+  resolveChildren,
+} from './utils'
 
 const applyEnter = (
   el: HTMLElement,
@@ -109,8 +117,14 @@ const Transition = (props: TransitionProps): VNode | null => {
     appear,
   })
 
+  // Unwrap the compiler's `() => x` accessor wrap — see `resolveChildren`
+  // jsdoc. Parallel to `TransitionItem`'s fix (PR #731). Without this,
+  // `props.children.props` reads `function.props` (undefined), the merged
+  // ref is missing the child's own ref, and the downstream `cloneVNode`
+  // calls produce `{type: undefined}` → `<undefined>` DOM tags.
+  const child = resolveChildren(props.children) as VNode
   const elementRef = createRef<HTMLElement>()
-  const childProps = (props.children.props ?? {}) as Record<string, unknown>
+  const childProps = (child?.props ?? {}) as Record<string, unknown>
   const mergedRef = mergeRefs(
     elementRef,
     stateRef,
@@ -198,7 +212,7 @@ const Transition = (props: TransitionProps): VNode | null => {
         fallback={
           unmount
             ? null
-            : cloneVNode(props.children, {
+            : cloneVNode(child, {
                 ref: mergedRef,
                 style: mergeStyles(
                   childProps.style as Record<string, string | number | undefined> | undefined,
@@ -207,7 +221,7 @@ const Transition = (props: TransitionProps): VNode | null => {
               })
         }
       >
-        {cloneVNode(props.children, { ref: mergedRef })}
+        {cloneVNode(child, { ref: mergedRef })}
       </Show>
     )
   }
@@ -260,7 +274,7 @@ const Transition = (props: TransitionProps): VNode | null => {
   if (mergedClass !== undefined) extra.class = mergedClass
   if (mergedStyle !== undefined) extra.style = mergedStyle
 
-  return cloneVNode(props.children, extra)
+  return cloneVNode(child, extra)
 }
 
 export default Transition
