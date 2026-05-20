@@ -221,24 +221,37 @@ await vercelAdapter().revalidate?.('/posts/123')
       name: 'createISRHandler',
       kind: 'function',
       signature:
-        'function createISRHandler(options: { handler: Handler; cacheTtl?: number; ... }): Handler',
+        'function createISRHandler(handler: (req: Request) => Promise<Response>, config: ISRConfig): ISRHandler',
       summary:
-        "Runtime ISR — on-demand SSR caching with TTL. Wraps an SSR handler so pages are rendered on the FIRST request, cached for `cacheTtl` ms (default 60s), and served stale until expiry. Distinct from build-time ISR (per-route `revalidate` export + `Adapter.revalidate`): runtime ISR caches at request time; build-time ISR triggers platform rebuilds. They can coexist: a `mode: 'isr'` app with per-route `revalidate` exports gets BOTH.",
+        "Runtime ISR — on-demand SSR caching with stale-while-revalidate. Wraps an SSR handler so pages are rendered on the FIRST request, cached per-URL (or per-`cacheKey`-derived key), and served stale until expiry while a background revalidate fires. The returned `ISRHandler` is still a callable `(req) => Promise<Response>` for `Bun.serve({ fetch: ... })`, but ALSO exposes imperative invalidation: `.revalidateNow(key)` drops one entry (returns `{ dropped: boolean }`), `.revalidateAll()` drops everything (when the store implements `clear()`). Pair with webhooks for CMS-driven cache busting — no stale window between content update and propagation. Distinct from build-time ISR (per-route `revalidate` export + `Adapter.revalidate`): runtime ISR caches at request time; build-time ISR triggers platform rebuilds. They can coexist: a `mode: 'isr'` app with per-route `revalidate` exports gets BOTH.",
       example: `import { createISRHandler, createServer } from '@pyreon/zero/server'
 
-// Wrap createServer's handler with ISR cache
 const ssrHandler = createServer({ routes })
-const isrHandler = createISRHandler({
-  handler: ssrHandler,
-  cacheTtl: 60_000,  // serve cached HTML for 60s
+const isr = createISRHandler(ssrHandler, { revalidate: 60 })
+
+// Use as the request handler
+Bun.serve({ fetch: isr })
+
+// CMS webhook: drop one entry
+app.post('/api/webhooks/post-updated', async (req) => {
+  const { postId } = await req.json()
+  const result = await isr.revalidateNow(\`/posts/\${postId}\`)
+  return Response.json(result) // { dropped: true | false }
 })
 
-export default isrHandler`,
+// Admin "purge cache" endpoint
+app.post('/admin/purge', async () => {
+  await isr.revalidateAll()
+  return new Response('ok')
+})`,
       mistakes: [
-        'Setting `cacheTtl: 0` and expecting "never cache" — pass-through is the explicit handler call (no `createISRHandler` wrapper). `cacheTtl: 0` is a degenerate state',
-        "Sharing the ISR handler across server instances without external cache — each server's in-memory cache diverges. For multi-instance deploys, swap to a shared cache layer (Redis adapter not built in; user-side concern)",
+        'Treating the returned handler as a plain function — it ALSO carries `.revalidateNow(key)` and `.revalidateAll()` methods. Webhook-driven invalidation is the canonical way to bust the cache; waiting for the TTL is the fallback',
+        'Calling `.revalidateAll()` against a store that does not implement `clear()` — throws a clear error. External stores (Redis with TTL-only) must opt in by implementing the method',
+        'Expecting `revalidateNow(key)` against a store without `delete?()` to physically drop the entry — returns `{ dropped: false }` honestly; such stores rely on TTL for eviction',
+        'Sharing the ISR handler across server instances without external cache — each server\'s in-memory cache diverges. For multi-instance deploys, swap `config.store` to a shared cache layer (Redis / Vercel KV / Cloudflare KV)',
+        'Setting `revalidate: 0` and expecting "never cache" — pass-through is the explicit handler call (no `createISRHandler` wrapper). Use `revalidate: Number.MAX_SAFE_INTEGER` for "cache forever, invalidate only via `revalidateNow`"',
       ],
-      seeAlso: ['zero', 'Adapter'],
+      seeAlso: ['zero', 'Adapter', 'ISRStore', 'createMemoryStore'],
     },
     {
       name: 'vercelAdapter',
