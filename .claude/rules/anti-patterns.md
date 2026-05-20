@@ -118,6 +118,143 @@
 - **DOM tests without happy-dom**: Packages with DOM need `environment: "happy-dom"` in vitest config
 - **Stale DOM references after re-render in compat-layer tests**: `@pyreon/react-compat`, `@pyreon/preact-compat`, etc. do **full DOM subtree replacement on every state change** — there's no VDOM diffing in the compat layer (Pyreon's native pattern is fine-grained reactivity, not whole-component re-renders). A test that captures a button reference BEFORE click and asserts on `.textContent` AFTER click sees the OLD text because the captured node is now detached. **Always re-query the DOM after a state change**: `container.querySelector('#x')!.click(); await flush(); expect(container.querySelector('#x')!.textContent).toBe(...)`. Phase A2's first react-compat smoke held a stale reference and looked like a re-render bug; was actually a test-pattern bug. Reference: `packages/tools/react-compat/src/react-compat-rerender.browser.test.tsx`.
 
+## Memory Leak Classes (catalog)
+
+The 8-PR sweep across #725-#741 surfaced **5 distinct memory-leak classes** with real bug instances in shipped framework code. Each class is documented below with: (a) the structural shape, (b) the canonical fix, (c) every PR that landed an instance, and (d) the static-analysis coverage if any. New code in any of the patterns SHOULD trip a lint rule or be caught by the audit subagent; new contributors reading this catalog can recognize a pattern at code-review time before it ships.
+
+Class names follow the audit-subagent prompt taxonomy (A-H). 5 classes (A, C, D, F, G) saw real bug instances in this sweep; B (subscriber retention) and E (disposed-objects-in-collections) are documented for future-proofing but had no instances. **H (closure-captured snapshots) was the root-cause class behind PR #725 itself** — included here even though it predates the current "memory hunt" terminology.
+
+### Class A — Position-based cleanup of shared mutable state
+
+**Shape**: a module-level mutable array used as a stack (`push()` at setup, `pop()` at cleanup). The contract holds ONLY when removal order is strictly LIFO. Any out-of-LIFO cleanup pops the WRONG entry, orphaning the actual owner's frame on the stack.
+
+**Real instances**:
+- **#725** — `@pyreon/core` `context.ts` `popContext()`. Reactive boundaries push snapshot frames between a component's `provide(ctx, value)` and its eventual unmount, making top-of-stack unsafe to assume. Effect re-fire flow violated LIFO. Geometric amplification across nested boundaries × repeated toggles produced stacks with hundreds of thousands of orphan frames.
+- **#729** — `@pyreon/core` `popErrorBoundary()`. Sibling boundaries unmounted in renderer-driven order; non-last sibling's `onUnmount` popped the LAST sibling's handler. Survivor errors silently swallowed.
+- **#733** — `@pyreon/vue-compat` `provide(key, value)` AND `createApp(C).provide(...).mount(el)`. Both pushed Maps onto Pyreon's global context stack and registered position-based `popContext()`. Two sibling components both calling `provide('K', …)` and unmounting non-last → first-unmounted's `popContext` removed the LAST sibling's frame.
+
+**Fix shape**: capture the pushed frame reference at push time. Cleanup uses identity-based removal: `() => stack.splice(stack.lastIndexOf(frame), 1)`. `@pyreon/core` exports `removeContextFrame` for this — compat layers and advanced consumers call it directly.
+
+**Detection**: no lint rule today (the AST shape "module-level array + `push` + `pop` paired in different scopes" is genuinely hard to detect statically without high FP rates). Caught at audit time by the leak-hunt subagent prompt. The PRs are bisect-verified at the unit level; the cross-package generalization (`removeContextFrame` exported from core) prevents recurrence.
+
+### Class C — Caches with unbounded growth
+
+**Shape**: a module-level `Map<>` / `Set<>` / `WeakMap<>` (or per-instance equivalent) populated by some hot-path operation, with NO eviction or with an eviction path that doesn't fire on every relevant lifecycle event.
+
+**Real instances**:
+- **#733** — `@pyreon/lint` `AstCache`. FNV-1a-hashed AST cache, no eviction. LSP / `--watch` sessions accumulated hundreds of MB of parsed ASTs over hours of editing.
+- **#737** — `@pyreon/solid-compat` `createStore` per-path signal map. One signal per UNIQUE read-path string for the store's lifetime. Dictionaries / pagination / log streams leaked one signal per key ever accessed.
+- **#741** — `@pyreon/vite-plugin` 4 per-instance caches (`signalExportRegistry`, `resolveCache`, `islandRegistry`, `pyreonWorkspaceDirCache`). No eviction on file delete. Long-running `vite dev` accumulated entries for every file the user ever edited and later deleted.
+
+**Fix shape (LRU bound)**: simplest case — set a `maxEntries` cap, evict oldest on overflow. `Map` preserves insertion order; `get`/`set` re-insert at the tail to refresh recency. Applied in #733 (`AstCache(256)`).
+
+**Fix shape (subscriber-aware sweep)**: when eviction would silently break a tracking contract (the `createStore` case — evicting a signal that an active effect tracks would lose reactivity), use a refcount-aware sweep instead. Walk entries and evict only those whose subscriber set is empty. Gated on a threshold so the O(N) sweep doesn't fire on every write. Applied in #737.
+
+**Fix shape (lifecycle-event invalidation)**: when the cache is keyed by a resource (file path, module id), hook the resource's destruction event (`watchChange('delete', ...)`) to evict entries. Applied in #741.
+
+**Detection**: no general-purpose lint rule (the cache-shape detection across module-level state is too varied). Caught at audit time. The `scripts/check-bundle-budgets.ts` gate catches the related "main entry shipping unbounded code" pattern but not runtime memory growth.
+
+### Class D — Event listener pile-up
+
+**Shape**: a function registers a global / shared listener (`addEventListener`, `matchMedia.addEventListener`, `WebSocket`-style subscribe) without a refcount or idempotency guard. Callers expecting "call once" semantics get N listeners when called N times.
+
+**Real instances**:
+- **#734** — `@pyreon/zero` `initTheme()`. Called from `ThemeToggle`'s render body without a refcount guard. N mounted ThemeToggles → N matchMedia listeners + N effects, each writing the SAME value to the SAME `document.documentElement.dataset.theme` on every OS color-scheme flip.
+- **#739** — `@pyreon/svelte-compat` `writable.subscribe`. The cached subscribe fast path didn't re-push its unsub into `ctx.unmountCallbacks` after parent re-render reset the array. One leaked subscriber per parent re-render cycle. Linear growth.
+
+**Fix shape (refcount idempotency)**: module-level `let _refCount = 0` + `let _disposeShared: (() => void) | null = null`. The first mount runs the setup; subsequent mounts bump the count. Each unmount decrements; when the count returns to 0 the shared teardown runs. Preserves the "all instances unmounted, new instance mounts" symmetry — the refcount returns to 0 and re-arms. Applied in #734.
+
+**Fix shape (re-push cached cleanup)**: when a cached fast path returns a previously-registered cleanup function, re-push that cleanup into the (possibly-reset) cleanup array. Gated on `includes()` so multi-call sites don't pile up entries. Applied in #739.
+
+**Detection**: **`pyreon/init-fn-needs-idempotency`** (lifecycle, warn, #743). Flags exported `init*` functions that call `onMount(...)`, are invoked from the same module, AND lack a module-level refcount / boolean guard. Conservative by construction — cross-module reentrancy out of scope; legit one-shot inits don't fire. Plus `pyreon/no-raw-addeventlistener` (existing) and `pyreon/no-raw-setinterval` for the lower-level listener patterns.
+
+### Class F — Promise queue stale resolution
+
+**Shape**: an in-flight Promise is replaced on refetch / retry / repeat-trigger without a signal to the OLD promise's handlers. When OLD eventually resolves (SLOW + FAST overlap), its `setData` / `setError` clobbers the NEWER value with stale data.
+
+**Real instances**:
+- **#730** — `@pyreon/charts` chart-options inflight cache, `@pyreon/storage` IndexedDB load. Both had stale-resolution races on overlapping refetches.
+- **#737** — `@pyreon/solid-compat` `createResource`. Same shape. SLOW old + FAST new produced the OLD value clobbering the NEW.
+
+**Fix shape (version-tracking)**: each fetch invocation bumps a counter; the resolve/reject handlers compare their captured version against the current. Stale resolutions silently discarded.
+
+```ts
+let fetchVersion = 0
+const doFetch = () => {
+  const myVersion = ++fetchVersion
+  fetcher().then(
+    (val) => {
+      if (myVersion !== fetchVersion) return // stale — ignore
+      setData(val)
+    },
+    (err) => {
+      if (myVersion !== fetchVersion) return // stale rejection — ignore
+      setError(err)
+    },
+  )
+}
+```
+
+`AbortSignal` is the upstream solution for `fetch()` callers, but framework wrappers typically don't own the fetcher — version-tracking is the generic fix.
+
+**Detection**: no lint rule today (detecting "Promise.then chain whose resolution path writes external state via a reassignable reference" requires data-flow analysis beyond an AST walker). Caught at audit time.
+
+### Class I — Orphaned timers from `Promise.race + setTimeout`
+
+**Shape**: `Promise.race([work, new Promise((_, reject) => setTimeout(reject, MS))])` without `clearTimeout` in a `finally`. When `work` wins the race (the success path — every healthy invocation), the rejection branch's `setTimeout` fires later, pinning a closure + reject callback for up to MS ms.
+
+**Real instances**:
+- **#734** — `@pyreon/zero` `isr.ts revalidate()`. 30s setTimeout orphan per successful revalidation. Under sustained high-RPS load, hundreds piled up.
+- **#735** — `@pyreon/zero` `ssg-plugin.ts` per-path render + per-locale 404 render (×2). Same shape. Build-time, lower impact, but the worker-pool concurrency (default 4) could have 4 timer closures in flight simultaneously.
+
+**Fix shape**: capture the timer id outside the Promise constructor, `clearTimeout` in `finally`:
+
+```ts
+let timeoutId: ReturnType<typeof setTimeout> | undefined
+try {
+  const res = await Promise.race([
+    work(),
+    new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('timeout')), 30_000)
+    }),
+  ])
+  // ... use res
+} finally {
+  if (timeoutId !== undefined) clearTimeout(timeoutId)
+}
+```
+
+**Detection**: **`pyreon/promise-race-needs-cleartimeout`** (performance, warn, #743). Flags the exact shape across a try-block where the enclosing `finally` does NOT contain a `clearTimeout`. Bisect-verified — 7 specs total.
+
+### Class H — Closure-captured snapshots retained unboundedly
+
+**Shape**: an effect / callback captures a snapshot (e.g. the current context-stack, the current EffectScope, an array of subscribers) in its closure. The snapshot is then closed-over for the effect's lifetime, retaining everything in it even after the original purpose has elapsed.
+
+**Real instances**:
+- **#725** — `@pyreon/reactivity` `_bind` / `renderEffect` / `effect`. Each captured an EXTERNAL snapshot of the context stack at setup so the effect could restore it on every re-run. Combined with `mountReactive`'s effect-re-fire flow disposing descendants INSIDE the snapshot-restore window, the snapshot's closure retained every frame it pointed at — including frames that should have been GC-eligible.
+
+**Fix shape**: capture only the MINIMAL subset needed, NOT the full snapshot. Restore via identity-keyed splice (Class A's fix). In Pyreon's case, the effects now register a frame ID instead of the whole stack; restoration walks the live stack looking for that ID.
+
+**Detection**: no lint rule (closure-capture analysis is well beyond static-analysis scope). Caught only at audit time. This is the deepest class — typically requires reading the framework code and reasoning about effect re-fire flow.
+
+### Classes B (subscriber retention) and E (disposed objects in collections) — NO real instances in this sweep
+
+Documented in the audit subagent's prompt for completeness but no instances surfaced. Worth listing here for the catalog's reference value:
+
+- **Class B**: subscribers retained after dispose. The canonical shape is `signal.subscribe(handler)` returning an unsub that the caller never invokes. Pyreon's signal subscribe path returns `() => this._s?.delete(listener)` so the cleanup IS available — the bug only fires when the caller drops the reference.
+- **Class E**: disposed objects retained from collections. E.g. an `Array<Component>` holding components that have already been unmounted. The collection prevents GC. Different from Class C in that the collection isn't a cache — it's a registry that should track only live instances.
+
+### Cross-class generalization
+
+All 5 classes seen in this sweep share a single deeper root cause: **module-level mutable state with imperfect cleanup contracts**. Classes A/C/D are eviction failures; Class F is overwrite without invalidation; Classes H and the broader closure-capture risk are retention by held reference.
+
+The post-sweep defensive posture is:
+1. **Lint rules** for the 2 patterns with high static-analysis precision: `init-fn-needs-idempotency` (Class D) and `promise-race-needs-cleartimeout` (Class I). Both warn-level in `recommended` preset.
+2. **`pyreon/storage-signal-v-forwarding`** (existing) for a related wrapper-callable contract that overlaps Class C.
+3. **Audit subagent prompts** for the other 3 classes (A, F, H) — too contextual for static analysis but the prompts now name the patterns explicitly so future audits don't re-discover them from scratch.
+
+When introducing a new module-level cache / stack / registry, ask: **(1) what's the eviction trigger? (2) what's the cleanup contract? (3) is the cleanup path actually exercised by any test?** If any answer is "the GC will handle it" or "the user will dispose it manually", treat the design as a leak source until proven otherwise.
+
 ## Lifecycle & Cleanup Mistakes
 
 - **Position-based pop for stack frames unmounted out-of-order (ERROR-BOUNDARY STACK)**: same bug class as the context-stack one below, different shared array. `ErrorBoundary` pushed its error handler onto a module-level `_errorBoundaryStack` and registered `onUnmount(() => popErrorBoundary())` where `popErrorBoundary` did `stack.pop()`. Sibling boundaries unmount in renderer-driven order — keyed `<For>` removing a non-last item, `<Show>` flipping the FIRST of several, route nav unmounting an outer of nested routes — so a non-last sibling's `onUnmount` popped the LAST sibling's handler instead of its own. Survivor's handler gone from the stack; orphan's handler at the top. Subsequent throws in the survivor's children dispatched to the orphan (whose owning boundary is disposed → `error.set(err)` is a no-op) → error silently swallowed AND survivor's fallback never rendered. **Fix**: `popErrorBoundary(handler)` accepts the handler reference and removes by IDENTITY via `lastIndexOf + splice`. Each `ErrorBoundary`'s `onUnmount` passes its OWN handler. Reference: `packages/core/core/src/{component.ts:popErrorBoundary, error-boundary.ts:71}`. **The class generalizes**: any time framework code does `push(X)` at setup + `pop()` at cleanup on a module-level array, ask "can X be removed in non-LIFO order?" If yes, switch to `lastIndexOf + splice` with the pushed reference.

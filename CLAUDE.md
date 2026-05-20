@@ -976,6 +976,19 @@ Rule of thumb:
 - **`let`/`var` from props** = static (mutable variables are not inlined)
 - **JSX spread on a component** = reactive (compiler wraps spread sources with `_wrapSpread`) — `<Wrapper {...rest} {...overrides}>` preserves every getter-shaped prop through to the receiving component, no matter how the source was constructed (`splitProps`, `mergeProps`, raw `props` of a parent). DOM-element spread `<div {...rest}>` is also reactive (template path's `_applyProps`). Manual `Object.assign({}, source)` or `{...source}` in plain JS (not JSX) is NOT covered — use `mergeProps` / `splitProps` for those.
 
+## Memory Leak Classes
+
+The 8-PR sweep across #725-#741 surfaced 5 distinct memory-leak classes with real bug instances. Each class is catalogued in `.claude/rules/anti-patterns.md` "Memory Leak Classes" section with: bug shape, fix shape, every PR that landed an instance, and static-analysis coverage. Read that catalog before introducing a new module-level cache / stack / registry. Classes seen in this sweep:
+
+- **A** (position-based stack pop on shared state) — #725 / #729 / #733 vue-compat
+- **C** (unbounded caches) — #733 lint AstCache / #737 createStore / #741 vite-plugin caches
+- **D** (event-listener pile-up) — #734 initTheme / #739 svelte-compat ChildInstance
+- **F** (Promise queue stale resolution) — #730 charts+storage / #737 createResource
+- **H** (closure-captured snapshot retention) — #725 effect snapshots
+- **I** (orphaned `Promise.race + setTimeout`) — #734 ISR / #735 ssg-plugin
+
+Two preventative lint rules ship in the `recommended` preset for the classes with high static-analysis precision: `pyreon/init-fn-needs-idempotency` (Class D) and `pyreon/promise-race-needs-cleartimeout` (Class I). The other classes are caught at audit time by the leak-hunt subagent prompt.
+
 ## Common Issues & Fixes
 
 - `ComponentFn<{ name: string }>` not assignable → solved by generic h()
