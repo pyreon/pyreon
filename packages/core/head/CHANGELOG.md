@@ -1,5 +1,50 @@
 # @pyreon/head
 
+## 0.23.0
+
+### Patch Changes
+
+- [#727](https://github.com/pyreon/pyreon/pull/727) [`1d825c2`](https://github.com/pyreon/pyreon/commit/1d825c2374a39833881c490887602354a7d590af) Thanks [@vitbokisch](https://github.com/vitbokisch)! - simplify: remove `HeadContext`-dedup workaround now that
+  `@vitus-labs/tools-rolldown >= 2.4.0` shares chunks across sub-entries
+
+  Root-bumped `@vitus-labs/tools-rolldown` from `^2.3.1` to `^2.4.0`. The
+  upstream tool now emits a shared chunk for modules used by multiple
+  sub-entries (`lib/_chunks/`), so `context.ts` is automatically hoisted
+  into the single `lib/context.js` chunk — every other sub-entry's bundle
+  imports `HeadContext` from it via relative-path `./context.js`,
+  `createContext(null)` runs exactly once at runtime, and the SSG-meta-
+  dropped bug is structurally impossible.
+
+  Removes the per-package workarounds added in [#722](https://github.com/pyreon/pyreon/issues/722):
+
+  - `packages/core/head/vl-tools.config.mjs` — deleted (no more
+    `external: ['@pyreon/head/context']` rule needed)
+  - source self-package imports reverted to relative `./context` in
+    `index.ts` / `provider.ts` / `use-head.ts` / `ssr.ts` (+ removed the
+    rationale comment blocks)
+  - `vitest.shared.ts` `@pyreon/head/context` alias removed
+
+  Kept (legitimate, not workarounds):
+
+  - `./context` sub-export in `package.json` — public API surface; users
+    can still `import { HeadContext } from '@pyreon/head/context'`
+  - bundle-level regression test, **rewritten** to assert the new (and
+    stronger) invariant: NO file under `lib/` (including `_chunks/*.js`)
+    outside `lib/context.js` calls `createContext()`. Locks the bug class
+    against any future regression (e.g. downgrade of the build tool).
+
+  Verified empirically:
+
+  - `lib/context.js : createContext = 2` (THE source of truth)
+  - `lib/{index,provider,use-head,ssr}.js : createContext = 0` (each)
+  - `lib/_chunks/use-head-*.js : createContext = 0`
+  - regression test 6/6 pass on the rebuilt artifacts
+
+- Updated dependencies [[`6571df8`](https://github.com/pyreon/pyreon/commit/6571df8209c5dc72619194ffe19359765b1d2d7f), [`af4d5d8`](https://github.com/pyreon/pyreon/commit/af4d5d83fc087d738dbe5084950476566d488d77), [`f833a99`](https://github.com/pyreon/pyreon/commit/f833a997bbc04aa5ba94d0d5dd334628871aaa9a), [`2976aa8`](https://github.com/pyreon/pyreon/commit/2976aa84213b479b4d045a83143b3a4a3d89aedf), [`7632934`](https://github.com/pyreon/pyreon/commit/763293492a26d48e4a7b1b28e42a519677702b35), [`441b5df`](https://github.com/pyreon/pyreon/commit/441b5dfa64ae52002d3e6612ec68566344ae999d)]:
+  - @pyreon/core@0.23.0
+  - @pyreon/runtime-server@0.23.0
+  - @pyreon/reactivity@0.23.0
+
 ## 0.22.0
 
 ### Minor Changes

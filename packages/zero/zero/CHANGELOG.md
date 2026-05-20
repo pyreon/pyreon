@@ -1,5 +1,735 @@
 # @pyreon/zero
 
+## 0.23.0
+
+### Minor Changes
+
+- [#745](https://github.com/pyreon/pyreon/pull/745) [`f833a99`](https://github.com/pyreon/pyreon/commit/f833a997bbc04aa5ba94d0d5dd334628871aaa9a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat: close the three deferred SSR/ISR gaps from the deep-analysis pass
+
+  Three independent fixes that close gaps explicitly deferred in earlier
+  PRs ([#738](https://github.com/pyreon/pyreon/issues/738)/[#740](https://github.com/pyreon/pyreon/issues/740)/[#742](https://github.com/pyreon/pyreon/issues/742)/[#744](https://github.com/pyreon/pyreon/issues/744)) but called out as required by the goal-hook.
+
+  ### 1. `renderToStream(root, { signal })` — AbortSignal threading
+
+  `renderToStream` now accepts `{ signal?: AbortSignal }`. The internal
+  controller forwards client-disconnect (`ReadableStream.cancel()`) AND
+  upstream aborts to a shared signal; the drain loop races each pending
+  Suspense batch against the abort-promise so the stream closes promptly
+  when the consumer hangs up. Per-boundary resolvers check
+  `ctx.signal.aborted` before enqueueing post-resolve HTML.
+
+  Before: a client navigating mid-stream left in-flight Suspense work
+  awaited server-side until its 30s timeout. Wasted CPU per dropped
+  connection.
+
+  After: cancellation propagates within ms; pending boundaries skip the
+  swap. Tests (`tests/integration.test.ts`): upstream-abort skips
+  post-resolve enqueue, pre-aborted signal still emits sync portion,
+  `ReadableStream.cancel()` closes the stream within 100ms (well under
+  the 200ms test boundary's pending work).
+
+  ### 2. `ISRConfig.revalidateRequest` — auth-gated revalidation hook
+
+  New optional `(req: Request) => Request | null`. Lets auth-gated
+  `cacheKey` setups scope revalidation explicitly:
+
+  - Return a custom `Request` (e.g. stripped cookies for anonymous
+    revalidation) — used in place of the original.
+  - Return `null` — SKIP revalidation entirely for this entry (stale
+    stays stale until next live request).
+
+  Closes the footgun where the default behaviour re-uses the original
+  user's cookies for the background revalidation — if the session has
+  expired since cache-write, the new render may misbehave or embed
+  stale auth data. Tests: 2 specs covering null=skip and custom-request
+  scrubbing cookies.
+
+  ### 3. Cloudflare `_worker.js` runtime-contract gate
+
+  New regression assertion in `adapters.test.ts` cloudflare suite: the
+  emitted `_worker.js` MUST contain none of `node:` imports / `fs` /
+  `path` / `__dirname` / `__filename` / `fileURLToPath` / `Buffer` /
+  `process.env`. Locks the Web-standard runtime contract — any future
+  template change that accidentally grows a Node API fails CI here
+  instead of 500ing in production on Cloudflare Workers (which doesn't
+  expose those APIs without the `nodejs_compat` flag).
+
+  The `node:fs/promises` / `node:path` USE inside cloudflare.ts itself
+  is build-time-only (runs in Node during `vite build`) and is
+  unaffected — this check covers the EMITTED file.
+
+  ### Net diff
+
+  +220 / -10 lines (impl + 5 new tests + JSDoc + changeset). All
+  existing suites pass unchanged: runtime-server 35+ tests, zero ISR
+  15/15, adapters 37/37, typecheck + lint + build clean across both
+  packages, gen-docs + check-doc-claims green.
+
+  Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- [#742](https://github.com/pyreon/pyreon/pull/742) [`36767f6`](https://github.com/pyreon/pyreon/commit/36767f69887f8da39c2a14c57da2ca59f3780b3d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(zero): ISR external-store interface — `ISRStore` + `createMemoryStore`; multi-instance production unlock
+
+  `createISRHandler` was previously hard-wired to `new Map<string, CacheEntry>`
+  — per-process, never shared. Multi-instance deploys (load-balanced Node,
+  autoscaled containers, edge functions) hit a wall: each pod had its own
+  cache, so a revalidation in pod A was invisible to pod B. Sticky
+  sessions or external cache plumbing was the framework user's problem.
+
+  New: pluggable backing store.
+
+  ```ts
+  // ISRConfig.store accepts any backing matching:
+  interface ISRStore<E = ISRCacheEntry> {
+    get(key: string): Promise<E | undefined> | E | undefined;
+    set(key: string, entry: E): Promise<void> | void;
+    delete?(key: string): Promise<void> | void;
+  }
+  ```
+
+  Sync OR async returns — in-memory stays cheap (no Promise allocation per
+  request), external stores return their native promises naturally. The
+  handler `await`s the result either way.
+
+  **Default unchanged**: `createMemoryStore({ maxEntries })` (extracted
+  from the previous in-place `Map` logic) — drop-in pass-through,
+  behaviour-identical for existing callers. `config.maxEntries` is
+  ignored when a custom `config.store` is supplied (the custom store owns
+  its own eviction/TTL policy).
+
+  New exports from `@pyreon/zero/server`:
+
+  - `ISRStore<E>` interface
+  - `ISRCacheEntry` interface (`{ html, headers, timestamp }`)
+  - `createMemoryStore({ maxEntries? })` — the default factory
+
+  Example Redis adapter:
+
+  ```ts
+  import { Redis } from "ioredis";
+  import type { ISRStore } from "@pyreon/zero/server";
+
+  const redis = new Redis(/* ... */);
+  const store: ISRStore = {
+    async get(key) {
+      const v = await redis.get(`isr:${key}`);
+      return v ? JSON.parse(v) : undefined;
+    },
+    async set(key, entry) {
+      await redis.set(`isr:${key}`, JSON.stringify(entry), "EX", 86400);
+    },
+    async delete(key) {
+      await redis.del(`isr:${key}`);
+    },
+  };
+
+  const handler = createISRHandler(ssrHandler, { revalidate: 60, store });
+  ```
+
+  Tests: 6 new specs in `tests/isr.test.ts` "pluggable store" describe —
+  default backwards-compat, `createMemoryStore` LRU bump on `get`,
+  fake-Redis call sequence, async store roundtrip, cache-hit short-
+  circuit, non-cacheable response does NOT call `set`. 19/19 ISR specs
+  pass total. Typecheck + lint + build clean.
+
+  **No breaking change**: omitting `config.store` keeps prior behaviour
+  exactly (`createMemoryStore` defaults `maxEntries` to 1000 just like
+  the previous hard-coded Map+LRU did).
+
+- [#758](https://github.com/pyreon/pyreon/pull/758) [`c459330`](https://github.com/pyreon/pyreon/commit/c459330e248397438892c9a8c1817bd75cfb8b3e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `createISRHandler` now exposes imperative cache invalidation via `revalidateNow(key)` and `revalidateAll()`. The returned handler is still callable for `Bun.serve({ fetch: handler })` — these are methods attached to the callable, not a return-shape change. Non-breaking.
+
+  The pluggable store ([#742](https://github.com/pyreon/pyreon/issues/742)) already supported `delete?(key)` on the interface, but there was no public surface to invoke it. Runtime ISR previously relied purely on TTL-based stale-while-revalidate, which means a CMS update → ISR cache reflection always has a stale window (the TTL). The new methods close that window: a webhook fires → `revalidateNow(path)` → the very next visitor sees fresh content.
+
+  **New surface**:
+
+  ```ts
+  import { createISRHandler } from "@pyreon/zero/server";
+
+  const isr = createISRHandler(ssrHandler, { revalidate: 60 });
+
+  // As before — Bun.serve({ fetch: isr }) still works
+  Bun.serve({ fetch: isr });
+
+  // CMS webhook → drop one cache entry, next request renders fresh
+  const result = await isr.revalidateNow("/posts/123");
+  // → { dropped: true } if entry existed AND store supports delete
+  // → { dropped: false } otherwise (honest signal for TTL-only stores)
+
+  // Admin "purge cache" endpoint → drop everything
+  await isr.revalidateAll();
+  // throws clear error if store has no clear() method
+  ```
+
+  **Honest no-store-support behavior**: external stores (Redis TTL-only, custom shapes) may omit `delete?` or `clear?` on the `ISRStore` interface. `revalidateNow` returns `{ dropped: false }` when the store can't physically drop the entry (instead of lying about success). `revalidateAll` throws a clear error pointing at the missing `clear()` method when called against an incompatible store.
+
+  **`ISRStore` interface gains `clear?()`** — optional, non-breaking. The default `createMemoryStore` implements it.
+
+  **Internal hygiene**: both methods also clear the in-flight `revalidating` flag for the dropped key(s) so the next request re-renders fresh rather than short-circuiting on the stale-revalidate guard.
+
+  **Tests**: 7 new specs in `isr.test.ts` under `revalidateNow + revalidateAll` covering:
+
+  1. drops a cached entry — next request MISSes
+  2. dropped:false for keys that never existed
+  3. idempotent (call twice — sensible flags)
+  4. clears in-flight revalidation flag (the subtle one — prevents a stale-then-evicted entry's flag from blocking the next request)
+  5. revalidateAll drops every entry
+  6. revalidateAll throws against a store without clear()
+  7. revalidateNow against a store without delete() returns dropped:false honestly
+
+  **Bisect-verified**: replaced `revalidateNow` body with a no-op `return { dropped: false }` → 3 of 7 specs failed (the real ones — `drops a cached entry`, `idempotent`, `clears in-flight flag`); the 4 edge-case specs still passed (they were testing shapes that happen to fall through identically to a no-op). Restored → all 27 isr tests pass, full zero suite **969/969** (1 skipped pre-existing), MCP suite **497/497** (api-reference regen didn't break anything). Lint + typecheck clean. No lockfile drift. No `TEMP BISECT` remnants.
+
+  Manifest entry for `createISRHandler` updated to document the new surface + the 5 foot-guns. `gen-docs --check` clean.
+
+### Patch Changes
+
+- [#759](https://github.com/pyreon/pyreon/pull/759) [`51b81f0`](https://github.com/pyreon/pyreon/commit/51b81f0d92bdbc9c4fd6acc3b5b9b0a8043078a9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `createActionMiddleware` — surface server-action errors to operator logs + distinguish client errors (400) from server errors (500).
+
+  Continuation of the swallow-error audit pattern from PR [#755](https://github.com/pyreon/pyreon/issues/755) (cloud adapters) and PR [#753](https://github.com/pyreon/pyreon/issues/753) (node adapter). The same shape — `catch (err) { return 500 }` with **no `console.error(err)`** — was hiding in `executeAction` for server actions. Production crashes inside a user's action handler returned a generic 500 to the client AND emitted **zero diagnostic info** to server logs, leaving operators unable to diagnose failures.
+
+  **Fix 1 — log handler crashes:**
+
+  ```ts
+  } catch (err) {
+    console.error('[Pyreon Action] handler failed:', err)
+    // ...
+  }
+  ```
+
+  The same `[Pyreon SSR] handler failed:` / `[Pyreon Action] handler failed:` prefix family makes failures trivially greppable across log streams.
+
+  **Fix 2 — distinguish parse errors (400) from runtime errors (500):**
+
+  Pre-fix, `await req.json()` and `await req.formData()` throwing on malformed payloads (truncated JSON, invalid UTF-8, etc.) were caught by the same outer `catch` that handled handler crashes — and returned **500**. That conflated client errors (bad payload — the client's fault) with server errors (handler crashed — the server's fault).
+
+  Now the parse step has its own try/catch and returns **400 (Bad Request)** with a generic `{ error: 'Invalid request body' }` payload. The generic message also prevents leaking parser internals (`Unexpected token X in JSON at position N` could expose sensitive offset / state info to hostile clients).
+
+  **Tests (3 new specs in `actions.test.ts`):**
+
+  1. **logs action runtime errors to console.error with prefix** — `vi.spyOn(console, 'error')` asserts the `[Pyreon Action] handler failed:` log fires with the error attached.
+  2. **returns 400 (not 500) on malformed JSON request body** — `body: '{not valid json'` with `Content-Type: application/json` → 400 + `{ error: 'Invalid request body' }` + `console.error` captures the parse error.
+  3. **does NOT leak internal parser error messages to the client** — null bytes + junk body → generic message; asserts the response body does NOT match `/position|token|offset/i` so even strict parsers (with offset reporting) can't leak.
+
+  **Bisect-verified per fix:**
+
+  - Drop `console.error` from the handler-error catch → "logs action runtime errors" fails; other 2 pass. Restored → 3/3.
+  - Restore single outer try/catch (pre-fix shape) → "returns 400" + "leak internal" both fail (status 500 + parser internals leaked); logging spec still passes. Restored → 3/3.
+
+  Full zero suite **965/965** pass (1 skipped pre-existing). Lint + typecheck clean for the changed files. No lockfile drift. No `TEMP BISECT` remnants.
+
+  The 2 `no-console` lint warnings emitted are intentional and match the existing convention (`console.warn` in adapter `revalidate` methods — production logging).
+
+- [#752](https://github.com/pyreon/pyreon/pull/752) [`1bb5988`](https://github.com/pyreon/pyreon/commit/1bb598872a7178a5c20af257c49e62a6ae82bf36) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `bunAdapter` — fix `Bun.resolveSync` crash on SSR routes + add runtime-contract gate.
+
+  The emitted Bun.serve harness used `Bun.resolveSync(filePath, ".")` for its static-file / path-traversal check. `Bun.resolveSync` is MODULE resolution (looks for a JS module on disk), not path normalization — it throws `ENOENT` on any non-existent file. So **every GET request whose URL didn't match a literal static file** (i.e. every SSR route) crashed inside the static-file branch with `Cannot find module '<clientDir>/<route>' from '.'` and returned 500 instead of reaching the SSR handler.
+
+  The harness now decodes the URL once, normalizes the path via `node:path.normalize`, asserts the candidate stays within `clientDir`, then checks `Bun.file(candidate).exists()`. Same security guarantees (path traversal rejected, null bytes rejected, malformed percent-encoding rejected with 400), but `normalize` is pure string arithmetic — never throws on missing files. SSR routes now correctly fall through to the handler.
+
+  **New gate**: `bun adapter — runtime contract` describe block in `packages/zero/zero/src/tests/adapters.test.ts` spawns `bun run dist/index.ts` as a subprocess against the mock build fixture and drives real HTTP requests against the emitted server:
+
+  1. SSR fallback: `GET /api/anything` → handler response (`"ok"`).
+  2. Static file: `GET /` → mock `index.html` with `cache-control` header.
+
+  Skipped when `bun` isn't in PATH (vitest can run under Node too); auto-detected at test time. Each spec takes ~60ms (bun spawn is fast).
+
+  **Bisect-verified**: reverting the adapter fix to the `Bun.resolveSync` shape → both runtime-contract tests FAIL with `expected 500 to be 200` (the SSR route and the static `/` route BOTH crash with `Cannot find module`); restored → both pass × 5 stability runs. Full zero suite 957/957 (1 skipped pre-existing). Lint + typecheck clean.
+
+  Path-traversal-specific test was deliberately NOT added: both `Bun.serve`'s HTTP parser AND the URL spec's mandatory `new Request(url)` normalization collapse `..` segments BEFORE the bytes reach the fetch handler (empirically verified — `GET /../../etc/passwd` arrives as `/etc/passwd` no matter whether the client is fetch, undici, curl, or a raw `node:net` socket). The traversal check in the harness is still useful defense-in-depth for non-Bun.serve consumers (e.g. embedding the entry into Deno / edge runtimes that don't normalize), but it can't be exercised through a spec-compliant HTTP path; the SSR-fallback test proves the load-bearing fix.
+
+  First adapter to gain a runtime-contract gate. Cloudflare / Vercel / Netlify gates need their respective CLI emulators (`wrangler dev` / `vercel dev` / `netlify dev`) which add ~150MB install each — they're separate follow-up PRs.
+
+- [#755](https://github.com/pyreon/pyreon/pull/755) [`5934570`](https://github.com/pyreon/pyreon/commit/59345703bcf7a4d946ace655a69514ee438e9006) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Cloud adapter audit pass — fix swallow-error in Cloudflare + Netlify emitted servers, hoist per-request dynamic import in Vercel, remove dead code in Cloudflare worker.
+
+  Follow-up to the bun ([#752](https://github.com/pyreon/pyreon/issues/752)) and node ([#753](https://github.com/pyreon/pyreon/issues/753)) adapter audits, which each found 1-2 real bugs in their emitted server harnesses under runtime-contract gates. The cloud adapter family (vercel/cloudflare/netlify) doesn't have runtime-contract gates yet (each needs its own CLI emulator install — wrangler dev / vercel dev / netlify dev, ~150 MB each), but a static audit pass surfaces four concrete production bugs that don't need runtime emulation to diagnose:
+
+  **Cloudflare** (`packages/zero/zero/src/adapters/cloudflare.ts`)
+
+  - **Silent catch**: the emitted `_worker.js` had `try { ... } catch (err) { return new Response("Internal Server Error", { status: 500 }) }` with NO `console.error(err)`. Production crashes shipped a bare 500 to clients AND ZERO diagnostic info to Cloudflare Tail logs (the standard Workers debugging surface). Now logs `[Pyreon SSR] handler failed:` + the full error.
+  - **Dead code**: the emitted worker computed `const ext = url.pathname.split(".").pop()` then ran an `if (ext && ...) { /* comment */ }` block with an **empty body** — pure dead code that did nothing at runtime, just consumed cold-start budget per request. Removed.
+
+  **Netlify** (`packages/zero/zero/src/adapters/netlify.ts`)
+
+  - **Silent catch**: same shape as Cloudflare — `catch (err) { return 500 }` with no log. Now logs to Netlify Function logs panel (also reachable via `netlify functions:log`).
+
+  **Vercel** (`packages/zero/zero/src/adapters/vercel.ts`)
+
+  - **Per-request dynamic import**: the emitted function called `(await import("./entry-server.js")).default` inside the handler — Node's module cache makes subsequent calls near-free, but the FIRST request on every fresh serverless instance (i.e. every cold start) paid the full module evaluation cost inside the request budget, observable as a TTFB spike on cold starts. Now hoisted to module scope (`import handler from "./entry-server.js"` at the top), evaluated once at function-init before the first request.
+  - **No error logging**: pre-fix the handler had NO try/catch — SSR throws propagated to Vercel's launcher which logged them generically. Now wrapped with the same `[Pyreon SSR] handler failed:` prefix so the cause is trivially greppable in the dashboard log stream.
+
+  Shape assertions added to the existing `vercel/cloudflare/netlify adapter build` tests:
+
+  - Cloudflare: asserts `console.error([Pyreon SSR]` present, asserts the dead `ext` computation is absent.
+  - Netlify: asserts `console.error([Pyreon SSR]` present.
+  - Vercel: asserts `import handler from "./entry-server.js"` is hoisted at module-scope, asserts `await import("./entry-server.js")` is absent, asserts `console.error([Pyreon SSR]` present.
+
+  **Bisect-verified per fix**: reverting just one adapter's source (TEMP BISECT) fails ONLY that adapter's test; the other two stay green. All three restores → 957/957 zero tests pass. No `TEMP BISECT` remnants. Lint + typecheck clean. No lockfile drift.
+
+  Out of scope (follow-up PRs): full runtime-contract gates via `wrangler pages dev` / `vercel dev` / `netlify dev` — each adds a ~150 MB CLI install to CI and likely surfaces additional bugs. The shape-level audit pass here is the cheap first cut.
+
+- [#754](https://github.com/pyreon/pyreon/pull/754) [`6454cb7`](https://github.com/pyreon/pyreon/commit/6454cb794bb82db11e7842cb4a62a3765e3dd3ac) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(security): close 17 CodeQL alerts (real bugs + workflow hardening; 20 false positives dismissed)
+
+  Sweep through `github.com/pyreon/pyreon/security/code-scanning`. 37
+  open alerts triaged into **17 real fixes + 20 false-positive
+  dismissals**. The 4 remaining alerts are OpenSSF Scorecard project-
+  posture metrics (CodeReview, Maintained, CIIBestPractices, Fuzzing)
+  which can't be closed by a code PR — they're external posture
+  checks.
+
+  ### Real fixes (8 code + 9 polynomial-redos + 6 workflow)
+
+  **Code:**
+
+  - **[#27](https://github.com/pyreon/pyreon/issues/27) `@pyreon/zero` `fs-router.ts:1110`** — `import("${fullPath}")`
+    interpolated `fullPath` raw into emitted JS. Path is developer-
+    controlled (project's own filesystem scan), but a quote / backslash
+    / newline in the path would corrupt the generated module source.
+    Fixed: `JSON.stringify(fullPath)` — matches the existing `hmrId`
+    pattern two lines above.
+  - **[#37](https://github.com/pyreon/pyreon/issues/37) `@pyreon/lint` `anchor-is-valid.ts:67`** —
+    `trimmed.toLowerCase().startsWith('javascript:')` only catches the
+    one canonical scheme. CodeQL's `js/incomplete-url-scheme-check`
+    expects the curated dangerous-scheme set. Added `vbscript:`
+    (dead on modern browsers but a no-cost completion). `data:`
+    intentionally omitted — legitimate `data:image/png;base64,…`
+    href usage exists.
+  - **[#20](https://github.com/pyreon/pyreon/issues/20)/[#21](https://github.com/pyreon/pyreon/issues/21)/[#22](https://github.com/pyreon/pyreon/issues/22) `@pyreon/solid-compat` `createStore` setStore** —
+    `Object.assign(obj, value)` + dynamic `obj[key] = …` with user-
+    supplied path keys allowed prototype pollution via
+    `setStore('__proto__', evil)` or `setStore({ __proto__: … })`.
+    Added a `DANGEROUS_KEYS` Set (`__proto__` / `constructor` /
+    `prototype`) and a `safeAssign` helper — same shape as
+    `@pyreon/reactivity reconcile.ts:34`. Path-key writes at any
+    depth refuse the dangerous identifiers.
+
+  **Polynomial-redos (`@pyreon/compiler`, `@pyreon/vite-plugin`):**
+
+  - **[#9](https://github.com/pyreon/pyreon/issues/9)/[#10](https://github.com/pyreon/pyreon/issues/10)/[#11](https://github.com/pyreon/pyreon/issues/11) `pyreon-intercept.ts` pre-filter regexes** — bound
+    `[^}]+` / `[^)]+` greedy quantifiers with `{0,500}` / `{1,500}`
+    caps. Pre-filter is a SCAN before the precise AST walker; losing
+    detector recall on pathologically long single-line input is
+    acceptable.
+  - **[#12](https://github.com/pyreon/pyreon/issues/12)/[#13](https://github.com/pyreon/pyreon/issues/13) `ssg-audit.ts` dynamic-route detection** — replaced
+    `/\[.+\]/` with `/\[[^\]]+\]/`. Filename basenames are OS-bounded
+    (~255 chars) anyway, but `[^\]]+` removes the backtrack potential
+    entirely.
+  - **[#16](https://github.com/pyreon/pyreon/issues/16) `vite-plugin.ts` ISLAND_CALL_RE** — bound `[\s\S]*?` lazy
+    match to `[^}]{0,500}`. Real island() option blocks are tiny.
+  - **[#17](https://github.com/pyreon/pyreon/issues/17) `vite-plugin.ts` NAMED_EXPORT_RE** — bound `[^}]+` to
+    `[^}]{1,500}`. Real `export { … }` blocks fit easily.
+  - **[#18](https://github.com/pyreon/pyreon/issues/18)/[#19](https://github.com/pyreon/pyreon/issues/19) `vite-plugin.ts` `split(/\s+as\s+/)`** — replaced with
+    a pre-compiled `AS_SPLIT_RE = /\s{1,10}as\s{1,10}/` at module
+    scope. Bounded `{1,10}` quantifiers eliminate worst-case
+    backtracking while keeping every realistic import-specifier
+    formatting matchable.
+
+  **Workflows (`.github/workflows/`):**
+
+  - **[#1](https://github.com/pyreon/pyreon/issues/1) perf.yml + [#54](https://github.com/pyreon/pyreon/issues/54) audit-leak-classes.yml** — added top-level
+    `permissions: contents: read` block. Both workflows are read-only
+    (perf records artifacts; audit reports findings).
+  - **[#2](https://github.com/pyreon/pyreon/issues/2) release.yml** — restructured permissions: top-level
+    `contents: read` (default), per-job `contents: write` +
+    `pull-requests: write` + `id-token: write` on `stable` and
+    `prerelease` (both publish via OIDC trusted publishing).
+  - **[#55](https://github.com/pyreon/pyreon/issues/55)/[#56](https://github.com/pyreon/pyreon/issues/56)/[#57](https://github.com/pyreon/pyreon/issues/57) audit-leak-classes.yml** — pinned `actions/checkout`,
+    `oven-sh/setup-bun`, `actions/upload-artifact` by full commit SHA.
+    Same SHAs as the rest of `.github/workflows/` (the project's
+    existing pinning convention).
+
+  ### Dismissed via API (20 false positives / won't fix)
+
+  **True false positives (9):**
+
+  - **[#28](https://github.com/pyreon/pyreon/issues/28)** `js/clear-text-logging` on `batch.ts:120` — CodeQL matched
+    "MAX_PASSES" as if it contained "password". Log is about
+    effect-flush pass count.
+  - **[#25](https://github.com/pyreon/pyreon/issues/25)/[#26](https://github.com/pyreon/pyreon/issues/26)** `js/bad-code-sanitization` on `vite-plugin.ts:1037,1307`
+    — `JSON.stringify()` IS the canonical safe-embed for a string into
+    emitted JS code.
+  - **[#23](https://github.com/pyreon/pyreon/issues/23)/[#24](https://github.com/pyreon/pyreon/issues/24)** `js/prototype-pollution-utility` on `reconcile.ts:103,107`
+    — `DANGEROUS_KEYS.has(key)` guard at line 93 already blocks
+    `__proto__` / `constructor` / `prototype` before the assignment.
+  - **[#34](https://github.com/pyreon/pyreon/issues/34)/[#35](https://github.com/pyreon/pyreon/issues/35)/[#36](https://github.com/pyreon/pyreon/issues/36)** `js/incomplete-sanitization` on `manifest/render.ts`
+    - `mcp/index.ts` — `.replace(/\|/g, '\\|')` is markdown table-cell
+      escaping of INTERNAL manifest API metadata (built at gen-docs time
+      from `defineManifest()` values), not user-input sanitization.
+  - **[#52](https://github.com/pyreon/pyreon/issues/52)** `js/http-to-file-access` on `font.ts` — deterministic font-
+    file fetch resolved from CSS `@font-face` declarations parsed at
+    build time, then written to a per-project cache dir keyed by a
+    base64 hash of the URL. Not user-driven HTTP content writing to
+    arbitrary paths.
+
+  **Won't fix (internal dev tooling, not security boundaries):**
+
+  - **[#42](https://github.com/pyreon/pyreon/issues/42)/[#43](https://github.com/pyreon/pyreon/issues/43)/[#44](https://github.com/pyreon/pyreon/issues/44)/[#45](https://github.com/pyreon/pyreon/issues/45)/[#47](https://github.com/pyreon/pyreon/issues/47)/[#48](https://github.com/pyreon/pyreon/issues/48)** `js/file-system-race` — CLI scaffolding
+    (`pyreon context`, `create-zero`), build-time Vite plugin
+    (`icons-plugin`), internal scripts (`check-bundle-budgets`,
+    `serve-ssg`). Single-process, single-developer environments; no
+    malicious actor with concurrent filesystem access in the threat
+    model.
+  - **[#30](https://github.com/pyreon/pyreon/issues/30)/[#31](https://github.com/pyreon/pyreon/issues/31)** `js/shell-command-injection-from-environment` —
+    internal repo audit (`audit-codebase`) + benchmark harness
+    (`bench/run-all`). Args controlled entirely by the script author,
+    not external input.
+  - **[#49](https://github.com/pyreon/pyreon/issues/49)/[#50](https://github.com/pyreon/pyreon/issues/50)** `js/indirect-command-line-injection` — internal git-
+    affected-packages selectors (`affected.ts`, `e2e-affected.ts`).
+    Args are git refs from the GitHub Actions workflow event.
+  - **[#3](https://github.com/pyreon/pyreon/issues/3)** `PinnedDependenciesID` on `release-native.yml:252`
+    (`npm install -g npm@latest`) — npm 11.5.1+ is the documented
+    requirement for OIDC trusted publishing. Pinning an exact version
+    blocks security patches; the OIDC token + Sigstore provenance is
+    the actual supply-chain guarantee.
+
+  ### Remaining (cannot be closed by a code PR)
+
+  - **[#4](https://github.com/pyreon/pyreon/issues/4) CodeReviewID** — Scorecard counts review approvals per merge;
+    squash-merge with self-review by maintainer doesn't count.
+    Project-policy issue, not code.
+  - **[#5](https://github.com/pyreon/pyreon/issues/5) MaintainedID** — auto-tracks repo activity, improves
+    organically.
+  - **[#6](https://github.com/pyreon/pyreon/issues/6) CIIBestPracticesID** — requires registering at
+    bestpractices.coreinfrastructure.org. Out of scope for this PR.
+  - **[#8](https://github.com/pyreon/pyreon/issues/8) FuzzingID** — requires OSS-Fuzz integration. Significant
+    infra work, out of scope.
+
+  ### Validation
+
+  - `@pyreon/zero` 957/958 tests pass (1 pre-existing skip)
+  - `@pyreon/compiler` 1257/1257 tests pass
+  - `@pyreon/vite-plugin` 104/104 tests pass
+  - `@pyreon/solid-compat` 218/218 tests pass
+  - `@pyreon/lint` 672/672 tests pass
+  - Lint + typecheck clean across all 5 packages
+
+  ### Closes the security/code-scanning sweep
+
+  37 alerts → 17 fixed in code + 20 dismissed with rationale + 4
+  external-posture deferred. Net open count expected after CodeQL
+  re-scans: 4 (Scorecard meta-checks).
+
+- [#747](https://github.com/pyreon/pyreon/pull/747) [`802e88b`](https://github.com/pyreon/pyreon/commit/802e88b3d132d5c73901571c805e8987eec4612a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(perf-harness): 6 leak-class diagnostic counters across the [#725](https://github.com/pyreon/pyreon/issues/725)-[#741](https://github.com/pyreon/pyreon/issues/741) fix sites
+
+  Adds dev-gated perf-harness counters at every site fixed during the
+  8-PR leak-class sweep ([#725](https://github.com/pyreon/pyreon/issues/725)-[#741](https://github.com/pyreon/pyreon/issues/741)). The counters are zero-cost in
+  production (`process.env.NODE_ENV` gate folds to `false`; the optional-
+  chain on `globalThis.__pyreon_count__?.()` short-circuits when no
+  consumer is installed) and free in dev unless `perfHarness.install()`
+  is called by the consumer.
+
+  Diagnostic shape: each counter emits at a load-bearing point in the
+  fix's code path. If the fix regresses (clearTimeout falls out of a
+  finally, refcount guard fails, sweep doesn't fire), the counter
+  either stops emitting OR diverges from its expected pair. CI's
+  nightly perf-results comparison via `bun run perf:diff` will surface
+  the regression before it ships.
+
+  ### 6 new counters
+
+  | Counter                                      | Class | Fix site                                                                             | Healthy shape                        |
+  | -------------------------------------------- | ----- | ------------------------------------------------------------------------------------ | ------------------------------------ |
+  | `isr.revalidate.timerClear`                  | I     | [#734](https://github.com/pyreon/pyreon/issues/734) `isr.ts revalidate()`            | = revalidate-attempt count           |
+  | `theme.initRefAcquire`                       | D     | [#734](https://github.com/pyreon/pyreon/issues/734) `theme.tsx initTheme()`          | bounded by # of mounted ThemeToggles |
+  | `theme.initRefRelease`                       | D     | same                                                                                 | paired with acquire, monotonic       |
+  | `solid-compat.createResource.staleDiscarded` | F     | [#737](https://github.com/pyreon/pyreon/issues/737) `createResource`                 | non-zero under refetch races         |
+  | `solid-compat.createStore.signalEvicted`     | C     | [#737](https://github.com/pyreon/pyreon/issues/737) `createStore` sweep              | spikes during sweep cycles           |
+  | `svelte-compat.subscribe.cachedRePush`       | D     | [#739](https://github.com/pyreon/pyreon/issues/739) `writable.subscribe` cached path | non-zero during parent re-renders    |
+  | `vite-plugin.watchChange.delete`             | C     | [#741](https://github.com/pyreon/pyreon/issues/741) watchChange hook                 | grows with file-deletion count       |
+
+  ### Catalog wiring
+
+  `COUNTERS.md` gains 7 new entries (6 counters + the `theme.initRef*` pair).
+  Each documents:
+
+  - Exact source file
+  - "Healthy number looks like" description (the diagnostic semantics)
+  - The leak-class label + originating PR
+
+  `catalog-drift.test.ts` `INSTRUMENTED_PACKAGE_ROOTS` adds 3 new entries:
+
+  - `packages/tools/solid-compat/src`
+  - `packages/tools/svelte-compat/src`
+  - `packages/tools/vite-plugin/src`
+
+  The existing `packages/zero/zero/src` entry is unchanged (already
+  present for the `ssg.*` namespace). The bidirectional catalog gate
+  (every emit must be cataloged; every cataloged name must have an
+  emit) enforces the link going forward.
+
+  ### Validation
+
+  - 1555/1556 tests pass across the 5 modified packages (1 pre-existing
+    zero skip):
+    - `@pyreon/zero` 953/954
+    - `@pyreon/solid-compat` 218/218
+    - `@pyreon/svelte-compat` 55/55
+    - `@pyreon/vite-plugin` 104/104
+    - `@pyreon/perf-harness` 225/225 (including the catalog-drift gate)
+  - Lint + typecheck clean across all 5 packages
+  - Zero public-API surface change — counters are dev-only sink emissions
+
+  ### Closes the MEDIUM followup recommendation
+
+  Per the post-[#743](https://github.com/pyreon/pyreon/issues/743) review. Production monitoring stories for leak-class
+  regressions are now structurally observable via the existing
+  `perfHarness.snapshot()` / `perf:diff` flow. The LOW followup
+  (`scripts/audit-leak-classes.ts` static-analysis tool) follows in a
+  separate PR.
+
+- [#753](https://github.com/pyreon/pyreon/pull/753) [`f0a33da`](https://github.com/pyreon/pyreon/commit/f0a33daff7826cd12bcbc5e6ae96ca161723d89a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `nodeAdapter` — fix two production bugs in the emitted server + add runtime-contract gate.
+
+  The bun adapter PR ([#752](https://github.com/pyreon/pyreon/issues/752)) added the first adapter runtime-contract gate and found a real bug under it. Repeating the audit on the node adapter (the gap's most-similar sibling) surfaced **two more concrete bugs** in the emitted server harness:
+
+  **Bug A — `GET /` falls through to SSR instead of serving the static `index.html`.** The harness mapped `/` → `clientDir/index.html` in its filePath builder but the next gate `if (ext && ext !== ".html")` excluded `.html` files from the static branch — so the root index was never served and every request for `/` ran through the SSR handler. For static-export-first deploys where `index.html` is an SPA shell, this broke the canonical pattern entirely (and disagreed with the bun adapter's behaviour, which DID serve `/` as static). Fix: drop the `.html` exclusion. `if (ext)` now serves any extension; SSR routes still have no extension and correctly fall through.
+
+  **Bug B — `mode: 'stream'` SSR was silently buffered into a single chunk.** The harness called `await response.text()` to drain the entire Response body into a string BEFORE writing to the client socket. For Suspense streaming this defeats the whole point — every chunk queued server-side and arrived at the client all at once at the end (strictly worse than `mode: 'string'` because the buffering happens twice). Fix: pipe the Response body's `ReadableStream` reader directly to `res.write` chunk-by-chunk. For `mode: 'string'` the body is a single chunk and the loop runs once with identical observable behaviour. For `mode: 'stream'` chunks land at the client incrementally.
+
+  **New gate**: `node adapter — runtime contract` describe block in `packages/zero/zero/src/tests/adapters.test.ts` adds 5 specs:
+
+  1. SSR fallback for non-static paths.
+  2. Static `.js` file served with `immutable` cache-control.
+  3. **`GET /` serves the static `index.html`** (Bug A regression lock).
+  4. **Streamed SSR chunks arrive incrementally** (Bug B regression lock — the 3-chunk × 150ms-spaced mock produces a >100ms gap between first and last chunk arrival; pre-fix the gap was ~0).
+  5. SSR response status + headers correctly forwarded.
+
+  **Bisect-verified per fix**:
+
+  - Revert just Bug A's `.html` exclusion → spec [#3](https://github.com/pyreon/pyreon/issues/3) fails with `expected received string to contain "STATIC INDEX HTML"`; other 4 pass. Restored → all 5 pass.
+  - Revert just Bug B's pipe → spec [#4](https://github.com/pyreon/pyreon/issues/4) fails with `Node server failed to start within 10000ms` (the buffered server can't respond to the 200ms readiness ping during the 300ms streaming delay — a great demonstration of Bug B's real impact); other 4 pass. Restored → all 5 pass.
+  - Both restored together: 5/5 pass × 5 stability runs, full zero suite 962/962 (1 skipped pre-existing). Lint + typecheck clean. No lockfile drift.
+
+  Second adapter to gain a runtime-contract gate (after bun, [#752](https://github.com/pyreon/pyreon/issues/752)). Same proven shape — spawn the emitted entry as a subprocess, drive real HTTP requests, assert on responses. Each spec ~60-370ms (300ms for the streaming spec, 60ms for the others). The four-spec pattern (SSR fallback / static asset / root index / response forwarding) generalises to the remaining cloud adapters (Cloudflare via `wrangler dev`, Vercel via `vercel dev`, Netlify via `netlify dev`) — separate follow-up PRs since each needs its own ~150 MB CLI install.
+
+  Path-traversal-specific test deliberately omitted — same rationale as the bun PR (both `node:http`'s parser and the URL spec's `new Request(url)` normalization collapse `..` segments BEFORE the bytes reach the handler; the in-harness check is defense-in-depth that can't be exercised through a spec-compliant HTTP path).
+
+- [#734](https://github.com/pyreon/pyreon/pull/734) [`6eb1f57`](https://github.com/pyreon/pyreon/commit/6eb1f5745dde032dd94b91965f5299ea54ab5a63) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero): post-[#725](https://github.com/pyreon/pyreon/issues/725)/[#729](https://github.com/pyreon/pyreon/issues/729)/[#730](https://github.com/pyreon/pyreon/issues/730)/[#733](https://github.com/pyreon/pyreon/issues/733) leak-class sweep — `<ThemeToggle>` matchMedia/effect pile-up + ISR `revalidate` orphaned setTimeout
+
+  Audit pass across `packages/zero/*` (4 packages) for the same patterns
+  behind [#725](https://github.com/pyreon/pyreon/issues/725) (position-based pop on shared module-level stack),
+  [#729](https://github.com/pyreon/pyreon/issues/729) (sibling-unmount LIFO violation), [#730](https://github.com/pyreon/pyreon/issues/730) (refcount under-count +
+  inflight-cache rejection), and [#733](https://github.com/pyreon/pyreon/issues/733) (vue-compat context-stack leak +
+  lint AstCache unbounded).
+
+  Surface area is large (~5,500 lines of plugin + runtime code across
+  zero, zero-cli, create-zero, meta) but the **zero packages are
+  structurally clean** — no `[#725](https://github.com/pyreon/pyreon/issues/725)`-shape position-based stack ops on
+  shared mutable state, no `[#730](https://github.com/pyreon/pyreon/issues/730)`-shape promise-queue rejection bugs,
+  and every module-level cache (`prefetched` Map in `link.tsx`, ISR
+  LRU + revalidating Set, rate-limit store, `entry-server` request
+  WeakMap, vite-plugin WeakMap caches) is already bounded.
+
+  This PR fixes the 2 real-impact bugs the audit surfaced and
+  documents 1 minor dev-only HMR consideration.
+
+  ### 1. `<ThemeToggle>` — N instances → N matchMedia listeners + N effects
+
+  `initTheme()` was non-idempotent. Each `<ThemeToggle />` instance
+  called `initTheme()` in its render body, and `initTheme()` registered
+  an `onMount(() => …)` callback. The callback added one
+  `matchMedia('(prefers-color-scheme: dark)').change` listener AND one
+  `effect()` to mirror the resolved theme to the document — both
+  pointed at the SAME module-level `_osPrefersDark` signal and the
+  SAME `document.documentElement`.
+
+  Real-app symptom: an app with 2+ `<ThemeToggle>` widgets (header +
+  footer is the canonical shape) — or `<ThemeToggle>` mounted
+  alongside an explicit `initTheme()` call in `_layout.tsx` (which
+  the JSDoc literally recommends) — registers N media-query listeners
+
+  - N effects. Each OS color-scheme flip then fires N redundant
+    updates writing the SAME value to `document.documentElement.dataset.theme`
+    and the SAME value to N favicon links. Class D event-listener pile-up.
+
+  Fix: refcount-based idempotent setup. First mount runs the real
+  setup (localStorage read + matchMedia listener + effect); subsequent
+  mounts only bump the refcount. Each unmount decrements; when the
+  count returns to 0 the shared teardown runs. The fix preserves the
+  "all instances unmounted, new instance mounts" symmetry — the
+  refcount can return to 0 and re-arm.
+
+  ### 2. `createISRHandler.revalidate()` — orphaned timeout per success
+
+  `revalidate()` set a 30s `setTimeout` via `Promise.race` to bound
+  hung handlers, then did NOT clear the timer when `handler(req)` won
+  the race (the success path — i.e. every healthy revalidation). Each
+  background revalidation therefore left one pending timer for up to
+  `REVALIDATE_TIMEOUT_MS` (default 30s), each pinning a closure + the
+  rejection callback. Under sustained revalidation traffic on a
+  high-RPS deployment, hundreds of pending timers pile up before
+  they self-clear.
+
+  Fix: capture the timer id and `clearTimeout` in `finally` so the
+  success path tears down the rejection branch immediately.
+
+  ### 3. `actionRegistry` — dev-only HMR caveat (documented, not coded)
+
+  `defineAction()` mints a fresh `crypto.randomUUID()` and stores
+  `{ id, handler }` in a module-level Map. Under Vite HMR, the module
+  re-runs → new UUID → orphaned entry. Bounded by the count of
+  distinct UUIDs minted in the session; a realistic dev session sees
+  <50 entries, total dev-memory cost <5KB. **Production registers
+  each module exactly once at startup — no leak.** A
+  FinalizationRegistry-based purge is tracked as a follow-up; the
+  current cost is too small to justify the WeakRef/finalizer
+  complexity (the playbook precedent — [#733](https://github.com/pyreon/pyreon/issues/733)'s `lint/AstCache` —
+  fixed a leak that grew to hundreds of MB).
+
+  Documented inline in `actions.ts` so future contributors see the
+  trade-off before reaching for a "fix."
+
+  ### Regression tests + bisect
+
+  - `packages/zero/zero/src/tests/theme-init-leak-repro.test.ts`
+    (2 specs) — 3 and 5 mounted ThemeToggles register exactly ONE
+    matchMedia listener. **Bisect-verified**: reverted refcount logic
+    in `initTheme` → both specs fail with `expected 1 times, but got
+3 times` / `got 5 times`; restored → 2/2 pass.
+  - `packages/zero/zero/src/tests/isr-revalidate-timer-leak-repro.test.ts`
+    (1 spec) — 5 successful revalidations leave zero pending revalidate
+    timers (instruments `globalThis.setTimeout` / `clearTimeout`).
+    **Bisect-verified**: removed `clearTimeout(timeoutId)` from the
+    `finally` block → spec fails with `expected 5 to be 0`; restored
+    → 1/1 pass.
+
+  ### Validation
+
+  - `@pyreon/zero` 947/948 tests pass (1 pre-existing skip, +3 new
+    regression specs)
+  - Lint + typecheck clean across all 4 zero packages
+  - Zero public-API breakage; `_resetInitThemeForTests` is `@internal`
+
+  ### Audit byproducts (NOT in this PR — deliberately scoped follow-ups)
+
+  The audit also surfaced several LOW patterns worth noting:
+
+  1. **`@pyreon/zero` `ssg-plugin.ts` 3× same `Promise.race` shape** —
+     lines 517, 1159, 1402 (build-time SSG render timeouts, mode
+     switch timeouts). Lower impact than `isr.ts` because each runs
+     during `vite build`, not per-request — total pending-timer count
+     is bounded by the route count + finished within the build window.
+     Worth fixing for consistency; deferred to keep this PR small.
+  2. **`@pyreon/zero` `csp.ts` `_clientNonce` cross-request mutation** —
+     mutable module-level variable used as a request-scoped fallback.
+     Correctness hazard (cross-request bleed) more than a leak; the
+     primary read path uses the per-request locals object so the
+     fallback is rare. Worth a follow-up to remove the module-level
+     mutation entirely.
+  3. **`@pyreon/zero` `actions.ts` FinalizationRegistry purge** — as
+     described above, the WeakRef/finalizer treatment of `actionRegistry`
+     for HMR cleanup. Tracked, deferred for cost/benefit.
+
+  Plus several confirmed-bounded patterns NOT changed: `link.tsx`
+  `prefetched` Map (200-entry FIFO cap), `isr.ts` cache (LRU-capped),
+  `rate-limit.ts` store (10000-cap + expired sweep), `entry-server.ts`
+  request-keyed WeakMap (GC-safe), `vite-plugin.ts` per-instance
+  WeakMap caches (GC-safe).
+
+  ### `pyreon doctor` baseline
+
+  Saved at `/tmp/doctor-zero-baseline.json`. 25 findings across
+  `packages/zero/*`: 0 errors + 20 warnings + 5 infos. Top patterns:
+  `no-error-without-prefix` (8), `no-unbatched-updates` (4),
+  `no-raw-addeventlistener` (2), `process-dev-gate` (2),
+  `raw-remove-event-listener` (2). Separate hardening pass; this PR
+  addresses the structural bugs not caught by static lint rules.
+
+- [#735](https://github.com/pyreon/pyreon/pull/735) [`1a23287`](https://github.com/pyreon/pyreon/commit/1a23287ebd180aeae14a31eca21fd490145b989e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero): ssg-plugin Promise.race timer leaks (×2, same shape as [#734](https://github.com/pyreon/pyreon/issues/734)) + csp.ts `_clientNonce` cross-request bleed
+
+  Follow-up to [#734](https://github.com/pyreon/pyreon/issues/734)'s leak-class sweep, closing 2 of the 3 LOW patterns
+  disclosed in that PR's "audit byproducts" section.
+
+  ### 1. `ssg-plugin.ts` — orphaned 30s timeout per successful render (×2)
+
+  Same exact shape as [#734](https://github.com/pyreon/pyreon/issues/734)'s `isr.ts revalidate()` fix. Two sites in
+  `ssg-plugin.ts` ran `Promise.race([work, new Promise((_, reject) =>
+setTimeout(reject, 30_000))])` without clearing the timer when `work`
+  won the race:
+
+  - `renderOne(p)` — per-path SSG render (line 1156)
+  - 404 render loop — per-locale 404 emission (line 1399)
+
+  Each successful render left one pending 30s timer pinning a closure +
+  rejection callback. Bounded by route count + finished within the build
+  window so the production impact is small (every modern Node GC handles
+  N pending timers fine until they self-clear), but worth fixing for
+  consistency with the isr.ts repair AND because the per-path concurrent
+  worker pool (default `concurrency: 4`) can have up to 4 timer closures
+  in flight simultaneously on large sites.
+
+  Fix: capture the timer id and `clearTimeout` in a new `finally` block
+  on each try/catch. Identical pattern to the isr.ts fix.
+
+  The audit's prior "3 sites" disclosure was off — line 517 is the
+  `_atomicSeq` variable, not a Promise.race timer. Only 2 sites needed
+  fixing.
+
+  ### 2. `csp.ts` — `_clientNonce` cross-request bleed
+
+  `cspMiddleware` wrote per-request nonces to a module-level
+  `_clientNonce` variable, then `useNonce()` read that variable as a
+  "client-side fallback" when `locals.cspNonce` was undefined. Two
+  problems:
+
+  1. **Server-side cross-request bleed**: with concurrent SSR requests,
+     request A's nonce would overwrite `_clientNonce` before B finished
+     rendering. If any render path bypassed the locals-context plumbing
+     (a custom middleware order, a route renderer that didn't go through
+     `provideRequestLocals`), B's `useNonce()` could read A's nonce.
+  2. **Client-side fallback was always-`''`**: the "Client/dev: falls
+     back to module-level variable set by middleware" JSDoc claim was
+     broken-by-design. Middleware doesn't run in the browser, so
+     `_clientNonce` was always the build-time initial value `''` on
+     the client.
+
+  Fix: remove the module-level variable entirely. `useNonce()` returns
+  `''` when no per-request locals context is active. Nonces are SSR-only
+  by design — a script-tag nonce should be rendered during SSR through
+  `useNonce()` so the value the browser sees IS the value the response's
+  `Content-Security-Policy` header authorized. JSDoc updated to clarify
+  this contract.
+
+  ### Regression tests + bisect
+
+  - `packages/zero/zero/src/tests/csp.test.ts` updated. Removed the
+    "useNonce returns the nonce set by middleware" test (it was
+    inadvertently exercising the bug — it called `useNonce()` outside
+    any request context and asserted it returned `localsA.cspNonce`,
+    which only worked via the `_clientNonce` cross-request bleed).
+    Added: "useNonce returns empty string outside any request context
+    (no cross-request bleed)" — runs the middleware TWICE with
+    different nonces, asserts `useNonce()` returns `''` between and
+    after both. **Bisect-verified**: restored `_clientNonce` + module
+    writes → spec fails with `expected '<base64 nonce>' to be ''`;
+    restored → 16/16 csp tests pass.
+  - ssg-plugin fix is **mechanical copy-paste** of the same `let
+timeoutId; try { ... } finally { if (timeoutId) clearTimeout }`
+    shape proven by [#734](https://github.com/pyreon/pyreon/issues/734)'s `isr-revalidate-timer-leak-repro.test.ts`.
+    A dedicated test would require extracting `renderOne` from inside
+    `closeBundle`'s closure (significant refactor); the isr.ts test
+    already proves the pattern works, and full `@pyreon/zero` 947/948
+    tests still pass.
+
+  ### Validation
+
+  - `@pyreon/zero` 947/948 tests pass (1 pre-existing skip)
+  - Lint + typecheck clean across all 4 zero packages
+  - No public-API breakage — `useNonce()` signature unchanged
+
+  ### Remaining `actions.ts` follow-up
+
+  The 3rd LOW pattern from [#734](https://github.com/pyreon/pyreon/issues/734) (`actionRegistry` HMR FinalizationRegistry
+  purge) stays deferred — <5KB dev-only ceiling is too small to justify
+  the WeakRef/finalizer complexity. The JSDoc note added in [#734](https://github.com/pyreon/pyreon/issues/734) already
+  documents the trade-off.
+
+- Updated dependencies [[`6454cb7`](https://github.com/pyreon/pyreon/commit/6454cb794bb82db11e7842cb4a62a3765e3dd3ac), [`6571df8`](https://github.com/pyreon/pyreon/commit/6571df8209c5dc72619194ffe19359765b1d2d7f), [`97b0e19`](https://github.com/pyreon/pyreon/commit/97b0e19533056e9cb3d9997401effc79b0f6760b), [`af4d5d8`](https://github.com/pyreon/pyreon/commit/af4d5d83fc087d738dbe5084950476566d488d77), [`f833a99`](https://github.com/pyreon/pyreon/commit/f833a997bbc04aa5ba94d0d5dd334628871aaa9a), [`1d825c2`](https://github.com/pyreon/pyreon/commit/1d825c2374a39833881c490887602354a7d590af), [`e1939bd`](https://github.com/pyreon/pyreon/commit/e1939bd49d185c6522b61f06c5a27cf2b91392a4), [`0036dfc`](https://github.com/pyreon/pyreon/commit/0036dfcb58a0ad33bce8118a3d927f1c09c63b27), [`2976aa8`](https://github.com/pyreon/pyreon/commit/2976aa84213b479b4d045a83143b3a4a3d89aedf), [`802e88b`](https://github.com/pyreon/pyreon/commit/802e88b3d132d5c73901571c805e8987eec4612a), [`7632934`](https://github.com/pyreon/pyreon/commit/763293492a26d48e4a7b1b28e42a519677702b35), [`441b5df`](https://github.com/pyreon/pyreon/commit/441b5dfa64ae52002d3e6612ec68566344ae999d), [`f40c1eb`](https://github.com/pyreon/pyreon/commit/f40c1eb35055e86fbac273352904bc2b04542f1f)]:
+  - @pyreon/vite-plugin@0.23.0
+  - @pyreon/core@0.23.0
+  - @pyreon/server@0.23.0
+  - @pyreon/runtime-server@0.23.0
+  - @pyreon/head@0.23.0
+  - @pyreon/runtime-dom@0.23.0
+  - @pyreon/reactivity@0.23.0
+  - @pyreon/router@0.23.0
+  - @pyreon/meta@0.23.0
+
 ## 0.22.0
 
 ### Patch Changes

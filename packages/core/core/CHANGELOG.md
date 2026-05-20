@@ -1,5 +1,104 @@
 # @pyreon/core
 
+## 0.23.0
+
+### Patch Changes
+
+- [#725](https://github.com/pyreon/pyreon/pull/725) [`6571df8`](https://github.com/pyreon/pyreon/commit/6571df8209c5dc72619194ffe19359765b1d2d7f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(core): context stack leak under repeated reactive remounts — provide() + restoreContextStack now use identity-based frame removal
+
+  **Reported symptom**: `@pyreon/core@<=0.22.0` apps that repeatedly remount subtrees containing `provide()` calls (route navigation, theme toggle, `<Show>` / `<For>` cycling, kinetic transitions) accumulate orphan frames on the module-level context stack. One reporter observed a 1 GB heap where 33 in-flight effect snapshots × ~10,000-frame copies each retained ~138 MB of arrays. The live context stack held 321,024 entries but only 47 distinct provider Map instances — the same providers were re-referenced thousands of times each.
+
+  **Root cause** (two cooperating bugs):
+
+  1. `provide()` registered `onUnmount(() => popContext())`. `popContext` pops `stack.pop()` — the last frame. That assumes strict LIFO between push and pop, but `mountReactive`'s effect-re-fire flow runs the previous-mount subtree cleanup INSIDE the effect's snapshot-restore window. The snapshot-pushed frames sit ABOVE the descendant's own provider frame at the moment its `onUnmount` fires. `popContext` pops the snapshot push; the descendant's provider frame is orphaned on the live stack.
+  2. `restoreContextStack` used position-based `stack.splice(insertIndex, snapshot.length)` to remove its pushes on exit. That assumed the pushes stayed where they were placed — but identity-based removal by a descendant (fix 1) can shift them down, making `splice(insertIndex, …)` either a no-op or pull the wrong frames.
+
+  **Fix**: both layers now use IDENTITY-based removal.
+
+  - `provide()` and `withContext()` capture the frame reference at push, register `onUnmount(() => removeContextFrame(frame))`, where `removeContextFrame` does `stack.splice(stack.lastIndexOf(frame), 1)`. Robust to "wrong frame on top" because it splices the specific frame regardless of position. `lastIndexOf` matches the most-recent occurrence — preserves LIFO ordering when the same `Map` reference appears multiple times (the snapshot-push case).
+  - `restoreContextStack`'s finally now iterates `snapshot` in reverse and removes each frame via `stack.lastIndexOf(frame) + splice`. Same identity-based approach. Robust to descendants having removed frames at earlier indices.
+
+  `popContext` is preserved as the public position-based API — only `provide` / `withContext` switch to the safe path. Server-side `trimContextStack` in `@pyreon/runtime-server` still uses `popContext` correctly because SSR has no reactive boundaries pushing snapshot frames during render.
+
+  **Regression tests** (`packages/core/runtime-dom/src/tests/ctx-stack-growth-repro.test.tsx`, 4 specs): the nested-boundaries-with-providers shape that reproduces the leak (502 orphan frames after 500 toggle cycles pre-fix) is the load-bearing one. Bisect-verified: reverting `context.ts` to pre-fix state → that spec fails with `expected 502 to be less than 10`. The other 3 specs (single-boundary, signal-driven re-mount, descendant useContext correctness) pass even pre-fix — they're guards against the FIX regressing the useful behavior.
+
+  No public-API surface change. `provide` / `useContext` / `popContext` / `pushContext` / `withContext` / `captureContextStack` / `restoreContextStack` keep their existing signatures. Behavior change is invisible to correct existing code; the leak shape was undetected because `useContext` walks the stack top-down and finds the freshest provider regardless of whether orphan frames exist below.
+
+- [#729](https://github.com/pyreon/pyreon/pull/729) [`af4d5d8`](https://github.com/pyreon/pyreon/commit/af4d5d83fc087d738dbe5084950476566d488d77) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(core): ErrorBoundary stack cleanup now removes the right handler when siblings unmount out-of-order ([#725](https://github.com/pyreon/pyreon/issues/725) sibling fix)
+
+  `ErrorBoundary` pushed its error handler onto a module-level `_errorBoundaryStack` at setup and registered `onUnmount(() => popErrorBoundary())`. `popErrorBoundary()` was `stack.pop()` — position-based. That assumed strict LIFO between push and pop, **but sibling boundaries can unmount in any order driven by the renderer**: keyed `<For>` removing a non-last item, `<Show>` flipping the first of several siblings, route nav unmounting an outer of nested routes, etc.
+
+  **Symptom**: when a non-last sibling boundary unmounted, its `onUnmount` popped the LAST boundary's handler instead of its own. The surviving (innermost) boundary's handler was removed from the stack; the unmounted boundary's stale handler was orphaned at the top. A subsequent throw in the surviving boundary's children dispatched to the orphan handler — `error.set(err)` on a disposed signal is a no-op, so the error was **silently swallowed** AND the surviving boundary's fallback never rendered. Same root-cause class as [#725](https://github.com/pyreon/pyreon/issues/725) (`provide()` / `popContext()`).
+
+  **Fix**: `popErrorBoundary(handler)` accepts the handler reference and removes by IDENTITY via `lastIndexOf + splice` — robust to "wrong handler on top" regardless of unmount order. `ErrorBoundary`'s `onUnmount` now passes its own handler. Back-compat: `popErrorBoundary()` (no-arg) still does `stack.pop()` for direct callers (tests, advanced consumers).
+
+  Regression tests in `packages/core/runtime-dom/src/tests/error-boundary-stack-leak-repro.test.tsx` — bisect-verified: reverting `component.ts` + `error-boundary.ts` → the FIRST-unmounted-sibling spec fails with `AssertionError: expected null to be truthy` (the surviving boundary's fallback never appears because the throw is routed to the orphan). Restored → 2/2 pass. All 2,458 tests across the 7 core packages pass with the fix.
+
+  Discovered while sweeping core packages for [#725](https://github.com/pyreon/pyreon/issues/725)-class bugs (position-based cleanup of shared module-level state). The audit also surfaced 3 lower-risk patterns (router refcount idempotency, router preload bypassing LRU cache contract, unused `_scrollPositions` field) — all fileable as separate follow-ups.
+
+- [#733](https://github.com/pyreon/pyreon/pull/733) [`441b5df`](https://github.com/pyreon/pyreon/commit/441b5dfa64ae52002d3e6612ec68566344ae999d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(tools): post-[#725](https://github.com/pyreon/pyreon/issues/725)/[#729](https://github.com/pyreon/pyreon/issues/729)/[#730](https://github.com/pyreon/pyreon/issues/730) leak-class sweep — vue-compat provide/createApp context-stack leaks + lint AstCache unbounded growth
+
+  Audit pass across all 12 `packages/tools/*` packages for the same patterns behind [#725](https://github.com/pyreon/pyreon/issues/725) (position-based pop on shared module-level stack under non-LIFO unmount), [#729](https://github.com/pyreon/pyreon/issues/729) (sibling-unmount LIFO violation), and [#730](https://github.com/pyreon/pyreon/issues/730) (refcount under-count + inflight-cache rejection). Found 3 HIGH suspects + 4 MEDIUM patterns. This PR fixes the three HIGH suspects.
+
+  ### 1. `@pyreon/core` — export `removeContextFrame`
+
+  The internal identity-based stack-frame remover already existed in `packages/core/core/src/context.ts` (used by `provide()` post-[#725](https://github.com/pyreon/pyreon/issues/725)) but wasn't exported. Compat layers and advanced consumers that call `pushContext` directly need this primitive to do safe identity-based cleanup. Now exported alongside `popContext` / `pushContext` from the package root. No behavior change for existing code — purely an additive export.
+
+  ### 2. `@pyreon/vue-compat` `provide(key, value)` — context-stack frame leak (exact [#725](https://github.com/pyreon/pyreon/issues/725) shape)
+
+  Vue's `provide(key, value)` semantics use string/symbol keys with a key→Context registry. The vue-compat implementation pushed a Map onto Pyreon's global context stack and registered `unmountCallbacks.push(() => popContext())` — the _position-based_ `stack.pop()` that [#725](https://github.com/pyreon/pyreon/issues/725) explicitly flagged as unsafe.
+
+  `@pyreon/core/context.ts` documents: _"The `provide()` helper does NOT use this — it uses identity-based removal via `removeContextFrame` because reactive boundaries can push snapshot frames between a component's `provide(ctx, value)` and its eventual unmount, making the top-of-stack unsafe to assume."_ vue-compat bypassed that safety.
+
+  Real-app symptom: two sibling components both call `provide('K', …)`. They unmount in renderer-driven order (keyed `<For>` removing a non-last item, `<Show>` flipping a non-last sibling, route nav unmounting an outer of nested provider chains). The first-unmounted's `popContext` removed the LAST sibling's frame instead of its own; the surviving sibling's frame was orphaned at the top of the global stack forever.
+
+  Fix: capture the frame at push, register `unmountCallbacks.push(() => removeContextFrame(frame))`. Mirror of the framework's own `provide()` fix from [#725](https://github.com/pyreon/pyreon/issues/725).
+
+  ### 3. `@pyreon/vue-compat` `createApp(C).provide(k, v).mount(el)` — app-level provisions pushed but never popped
+
+  `createApp.mount()` ran `pushContext(new Map([[ctx.id, value]]))` for each app-level provision but the returned unmount function only ran `pyreonMount`'s cleanup — leaving the app-level frames on the global stack forever, one per provision per mount cycle.
+
+  Real-app symptom: test harness or app entry calls `createApp(C).provide('A', a).provide('B', b).mount(el)` then unmounts. Two app-level frames stay on the context stack forever. SSG / re-mount cycles compound this.
+
+  Fix: track every pushed frame in a local array during `mount()`, remove each by identity (reverse order) in the returned unmount closure.
+
+  ### 4. `@pyreon/lint` `AstCache` — unbounded growth in LSP / `--watch` sessions
+
+  `AstCache` (used by `lint` programmatic API, the LSP server, and `pyreon-lint --watch`) keyed by FNV-1a hash of source text with `cache: Map<string, …>` and NO eviction strategy. Each entry holds a multi-MB oxc-parsed AST + `LineIndex`. A long-running LSP session editing across many files accumulates one entry per UNIQUE content snapshot ever seen — after hours of editing, hundreds of MB of heap.
+
+  Fix: LRU bound (default 256 entries). `Map` preserves insertion order, so the first key is the least-recently-used. `get` / `set` on an existing key refresh recency by re-inserting at the tail. Apps that lint thousands of distinct files in tight succession can bump the cap via `new AstCache(2048)`.
+
+  ### Regression tests + bisect
+
+  - `packages/tools/vue-compat/src/tests/provide-stack-leak-repro.test.ts` (2 specs) — `createApp().provide().mount(el); unmount()` returns the global context stack to baseline; 100 mount/unmount cycles do NOT accumulate frames. **Bisect-verified**: revert `vue-compat/src/index.ts` → both specs fail with stack-length assertions; restored → pass.
+  - `packages/tools/lint/src/tests/ast-cache-lru.test.ts` (5 specs) — cache never exceeds `maxEntries`, evicts LRU on overflow, `get`/`set` refresh recency, re-setting an existing key doesn't double-count, default cap is 256. **Bisect-verified**: revert `lint/src/cache.ts` → all 5 fail; restored → pass.
+
+  ### Validation
+
+  - `@pyreon/core` 510/510 tests pass
+  - `@pyreon/vue-compat` 218/218 tests pass (+ 2 new regression specs)
+  - `@pyreon/lint` 639/639 tests pass (+ 5 new LRU specs)
+  - Lint + typecheck clean across all 3 packages
+  - Zero public-API breakage (`removeContextFrame` is a purely additive export)
+
+  ### Audit byproducts (NOT in this PR — deliberately scoped follow-ups)
+
+  The 12-package audit also surfaced 4 MEDIUM-risk patterns documented in the audit report. Each filed-worthy as a separate small follow-up:
+
+  1. **`@pyreon/solid-compat` `createStore` per-path signal map grows unbounded** — one signal per UNIQUE read-path string. Problematic for stores with dynamic key spaces (dictionaries, pagination, logs).
+  2. **`@pyreon/solid-compat` `createResource` has the Class-F stale-resolution race** — `fetchPromise` overwritten on refetch with no AbortSignal; old promise's success handler still runs `setData`. Same shape as [#730](https://github.com/pyreon/pyreon/issues/730)-charts/storage inflight-promise bug.
+  3. **`@pyreon/svelte-compat` ChildInstance preservation discards `unmountCallbacks` without firing them** — the cached `writable.subscribe` short-circuit doesn't re-register the unsub after the reset. Subtle; needs a targeted reproducer.
+  4. **`@pyreon/vite-plugin` per-instance caches (`signalExportRegistry`, `resolveCache`, `pyreonWorkspaceDirCache`, `islandRegistry`) never evict** stale entries when source files are deleted/renamed during a long `vite dev` session. Bounded by source tree size in practice, but no invalidation on file delete.
+
+  Plus 6 LOW-risk patterns (devtools `expandedIds` accumulating across panel session, lint LSP debounceTimers not cleared on didClose, svelte-compat globalThis CTX_REGISTRY, vite-plugin HMR registry never deletes, vue-compat `_contextRegistry` global map, etc.) — none real leaks in practice, all bounded by user surface.
+
+  ### `pyreon doctor` baseline
+
+  Saved at `/tmp/doctor-tools-baseline.json`. 94 findings across `packages/tools/*`: 51 errors + 24 warnings + 19 infos. Top patterns: `lint/pyreon/no-window-in-ssr` (51, mostly devtools Chrome-extension false positives), `lint/pyreon/no-children-access` (10), `lint/pyreon/no-error-without-prefix` (10), `lint/pyreon/no-raw-addeventlistener` (9), `lint/pyreon/no-dom-in-setup` (7). Separate hardening pass; this PR addresses the structural bugs not caught by static lint rules.
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.23.0
+
 ## 0.22.0
 
 ### Patch Changes

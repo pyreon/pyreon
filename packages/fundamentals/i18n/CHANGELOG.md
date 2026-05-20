@@ -1,5 +1,13 @@
 # @pyreon/i18n
 
+## 0.23.0
+
+### Patch Changes
+
+- Updated dependencies [[`6571df8`](https://github.com/pyreon/pyreon/commit/6571df8209c5dc72619194ffe19359765b1d2d7f), [`af4d5d8`](https://github.com/pyreon/pyreon/commit/af4d5d83fc087d738dbe5084950476566d488d77), [`441b5df`](https://github.com/pyreon/pyreon/commit/441b5dfa64ae52002d3e6612ec68566344ae999d)]:
+  - @pyreon/core@0.23.0
+  - @pyreon/reactivity@0.23.0
+
 ## 0.22.0
 
 ### Patch Changes

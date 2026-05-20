@@ -1,5 +1,135 @@
 # @pyreon/runtime-server
 
+## 0.23.0
+
+### Minor Changes
+
+- [#745](https://github.com/pyreon/pyreon/pull/745) [`f833a99`](https://github.com/pyreon/pyreon/commit/f833a997bbc04aa5ba94d0d5dd334628871aaa9a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat: close the three deferred SSR/ISR gaps from the deep-analysis pass
+
+  Three independent fixes that close gaps explicitly deferred in earlier
+  PRs ([#738](https://github.com/pyreon/pyreon/issues/738)/[#740](https://github.com/pyreon/pyreon/issues/740)/[#742](https://github.com/pyreon/pyreon/issues/742)/[#744](https://github.com/pyreon/pyreon/issues/744)) but called out as required by the goal-hook.
+
+  ### 1. `renderToStream(root, { signal })` — AbortSignal threading
+
+  `renderToStream` now accepts `{ signal?: AbortSignal }`. The internal
+  controller forwards client-disconnect (`ReadableStream.cancel()`) AND
+  upstream aborts to a shared signal; the drain loop races each pending
+  Suspense batch against the abort-promise so the stream closes promptly
+  when the consumer hangs up. Per-boundary resolvers check
+  `ctx.signal.aborted` before enqueueing post-resolve HTML.
+
+  Before: a client navigating mid-stream left in-flight Suspense work
+  awaited server-side until its 30s timeout. Wasted CPU per dropped
+  connection.
+
+  After: cancellation propagates within ms; pending boundaries skip the
+  swap. Tests (`tests/integration.test.ts`): upstream-abort skips
+  post-resolve enqueue, pre-aborted signal still emits sync portion,
+  `ReadableStream.cancel()` closes the stream within 100ms (well under
+  the 200ms test boundary's pending work).
+
+  ### 2. `ISRConfig.revalidateRequest` — auth-gated revalidation hook
+
+  New optional `(req: Request) => Request | null`. Lets auth-gated
+  `cacheKey` setups scope revalidation explicitly:
+
+  - Return a custom `Request` (e.g. stripped cookies for anonymous
+    revalidation) — used in place of the original.
+  - Return `null` — SKIP revalidation entirely for this entry (stale
+    stays stale until next live request).
+
+  Closes the footgun where the default behaviour re-uses the original
+  user's cookies for the background revalidation — if the session has
+  expired since cache-write, the new render may misbehave or embed
+  stale auth data. Tests: 2 specs covering null=skip and custom-request
+  scrubbing cookies.
+
+  ### 3. Cloudflare `_worker.js` runtime-contract gate
+
+  New regression assertion in `adapters.test.ts` cloudflare suite: the
+  emitted `_worker.js` MUST contain none of `node:` imports / `fs` /
+  `path` / `__dirname` / `__filename` / `fileURLToPath` / `Buffer` /
+  `process.env`. Locks the Web-standard runtime contract — any future
+  template change that accidentally grows a Node API fails CI here
+  instead of 500ing in production on Cloudflare Workers (which doesn't
+  expose those APIs without the `nodejs_compat` flag).
+
+  The `node:fs/promises` / `node:path` USE inside cloudflare.ts itself
+  is build-time-only (runs in Node during `vite build`) and is
+  unaffected — this check covers the EMITTED file.
+
+  ### Net diff
+
+  +220 / -10 lines (impl + 5 new tests + JSDoc + changeset). All
+  existing suites pass unchanged: runtime-server 35+ tests, zero ISR
+  15/15, adapters 37/37, typecheck + lint + build clean across both
+  packages, gen-docs + check-doc-claims green.
+
+  Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- [#757](https://github.com/pyreon/pyreon/pull/757) [`7632934`](https://github.com/pyreon/pyreon/commit/763293492a26d48e4a7b1b28e42a519677702b35) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `renderToStream` and `createHandler` (stream mode) now accept a configurable per-boundary Suspense timeout: `suspenseTimeoutMs?: number`. Defaults to `30_000` ms (unchanged from prior hard-coded behavior), so unset is byte-identical. Pass a smaller number (e.g. `5_000`–`10_000`) for tight-SLA user-facing deploys where the fallback is preferable to a delayed render, or pass `Infinity` to disable the timeout entirely for renders that legitimately need long async work (exports, reports, scheduled jobs). Values ≤0 or `NaN` fall back to the default — invalid input from a config layer can't accidentally drop every boundary.
+
+  This completes the streaming control surface alongside the AbortSignal wire (`signal?: AbortSignal`, shipped in [#745](https://github.com/pyreon/pyreon/issues/745) + [#749](https://github.com/pyreon/pyreon/issues/749)).
+
+  **`@pyreon/runtime-server`**: `RenderToStreamOptions` gains `suspenseTimeoutMs?: number`. Threaded into the internal `StreamCtx` and consumed by `streamSuspenseBoundary`. The `Infinity` case skips the `Promise.race` entirely (no setTimeout, no clearTimeout) — only the AbortSignal can stop a boundary in that mode.
+
+  **`@pyreon/server`**: `HandlerOptions` gains `suspenseTimeoutMs?: number`, forwarded through `renderStreamResponse` → `renderToStream` only when defined (so unconfigured deploys land on `renderToStream`'s defaults byte-identically).
+
+  **Tests**: 4 new specs in `runtime-server/src/tests/ssr.test.ts` (`renderToStream — suspenseTimeoutMs config`) covering explicit short timeout, default preservation, invalid-value fallback, and `Infinity` opt-out. 1 new integration spec in `server/src/tests/server.test.ts` proving the handler's option threads end-to-end.
+
+  **Bisect-verified**:
+
+  - Revert the `ctx.suspenseTimeoutMs` read to the hard-coded `30_000` → "explicit short timeout drops post-resolve content" spec fails (100ms boundary completes against the still-30s timeout); restored → passes.
+  - Revert the createHandler forward (drop `suspenseTimeoutMs` from `renderStreamResponse` call) → "stream mode forwards suspenseTimeoutMs" spec fails the same way; restored → passes.
+  - Both restored: runtime-server **150/150** + server **168/168 × 5 stability runs**. Lint + typecheck clean. No lockfile drift. No `TEMP BISECT` remnants. `gen-docs --check` clean.
+
+  Manifest + MCP `api-reference` + `llms-full.txt` updated to document the new option and the `signal` option (the latter shipped in [#749](https://github.com/pyreon/pyreon/issues/749) but the manifest entry hadn't been updated). The "30s timeout" foot-gun in `mistakes[]` now mentions the configurability and the `Infinity` opt-out.
+
+### Patch Changes
+
+- [#748](https://github.com/pyreon/pyreon/pull/748) [`2976aa8`](https://github.com/pyreon/pyreon/commit/2976aa84213b479b4d045a83143b3a4a3d89aedf) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(server, runtime-server): Class I orphaned timer in prerender + Suspense streaming (audit-leak-classes discoveries)
+
+  Two real Class I instances surfaced by the new `audit-leak-classes`
+  script's `promise-race-no-clear` detector — bugs the lint rule
+  `pyreon/promise-race-needs-cleartimeout` would have caught at edit
+  time but pre-dated the rule.
+
+  ### `@pyreon/server` `ssg.ts:prerender` — orphaned 30s setTimeout
+
+  `renderPage`'s `Promise.race([handler(req), setTimeout-reject])`
+  left the timer pinned for 30s when `handler` won. Same shape as
+  [#734](https://github.com/pyreon/pyreon/issues/734)'s `@pyreon/zero` `isr.ts revalidate()` fix. Under high-RPS
+  prerender batches (e.g. a large SSG build), hundreds of timer
+  closures pile up before they self-clear.
+
+  Fix: capture the timer id outside `Promise.race`, `clearTimeout`
+  in `finally`.
+
+  ### `@pyreon/runtime-server` `streamSuspense` — orphaned 30s setTimeout
+
+  The Suspense streaming boundary races children against a 30s
+  timeout. The setTimeout _resolves_ (rather than rejects) with
+  `'timeout'` — but the orphaned-timer shape is identical: on
+  success the timer stays pinned for 30s, holding the resolve
+  callback + closure. Every Suspense boundary in a long-running
+  SSR server accumulates one pending timer per rendered request
+  until it fires.
+
+  Fix: same `let timeoutId` + `try { … } finally { clearTimeout }`
+  pattern.
+
+  ### Validation
+
+  - `@pyreon/server` 166/166 tests pass
+  - `@pyreon/runtime-server` 143/143 tests pass
+  - `@pyreon/test-utils` 90/90 tests pass (+15 new for the audit script)
+  - Lint + typecheck clean
+  - No public-API surface change
+
+- Updated dependencies [[`6571df8`](https://github.com/pyreon/pyreon/commit/6571df8209c5dc72619194ffe19359765b1d2d7f), [`af4d5d8`](https://github.com/pyreon/pyreon/commit/af4d5d83fc087d738dbe5084950476566d488d77), [`441b5df`](https://github.com/pyreon/pyreon/commit/441b5dfa64ae52002d3e6612ec68566344ae999d)]:
+  - @pyreon/core@0.23.0
+  - @pyreon/reactivity@0.23.0
+
 ## 0.22.0
 
 ### Patch Changes

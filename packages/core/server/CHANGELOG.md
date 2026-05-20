@@ -1,5 +1,162 @@
 # @pyreon/server
 
+## 0.23.0
+
+### Minor Changes
+
+- [#738](https://github.com/pyreon/pyreon/pull/738) [`e1939bd`](https://github.com/pyreon/pyreon/commit/e1939bd49d185c6522b61f06c5a27cf2b91392a4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(server): islands prop codec — Date / Map / Set / RegExp / BigInt now roundtrip losslessly; class instances fail loud
+
+  Closes the silent data-loss footgun in SSR → client island-prop transit. The
+  naïve `JSON.stringify` path through `<pyreon-island data-props="...">`
+  silently:
+
+  - coerced `Date` → ISO string (client received `string`, not `Date`)
+  - collapsed `Map` / `Set` / `RegExp` → `{}` (lost entirely)
+  - threw on `BigInt` → empty-props fallback with a generic dev message
+  - dropped class instances to `{}` with NO warning (bug surfaced as a
+    runtime crash on the hydrated component)
+
+  New: `packages/core/server/src/island-codec.ts` — `encodeIslandProps` /
+  `decodeIslandProps` / `IslandPropEncodeError`. Tags non-JSON-native
+  types with an internal `__pyreon_t` marker the inverse decoder unwraps
+  on hydrate. Plain objects without markers round-trip byte-identically
+  (no behaviour change for existing JSON-shaped props). Objects whose
+  OWN key is literally `__pyreon_t` get an `'e'`-escape wrap so users
+  who happen to use that key string keep working.
+
+  **Fail-loud where it was silent:** class instances, circular
+  references, and >100-deep nesting now emit `IslandPropEncodeError` with
+  a `$.foo.bar` prop-path + offender name. The caller (`serializeIslandProps`)
+  catches the error and falls back to empty props as before, BUT the
+  dev-mode `console.error` now NAMES the offender (`User`, `$.user`, etc.)
+  instead of the prior generic "BigInt or circular reference" message.
+
+  Forward-compatible decoder: unknown tag values pass through verbatim
+  so an older `client.ts` doesn't crash on a future-encoded type.
+
+  **Behaviour change for consumers**: code that received `Date` props as
+  ISO strings and revived with `new Date(props.someDate)` still works
+  (Date constructor accepts Date). Code doing `typeof props.someDate ===
+'string'` on a Date-typed prop needs updating to `props.someDate
+instanceof Date`. This is documented in the JSDoc on
+  `serializeIslandProps` and CLAUDE.md.
+
+  Tests: 21 codec roundtrip + escape + fail-loud + forward-compat specs
+  (`tests/island-codec.test.ts`), plus 3 contract-update tests in
+  `tests/server.test.ts`. Full server suite: 164 pass; typecheck + lint
+  clean; build clean.
+
+- [#740](https://github.com/pyreon/pyreon/pull/740) [`0036dfc`](https://github.com/pyreon/pyreon/commit/0036dfcb58a0ad33bce8118a3d927f1c09c63b27) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(server): `hydrate: 'interaction'` islands now replay form submits — not just clicks
+
+  Closes the second click-replay gap my deep analysis flagged. The
+  `interaction` strategy's pre-hydrate handler previously listened on
+  `focus` / `click` / `pointerenter` / `touchstart` and only **replayed
+  `click`** events. Submitting a form inside an interaction-strategy
+  island fell through:
+
+  - `submit` wasn't in the default event list → no preventDefault →
+    **browser did a full-page POST/GET BEFORE the island ever hydrated**
+  - Even with a custom `interaction(submit)` config, the post-hydrate
+    replay only knew how to dispatch `MouseEvent('click')`, so the live
+    submit handler never fired
+
+  Now: `'submit'` is in `DEFAULT_INTERACTION_EVENTS`. When pre-hydrate,
+  the captured handler calls `preventDefault()` + `stopImmediatePropagation()`
+  on the submit event (blocking the browser's full-page nav) and stores
+  a `{ type: 'submit', path }` capture. Post-hydrate, the live form is
+  resolved via the same `data-testid` / tag+child-index path used for
+  clicks, and a synthetic `SubmitEvent('submit', { bubbles: true,
+cancelable: true })` is re-dispatched on it — so the live `onSubmit`
+  reads current `FormData` with the user's actual input values.
+
+  Discriminated union `CapturedInteraction = { type: 'click'; path } |
+{ type: 'submit'; path }` keeps the replay-target wiring type-narrow.
+  `SubmitEvent` is the standard global in real browsers and modern
+  happy-dom; falls back to a plain `Event('submit')` if the constructor
+  isn't available (older runtimes).
+
+  Test: `interaction: form submit hydrates + prevents browser nav +
+replays submit on live form` in `tests/client.test.ts`. Full server
+  suite: 143 pass (was 142). Typecheck + lint clean.
+
+  **Compat note**: user code that explicitly opts out via `interaction(click)`
+  or any custom list NOT including `submit` keeps its prior behaviour
+  (no submit interception). The change is additive on the default-events
+  list only.
+
+- [#757](https://github.com/pyreon/pyreon/pull/757) [`7632934`](https://github.com/pyreon/pyreon/commit/763293492a26d48e4a7b1b28e42a519677702b35) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `renderToStream` and `createHandler` (stream mode) now accept a configurable per-boundary Suspense timeout: `suspenseTimeoutMs?: number`. Defaults to `30_000` ms (unchanged from prior hard-coded behavior), so unset is byte-identical. Pass a smaller number (e.g. `5_000`–`10_000`) for tight-SLA user-facing deploys where the fallback is preferable to a delayed render, or pass `Infinity` to disable the timeout entirely for renders that legitimately need long async work (exports, reports, scheduled jobs). Values ≤0 or `NaN` fall back to the default — invalid input from a config layer can't accidentally drop every boundary.
+
+  This completes the streaming control surface alongside the AbortSignal wire (`signal?: AbortSignal`, shipped in [#745](https://github.com/pyreon/pyreon/issues/745) + [#749](https://github.com/pyreon/pyreon/issues/749)).
+
+  **`@pyreon/runtime-server`**: `RenderToStreamOptions` gains `suspenseTimeoutMs?: number`. Threaded into the internal `StreamCtx` and consumed by `streamSuspenseBoundary`. The `Infinity` case skips the `Promise.race` entirely (no setTimeout, no clearTimeout) — only the AbortSignal can stop a boundary in that mode.
+
+  **`@pyreon/server`**: `HandlerOptions` gains `suspenseTimeoutMs?: number`, forwarded through `renderStreamResponse` → `renderToStream` only when defined (so unconfigured deploys land on `renderToStream`'s defaults byte-identically).
+
+  **Tests**: 4 new specs in `runtime-server/src/tests/ssr.test.ts` (`renderToStream — suspenseTimeoutMs config`) covering explicit short timeout, default preservation, invalid-value fallback, and `Infinity` opt-out. 1 new integration spec in `server/src/tests/server.test.ts` proving the handler's option threads end-to-end.
+
+  **Bisect-verified**:
+
+  - Revert the `ctx.suspenseTimeoutMs` read to the hard-coded `30_000` → "explicit short timeout drops post-resolve content" spec fails (100ms boundary completes against the still-30s timeout); restored → passes.
+  - Revert the createHandler forward (drop `suspenseTimeoutMs` from `renderStreamResponse` call) → "stream mode forwards suspenseTimeoutMs" spec fails the same way; restored → passes.
+  - Both restored: runtime-server **150/150** + server **168/168 × 5 stability runs**. Lint + typecheck clean. No lockfile drift. No `TEMP BISECT` remnants. `gen-docs --check` clean.
+
+  Manifest + MCP `api-reference` + `llms-full.txt` updated to document the new option and the `signal` option (the latter shipped in [#749](https://github.com/pyreon/pyreon/issues/749) but the manifest entry hadn't been updated). The "30s timeout" foot-gun in `mistakes[]` now mentions the configurability and the `Infinity` opt-out.
+
+### Patch Changes
+
+- [#749](https://github.com/pyreon/pyreon/pull/749) [`97b0e19`](https://github.com/pyreon/pyreon/commit/97b0e19533056e9cb3d9997401effc79b0f6760b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `createHandler` (stream mode) now threads `req.signal` through to `renderToStream({ signal })` so an upstream `Request` abort (client disconnect, request timeout, parent AbortController) propagates end-to-end into the streaming render. Pending Suspense boundaries are cancelled, their post-resolve enqueues are skipped, and the response stream closes promptly — no wasted work after the consumer hangs up.
+
+  `renderToStream` already accepted `{ signal }` (shipped earlier), but `createHandler` was the missing one-line wire to make the AbortSignal story actually reach SSR users.
+
+  Bisect-verified: drop the signal forward → the new `threads request.signal through to renderToStream` test fails with both `'loaded-too-late'` and `__NS("pyreon-s-0",…)` present in the response HTML; restored → 1 pass × 5 stability runs, 167/167 server tests pass.
+
+- [#748](https://github.com/pyreon/pyreon/pull/748) [`2976aa8`](https://github.com/pyreon/pyreon/commit/2976aa84213b479b4d045a83143b3a4a3d89aedf) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(server, runtime-server): Class I orphaned timer in prerender + Suspense streaming (audit-leak-classes discoveries)
+
+  Two real Class I instances surfaced by the new `audit-leak-classes`
+  script's `promise-race-no-clear` detector — bugs the lint rule
+  `pyreon/promise-race-needs-cleartimeout` would have caught at edit
+  time but pre-dated the rule.
+
+  ### `@pyreon/server` `ssg.ts:prerender` — orphaned 30s setTimeout
+
+  `renderPage`'s `Promise.race([handler(req), setTimeout-reject])`
+  left the timer pinned for 30s when `handler` won. Same shape as
+  [#734](https://github.com/pyreon/pyreon/issues/734)'s `@pyreon/zero` `isr.ts revalidate()` fix. Under high-RPS
+  prerender batches (e.g. a large SSG build), hundreds of timer
+  closures pile up before they self-clear.
+
+  Fix: capture the timer id outside `Promise.race`, `clearTimeout`
+  in `finally`.
+
+  ### `@pyreon/runtime-server` `streamSuspense` — orphaned 30s setTimeout
+
+  The Suspense streaming boundary races children against a 30s
+  timeout. The setTimeout _resolves_ (rather than rejects) with
+  `'timeout'` — but the orphaned-timer shape is identical: on
+  success the timer stays pinned for 30s, holding the resolve
+  callback + closure. Every Suspense boundary in a long-running
+  SSR server accumulates one pending timer per rendered request
+  until it fires.
+
+  Fix: same `let timeoutId` + `try { … } finally { clearTimeout }`
+  pattern.
+
+  ### Validation
+
+  - `@pyreon/server` 166/166 tests pass
+  - `@pyreon/runtime-server` 143/143 tests pass
+  - `@pyreon/test-utils` 90/90 tests pass (+15 new for the audit script)
+  - Lint + typecheck clean
+  - No public-API surface change
+
+- Updated dependencies [[`6571df8`](https://github.com/pyreon/pyreon/commit/6571df8209c5dc72619194ffe19359765b1d2d7f), [`af4d5d8`](https://github.com/pyreon/pyreon/commit/af4d5d83fc087d738dbe5084950476566d488d77), [`f833a99`](https://github.com/pyreon/pyreon/commit/f833a997bbc04aa5ba94d0d5dd334628871aaa9a), [`1d825c2`](https://github.com/pyreon/pyreon/commit/1d825c2374a39833881c490887602354a7d590af), [`2976aa8`](https://github.com/pyreon/pyreon/commit/2976aa84213b479b4d045a83143b3a4a3d89aedf), [`7632934`](https://github.com/pyreon/pyreon/commit/763293492a26d48e4a7b1b28e42a519677702b35), [`441b5df`](https://github.com/pyreon/pyreon/commit/441b5dfa64ae52002d3e6612ec68566344ae999d)]:
+  - @pyreon/core@0.23.0
+  - @pyreon/runtime-server@0.23.0
+  - @pyreon/head@0.23.0
+  - @pyreon/runtime-dom@0.23.0
+  - @pyreon/reactivity@0.23.0
+  - @pyreon/router@0.23.0
+
 ## 0.22.0
 
 ### Patch Changes

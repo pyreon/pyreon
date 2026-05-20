@@ -1,5 +1,252 @@
 # @pyreon/compiler
 
+## 0.23.0
+
+### Patch Changes
+
+- [#754](https://github.com/pyreon/pyreon/pull/754) [`6454cb7`](https://github.com/pyreon/pyreon/commit/6454cb794bb82db11e7842cb4a62a3765e3dd3ac) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(security): close 17 CodeQL alerts (real bugs + workflow hardening; 20 false positives dismissed)
+
+  Sweep through `github.com/pyreon/pyreon/security/code-scanning`. 37
+  open alerts triaged into **17 real fixes + 20 false-positive
+  dismissals**. The 4 remaining alerts are OpenSSF Scorecard project-
+  posture metrics (CodeReview, Maintained, CIIBestPractices, Fuzzing)
+  which can't be closed by a code PR — they're external posture
+  checks.
+
+  ### Real fixes (8 code + 9 polynomial-redos + 6 workflow)
+
+  **Code:**
+
+  - **[#27](https://github.com/pyreon/pyreon/issues/27) `@pyreon/zero` `fs-router.ts:1110`** — `import("${fullPath}")`
+    interpolated `fullPath` raw into emitted JS. Path is developer-
+    controlled (project's own filesystem scan), but a quote / backslash
+    / newline in the path would corrupt the generated module source.
+    Fixed: `JSON.stringify(fullPath)` — matches the existing `hmrId`
+    pattern two lines above.
+  - **[#37](https://github.com/pyreon/pyreon/issues/37) `@pyreon/lint` `anchor-is-valid.ts:67`** —
+    `trimmed.toLowerCase().startsWith('javascript:')` only catches the
+    one canonical scheme. CodeQL's `js/incomplete-url-scheme-check`
+    expects the curated dangerous-scheme set. Added `vbscript:`
+    (dead on modern browsers but a no-cost completion). `data:`
+    intentionally omitted — legitimate `data:image/png;base64,…`
+    href usage exists.
+  - **[#20](https://github.com/pyreon/pyreon/issues/20)/[#21](https://github.com/pyreon/pyreon/issues/21)/[#22](https://github.com/pyreon/pyreon/issues/22) `@pyreon/solid-compat` `createStore` setStore** —
+    `Object.assign(obj, value)` + dynamic `obj[key] = …` with user-
+    supplied path keys allowed prototype pollution via
+    `setStore('__proto__', evil)` or `setStore({ __proto__: … })`.
+    Added a `DANGEROUS_KEYS` Set (`__proto__` / `constructor` /
+    `prototype`) and a `safeAssign` helper — same shape as
+    `@pyreon/reactivity reconcile.ts:34`. Path-key writes at any
+    depth refuse the dangerous identifiers.
+
+  **Polynomial-redos (`@pyreon/compiler`, `@pyreon/vite-plugin`):**
+
+  - **[#9](https://github.com/pyreon/pyreon/issues/9)/[#10](https://github.com/pyreon/pyreon/issues/10)/[#11](https://github.com/pyreon/pyreon/issues/11) `pyreon-intercept.ts` pre-filter regexes** — bound
+    `[^}]+` / `[^)]+` greedy quantifiers with `{0,500}` / `{1,500}`
+    caps. Pre-filter is a SCAN before the precise AST walker; losing
+    detector recall on pathologically long single-line input is
+    acceptable.
+  - **[#12](https://github.com/pyreon/pyreon/issues/12)/[#13](https://github.com/pyreon/pyreon/issues/13) `ssg-audit.ts` dynamic-route detection** — replaced
+    `/\[.+\]/` with `/\[[^\]]+\]/`. Filename basenames are OS-bounded
+    (~255 chars) anyway, but `[^\]]+` removes the backtrack potential
+    entirely.
+  - **[#16](https://github.com/pyreon/pyreon/issues/16) `vite-plugin.ts` ISLAND_CALL_RE** — bound `[\s\S]*?` lazy
+    match to `[^}]{0,500}`. Real island() option blocks are tiny.
+  - **[#17](https://github.com/pyreon/pyreon/issues/17) `vite-plugin.ts` NAMED_EXPORT_RE** — bound `[^}]+` to
+    `[^}]{1,500}`. Real `export { … }` blocks fit easily.
+  - **[#18](https://github.com/pyreon/pyreon/issues/18)/[#19](https://github.com/pyreon/pyreon/issues/19) `vite-plugin.ts` `split(/\s+as\s+/)`** — replaced with
+    a pre-compiled `AS_SPLIT_RE = /\s{1,10}as\s{1,10}/` at module
+    scope. Bounded `{1,10}` quantifiers eliminate worst-case
+    backtracking while keeping every realistic import-specifier
+    formatting matchable.
+
+  **Workflows (`.github/workflows/`):**
+
+  - **[#1](https://github.com/pyreon/pyreon/issues/1) perf.yml + [#54](https://github.com/pyreon/pyreon/issues/54) audit-leak-classes.yml** — added top-level
+    `permissions: contents: read` block. Both workflows are read-only
+    (perf records artifacts; audit reports findings).
+  - **[#2](https://github.com/pyreon/pyreon/issues/2) release.yml** — restructured permissions: top-level
+    `contents: read` (default), per-job `contents: write` +
+    `pull-requests: write` + `id-token: write` on `stable` and
+    `prerelease` (both publish via OIDC trusted publishing).
+  - **[#55](https://github.com/pyreon/pyreon/issues/55)/[#56](https://github.com/pyreon/pyreon/issues/56)/[#57](https://github.com/pyreon/pyreon/issues/57) audit-leak-classes.yml** — pinned `actions/checkout`,
+    `oven-sh/setup-bun`, `actions/upload-artifact` by full commit SHA.
+    Same SHAs as the rest of `.github/workflows/` (the project's
+    existing pinning convention).
+
+  ### Dismissed via API (20 false positives / won't fix)
+
+  **True false positives (9):**
+
+  - **[#28](https://github.com/pyreon/pyreon/issues/28)** `js/clear-text-logging` on `batch.ts:120` — CodeQL matched
+    "MAX_PASSES" as if it contained "password". Log is about
+    effect-flush pass count.
+  - **[#25](https://github.com/pyreon/pyreon/issues/25)/[#26](https://github.com/pyreon/pyreon/issues/26)** `js/bad-code-sanitization` on `vite-plugin.ts:1037,1307`
+    — `JSON.stringify()` IS the canonical safe-embed for a string into
+    emitted JS code.
+  - **[#23](https://github.com/pyreon/pyreon/issues/23)/[#24](https://github.com/pyreon/pyreon/issues/24)** `js/prototype-pollution-utility` on `reconcile.ts:103,107`
+    — `DANGEROUS_KEYS.has(key)` guard at line 93 already blocks
+    `__proto__` / `constructor` / `prototype` before the assignment.
+  - **[#34](https://github.com/pyreon/pyreon/issues/34)/[#35](https://github.com/pyreon/pyreon/issues/35)/[#36](https://github.com/pyreon/pyreon/issues/36)** `js/incomplete-sanitization` on `manifest/render.ts`
+    - `mcp/index.ts` — `.replace(/\|/g, '\\|')` is markdown table-cell
+      escaping of INTERNAL manifest API metadata (built at gen-docs time
+      from `defineManifest()` values), not user-input sanitization.
+  - **[#52](https://github.com/pyreon/pyreon/issues/52)** `js/http-to-file-access` on `font.ts` — deterministic font-
+    file fetch resolved from CSS `@font-face` declarations parsed at
+    build time, then written to a per-project cache dir keyed by a
+    base64 hash of the URL. Not user-driven HTTP content writing to
+    arbitrary paths.
+
+  **Won't fix (internal dev tooling, not security boundaries):**
+
+  - **[#42](https://github.com/pyreon/pyreon/issues/42)/[#43](https://github.com/pyreon/pyreon/issues/43)/[#44](https://github.com/pyreon/pyreon/issues/44)/[#45](https://github.com/pyreon/pyreon/issues/45)/[#47](https://github.com/pyreon/pyreon/issues/47)/[#48](https://github.com/pyreon/pyreon/issues/48)** `js/file-system-race` — CLI scaffolding
+    (`pyreon context`, `create-zero`), build-time Vite plugin
+    (`icons-plugin`), internal scripts (`check-bundle-budgets`,
+    `serve-ssg`). Single-process, single-developer environments; no
+    malicious actor with concurrent filesystem access in the threat
+    model.
+  - **[#30](https://github.com/pyreon/pyreon/issues/30)/[#31](https://github.com/pyreon/pyreon/issues/31)** `js/shell-command-injection-from-environment` —
+    internal repo audit (`audit-codebase`) + benchmark harness
+    (`bench/run-all`). Args controlled entirely by the script author,
+    not external input.
+  - **[#49](https://github.com/pyreon/pyreon/issues/49)/[#50](https://github.com/pyreon/pyreon/issues/50)** `js/indirect-command-line-injection` — internal git-
+    affected-packages selectors (`affected.ts`, `e2e-affected.ts`).
+    Args are git refs from the GitHub Actions workflow event.
+  - **[#3](https://github.com/pyreon/pyreon/issues/3)** `PinnedDependenciesID` on `release-native.yml:252`
+    (`npm install -g npm@latest`) — npm 11.5.1+ is the documented
+    requirement for OIDC trusted publishing. Pinning an exact version
+    blocks security patches; the OIDC token + Sigstore provenance is
+    the actual supply-chain guarantee.
+
+  ### Remaining (cannot be closed by a code PR)
+
+  - **[#4](https://github.com/pyreon/pyreon/issues/4) CodeReviewID** — Scorecard counts review approvals per merge;
+    squash-merge with self-review by maintainer doesn't count.
+    Project-policy issue, not code.
+  - **[#5](https://github.com/pyreon/pyreon/issues/5) MaintainedID** — auto-tracks repo activity, improves
+    organically.
+  - **[#6](https://github.com/pyreon/pyreon/issues/6) CIIBestPracticesID** — requires registering at
+    bestpractices.coreinfrastructure.org. Out of scope for this PR.
+  - **[#8](https://github.com/pyreon/pyreon/issues/8) FuzzingID** — requires OSS-Fuzz integration. Significant
+    infra work, out of scope.
+
+  ### Validation
+
+  - `@pyreon/zero` 957/958 tests pass (1 pre-existing skip)
+  - `@pyreon/compiler` 1257/1257 tests pass
+  - `@pyreon/vite-plugin` 104/104 tests pass
+  - `@pyreon/solid-compat` 218/218 tests pass
+  - `@pyreon/lint` 672/672 tests pass
+  - Lint + typecheck clean across all 5 packages
+
+  ### Closes the security/code-scanning sweep
+
+  37 alerts → 17 fixed in code + 20 dismissed with rationale + 4
+  external-posture deferred. Net open count expected after CodeQL
+  re-scans: 4 (Scorecard meta-checks).
+
+- [#732](https://github.com/pyreon/pyreon/pull/732) [`eea2972`](https://github.com/pyreon/pyreon/commit/eea29723e36088ec32d3e817e0f5f61606c9b949) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(compiler): skip the `() => x` accessor wrap for stable-reference JSX children of component parents
+
+  The Pyreon compiler's prop-inlining pass rewrites `<Comp>{children}</Comp>`
+  (where `children` is a local `const` derived from a getter — typically
+  `const children = childHolder.children` after `splitProps`) as
+  `Comp({ ..., children: () => h.children })`. Receiving components see
+  `props.children` as a FUNCTION instead of the expected `VNode | VNode[]`.
+  DOM-consuming code routes through `mountChild` which handles function
+  children correctly via `mountReactive`, so the wrap is invisible there.
+  Libraries that iterate children at the VNode level or `cloneVNode` them
+  directly were silently broken — the function spread produced
+  `{type: undefined}` and the DOM rendered literal `<undefined>` tags. PR
+  [#731](https://github.com/pyreon/pyreon/issues/731) shipped the library-side workaround for `@pyreon/kinetic`; this is
+  the upstream compiler fix that catches the broader class.
+
+  ## The carve-out
+
+  For JSX children of COMPONENT parents (uppercase tag), skip the wrap when:
+
+  1. The expression is a **stable reference** — bare `Identifier`, simple
+     non-computed `MemberExpression` chain (`obj.x.y`), or any of the above
+     wrapped in TS type-only layers (`as T` / `satisfies T` / `!` / parens).
+  2. The expression does **not** reference a tracked signal variable.
+
+  Both conditions matter:
+
+  - **(1)** restricts the carve-out to shapes whose value at JSX-emit time
+    is identical to what an effect re-evaluation would produce — a bare
+    property read resolves the underlying getter (if any) the same way once
+    or N times. CallExpressions, BinaryExpressions, ConditionalExpressions,
+    etc. keep the wrap because their re-evaluation semantics matter.
+  - **(2)** preserves `<Comp>{count}</Comp>` (bare signal identifier) as the
+    user's deliberate "make this reactive at the call site" shape. The
+    compiler auto-calls (`count` → `count()`) AND wraps (`() => count()`)
+    so the receiving component re-evaluates inside its
+    `mountReactive`/`mountChild` scope.
+
+  The slice is taken of the UNWRAPPED expression — TS type-only layers
+  strip because esbuild's next stage removes them anyway, and this keeps
+  cross-backend equivalence with the Rust path (whose `accesses_props`
+  doesn't recurse into `TSAsExpression`).
+
+  ## Cross-backend parity
+
+  Both `transformJSX_JS` (TypeScript fallback) and the Rust `napi-rs`
+  native binary implement the carve-out byte-identically. The cross-backend
+  equivalence suite (`native-equivalence.test.ts`) gains 8 specs covering
+  every shape (stable-ref / call / binary / DOM parent / signal / TS cast
+  / non-null / fragment-transparency / static-array form). All pass on both
+  backends.
+
+  ## Relationship to PR [#731](https://github.com/pyreon/pyreon/issues/731) — complementary, not replacement
+
+  This compiler fix and PR [#731](https://github.com/pyreon/pyreon/issues/731)'s library-side `resolveChildren` are
+  COMPLEMENTARY layers:
+
+  - **The compiler fix** addresses the OUTER pass-through pattern — any
+    library or user code that forwards children to a child component via
+    `<Comp>{children}</Comp>` where `children` is a local binding. No more
+    silent function-wrap surprises for the most common shape.
+  - **PR [#731](https://github.com/pyreon/pyreon/issues/731)'s library fix** addresses the INNER pattern — kinetic's
+    StaggerRenderer / GroupRenderer emit JSX like
+    `<TransitionItem>{cloneVNode(child, {style})}</TransitionItem>`. The
+    inner expression is a CallExpression (`cloneVNode(...)`), NOT a stable
+    reference, so the compiler carve-out (correctly) does not apply. The
+    library-side unwrap is still needed for that case.
+
+  Verified end-to-end against the bokisch.com Intro reproducer:
+
+  - Compiler fix alone (kinetic at vanilla 0.22.0): bug still fires
+    (`h1Count: 0`, 3 `<undefined>` tags from TransitionItem's
+    `cloneVNode(function, {ref})`).
+  - PR [#731](https://github.com/pyreon/pyreon/issues/731) alone (no compiler fix): bug fixed (PR [#731](https://github.com/pyreon/pyreon/issues/731) verified end-to-end).
+  - Both layered: bug fixed AND the emitted bundle is cleaner
+    (`children: h.children` bare instead of `children: () => h.children`).
+
+  ## Bisect-verified at three layers
+
+  - **JS backend**: `packages/core/compiler/src/tests/component-child-no-wrap.test.ts`
+    (10 specs). Reverting the `isComponentTag(...) && isStableReference(expr)`
+    carve-out fails 5 CONTRACT specs; 5 CONTROL specs stay green.
+  - **Rust backend**: same carve-out mirrored in `native/src/lib.rs`
+    (`is_stable_reference` + `unwrap_type_layers` + parent-component flag
+    threading). Reverting fails the 8 new specs in `native-equivalence.test.ts`;
+    244 pre-existing specs stay green.
+  - **Real-app**: bokisch.com Intro with PR [#731](https://github.com/pyreon/pyreon/issues/731)'s library fix + this
+    compiler fix → `h1Count: 1`, "Hello" rendered, zero `<undefined>` tags,
+    emitted bundle shows `children: h.children` (no wrap).
+
+  ## Surfaces updated
+
+  - `packages/core/compiler/src/jsx.ts` — `handleJsxExpression(node, parentJsx?)`
+    - `isComponentTag` + `isStableReference` + `unwrapTypeLayers`
+  - `packages/core/compiler/native/src/lib.rs` — same logic, byte-identical
+    emit; `parent_is_component_jsx_element` Ctx flag threaded through
+    `handle_jsx_element` and reset across `JSXFragment` boundaries (matches
+    JS-backend semantics)
+  - `packages/core/compiler/src/tests/component-child-no-wrap.test.ts` —
+    10 regression specs (5 CONTRACT + 5 CONTROL) with full bisect rationale
+  - `packages/core/compiler/src/tests/native-equivalence.test.ts` —
+    8 new cross-backend specs
+
 ## 0.22.0
 
 ## 0.21.0
