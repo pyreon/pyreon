@@ -10,7 +10,10 @@ import {
   runDistributionGate,
   runDocClaimsGate,
 } from '../doctor/gates'
-import { _parseAuditLeakClassesOutput } from '../doctor/gates/audit-leak-classes'
+import {
+  _parseAuditLeakClassesOutput,
+  runAuditLeakClassesGate,
+} from '../doctor/gates/audit-leak-classes'
 import { _parseAuditTypesOutput } from '../doctor/gates/audit-types'
 import { _parseBundleBudgetsOutput } from '../doctor/gates/bundle-budgets'
 import { _detectMapsInPackOutput } from '../doctor/gates/distribution'
@@ -416,6 +419,27 @@ describe('runDocClaimsGate', () => {
     expect(result.meta.skipReason).toContain('no claim sites')
     expect(result.findings).toHaveLength(0)
 
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+})
+
+describe('runAuditLeakClassesGate', () => {
+  // The live invocation against the real repo is intentionally NOT
+  // here — `scripts/audit-leak-classes.ts` has its own CI workflow
+  // (`audit-leak-classes.yml`). The unit-level shape contract is
+  // covered via the gate-failed spec below (assertGateResultShape()
+  // fires either way) + the `_parseAuditLeakClassesOutput` unit
+  // tests above cover the success-path JSON → Finding[] mapping.
+
+  it('surfaces gate-failed finding when script is unreachable', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-leak-gate-'))
+    const result = await runAuditLeakClassesGate({ cwd: tmp })
+    assertGateResultShape(result, 'audit-leak-classes')
+    const failed = result.findings.find(
+      (f) => f.code === 'audit-leak-classes/gate-failed',
+    )
+    expect(failed).toBeDefined()
+    expect(failed?.severity).toBe('error')
     fs.rmSync(tmp, { recursive: true, force: true })
   })
 })
