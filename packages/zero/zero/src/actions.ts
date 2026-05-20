@@ -144,11 +144,16 @@ export function createActionMiddleware(): (
 }
 
 async function executeAction(action: RegisteredAction, req: Request): Promise<Response> {
+  // Parse the request payload separately so a malformed body returns
+  // 400 (Bad Request) instead of being conflated with a runtime 500.
+  // `req.json()` / `req.formData()` throw on syntactically invalid
+  // payloads (truncated JSON, malformed multipart, invalid UTF-8, etc.)
+  // — that's a client problem, not a server problem, and the HTTP
+  // status code should reflect that.
+  const contentType = req.headers.get('content-type') ?? ''
+  let formData: FormData | null = null
+  let json: unknown = null
   try {
-    const contentType = req.headers.get('content-type') ?? ''
-    let formData: FormData | null = null
-    let json: unknown = null
-
     if (contentType.includes('application/json')) {
       json = await req.json()
     } else if (
@@ -157,16 +162,34 @@ async function executeAction(action: RegisteredAction, req: Request): Promise<Re
     ) {
       formData = await req.formData()
     }
+  } catch (err) {
+    // Malformed request body — log for ops diagnostics but return 400
+    // (not 500) so the client sees the right status code. Don't leak
+    // the parser's internal error message; surface only the shape.
+    console.error('[Pyreon Action] failed to parse request body:', err)
+    return Response.json(
+      { error: 'Invalid request body' },
+      { status: 400 },
+    )
+  }
 
+  // Execute the user-supplied action handler. Surface errors to server
+  // logs via `console.error` — the cloud adapter audit (PR #755) found
+  // this same swallow-error pattern hiding production crashes from
+  // operators. Without it, a CMS-triggered action that crashed inside
+  // the user's handler returned a generic 500 to the client AND
+  // logged nothing on the server side, so the operator couldn't
+  // diagnose the failure.
+  try {
     const result = await action.handler({
       request: req,
       formData,
       json,
       headers: req.headers,
     })
-
     return Response.json(result ?? null)
   } catch (err) {
+    console.error('[Pyreon Action] handler failed:', err)
     const message = err instanceof Error ? err.message : 'Internal server error'
     return Response.json({ error: message }, { status: 500 })
   }

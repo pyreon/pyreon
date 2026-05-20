@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   _resetActions,
   createActionMiddleware,
@@ -77,6 +77,94 @@ describe('createActionMiddleware', () => {
     expect(result?.status).toBe(500)
     const body = await result?.json()
     expect(body.error).toBe('boom')
+  })
+
+  it('logs action runtime errors to console.error with prefix', async () => {
+    // Pre-fix the executeAction catch returned 500 to the client but
+    // emitted NOTHING to the server logs — operators had no diagnostic
+    // info for production crashes inside user-supplied action handlers.
+    // Same swallow-error shape as the cloud adapter audit (PR #755).
+    const action = defineAction(async () => {
+      throw new Error('boom-with-stack')
+    })
+    const mw = createActionMiddleware()
+    const ctx = mockCtx(`/_zero/actions/${action.actionId}`, 'POST', 'null')
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const result = await mw(ctx)
+      expect(result?.status).toBe(500)
+      // Server-side log MUST contain the prefix + the error
+      expect(errorSpy).toHaveBeenCalledWith(
+        '[Pyreon Action] handler failed:',
+        expect.objectContaining({ message: 'boom-with-stack' }),
+      )
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('returns 400 (not 500) on malformed JSON request body', async () => {
+    // Pre-fix `await req.json()` throwing inside the executeAction
+    // try-catch returned 500 — conflating client errors (bad payload)
+    // with server errors (handler crashed). Now the parse step has its
+    // own try-catch and returns 400 with a generic 'Invalid request
+    // body' message (not the parser's internal error string — that
+    // could leak internals like "Unexpected token ... at position N").
+    const action = defineAction(async (ctx) => ctx.json)
+    const mw = createActionMiddleware()
+    // Build a request with Content-Type: application/json but a body
+    // that isn't valid JSON.
+    const url = new URL(`http://localhost/_zero/actions/${action.actionId}`)
+    const req = new Request(url.toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{not valid json',
+    })
+    const ctx = { req, url, path: url.pathname, headers: new Headers(), locals: {} }
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const result = await mw(ctx)
+      expect(result?.status).toBe(400)
+      const body = await result?.json()
+      expect(body.error).toBe('Invalid request body')
+      // Server-side log captures the parse error for ops diagnostics
+      expect(errorSpy).toHaveBeenCalledWith(
+        '[Pyreon Action] failed to parse request body:',
+        expect.anything(),
+      )
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('does NOT leak internal parser error messages to the client', async () => {
+    // Defense-in-depth: even if the parser's error message contains
+    // sensitive info (e.g. "Unexpected token X in JSON at position
+    // <internal offset>" leaks server-side parser state), the
+    // client-facing response stays generic.
+    const action = defineAction(async () => 'ok')
+    const mw = createActionMiddleware()
+    const url = new URL(`http://localhost/_zero/actions/${action.actionId}`)
+    const req = new Request(url.toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '\x00\x01\x02junk',
+    })
+    const ctx = { req, url, path: url.pathname, headers: new Headers(), locals: {} }
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const result = await mw(ctx)
+      expect(result?.status).toBe(400)
+      const body = await result?.json()
+      // Generic error message — no parser internals leaked
+      expect(body.error).toBe('Invalid request body')
+      expect(body.error).not.toMatch(/position|token|offset/i)
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
 })
 
