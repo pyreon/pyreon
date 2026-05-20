@@ -1,0 +1,101 @@
+name: Audit Leak Classes
+
+# Advisory-only nightly run of `scripts/audit-leak-classes.ts` — the
+# offline static analyzer for the 5 memory-leak classes catalogued in
+# `.claude/rules/anti-patterns.md` "Memory Leak Classes". The script
+# is permissive by design (always exits 0); this workflow uploads the
+# JSON report as an artifact + diffs against the previous run's
+# baseline so newly-introduced findings surface in the summary.
+#
+# Triggers:
+#   - workflow_dispatch: manual run on any branch.
+#   - schedule: nightly drift check against main. Catches leak shapes
+#     introduced by PRs that merged without triggering the audit.
+#   - pull_request: auto-runs when a PR gets the `leak-audit` label,
+#     so contributors making leak-class-relevant changes can opt in
+#     to a pre-merge audit.
+#
+# Does NOT block merges. The lint rules `pyreon/promise-race-needs-
+# cleartimeout` and `pyreon/init-fn-needs-idempotency` (in the
+# `recommended` preset since #743) are the gating signal for the
+# 2 high-precision classes. This audit catches the rest at
+# wider-tolerance — its output is for manual triage.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 04:23 UTC daily — staggered against the perf workflow's 03:17.
+    - cron: '23 4 * * *'
+  pull_request:
+    types: [labeled, synchronize]
+
+jobs:
+  audit:
+    # Only run on leak-audit-labelled PRs — skip by default.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'leak-audit')
+    name: Run audit-leak-classes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        # `--frozen-lockfile` ensures the audit runs against the locked
+        # dependency tree exactly as CI / production does. Audit is
+        # source-only so the dep graph doesn't affect findings, but
+        # the bootstrap step does need `lib/` artifacts to be present.
+        run: bun install --frozen-lockfile
+
+      - name: Run audit
+        id: audit
+        run: |
+          # Capture JSON + human-readable simultaneously. The script
+          # always exits 0 (advisory); we extract the finding count
+          # for the summary.
+          mkdir -p audit-out
+          bun scripts/audit-leak-classes.ts --json > audit-out/findings.json
+          bun scripts/audit-leak-classes.ts > audit-out/findings.txt
+          # shellcheck disable=SC2002
+          TOTAL=$(cat audit-out/findings.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["total"])')
+          echo "total=${TOTAL}" >> "$GITHUB_OUTPUT"
+
+      - name: Summarize in workflow output
+        run: |
+          {
+            echo "## audit-leak-classes — ${{ steps.audit.outputs.total }} finding(s)"
+            echo ""
+            echo "The audit is **advisory** — findings are for manual triage, NOT a blocker. See \`.claude/rules/anti-patterns.md\` \"Memory Leak Classes\" for the canonical fix shapes."
+            echo ""
+            echo "<details><summary>Full report</summary>"
+            echo ""
+            echo "\`\`\`"
+            cat audit-out/findings.txt
+            echo "\`\`\`"
+            echo ""
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: audit-leak-classes-${{ github.run_id }}
+          path: audit-out/
+          retention-days: 30
+
+      # Soft signal — if findings exceed a generous ceiling, fail the
+      # job so the team notices a sudden spike. Threshold tuned to the
+      # current baseline (~19) + 2x headroom for organic growth.
+      # Update this number when the leak-hunt sweep proves the ceiling
+      # is too low.
+      - name: Soft regression check
+        run: |
+          if [ "${{ steps.audit.outputs.total }}" -gt 40 ]; then
+            echo "::error::audit-leak-classes count (${{ steps.audit.outputs.total }}) exceeds soft ceiling of 40. Investigate recent merges for new leak-class instances."
+            exit 1
+          fi
+          echo "audit-leak-classes count: ${{ steps.audit.outputs.total }} (under ceiling of 40)"

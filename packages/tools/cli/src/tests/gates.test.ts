@@ -10,6 +10,10 @@ import {
   runDistributionGate,
   runDocClaimsGate,
 } from '../doctor/gates'
+import {
+  _parseAuditLeakClassesOutput,
+  runAuditLeakClassesGate,
+} from '../doctor/gates/audit-leak-classes'
 import { _parseAuditTypesOutput } from '../doctor/gates/audit-types'
 import { _parseBundleBudgetsOutput } from '../doctor/gates/bundle-budgets'
 import { _detectMapsInPackOutput } from '../doctor/gates/distribution'
@@ -419,6 +423,27 @@ describe('runDocClaimsGate', () => {
   })
 })
 
+describe('runAuditLeakClassesGate', () => {
+  // The live invocation against the real repo is intentionally NOT
+  // here — `scripts/audit-leak-classes.ts` has its own CI workflow
+  // (`audit-leak-classes.yml`). The unit-level shape contract is
+  // covered via the gate-failed spec below (assertGateResultShape()
+  // fires either way) + the `_parseAuditLeakClassesOutput` unit
+  // tests above cover the success-path JSON → Finding[] mapping.
+
+  it('surfaces gate-failed finding when script is unreachable', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-leak-gate-'))
+    const result = await runAuditLeakClassesGate({ cwd: tmp })
+    assertGateResultShape(result, 'audit-leak-classes')
+    const failed = result.findings.find(
+      (f) => f.code === 'audit-leak-classes/gate-failed',
+    )
+    expect(failed).toBeDefined()
+    expect(failed?.severity).toBe('error')
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+})
+
 describe('runAuditTypesGate', () => {
   // The live invocation against the real repo is intentionally NOT
   // a unit test — the subprocess walks every public interface across
@@ -679,6 +704,92 @@ describe('_parseAuditTypesOutput', () => {
     const { findings, scanned } = _parseAuditTypesOutput(raw, '/repo')
     expect(findings).toEqual([])
     expect(scanned).toBe(1)
+  })
+})
+
+describe('_parseAuditLeakClassesOutput', () => {
+  it('maps every leak class to severity=info with the class label baked into the code', () => {
+    const raw = JSON.stringify({
+      total: 4,
+      findings: [
+        {
+          detector: 'unbounded-cache',
+          file: '/repo/packages/x/src/cache.ts',
+          line: 10,
+          leakClass: 'C',
+          message: 'Module-level Map "foo" — unbounded growth risk.',
+          context: 'const foo = new Map()',
+        },
+        {
+          detector: 'unbalanced-listeners',
+          file: '/repo/packages/y/src/dom.ts',
+          line: 1,
+          leakClass: 'D',
+          message: '2 addEventListener vs 0 removeEventListener',
+          context: 'add=2 remove=0',
+        },
+        {
+          detector: 'position-based-pop',
+          file: '/repo/packages/z/src/stack.ts',
+          line: 42,
+          leakClass: 'A',
+          message: 'Module-level stack uses .pop() — Class A risk.',
+          context: 'stack.pop()',
+        },
+        {
+          detector: 'promise-race-no-clear',
+          file: '/repo/packages/w/src/race.ts',
+          line: 50,
+          leakClass: 'I',
+          message: 'Promise.race + setTimeout without clearTimeout.',
+          context: 'Promise.race([…])',
+        },
+      ],
+    })
+    const { findings, total } = _parseAuditLeakClassesOutput(raw, '/repo')
+    expect(total).toBe(4)
+    expect(findings).toHaveLength(4)
+    for (const f of findings) {
+      // Every finding is INFO — the audit is advisory by design.
+      expect(f.severity).toBe('info')
+      expect(f.gate).toBe('audit-leak-classes')
+      expect(f.category).toBe('architecture')
+    }
+    // Class label baked into the code so downstream renderers can
+    // group by class without re-parsing the message.
+    expect(findings[0]!.code).toBe('audit-leak-classes/class-c-unbounded-cache')
+    expect(findings[1]!.code).toBe('audit-leak-classes/class-d-unbalanced-listeners')
+    expect(findings[2]!.code).toBe('audit-leak-classes/class-a-position-based-pop')
+    expect(findings[3]!.code).toBe('audit-leak-classes/class-i-promise-race-no-clear')
+    // Message gets the `[Class X]` prefix for at-a-glance triage.
+    expect(findings[0]!.message).toMatch(/^\[Class C\]/)
+    expect(findings[2]!.message).toMatch(/^\[Class A\]/)
+  })
+
+  it('relativizes file paths against cwd', () => {
+    const raw = JSON.stringify({
+      total: 1,
+      findings: [
+        {
+          detector: 'unbounded-cache',
+          file: '/repo/packages/x/src/cache.ts',
+          line: 10,
+          leakClass: 'C',
+          message: 'msg',
+          context: 'ctx',
+        },
+      ],
+    })
+    const { findings } = _parseAuditLeakClassesOutput(raw, '/repo')
+    expect(findings[0]!.location?.relPath).toBe('packages/x/src/cache.ts')
+    expect(findings[0]!.location?.line).toBe(10)
+  })
+
+  it('handles empty findings array', () => {
+    const raw = JSON.stringify({ total: 0, findings: [] })
+    const { findings, total } = _parseAuditLeakClassesOutput(raw, '/repo')
+    expect(findings).toEqual([])
+    expect(total).toBe(0)
   })
 })
 

@@ -22,6 +22,7 @@
  */
 
 import {
+  runAuditLeakClassesGate,
   runAuditTestsGate,
   runAuditTypesGate,
   runBundleBudgetsGate,
@@ -45,6 +46,7 @@ export type GateName =
   | 'audit-tests'
   | 'islands-audit'
   | 'ssg-audit'
+  | 'audit-leak-classes'
   | 'audit-types'
   | 'bundle-budgets'
 
@@ -58,6 +60,7 @@ const FAST_GATES: GateName[] = [
   'islands-audit',
   'ssg-audit',
   'audit-tests',
+  'audit-leak-classes',
 ]
 
 /** Gates that require `--full` to enable. */
@@ -97,6 +100,7 @@ const ALL_GATE_CATEGORIES: Record<GateName, GateResult['category']> = {
   'audit-tests': 'testing',
   'islands-audit': 'architecture',
   'ssg-audit': 'architecture',
+  'audit-leak-classes': 'architecture',
   'audit-types': 'architecture',
   'bundle-budgets': 'performance',
 }
@@ -168,6 +172,8 @@ const runGate = async (
       return runIslandsAuditGate({ cwd: opts.cwd })
     case 'ssg-audit':
       return runSsgAuditGate({ cwd: opts.cwd })
+    case 'audit-leak-classes':
+      return runAuditLeakClassesGate({ cwd: opts.cwd })
     case 'audit-types':
       return runAuditTypesGate({ cwd: opts.cwd })
     case 'bundle-budgets':
