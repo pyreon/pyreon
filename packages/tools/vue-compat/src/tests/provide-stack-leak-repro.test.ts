@@ -25,9 +25,8 @@
  * unmount.
  */
 import { captureContextStack, h as pyreonH } from '@pyreon/core'
-import { mount as pyreonMount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createApp, inject, provide } from '../index'
+import { createApp, inject } from '../index'
 
 describe('vue-compat — provide/popContext is identity-safe (#725/#729 class)', () => {
   let container: HTMLElement
