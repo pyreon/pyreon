@@ -31,9 +31,9 @@
       "types": "./lib/types/index.d.ts"
     },
     "./lpih": {
-      "bun": "./src/lpih-bridge.ts",
-      "import": "./lib/lpih-bridge.js",
-      "types": "./lib/types/lpih-bridge.d.ts"
+      "bun": "./src/lpih.ts",
+      "import": "./lib/lpih.js",
+      "types": "./lib/types/lpih.d.ts"
     }
   },
   "publishConfig": {

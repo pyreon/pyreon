@@ -13,7 +13,7 @@ import { join } from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { computed } from '../computed'
 import { effect } from '../effect'
-import { startLpihPolling, writeLpihCache } from '../lpih-bridge'
+import { startLpihPolling, writeLpihCache } from '../lpih'
 import {
   activateReactiveDevtools,
   deactivateReactiveDevtools,
@@ -23,7 +23,7 @@ import { signal } from '../signal'
 let TMP_DIR: string
 
 beforeAll(() => {
-  TMP_DIR = mkdtempSync(join(tmpdir(), 'lpih-bridge-test-'))
+  TMP_DIR = mkdtempSync(join(tmpdir(), 'lpih-test-'))
 })
 
 afterAll(() => {
@@ -65,7 +65,7 @@ describe('writeLpihCache', () => {
     expect(parsed.fires).toHaveLength(1)
     expect(parsed.fires[0]?.count).toBe(3)
     expect(parsed.fires[0]?.kind).toBe('signal')
-    expect(parsed.fires[0]?.file).toContain('lpih-bridge.test.ts')
+    expect(parsed.fires[0]?.file).toContain('lpih.test.ts')
     void s
   })
 
