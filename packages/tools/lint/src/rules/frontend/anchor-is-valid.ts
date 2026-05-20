@@ -61,16 +61,18 @@ export const anchorIsValid: Rule = {
         // Static string literal `href="..."`.
         if (value.type === 'Literal' && typeof value.value === 'string') {
           const trimmed = value.value.trim()
-          // `javascript:` is the modern concern; `vbscript:` is dead
-          // on every modern browser but kept for the canonical
-          // dangerous-scheme set. `data:` is intentionally omitted —
-          // legitimate `data:image/png;base64,…` href usage exists.
+          // Canonical dangerous-scheme set. `data:` is included because
+          // `data:text/html,<script>…</script>` is a real XSS vector;
+          // legitimate `data:image/...` usage in `<a href>` is rare
+          // (image data URIs belong in `<img src>`), and consumers
+          // with a real reason can suppress the rule per-line.
           const lower = trimmed.toLowerCase()
           const isInvalid =
             trimmed === '' ||
             trimmed === '#' ||
             lower.startsWith('javascript:') ||
-            lower.startsWith('vbscript:')
+            lower.startsWith('vbscript:') ||
+            lower.startsWith('data:')
           if (isInvalid) {
             context.report({
               message: `Invalid anchor href "${value.value}" — use a <button> for actions, or a real destination URL.`,

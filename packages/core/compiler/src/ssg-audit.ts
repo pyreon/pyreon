@@ -279,7 +279,7 @@ function detectDynamicRouteMissingGetStaticPaths(
   for (const file of routeFiles) {
     const base = file.split('/').pop() ?? ''
     // `[^\]]+` instead of `.+` — bounded, no backtrack potential.
-    if (!/\[[^\]]+\]/.test(base)) continue
+    if (!/\[[^\]]{1,200}\]/.test(base)) continue
     // Skip layouts / errors / 404s — only PAGE files take getStaticPaths.
     if (/^_(layout|error|loading|404|not-found)\./.test(base)) continue
     // Skip API routes under `routes/api/` (path-based convention).
@@ -425,7 +425,7 @@ export function auditSsg(rootDir: string): SsgAuditResult {
   let revalidateExports = 0
   for (const file of routeFiles) {
     const base = file.split('/').pop() ?? ''
-    if (/\[[^\]]+\]/.test(base) && !/^_(layout|error|loading|404|not-found)\./.test(base)) {
+    if (/\[[^\]]{1,200}\]/.test(base) && !/^_(layout|error|loading|404|not-found)\./.test(base)) {
       dynamicRoutes++
     }
     const source = parseSourceFile(file)

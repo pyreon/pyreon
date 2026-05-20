@@ -1002,8 +1002,10 @@ export function hasPyreonPatterns(code: string): boolean {
     /\b(?:const|let|var)\s+\{[^}]{0,500}\}\s*=\s*[A-Za-z_$]/.test(code) ||
     // signal-write-as-call: `const X = signal(` declaration anywhere
     /\b(?:signal|computed)\s*[<(]/.test(code) ||
-    // static-return-null-conditional: `if (...) return null` anywhere
-    /\bif\s*\([^)]{1,500}\)\s*\{?\s*return\s+null\b/.test(code) ||
+    // static-return-null-conditional: `if (...) return null` anywhere.
+    // `[\s{]*` (single class) instead of `\s*\{?\s*` (overlapping
+    // quantifiers) — the latter is polynomial on long whitespace runs.
+    /\bif\s*\([^)]{1,500}\)[\s{]{0,20}return\s+null\b/.test(code) ||
     // as-unknown-as-vnodechild
     /\bas\s+unknown\s+as\s+VNodeChild\b/.test(code) ||
     // query-options-as-function: a query hook called with an object literal
