@@ -1,7 +1,7 @@
 import type { VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import type { CSSProperties, TransitionCallbacks } from '../types'
-import { cloneVNode } from '../utils'
+import { cloneVNode, resolveChildren } from '../utils'
 import TransitionItem from './TransitionItem'
 import type { KineticConfig } from './types'
 
@@ -41,7 +41,9 @@ const StaggerRenderer = ({
   const effectiveInterval = interval ?? config.interval ?? 50
   const effectiveReverseLeave = reverseLeave ?? config.reverseLeave ?? false
 
-  const childArray = (Array.isArray(children) ? children : [children]).filter(isVNode)
+  // Unwrap compiler-emitted accessor wrap — see `resolveChildren` jsdoc.
+  const resolved = resolveChildren(children)
+  const childArray = (Array.isArray(resolved) ? resolved : [resolved]).filter(isVNode)
   const count = childArray.length
 
   const staggeredChildren = childArray.map((child, index) => {

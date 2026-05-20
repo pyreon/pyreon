@@ -83,3 +83,31 @@ export const cloneVNode = (vnode: VNode, extraProps: Record<string, unknown>): V
   ...vnode,
   props: { ...vnode.props, ...extraProps },
 })
+
+/**
+ * Resolves a `children` value the Pyreon compiler may have wrapped in a
+ * deferred accessor.
+ *
+ * **Why:** the compiler's prop-inlining pass rewrites `<Comp>{children}</Comp>`
+ * to `Comp({ ..., children: () => <inlined-expression> })` whenever
+ * `children` is a local `const` derived from a getter-shaped binding
+ * (`const children = childHolder.children` after `splitProps`). DOM-side
+ * consumers route through `mountChild` which already treats function
+ * children as reactive accessors, so the wrap is invisible there. Kinetic's
+ * Stagger/Group/Transition/Collapse renderers iterate `children` directly
+ * at the VNode level (to build per-child `TransitionItem`s), so a wrapped
+ * function landed in `Array.isArray(children) ? children : [children]` as
+ * `[function]` → `.filter(isVNode)` → `[]` → the rendered `<div>` had zero
+ * children → SSR content vanished post-hydration. Reproducer:
+ * `examples/bokisch.com`'s Intro section with `kinetic('div').stagger()`
+ * + `appear` + `show={() => true}` + component children → SSG HTML had
+ * `<h1>Hello</h1>`, post-hydrate the entire subtree was replaced by
+ * `<!--pyreon-->` markers.
+ *
+ * Kinetic deliberately snapshots children at render time (animation state
+ * is per-item, built once) — it does NOT observe children changes after
+ * the initial render. Eagerly unwrapping the function matches that
+ * contract; no reactivity is lost.
+ */
+export const resolveChildren = <T>(children: T | (() => T)): T =>
+  (typeof children === 'function' ? (children as () => T)() : children) as T
