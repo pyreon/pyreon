@@ -488,6 +488,69 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       }
     },
 
+    // @internal — debug accessor for tests; returns live references to
+    // the per-instance caches so `cache-eviction-on-delete.test.ts` can
+    // assert on contents. Symbol.for-keyed so it's not part of the
+    // plugin's documented surface but stays stable across reloads.
+    [Symbol.for('pyreon/vite-plugin:caches')]: {
+      signalExportRegistry,
+      resolveCache,
+      pyreonWorkspaceDirCache,
+      islandRegistry,
+    },
+
+    // ── Cache invalidation on file delete (long-running `vite dev`) ─────
+    // Vite's `watchChange` hook fires on filesystem events for files in
+    // the watched module graph. Without this, the four per-instance
+    // caches (`signalExportRegistry`, `resolveCache`, `islandRegistry`,
+    // `pyreonWorkspaceDirCache`) accumulated stale entries for the
+    // entire lifetime of the dev server — a long `vite dev` session
+    // that edited / renamed / deleted source files would grow each
+    // cache by one entry per dead file. Bounded by total source tree
+    // size in practice, but a real leak over hours of editing.
+    //
+    // `'create' | 'update'` events are handled implicitly by the
+    // existing transform-time `scanSignalExports` /
+    // `scanIslandDeclarations` calls — they re-populate the registry
+    // every time a file's `transform` hook fires, overwriting any
+    // stale entry. So watchChange only needs to handle `'delete'`.
+    watchChange(id: string, change: { event: 'create' | 'update' | 'delete' }) {
+      if (change.event !== 'delete') return
+
+      const normalized = normalizeModuleId(id)
+
+      // 1) signalExportRegistry — keyed by normalized module id.
+      signalExportRegistry.delete(normalized)
+
+      // 2) islandRegistry — keyed by absolute source path of the
+      //    declaration site (the original `id`, not normalized).
+      islandRegistry.delete(id)
+      // Also try the normalized form just in case the registry was
+      // populated with a slightly different shape.
+      if (normalized !== id) islandRegistry.delete(normalized)
+
+      // 3) resolveCache — keyed by `${importer}::${source}` where
+      //    `importer` is normalized AND values can be the deleted
+      //    file's resolved path. Sweep both directions:
+      //    a) entries WHERE the deleted file is the importer (this
+      //       file's resolved imports are no longer relevant).
+      //    b) entries WHERE the deleted file is the resolved value
+      //       (other files importing the deleted file need to
+      //       re-resolve so they see `null` next time).
+      const importerPrefix = `${normalized}::`
+      for (const [key, value] of resolveCache) {
+        if (key.startsWith(importerPrefix) || value === normalized) {
+          resolveCache.delete(key)
+        }
+      }
+
+      // 4) pyreonWorkspaceDirCache — keyed by DIRECTORY, not file. A
+      //    single file deletion doesn't invalidate the directory's
+      //    workspace status (other files may still live there), so
+      //    this cache stays. Bounded by source-tree directory count
+      //    in any case (small + finite).
+    },
+
     // Tear down the one programmatic Vite SSR server the collapse
     // resolver holds (created lazily on first client-graph transform).
     async closeBundle() {
