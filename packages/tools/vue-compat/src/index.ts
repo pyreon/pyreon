@@ -28,11 +28,11 @@ import {
   onMount,
   onUnmount,
   onUpdate,
-  popContext,
   Portal,
   pushContext,
   h as pyreonH,
   Suspense as PyreonSuspense,
+  removeContextFrame,
   useContext,
 } from '@pyreon/core'
 import {
@@ -885,8 +885,16 @@ export function provide<T>(key: string | symbol, value: T): void {
     if (idx < ctx.hooks.length) return // Already provided
     ctx.hooks[idx] = true
     const vueCtx = getOrCreateContext<T>(key)
-    pushContext(new Map([[vueCtx.id, value]]))
-    ctx.unmountCallbacks.push(() => popContext())
+    // Identity-based push/pop pair — capture the frame reference at push
+    // time, remove it by identity (not position) on unmount. Position-based
+    // `popContext()` here would pop the WRONG frame whenever sibling
+    // components unmount out-of-order (renderer-driven `<For>` removal,
+    // `<Show>` flipping a non-last sibling, route nav unmounting an outer
+    // of nested provider chains). Same root cause + same fix shape as
+    // `@pyreon/core` #725's `provide()` and #729's `_errorBoundaryStack`.
+    const frame = new Map([[vueCtx.id, value]])
+    pushContext(frame)
+    ctx.unmountCallbacks.push(() => removeContextFrame(frame))
     return
   }
   // Outside component — use Pyreon's provide directly
@@ -1070,13 +1078,32 @@ export function createApp(component: ComponentFn, props?: Props): App {
       if (!container) {
         throw new Error(`Cannot find mount target: ${el}`)
       }
-      // Push app-level provisions before mounting
+      // Push app-level provisions before mounting AND track each pushed
+      // frame so the returned unmount callback can remove them by IDENTITY.
+      // Pre-fix the pushes were unmatched — every `createApp(...).provide(k,v).mount(el)`
+      // call leaked one Map reference per provision onto the global context
+      // stack permanently. Mount/unmount cycles compound this.
+      const pushedFrames: Map<symbol, unknown>[] = []
       for (const { key, value } of provisions) {
         const ctx = getOrCreateContext(key)
-        pushContext(new Map([[ctx.id, value]]))
+        const frame = new Map([[ctx.id, value]])
+        pushContext(frame)
+        pushedFrames.push(frame)
       }
       const vnode = pyreonH(component, props ?? null)
-      return pyreonMount(vnode, container)
+      const unmount = pyreonMount(vnode, container)
+      return () => {
+        unmount()
+        // Remove app-level provisions by identity (reverse order to match
+        // LIFO push order if the same frame ref appears multiple times,
+        // though that's structurally impossible here — each frame is a
+        // fresh Map). Identity-based so other mounts pushing in between
+        // can't accidentally remove our frames or have theirs removed.
+        for (let i = pushedFrames.length - 1; i >= 0; i--) {
+          const frame = pushedFrames[i]
+          if (frame) removeContextFrame(frame)
+        }
+      }
     },
     use(plugin: { install: (app: App) => void }): App {
       plugin.install(app)

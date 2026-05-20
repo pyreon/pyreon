@@ -105,7 +105,7 @@ export function popContext() {
  * with that exact reference, so `provide(ctx, a); provide(ctx, b)` followed
  * by two unmounts removes them in reverse order.
  */
-function removeContextFrame(frame: Map<symbol, unknown>): void {
+export function removeContextFrame(frame: Map<symbol, unknown>): void {
   const stack = getStack()
   const idx = stack.lastIndexOf(frame)
   if (idx !== -1) stack.splice(idx, 1)
