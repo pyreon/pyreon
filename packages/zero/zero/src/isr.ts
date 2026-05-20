@@ -88,6 +88,14 @@ export function createISRHandler(
     if (revalidating.has(key)) return
     revalidating.add(key)
 
+    // Hold the timer id outside try/Promise.race so the finally block
+    // can `clearTimeout` it on the SUCCESS path. Pre-fix the rejection
+    // setTimeout was left pending until REVALIDATE_TIMEOUT_MS (default
+    // 30s) every time `handler(req)` won the race — i.e. every
+    // successful revalidation. Under sustained traffic this accumulates
+    // hundreds of pending timer closures + rejection callbacks before
+    // they self-clear.
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
     try {
       // Forward the original request shape (headers + method) so the
       // re-render sees the same auth context as the user's read.
@@ -99,12 +107,12 @@ export function createISRHandler(
       // `revalidating` forever (which would freeze the entry stale).
       const res = await Promise.race([
         handler(req),
-        new Promise<never>((_, reject) =>
-          setTimeout(
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(
             () => reject(new Error('[Pyreon ISR] revalidation timeout')),
             REVALIDATE_TIMEOUT_MS,
-          ),
-        ),
+          )
+        }),
       ])
       // Never overwrite a good stale entry with a bad re-render
       // (5xx/3xx) or poison it with a Set-Cookie response.
@@ -119,6 +127,7 @@ export function createISRHandler(
     } catch {
       // Revalidation failed / timed out — stale cache entry remains valid
     } finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId)
       revalidating.delete(key)
     }
   }

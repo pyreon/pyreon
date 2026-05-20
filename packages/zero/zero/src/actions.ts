@@ -33,6 +33,21 @@ export interface Action<T = unknown> {
 
 // ─── Registry ────────────────────────────────────────────────────────────────
 
+/**
+ * Module-level registry of every `defineAction()` call. Lookup is by the
+ * `action_<uuid>` string the client sends in `POST /_zero/actions/<id>`.
+ *
+ * **HMR caveat (dev-only):** the registry uses fresh `crypto.randomUUID()`
+ * per `defineAction()` invocation. When Vite hot-replaces a module that
+ * calls `defineAction()`, the module re-runs and a NEW entry is inserted
+ * — the OLD entry stays in the Map until the dev process exits. Each
+ * entry holds `{ id, handler }` (~80 bytes). Bounded by the count of
+ * distinct UUIDs minted in the session; a realistic dev session sees
+ * <50 entries, so total dev-memory cost stays under ~5KB. Production
+ * registers each module exactly once at startup — no leak. A
+ * FinalizationRegistry-based purge is tracked as a follow-up; the
+ * current cost is too small to justify the WeakRef/finalizer complexity.
+ */
 const actionRegistry = new Map<string, RegisteredAction>()
 
 /**
