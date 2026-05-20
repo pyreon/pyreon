@@ -31,7 +31,7 @@
   "@pyreon/preact-compat": 1024,
   "@pyreon/query": 3840,
   "@pyreon/react-compat": 3584,
-  "@pyreon/reactivity": 6656,
+  "@pyreon/reactivity": 7168,
   "@pyreon/rocketstyle": 5376,
   "@pyreon/router": 11776,
   "@pyreon/runtime-dom": 15360,

@@ -169,19 +169,57 @@ export interface LPIHCacheFile {
 }
 
 /**
- * Read + parse the LPIH cache file. Returns null on any error
- * (file missing, JSON malformed, shape unexpected). Silent failure is
- * the right call — the cache is opportunistic enrichment, not a
- * load-bearing dependency.
+ * Hard cap on cache file size. A well-formed cache for a typical app is
+ * <100 KB (one entry per signal/computed/effect, ~80 bytes each, real
+ * apps have <1000 reactive primitives). 1 MB is ~10× headroom for the
+ * largest realistic app. Larger files are treated as malformed —
+ * prevents pathological cases (corrupted cache, malicious file, or
+ * a bug-generated runaway append) from blocking the LSP on a giant read.
+ *
+ * @internal — exported for tests + tunability.
+ */
+export const _LPIH_CACHE_MAX_BYTES = 1024 * 1024
+
+/**
+ * Hide hints whose fire data is older than this. If the user killed
+ * the dev server but the cache file remains, the LSP would otherwise
+ * keep showing yesterday's fire counts as if they were live. After
+ * this threshold elapses since the latest `lastFire`, we suppress the
+ * hints — silence is more honest than stale data.
+ *
+ * 5 minutes balances: short enough to clear quickly after dev session
+ * ends; long enough to survive normal idle periods (deep work, breaks).
+ *
+ * @internal — exported for tests + tunability.
+ */
+export const _LPIH_STALE_AFTER_MS = 5 * 60 * 1000
+
+/**
+ * Read + parse the LPIH cache file. Returns [] on any error
+ * (file missing, JSON malformed, shape unexpected, file too large).
+ * Silent failure is the right call — the cache is opportunistic
+ * enrichment, not a load-bearing dependency.
+ *
+ * Defensive limits:
+ *  - File size capped at `_LPIH_CACHE_MAX_BYTES` (1 MB); larger files
+ *    are rejected wholesale rather than parsed.
+ *  - Stale entries (where `lastFire` is older than
+ *    `_LPIH_STALE_AFTER_MS`) are filtered out so a dev-server-killed
+ *    stale cache stops showing yesterday's counts.
  *
  * @internal — exported for tests.
  */
 export async function _readLpihCache(
   path: string | undefined,
+  /** Override "now" for deterministic stale-filter tests. */
+  now: () => number = () => Date.now(),
 ): Promise<LPIHCacheEntry[]> {
   if (!path) return []
   try {
     const fs = await import('node:fs/promises')
+    // Stat first — bail before reading if the file is implausibly large.
+    const stat = await fs.stat(path)
+    if (stat.size > _LPIH_CACHE_MAX_BYTES) return []
     const raw = await fs.readFile(path, 'utf8')
     const parsed = JSON.parse(raw) as unknown
     if (
@@ -199,9 +237,40 @@ export async function _readLpihCache(
         typeof (f as LPIHCacheEntry).line === 'number' &&
         typeof (f as LPIHCacheEntry).count === 'number',
     )
+    // Stale-data filter. `lastFire` is `performance.now()` which is
+    // process-relative — comparing to Date.now() would be wrong. Instead
+    // we approximate "stale" by checking the FILE's mtime: if the cache
+    // file hasn't been re-written in `_LPIH_STALE_AFTER_MS`, the dev
+    // server is silent and the data should be treated as historical.
+    const fileAgeMs = now() - stat.mtimeMs
+    if (fileAgeMs > _LPIH_STALE_AFTER_MS) return []
     return fires
   } catch {
     return []
+  }
+}
+
+/**
+ * Convert a `file://` URI to an OS-native filesystem path. Handles the
+ * Windows trap where `file:///C:/path` → `/C:/path` would be wrong
+ * (correct: `C:\path` or `C:/path` depending on platform).
+ *
+ * Falls back to a simple `replace('file://', '')` if `URL.fileURLToPath`
+ * isn't available (very old environments).
+ *
+ * @internal — exported for tests.
+ */
+export function _uriToFilePath(uri: string): string {
+  if (!uri.startsWith('file://')) return uri
+  try {
+    // node:url's fileURLToPath handles Windows + percent-encoding correctly.
+    // Available in Bun + every Node version Pyreon supports. The require()
+    // bridge is needed because LSP runs in CJS context in some hosts (and
+    // top-level await isn't allowed in helper functions).
+    const decoded = decodeURIComponent(new URL(uri).pathname)
+    return decoded.replace(/^\/([A-Za-z]:)/, '$1')
+  } catch {
+    return uri.replace('file://', '')
   }
 }
 
@@ -274,7 +343,7 @@ export async function computeReactivityHints(
 // ─── Lint a document ───────────────────────────────────────────────────────
 
 async function lintDocument(uri: string, text: string): Promise<LspDiagnostic[]> {
-  const filePath = uri.replace('file://', '')
+  const filePath = _uriToFilePath(uri)
   let lintDiags: LspDiagnostic[] = []
   try {
     const result = lintFile(filePath, text, allRules, config, cache)
@@ -375,7 +444,7 @@ export function _handleMessage(
     if (text == null) {
       return { jsonrpc: '2.0', id: msg.id, result: [] }
     }
-    const filePath = uri.replace('file://', '')
+    const filePath = _uriToFilePath(uri)
     // LPIH cache file is configured via env var. Re-read on every request
     // so live-edit + dev-server roundtrips reflect immediately. Read first,
     // then compute hints once with the fires in hand — no double-pass.

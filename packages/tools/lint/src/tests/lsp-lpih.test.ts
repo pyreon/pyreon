@@ -11,14 +11,17 @@
  * `live hints render with 🔥 prefix at creation line` to fail with
  * "expected 0 hints to be > 0".
  */
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  _LPIH_CACHE_MAX_BYTES,
+  _LPIH_STALE_AFTER_MS,
   _handleMessage,
   _readLpihCache,
   _resetOpenDocuments,
+  _uriToFilePath,
   computeReactivityHints,
 } from '../lsp/index'
 
@@ -170,6 +173,111 @@ describe('computeReactivityHints with liveFires', () => {
       },
     )
     expect(inlayHints.some((h) => h.label.includes('🔥'))).toBe(false)
+  })
+})
+
+describe('LPIH defensive limits', () => {
+  it('rejects cache files larger than _LPIH_CACHE_MAX_BYTES', async () => {
+    // Build a payload that EXCEEDS the limit. We need to write a file
+    // whose stat.size > _LPIH_CACHE_MAX_BYTES (1 MB by default).
+    const oversized = JSON.stringify({
+      fires: Array.from({ length: 200_000 }, (_, i) => ({
+        file: '/abs/very/long/path/that/inflates/the/file/size.tsx',
+        line: i + 1,
+        count: i,
+        kind: 'signal',
+      })),
+    })
+    expect(oversized.length).toBeGreaterThan(_LPIH_CACHE_MAX_BYTES)
+    writeFileSync(CACHE_PATH, oversized, 'utf8')
+    const fires = await _readLpihCache(CACHE_PATH)
+    expect(fires).toEqual([])
+  })
+
+  it('accepts cache files at the limit', async () => {
+    // Just under the limit. Should parse normally.
+    writeFileSync(
+      CACHE_PATH,
+      JSON.stringify({
+        fires: [
+          { file: '/abs/app.tsx', line: 1, count: 5, kind: 'signal' },
+        ],
+      }),
+      'utf8',
+    )
+    const fires = await _readLpihCache(CACHE_PATH)
+    expect(fires).toHaveLength(1)
+  })
+
+  it('returns [] when cache file is older than _LPIH_STALE_AFTER_MS', async () => {
+    writeFileSync(
+      CACHE_PATH,
+      JSON.stringify({
+        fires: [
+          { file: '/abs/app.tsx', line: 1, count: 100, kind: 'signal' },
+        ],
+      }),
+      'utf8',
+    )
+    // Set mtime to 10 minutes ago (well past the 5-minute threshold).
+    const tenMinutesAgo = (Date.now() - 10 * 60 * 1000) / 1000
+    utimesSync(CACHE_PATH, tenMinutesAgo, tenMinutesAgo)
+    const fires = await _readLpihCache(CACHE_PATH)
+    expect(fires).toEqual([])
+  })
+
+  it('accepts fresh cache files within the stale threshold', async () => {
+    writeFileSync(
+      CACHE_PATH,
+      JSON.stringify({
+        fires: [
+          { file: '/abs/app.tsx', line: 1, count: 100, kind: 'signal' },
+        ],
+      }),
+      'utf8',
+    )
+    // mtime is current (writeFileSync just set it).
+    const fires = await _readLpihCache(CACHE_PATH)
+    expect(fires).toHaveLength(1)
+  })
+
+  it('honors injected now() for deterministic stale-filter tests', async () => {
+    writeFileSync(
+      CACHE_PATH,
+      JSON.stringify({
+        fires: [
+          { file: '/abs/app.tsx', line: 1, count: 5, kind: 'signal' },
+        ],
+      }),
+      'utf8',
+    )
+    // Simulate "now" 100 hours in the future — file appears very stale.
+    const futureNow = (): number => Date.now() + 100 * 60 * 60 * 1000
+    const fires = await _readLpihCache(CACHE_PATH, futureNow)
+    expect(fires).toEqual([])
+  })
+})
+
+describe('_uriToFilePath — cross-platform file:// handling', () => {
+  it('strips file:// for POSIX paths', () => {
+    expect(_uriToFilePath('file:///Users/x/proj/app.tsx')).toBe('/Users/x/proj/app.tsx')
+  })
+
+  it('strips file:// + leading slash for Windows paths', () => {
+    // node:url's fileURLToPath returns /C:/proj/app.tsx for file:///C:/proj/app.tsx
+    // The regex strips the leading / before the drive letter.
+    expect(_uriToFilePath('file:///C:/proj/app.tsx')).toBe('C:/proj/app.tsx')
+  })
+
+  it('passes non-file:// URIs through unchanged', () => {
+    expect(_uriToFilePath('/abs/path/app.tsx')).toBe('/abs/path/app.tsx')
+    expect(_uriToFilePath('workspace://app.tsx')).toBe('workspace://app.tsx')
+  })
+
+  it('handles percent-encoded paths', () => {
+    expect(_uriToFilePath('file:///Users/with%20space/app.tsx')).toBe(
+      '/Users/with space/app.tsx',
+    )
   })
 })
 
