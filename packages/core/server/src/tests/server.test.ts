@@ -391,6 +391,44 @@ describe('createHandler — stream mode', () => {
     expect(res.status).toBe(403)
     expect(await res.text()).toBe('blocked')
   })
+
+  test('stream mode threads request.signal through to renderToStream — upstream abort skips post-resolve Suspense enqueue', async () => {
+    // End-to-end gate for the AbortSignal wire. `renderToStream` gained
+    // `{ signal }` support in #745; this test proves `createHandler`
+    // actually forwards `req.signal` through so an abort from the
+    // outer Request (client disconnect, request timeout) propagates
+    // into the streaming render. Without the forward, the in-flight
+    // Suspense boundary would still enqueue its resolved HTML even
+    // after the consumer hung up — wasted work + cancel-resistant
+    // leaks under load.
+    const { Suspense } = await import('@pyreon/core')
+    async function Slow() {
+      await new Promise<void>((r) => setTimeout(r, 50))
+      return h('div', null, 'loaded-too-late')
+    }
+    const App: ComponentFn = () =>
+      h(Suspense, {
+        fallback: h('span', null, 'loading-shown'),
+        children: h(Slow as unknown as ComponentFn, null),
+      })
+    const routes = [{ path: '/', component: App }]
+    const handler = createHandler({ App, routes, mode: 'stream' })
+
+    const ac = new AbortController()
+    const res = await handler(new Request('http://localhost/', { signal: ac.signal }))
+    // Abort BEFORE the 50ms Suspense boundary resolves. The fallback
+    // streams synchronously (well before this fires).
+    setTimeout(() => ac.abort(), 5)
+
+    const html = await res.text()
+    // Fallback was emitted before the abort fired.
+    expect(html).toContain('loading-shown')
+    // Post-resolve enqueue MUST be skipped — the resolved content +
+    // its swap-script call never landed because the signal aborted
+    // before the Suspense boundary's 50ms timer fired.
+    expect(html).not.toContain('loaded-too-late')
+    expect(html).not.toMatch(/__NS\(\s*["']pyreon-s-/)
+  })
 })
 
 // ─── Middleware ───────────────────────────────────────────────────────────────

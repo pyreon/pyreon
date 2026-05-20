@@ -144,7 +144,20 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
         const app = h(RouterProvider, { router }, h(App, null))
 
         if (mode === 'stream') {
-          return renderStreamResponse(app, router, compiled, clientEntryTag, ctx.headers)
+          // Pass through `req.signal` so an upstream abort (client disconnect,
+          // request timeout, parent AbortController) propagates into the
+          // streaming render: pending Suspense boundaries are cancelled and
+          // their post-resolve enqueues are skipped instead of buffering work
+          // for a consumer that already hung up. Closes the AbortSignal wire
+          // end-to-end (renderToStream gained `{ signal }` in #745).
+          return renderStreamResponse(
+            app,
+            router,
+            compiled,
+            clientEntryTag,
+            ctx.headers,
+            req.signal,
+          )
         }
 
         // ── String mode (default) ─────────────────────────────────────────────
@@ -205,6 +218,7 @@ async function renderStreamResponse(
   compiled: CompiledTemplate,
   clientEntryTag: string,
   extraHeaders: Headers,
+  signal?: AbortSignal,
 ): Promise<Response> {
   const loaderData = serializeLoaderData(router as never)
   const scripts = buildScriptsFast(clientEntryTag, loaderData)
@@ -214,7 +228,11 @@ async function renderStreamResponse(
   const shellHead = p0 + p1
   const shellTail = p2 + scripts + p3
 
-  const appStream = renderToStream(app)
+  // Forward the upstream request's abort signal so renderToStream can skip
+  // post-resolve Suspense enqueues when the consumer disconnects.
+  const appStream = signal !== undefined
+    ? renderToStream(app, { signal })
+    : renderToStream(app)
   const reader = appStream.getReader()
 
   const stream = new ReadableStream<Uint8Array>({
