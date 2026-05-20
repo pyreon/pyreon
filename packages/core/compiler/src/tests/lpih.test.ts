@@ -319,3 +319,86 @@ describe('end-to-end — analyzeReactivity + merge', () => {
     expect(afterFootgun?.detail).toBe(footgun?.detail) // unchanged
   })
 })
+
+describe('rate1s — label formatting', () => {
+  it('omits rate when below threshold (dormant)', () => {
+    const findings = [finding('reactive', 5, 'live')]
+    const out = mergeFireDataIntoFindings(
+      findings,
+      [{ file: 'app.tsx', line: 5, count: 100, kind: 'signal', rate1s: 0.1 }],
+      'app.tsx',
+    )
+    expect(out[0]?.detail).toBe('live — signal fired 100×')
+    expect(out[0]?.detail).not.toContain('/s')
+  })
+
+  it('omits rate when undefined (older runtime / no field)', () => {
+    const findings = [finding('reactive', 5, 'live')]
+    const out = mergeFireDataIntoFindings(
+      findings,
+      [{ file: 'app.tsx', line: 5, count: 100, kind: 'signal' }],
+      'app.tsx',
+    )
+    expect(out[0]?.detail).toBe('live — signal fired 100×')
+  })
+
+  it('includes 1-decimal rate when above threshold and < 10/s', () => {
+    const findings = [finding('reactive', 5, 'live')]
+    const out = mergeFireDataIntoFindings(
+      findings,
+      [{ file: 'app.tsx', line: 5, count: 100, kind: 'signal', rate1s: 3.7 }],
+      'app.tsx',
+    )
+    expect(out[0]?.detail).toBe('live — signal fired 100× (3.7/s)')
+  })
+
+  it('rounds rate to integer at >= 10/s', () => {
+    const findings = [finding('reactive', 5, 'live')]
+    const out = mergeFireDataIntoFindings(
+      findings,
+      [{ file: 'app.tsx', line: 5, count: 1000, kind: 'signal', rate1s: 47.3 }],
+      'app.tsx',
+    )
+    expect(out[0]?.detail).toBe('live — signal fired 1000× (47/s)')
+  })
+
+  it('firesToCreationSiteFindings respects rate1s in label', () => {
+    const out = firesToCreationSiteFindings(
+      [
+        { file: 'app.tsx', line: 5, count: 50, kind: 'signal', rate1s: 5.2 },
+        { file: 'app.tsx', line: 8, count: 100, kind: 'effect', rate1s: 0.0 },
+      ],
+      'app.tsx',
+    )
+    expect(out).toHaveLength(2)
+    expect(out[0]?.detail).toBe('signal fired 50× (5.2/s)')
+    expect(out[1]?.detail).toBe('effect fired 100×')
+  })
+
+  it('sums rates when multiple fires share the same line', () => {
+    const findings = [finding('reactive', 5, 'live')]
+    const out = mergeFireDataIntoFindings(
+      findings,
+      [
+        { file: 'app.tsx', line: 5, count: 30, kind: 'signal', rate1s: 2.0 },
+        { file: 'app.tsx', line: 5, count: 20, kind: 'signal', rate1s: 3.5 },
+      ],
+      'app.tsx',
+    )
+    expect(out[0]?.detail).toBe('live — signal fired 50× (5.5/s)')
+  })
+
+  it('custom formatDetail receives rate1s in the fire object', () => {
+    const findings = [finding('reactive', 5, 'live')]
+    const out = mergeFireDataIntoFindings(
+      findings,
+      [{ file: 'app.tsx', line: 5, count: 100, kind: 'signal', rate1s: 7.5 }],
+      'app.tsx',
+      {
+        formatDetail: (d, f) =>
+          `${d} [rate=${f.rate1s?.toFixed(1) ?? 'n/a'}]`,
+      },
+    )
+    expect(out[0]?.detail).toBe('live [rate=7.5]')
+  })
+})

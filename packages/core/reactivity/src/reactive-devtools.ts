@@ -101,7 +101,31 @@ export interface FireSummary {
   lastFire: number | null
   /** Node kind that fired most recently at this location. */
   kind: ReactiveNodeKind
+  /**
+   * Exponentially-weighted moving average of the fire rate at this
+   * location, in fires per second. Decayed to "now" at read time so a
+   * node that stopped firing N seconds ago shows a rate that's
+   * exponentially smaller than its steady-state value.
+   *
+   * Calculation uses a 1-second time constant (`LPIH_RATE_TAU_MS`):
+   * - On each fire: `r = r * exp(-dt/TAU) + 1`
+   *   - Steady state at λ fires/sec converges to ≈ λ (when λ × TAU ≫ 1)
+   * - On read: `r_now = r * exp(-dt_since_last/TAU)`
+   *
+   * 0 when there have been no fires (or all fires were >>TAU ago).
+   */
+  rate1s: number
 }
+
+/**
+ * Time constant for the rate1s EWMA (milliseconds). Tuned for the "hot
+ * path debugging" use case: a 1-second time constant means a burst of
+ * fires shows up immediately, then decays to 1/e (~0.37×) after one
+ * second of silence, ~5% after 3 seconds, ~0.7% after 5 seconds.
+ *
+ * @internal — exported for tests + tunability.
+ */
+export const LPIH_RATE_TAU_MS = 1000
 
 // ── Internal node record ─────────────────────────────────────────────────
 
@@ -117,6 +141,11 @@ interface NodeRec {
   lastFire: number | null
   /** Source location captured at registration. Undefined if stack parse failed. */
   loc?: SourceLocation | undefined
+  /**
+   * EWMA-tracked fire rate (~fires/sec, 1s time constant). Updated on
+   * every fire; decayed to "now" at read time. See `FireSummary.rate1s`.
+   */
+  rate1s: number
 }
 
 let _active = false
@@ -290,6 +319,7 @@ export function _rdRegister(
     fires: 0,
     lastFire: null,
     loc,
+    rate1s: 0,
   })
   if (sub) _subId.set(sub, id)
   _finalizer.register(node, id)
@@ -323,6 +353,20 @@ export function _rdRecordFire(node: object): void {
       : Date.now()
   if (rec) {
     rec.fires++
+    // EWMA rate update — decay the prior estimate by exp(-dt/TAU), then
+    // add 1 for this fire. At steady state of λ fires/sec, rate1s
+    // converges to ≈ λ when λ·TAU ≫ 1. For TAU=1000ms, that means
+    // "fires per second" in the natural sense.
+    if (rec.lastFire !== null) {
+      const dt = ts - rec.lastFire
+      const decay = Math.exp(-dt / LPIH_RATE_TAU_MS)
+      rec.rate1s = rec.rate1s * decay + 1
+    } else {
+      // First-ever fire: a single isolated fire reads as "1 fire/s" until
+      // the decay-at-read brings it down. Caller can interpret 1.0 as
+      // "at least one recent fire."
+      rec.rate1s = 1
+    }
     rec.lastFire = ts
   }
   if (_fireBuf === null) _fireBuf = new Array<ReactiveFire>(FIRE_CAP)
@@ -391,13 +435,30 @@ export function getReactiveGraph(): ReactiveGraph {
  */
 export function getFireSummaries(): FireSummary[] {
   const byKey = new Map<string, FireSummary>()
+  // Snapshot "now" once per call — decay-at-read uses a consistent timestamp
+  // for all nodes, so two locations firing at the same rate show the same
+  // rate1s value even if iteration walks them in different orders.
+  const nowTs =
+    typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now()
   for (const rec of _byId.values()) {
     if (!rec.loc) continue
     if (!rec.ref.deref()) continue
     const k = `${rec.loc.file}:${rec.loc.line}:${rec.loc.col}`
+    // Decay rate1s to "now" — a node that hasn't fired in 5×TAU shows
+    // ≈0.7% of its steady-state rate; in 10×TAU, basically 0. This is
+    // what makes "stopped firing" visible in the editor.
+    const decayedRate =
+      rec.lastFire !== null
+        ? rec.rate1s * Math.exp(-(nowTs - rec.lastFire) / LPIH_RATE_TAU_MS)
+        : 0
     const existing = byKey.get(k)
     if (existing) {
       existing.count += rec.fires
+      // Sum rates at same location (e.g. two distinct signals on one
+      // line via destructuring). Latest-fire wins for kind / lastFire.
+      existing.rate1s += decayedRate
       if (
         rec.lastFire !== null &&
         (existing.lastFire === null || rec.lastFire > existing.lastFire)
@@ -411,6 +472,7 @@ export function getFireSummaries(): FireSummary[] {
         count: rec.fires,
         lastFire: rec.lastFire,
         kind: rec.kind,
+        rate1s: decayedRate,
       })
     }
   }

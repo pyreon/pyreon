@@ -9,12 +9,14 @@ LPIH surfaces **live runtime data at the source line** in your editor — signal
 
 ```tsx
 function App() {
-  const count = signal(0)             // 🔥 signal fired 240×
-  const doubled = computed(() => count() * 2)  // 🔥 derived fired 240×
-  effect(() => console.log(doubled()))         // 🔥 effect fired 241×
+  const count = signal(0)             // 🔥 signal fired 240× (12/s)
+  const doubled = computed(() => count() * 2)  // 🔥 derived fired 240× (12/s)
+  effect(() => console.log(doubled()))         // 🔥 effect fired 241× (12/s)
   return <div>{count()}</div>
 }
 ```
+
+Hints show both **cumulative count** and **current rate** (fires per second, decayed over a 1-second window). The rate makes hot-path debugging visible at a glance — "is this firing right now, or did it fire a lot a while ago?" The cumulative count makes before/after comparisons easy. When a node has been idle for a few seconds, the rate suffix disappears and only the count remains.
 
 **No editor today shows live runtime data at source lines** for any reactive framework. The data exists in DevTools, but accessing it requires context-switching from the editor to a separate panel. LPIH closes that gap.
 

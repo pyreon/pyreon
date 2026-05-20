@@ -161,6 +161,8 @@ export interface LPIHCacheEntry {
   count: number
   kind?: 'signal' | 'derived' | 'effect'
   lastFire?: number | null
+  /** EWMA fire rate (fires/sec). 0 when dormant. See FireSummary.rate1s. */
+  rate1s?: number
 }
 
 /** @internal — readable shape of the LPIH cache file. */
