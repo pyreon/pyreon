@@ -966,3 +966,379 @@ describe('bun adapter — runtime contract', () => {
   // proves the load-bearing fix (resolveSync ENOENT no longer 500s
   // every SSR route).
 })
+
+// ─── Node adapter — runtime contract (spawn-and-curl) ────────────────────────
+//
+// Second adapter to gain a runtime-contract gate (after bun, PR #752). Same
+// proven shape: spawn the emitted entry as a subprocess, drive real HTTP
+// requests, assert on responses. Node is already in CI so no extra install
+// is required — `node` is in PATH.
+//
+// The audit pass that drove this PR found TWO real bugs the existing
+// shape-only tests couldn't reach:
+//
+//   1. `GET /` falls through to SSR instead of serving the static
+//      `index.html` — the emitted harness maps `/` → `index.html` in the
+//      filePath builder, but then the next gate `if (ext && ext !== ".html")`
+//      excludes `.html` files, so the static branch never serves them.
+//      The intent (map `/` to root index) and the gate (refuse to serve
+//      HTML) are contradictory.
+//   2. `mode: 'stream'` is silently defeated — the emitted harness calls
+//      `await response.text()` to buffer the FULL SSR response body before
+//      writing it to the client socket. Suspense chunks queue up server-side
+//      and arrive at the client all at once at the end — strictly worse
+//      than `mode: 'string'` because the buffering happens twice.
+//
+// The runtime-contract tests fail against the broken harness, pass against
+// the fixed harness. Bisect-verified per the testing rule.
+
+describe('node adapter — runtime contract', () => {
+  // node is always in PATH inside the monorepo's bun runtime — but bun
+  // technically allows spawning without it. We resolve explicitly to
+  // surface a clear skip reason if it's missing.
+  function findNodeBin(): string | null {
+    const { execSync } = require('node:child_process') as typeof import('node:child_process')
+    try {
+      const path = execSync('which node', { encoding: 'utf-8' }).trim()
+      return path || null
+    } catch {
+      return null
+    }
+  }
+  const NODE_BIN = findNodeBin()
+  const hasNode = NODE_BIN !== null
+
+  async function pickFreePort(): Promise<number> {
+    const { createServer } = await import('node:net')
+    return new Promise<number>((resolve, reject) => {
+      const srv = createServer()
+      srv.unref()
+      srv.on('error', reject)
+      srv.listen(0, () => {
+        const addr = srv.address()
+        if (addr && typeof addr === 'object') {
+          const port = addr.port
+          srv.close(() => resolve(port))
+        } else {
+          srv.close(() => reject(new Error('Could not pick free port')))
+        }
+      })
+    })
+  }
+
+  // Spawn `node <entry>` and poll for readiness. Mirrors startBunServer
+  // exactly — runtime-agnostic shape (the only difference is the binary).
+  async function startNodeServer(entryPath: string, port: number) {
+    if (!hasNode) throw new Error('node binary not found in PATH')
+    const { spawn } = await import('node:child_process')
+    const proc = spawn(NODE_BIN!, [entryPath], {
+      env: { ...process.env, NODE_ENV: 'production' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    let stdoutBuf = ''
+    let stderrBuf = ''
+    proc.stdout?.on('data', (chunk) => {
+      stdoutBuf += String(chunk)
+    })
+    proc.stderr?.on('data', (chunk) => {
+      stderrBuf += String(chunk)
+    })
+
+    const TIMEOUT_MS = 10000
+    const start = Date.now()
+    let started = false
+    while (Date.now() - start < TIMEOUT_MS) {
+      if (proc.exitCode !== null) {
+        throw new Error(
+          `Node process exited prematurely with code ${proc.exitCode}\nstdout:\n${stdoutBuf}\nstderr:\n${stderrBuf}`,
+        )
+      }
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/__ping__`, {
+          signal: AbortSignal.timeout(200),
+        })
+        void res
+        started = true
+        break
+      } catch {
+        await new Promise((r) => setTimeout(r, 50))
+      }
+    }
+    if (!started) {
+      proc.kill('SIGKILL')
+      throw new Error(
+        `Node server failed to start within ${TIMEOUT_MS}ms\nstdout:\n${stdoutBuf}\nstderr:\n${stderrBuf}`,
+      )
+    }
+
+    return async function stop() {
+      proc.kill('SIGTERM')
+      const exited = await Promise.race([
+        new Promise<number>((r) => proc.once('exit', (c) => r(c ?? 0))),
+        new Promise<number>((r) => setTimeout(() => r(-1), 1000)),
+      ])
+      if (exited === -1) proc.kill('SIGKILL')
+    }
+  }
+
+  it.skipIf(!hasNode)(
+    'emitted entry boots — SSR fallback returns handler response for non-static paths',
+    async () => {
+      await setupMockBuild()
+      const outDir = join(TMP, 'node-runtime-ssr')
+      const port = await pickFreePort()
+      const adapter = nodeAdapter()
+      await adapter.build({
+        kind: 'ssr',
+        serverEntry: join(MOCK_SERVER, 'entry-server.js'),
+        clientOutDir: MOCK_CLIENT,
+        outDir,
+        config: { port },
+      })
+
+      const stop = await startNodeServer(join(outDir, 'index.js'), port)
+      try {
+        // /api/anything has no matching static file → SSR handler returns "ok".
+        // Mirrors the bun gate's load-bearing assertion: non-existent paths
+        // must reach the SSR handler, not crash with a file-system error.
+        const res = await fetch(`http://127.0.0.1:${port}/api/anything`)
+        expect(res.status).toBe(200)
+        expect(await res.text()).toBe('ok')
+      } finally {
+        await stop()
+        await cleanup()
+      }
+    },
+    20000,
+  )
+
+  it.skipIf(!hasNode)(
+    'emitted entry boots — static .js file served with immutable cache-control',
+    async () => {
+      await setupMockBuild()
+      // Add a .js file to the mock client dir so the static branch has
+      // something to find. The default mock only has index.html.
+      const { writeFile } = await import('node:fs/promises')
+      await writeFile(
+        join(MOCK_CLIENT, 'app.js'),
+        'console.log("static asset")',
+      )
+
+      const outDir = join(TMP, 'node-runtime-js')
+      const port = await pickFreePort()
+      const adapter = nodeAdapter()
+      await adapter.build({
+        kind: 'ssr',
+        serverEntry: join(MOCK_SERVER, 'entry-server.js'),
+        clientOutDir: MOCK_CLIENT,
+        outDir,
+        config: { port },
+      })
+
+      const stop = await startNodeServer(join(outDir, 'index.js'), port)
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/app.js`)
+        expect(res.status).toBe(200)
+        expect(await res.text()).toBe('console.log("static asset")')
+        expect(res.headers.get('content-type')).toContain('javascript')
+        expect(res.headers.get('cache-control')).toContain('immutable')
+      } finally {
+        await stop()
+        await cleanup()
+      }
+    },
+    20000,
+  )
+
+  it.skipIf(!hasNode)(
+    'emitted entry boots — GET / serves the static index.html (NOT the SSR fallback)',
+    async () => {
+      // BUG A: the emitted harness maps `GET /` → `clientDir/index.html`
+      // in its filePath builder, but the subsequent `if (ext && ext !==
+      // ".html")` gate excludes .html files from the static branch — so
+      // the root index was never served and ALL requests for `/` fell
+      // through to the SSR handler. For a static-export-first deploy
+      // with no SSR route mounted at `/`, this returns the mock "ok"
+      // instead of the SPA shell, breaking the static-export pattern
+      // entirely.
+      await setupMockBuild()
+      const { writeFile } = await import('node:fs/promises')
+      await writeFile(
+        join(MOCK_CLIENT, 'index.html'),
+        '<html><body>STATIC INDEX HTML</body></html>',
+      )
+
+      const outDir = join(TMP, 'node-runtime-root')
+      const port = await pickFreePort()
+      const adapter = nodeAdapter()
+      await adapter.build({
+        kind: 'ssr',
+        serverEntry: join(MOCK_SERVER, 'entry-server.js'),
+        clientOutDir: MOCK_CLIENT,
+        outDir,
+        config: { port },
+      })
+
+      const stop = await startNodeServer(join(outDir, 'index.js'), port)
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/`)
+        expect(res.status).toBe(200)
+        expect(await res.text()).toContain('STATIC INDEX HTML')
+        expect(res.headers.get('content-type')).toContain('html')
+      } finally {
+        await stop()
+        await cleanup()
+      }
+    },
+    20000,
+  )
+
+  it.skipIf(!hasNode)(
+    'emitted entry boots — streamed SSR responses are NOT buffered (mode: "stream" stays streamed)',
+    async () => {
+      // BUG B: pre-fix the harness called `await response.text()` which
+      // drained the entire Response body into a string BEFORE writing it
+      // to the client. For mode: 'stream' SSR (Suspense out-of-order
+      // streaming) this collapsed every chunk into one ending burst —
+      // strictly worse than mode: 'string' because the buffering happens
+      // twice (once renderToStream collects chunks, once .text() drains
+      // them).
+      //
+      // This test uses a mock SSR entry that returns a ReadableStream
+      // emitting 3 chunks with a 150ms delay between each. With the fix
+      // (piping the stream directly to res), the client sees the first
+      // chunk well BEFORE the third chunk's delay timer fires —
+      // proving incremental delivery. Pre-fix the client gets nothing
+      // until all 3 timers have fired.
+      await setupMockBuild()
+      const { writeFile } = await import('node:fs/promises')
+      await writeFile(
+        join(MOCK_SERVER, 'entry-server.js'),
+        `export default async (req) => {
+          const encoder = new TextEncoder()
+          const stream = new ReadableStream({
+            async start(controller) {
+              controller.enqueue(encoder.encode("CHUNK-1\\n"))
+              await new Promise((r) => setTimeout(r, 150))
+              controller.enqueue(encoder.encode("CHUNK-2\\n"))
+              await new Promise((r) => setTimeout(r, 150))
+              controller.enqueue(encoder.encode("CHUNK-3\\n"))
+              controller.close()
+            }
+          })
+          return new Response(stream, {
+            status: 200,
+            headers: { "content-type": "text/plain; charset=utf-8" }
+          })
+        }`,
+      )
+
+      const outDir = join(TMP, 'node-runtime-stream')
+      const port = await pickFreePort()
+      const adapter = nodeAdapter()
+      await adapter.build({
+        kind: 'ssr',
+        serverEntry: join(MOCK_SERVER, 'entry-server.js'),
+        clientOutDir: MOCK_CLIENT,
+        outDir,
+        config: { port },
+      })
+
+      const stop = await startNodeServer(join(outDir, 'index.js'), port)
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/api/stream`)
+        expect(res.status).toBe(200)
+        expect(res.body).toBeTruthy()
+
+        // Drain chunk-by-chunk and timestamp each arrival. With the fix
+        // applied, CHUNK-1 arrives near t=0 and CHUNK-3 arrives near
+        // t=300ms. Pre-fix all 3 chunks arrive together near t=300ms
+        // because the harness buffered the whole body before writing.
+        const reader = res.body!.getReader()
+        const decoder = new TextDecoder()
+        const arrivals: Array<{ chunk: string; tMs: number }> = []
+        const start = Date.now()
+        while (true) {
+          const { value, done } = await reader.read()
+          if (done) break
+          if (value) {
+            const text = decoder.decode(value, { stream: true })
+            arrivals.push({ chunk: text, tMs: Date.now() - start })
+          }
+        }
+
+        // All 3 chunks landed eventually.
+        const allText = arrivals.map((a) => a.chunk).join('')
+        expect(allText).toContain('CHUNK-1')
+        expect(allText).toContain('CHUNK-2')
+        expect(allText).toContain('CHUNK-3')
+
+        // Find the timestamp when CHUNK-1 arrived (first occurrence).
+        const chunk1Time = arrivals.find((a) => a.chunk.includes('CHUNK-1'))?.tMs ?? -1
+        const chunk3Time = arrivals.find((a) => a.chunk.includes('CHUNK-3'))?.tMs ?? -1
+        expect(chunk1Time).toBeGreaterThanOrEqual(0)
+        expect(chunk3Time).toBeGreaterThanOrEqual(0)
+
+        // Load-bearing assertion: CHUNK-1 arrives well before CHUNK-3.
+        // Pre-fix (buffered): both arrive ~300ms after request start
+        // and the delta is ~0ms. Post-fix: CHUNK-1 arrives near t=0
+        // and CHUNK-3 near t=300ms, so the delta is ~300ms. Use
+        // 100ms as a robust floor that's well above buffered-mode
+        // noise but well below the actual delta.
+        expect(chunk3Time - chunk1Time).toBeGreaterThan(100)
+      } finally {
+        await stop()
+        await cleanup()
+      }
+    },
+    20000,
+  )
+
+  it.skipIf(!hasNode)(
+    'emitted entry boots — SSR response headers + status code are forwarded correctly',
+    async () => {
+      // Defensive regression check — the harness builds its own
+      // responseHeaders object via response.headers.forEach. A bug that
+      // dropped or rewrote headers / status here would be invisible to
+      // the existing shape-only tests. The mock handler returns 200 +
+      // text/plain; if the harness ever started overwriting these
+      // (e.g. always-200 short-circuit, hard-coded content-type) this
+      // assertion catches it.
+      await setupMockBuild()
+      const { writeFile } = await import('node:fs/promises')
+      // Replace the default mock entry with one that returns a
+      // distinctive status + headers so the test can prove forwarding.
+      await writeFile(
+        join(MOCK_SERVER, 'entry-server.js'),
+        `export default async (req) => new Response("HEADER TEST", {
+          status: 201,
+          headers: { "x-custom-header": "preserved", "content-type": "text/plain" }
+        })`,
+      )
+
+      const outDir = join(TMP, 'node-runtime-headers')
+      const port = await pickFreePort()
+      const adapter = nodeAdapter()
+      await adapter.build({
+        kind: 'ssr',
+        serverEntry: join(MOCK_SERVER, 'entry-server.js'),
+        clientOutDir: MOCK_CLIENT,
+        outDir,
+        config: { port },
+      })
+
+      const stop = await startNodeServer(join(outDir, 'index.js'), port)
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/api/anything`)
+        expect(res.status).toBe(201)
+        expect(res.headers.get('x-custom-header')).toBe('preserved')
+        expect(await res.text()).toBe('HEADER TEST')
+      } finally {
+        await stop()
+        await cleanup()
+      }
+    },
+    20000,
+  )
+})

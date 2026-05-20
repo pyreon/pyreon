@@ -60,11 +60,11 @@ const MIME_TYPES = {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost")
 
-  // Try to serve static files first
+  // Try to serve static files first (GET only).
   if (req.method === "GET") {
     try {
       const filePath = join(clientDir, url.pathname === "/" ? "index.html" : url.pathname)
-      // Prevent path traversal — ensure resolved path stays within clientDir
+      // Prevent path traversal — ensure resolved path stays within clientDir.
       const { resolve } = await import("node:path")
       const resolved = resolve(filePath)
       if (!resolved.startsWith(resolve(clientDir))) {
@@ -73,7 +73,14 @@ const server = createServer(async (req, res) => {
         return
       }
       const ext = extname(filePath)
-      if (ext && ext !== ".html") {
+      // Pre-fix shape was \`if (ext && ext !== ".html")\` which made the
+      // static branch silently refuse to serve .html files — INCLUDING
+      // the root \`/\` → \`index.html\` mapping the line above explicitly
+      // sets up. Result: GET / always fell through to SSR, even when an
+      // \`index.html\` shell existed in clientDir. Matches the bun
+      // adapter's behavior (which serves index.html at /) and the
+      // standard static + dynamic deployment pattern.
+      if (ext) {
         const data = await readFile(filePath)
         const mime = MIME_TYPES[ext] || "application/octet-stream"
         res.writeHead(200, {
@@ -88,7 +95,7 @@ const server = createServer(async (req, res) => {
     } catch {}
   }
 
-  // Fall through to SSR handler
+  // Fall through to SSR handler.
   const headers = {}
   for (const [key, value] of Object.entries(req.headers)) {
     if (value) headers[key] = Array.isArray(value) ? value.join(", ") : value
@@ -100,13 +107,33 @@ const server = createServer(async (req, res) => {
   })
 
   const response = await handler(request)
-  const body = await response.text()
 
   const responseHeaders = {}
   response.headers.forEach((v, k) => { responseHeaders[k] = v })
 
   res.writeHead(response.status, responseHeaders)
-  res.end(body)
+
+  // Pipe the Response body stream directly to res instead of buffering
+  // the whole body via response.text(). For mode: 'stream' SSR (Suspense
+  // out-of-order streaming) the pre-fix \`await response.text()\` drained
+  // every Suspense chunk server-side and arrived at the client all at
+  // once at the end — silently defeating streaming. For mode: 'string'
+  // the body is a single chunk and this loop runs once with identical
+  // observable behaviour.
+  if (response.body) {
+    const reader = response.body.getReader()
+    try {
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        res.write(value)
+      }
+    } finally {
+      res.end()
+    }
+  } else {
+    res.end()
+  }
 })
 
 server.listen(${port}, () => {
