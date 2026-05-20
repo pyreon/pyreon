@@ -215,12 +215,29 @@ export async function _readLpihCache(
   now: () => number = () => Date.now(),
 ): Promise<LPIHCacheEntry[]> {
   if (!path) return []
+  let handle: Awaited<ReturnType<typeof import('node:fs/promises').open>> | null = null
   try {
     const fs = await import('node:fs/promises')
-    // Stat first — bail before reading if the file is implausibly large.
-    const stat = await fs.stat(path)
+    // TOCTOU-free: open ONCE, then do stat + read against the SAME file
+    // descriptor. With a single descriptor, fstat and read both operate
+    // on the SAME inode regardless of what happens to the path on disk
+    // between calls (atomic-rename swap, deletion, etc.). The prior
+    // shape (separate fs.stat(path) + fs.readFile(path)) had a race
+    // CodeQL flagged as `js/file-system-race`.
+    handle = await fs.open(path, 'r')
+    const stat = await handle.stat()
+    // Bail before reading if the file is implausibly large.
     if (stat.size > _LPIH_CACHE_MAX_BYTES) return []
-    const raw = await fs.readFile(path, 'utf8')
+    // Stale-data filter. `lastFire` is `performance.now()` which is
+    // process-relative — comparing to Date.now() would be wrong. Instead
+    // we approximate "stale" by checking the FILE's mtime: if the cache
+    // file hasn't been re-written in `_LPIH_STALE_AFTER_MS`, the dev
+    // server is silent and the data should be treated as historical.
+    const fileAgeMs = now() - stat.mtimeMs
+    if (fileAgeMs > _LPIH_STALE_AFTER_MS) return []
+    // Read from the descriptor — the file the bytes came from is
+    // identical to the file we statted (same inode, no race).
+    const raw = await handle.readFile('utf8')
     const parsed = JSON.parse(raw) as unknown
     if (
       !parsed ||
@@ -237,16 +254,18 @@ export async function _readLpihCache(
         typeof (f as LPIHCacheEntry).line === 'number' &&
         typeof (f as LPIHCacheEntry).count === 'number',
     )
-    // Stale-data filter. `lastFire` is `performance.now()` which is
-    // process-relative — comparing to Date.now() would be wrong. Instead
-    // we approximate "stale" by checking the FILE's mtime: if the cache
-    // file hasn't been re-written in `_LPIH_STALE_AFTER_MS`, the dev
-    // server is silent and the data should be treated as historical.
-    const fileAgeMs = now() - stat.mtimeMs
-    if (fileAgeMs > _LPIH_STALE_AFTER_MS) return []
     return fires
   } catch {
     return []
+  } finally {
+    if (handle) {
+      try {
+        await handle.close()
+      } catch {
+        /* close failures are rare + harmless — Node's per-process FD
+           limit ÷ LSP inlay-hint frequency is essentially infinity */
+      }
+    }
   }
 }
 

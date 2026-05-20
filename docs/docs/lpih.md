@@ -33,7 +33,8 @@ Filesystem cache is the bridge because LSP servers are stdio-only — they can't
 ### 1. Activate the runtime registry in your dev mode
 
 ```ts
-import { activateReactiveDevtools, startLpihPolling } from '@pyreon/reactivity'
+import { activateReactiveDevtools } from '@pyreon/reactivity'
+import { startLpihPolling } from '@pyreon/reactivity/lpih'
 
 if (import.meta.env.DEV) {
   activateReactiveDevtools()
@@ -178,19 +179,25 @@ Add the ~150 ms LSP debounce + the polling interval (250 ms default) → end-to-
 
 ## API
 
-### `@pyreon/reactivity`
+### `@pyreon/reactivity` (capture surface)
 
 ```ts
 import {
   activateReactiveDevtools,
   deactivateReactiveDevtools,
   getFireSummaries,
-  writeLpihCache,
-  startLpihPolling,
   type SourceLocation,
   type FireSummary,
 } from '@pyreon/reactivity'
 ```
+
+### `@pyreon/reactivity/lpih` (bridge / dev-mode integration)
+
+```ts
+import { writeLpihCache, startLpihPolling } from '@pyreon/reactivity/lpih'
+```
+
+Subpath because the bridge depends on `node:fs/promises` (Node-only) and is dev-mode integration glue, not a core primitive. Separating it keeps the main entry slim and tree-shakes cleanly for browser-only consumers.
 
 #### `activateReactiveDevtools(): void`
 

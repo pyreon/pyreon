@@ -29,6 +29,11 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
+    },
+    "./lpih": {
+      "bun": "./src/lpih-bridge.ts",
+      "import": "./lib/lpih-bridge.js",
+      "types": "./lib/types/lpih-bridge.d.ts"
     }
   },
   "publishConfig": {
