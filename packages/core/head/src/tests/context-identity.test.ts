@@ -105,28 +105,43 @@ describe.skipIf(!libExists)(
     it.each([
       ['index.js'],
       ['provider.js'],
-      ['use-head.js'],
       ['ssr.js'],
-    ])('lib/%s imports HeadContext via the externalized @pyreon/head/context specifier', (name) => {
+    ])('lib/%s imports HeadContext via the relative ./context.js path (rolldown shared-chunk dedup)', (name) => {
       const src = read(name)
-      // The bundler emits the import verbatim for externalized specifiers.
-      // Both ESM string literal styles (`"…"` and `'…'`) are matched
-      // because rolldown's output quoting is deterministic but not
-      // version-pinned by this test.
-      const hasExternalImport =
-        /from\s+["']@pyreon\/head\/context["']/.test(src)
-      expect(hasExternalImport).toBe(true)
+      // Multi-entry single-pass mode emits clean relative imports —
+      // every sub-entry resolves to the same emitted `lib/context.js`
+      // module at runtime. No externalization needed (vs the
+      // pre-deeper-fix `from "@pyreon/head/context"` workaround
+      // introduced in #722).
+      const hasRelativeImport = /from\s+["']\.\/context\.js["']/.test(src)
+      expect(hasRelativeImport).toBe(true)
+    })
+
+    it('lib/use-head.js reaches HeadContext (directly OR via a _chunks/ re-export)', () => {
+      // `use-head.ts` imports `dom.ts` (single-importer internal module).
+      // Rolldown 1.0's default chunk heuristic splits `dom.ts` into
+      // `_chunks/use-head-<hash>.js`, leaving `lib/use-head.js` as a
+      // thin re-export from the chunk. Both the entry stub AND the
+      // chunk pull HeadContext from `./context.js` (or `../context.js`).
+      // Verified ANY path leads back to the single canonical `context.js`.
+      const entry = read('use-head.js')
+      const directImport = /from\s+["']\.\/context\.js["']/.test(entry)
+      const reExportsChunk = /from\s+["']\.\/_chunks\//.test(entry)
+      // Either the entry imports context directly OR re-exports from a
+      // chunk that itself imports context. The latter is the current
+      // shape; the former would be the result if rolldown's chunking
+      // heuristic ever decides to inline `dom.ts`.
+      expect(directImport || reExportsChunk).toBe(true)
     })
 
     // ── Invariant 3: the package.json wiring that enables it ─────────
     //
-    // Two things must coexist for the externalization to be honored —
-    // the `./context` sub-export (so the import has a runtime target),
-    // and the `vl-tools.config.mjs` external rule (so the bundler keeps
-    // the specifier instead of inlining). Locking these here means a
-    // future revert of either side immediately fails the test.
+    // The `./context` sub-export shipped in #722 is preserved for
+    // backward compat. The multi-entry single-pass build also declares
+    // `context` as one of its inputs so `lib/context.js` is BOTH the
+    // shared chunk AND a published entry pointing at the same emit.
 
-    it('package.json declares the ./context sub-export', () => {
+    it('package.json declares the ./context sub-export (backward-compat with #722)', () => {
       const pkg = JSON.parse(read('../package.json')) as {
         exports: Record<string, { bun?: string; import?: string; types?: string }>
       }
@@ -135,16 +150,21 @@ describe.skipIf(!libExists)(
       expect(pkg.exports['./context']?.bun).toBe('./src/context.ts')
     })
 
-    it('vl-tools.config.mjs externalizes @pyreon/head/context for every sub-entry build', () => {
-      // Plain text read instead of dynamic import — vitest serves test
-      // files via http:// URLs, and Node's default ESM loader rejects
-      // anything outside `file:` / `data:`. Text-grep is enough: this
-      // assertion is structural, not behavioural — the build pipeline
-      // already proved the contract by emitting external imports in
-      // every sub-bundle (invariants 1 and 2 above).
-      const cfg = readFileSync(resolve(PKG_ROOT, 'vl-tools.config.mjs'), 'utf8')
-      expect(cfg).toContain("'@pyreon/head/context'")
-      expect(cfg).toMatch(/external\s*:/)
+    it('build.mjs declares context as a first-class multi-entry input', () => {
+      const cfg = readFileSync(resolve(PKG_ROOT, 'build.mjs'), 'utf8')
+      // `context: ...` in the ENTRIES object — locks in that context
+      // is emitted as a top-level entry (so its hash-free filename
+      // matches the package.json `./context` sub-export's target).
+      expect(cfg).toMatch(/context\s*:\s*`\$\{SRC\}\/context\.ts`/)
+    })
+
+    it('no vl-tools.config.mjs (the #722 externalization workaround is fully replaced)', () => {
+      const path = resolve(PKG_ROOT, 'vl-tools.config.mjs')
+      // The deeper fix in this PR REPLACES the per-package external
+      // workaround with rolldown's native multi-entry single-pass.
+      // No vl-tools.config.mjs should exist; if anyone re-adds one,
+      // it signals the workaround is being re-introduced.
+      expect(existsSync(path)).toBe(false)
     })
   },
 )

@@ -55,8 +55,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "vl_rolldown_build",
-    "dev": "vl_rolldown_build-watch",
+    "build": "bun build.mjs",
     "test": "vitest run",
     "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "typecheck": "tsc --noEmit",
@@ -74,7 +73,8 @@
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/runtime-server": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
-    "@vitest/browser-playwright": "^4.1.4"
+    "@vitest/browser-playwright": "^4.1.4",
+    "rolldown": "^1.0.1"
   },
   "peerDependenciesMeta": {
     "@pyreon/runtime-server": {
