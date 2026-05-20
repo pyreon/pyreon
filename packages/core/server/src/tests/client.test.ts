@@ -1109,6 +1109,66 @@ describe('hydrateIslands', () => {
     cleanup()
   })
 
+  test('interaction: form submit hydrates + prevents browser nav + replays submit on live form', async () => {
+    document.body.innerHTML =
+      '<pyreon-island data-component="NewsletterForm" data-hydrate="interaction" data-props="{}">' +
+      '<form data-testid="newsletter" action="/subscribe" method="post">' +
+      '<input name="email" value="a@b.co" />' +
+      '<button type="submit">Sign up</button>' +
+      '</form>' +
+      '</pyreon-island>'
+
+    let loaded = 0
+    let liveSubmits = 0
+    let lastSubmittedEmail = ''
+    const Live: ComponentFn = () => {
+      const onSubmit = (e: Event) => {
+        e.preventDefault()
+        liveSubmits++
+        const form = e.target as HTMLFormElement
+        const fd = new FormData(form)
+        lastSubmittedEmail = String(fd.get('email') ?? '')
+      }
+      return h(
+        'form',
+        { 'data-testid': 'newsletter', action: '/subscribe', method: 'post', onSubmit },
+        h('input', { name: 'email', value: 'a@b.co' }),
+        h('button', { type: 'submit' }, 'Sign up'),
+      )
+    }
+
+    const cleanup = hydrateIslands({
+      NewsletterForm: () => {
+        loaded++
+        return Promise.resolve({ default: Live })
+      },
+    })
+
+    const island = document.querySelector('pyreon-island')!
+    expect(island.getAttribute('data-island-state')).toBe('awaiting-interaction')
+
+    // Browser default for submit is to navigate. Without our pre-hydrate
+    // capture, the page would POST to /subscribe BEFORE the live handler
+    // ever mounts. We inspect the dispatched event's `defaultPrevented`
+    // flag directly — `stopImmediatePropagation` on the island-root
+    // capture-phase handler intentionally blocks any same-element
+    // listeners that would otherwise observe it.
+    const form = island.querySelector<HTMLFormElement>('[data-testid="newsletter"]')!
+    const submitEvent = new Event('submit', { bubbles: true, cancelable: true })
+    form.dispatchEvent(submitEvent)
+    expect(submitEvent.defaultPrevented).toBe(true)
+    await new Promise((r) => setTimeout(r, 30))
+
+    expect(loaded).toBe(1)
+    // After hydration the live handler fires exactly once (the replayed submit)
+    expect(liveSubmits).toBe(1)
+    // The form data flows through correctly (FormData reads current input value)
+    expect(lastSubmittedEmail).toBe('a@b.co')
+    expect(island.getAttribute('data-island-state')).toBeNull()
+
+    cleanup()
+  })
+
   test('interaction: focus event hydrates without click replay', async () => {
     document.body.innerHTML =
       '<pyreon-island data-component="MenuFocus" data-hydrate="interaction" data-props="{}">' +
