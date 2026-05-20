@@ -1,6 +1,8 @@
 # @pyreon/react-compat
 
-React-compatible API shim that runs on Pyreon's signal-based reactive engine. Migrate React code by swapping the import path.
+React-compatible API shim — write React-style hooks that run on Pyreon's reactive engine.
+
+`@pyreon/react-compat` is a near-full React 19 surface (`useState`, `useEffect`, `useReducer`, `useRef`, `useId`, `useSyncExternalStore`, `useTransition`, `useDeferredValue`, `useImperativeHandle`, `useActionState`, `useOptimistic`, `use`, `useLayoutEffect`, `useInsertionEffect`, plus `forwardRef`, `memo`, `lazy`, `Suspense`, `createContext`, `createPortal`, `cloneElement`, `Children`, `StrictMode`, `Profiler`, `Component`, `PureComponent`) backed by Pyreon's signal-based reactivity. The `./dom` subpath provides `createRoot` as a drop-in for `react-dom/client`. **This is a compat shim, not React** — it intentionally diverges where React's render-on-state-change model conflicts with Pyreon's run-once + fine-grained-reactivity model. The escape hatch is to drop the compat layer and use Pyreon's native API directly.
 
 ## Install
 
@@ -8,162 +10,114 @@ React-compatible API shim that runs on Pyreon's signal-based reactive engine. Mi
 bun add @pyreon/react-compat
 ```
 
-## Quick Start
+## Quick start
 
 ```tsx
-// Replace:
-// import { useState, useEffect } from "react"
-// With:
 import { useState, useEffect } from '@pyreon/react-compat'
+import { createRoot } from '@pyreon/react-compat/dom'
 
 function Counter() {
   const [count, setCount] = useState(0)
+
   useEffect(() => {
-    console.log('count changed:', count())
+    document.title = `Count: ${count()}`
   })
-  return <button onClick={() => setCount((c) => c + 1)}>{count}</button>
-}
-```
 
-### Using Refs and Context
-
-```tsx
-import { useRef, useEffect, createContext, useContext } from '@pyreon/react-compat'
-
-const ThemeContext = createContext('light')
-
-function ThemeDisplay() {
-  const theme = useContext(ThemeContext)
-  const divRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    console.log('mounted, div is:', divRef.current)
-    return () => console.log('unmounted')
-  }, [])
-
-  return <div ref={divRef}>Current theme: {theme}</div>
-}
-
-function App() {
-  return (
-    <ThemeContext.Provider value="dark">
-      <ThemeDisplay />
-    </ThemeContext.Provider>
-  )
-}
-```
-
-### Reducer Pattern
-
-```tsx
-import { useReducer } from '@pyreon/react-compat'
-
-type Action = { type: 'increment' } | { type: 'decrement' }
-
-function reducer(state: number, action: Action) {
-  switch (action.type) {
-    case 'increment':
-      return state + 1
-    case 'decrement':
-      return state - 1
-  }
-}
-
-function Counter() {
-  const [count, dispatch] = useReducer(reducer, 0)
   return (
     <div>
-      <span>{count}</span>
-      <button onClick={() => dispatch({ type: 'increment' })}>+</button>
-      <button onClick={() => dispatch({ type: 'decrement' })}>-</button>
+      <p>Count: {count()}</p>
+      <button onClick={() => setCount((c) => c + 1)}>+1</button>
     </div>
   )
 }
+
+createRoot(document.getElementById('app')!).render(<Counter />)
 ```
 
-### Lazy Loading
+## Subpath exports
+
+| Subpath                                | Surface                                                                                       |
+| -------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `@pyreon/react-compat`                 | Full React 19 surface — every hook listed above, plus `Fragment`, `h` / `createElement`, `createRef`, `cloneElement`, `Children`, `createContext` / `useContext`, `createPortal`, `forwardRef`, `memo`, `lazy`, `Suspense`, `ErrorBoundary`, `StrictMode`, `Profiler`, `Component`, `PureComponent`, `act`, `flushSync`, `startTransition`, `useDebugValue`, `isValidElement`, `version` |
+| `@pyreon/react-compat/dom`             | `createRoot(container)` — drop-in for `react-dom/client`                                       |
+| `@pyreon/react-compat/jsx-runtime`     | JSX automatic runtime (`jsx`, `jsxs`, `Fragment`)                                              |
+| `@pyreon/react-compat/jsx-dev-runtime` | Dev variant — same runtime                                                                     |
+
+## Key differences from React
+
+| Behavior              | React                                  | `@pyreon/react-compat`                                                 |
+| --------------------- | -------------------------------------- | ---------------------------------------------------------------------- |
+| Component execution   | Re-runs render on every state change   | Runs **once** (setup phase)                                            |
+| `useState` getter     | Returns the value directly             | Returns a **getter function** — call `count()` to read                 |
+| `useEffect` deps      | Controls when the effect re-runs       | Deps array is **ignored** — Pyreon tracks dependencies automatically   |
+| `useCallback`         | Memoizes across renders                | **No-op** — returns `fn` as-is                                         |
+| `useMemo`             | Returns the memoized value             | Returns a **getter function** — call `value()` to read                 |
+| `useLayoutEffect`     | Sync before paint                      | Same as `useEffect`                                                    |
+| `useInsertionEffect`  | Library-injected CSS before mutations  | Same as `useEffect`                                                    |
+| `useTransition`       | Returns `[isPending, startTransition]` | Same shape; `isPending` is a getter                                    |
+| `useSyncExternalStore`| Subscribes via React's scheduler       | Same shape; getter return                                              |
+| `memo`                | Bails on equal props                   | **No-op** — pass-through                                               |
+| `forwardRef`          | Wraps for ref forwarding               | Pass-through; refs are first-class props                               |
+| Class components      | Full lifecycle support                 | `setState` + `forceUpdate` work; lifecycle methods are not called      |
+| Hooks rules           | Must be called at top level            | **No restrictions** — call anywhere in component setup                 |
+
+### Read state via a getter
 
 ```tsx
-import { lazy, Suspense } from '@pyreon/react-compat'
+// React
+const [count, setCount] = useState(0)
+console.log(count) // 0
 
-const HeavyChart = lazy(() => import('./HeavyChart'))
+// @pyreon/react-compat
+const [count, setCount] = useState(0)
+console.log(count()) // 0 — call the function
+```
 
-function Dashboard() {
-  return (
-    <Suspense fallback={<p>Loading chart...</p>}>
-      <HeavyChart data={[1, 2, 3]} />
-    </Suspense>
-  )
+### `createRoot` from `./dom`
+
+```tsx
+import { createRoot } from '@pyreon/react-compat/dom'
+
+const root = createRoot(document.getElementById('app')!)
+root.render(<App />)
+root.unmount()
+```
+
+## Drop-in compat mode
+
+`@pyreon/vite-plugin` can alias every `react` / `react-dom` / `react-dom/client` import to this package — no code changes:
+
+```ts
+// vite.config.ts
+import pyreon from '@pyreon/vite-plugin'
+export default { plugins: [pyreon({ compat: 'react' })] }
+```
+
+`tsconfig.json`:
+
+```jsonc
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "@pyreon/react-compat"
+  }
 }
 ```
 
-## Key Differences from React
+## Gotchas
 
-- **No hooks rules.** Call hooks anywhere -- in loops, conditions, nested functions.
-- **Components run once** (setup phase only), not on every render.
-- **`useEffect` deps are ignored.** Pyreon tracks reactive dependencies automatically. Pass `[]` to run once on mount.
-- **`useCallback` and `memo` are no-ops.** No re-renders means no stale closures.
+- **Run-once mental model.** Components don't re-run on state change. Read signals/getters where they're used, not destructured into locals at the top of the function.
+- **`useEffect` / `useLayoutEffect` / `useInsertionEffect` deps are ignored.** Pyreon tracks dependencies automatically. Effects re-run when any signal they read changes.
+- **`memo` / `useCallback` / `forwardRef` are no-ops.** Pyreon's run-once model + fine-grained reactivity removes their reason to exist.
+- **`Children` API is supported** (`map`, `forEach`, `count`, `toArray`, `only`) but works on Pyreon `VNodeChild` shapes.
+- **Class-component lifecycle methods don't fire.** Use `onMount` / `onUnmount` from `@pyreon/core` for lifecycle.
+- **The DOM is fully replaced on re-render in the compat layer** — there's no VDOM diffing. Pre-captured `elementHandle()` references in tests will point at detached nodes; always re-query the DOM after a state change.
+- **`version`** reports `19.0.0-pyreon` — code that gates on React 19 keeps working; code that asserts equality won't match.
 
-## API
+## Documentation
 
-### State and Reducers
+Full docs: [docs.pyreon.dev/docs/react-compat](https://docs.pyreon.dev/docs/react-compat) (or `docs/docs/react-compat.md` in this repo).
 
-- **`useState(initial)`** -- returns `[getter, setter]`. Call `getter()` to read.
-- **`useReducer(reducer, initial)`** -- returns `[getter, dispatch]`.
+## License
 
-### Effects and Lifecycle
-
-- **`useEffect(fn, deps?)`** -- reactive effect. `[]` deps means mount-only.
-- **`useLayoutEffect`** -- alias for `onMount`.
-- **`onMount`, `onUnmount`, `onUpdate`** -- Pyreon-native lifecycle hooks.
-
-### Memoization
-
-- **`useMemo(fn, deps?)`** -- returns a computed getter. Deps are ignored.
-- **`useCallback(fn, deps?)`** -- returns `fn` as-is (no-op).
-
-### Refs and Context
-
-- **`useRef(initial?)`** -- returns `{ current }`.
-- **`createContext(defaultValue)`**, **`useContext(ctx)`** -- same API as React.
-- **`useId()`** -- stable unique string per component instance.
-
-### Components
-
-- **`memo(component)`** -- returns component unchanged (no-op).
-- **`lazy(loader)`** -- dynamic import wrapper. Pair with `<Suspense>`.
-- **`Suspense`**, **`ErrorBoundary`** -- boundary components.
-- **`createPortal(children, target)`** -- portal rendering.
-
-### Optimization (no-ops for compatibility)
-
-- **`useTransition()`** -- returns `[false, (fn) => fn()]`.
-- **`useDeferredValue(value)`** -- returns value as-is.
-- **`useImperativeHandle(ref, init)`** -- exposes methods via ref.
-
-### Utilities
-
-- **`batch(fn)`** -- coalesce multiple signal writes.
-- **`useErrorBoundary`** -- alias for `onErrorCaptured`.
-- **`createSelector`** -- O(1) equality selector from `@pyreon/reactivity`.
-- **`createElement` / `h`**, **`Fragment`** -- JSX runtime.
-
-## Composing Pyreon framework components inside react-compat
-
-Pyreon's framework components (`RouterView`, `PyreonUI`, `FormProvider`, `QueryClientProvider`, …) ship marked with `nativeCompat()` from `@pyreon/core` — react-compat's JSX runtime detects the marker and routes them through Pyreon's setup frame instead of the compat wrapper. **You don't need to do anything** for the 24 components shipped marked.
-
-If you write your **own** Pyreon-flavored helper that uses `provide()` / `onMount()` / `onUnmount()` / `effect()` at component-body scope and use it in a react-compat app, mark it explicitly:
-
-```tsx
-import { nativeCompat, provide, createContext } from '@pyreon/core'
-
-const MyCtx = createContext<string>('default')
-
-function MyProvider(props: { value: string; children?: unknown }) {
-  provide(MyCtx, props.value)
-  return props.children as never
-}
-nativeCompat(MyProvider) // ← required for compat-mode apps
-```
-
-Without the marker, the wrapper relocates the body's render context and `provide()` lands in a torn-down context stack — descendants read the default. See [`packages/core/core/src/compat-marker.ts`](../../core/core/src/compat-marker.ts) for details.
+MIT

@@ -1,102 +1,81 @@
 # @pyreon/attrs
 
-Immutable, chainable default-props factory for Pyreon components.
+Chainable HOC factory for default props, base swaps, composition, and statics.
 
-Think of styled-components' `.attrs()` as a standalone, type-safe composition system. Define default props, swap base components, attach HOCs, and add metadata — all through an immutable chain where every call returns a new component.
+`@pyreon/attrs` wraps a Pyreon component in an immutable, chainable builder that accumulates default props (`.attrs()`), reconfigures the base component (`.config()`), composes additional HOCs (`.compose()`), and attaches static metadata (`.statics()`). Every chain method returns a new component — the original is never mutated — and TypeScript generics accumulate so prop types stay correct after each `.attrs<P>({...})` call. It's the foundation `@pyreon/rocketstyle` builds on; you'll also use it directly when you want default-prop composition without the dimension-styling layer.
 
-## Features
-
-- **Immutable chaining** — every method returns a new component, never mutates the original
-- **Props merge order** — `priorityAttrs` > `attrs` > explicit props, with full control over precedence
-- **Prop filtering** — strip internal props before they reach the DOM
-- **HOC composition** — named HOCs via `.compose()` with selective removal
-- **Static metadata** — attach and access custom data via `.statics()` / `.meta`
-- **TypeScript inference** — generics accumulate through the chain
-
-## Installation
+## Install
 
 ```bash
-bun add @pyreon/attrs
+bun add @pyreon/attrs @pyreon/core @pyreon/ui-core
 ```
 
-## Quick Start
+## Quick start
 
-```ts
+```tsx
 import attrs from '@pyreon/attrs'
 import { Element } from '@pyreon/elements'
 
-const Button = attrs({ name: 'Button', component: Element }).attrs({
-  tag: 'button',
-  alignX: 'center',
-  alignY: 'center',
-})
+const Button = attrs({ name: 'Button', component: Element })
+  .attrs({ tag: 'button', alignX: 'center', alignY: 'center' })
+  .attrs<{ primary?: boolean }>(({ primary }) => ({
+    backgroundColor: primary ? 'blue' : 'gray',
+  }))
 
-// Renders Element with tag="button", alignX="center", alignY="center"
-Button({ label: 'Click me' })
+// Renders Element with the accumulated defaults
+<Button label="Click me" />
 
-// Explicit props override attrs defaults
-Button({ tag: 'a', label: 'Link button' })
+// Explicit props override .attrs() defaults (unless `priority: true`)
+<Button tag="a" href="/x" label="Link button" />
 ```
 
 ## API
 
-### attrs(options)
+### `attrs({ name, component })`
 
-Creates an attrs-enhanced component.
+Factory entry. Returns a Pyreon `ComponentFn` enhanced with chainable methods. Both `name` (used as `displayName` and a dev `data-attrs` attribute) and `component` (the base) are required — dev mode throws on missing values.
 
-```ts
-const Component = attrs({
-  name: 'ComponentName', // required — sets displayName
-  component: BaseComponent, // required — the Pyreon component to wrap
-})
-```
+### `.attrs(props | callback, options?)`
 
-### .attrs(props | callback, options?)
-
-Add default props. Can be called multiple times — defaults stack left-to-right.
+Add default props. Call multiple times — defaults stack left-to-right in the chain.
 
 ```ts
-// Object form — static defaults
+// Object form
 Button.attrs({ tag: 'button' })
 
-// Callback form — computed defaults based on current props
-Button.attrs((props) => ({
+// Callback form — receives the current resolved props
+Button.attrs<{ label: string }>((props) => ({
   'aria-label': props.label,
 }))
 
-// Priority — resolved before regular attrs, cannot be overridden by explicit props
+// Priority — wins over EXPLICIT props at the call site
 Button.attrs({ tag: 'button' }, { priority: true })
 
-// Filter — remove props before passing to the underlying component
+// Filter — strip these prop names before forwarding to the base
 Button.attrs({}, { filter: ['internalFlag', 'variant'] })
 ```
 
-**Props merge order:**
+**Merge order at render time:**
 
 ```text
-priorityAttrs (highest) → attrs → explicit props (lowest for priority, highest for regular)
+priorityAttrs  →  attrs  →  explicit props  →  filterAttrs strips → base component
 ```
 
-For regular attrs, explicit props win. For priority attrs, the priority value wins.
+For regular `attrs`, explicit props win. For `priorityAttrs`, the priority value wins (used by `rocketstyle` to lock structural props like `tag`).
 
-### .config(options)
+### `.config({ name?, component?, DEBUG? })`
 
-Reconfigure the component. Returns a new component instance.
+Swap the underlying component, rename, or toggle dev debugging. Returns a new instance.
 
 ```ts
-// Rename
-Button.config({ name: 'PrimaryButton' })
-
-// Swap the base component
-Button.config({ component: AnotherComponent })
-
-// Enable debug mode — adds data-attrs attribute in development
-Button.config({ DEBUG: true })
+const Anchor = Button.config({ component: 'a', name: 'Anchor' })
 ```
 
-### .compose(hocs)
+**Gotcha**: swapping `component` resets the `attrs` / `priorityAttrs` / `filterAttrs` / `compose` chains because they were tailored to the previous component's prop shape (applying them blindly leaks invalid attrs to the DOM). `theme` / `styles` / dimension chains are preserved. Re-chain shared attrs explicitly if you need them.
 
-Attach named Higher-Order Components. Applied in declaration order.
+### `.compose({ hocName: hocFn })`
+
+Attach named HOCs to the chain. Applied in registration order — outermost wraps first. Pass `null` to remove a previously composed HOC.
 
 ```ts
 const Enhanced = Button.compose({
@@ -104,72 +83,63 @@ const Enhanced = Button.compose({
   withTracking: trackingHoc,
 })
 
-// Remove a specific HOC from the chain
-const WithoutTracking = Enhanced.compose({ withTracking: null })
+const NoTracking = Enhanced.compose({ withTracking: null })
 ```
 
-### .statics(metadata)
+### `.statics({ key: value })`
 
-Attach metadata accessible via the `.meta` property.
+Attach arbitrary metadata on `.meta`. Used by `@pyreon/document-primitives` (`_documentType`) and other systems that need post-construction component introspection.
 
 ```ts
-const Button = attrs({ name: 'Button', component: Element }).statics({
+const Btn = attrs({ name: 'Btn', component: Element }).statics({
   category: 'action',
   sizes: ['sm', 'md', 'lg'],
 })
 
-Button.meta.category // => 'action'
-Button.meta.sizes // => ['sm', 'md', 'lg']
+Btn.meta.category // 'action'
 ```
 
-### isAttrsComponent(value)
+### `.getDefaultAttrs()`
 
-Runtime type guard.
+Resolve the accumulated default props (calls every `.attrs()` callback with `{}`).
+
+```ts
+Button.getDefaultAttrs() // { tag: 'button', alignX: 'center', alignY: 'center' }
+```
+
+### `isAttrsComponent(value)`
+
+Runtime guard — returns `true` for components produced by `attrs()`.
 
 ```ts
 import { isAttrsComponent } from '@pyreon/attrs'
-
-isAttrsComponent(Button) // => true
-isAttrsComponent('div') // => false
-```
-
-### getDefaultAttrs()
-
-Retrieve the computed default props for a component.
-
-```ts
-Button.getDefaultAttrs() // => { tag: 'button', alignX: 'center', ... }
+isAttrsComponent(Button) // true
+isAttrsComponent('div')   // false
 ```
 
 ## TypeScript
 
-Each `.attrs<P>()` call adds `P` to the component's prop types through `MergeTypes`:
+Each `.attrs<P>()` generic accumulates into the component's prop type. Three type-only properties expose the accumulated shapes:
 
 ```ts
-const Base = attrs({ name: 'Base', component: Element })
-
-const Typed = Base.attrs<{ variant: 'primary' | 'secondary' }>({ variant: 'primary' }).attrs<{
-  size?: 'sm' | 'md' | 'lg'
-}>({})
-
-// Typed accepts: Element props + { variant, size? }
-Typed({ variant: 'secondary', size: 'lg', label: 'Hello' })
+type AllProps      = typeof Button.$$types          // origin + extended
+type OriginProps   = typeof Button.$$originTypes    // base component's props
+type ExtendedProps = typeof Button.$$extendedTypes  // everything added through .attrs<P>()
 ```
 
-Access the accumulated types via type-only properties:
+Use `ExtractProps<typeof Button>` from `@pyreon/core` to recover the union when forwarding through another HOC.
 
-```ts
-type AllProps = typeof Typed.$$types
-type OriginalProps = typeof Typed.$$originTypes
-type ExtendedProps = typeof Typed.$$extendedTypes
-```
+## Gotchas
 
-## Peer Dependencies
+- **`.config({ component })` resets the prop chains.** Re-chain shared attrs explicitly if you swap the base. `theme` / `styles` / dimension chains survive.
+- **Defaults are merged, not deep-merged.** Object-valued props (e.g. `style={{ color: 'red' }}`) get replaced, not combined.
+- **The dev `data-attrs` attribute is added in dev builds** to aid debugging. Tree-shaken in production (gated on `process.env.NODE_ENV !== 'production'`).
+- **`hoistNonReactStatics`** copies non-React statics from the base onto the wrapper, so `MyComponent.someStaticMethod` survives the HOC chain.
+- **Generic accumulation has a depth limit** — TypeScript's recursive conditional-type inference caps at ~24-50 levels depending on the host environment. If you stack `.attrs<P>()` calls past that, narrow generics or split the component.
 
-| Package         | Version  |
-| --------------- | -------- |
-| @pyreon/core    | >= 0.0.1 |
-| @pyreon/ui-core | >= 0.0.1 |
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/attrs](https://docs.pyreon.dev/docs/attrs) (or `docs/docs/attrs.md` in this repo).
 
 ## License
 

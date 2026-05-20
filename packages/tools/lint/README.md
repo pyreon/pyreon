@@ -1,268 +1,180 @@
 # @pyreon/lint
 
-Pyreon-specific linter powered by [oxc-parser](https://github.com/nicolo-ribaudo/oxc-parser) — 80 rules across 18 categories for signals, JSX, SSR, performance, architecture, and opt-in best practices (frontend a11y/CLS, query/rx/form/i18n/router/storage library usage).
+Pyreon-specific linter — 80 rules across 18 categories, CLI + LSP + programmatic API.
 
-## Installation
+`@pyreon/lint` is a custom linter focused on Pyreon-specific correctness (signals, JSX-as-reactivity, SSR safety, lifecycle, architecture) — complementary to oxlint, not a replacement. Powered by `oxc-parser` for fast AST traversal with an FNV-1a-hashed AST cache for repeat runs. Ships a `pyreon-lint` CLI, a `lint()` programmatic API, a `--lsp` LSP server for IDE inlay hints + diagnostics, and `.pyreonlintrc.json` config files with per-rule options. Opt-in best-practice rules (frontend a11y/CLS, library-scoped query/rx/i18n/storage/form/router) auto-gate on the project's `package.json` deps — a project that doesn't use `@pyreon/query` never sees query rules.
+
+## Install
 
 ```bash
-bun add @pyreon/lint
+bun add -D @pyreon/lint
 ```
 
-## Usage
-
-### CLI
+## CLI
 
 ```bash
-# Lint current directory with recommended preset
-pyreon-lint
-
-# Lint specific paths
-pyreon-lint src/ components/
-
-# Use a preset
-pyreon-lint --preset strict src/
-
-# Auto-fix fixable issues
-pyreon-lint --fix src/
-
-# JSON output
-pyreon-lint --format json src/
-
-# Only show errors (skip warnings and info)
-pyreon-lint --quiet src/
-
-# Override a rule
+pyreon-lint                              # lint current dir, recommended preset
+pyreon-lint src/ components/             # specific paths
+pyreon-lint --preset strict src/         # strict — warns promoted to errors
+pyreon-lint --preset best-practices      # enable every opt-in best-practice rule
+pyreon-lint --fix src/                   # auto-fix fixable issues
+pyreon-lint --format json src/           # JSON output (text | json | compact)
+pyreon-lint --quiet src/                 # errors only
+pyreon-lint --watch src/                 # watch + re-lint on change (100 ms debounce)
 pyreon-lint --rule pyreon/no-map-in-jsx=off src/
-
-# List all rules
-pyreon-lint --list
+pyreon-lint --rule-options pyreon/no-window-in-ssr='{"exemptPaths":["src/foundation/"]}'
+pyreon-lint --config ./.pyreonlintrc.json
+pyreon-lint --ignore ./.pyreonlintignore
+pyreon-lint --list                       # list every rule with severity + category
+pyreon-lint --lsp                        # start LSP server (stdin/stdout JSON-RPC)
 ```
 
-### Programmatic API
+Inline suppression — both prefixes are supported:
 
 ```ts
-import { lint, listRules, lintFile, applyFixes } from '@pyreon/lint'
+// pyreon-lint-ignore pyreon/no-window-in-ssr
+window.location.href = '/login'
+
+// pyreon-lint-disable-next-line pyreon/no-window-in-ssr
+window.location.href = '/login'
+```
+
+Omitting the rule id suppresses every rule on the next line.
+
+## Presets
+
+| Preset           | What it does                                                                       |
+| ---------------- | ---------------------------------------------------------------------------------- |
+| `recommended`    | Default — every non-opt-in rule at its declared severity                           |
+| `strict`         | `recommended` + warnings promoted to errors                                        |
+| `app`            | `recommended` minus library-only rules (cross-layer / circular-import / …)         |
+| `lib`            | `strict` + architecture rules + `require-browser-smoke-test` for browser packages  |
+| `best-practices` | `recommended` + every opt-in best-practice rule enabled                            |
+
+## Config file
+
+`.pyreonlintrc.json` (or the `"pyreonlint"` field in `package.json`):
+
+```json
+{
+  "$schema": "./node_modules/@pyreon/lint/schema/pyreonlintrc.schema.json",
+  "preset": "recommended",
+  "rules": {
+    "pyreon/no-window-in-ssr": ["error", { "exemptPaths": ["src/foundation/"] }],
+    "pyreon/require-img-alt": "warn",
+    "pyreon/no-map-in-jsx": "off"
+  }
+}
+```
+
+ESLint-style tuple form: `[severity, options]`. Rules declare their option shape in `meta.schema`; invalid options disable the rule and emit a `LintResult.configDiagnostics` error.
+
+## Rule categories (18)
+
+| Category        | Count | Notes                                                                      |
+| --------------- | ----- | -------------------------------------------------------------------------- |
+| `reactivity`    | 13    | Signal misuse, peek-in-tracked, unbatched-updates, nested-effect, …        |
+| `jsx`           | 11    | `class` over `className`, `<For by>` keying, no-props-destructure, …       |
+| `lifecycle`     | 5     | onMount cleanup, mount-in-effect, missing fallback                         |
+| `performance`   | 5     | Eager heavy imports, large `<For>` without `by`, heavy-import-in-handler   |
+| `ssr`           | 3     | `no-window-in-ssr`, `no-dom-in-setup`, `prefer-request-context`            |
+| `architecture`  | 7     | `no-process-dev-gate` (auto-fix), no-circular / no-cross-layer / …         |
+| `store`         | 3     | Provider scope, mutation, duplicate ids                                    |
+| `form`          | 4     | `no-unregistered-field`, `no-submit-without-validation`, …                 |
+| `styling`       | 4     | `prefer-cx`, `no-inline-style-object`, `prefer-show-over-display`, …       |
+| `hooks`         | 3     | No raw `addEventListener` / `localStorage` / `setInterval` in hook bodies  |
+| `accessibility` | 3     | Toast / Dialog / Overlay ARIA                                              |
+| `router`        | 5     | Imperative navigate in render, href navigation, prefer `useIsActive`       |
+| `ssg`           | 3     | Revalidate-not-pure-literal, missing-getStaticPaths, invalid-loader-export |
+| `frontend`      | 7     | **opt-in** — a11y/CLS: img-alt, dimensions, no-positive-tabindex, …        |
+| `query`         | 1     | **opt-in** — `query-options-as-function` (auto-fix)                        |
+| `rx`            | 1     | **opt-in** — `rx-prefer-pipe`                                              |
+| `i18n`          | 1     | **opt-in** — `i18n-prefer-trans-for-rich-jsx`                              |
+| `storage`       | 1     | **opt-in** — `no-storage-write-as-call` (auto-fix)                         |
+
+The five **opt-in** categories + the `form/no-signal-in-form-initial-values` + `router/prefer-typed-search-params` rules default `off` in `recommended` / `strict` / `app` / `lib`. The `best-practices` preset enables them wholesale; library-scoped ones (`query`, `rx`, `i18n`, `storage`, `frontend/prefer-zero-image`) auto-gate on `package.json` deps via `isProjectDependency` so a project never sees rules for libraries it doesn't use.
+
+## Programmatic API
+
+```ts
+import {
+  lint,
+  lintFile,
+  listRules,
+  applyFixes,
+  loadConfig,
+  getPreset,
+  AstCache,
+  watchAndLint,
+  startLspServer,
+  allRules,
+  type LintResult,
+  type Diagnostic,
+  type Rule,
+} from '@pyreon/lint'
 
 // Lint files
-const result = lint({
+const result: LintResult = lint({
   paths: ['src/'],
   preset: 'recommended',
   fix: false,
   quiet: false,
 })
-
 console.log(`${result.totalErrors} errors, ${result.totalWarnings} warnings`)
+for (const d of result.configDiagnostics) console.log(d.ruleId, d.message)
 
-// List all rules
-for (const rule of listRules()) {
-  console.log(`${rule.id} (${rule.severity}): ${rule.description}`)
-}
-
-// Lint a single source string
-import { getPreset } from '@pyreon/lint'
-import { allRules } from '@pyreon/lint/rules'
-
+// Lint a single source string (no filesystem)
 const fileResult = lintFile('app.tsx', source, allRules, getPreset('recommended'))
+
+// Apply auto-fixes to a source string
+const fixed = applyFixes(source, fileResult.diagnostics)
+
+// List every rule (metadata, severity, category, fixable, opt-in)
+for (const rule of listRules()) console.log(rule.id, rule.severity, rule.category)
 ```
 
-## Rules (51)
-
-### Reactivity (8)
-
-| Rule                           | Severity | Fixable | Description                                       |
-| ------------------------------ | -------- | ------- | ------------------------------------------------- |
-| `pyreon/no-bare-signal-in-jsx` | error    | Yes     | Flags `{count()}` in JSX text — wrap in `() =>`   |
-| `pyreon/no-signal-in-loop`     | error    | No      | Flags signal()/computed() inside loops            |
-| `pyreon/no-nested-effect`      | warn     | No      | Flags effect() inside effect()                    |
-| `pyreon/no-peek-in-tracked`    | error    | No      | Flags .peek() inside effect/computed              |
-| `pyreon/no-unbatched-updates`  | warn     | No      | Flags 3+ .set() calls without batch()             |
-| `pyreon/prefer-computed`       | warn     | No      | Suggests computed() for effect with single .set() |
-| `pyreon/no-effect-assignment`  | warn     | No      | Flags effect with single .update()                |
-| `pyreon/no-signal-leak`        | warn     | No      | Reports unused signal declarations                |
-| `pyreon/no-signal-call-write`  | error    | No      | Flags `sig(value)` write attempts on signals      |
-
-### JSX (11)
-
-| Rule                            | Severity | Fixable | Description                                |
-| ------------------------------- | -------- | ------- | ------------------------------------------ |
-| `pyreon/no-map-in-jsx`          | warn     | No      | Prefer `<For>` over .map() in JSX          |
-| `pyreon/use-by-not-key`         | error    | Yes     | Use `by` not `key` on `<For>`              |
-| `pyreon/no-classname`           | error    | Yes     | Use `class` not `className`                |
-| `pyreon/no-htmlfor`             | error    | Yes     | Use `for` not `htmlFor`                    |
-| `pyreon/no-onchange`            | warn     | Yes     | Prefer `onInput` over `onChange` on inputs |
-| `pyreon/no-ternary-conditional` | warn     | No      | Prefer `<Show>` over ternary with JSX      |
-| `pyreon/no-and-conditional`     | warn     | No      | Prefer `<Show>` over `&&` with JSX         |
-| `pyreon/no-index-as-by`         | warn     | No      | Don't use index as `by` prop               |
-| `pyreon/no-missing-for-by`      | warn     | No      | `<For>` should have `by` prop              |
-| `pyreon/no-props-destructure`   | error    | No      | Don't destructure component props          |
-| `pyreon/no-children-access`     | info     | No      | Direct props.children access in renderers  |
-
-### Lifecycle (5)
-
-| Rule                                    | Severity | Fixable | Description                              |
-| --------------------------------------- | -------- | ------- | ---------------------------------------- |
-| `pyreon/no-missing-cleanup`             | warn     | No      | onMount with timers needs cleanup return |
-| `pyreon/no-mount-in-effect`             | warn     | No      | Don't call onMount inside effect         |
-| `pyreon/no-effect-in-mount`             | info     | No      | effect() inside onMount is unusual       |
-| `pyreon/no-dom-in-setup`                | warn     | No      | DOM queries outside onMount/effect       |
-| `pyreon/no-imperative-effect-on-create` | warn     | No      | Imperative work in effect() at setup     |
-
-### Performance (4)
-
-| Rule                              | Severity | Fixable | Description                                |
-| --------------------------------- | -------- | ------- | ------------------------------------------ |
-| `pyreon/no-large-for-without-by`  | error    | No      | `<For>` must have `by` for reconciliation  |
-| `pyreon/no-effect-in-for`         | warn     | No      | Don't create effects inside `<For>`        |
-| `pyreon/no-eager-import`          | info     | No      | Lazy-load heavy packages                   |
-| `pyreon/prefer-show-over-display` | info     | No      | Use `<Show>` instead of CSS display toggle |
-
-### SSR (3)
-
-| Rule                            | Severity | Fixable | Description                         |
-| ------------------------------- | -------- | ------- | ----------------------------------- |
-| `pyreon/no-window-in-ssr`       | error    | No      | Browser globals outside safe scopes |
-| `pyreon/no-mismatch-risk`       | warn     | No      | Non-deterministic calls in JSX      |
-| `pyreon/prefer-request-context` | warn     | No      | Module-level state in server files  |
-
-### Architecture (5)
-
-| Rule                             | Severity | Fixable | Description                        |
-| -------------------------------- | -------- | ------- | ---------------------------------- |
-| `pyreon/no-circular-import`      | error    | No      | Enforce package layer order        |
-| `pyreon/no-deep-import`          | warn     | No      | No @pyreon/\*/src/ imports         |
-| `pyreon/no-cross-layer-import`   | error    | No      | Core can't import ui-system        |
-| `pyreon/dev-guard-warnings`      | error    | No      | console.warn/error needs `__DEV__` |
-| `pyreon/no-error-without-prefix` | warn     | Yes     | Errors need [Pyreon] prefix        |
-
-### Store (3)
-
-| Rule                               | Severity | Fixable | Description                      |
-| ---------------------------------- | -------- | ------- | -------------------------------- |
-| `pyreon/no-store-outside-provider` | warn     | No      | Store hooks need provider in SSR |
-| `pyreon/no-mutate-store-state`     | warn     | No      | Use actions, not direct .set()   |
-| `pyreon/no-duplicate-store-id`     | error    | No      | Unique defineStore() IDs         |
-
-### Form (3)
-
-| Rule                                  | Severity | Fixable | Description                         |
-| ------------------------------------- | -------- | ------- | ----------------------------------- |
-| `pyreon/no-unregistered-field`        | warn     | No      | useField() without register()       |
-| `pyreon/no-submit-without-validation` | warn     | No      | useForm onSubmit without validators |
-| `pyreon/prefer-field-array`           | info     | No      | signal([]) in form files            |
-
-### Styling (4)
-
-| Rule                               | Severity | Fixable | Description                    |
-| ---------------------------------- | -------- | ------- | ------------------------------ |
-| `pyreon/no-inline-style-object`    | warn     | No      | Inline style objects in JSX    |
-| `pyreon/no-dynamic-styled`         | warn     | No      | styled() inside functions      |
-| `pyreon/prefer-cx`                 | info     | No      | Use cx() for class composition |
-| `pyreon/no-theme-outside-provider` | warn     | No      | useTheme() without provider    |
-
-### Hooks (3)
-
-| Rule                             | Severity | Fixable | Description            |
-| -------------------------------- | -------- | ------- | ---------------------- |
-| `pyreon/no-raw-addeventlistener` | info     | No      | Use useEventListener() |
-| `pyreon/no-raw-setinterval`      | info     | No      | Wrap timers in onMount |
-| `pyreon/no-raw-localstorage`     | info     | No      | Use useStorage()       |
-
-### Accessibility (3)
-
-| Rule                  | Severity | Fixable | Description                          |
-| --------------------- | -------- | ------- | ------------------------------------ |
-| `pyreon/toast-a11y`   | warn     | No      | Toast components need role/aria-live |
-| `pyreon/dialog-a11y`  | warn     | No      | `<dialog>` needs aria-label          |
-| `pyreon/overlay-a11y` | warn     | No      | `<Overlay>` needs role/aria-label    |
-
-## Presets
-
-| Preset        | Description                          |
-| ------------- | ------------------------------------ |
-| `recommended` | All rules at default severity        |
-| `strict`      | All warnings promoted to errors      |
-| `app`         | Recommended minus library-only rules |
-| `lib`         | Strict plus architecture checks      |
-
-## Rule Options
-
-Every rule entry in your config accepts either a bare severity or a `[severity, options]` tuple — ESLint-style. The tuple form lets you pass per-rule options without a bespoke API per rule.
-
-```json
-// .pyreonlintrc.json
-{
-  "$schema": "./node_modules/@pyreon/lint/schema/pyreonlintrc.schema.json",
-  "preset": "recommended",
-  "rules": {
-    "pyreon/no-window-in-ssr": "error",
-    "pyreon/no-raw-addeventlistener": [
-      "info",
-      { "exemptPaths": ["packages/core/runtime-dom/", "src/foundation/"] }
-    ]
-  }
-}
-```
-
-The `$schema` reference enables IDE autocomplete + validation when editing the config — VSCode, IntelliJ, Zed, and the LSP all pick it up automatically.
-
-**Convention: `exemptPaths`.** Rules that support path-based exemption read `options.exemptPaths: string[]`. Each entry is a substring match against the file path. Missing or empty → no exemptions. Rules currently supporting `exemptPaths`:
-
-- `pyreon/no-window-in-ssr` — packages that are DOM-only (no SSR scenario)
-- `pyreon/no-raw-addeventlistener` — packages implementing `useEventListener` / event delegation
-- `pyreon/no-raw-setinterval` — packages implementing `useInterval` / `useTimeout`
-- `pyreon/no-process-dev-gate` — server-only directories (Node environments)
-- `pyreon/dev-guard-warnings` — server-only + demo / example directories
-- `pyreon/require-browser-smoke-test` — packages explicitly opted out (e.g. experimental); also accepts `additionalPackages: string[]` to extend the browser-categorized list
-
-**Validation.** Each rule declares its option shape in `meta.schema`. The runner validates user config once per `(rule, options)` pair:
-
-- Unknown option keys → warning surfaced on `LintResult.configDiagnostics` (and stderr), rule stays enabled
-- Wrong-typed values → error surfaced on `LintResult.configDiagnostics` (and stderr), rule disabled for that run
-- Rules without a schema accept any options (no validation)
-
-Programmatic consumers (CI dashboards, LSP, JSON reporters) read `result.configDiagnostics` alongside `result.files[].diagnostics`.
-
-**CLI option overrides.** `--rule-options id='{json}'` passes JSON-encoded options to a specific rule from the command line — useful for one-off lint runs without editing the config file:
-
-```bash
-pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/
-```
-
-## Custom Rules
+Watch mode:
 
 ```ts
-import type { Rule } from '@pyreon/lint'
+import { watchAndLint } from '@pyreon/lint'
 
-const myRule: Rule = {
-  meta: {
-    id: 'custom/my-rule',
-    category: 'reactivity',
-    description: 'My custom rule',
-    severity: 'warn',
-    fixable: false,
-    // Optional: declare options shape. If present, the runner validates
-    // user config against it. Supported types:
-    //   'string' | 'string[]' | 'number' | 'boolean'
-    schema: { exemptPaths: 'string[]' },
-  },
-  create(context) {
-    // Read options from user config (tuple form).
-    const options = context.getOptions()
-    // Or use the `isPathExempt` helper for the `exemptPaths` convention:
-    //   import { isPathExempt } from '@pyreon/lint'
-    //   if (isPathExempt(context)) return {}
-
-    return {
-      CallExpression(node) {
-        context.report({
-          message: 'Something is wrong',
-          span: { start: node.start, end: node.end },
-        })
-      },
-    }
-  },
-}
+const stop = watchAndLint({
+  paths: ['src/'],
+  preset: 'recommended',
+  onResult: (r) => console.log(`${r.totalErrors} errors`),
+})
+// later: stop()
 ```
+
+LSP (also reachable via `pyreon-lint --lsp`):
+
+```ts
+import { startLspServer } from '@pyreon/lint'
+startLspServer()   // stdin/stdout JSON-RPC; publishes diagnostics + inlay hints
+```
+
+## CLI subpath
+
+```ts
+import { /* internal cli entry */ } from '@pyreon/lint/cli'
+```
+
+The `./cli` export wires `process.argv` to `lint()` + a `formatText` / `formatJSON` / `formatCompact` reporter; the `pyreon-lint` bin file is a thin shim that imports it.
+
+## CLI colors
+
+The text reporter uses brand-mapped 256-color ANSI (matches the CLI spec §6.5 and `pyreon doctor`): error → ember-core (xterm 202), warning → ember-warm (220), info → cyan (45); glyphs `✗` / `!` / `ℹ`; file path bold, location + rule id dim. Respects `NO_COLOR` and `FORCE_COLOR`. `--format json|compact` is unchanged (machine formats, no color).
+
+## Gotchas
+
+- **Opt-in rules are off by default.** Use `--preset best-practices` (or enable per-rule in config) to surface frontend a11y / library-usage rules.
+- **Library-scoped rules auto-gate** on `package.json` deps — adding `@pyreon/query` to your deps will start surfacing `pyreon/query-options-as-function` if the rule is enabled.
+- **The `pyreon-lint` binary is published**; the `lint()` programmatic API is the stable surface for CI integrations.
+- **AST cache is in-process only** — `lint()` re-parses files on every call across processes. Use `--watch` to amortize.
+
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/lint](https://docs.pyreon.dev/docs/lint) (or `docs/docs/lint.md` in this repo).
 
 ## License
 

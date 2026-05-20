@@ -1,6 +1,8 @@
 # @pyreon/solid-compat
 
-SolidJS-compatible API shim that runs on Pyreon's signal-based reactive engine. Migrate Solid code by swapping the import path.
+SolidJS-compatible API shim — write Solid-style code that runs on Pyreon's reactive engine.
+
+`@pyreon/solid-compat` provides the SolidJS surface (`createSignal`, `createEffect`, `createMemo`, `createComputed`, `createRenderEffect`, `createResource`, `createSelector`, `createRoot`, `createStore`, `createContext`/`useContext`, `mergeProps`, `splitProps`, `untrack`, `batch`, lifecycle hooks `onMount` / `onCleanup`, control-flow components `<For>` / `<Show>` / `<Switch>` / `<Match>` / `<Index>` / `<Dynamic>` / `<Portal>` / `<ErrorBoundary>` / `<Suspense>`, transitions, observables, `reconcile` / `unwrap` / `produce`) all on Pyreon's reactive engine. Because Solid and Pyreon share the same mental model (fine-grained reactivity, run-once components, getter/setter signals), this is the thinnest compat layer — most APIs map nearly 1:1.
 
 ## Install
 
@@ -8,166 +10,89 @@ SolidJS-compatible API shim that runs on Pyreon's signal-based reactive engine. 
 bun add @pyreon/solid-compat
 ```
 
-## Quick Start
+## Quick start
 
 ```tsx
-// Replace:
-// import { createSignal, createEffect } from "solid-js"
-// With:
 import { createSignal, createEffect } from '@pyreon/solid-compat'
+import { render } from '@pyreon/solid-compat'
 
 function Counter() {
   const [count, setCount] = createSignal(0)
-  createEffect(() => console.log('count:', count()))
-  return <button onClick={() => setCount((c) => c + 1)}>{count}</button>
-}
-```
 
-### Derived State and Memos
-
-```tsx
-import { createSignal, createMemo } from '@pyreon/solid-compat'
-
-function PriceCalculator() {
-  const [price, setPrice] = createSignal(100)
-  const [quantity, setQuantity] = createSignal(1)
-  const total = createMemo(() => price() * quantity())
+  createEffect(() => {
+    document.title = `Count: ${count()}`
+  })
 
   return (
     <div>
-      <input
-        type="number"
-        value={price()}
-        onInput={(e) => setPrice(Number(e.currentTarget.value))}
-      />
-      <input
-        type="number"
-        value={quantity()}
-        onInput={(e) => setQuantity(Number(e.currentTarget.value))}
-      />
-      <p>Total: ${total()}</p>
+      <p>Count: {count()}</p>
+      <button onClick={() => setCount((c) => c + 1)}>+1</button>
     </div>
   )
 }
+
+render(() => <Counter />, document.getElementById('app')!)
 ```
 
-### Control Flow Components
+## Subpath exports
 
-```tsx
-import { createSignal } from '@pyreon/solid-compat'
-import { Show, For } from '@pyreon/solid-compat'
+| Subpath                                | Surface                                                                                       |
+| -------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `@pyreon/solid-compat`                 | Full Solid surface — see API table below                                                       |
+| `@pyreon/solid-compat/jsx-runtime`     | JSX automatic runtime (`jsx`, `jsxs`, `Fragment`)                                              |
+| `@pyreon/solid-compat/jsx-dev-runtime` | Dev variant — same runtime                                                                     |
 
-function TodoList() {
-  const [todos, setTodos] = createSignal([
-    { id: 1, text: 'Learn Pyreon', done: false },
-    { id: 2, text: 'Build app', done: false },
-  ])
-  const [showDone, setShowDone] = createSignal(false)
+## API surface
 
-  return (
-    <div>
-      <button onClick={() => setShowDone((s) => !s)}>
-        {showDone() ? 'Hide' : 'Show'} completed
-      </button>
-      <For each={todos()} by={(t) => t.id}>
-        {(todo) => (
-          <Show when={showDone() || !todo.done}>
-            <p>{todo.text}</p>
-          </Show>
-        )}
-      </For>
-    </div>
-  )
+| Category         | Exports                                                                                       |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| Signals          | `createSignal`, `createMemo`, `createEffect`, `createComputed` (alias), `createRenderEffect`, `createRoot`, `on`, `batch`, `untrack` |
+| Lifecycle        | `onMount`, `onCleanup`                                                                         |
+| Props            | `mergeProps`, `splitProps`, `children`                                                         |
+| Context          | `createContext`, `useContext`                                                                  |
+| Owner            | `getOwner`, `runWithOwner`                                                                     |
+| Resources        | `createResource` (with `pending` / `loading` / `latest` / `state` / `error`)                  |
+| Stores           | `createStore`, `reconcile`, `unwrap`, `produce`                                                |
+| Transitions      | `startTransition`, `useTransition`                                                             |
+| Selectors        | `createSelector`                                                                               |
+| Iteration        | `<For>`, `<Index>`, `mapArray`, `indexArray`                                                   |
+| Control flow     | `<Show>`, `<Switch>`, `<Match>`, `<Dynamic>`, `<Portal>`, `<ErrorBoundary>`, `<Suspense>`     |
+| Observables      | `observable`, `from`                                                                           |
+| Misc             | `lazy`, `createDeferred`, `createReaction`, `catchError`, `createUniqueId`, `DEV`              |
+| Render           | `render(code, element)`, `hydrate(code, element)`                                              |
+
+## Drop-in compat mode
+
+`@pyreon/vite-plugin` can alias every `solid-js` import to this package — no code changes:
+
+```ts
+// vite.config.ts
+import pyreon from '@pyreon/vite-plugin'
+export default { plugins: [pyreon({ compat: 'solid' })] }
+```
+
+`tsconfig.json`:
+
+```jsonc
+{
+  "compilerOptions": {
+    "jsx": "preserve",
+    "jsxImportSource": "@pyreon/solid-compat"
+  }
 }
 ```
 
-### Context and Dependency Injection
+## Gotchas
 
-```tsx
-import { createContext, useContext } from '@pyreon/solid-compat'
-import { createSignal } from '@pyreon/solid-compat'
+- **Solid's babel-plugin-jsx-dom-expressions is NOT used.** This package relies on Pyreon's own JSX compiler — semantics are the same (run-once + fine-grained), the codegen differs.
+- **`createStore` mutation tracking covers the common shapes** (top-level set, nested path set, function updaters). Deep proxy semantics in unusual edge cases may diverge from Solid's implementation.
+- **`createResource`'s `mutate` / `refetch`** work but are implemented as imperative writes to the underlying Pyreon signal — not a fully transparent observer of an external fetcher.
+- **`render`'s cleanup return value** maps to Pyreon's `mount()` cleanup function — semantically equivalent.
 
-const CounterContext = createContext({ count: () => 0, increment: () => {} })
+## Documentation
 
-function CounterProvider(props: { children: any }) {
-  const [count, setCount] = createSignal(0)
-  const value = { count, increment: () => setCount((c) => c + 1) }
-  return <CounterContext.Provider value={value}>{props.children}</CounterContext.Provider>
-}
+Full docs: [docs.pyreon.dev/docs/solid-compat](https://docs.pyreon.dev/docs/solid-compat) (or `docs/docs/solid-compat.md` in this repo).
 
-function Display() {
-  const { count, increment } = useContext(CounterContext)
-  return <button onClick={increment}>Clicks: {count()}</button>
-}
-```
+## License
 
-## Key Differences from SolidJS
-
-- **Same mental model.** Pyreon's reactivity is signal-based, just like Solid.
-- **`createEffect` cleanup is supported.** Pyreon's `effect()` supports both return-value cleanup and `onCleanup()` for registering cleanup functions imperatively.
-- **`lazy` throws promises for Suspense.** Works with `<Suspense>` boundaries.
-
-## API
-
-### Primitives
-
-- **`createSignal(initial)`** -- returns `[getter, setter]`.
-- **`createEffect(fn)`** -- reactive side effect.
-- **`createRenderEffect(fn)`** -- alias for `createEffect`.
-- **`createComputed(fn)`** -- alias for `createEffect`.
-- **`createMemo(fn)`** -- returns a computed getter.
-- **`createRoot(fn)`** -- run in a new reactive scope with `dispose`.
-- **`on(deps, fn)`** -- explicit dependency tracking.
-
-### Utilities
-
-- **`batch(fn)`** -- coalesce multiple signal writes.
-- **`untrack(fn)`** -- read signals without tracking.
-- **`mergeProps(...sources)`** -- merge multiple props objects (supports symbol keys).
-- **`splitProps(props, ...keys)`** -- split props into groups (supports symbol keys).
-- **`children(fn)`** -- resolve reactive children.
-
-### Lifecycle
-
-- **`onMount(fn)`** -- run after component mounts.
-- **`onCleanup(fn)`** -- run on component unmount.
-
-### Context
-
-- **`createContext(defaultValue)`** -- create a context.
-- **`useContext(ctx)`** -- read a context value.
-
-### Ownership
-
-- **`getOwner()`** -- get the current reactive scope.
-- **`runWithOwner(owner, fn)`** -- run in a specific scope.
-
-### Reactivity
-
-- **`createSelector(source)`** -- O(1) equality selector.
-
-### Components
-
-- **`lazy(loader)`** -- dynamic import wrapper, throws promises for `<Suspense>`.
-- **`Show`**, **`Switch`**, **`Match`**, **`For`** -- control flow components.
-- **`Suspense`**, **`ErrorBoundary`** -- boundary components.
-
-## Composing Pyreon framework components inside solid-compat
-
-Pyreon's framework components (`RouterView`, `PyreonUI`, `FormProvider`, `QueryClientProvider`, …) ship marked with `nativeCompat()` from `@pyreon/core` — solid-compat's JSX runtime detects the marker and routes them through Pyreon's setup frame instead of the compat wrapper. **You don't need to do anything** for the 24 components shipped marked.
-
-If you write your **own** Pyreon-flavored helper that uses `provide()` / `onMount()` / `onUnmount()` / `effect()` at component-body scope and use it in a solid-compat app, mark it explicitly:
-
-```tsx
-import { nativeCompat, provide, createContext } from '@pyreon/core'
-
-const MyCtx = createContext<string>('default')
-
-function MyProvider(props: { value: string; children?: unknown }) {
-  provide(MyCtx, props.value)
-  return props.children as never
-}
-nativeCompat(MyProvider) // ← required for compat-mode apps
-```
-
-Without the marker, the wrapper relocates the body's render context and `provide()` lands in a torn-down context stack — descendants read the default. See [`packages/core/core/src/compat-marker.ts`](../../core/core/src/compat-marker.ts) for details.
+MIT

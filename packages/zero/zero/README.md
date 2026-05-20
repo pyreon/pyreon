@@ -1,6 +1,8 @@
 # @pyreon/zero
 
-Core meta-framework for building full-stack apps with [Pyreon](https://github.com/pyreon/pyreon) and [Vite](https://vite.dev).
+Zero-config full-stack meta-framework — file-system routing, SSR/SSG/ISR/SPA, deploy adapters.
+
+`@pyreon/zero` wraps `@pyreon/server` + `@pyreon/router` + `@pyreon/head` + `@pyreon/vite-plugin` into a single Vite plugin and a conventions-based project layout: `src/routes/` is the route tree (`[param]`, `[...catchAll]`, `_layout`, `_404`, `_loading`, `_error`, `(groups)`), per-file `export const { loader, meta, middleware, getStaticPaths, revalidate, renderMode }` opts into capabilities, and `mode: 'ssr' | 'ssg' | 'isr' | 'spa'` picks the rendering strategy. Production builds run through one of six deploy adapters (Vercel / Cloudflare Pages / Netlify / Node / Bun / static). The main entry is **client-safe**; server-only APIs live at `@pyreon/zero/server`.
 
 ## Install
 
@@ -8,70 +10,222 @@ Core meta-framework for building full-stack apps with [Pyreon](https://github.co
 bun add @pyreon/zero
 ```
 
-## Features
+`sharp` is an optional peer dep — install it (`bun add -D sharp`) only if you use `imagePlugin` / `faviconPlugin` / `ogImagePlugin`.
 
-- **File-based routing** — `[param]`, `[...catchAll]`, `_layout`, `_error`, `_loading`, `(groups)`
-- **Rendering modes** — SSR (streaming + string), SSG, ISR, SPA (per-route configurable via `renderMode` export)
-- **API routes** — `.ts` files in `src/routes/api/` export HTTP method handlers (`GET`, `POST`, `PUT`, `DELETE`)
-- **Server actions** — `defineAction()` for mutations with automatic client/server boundary detection
-- **Per-route middleware** — route files export `middleware` using `@pyreon/server`'s signature
-- **Components** — `<Image>` (lazy load, srcset, blur-up), `<Link>` (prefetch, active state), `<Script>` (loading strategies)
-- **Theme** — Dark/light/system with `theme` signal, `<ThemeToggle>`, and anti-flash inline script
-- **Fonts** — Google Fonts self-hosting at build time, local fonts, size-adjusted fallbacks
-- **Image optimization** — Build-time processing via `?optimize` imports (WebP/AVIF, blur placeholders). Type the custom queries with one line — `/// <reference types="@pyreon/zero/image-types" />` — which ships ambient `declare module "*?optimize"` / `"*?component"` / `"*?raw"` reusing the plugin's own `ProcessedImage`.
-- **SEO** — Sitemap, robots.txt, JSON-LD helpers (Vite plugin + dev middleware)
-- **Middleware** — `cacheMiddleware()`, `securityHeaders()`, `corsMiddleware()`, `rateLimitMiddleware()`, `compressionMiddleware()`
-- **Adapters** — Node.js, Bun, static, Vercel, Cloudflare Pages, Netlify Functions
-- **Testing** — `createTestContext()`, `testMiddleware()`, `createTestApiServer()`, `createMockHandler()`
-- **Dev overlay** — Styled error overlay with source-mapped stack traces for SSR errors
-- **CSP middleware** — `cspMiddleware({ directives })` with `useNonce()` for inline scripts
-- **Env validation** — `validateEnv()` with type coercion, `schema()` for custom parsers, `publicEnv()`
-- **Request logging** — `loggerMiddleware()` with structured output
-- **AI integration** — `aiPlugin()` for llms.txt, JSON-LD inference, AI plugin manifest
-- **useRequestLocals()** — Bridge middleware locals into components
-- **Locale-aware favicons** — Per-locale favicon generation from source SVG/PNG
-- **OG image generation** — Build-time Open Graph image rendering
-- **Reactive favicon** — Theme-synced light/dark favicon switching
-- **Client-safe entry** — `@pyreon/zero` = client-safe, `@pyreon/zero/server` = server-only
-
-## Usage
+## Quick start
 
 ```ts
 // vite.config.ts
+import { defineConfig } from 'vite'
 import pyreon from '@pyreon/vite-plugin'
-import zero from '@pyreon/zero'
+import zero from '@pyreon/zero/server'
 
-export default {
-  plugins: [pyreon(), zero({ mode: 'ssr', ssr: { mode: 'stream' } })],
+export default defineConfig({
+  plugins: [
+    pyreon({ islands: true }),
+    zero({
+      mode: 'ssr',             // 'ssr' | 'ssg' | 'isr' | 'spa'
+      ssr: { mode: 'stream' }, // 'string' | 'stream'
+      adapter: 'node',         // 'vercel' | 'cloudflare' | 'netlify' | 'node' | 'bun' | 'static'
+    }),
+  ],
+})
+```
+
+```tsx
+// src/routes/index.tsx — the homepage
+import { useLoaderData } from '@pyreon/router'
+
+export const loader = async () => fetch('/api/hello').then((r) => r.json())
+
+export default function Home() {
+  const data = useLoaderData<{ message: string }>()
+  return <h1>{data.message}</h1>
 }
 ```
 
-## Subpath Exports
+```tsx
+// src/routes/_layout.tsx — wraps every route in this subtree
+import { Link, Meta } from '@pyreon/zero'
 
-| Export                      | Description                                           |
-| --------------------------- | ----------------------------------------------------- |
-| `@pyreon/zero`              | Client-safe: components, middleware, adapters, theme, SEO, fonts |
-| `@pyreon/zero/client`       | Client-side entry (`startClient`)                     |
-| `@pyreon/zero/config`       | `defineConfig`, `resolveConfig`                       |
-| `@pyreon/zero/image`        | `<Image>` component                                   |
-| `@pyreon/zero/link`         | `<Link>`, `useLink`, `createLink`                     |
-| `@pyreon/zero/script`       | `<Script>` component                                  |
-| `@pyreon/zero/theme`        | Theme system and `<ThemeToggle>`                      |
-| `@pyreon/zero/font`         | Font optimization plugin                              |
-| `@pyreon/zero/cache`        | Cache and security middleware                         |
-| `@pyreon/zero/seo`          | SEO plugin, sitemap, robots.txt                       |
-| `@pyreon/zero/image-plugin` | Image optimization Vite plugin                        |
-| `@pyreon/zero/actions`      | `defineAction`, `createActionMiddleware`              |
-| `@pyreon/zero/api-routes`   | API route utilities and middleware                    |
-| `@pyreon/zero/cors`         | CORS middleware                                       |
-| `@pyreon/zero/rate-limit`   | Rate limiting middleware                              |
-| `@pyreon/zero/compression`  | Compression middleware                                |
-| `@pyreon/zero/testing`      | Test utilities for middleware and API routes          |
-| `@pyreon/zero/server`       | Server-only: `createServer`, `validateEnv`, `useNonce`, `useRequestLocals` |
-| `@pyreon/zero/adapter-vercel` | Vercel serverless deployment adapter               |
-| `@pyreon/zero/adapter-cloudflare` | Cloudflare Pages deployment adapter           |
-| `@pyreon/zero/adapter-netlify` | Netlify Functions deployment adapter              |
+export default function Layout({ children }) {
+  return (
+    <>
+      <Meta title="My App" description="..." />
+      <nav><Link to="/">Home</Link> <Link to="/posts">Posts</Link></nav>
+      <main>{children}</main>
+    </>
+  )
+}
+```
+
+## File-system routing
+
+| File                       | Role                                                              |
+|----------------------------|-------------------------------------------------------------------|
+| `src/routes/index.tsx`     | `/` — homepage                                                    |
+| `src/routes/about.tsx`     | `/about`                                                          |
+| `src/routes/[id].tsx`      | `/:id` — dynamic param                                            |
+| `src/routes/[...slug].tsx` | `/*` — catch-all                                                  |
+| `src/routes/_layout.tsx`   | Wraps the whole subtree                                           |
+| `src/routes/_404.tsx`      | Not-found page (auto-emitted as `dist/404.html` in SSG)           |
+| `src/routes/_error.tsx`    | Route-level error boundary                                        |
+| `src/routes/_loading.tsx`  | Loader-in-flight component                                        |
+| `src/routes/(group)/x.tsx` | `/x` — group prefix is stripped from the URL                      |
+| `src/routes/api/*.ts`      | API routes — `export function GET / POST / PUT / DELETE / …`      |
+
+Each route file may also export `loader`, `meta`, `middleware`, `guard`, `getStaticPaths`, `revalidate`, and `renderMode`.
+
+## Rendering modes
+
+```ts
+zero({ mode: 'ssr' })  // server-rendered per request (default)
+zero({ mode: 'ssg' })  // prerender every static path at build time → dist/<path>/index.html
+zero({ mode: 'isr' })  // SSR + in-memory LRU cache, on-demand revalidation
+zero({ mode: 'spa' })  // client-only — single dist/index.html shell
+```
+
+Per-route override: `export const renderMode = 'ssg'`.
+
+## SSG
+
+```tsx
+// src/routes/posts/[slug].tsx — enumerate static paths at build time
+import type { GetStaticPaths } from '@pyreon/zero/server'
+
+export const getStaticPaths: GetStaticPaths<{ slug: string }> = async () => {
+  const posts = await loadAllPosts()
+  return posts.map((p) => ({ params: { slug: p.slug } }))
+}
+
+export const revalidate = 3600 // optional — build-time ISR (per platform adapter)
+
+export const loader = ({ params }) => fetchPost(params.slug)
+export default function Post() { /* ... */ }
+```
+
+SSG features (all on by default; opt out via `ssg: { ... }`):
+
+- `_404.tsx` → `dist/404.html` (per-locale variants if i18n configured)
+- Loader-thrown `redirect()` → `dist/_redirects` (Netlify/Cloudflare) + `_redirects.json` (Vercel)
+- Sitemap auto-emit (via `seoPlugin({ sitemap: { useSsgPaths: true } })`)
+- Concurrent rendering (`ssg.concurrency`, default 4) + per-path `onProgress` callbacks
+- Render-error fallback via `ssg.onPathError`; structured `_pyreon-ssg-errors.json` artifact
+- Path-collision detection (loud build failure on duplicate URLs)
+
+## ISR
+
+```ts
+zero({ mode: 'isr', isr: { revalidate: 60, maxEntries: 1000 } })
+```
+
+In-memory LRU SSR cache with TTL revalidation. **Default keys cache by `url.pathname` only** — for auth-gated pages, supply `cacheKey: (req) => …` that varies on session cookie / user-id header to avoid serving one user's HTML to another.
+
+## Built-in components
+
+```tsx
+import { Image, Link, Script, Meta, Icon, createIcon, createNamedIcon, ThemeToggle } from '@pyreon/zero'
+
+<Image src="/hero.jpg" width={1200} height={600} placeholder="blur" />
+<Link to="/about" prefetch="intent">About</Link>
+<Script strategy="afterInteractive" src="https://analytics.example.com/script.js" />
+<Meta title="..." description="..." />
+<Icon as={MyIconSvgComponent} />          {/* loaded via `?component` */}
+<ThemeToggle />                            {/* light/dark/system mode */}
+```
+
+`<Image>` ships with `imagePlugin` (build-time WebP/AVIF + blur/color placeholders). `<Link>` is `@pyreon/router`'s `RouterLink` re-exported. `<Meta>` writes via `@pyreon/head`.
+
+## Vite plugins (server-only)
+
+```ts
+import { faviconPlugin, iconsPlugin, ogImagePlugin, seoPlugin, aiPlugin } from '@pyreon/zero/server'
+
+// vite.config.ts
+plugins: [
+  zero({ /* ... */ }),
+  iconsPlugin({
+    sets: {
+      ui: { dir: './src/icons/ui' },
+      brand: { dir: './src/icons/brand', mode: 'image' },
+    },
+  }),
+  faviconPlugin({ source: './src/favicon.svg' }),
+  ogImagePlugin({ templates: { default: { /* ... */ } } }),
+  seoPlugin({ sitemap: { useSsgPaths: true }, robots: true }),
+  aiPlugin(), // generates llms.txt + JSON-LD inference + AI plugin manifest
+]
+```
+
+## Deploy adapters
+
+```ts
+import { vercelAdapter, cloudflareAdapter, netlifyAdapter, nodeAdapter, bunAdapter, staticAdapter } from '@pyreon/zero/server'
+
+zero({ adapter: vercelAdapter() })
+// or by string id:
+zero({ adapter: 'cloudflare' })
+```
+
+Each adapter writes its own platform config (`.vercel/output/config.json`, `_routes.json`, `netlify.toml`, etc.) during `closeBundle`. Adapters with revalidation support (`vercel` / `cloudflare` / `netlify`) implement `Adapter.revalidate(path)` — pair with `vercelRevalidateHandler` for the canonical webhook scaffold.
+
+## Server middleware
+
+```ts
+import { compose } from '@pyreon/zero/server'
+import { cspMiddleware, useNonce } from '@pyreon/zero/csp'
+import { loggerMiddleware } from '@pyreon/zero/logger'
+import { corsMiddleware } from '@pyreon/zero/cors'
+import { rateLimitMiddleware } from '@pyreon/zero/rate-limit'
+import { compressionMiddleware } from '@pyreon/zero/compression'
+
+const handler = compose([
+  loggerMiddleware(),
+  corsMiddleware({ origin: 'https://app.example.com' }),
+  rateLimitMiddleware({ windowMs: 60_000, max: 100 }),
+  cspMiddleware({ directives: { 'script-src': ["'self'", "'nonce-{nonce}'"] } }),
+  compressionMiddleware(),
+])
+```
+
+## i18n routing
+
+```ts
+zero({
+  i18n: { locales: ['en', 'de', 'cs'], defaultLocale: 'en', strategy: 'prefix-except-default' },
+})
+```
+
+Routes are duplicated per locale at build time. `prefix-except-default` keeps the default locale unprefixed (`/about`) and prefixes others (`/de/about`); `prefix` prefixes every locale including the default. Loader context + sitemap hreflang siblings + per-locale `_404.tsx` all compose automatically.
+
+## Subpath exports (server-only)
+
+| Subpath                       | Notes                                                                                |
+|-------------------------------|--------------------------------------------------------------------------------------|
+| `@pyreon/zero/server`         | `createServer`, `createApp`, `createISRHandler`, adapters, plugins, `vercelRevalidateHandler` |
+| `@pyreon/zero/client`         | `startClient`, `hydrateIslands*` re-exports                                          |
+| `@pyreon/zero/config`         | `defineConfig`, `resolveConfig`                                                      |
+| `@pyreon/zero/env`            | `validateEnv`, `publicEnv`, `schema`                                                 |
+| `@pyreon/zero/middleware`     | Generic `Middleware` helpers                                                         |
+| `@pyreon/zero/testing`        | `createTestContext`, `testMiddleware`, `createTestApiServer`                         |
+
+The main entry (`@pyreon/zero`) re-exports browser-safe pieces only — components, theme, i18n helpers. Server APIs imported from the main entry throw a clear error pointing at the right subpath.
+
+## Gotchas
+
+- `@pyreon/zero` ≠ `@pyreon/zero/server` — the main entry is client-safe. Server plugins (`faviconPlugin`, `seoPlugin`, `createServer`) MUST be imported from `/server`. Importing them from the main entry throws at module-load with a pointer to the right path.
+- ISR with auth-gated pages needs `cacheKey: (req) => …` that varies on session — the default keys by `url.pathname` only and will serve one user's HTML to another.
+- `_404.tsx` rendered HTML is emitted by SSG, but **static hosts must be configured to serve it** for unmatched URLs (most managed hosts do this by convention; bare S3 / nginx / Caddy need explicit per-locale `try_files` / `[[redirects]]`).
+- `getStaticPaths` / `revalidate` literal-extraction skips re-exports + non-literal expressions. Inline the value (`export const revalidate = 60`), don't reference a const.
+- `sharp` is optional. Without it, `imagePlugin` falls back to a soft warning in dev and a HARD `vite build` error in prod (never silently ships an image-broken site).
+- Never pass `layout` to `startClient` when using fs-router's `_layout.tsx` convention — the route tree already wraps every page in the layout, and the explicit option double-mounts.
+
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/zero](https://docs.pyreon.dev/docs/zero) (or `docs/docs/zero.md` in this repo).
+
+SSG-specific guide: [docs.pyreon.dev/docs/ssg](https://docs.pyreon.dev/docs/ssg).
 
 ## License
 
-[MIT](LICENSE)
+MIT

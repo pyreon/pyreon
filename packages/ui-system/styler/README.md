@@ -1,20 +1,19 @@
 # @pyreon/styler
 
-Lightweight CSS-in-JS engine for Pyreon.
+Lightweight CSS-in-JS engine — `styled` / `css` / `keyframes` / theme, ~3.8KB gzipped.
 
-**3.81 KB** gzipped | **SSR & static export ready** | **TypeScript strict**
+`@pyreon/styler` is the CSS-in-JS layer that powers `@pyreon/rocketstyle`, `@pyreon/elements`, and every other rocketstyle-derived component. Singleton `StyleSheet` with FNV-1a class hashing and dedup cache. **Static templates resolve once at module load** (zero per-render cost); dynamic interpolations re-resolve on theme/prop change with class-cache dedup. `ThemeContext` is a **reactive** Pyreon context — whole-theme swaps (user-preference theme switching) propagate through the resolver effect in `styled()` and re-resolve CSS + swap class names WITHOUT remounting the VNode. SSR-isolated via `createSheet()`. CSS Nesting passes through to the browser unchanged.
 
-## Installation
+## Install
 
 ```bash
-bun add @pyreon/styler
+bun add @pyreon/styler @pyreon/core @pyreon/reactivity
 ```
 
-## Quick Start
+## Quick start
 
-```ts
-import { styled, css, ThemeContext } from '@pyreon/styler'
-import { useContext, pushContext, popContext, onUnmount } from '@pyreon/core'
+```tsx
+import { styled, css, keyframes, createGlobalStyle, ThemeProvider } from '@pyreon/styler'
 
 const Button = styled('button')`
   display: inline-flex;
@@ -25,34 +24,30 @@ const Button = styled('button')`
   color: white;
   cursor: pointer;
 
-  &:hover {
-    opacity: 0.9;
-  }
+  &:hover { opacity: 0.9; }
 `
+
+const GlobalStyle = createGlobalStyle`
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; font-family: ${({ theme }) => theme.font}; }
+`
+
+<ThemeProvider theme={{ colors: { primary: '#0d6efd' }, font: 'Inter, sans-serif' }}>
+  <GlobalStyle />
+  <Button>Click me</Button>
+</ThemeProvider>
 ```
 
 ## API
 
-### `styled(tag)`
+### `styled(tag, options?)`
 
-Creates a styled Pyreon component from an HTML tag or another component.
+Creates a styled Pyreon component from an HTML tag, another component, or a styled component.
 
 ```ts
-// HTML tag
-const Box = styled('div')`
-  display: flex;
-`
-
-// Shorthand (via Proxy)
-const Box = styled.div`
-  display: flex;
-`
-
-// Wrapping a component
-const StyledLink = styled(Link)`
-  color: blue;
-  text-decoration: none;
-`
+const Box = styled('div')`display: flex;`
+const StyledLink = styled(Link)`color: blue;`
+const Wider = styled(Box)`padding: 24px;`         // wrap an existing styled
 ```
 
 #### Dynamic interpolations
@@ -68,28 +63,15 @@ const Text = styled('p')`
 
 #### Polymorphic `as` prop
 
-Render as a different element at runtime:
-
-```ts
-const Box = styled('div')`
-  padding: 16px;
-`
-
-// Renders as a <section>
-Box({ as: 'section', children: 'Content' })
+```tsx
+<Box as="section">Renders as a section</Box>
 ```
 
-#### Transient props
+#### Transient props (`$`-prefixed)
 
-Props prefixed with `$` are not forwarded to the DOM:
-
-```ts
-const Box = styled('div')`
-  color: ${(p) => (p.$active ? 'blue' : 'gray')};
-`
-
-// $active is used for styling but won't appear on the <div>
-Box({ $active: true })
+```tsx
+const Box = styled('div')`color: ${(p) => (p.$active ? 'blue' : 'gray')};`
+<Box $active>$active is used for styling but does NOT reach the DOM.</Box>
 ```
 
 #### Custom prop filtering
@@ -104,7 +86,7 @@ const Box = styled('div', {
 
 ### `css`
 
-Tagged template for composable CSS fragments:
+Tagged template for composable CSS fragments — lazy `CSSResult`, resolved on use.
 
 ```ts
 const flexCenter = css`
@@ -117,25 +99,18 @@ const Card = styled('div')`
   ${flexCenter};
   padding: 16px;
 `
-```
 
-Supports conditional patterns:
-
-```ts
+// Conditional fragments
 const Box = styled('div')`
   display: flex;
-  ${(props) =>
-    props.$bordered &&
-    css`
-      border: 1px solid #e0e0e0;
-      border-radius: 4px;
-    `};
+  ${(props) => props.$bordered && css`
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+  `};
 `
 ```
 
 ### `keyframes`
-
-Creates `@keyframes` animations:
 
 ```ts
 const fadeIn = keyframes`
@@ -150,46 +125,32 @@ const FadeBox = styled('div')`
 
 ### `createGlobalStyle`
 
-Injects global CSS rules (not scoped to a class):
+Global, non-scoped rules:
 
 ```ts
 const GlobalStyle = createGlobalStyle`
-  *, *::before, *::after {
-    box-sizing: border-box;
-  }
-
-  body {
-    margin: 0;
-    font-family: ${({ theme }) => theme.font};
-  }
+  body { margin: 0; }
 `
 ```
 
-### `ThemeContext` & `useTheme`
+### `ThemeProvider` / `useTheme` / `useThemeAccessor`
 
-Provides a theme object to all nested styled components via Pyreon's context system:
+`ThemeContext` is a Pyreon **reactive** context — whole-theme swaps (e.g. user preference dark→light) re-resolve every styled-component's CSS and swap classes in place, no VNode remount.
 
-```ts
-import { ThemeContext, useTheme } from '@pyreon/styler'
-import { pushContext, onUnmount, popContext } from '@pyreon/core'
+```tsx
+import { ThemeProvider, useTheme, useThemeAccessor } from '@pyreon/styler'
 
-// Provide theme
-pushContext(new Map([[ThemeContext.id, myTheme]]))
-onUnmount(() => popContext())
-```
+<ThemeProvider theme={{ colors: { primary: '#0d6efd' } }}>
+  <App />
+</ThemeProvider>
 
-Access the theme from any component:
-
-```ts
-const MyComponent = () => {
-  const theme = useTheme()
-  // use theme values
-}
+// Inside a component:
+const theme = useTheme()                  // snapshot at call time
+const themeFn = useThemeAccessor()        // () => Theme — track inside effects/computeds
+effect(() => console.log(themeFn().colors))
 ```
 
 #### TypeScript theme augmentation
-
-Extend `DefaultTheme` for strict typing across your app:
 
 ```ts
 declare module '@pyreon/styler' {
@@ -200,62 +161,73 @@ declare module '@pyreon/styler' {
 }
 ```
 
-### `sheet` & `createSheet`
+### `sheet` / `createSheet`
 
-The singleton `sheet` manages CSS rule injection. For SSR, use `createSheet` for per-request isolation:
+The singleton `sheet` manages CSS-rule injection. Use `createSheet()` for per-request SSR isolation:
 
 ```ts
-import { createSheet } from '@pyreon/styler'
+import { sheet, createSheet } from '@pyreon/styler'
 
-const sheet = createSheet()
-const html = renderToString(App({}))
-const styleTags = sheet.getStyleTag()
-sheet.reset()
+// SSR
+const requestSheet = createSheet()
+const html = renderToString(<App />)
+const styleTags = requestSheet.getStyleTag()
+requestSheet.reset()
 ```
 
 #### `@layer` support
 
-Wrap all scoped rules in a CSS Cascade Layer:
-
 ```ts
 const sheet = createSheet({ layer: 'components' })
+// All scoped rules emitted inside @layer components { ... }
 ```
 
-## How It Works
+### `useCSS(cssResult)`
 
-### Static path (zero runtime cost)
+Read-only hook for retrieving the resolved class name of a `CSSResult` — useful for hand-managed JSX paths that need the class without `styled()`.
 
-Templates with no function interpolations are resolved **once at component creation time**. The CSS class, rules, and `<style>` element are pre-computed and cached.
+### Low-level
+
+```ts
+import {
+  resolve, resolveValue, normalizeCSS, clearNormCache,
+  hash, hashUpdate, hashFinalize, HASH_INIT,
+  buildProps, filterProps, isDynamic,
+} from '@pyreon/styler'
+```
+
+`buildProps` / `filterProps` are the prop-forwarding helpers `styled()` uses internally — exported for HOC authors who need to recreate the same filter contract.
+
+## How it works
+
+### Static path — zero runtime cost
+
+Templates with no function interpolations resolve **once at module evaluation**. The CSS class, rules, and `<style>` element are pre-computed and cached.
 
 ### Dynamic path
 
-Templates with function interpolations resolve on every render. A cache skips `sheet.prepare()` and `<style>` element creation when the resolved CSS text hasn't changed.
+Templates with function interpolations resolve on every render. A class-cache keyed by `($rocketstyle, $rocketstate)` (rocketstyle path) or by `$element` bundle identity (Element path) skips the resolver pipeline entirely on cache hits. Companion `injectRules(rules, key)` is the idempotent entry point the compile-time-collapse path uses to ship pre-resolved CSS without re-hashing.
 
-### CSS Nesting
+### Reactive theme swaps
 
-Native CSS nesting is supported out of the box. The engine passes CSS through without transformation, so `&:hover`, `&::before`, nested selectors, and `@media` queries work as-is in all modern browsers.
+`ThemeProvider` wires the theme through `createReactiveContext` — `styled()` reads via the accessor inside a `renderEffect`, so flipping the provider's theme re-resolves CSS and patches `className` on the same node. No remount.
+
+### CSS nesting passes through
+
+Native CSS nesting is forwarded unchanged — `&:hover`, `&::before`, nested selectors, and `@media` queries work as-is in modern browsers.
 
 ```ts
 const Card = styled('div')`
   padding: 16px;
-
-  &:hover {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  }
-
-  & > h2 {
-    margin: 0 0 8px;
-  }
-
-  @media (min-width: 768px) {
-    padding: 24px;
-  }
+  &:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  & > h2 { margin: 0 0 8px; }
+  @media (min-width: 768px) { padding: 24px; }
 `
 ```
 
 ## Benchmarks
 
-### Bundle Size
+### Bundle size
 
 | Library                 |     Minified |     Gzipped |
 | ----------------------- | -----------: | ----------: |
@@ -275,12 +247,17 @@ const Card = styled('div')`
 | SSR renderToString        |  **307K** |               69K |     192K |    18K |
 | styled() factory          | **17.3M** |              109K |     933K |  18.2M |
 
-## Peer Dependencies
+## Gotchas
 
-| Package            | Version  |
-| ------------------ | -------- |
-| @pyreon/core       | >= 0.0.1 |
-| @pyreon/reactivity | >= 0.0.1 |
+- **Theme swaps re-resolve CSS but do NOT remount.** A whole-theme swap (`<ThemeProvider theme={B}>` → `<ThemeProvider theme={C}>`) updates the className in place. Identity preservation: pass a STABLE theme object via signal/computed if you want maximum cache reuse.
+- **`useTheme()` returns a snapshot.** Inside effects/computeds, use `useThemeAccessor()` to subscribe to live updates.
+- **`ThemeProvider` requires `nativeCompat` if used in a compat-layer app** — it's already marked. User code in compat-mode apps inheriting from `ThemeProvider` should preserve that contract.
+- **`@layer` is opt-in**, not the default. The singleton `sheet` does not wrap in `@layer`.
+- **Failed `insertRule` in production used to be silently swallowed.** Current code uses bare `process.env.NODE_ENV !== 'production'` — bundler-agnostic; do not regress to `import.meta.env.DEV` or `typeof process` guards.
+
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/styler](https://docs.pyreon.dev/docs/styler) (or `docs/docs/styler.md` in this repo).
 
 ## License
 
