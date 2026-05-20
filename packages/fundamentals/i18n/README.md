@@ -1,33 +1,32 @@
 # @pyreon/i18n
 
-Reactive internationalization for Pyreon. Async namespace loading, pluralization, interpolation, and rich JSX text.
+Reactive internationalization — interpolation, CLDR pluralization, async namespace loading, rich JSX text.
+
+`@pyreon/i18n` ships a `createI18n({ locale, messages, loader, fallbackLocale, pluralRules, onMissingKey })` factory that returns a signal-aware `I18nInstance` — `t(key, values)` reads the `locale` signal reactively so calls inside effects / computeds re-evaluate on locale change. Namespace lazy loading with promise deduplication, `addMessages` for runtime additions, and a `<Trans>` component for JSX-aware interpolation where simple string interpolation would lose markup. Two entry points: full (`@pyreon/i18n`, includes `<Trans>` + provider + hook) and framework-agnostic (`@pyreon/i18n/core` — only `createI18n` / `interpolate` / `resolvePluralCategory`, no `@pyreon/core` dep, safe for backend / edge workers / non-JSX consumers).
 
 ## Install
 
 ```bash
-bun add @pyreon/i18n
+bun add @pyreon/i18n @pyreon/core @pyreon/reactivity
 ```
 
 ## Two entry points
 
-| Entry                 | Use when                                                                         | Includes                                                              |
-| --------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `@pyreon/i18n`        | You're building a Pyreon UI and want the JSX components                          | `createI18n`, `Trans`, `I18nProvider`, `useI18n`, plus everything below |
-| `@pyreon/i18n/core`   | You're on a backend / non-Pyreon runtime / don't need JSX                        | `createI18n`, `interpolate`, `resolvePluralCategory`, types only       |
+| Entry              | Use when                                             | Includes                                                                |
+| ------------------ | ---------------------------------------------------- | ----------------------------------------------------------------------- |
+| `@pyreon/i18n`     | Pyreon UI app — you want the JSX components          | `createI18n`, `Trans`, `I18nProvider`, `useI18n`, `parseRichText`, types |
+| `@pyreon/i18n/core` | Backend / edge / non-JSX runtime                     | `createI18n`, `interpolate`, `resolvePluralCategory`, types only         |
 
-The `/core` entry has **zero JSX dependencies** — it only depends on `@pyreon/reactivity` (which is framework-agnostic). Use it for backend translation pipelines, edge workers, non-Pyreon frontends, or any context where you don't need the `<Trans>` JSX component.
+The `/core` entry transitively depends ONLY on `@pyreon/reactivity` — zero JSX, zero `@pyreon/core`. Use it for backend translation pipelines, edge workers, non-Pyreon frontends, or any context where you don't need the `<Trans>` JSX component. Both entries return identical `I18nInstance` objects, so switching later is non-breaking.
 
 ```ts
-// Backend / non-JSX usage:
 import { createI18n } from '@pyreon/i18n/core'
 
 const i18n = createI18n({ locale: 'en', messages: { en: { hello: 'Hi' } } })
-i18n.t('hello') // "Hi"
+i18n.t('hello') // 'Hi'
 ```
 
-The main `@pyreon/i18n` entry includes the same `createI18n` plus the JSX components — both entries return identical `I18nInstance` objects, so you can switch entries without changing your code if you decide later to add UI bindings.
-
-## Quick Start
+## Quick start
 
 ```ts
 import { createI18n } from '@pyreon/i18n'
@@ -47,42 +46,42 @@ const i18n = createI18n({
   },
 })
 
-i18n.t('greeting', { name: 'Alice' }) // "Hello, Alice!"
-i18n.t('items', { count: 3 }) // "3 items"
+i18n.t('greeting', { name: 'Alice' }) // 'Hello, Alice!'
+i18n.t('items', { count: 3 }) // '3 items'
 
 i18n.locale.set('de')
-i18n.t('greeting', { name: 'Alice' }) // "Hallo, Alice!"
-i18n.t('items', { count: 1 }) // "1 item" (fallback to en)
+i18n.t('greeting', { name: 'Alice' }) // 'Hallo, Alice!'
+i18n.t('items', { count: 1 }) // '1 item' (fallback to en)
 ```
 
-## API
+## `createI18n(options)`
 
-### `createI18n(options)`
+| Option              | Type                                                      | Description                                              |
+| ------------------- | --------------------------------------------------------- | -------------------------------------------------------- |
+| `locale`            | `string`                                                  | Initial locale (e.g. `'en'`)                             |
+| `fallbackLocale`    | `string`                                                  | Locale to try when key is missing in active locale        |
+| `messages`          | `Record<string, TranslationDictionary>`                   | Static messages, keyed by locale                          |
+| `loader`            | `(locale, namespace) => Promise<TranslationDictionary?>`  | Async namespace loader                                    |
+| `defaultNamespace`  | `string`                                                  | Default namespace for `t()` (default: `'common'`)        |
+| `pluralRules`       | `Record<string, (count: number) => string>`               | Custom plural rules; defaults to `Intl.PluralRules`      |
+| `onMissingKey`      | `(locale, key, namespace?) => string \| undefined`        | Missing-key handler — log, report, or supply a fallback   |
 
-Create a reactive i18n instance with static messages and/or an async namespace loader.
+Returns `I18nInstance`:
 
-| Parameter                  | Type                                               | Description                                             |
-| -------------------------- | -------------------------------------------------- | ------------------------------------------------------- |
-| `options.locale`           | `string`                                           | Initial locale (e.g. `"en"`)                            |
-| `options.fallbackLocale`   | `string`                                           | Locale to try when key is missing in active locale      |
-| `options.messages`         | `Record<string, TranslationDictionary>`            | Static messages keyed by locale                         |
-| `options.loader`           | `NamespaceLoader`                                  | `(locale, namespace) => Promise<TranslationDictionary>` |
-| `options.defaultNamespace` | `string`                                           | Default namespace for `t()` (default: `"common"`)       |
-| `options.pluralRules`      | `PluralRules`                                      | Custom plural rules per locale                          |
-| `options.onMissingKey`     | `(locale, key, namespace?) => string \| undefined` | Missing key handler                                     |
+| Property                              | Type                                              | Description                          |
+| ------------------------------------- | ------------------------------------------------- | ------------------------------------ |
+| `t(key, values?)`                     | `(string, InterpolationValues?) => string`        | Translate; reads locale reactively   |
+| `locale`                              | `Signal<string>`                                  | Current locale, writable             |
+| `loadNamespace(ns, locale?)`          | `(string, string?) => Promise<void>`              | Load a namespace; deduped per-request |
+| `isLoading`                           | `Computed<boolean>`                               | True while any namespace is loading  |
+| `loadedNamespaces`                    | `Computed<Set<string>>`                           | Namespaces loaded for current locale |
+| `exists(key)`                         | `(string) => boolean`                             | Check key existence                  |
+| `addMessages(locale, messages, ns?)`  | `Function`                                        | Add messages at runtime (deep-merge) |
+| `availableLocales`                    | `Computed<string[]>`                              | Locales with any registered messages |
 
-**Returns:** `I18nInstance` with:
+## Namespaces + lazy loading
 
-| Property                             | Type                                                    | Description                          |
-| ------------------------------------ | ------------------------------------------------------- | ------------------------------------ |
-| `t(key, values?)`                    | `(key: string, values?: InterpolationValues) => string` | Translate a key                      |
-| `locale`                             | `Signal<string>`                                        | Current locale (reactive, writable)  |
-| `loadNamespace(ns, locale?)`         | `(ns: string, locale?: string) => Promise<void>`        | Load a namespace                     |
-| `isLoading`                          | `Computed<boolean>`                                     | Whether any namespace is loading     |
-| `loadedNamespaces`                   | `Computed<Set<string>>`                                 | Namespaces loaded for current locale |
-| `exists(key)`                        | `(key: string) => boolean`                              | Check if a key exists                |
-| `addMessages(locale, messages, ns?)` | `Function`                                              | Add messages at runtime              |
-| `availableLocales`                   | `Computed<string[]>`                                    | All locales with registered messages |
+Split translations by feature and load on route entry. Concurrent loads for the same locale:namespace dedupe — calling `loadNamespace('auth')` twice returns the same promise.
 
 ```ts
 const i18n = createI18n({
@@ -92,76 +91,57 @@ const i18n = createI18n({
     return mod.default
   },
 })
+
 await i18n.loadNamespace('auth')
-i18n.t('auth:errors.invalid') // namespace:key.path syntax
+i18n.t('auth:errors.invalid') // 'namespace:key.path' syntax
 ```
 
-### `interpolate(template, values?)`
+## Pluralization
 
-Replace `{{key}}` placeholders in a string. Supports whitespace inside braces. Unmatched placeholders are left as-is.
-
-| Parameter  | Type                  | Description                             |
-| ---------- | --------------------- | --------------------------------------- |
-| `template` | `string`              | Template string with `{{placeholders}}` |
-| `values`   | `InterpolationValues` | Key-value pairs for substitution        |
-
-**Returns:** `string`
+Use CLDR-style `_zero` / `_one` / `_two` / `_few` / `_many` / `_other` suffixes with a `count` value. Resolution is via `Intl.PluralRules` by default; override per-locale with `pluralRules`.
 
 ```ts
-interpolate('Hello, {{ name }}!', { name: 'World' })
-// "Hello, World!"
+// messages: { items_one: '{{count}} item', items_other: '{{count}} items' }
+i18n.t('items', { count: 1 }) // '1 item'
+i18n.t('items', { count: 5 }) // '5 items'
 ```
 
-### `resolvePluralCategory(locale, count, customRules?)`
-
-Resolve the CLDR plural category for a count. Uses custom rules if provided, then `Intl.PluralRules`, then a basic `one`/`other` fallback.
-
-| Parameter     | Type          | Description                      |
-| ------------- | ------------- | -------------------------------- |
-| `locale`      | `string`      | Locale code                      |
-| `count`       | `number`      | The number to pluralize for      |
-| `customRules` | `PluralRules` | Optional custom rules per locale |
-
-**Returns:** `string` — one of `"zero"`, `"one"`, `"two"`, `"few"`, `"many"`, `"other"`
+## Interpolation
 
 ```ts
-resolvePluralCategory('en', 1) // "one"
-resolvePluralCategory('en', 5) // "other"
-resolvePluralCategory('ar', 3) // "few" (via Intl.PluralRules)
+import { interpolate } from '@pyreon/i18n'
+interpolate('Hello, {{ name }}!', { name: 'World' }) // 'Hello, World!'
 ```
 
-### `I18nProvider` / `useI18n()`
+Supports whitespace inside braces. Unmatched placeholders are left as-is.
 
-Context pattern for providing an i18n instance to the component tree.
+## `I18nProvider` / `useI18n()`
 
 ```tsx
-// Root:
+import { createI18n, I18nProvider, useI18n } from '@pyreon/i18n'
+
+const i18n = createI18n({ locale: 'en', messages: { en: { greeting: 'Hello {{name}}' } } })
+
 ;<I18nProvider instance={i18n}>
   <App />
 </I18nProvider>
 
-// Any descendant:
 function Greeting() {
   const { t, locale } = useI18n()
   return () => <h1>{t('greeting', { name: 'World' })}</h1>
 }
 ```
 
+`I18nProvider` is marked `nativeCompat` so it works correctly under `@pyreon/{react,preact,vue,solid}-compat` apps. `useI18n` throws `[@pyreon/i18n] useI18n() must be used within an <I18nProvider>.` at dev time if no provider is mounted above.
+
 `I18nContext` is also exported for advanced usage with `useContext` directly.
 
-### `Trans`
+## `<Trans>` — rich JSX interpolation
 
-Rich JSX interpolation component. Resolves `{{values}}` first, then maps `<tag>content</tag>` patterns to component functions.
-
-| Parameter    | Type                                  | Description                             |
-| ------------ | ------------------------------------- | --------------------------------------- |
-| `t`          | `(key, values?) => string`            | Translation function (from `useI18n()`) |
-| `i18nKey`    | `string`                              | Translation key                         |
-| `values`     | `InterpolationValues`                 | Interpolation values                    |
-| `components` | `Record<string, (children) => VNode>` | Component map for rich tags             |
+When a translated string sits next to JSX elements (`<a>`, `<strong>`, etc.), plain `{t('cta')}` can't carry the markup. `<Trans>` resolves `{{values}}` first, then maps `<tag>content</tag>` patterns to component functions.
 
 ```tsx
-// Translation: "Read our <terms>terms</terms> and <privacy>policy</privacy>"
+// Translation: 'Read our <terms>terms</terms> and <privacy>policy</privacy>'
 <Trans
   t={t}
   i18nKey="legal"
@@ -172,55 +152,31 @@ Rich JSX interpolation component. Resolves `{{values}}` first, then maps `<tag>c
 />
 ```
 
-### `parseRichText(text)`
+Caught by the opt-in lint rule `pyreon/i18n-prefer-trans-for-rich-jsx` when interleaving `{t('…')}` with element siblings.
 
-Parse a string into an array of plain text and `{ tag, children }` segments. Used internally by `Trans`.
+## `parseRichText(text)`
 
-| Parameter | Type     | Description                               |
-| --------- | -------- | ----------------------------------------- |
-| `text`    | `string` | String with `<tag>content</tag>` patterns |
-
-**Returns:** `(string | { tag: string, children: string })[]`
+Internal utility used by `<Trans>` — parses a string into `(string | { tag, children })[]`. Useful for custom rich-text renderers.
 
 ```ts
 parseRichText('Hello <bold>world</bold>!')
-// ["Hello ", { tag: "bold", children: "world" }, "!"]
+// ['Hello ', { tag: 'bold', children: 'world' }, '!']
 ```
 
-## Patterns
+## Runtime message addition
 
-### Namespace-Based Loading
-
-Split translations by feature and load them lazily.
-
-```ts
-const i18n = createI18n({
-  locale: 'en',
-  loader: (locale, ns) => fetch(`/locales/${locale}/${ns}.json`).then((r) => r.json()),
-})
-
-// Load on route entry:
-await i18n.loadNamespace('dashboard')
-i18n.t('dashboard:widgets.chart')
-```
-
-### Runtime Message Addition
-
-Add messages without async loading (e.g. from server-rendered data).
+Deep-merge new messages without async loading (e.g. server-rendered translation strings):
 
 ```ts
 i18n.addMessages('en', { newFeature: 'Try our new feature!' })
 i18n.addMessages('en', { errors: { timeout: 'Request timed out' } }, 'api')
 ```
 
-### Pluralization
-
-Use `_one`, `_other` (and `_zero`, `_two`, `_few`, `_many` for complex locales) suffixes with a `count` value.
+## Devtools
 
 ```ts
-// messages: { items_one: "{{count}} item", items_other: "{{count}} items" }
-i18n.t('items', { count: 1 }) // "1 item"
-i18n.t('items', { count: 5 }) // "5 items"
+import { i18nRegistry } from '@pyreon/i18n/devtools'
+// WeakRef registry of live i18n instances — tree-shakeable.
 ```
 
 ## Types
@@ -234,13 +190,22 @@ i18n.t('items', { count: 5 }) // "5 items"
 | `NamespaceLoader`       | `(locale: string, namespace: string) => Promise<TranslationDictionary \| undefined>` |
 | `InterpolationValues`   | `Record<string, string \| number>`                                                   |
 | `PluralRules`           | `Record<string, (count: number) => string>`                                          |
-| `I18nProviderProps`     | Props for `I18nProvider`: `{ instance: I18nInstance }`                               |
+| `I18nProviderProps`     | Props for `I18nProvider`: `{ instance: I18nInstance; children?: VNodeChild }`        |
 | `TransProps`            | Props for `Trans` component                                                          |
 
 ## Gotchas
 
-- `t()` reads `locale` reactively — it re-evaluates inside effects and computeds when the locale changes.
-- Concurrent loads for the same locale:namespace are deduplicated — calling `loadNamespace("auth")` twice returns the same promise.
-- Missing keys return the key string itself as a visual fallback (e.g. `"auth:missing.key"`).
-- The default namespace is `"common"` — keys without a `namespace:` prefix look up in the `"common"` namespace.
-- `addMessages` deep-merges into existing translations. It does not replace the entire namespace.
+- **`t()` reads `locale` reactively** — call it inside effects / computeds / JSX accessors so re-evaluation happens on locale change. Reading once at setup captures the initial value.
+- **Concurrent `loadNamespace` calls dedupe** — calling `loadNamespace('auth')` twice in parallel returns the same in-flight promise.
+- **Missing keys return the key string itself** as a visual fallback (`'auth:missing.key'`). Override via `onMissingKey`.
+- **Default namespace is `'common'`** — keys without a `namespace:` prefix look up in `common`.
+- **`addMessages` deep-merges** — it does not replace the entire namespace.
+- **`/core` entry only depends on `@pyreon/reactivity`** — picking the right entry per consumer keeps backend bundles JSX-free.
+
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/i18n](https://docs.pyreon.dev/docs/i18n) (or `docs/docs/i18n.md` in this repo).
+
+## License
+
+MIT

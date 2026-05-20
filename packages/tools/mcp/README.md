@@ -1,24 +1,26 @@
 # @pyreon/mcp
 
-Model Context Protocol server for AI-assisted Pyreon development. Gives AI coding assistants direct access to Pyreon's API reference, code validation, React-to-Pyreon migration, and project scanning.
+MCP server for AI-assisted Pyreon development — API reference, validation, migration, project audits.
+
+`@pyreon/mcp` is a Model Context Protocol server that gives AI coding assistants (Claude Code, Cursor, Windsurf, etc.) direct access to Pyreon's API reference + foot-gun catalogue + project audits. Tools include `get_api` (look up any `@pyreon/*` symbol with signature + foot-gun list), `validate` (run two anti-pattern detectors against a snippet), `migrate_react` (one-shot React → Pyreon codemod), `get_pattern` + `get_anti_patterns` (proactive — fetch the canonical pattern before writing), `get_changelog` (recent release notes), `audit_*` (project-wide audits surfaced from `@pyreon/compiler`), and `explain_error` (assemble a failure dossier). Token-frugal by default: `get_anti_patterns` returns a compact index (≈3.3K tokens) instead of the full catalogue (≈14K).
 
 ## Install
 
 ```bash
-bun add -d @pyreon/mcp
+bun add -D @pyreon/mcp
 ```
 
-## Quick Start
+Or run on demand:
 
 ```bash
-bunx @pyreon/mcp    # starts stdio MCP server
+bunx @pyreon/mcp     # starts stdio MCP server
 ```
 
-## IDE Integration
+## IDE integration
 
 ### Claude Code
 
-```json
+```jsonc
 // .mcp.json (project root)
 {
   "mcpServers": {
@@ -32,7 +34,7 @@ bunx @pyreon/mcp    # starts stdio MCP server
 
 ### Cursor
 
-```json
+```jsonc
 // .cursor/mcp.json
 {
   "mcpServers": {
@@ -46,8 +48,8 @@ bunx @pyreon/mcp    # starts stdio MCP server
 
 ### Windsurf
 
-```json
-// .windsurf/mcp.json (same format as Cursor)
+```jsonc
+// .windsurf/mcp.json  (same format)
 {
   "mcpServers": {
     "pyreon": {
@@ -58,333 +60,111 @@ bunx @pyreon/mcp    # starts stdio MCP server
 }
 ```
 
-## Tools
+## Tools (14)
 
-### `get_api` — Look up any Pyreon API
+| Tool                       | Purpose                                                                                  |
+| -------------------------- | ---------------------------------------------------------------------------------------- |
+| `mcp_overview`             | Discoverability map: every tool's "when to use" + example, in one call                   |
+| `get_api`                  | Look up any Pyreon API — signature, summary, example, common mistakes                    |
+| `validate`                 | Run `detectReactPatterns` + `detectPyreonPatterns` against a code snippet                |
+| `migrate_react`            | One-shot React → Pyreon codemod (`useState` → `signal`, `className` → `class`, …)        |
+| `diagnose`                 | Parse an error message into structured `{ pattern, fix, link }`                          |
+| `explain_error`            | Assemble a failure dossier from a full error report (incl. reactiveTrace)                |
+| `get_routes`               | List routes detected in the current project                                              |
+| `get_components`           | List components with their props + signals                                               |
+| `get_browser_smoke_status` | Report which browser-categorized packages have `*.browser.test.{ts,tsx}` coverage        |
+| `get_pattern`              | Fetch a "how do I do X" pattern body from `docs/patterns/<name>.md`                      |
+| `get_anti_patterns`        | Browse the anti-patterns catalogue (compact index by default; drill in with `name`/`category`/`full: true`) |
+| `get_changelog`            | Recent release notes for a `@pyreon/*` package, parsed from `CHANGELOG.md`               |
+| `audit_test_environment`   | Scan test files for mock-vnode patterns (PR #197 bug class)                              |
+| `audit_islands`            | Project-wide islands audit (5 cross-file foot-guns)                                      |
 
-```
-get_api({ package: "reactivity", symbol: "signal" })
-```
+### `get_api`
 
-Returns signature, usage example, common mistakes. Covers all `@pyreon/*` packages.
-
-**Example response:**
-
-```
-## @pyreon/reactivity — signal
-
-**Signature:**
-signal<T>(initialValue: T): Signal<T>
-
-**Usage:**
-const count = signal(0)
-count()              // read: 0
-count.set(1)         // write
-count.update(n => n + 1)  // update
-
-**Common mistakes:**
-- Using .value instead of calling the signal: count() not count.value
-- Forgetting to call signal() when reading in JSX: {count()} not {count}
+```ts
+get_api({ package: 'reactivity', symbol: 'signal' })
 ```
 
-### `validate` — Check code for anti-patterns
+Returns signature + usage example + common mistakes. Covers every `@pyreon/*` package with a `manifest.ts` on the docs pipeline.
 
-```
-validate({ code: "import { useState } from 'react'" })
-```
+### `validate`
 
-Runs two detectors and returns the merged result, sorted by source line:
-
-- **React / coming-from-React mistakes** — `useState`, `useEffect`, `useMemo`, `useRef`, `className`, `htmlFor`, `onChange` on inputs, `.value` writes on signals, `Array.map()` in JSX, `memo` / `forwardRef` wrappers, React-package imports.
-- **Pyreon / using-Pyreon-wrong mistakes** (added 2026-Q2):
-  - `for-missing-by` — `<For each={...}>` without a `by` prop.
-  - `for-with-key` — `<For key={...}>` (the keying prop is `by`; JSX reserves `key`).
-  - `props-destructured` — `({ foo }: Props) => <JSX />` captures props at setup and loses reactivity. Use `props.foo` or `splitProps(props, [...])`.
-  - `process-dev-gate` — `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'` is dead code in real Vite browser bundles. Use `import.meta.env?.DEV`.
-  - `empty-theme` — `.theme({})` is a no-op chain.
-  - `raw-add-event-listener` / `raw-remove-event-listener` — use `useEventListener` from `@pyreon/hooks` for auto-cleanup.
-  - `date-math-random-id` — `Date.now() + Math.random()` ID schemes collide under rapid operations; use a monotonic counter.
-  - `on-click-undefined` — `onClick={undefined}` (or any `on*={undefined}`); omit the prop or gate with a ternary.
-
-Each diagnostic carries `{ code, message, line, column, current, suggested, fixable }`. **React diagnostics may report `fixable: true`** (handled by the `migrate_react` tool). **All Pyreon diagnostics report `fixable: false`** — no companion `migrate_pyreon` tool exists yet, so claiming auto-fix here would mislead consumers wiring UX off the flag. The invariant is locked in `packages/core/compiler/src/tests/pyreon-intercept.test.ts` under "fixable contract".
-
-### `migrate_react` — Convert React code to Pyreon
-
-```
-migrate_react({
-  code: `
-    import { useState, useEffect } from "react"
-
-    function Timer() {
-      const [seconds, setSeconds] = useState(0)
-
-      useEffect(() => {
-        const id = setInterval(() => setSeconds(s => s + 1), 1000)
-        return () => clearInterval(id)
-      }, [])
-
-      return <div className="timer">{seconds}s</div>
-    }
-  `
-})
+```ts
+validate({ code: 'const { x } = props; return <div>{x}</div>' })
 ```
 
-**Response:**
+Merges two detectors (React anti-patterns + Pyreon-specific patterns), sorts by source line. `detectPyreonPatterns` ships 15 codes today: `for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`.
 
-```tsx
-import { signal, effect } from '@pyreon/reactivity'
+`query-options-as-function` is **proactive**: the same rule ships as the opt-in `pyreon/query-options-as-function` lint rule AND as a `validate` detector — an AI agent calling `validate` sees the fix BEFORE commit, not just after running lint.
 
-function Timer() {
-  const seconds = signal(0)
+### `get_anti_patterns`
 
-  effect(() => {
-    const id = setInterval(() => seconds.update((s) => s + 1), 1000)
-    return () => clearInterval(id)
-  })
-
-  return <div class="timer">{seconds()}s</div>
-}
+```ts
+get_anti_patterns()                                // compact index (~3.3K tokens)
+get_anti_patterns({ name: 'props-destructured' })  // single entry, full body — cheapest drill-in
+get_anti_patterns({ category: 'Reactivity Mistakes' })   // category-scoped, full bodies
+get_anti_patterns({ full: true })                  // entire catalog (~14K tokens) — explicit opt-in
 ```
 
-### `diagnose` — Parse error messages
+The default index keeps `## <Heading>` markers so categories stay discoverable. Each entry surfaces its `[detector: <code>]` tag inline so an agent can pair the catalog entry with the live static detector.
 
-```
-diagnose({ error: "TypeError: count is not a function" })
-```
+A `token-budget.test.ts` regression gate pins `tools/list` < 1,300 tokens and `get_anti_patterns({})` < 5,000.
 
-**Response:**
+### `get_pattern`
 
-```
-**Cause:** Signal accessed without calling it — signals are functions.
-**Fix:** Call the signal to read its value: count() instead of count.
-
-// Wrong:
-<div>{count}</div>
-
-// Right:
-<div>{count()}</div>
+```ts
+get_pattern({ name: 'reactive-spread' })
 ```
 
-### `get_pattern` — Fetch a "how do I do X" pattern
+Serves `docs/patterns/<name>.md` from the monorepo. Foundational patterns today: `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`. Add a new pattern by dropping a new `docs/patterns/<slug>.md` file.
 
-```
-get_pattern({ name: "dev-warnings" })   # full body of the pattern
-get_pattern({})                          # list available patterns
-```
+### `migrate_react`
 
-Reads `docs/patterns/<name>.md` from the Pyreon monorepo. Each pattern file answers a "how do I do X the right way" question with a correct example, the rationale, and the anti-pattern to avoid. 8 foundational patterns ship today: `dev-warnings`, `controllable-state`, `ssr-safe-hooks`, `signal-writes`, `keyed-lists`, `reactive-context`, `event-listeners`, `form-fields`. A misspelled name returns substring-match suggestions. Complements `get_api` (symbol reference) and `get_anti_patterns` (catalogue of mistakes).
-
-### `get_anti_patterns` — Browse the anti-patterns catalog
-
-```
-get_anti_patterns({})                        # full list
-get_anti_patterns({ category: "reactivity" }) # single category
+```ts
+migrate_react({ code: "import { useState } from 'react'\nconst [c, setC] = useState(0)" })
 ```
 
-Parses `.claude/rules/anti-patterns.md` into per-category listings. Valid categories: `reactivity`, `jsx`, `context`, `architecture`, `testing`, `lifecycle`, `documentation`, `all`. Each entry carries a title, a rationale, and — when applicable — a `[detector: <code>]` tag pairing it with a `validate`-tool diagnostic. Use it BEFORE writing new code: the catalog is the surface `validate` enforces reactively.
+One-shot codemod — `useState` → `signal`, `useEffect` → `effect`, `useMemo` → `computed`, `className` → `class`, `htmlFor` → `for`. Not a runtime adapter; for that see `@pyreon/react-compat`.
 
-### `get_changelog` — Recent release notes for a @pyreon/* package
+### `get_changelog`
 
-```
-get_changelog({ package: "query" })                   # latest 5 substantive versions
-get_changelog({ package: "query", limit: 10 })        # expand the window
-get_changelog({ package: "query", since: "0.12.0" })  # only versions newer than 0.12.0
-get_changelog({ package: "query", includeDependencyUpdates: true })
-get_changelog({})                                      # list every package + latest version
+```ts
+get_changelog({ package: 'query', limit: 5, since: '0.12.0', includeDependencyUpdates: false })
 ```
 
-Parses the `CHANGELOG.md` file (changesets-populated) for the named package. The short slug auto-prefixes `@pyreon/` — `"query"` and `"@pyreon/query"` resolve to the same result. Empty "ceremonial" version bumps (pure dependency bumps with no user-facing body) are filtered by default; when the whole history is ceremonial, the tool surfaces a clear "no substantive changes" message. `since` accepts any semver-ish string changesets emits (`"0.13.0"`, `"1.0.0-alpha.3"`) — when the floor equals or exceeds the latest substantive version, the tool returns a dedicated "no changes since vX" miss message. Complements `get_api` (current symbol reference) — changelog answers "what changed" while api-reference answers "what is it now".
+Parses `packages/**/CHANGELOG.md` into structured version entries. Default `limit: 5`, `includeDependencyUpdates: false` (filters out ceremonial dep-bump-only releases). Accepts both `"query"` and `"@pyreon/query"`.
 
-### `get_routes` — List project routes
+### `audit_test_environment`
 
-```
-get_routes({})
-```
-
-Scans for `createRouter([...])` and `const routes = [...]` patterns.
-
-### `get_components` — List components with props and signals
-
-```
-get_components({})
+```ts
+audit_test_environment({ minRisk: 'high', limit: 20 })
 ```
 
-Returns component names, file paths, props, and signal usage.
+Scans every `*.test.ts(x)` under `packages/` for mock-vnode patterns — tests constructing `{ type, props, children }` literals instead of going through real `h()` from `@pyreon/core`. Three risk tiers from the balance of mock-vnode literals + helper calls vs `h()` calls. Use before modifying an existing test, or after a framework change to audit for the PR #197 bug class.
 
-### `audit_test_environment` — Scan tests for mock-vnode patterns
+### `audit_islands`
 
-```
-audit_test_environment({})                          # risk-grouped report (minRisk: medium)
-audit_test_environment({ minRisk: "high" })         # only the riskiest
-audit_test_environment({ minRisk: "low", limit: 3 }) # full coverage, 3 per group
+```ts
+audit_islands()
 ```
 
-Scans every `*.test.ts` / `*.test.tsx` file under the `packages` tree for **mock-vnode patterns** — tests that construct `{ type, props, children }` object literals or a custom `vnode()` helper instead of going through the real `h()` from `@pyreon/core`. This class of pattern silently drops rocketstyle / compiler / attrs work from the pipeline and was the cause of PR #197's silent metadata drop.
+Project-wide cross-file islands audit. Five detectors: `duplicate-name` / `never-with-registry-entry` / `registry-mismatch` / `nested-island` / `dead-island`. Each finding ships with file path + line/column + actionable fix.
 
-Classification per file:
+## Programmatic API
 
-- **HIGH** — mock patterns present, no real `h()` calls, and no `h` import from `@pyreon/core`. At risk: the file has no pathway to exercise the real pipeline.
-- **MEDIUM** — mock patterns present AND some real `h()` usage, but mocks outnumber real calls. Spot-check coverage.
-- **LOW** — either no mocks, or mock count is dwarfed by real usage.
+The package is primarily a binary (`pyreon-mcp`); the main entry exports no runtime symbols (it boots the server on import via `main()`). Use `@pyreon/compiler` directly for `detectReactPatterns` / `detectPyreonPatterns` / `migrateReactCode` / `diagnoseError` / `auditIslands` / `auditTestEnvironment` / `auditSsg`.
 
-Each entry reports the literal count, helper count (definitions of `vnode` / `mockVNode` / `createVNode` / `VNodeMock` / `makeVNode`), real `h(...)` call count, and whether `h` is imported. Use the tool BEFORE modifying a test file to see if strengthening is warranted, or AFTER a framework change to audit for regression.
+## Gotchas
 
-## Pyreon Patterns for AI
+- **`get_anti_patterns` defaults to the compact index** to stay under MCP-client token budgets. Drill in with `{ name }` (cheapest) or `{ category }`; `{ full: true }` is the explicit opt-in for the entire catalog.
+- **`validate` is reactive**, `get_pattern` + `get_anti_patterns` are **proactive** — call them BEFORE writing.
+- **`get_api` only covers packages on the manifest/MCP pipeline.** ~33 of 56 published packages have a `manifest.ts` today; un-migrated packages are absent from the surface (NOT a 404 — they're simply missing).
+- **`get_routes` / `get_components`** require running inside a Pyreon project root (they scan the filesystem).
 
-These are the key patterns the MCP server teaches AI assistants:
+## Documentation
 
-### State management
+Full docs: [docs.pyreon.dev/docs/mcp](https://docs.pyreon.dev/docs/mcp) (or `docs/docs/mcp.md` in this repo).
 
-```tsx
-// React                              // Pyreon
-const [x, setX] = useState(0)        const x = signal(0)
-const val = useMemo(() => a+b, [a,b]) const val = computed(() => a()+b())
-useEffect(() => { ... }, [dep])       effect(() => { ... })
-```
+## License
 
-### JSX differences
-
-```tsx
-// React                              // Pyreon
-<div className="box" />               <div class="box" />
-<label htmlFor="name" />              <label for="name" />
-<input onChange={handler} />          <input onInput={handler} />
-{condition && <Child />}              <Show when={condition}><Child /></Show>
-{items.map(i => <li key={i.id}>)}    <For each={items} by={i => i.id}>{i => <li>}</For>
-```
-
-### Component patterns
-
-```tsx
-// React: hooks, re-renders entire component
-function Counter() {
-  const [count, setCount] = useState(0)
-  return <button onClick={() => setCount((c) => c + 1)}>{count}</button>
-}
-
-// Pyreon: signals, fine-grained DOM updates (no re-render)
-function Counter() {
-  const count = signal(0)
-  return <button onClick={() => count.update((c) => c + 1)}>{count()}</button>
-}
-```
-
-### Refs
-
-```tsx
-// React
-const ref = useRef<HTMLDivElement>(null)
-<div ref={ref} />
-
-// Pyreon: object ref
-const ref = { current: null as HTMLDivElement | null }
-<div ref={ref} />
-
-// Pyreon: callback ref
-<div ref={(el) => { myElement = el }} />
-```
-
-### Context
-
-```tsx
-// React
-const ThemeCtx = React.createContext("light")
-<ThemeCtx.Provider value="dark"><App /></ThemeCtx.Provider>
-const theme = useContext(ThemeCtx)
-
-// Pyreon
-const ThemeCtx = createContext<string>("light")
-<ThemeCtx.Provider value="dark"><App /></ThemeCtx.Provider>
-const theme = useContext(ThemeCtx)  // same API
-```
-
-### Lifecycle
-
-```tsx
-// React
-useEffect(() => {
-  const handler = () => { ... }
-  window.addEventListener("resize", handler)
-  return () => window.removeEventListener("resize", handler)
-}, [])
-
-// Pyreon
-onMount(() => {
-  const handler = () => { ... }
-  window.addEventListener("resize", handler)
-  return () => window.removeEventListener("resize", handler)  // cleanup
-})
-```
-
-### Routing
-
-```tsx
-// React Router
-<BrowserRouter>
-  <Routes>
-    <Route path="/" element={<Home />} />
-    <Route path="/user/:id" element={<User />} />
-  </Routes>
-</BrowserRouter>
-
-// Pyreon Router
-const router = createRouter({
-  routes: [
-    { path: "/", component: Home },
-    { path: "/user/:id", component: User },
-  ],
-})
-<RouterProvider router={router}>
-  <RouterView />
-</RouterProvider>
-```
-
-### Lists
-
-```tsx
-// React: key on element
-{
-  items.map((item) => <li key={item.id}>{item.name}</li>)
-}
-
-// Pyreon: by prop on For (not key — JSX extracts key specially)
-;<For each={items} by={(item) => item.id}>
-  {(item) => <li>{item.name}</li>}
-</For>
-```
-
-### Lazy loading
-
-```tsx
-// React
-const Dashboard = React.lazy(() => import("./Dashboard"))
-<Suspense fallback={<Loading />}>
-  <Dashboard />
-</Suspense>
-
-// Pyreon
-const Dashboard = lazy(() => import("./Dashboard"))
-<Suspense fallback={<Loading />}>
-  <Dashboard />
-</Suspense>
-```
-
-### Islands (partial hydration)
-
-```tsx
-// Server: define island
-import { island } from "@pyreon/server"
-const Counter = island(() => import("./Counter"), {
-  name: "Counter",
-  hydrate: "visible",  // load | idle | visible | media(...) | never
-})
-
-// Use in page (renders static HTML, hydrates on client)
-<Counter initial={0} />
-
-// Client: register islands
-import { hydrateIslands } from "@pyreon/server/client"
-hydrateIslands({
-  Counter: () => import("./Counter"),
-})
-```
+MIT

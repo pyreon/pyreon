@@ -1,196 +1,225 @@
 # @pyreon/elements
 
-Foundational UI components for Pyreon with responsive props.
+Five foundational layout primitives — Element, Text, List, Overlay, Portal — plus an Iterator helper.
 
-Five composable components for building buttons, cards, lists, dropdowns, tooltips, and modals. Every layout prop is responsive — pass a single value, a mobile-first array, or a breakpoint object.
+`@pyreon/elements` is the layer between `@pyreon/styler`/`@pyreon/unistyle` and the high-level UI components. Every layout prop is responsive (single value, mobile-first array, or breakpoint object). `Element` is a three-section flex container (`beforeContent` / `content` / `afterContent`) with an internal fast path that collapses one wrapper layer when only `content` is present — measured 31-45% faster across mount benchmarks. `Overlay` ships a full `useOverlay` hook handling open/close, viewport flipping, ESC, click-outside, scroll tracking, hover delay, and modal overflow-locking — no positioning logic to reinvent. `Iterator` and `List` cover data-driven children with positional metadata; `Portal` renders into an isolated wrapper inside a configurable DOM location.
 
-## Features
-
-- **Element** — three-section flex layout (beforeContent / content / afterContent)
-- **Text** — semantic text rendering with auto paragraph wrapping
-- **List** — data-driven rendering with positional metadata (first, last, odd, even)
-- **Overlay** — headless trigger+content pattern
-- **Portal** — stub (runtime-dom provides actual portal)
-- **Responsive everything** — single value, array, or breakpoint object on every layout prop
-- **Equal before/after** — `equalBeforeAfter` prop on Element to equalize slot dimensions
-
-## Installation
+## Install
 
 ```bash
-bun add @pyreon/elements
+bun add @pyreon/elements @pyreon/core @pyreon/reactivity @pyreon/ui-core @pyreon/unistyle
 ```
 
-## Components
+## Quick start
 
-### Element
+```tsx
+import { Element, Text, List, Overlay, Portal, Provider } from '@pyreon/elements'
 
-The core layout primitive. Renders a three-section flex container with optional beforeContent and afterContent slots around the main content.
-
-```ts
-import { Element } from '@pyreon/elements'
-
-Element({
-  tag: 'button',
-  beforeContent: Icon({ name: 'star' }),
-  afterContent: Icon({ name: 'chevron-right' }),
-  direction: 'inline',
-  alignX: 'center',
-  alignY: 'center',
-  gap: 8,
-  children: 'Click me',
-})
+<Provider>
+  <Element
+    tag="button"
+    direction="inline"
+    alignX="center"
+    alignY="center"
+    gap={8}
+    beforeContent={<Icon name="star" />}
+    afterContent={<Icon name="chevron-right" />}
+  >
+    Click me
+  </Element>
+</Provider>
 ```
 
-When only content is present (no beforeContent/afterContent), Element optimizes by skipping the inner wrapper layer.
+`Provider` is re-exported from `@pyreon/unistyle` — set it once near the app root to scope breakpoints, root-size, and theme defaults.
 
-**Content props** (rendered in priority order: children > content > label):
+## `Element` — three-section flex layout
 
-| Prop          | Type    | Description                           |
-| ------------- | ------- | ------------------------------------- |
-| children      | `VNode` | Standard children                     |
-| content       | `VNode` | Alternative to children               |
-| label         | `VNode` | Alternative to children/content       |
-| beforeContent | `VNode` | Content rendered before the main slot |
-| afterContent  | `VNode` | Content rendered after the main slot  |
+Most-used primitive. Renders an outer container with optional `beforeContent` / `afterContent` slots flanking the main `content` (children).
+
+```tsx
+<Element
+  tag="button"
+  direction="inline"        // 'inline' | 'rows' | 'reverseInline' | 'reverseRows'
+  alignX="center"            // 'left' | 'center' | 'right' | 'spaceBetween' | ...
+  alignY="center"            // 'top' | 'center' | 'bottom' | 'stretch' | ...
+  gap={8}
+  block                     // flex vs inline-flex
+  equalCols                  // equalize before/after widths via ResizeObserver
+  equalBeforeAfter
+  beforeContent={<Icon />}
+  afterContent={<Icon />}
+>
+  Action
+</Element>
+```
+
+**Content slots** (priority: `children` > `content` > `label`):
+
+| Prop | Type | Notes |
+|---|---|---|
+| `children` | `VNodeChild` | Standard JSX children |
+| `content` | `VNodeChild` | Alternative slot when `children` is awkward |
+| `label` | `VNodeChild` | Third fallback; useful in data-driven `List` |
+| `beforeContent` | `VNodeChild` | Rendered before the main slot |
+| `afterContent` | `VNodeChild` | Rendered after the main slot |
 
 **Layout props** (all responsive):
 
-| Prop      | Type        | Default    | Description                                                    |
-| --------- | ----------- | ---------- | -------------------------------------------------------------- |
-| tag       | `HTMLTags`  | `'div'`    | HTML element tag                                               |
-| block     | `boolean`   | —          | `flex` vs `inline-flex`                                        |
-| direction | `Direction` | `'inline'` | `'inline'` \| `'rows'` \| `'reverseInline'` \| `'reverseRows'` |
-| alignX    | `AlignX`    | `'left'`   | Horizontal alignment                                           |
-| alignY    | `AlignY`    | `'center'` | Vertical alignment                                             |
-| gap       | `number`    | —          | Gap between content sections                                   |
-| equalCols | `boolean`   | —          | Equal width/height for before/after                            |
+| Prop | Default | Description |
+|---|---|---|
+| `tag` | `'div'` | Outer HTML tag |
+| `direction` | `'inline'` | `'inline'` (row) / `'rows'` (column) / `'reverseInline'` / `'reverseRows'` |
+| `alignX` | `'left'` | Horizontal alignment along the flex direction |
+| `alignY` | `'center'` | Cross-axis alignment |
+| `gap` | — | Gap between sections |
+| `block` | — | `flex` vs `inline-flex` |
+| `equalCols` | — | Equal width for before/after columns (snapshot at mount) |
+| `equalBeforeAfter` | — | Equalize before/after via live `ResizeObserver` (resilient to async font/content changes) |
+| `dangerouslySetInnerHTML` | — | Forwards to `runtime-dom` / `runtime-server` |
 
-Each section (content, beforeContent, afterContent) has its own direction, alignX, and alignY props prefixed with the section name:
+Per-section overrides: `contentDirection`, `contentAlignX`, `beforeContentAlignY`, `afterContentDirection`, etc. — every section accepts the same axis props prefixed with the section name.
 
-```ts
-Element({
-  contentDirection: 'rows',
-  contentAlignX: 'center',
-  beforeContentAlignY: 'top',
-  afterContentDirection: 'inline',
-})
+**Simple-path fast path**: when there's no `beforeContent` / `afterContent` and the tag doesn't need the button/fieldset/legend two-layer flex fix, Element inlines the wrapper helper into ONE styled invocation. Saves one component invocation + one `splitProps` + one `mountChild` per Element. Real-Chromium benchmark drops a 500-child mount from 2.9ms to 1.6ms (-45%).
+
+## `Text` — semantic typography
+
+```tsx
+<Text tag="h1">Heading</Text>
+<Text paragraph>This renders as a <p>.</Text>
+<Text tag="strong">Bold</Text>
 ```
 
-### Text
+| Prop | Type | Notes |
+|---|---|---|
+| `tag` | `'h1'`-`'h6'` / `'p'` / `'span'` / `'strong'` / `'em'` / `'small'` / … | Inline-by-default |
+| `paragraph` | `boolean` | Shorthand for `tag="p"` |
+| `children` / `label` | `VNodeChild` | Text content |
+| `css` | `ExtendCss` | Extend styling |
 
-Semantic text component with optional paragraph auto-wrapping.
+## `List` — data-driven children with positional metadata
 
-```ts
-import { Text } from '@pyreon/elements'
-
-Text({ tag: 'h1', children: 'Heading' })
-Text({ paragraph: true, children: 'This renders as a p tag.' })
-Text({ tag: 'strong', label: 'Bold text' })
-```
-
-| Prop             | Type           | Description                                              |
-| ---------------- | -------------- | -------------------------------------------------------- |
-| tag              | `HTMLTextTags` | `'h1'`–`'h6'`, `'p'`, `'span'`, `'strong'`, `'em'`, etc. |
-| paragraph        | `boolean`      | Shorthand for `tag="p"`                                  |
-| children / label | `VNode`        | Text content                                             |
-| css              | `ExtendCss`    | Extend styling                                           |
-
-### List
-
-Data-driven list renderer with positional metadata.
-
-```ts
-import { List, Element } from '@pyreon/elements'
-
-// Simple string data
-List({
-  component: Element,
-  data: ['Apple', 'Banana', 'Cherry'],
-  valueName: 'label',
-})
-
-// Object data with positional metadata
-List({
-  component: ListItem,
-  data: [
+```tsx
+<List
+  component={ListItem}
+  data={[
     { id: 1, name: 'Alice' },
     { id: 2, name: 'Bob' },
-  ],
-  itemKey: 'id',
-  itemProps: (item, { first, last, odd, even, index }) => ({
+  ]}
+  itemKey="id"
+  itemProps={(item, { first, last, odd, even, index }) => ({
     highlighted: first,
     separator: !last,
-  }),
-})
+  })}
+/>
 
-// With root Element wrapper
-List({
-  rootElement: true,
-  direction: 'rows',
-  gap: 8,
-  component: Card,
-  data: items,
-})
+// With root Element wrapper — gap/direction/align take effect
+<List
+  rootElement
+  direction="rows"
+  gap={8}
+  component={Card}
+  data={items}
+/>
 ```
 
-| Prop          | Type                 | Description                                            |
-| ------------- | -------------------- | ------------------------------------------------------ |
-| data          | `Array`              | Array of strings, numbers, or objects                  |
-| component     | `ComponentFn`        | Component to render for each item                      |
-| valueName     | `string`             | Prop name for scalar values (default: `'children'`)    |
-| itemKey       | `string \| function` | Key extraction for list items                          |
-| itemProps     | `object \| function` | Extra props injected into each item                    |
-| wrapComponent | `ComponentFn`        | Wrapper around each item                               |
-| rootElement   | `boolean`            | Wrap list in an Element (enables direction, gap, etc.) |
+| Prop | Type | Notes |
+|---|---|---|
+| `data` | `Array<string \| number \| object>` | Source data |
+| `component` | `ComponentFn` | Renders per item |
+| `valueName` | `string` | Prop name for scalar values (default `'children'`) |
+| `itemKey` | `string \| (item) => Key` | Key extractor |
+| `itemProps` | `object \| (item, meta) => object` | Extra props injected per item |
+| `wrapComponent` | `ComponentFn` | Wrapper around each item |
+| `rootElement` | `boolean` | Wrap in an `Element` (enables `direction` / `gap` / `align`) |
 
-**Positional metadata** passed to `itemProps` callback:
+Positional metadata (`{ index, first, last, odd, even, position }`) is passed to both `itemKey` and `itemProps` callbacks.
 
-`index`, `first`, `last`, `odd`, `even`, `position` (1-based)
+## `Iterator` — lower-level data iterator
 
-### Overlay
+Same data/component model as `List`, four typed overloads (simple values, object values, children-only, loose forwarding) so spread-pattern wrapping (`<Iterator {...wrapperProps} />`) typechecks. Use when you don't need List's auto-wrap layout — e.g. emitting a flat array of `<option>` elements inside a `<select>`.
 
-Headless trigger+content pattern for dropdowns, tooltips, and modals.
+## `Overlay` + `useOverlay` — dropdowns / tooltips / popovers / modals
 
-```ts
-import { Overlay } from '@pyreon/elements'
+```tsx
+<Overlay
+  openOn="click"
+  closeOn="clickOutsideContent"
+  type="dropdown"
+  align="bottom"
+  alignX="left"
+  offsetX={0}
+  offsetY={4}
+  closeOnEsc
+  hoverDelay={150}
+  trigger={<Button>Open menu</Button>}
+>
+  <DropdownMenu />
+</Overlay>
+```
 
-Overlay({
+For headless control, use the hook directly:
+
+```tsx
+const overlay = useOverlay({
   openOn: 'click',
-  closeOn: 'clickOutsideContent',
-  align: 'bottom',
-  alignX: 'left',
-  trigger: Button({ label: 'Open menu' }),
-  children: DropdownMenu({}),
+  closeOn: 'clickOnTrigger',
+  type: 'tooltip',
+  align: 'top',
+  onOpen: () => track('tooltip-open'),
 })
+// overlay.isOpen / overlay.toggle / overlay.open / overlay.close / overlay.position()
 ```
 
-### Portal
+Built-in behaviour:
+- **Viewport-edge flipping** — automatically flips align when the content would overflow.
+- **Throttled positioning** — scroll + resize listeners throttled (default delay 60ms).
+- **ESC + click-outside** — opt-in via `closeOnEsc` / `closeOn: 'clickOutsideContent'`.
+- **Hover delay** — `hoverDelay` debounces both open and close for `openOn: 'hover'`.
+- **Modal overflow lock** — `type: 'modal'` ref-counts `document.body` overflow so nested modals don't double-lock.
 
-Stub component — the actual portal implementation is provided by `@pyreon/core`'s runtime-dom.
+`OverlayProvider` + `useOverlayContext` coordinate nested overlays (a parent dropdown can block its children's click-outside).
 
-## Responsive Values
+## `Portal` — render into a different DOM location
 
-Every layout prop (direction, alignX, alignY, gap, block, equalCols) supports three formats:
+```tsx
+<Portal target={document.body} tag="div" data-modal-id="settings">
+  <Modal />
+</Portal>
+```
+
+Creates a per-instance wrapper element (default `<div>`, configurable via `tag`) INSIDE `target` (default `document.body`). Multiple portals share `target` without intermingling children — each gets its own wrapper.
+
+| Prop | Default | Notes |
+|---|---|---|
+| `target` | `document.body` | Destination element (`HTMLElement \| (() => HTMLElement) \| null`) |
+| `tag` | `'div'` | Wrapper HTML tag |
+| Any data-/aria- attrs | — | Forwarded to the wrapper |
+
+## `Util` — utility wrapper for non-layout primitives
+
+Reserved escape-hatch for components that need styler integration without Element's layout props (e.g. SVG roots). Same theme/style pipeline, no axis/gap props.
+
+## Responsive values
 
 ```ts
-// Single value — all breakpoints
-Element({ direction: 'inline' })
-
-// Array — mobile-first, maps to breakpoints by position
-Element({ direction: ['rows', 'inline'] })
-
-// Object — explicit breakpoints
-Element({ direction: { xs: 'rows', md: 'inline', lg: 'inline' } })
+direction="inline"                                  // single value
+direction={['rows', 'inline']}                       // mobile-first array
+direction={{ xs: 'rows', md: 'inline', lg: 'inline' }} // breakpoint object
 ```
 
-## Peer Dependencies
+Applies to `tag`, `direction`, `alignX`, `alignY`, `gap`, `block`, `equalCols`, and every per-section variant.
 
-| Package            | Version  |
-| ------------------ | -------- |
-| @pyreon/core       | >= 0.0.1 |
-| @pyreon/reactivity | >= 0.0.1 |
-| @pyreon/ui-core    | >= 0.0.1 |
-| @pyreon/unistyle   | >= 0.0.1 |
+## Gotchas
+
+- **Wrapper drops the children slot for void tags** (`<hr>`, `<input>`, `<img>`, `<br>`, etc.) so `{undefined}` JSX slots don't trip runtime-dom's "void element cannot have children" warning. If you author a custom wrapper that forwards `children`, branch on `getShouldBeEmpty(tag)` first.
+- **`<Portal>` creates a per-instance wrapper INSIDE `target`** — `document.body.firstChild` is not your modal; query via `document.body.querySelector('[data-modal-id]').parentElement`.
+- **`equalBeforeAfter` uses `ResizeObserver`** and falls back to a one-shot measurement when the API is unavailable (SSR, older runtimes). For async content (font swaps, lazy images) you want `equalBeforeAfter`, not `equalCols`.
+- **Element's `direction` accepts `'inline' | 'rows' | 'reverseInline' | 'reverseRows'`** — `'row'` is invalid (caught by TS).
+- **`Iterator` ships 4 overloads with a `LooseProps` fallback** so `<Iterator {...wrapperProps} />` forwarding patterns typecheck. The trade-off: mixed-shape arrays (`[1, {id:1}, null]`) bind to the fallback rather than failing at the type level. Runtime still picks the right mode based on which props are populated.
+
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/elements](https://docs.pyreon.dev/docs/elements) (or `docs/docs/elements.md` in this repo).
 
 ## License
 

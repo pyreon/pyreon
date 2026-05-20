@@ -1,80 +1,94 @@
 # @pyreon/dnd
 
-Signal-driven drag and drop for the Pyreon framework. Wraps [@atlaskit/pragmatic-drag-and-drop](https://github.com/atlassian/pragmatic-drag-and-drop) with reactive signal state.
+Signal-driven drag and drop over `@atlaskit/pragmatic-drag-and-drop`.
+
+A small Pyreon-native wrapper over Atlassian's `pragmatic-drag-and-drop` (the same library Trello / Jira ship with). pdnd handles the native-event lifecycle, hit-testing, and edge detection; `@pyreon/dnd` adapts every state field into a Pyreon signal (`isDragging` / `isOver` / `activeId` / `overEdge` / `dragData`) so consumers compose with `effect` / `computed` / JSX without re-bridging. Five hooks cover the common surfaces — single draggable, single drop target, sortable list with edge detection + auto-scroll + keyboard reordering, native-file drop with MIME / count filtering, and a global drag monitor for overlays / analytics.
 
 ## Install
 
 ```bash
-bun add @pyreon/dnd
+bun add @pyreon/dnd @pyreon/core @pyreon/reactivity
+# pragmatic-drag-and-drop is a runtime dependency, installed automatically
 ```
 
-## Features
+## Quick start — single draggable + drop target
 
-- 5 hooks covering all drag-and-drop use cases
-- Signal-driven state (isDragging, isOver, activeId, etc.)
-- Auto-scroll when dragging near container edges
-- Closest-edge detection for precise drop indicators
-- Keyboard accessibility (Alt+Arrow to reorder)
-- File drop with MIME type and count filtering
-- Global drag monitoring for overlays and analytics
+```tsx
+import { useDraggable, useDroppable } from '@pyreon/dnd'
+
+function Card(props: { card: { id: string; title: string } }) {
+  let el: HTMLElement | null = null
+  const { isDragging } = useDraggable({
+    element: () => el,
+    data: { id: props.card.id, type: 'card' },
+  })
+
+  return (
+    <div ref={(node) => (el = node)} class={() => (isDragging() ? 'opacity-50' : '')}>
+      {props.card.title}
+    </div>
+  )
+}
+
+function DropZone() {
+  let el: HTMLElement | null = null
+  const { isOver } = useDroppable({
+    element: () => el,
+    canDrop: (data) => data.type === 'card',
+    onDrop: (data) => acceptCard(data.id as string),
+  })
+
+  return (
+    <div ref={(node) => (el = node)} class={() => (isOver() ? 'bg-blue-50' : '')}>
+      Drop here
+    </div>
+  )
+}
+```
 
 ## Hooks
 
-### useDraggable
+### `useDraggable({ element, data, handle?, disabled?, onDragStart?, onDragEnd? })`
 
-Make an element draggable with reactive state.
+Make an element draggable. `data` may be an object OR a function for dynamic payloads. `disabled` is reactive (accepts a function). `handle` lets you scope drag initiation to a sub-element.
 
-```tsx
-const { isDragging } = useDraggable({
-  element: () => cardEl,
-  data: { id: card.id, type: "card" },
-  handle: () => handleEl,   // optional drag handle
-  disabled: () => locked(),  // reactive disable
-})
-
-<div ref={(el) => cardEl = el} class={isDragging() ? "opacity-50" : ""}>
-  <div ref={(el) => handleEl = el}>⠿</div>
-  {card.title}
-</div>
+```ts
+type Result = { isDragging: () => boolean }
 ```
 
-### useDroppable
+### `useDroppable({ element, data?, canDrop?, onDragEnter?, onDragLeave?, onDrop? })`
 
-Make an element a drop target with filtering.
+Make an element a drop target. `canDrop(sourceData)` filters; return `false` to reject. `data` is attached to the drop event so handlers can read target metadata.
 
-```tsx
-const { isOver } = useDroppable({
-  element: () => zoneEl,
-  canDrop: (data) => data.type === "card",
-  onDrop: (data) => addCard(data.id),
-  onDragEnter: () => highlight(),
-  onDragLeave: () => unhighlight(),
-})
-
-<div ref={(el) => zoneEl = el} class={isOver() ? "bg-blue-50" : ""}>
-  Drop here
-</div>
+```ts
+type Result = { isOver: () => boolean }
 ```
 
-### useSortable
+### `useSortable({ items, by, onReorder, axis? })`
 
-Full-featured sortable list with edge detection and keyboard support.
+Full sortable list with edge detection, auto-scroll, and keyboard reordering. `by` matches Pyreon's `<For by={...}>` pattern so the same key extractor flows through.
 
 ```tsx
+const cols = signal<Column[]>([])
+
 const { containerRef, itemRef, activeId, overId, overEdge } = useSortable({
-  items: columns,
-  by: (col) => col.id,
-  onReorder: (newItems) => columns.set(newItems),
-  axis: "vertical",  // or "horizontal"
+  items: () => cols(),
+  by: (c) => c.id,
+  onReorder: (next) => cols.set(next),
+  axis: 'vertical', // or 'horizontal'
 })
 
-<ul ref={containerRef}>
-  <For each={columns()} by={c => c.id}>
-    {col => (
+;<ul ref={containerRef}>
+  <For each={cols()} by={(c) => c.id}>
+    {(col) => (
       <li
         ref={itemRef(col.id)}
-        class={activeId() === col.id ? "dragging" : ""}
-        style={overId() === col.id && overEdge() === "top" ? "border-top: 2px solid blue" : ""}
+        class={() => (activeId() === col.id ? 'dragging' : '')}
+        style={() =>
+          overId() === col.id && overEdge() === 'top'
+            ? 'border-top: 2px solid blue'
+            : ''
+        }
       >
         {col.name}
       </li>
@@ -83,51 +97,94 @@ const { containerRef, itemRef, activeId, overId, overEdge } = useSortable({
 </ul>
 ```
 
-Features:
+Behaviour:
 
 - Auto-scroll when dragging near container edges
-- `overEdge` signal shows "top"/"bottom" (vertical) or "left"/"right" (horizontal)
+- `overEdge` signal — `'top'`/`'bottom'` (vertical) or `'left'`/`'right'` (horizontal)
 - Keyboard reordering with Alt+Arrow keys
-- Accessible: `role="listitem"`, `aria-roledescription`, `tabindex`
+- ARIA: `role="listitem"`, `aria-roledescription`, `tabindex`
 
-### useFileDrop
+### `useFileDrop({ element, onDrop, accept?, maxFiles?, disabled? })`
 
-Native file drag-and-drop with filtering.
+Native file-drop zone. `accept` mirrors `<input accept>` syntax (`['image/*', '.pdf']`); `maxFiles` enforces an upper bound; both filter the array passed to `onDrop`.
 
-```tsx
-const { isOver, isDraggingFiles } = useFileDrop({
-  element: () => dropZone,
-  accept: ["image/*", ".pdf"],
-  maxFiles: 5,
-  onDrop: (files) => upload(files),
-  disabled: () => uploading(),
-})
-
-<div
-  ref={(el) => dropZone = el}
-  class={isOver() ? "drop-active" : isDraggingFiles() ? "drop-ready" : ""}
->
-  {isDraggingFiles() ? "Drop files here" : "Drag files to upload"}
-</div>
+```ts
+type Result = {
+  isOver: () => boolean // files dragged over THIS zone
+  isDraggingFiles: () => boolean // files dragged anywhere on the page
+}
 ```
 
-### useDragMonitor
+`isDraggingFiles` is useful for showing a "drop here" affordance the moment files enter the window — not just when they hover the specific zone.
 
-Global drag state tracking for overlays and coordination.
+### `useDragMonitor({ canMonitor?, onDragStart?, onDrop? })`
+
+Page-global drag state — for overlays, analytics, or coordinating multiple drag-and-drop areas.
+
+```ts
+type Result = {
+  isDragging: () => boolean
+  dragData: () => DragData | null
+}
+```
 
 ```tsx
 const { isDragging, dragData } = useDragMonitor({
-  canMonitor: (data) => data.type === "card",
-  onDragStart: (data) => showOverlay(),
-  onDrop: (source, target) => logAnalytics(source, target),
+  canMonitor: (data) => data.type === 'card',
+  onDrop: (source, target) => track('reorder', { source, target }),
 })
 
-<Show when={isDragging()}>
-  <div class="global-drag-overlay">
-    Dragging: {() => dragData()?.name}
-  </div>
+;<Show when={isDragging()}>
+  <div class="global-drag-overlay">Dragging: {() => dragData()?.name}</div>
 </Show>
 ```
+
+## Types
+
+```ts
+type DragData = Record<string, unknown>
+type DropEdge = 'top' | 'bottom' | 'left' | 'right'
+type DropLocation = { edge: DropEdge | null; data: DragData }
+```
+
+## Common patterns
+
+### Cross-list sortable (kanban columns)
+
+Multiple `useSortable` instances pointing at different column signals — combine with `useDragMonitor` for cross-list logic.
+
+### Disable while saving
+
+```ts
+useDraggable({
+  element: () => el,
+  data: { id },
+  disabled: () => isSaving(), // reactive — re-evaluates on signal change
+})
+```
+
+### Dynamic data
+
+```ts
+useDraggable({
+  element: () => el,
+  data: () => ({ id: item.id(), position: position() }),
+})
+```
+
+## Gotchas
+
+- **Hooks are SSR-safe** — they return zero-state accessors when `document` is undefined. Real registration happens at first browser tick.
+- **`element: () => el` must return the SAME element across reads** until the component unmounts. Reassigning `el` to a new node mid-life re-registers but stale closures from `onDragStart` callbacks fire against the OLD node.
+- **`useSortable` requires `items` to be reactive** (a getter or signal call) — the hook needs to re-derive on insert / remove. Passing a captured array snapshot breaks reordering.
+- **`canMonitor` / `canDrop` run on every drag event** — keep them cheap. For expensive checks, derive a flag in a `computed` upstream.
+- **`useFileDrop` only fires on REAL file drags from the OS** — not from `useDraggable` (those go through pdnd's element adapter). The two adapters are isolated.
+- **`onDrop` receives accepted files only** — files rejected by `accept` / `maxFiles` are silently filtered. Pair with `onDragEnter` / `isOver` if you need user feedback on rejection.
+- **`@pyreon/dnd` does NOT bundle pdnd** — the pragmatic-drag-and-drop chunks come from your app's bundle graph. ~6KB minified for the element adapter (the common case).
+
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/dnd](https://docs.pyreon.dev/docs/dnd) (or `docs/docs/dnd.md` in this repo).
 
 ## License
 

@@ -1,6 +1,8 @@
 # @pyreon/reactivity
 
-Signal-based fine-grained reactivity primitives for the Pyreon framework.
+Standalone fine-grained reactivity primitives — signals, computeds, effects, stores, resources, scopes.
+
+`@pyreon/reactivity` is the foundation layer every other Pyreon package builds on, but it has zero framework dependencies and works on its own in Node, Bun, edge workers, or any JavaScript environment without DOM or JSX. Subscribers are tracked via a `Set<() => void>`; batches use a pointer swap for zero-allocation grouping. Two-tier batch flush (computed recompute → effect run) prevents stale reads in diamond-shaped dependency graphs.
 
 ## Install
 
@@ -8,70 +10,173 @@ Signal-based fine-grained reactivity primitives for the Pyreon framework.
 bun add @pyreon/reactivity
 ```
 
-## Quick Start
+## Quick start
 
 ```ts
-import { signal, computed, effect, batch } from '@pyreon/reactivity'
+import {
+  signal, computed, effect, batch, onCleanup, watch, untrack,
+  createStore, createResource, effectScope,
+} from '@pyreon/reactivity'
 
 const count = signal(0)
 const doubled = computed(() => count() * 2)
 
-effect(() => {
+const dispose = effect(() => {
   console.log('doubled:', doubled())
+  onCleanup(() => console.log('cleaning up'))
 })
 
 batch(() => {
   count.set(1)
-  count.set(2)
+  count.set(2) // subscribers fire once, with doubled = 4
 })
-// logs "doubled: 4" once
+
+watch(() => count(), (next, prev) => console.log(`${prev} → ${next}`))
+
+const store = createStore({ todos: [{ text: 'Learn Pyreon', done: false }] })
+store.todos[0].done = true // fine-grained update, no immer
+
+dispose()
 ```
 
-## API
+## The signal contract
 
-### Signals
+```ts
+const x = signal(0)
+x()           // read (subscribes if inside a tracked scope)
+x.set(1)      // write
+x.update(n => n + 1)
+x.peek()      // read without subscribing
+```
 
-- **`signal<T>(initial: T, options?): Signal<T>`** -- Callable getter with `.set(value)` and `.update(fn)` methods. Pass `{ name }` for debug labels (auto-injected by `@pyreon/vite-plugin` in dev mode).
-- **`computed<T>(fn, options?): Computed<T>`** -- Derived signal that recomputes lazily when dependencies change.
-- **`cell<T>(initial: T): Cell<T>`** -- Lightweight reactive cell.
+Signals are **callable functions**, not `.value` getters (Vue) and not `[state, setState]` tuples (React). Calling the signal as a function is the read; `signal(5)` does NOT set the value — it reads and discards the argument. Dev mode warns; the `@pyreon/lint` rule `signal-write-as-call` flags it statically.
 
-### Effects
+Optional `name` for debugging: `signal(0, { name: 'count' })` — the `@pyreon/vite-plugin` injects names automatically in dev.
 
-- **`effect(fn): Effect`** -- Runs `fn` and re-runs it whenever its tracked dependencies change.
-- **`onCleanup(fn)`** -- Registers a cleanup function inside an effect. Runs before re-execution and on disposal.
-- **`renderEffect(fn): Effect`** -- Like `effect`, but scheduled for render timing.
-- **`watch(source, callback, options?): WatchOptions`** -- Watches a reactive source and calls back on change.
-- **`setErrorHandler(handler)`** -- Sets a global error handler for effect errors.
+## Computed
 
-### Batching
+```ts
+const doubled = computed(() => count() * 2)
+const sameRef = computed(() => obj(), { equals: (a, b) => a.id === b.id })
+```
 
-- **`batch(fn)`** -- Groups multiple signal writes; subscribers notified once at the end.
-- **`nextTick(): Promise<void>`** -- Resolves after the current batch of updates flushes.
+Lazy, memoized, auto-tracking. Recomputes only when a dependency changes AND a subscriber actually reads it. Pass a custom `equals` to dedupe by structural identity instead of `Object.is`.
 
-### Tracking
+## Effects
 
-- **`runUntracked(fn)`** -- Runs `fn` without tracking any signal reads.
-- **`untrack(fn)`** -- Alias for `runUntracked`.
+```ts
+const dispose = effect(() => {
+  console.log(count())
+  onCleanup(() => console.log('before next run / on dispose'))
+})
+dispose()
+```
 
-### Scopes
+`effect()` re-runs on tracked-signal change; the returned function disposes. Returning a cleanup function from the effect body is supported; `onCleanup(fn)` is the explicit form. `renderEffect()` is a lighter DOM-targeted variant that does NOT support `onCleanup` and does NOT register with `EffectScope` — used internally by `@pyreon/runtime-dom`.
 
-- **`effectScope(): EffectScope`** -- Creates a scope that collects effects for bulk disposal. Internal arrays (`_effects`, `_updateHooks`) are lazy-allocated on first use -- scopes with no effects cost only the object itself.
-- **`getCurrentScope(): EffectScope | null`** -- Returns the active effect scope, or `null` if none.
-- **`onScopeDispose(fn)`** -- Register a callback to run when the current scope stops (Vue 3 parity).
-- **`setCurrentScope(scope)`** -- Manually sets the current effect scope.
+`watch(source, callback)` is the explicit-source variant: `source` is evaluated for tracking, `callback(next, prev)` runs on change, and returning a cleanup function is honored.
 
-### Selectors and Resources
+## Batching
 
-- **`createSelector(source)`** -- Creates an efficient selector for keyed comparisons.
-- **`createResource(fetcher): Resource<T>`** -- Wraps an async data source in a reactive resource.
+```ts
+batch(() => {
+  count.set(1)
+  count.set(2)
+}) // subscribers notified ONCE with count=2
+```
 
-### Stores
+`batch()` defers subscriber notifications until the end of the callback. `nextTick(): Promise<void>` resolves after the current flush — useful for awaiting DOM updates in tests.
 
-- **`createStore(initial)`** -- Creates a deeply reactive store object.
-- **`isStore(value): boolean`** -- Checks whether a value is a reactive store.
-- **`reconcile(target, source)`** -- Efficiently patches a store to match a new value.
-- **`shallowReactive<T>(initial): T`** -- Creates a SHALLOWLY reactive store: top-level property writes notify, but nested object mutations don't (Vue 3 parity). Use for large object graphs where deep proxying would be wasteful.
-- **`markRaw<T>(value): T`** -- Mark an object as RAW so `createStore` and `shallowReactive` return it unwrapped (Vue 3 parity). Useful for class instances, third-party objects, DOM nodes, or any shape that shouldn't be deeply proxied. Marking is one-way (no `unmarkRaw`); mark BEFORE the object enters a store.
+## Stores
+
+```ts
+const store = createStore({ count: 0, todos: [{ text: 'a', done: false }] })
+store.count++              // notifies
+store.todos[0].done = true // deep — notifies
+
+const shallow = shallowReactive({ user: { name: 'a' } })
+shallow.user = { name: 'b' } // notifies
+shallow.user.name = 'c'      // does NOT notify (shallow)
+
+const raw = markRaw(thirdPartyClassInstance) // skip proxy
+```
+
+`createStore` returns a deeply-reactive proxy. `shallowReactive` proxies only the top level. `markRaw` opts an object out of proxying — useful for class instances, DOM nodes, third-party objects. `reconcile(target, source)` patches an existing store to match `source` without remounting.
+
+**Caveat:** `Map`, `Set`, `WeakMap`, `WeakSet`, `Date`, `RegExp`, `Promise`, `Error` are returned RAW. Mutating them does not notify; assign a new instance to trigger updates.
+
+## Resources
+
+```ts
+const user = createResource(() => userId(), async (id) => {
+  const r = await fetch(`/api/users/${id}`)
+  return r.json()
+})
+
+user.data()      // T | undefined
+user.loading()   // boolean
+user.error()     // Error | undefined
+user.refetch()
+```
+
+`createResource(source, fetcher)` re-runs the fetcher whenever `source` changes; stale responses are dropped via an internal request-id guard. Resources created **outside** an `EffectScope` must be `dispose()`-d explicitly to avoid leaks.
+
+## EffectScope
+
+```ts
+const scope = effectScope()
+scope.runInScope(() => {
+  effect(() => console.log(count()))
+  onScopeDispose(() => console.log('scope ended'))
+})
+scope.stop() // disposes every effect inside
+```
+
+Groups effects for bulk disposal — used internally by `@pyreon/runtime-dom`'s mount pipeline. `getCurrentScope()` returns the active scope; `setCurrentScope(scope)` is the escape hatch for advanced cross-tree integrations.
+
+Internal arrays (`_effects`, `_updateHooks`) are lazy-allocated — scopes with no effects cost only the object itself.
+
+## Selectors
+
+```ts
+const selected = signal<string | null>(null)
+const isSelected = createSelector(() => selected())
+
+<For each={items} by={i => i.id}>
+  {(item) => <li class={() => isSelected(item.id) ? 'active' : ''}>{item.name}</li>}
+</For>
+```
+
+`createSelector(source)` returns a function that, when called with a key, only notifies subscribers when the key transitions in or out of the selected state. O(1) instead of N effect runs on selection change.
+
+## Cell — minimal alternative to signal
+
+```ts
+import { cell } from '@pyreon/reactivity'
+const c = cell(0)
+c.get(); c.set(1); c.subscribe(listener)
+```
+
+`cell()` is a class-based primitive with a single-listener fast path and one allocation per cell. It is **not** callable and **does not** participate in effect tracking — use it only for cross-cutting state where the signal-tracking overhead would be wasteful.
+
+## Debugging
+
+```ts
+import { setErrorHandler, inspectSignal, onSignalUpdate, why, getReactiveTrace } from '@pyreon/reactivity'
+
+setErrorHandler((err, source) => reportToSentry(err, { tag: source }))
+
+const count = signal(0, { name: 'count' })
+onSignalUpdate(count, (next, prev) => console.log('count', prev, '→', next))
+inspectSignal(count) // { name, value, subscribers: number }
+why(count)           // print dependency graph for this signal
+```
+
+`activate/deactivate/getReactiveGraph/getReactiveFires` form the **opt-in** bridge consumed by the Pyreon devtools — zero cost until activated, gated by `process.env.NODE_ENV !== 'production'`, tree-shaken in production.
+
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/reactivity](https://docs.pyreon.dev/docs/reactivity) (or `docs/docs/reactivity.md` in this repo).
 
 ## License
 

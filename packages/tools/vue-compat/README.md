@@ -1,6 +1,8 @@
 # @pyreon/vue-compat
 
-Vue 3 Composition API shim that runs on Pyreon's signal-based reactive engine. Migrate Vue code by swapping the import path.
+Vue 3 Composition API shim — write Vue-style code that runs on Pyreon's reactive engine.
+
+`@pyreon/vue-compat` provides the Vue 3 Composition API surface (`ref`, `shallowRef`, `computed`, `reactive`, `shallowReactive`, `readonly`, `shallowReadonly`, `toRef`, `toRefs`, `toRaw`, `toValue`, `unref`, `isRef`, `isReactive`, `isReadonly`, `isProxy`, `markRaw`, `triggerRef`, `watch`, `watchEffect`, lifecycle hooks `onMounted` / `onUnmounted` / `onUpdated` / `onBeforeMount` / `onBeforeUnmount`, `nextTick`, `provide` / `inject`, `defineComponent`, `defineAsyncComponent`, `createApp`, `effectScope` / `getCurrentScope` / `onScopeDispose`, error/render-track hooks, `<Teleport>`, `<KeepAlive>`, `<Transition>`) all running on Pyreon's reactive engine. **This is a runtime shim, not Vue** — it covers what code imports, NOT the Single-File Component compiler. `.vue` files require a separate SFC compiler.
 
 ## Install
 
@@ -8,178 +10,104 @@ Vue 3 Composition API shim that runs on Pyreon's signal-based reactive engine. M
 bun add @pyreon/vue-compat
 ```
 
-## Quick Start
+## Quick start
 
 ```tsx
-// Replace:
-// import { ref, computed, watch } from "vue"
-// With:
-import { ref, computed, watch } from '@pyreon/vue-compat'
+import { ref, computed, watch, onMounted } from '@pyreon/vue-compat'
 
 function Counter() {
   const count = ref(0)
   const doubled = computed(() => count.value * 2)
 
-  watch(count, (newVal, oldVal) => {
-    console.log(`count: ${oldVal} -> ${newVal}`)
+  watch(count, (next, prev) => {
+    console.log(`count: ${prev} → ${next}`)
+  })
+
+  onMounted(() => {
+    console.log('mounted')
   })
 
   return (
     <div>
-      <span>{doubled.value}</span>
-      <button onClick={() => count.value++}>Count: {count.value}</button>
+      <p>Count: {count.value}, doubled: {doubled.value}</p>
+      <button onClick={() => count.value++}>+1</button>
     </div>
   )
 }
 ```
 
-### Reactive Objects
+## Subpath exports
 
-```tsx
-import { reactive, watchEffect } from '@pyreon/vue-compat'
+| Subpath                              | Surface                                                                                       |
+| ------------------------------------ | --------------------------------------------------------------------------------------------- |
+| `@pyreon/vue-compat`                 | Full Composition API surface — see API table below                                             |
+| `@pyreon/vue-compat/jsx-runtime`     | JSX automatic runtime (`jsx`, `jsxs`, `Fragment`)                                              |
+| `@pyreon/vue-compat/jsx-dev-runtime` | Dev variant — same runtime                                                                     |
 
-function UserForm() {
-  const form = reactive({ name: '', email: '' })
+## API surface
 
-  watchEffect(() => {
-    console.log('form changed:', form.name, form.email)
-  })
+| Category         | Exports                                                                                       |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| Refs             | `ref`, `shallowRef`, `triggerRef`, `isRef`, `unref`, `toValue`, `toRef`, `toRefs`             |
+| Computed         | `computed` (getter form + writable `{ get, set }` form)                                       |
+| Reactive         | `reactive`, `shallowReactive`, `readonly`, `shallowReadonly`, `toRaw`, `markRaw`, `isReactive`, `isReadonly`, `isProxy` |
+| Watchers         | `watch`, `watchEffect`, `WatchOptions`                                                         |
+| Lifecycle        | `onMounted`, `onUnmounted`, `onUpdated`, `onBeforeMount`, `onBeforeUnmount`, `onErrorCaptured`, `onRenderTracked`, `onRenderTriggered` |
+| Scheduling       | `nextTick`                                                                                     |
+| DI               | `provide`, `inject`                                                                            |
+| Components       | `defineComponent`, `defineAsyncComponent`, `createApp(App, props?)`                            |
+| Scope            | `effectScope`, `getCurrentScope`, `onScopeDispose`                                             |
+| Built-ins        | `Teleport`, `KeepAlive`, `Transition`                                                          |
+| JSX              | `h`, `Fragment`                                                                                |
 
-  return (
-    <div>
-      <input
-        value={form.name}
-        onInput={(e) => (form.name = e.currentTarget.value)}
-        placeholder="Name"
-      />
-      <input
-        value={form.email}
-        onInput={(e) => (form.email = e.currentTarget.value)}
-        placeholder="Email"
-      />
-      <p>
-        Hello, {form.name} ({form.email})
-      </p>
-    </div>
-  )
+## Drop-in compat mode
+
+`@pyreon/vite-plugin` can alias every `vue` import to this package:
+
+```ts
+// vite.config.ts
+import pyreon from '@pyreon/vite-plugin'
+export default { plugins: [pyreon({ compat: 'vue' })] }
+```
+
+`tsconfig.json`:
+
+```jsonc
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "@pyreon/vue-compat"
+  }
 }
 ```
 
-### Provide / Inject
+## Scope
 
-```tsx
-import { ref, provide, inject, defineComponent } from '@pyreon/vue-compat'
+This is a **runtime** shim. It covers what code imports at runtime — the same boundary `@pyreon/solid-compat` draws around Solid's compiler.
 
-const ThemeKey = Symbol('theme')
+- ✅ Composition API — `ref`, `computed`, `reactive`, `watch`, lifecycle, `provide` / `inject`, `effectScope`
+- ✅ `defineComponent` (typed) + `defineAsyncComponent`
+- ✅ `createApp(component, props)` — mount via `.mount(selector)`
+- ✅ Built-in components — `Teleport`, `KeepAlive`, `Transition`
+- ❌ `.vue` Single-File Component compiler
+- ❌ `<script setup>` syntax (compiler construct)
+- ❌ Options API class-component lifecycle (`data`, `methods`, `computed` block, `created`, `beforeDestroy`, …)
+- ❌ Template directives (`v-if`, `v-for`, `v-model`) — use JSX equivalents
 
-function ThemeProvider(props: { children: any }) {
-  const theme = ref('light')
-  provide(ThemeKey, theme)
-  return (
-    <div>
-      <button onClick={() => (theme.value = theme.value === 'light' ? 'dark' : 'light')}>
-        Toggle theme
-      </button>
-      {props.children}
-    </div>
-  )
-}
+Components are plain functions returning JSX that run on Pyreon's reactive engine.
 
-function ThemedBox() {
-  const theme = inject(ThemeKey, ref('light'))
-  return <div class={`box-${theme.value}`}>Theme: {theme.value}</div>
-}
-```
+## Gotchas
 
-### createApp
+- **`.value` reads/writes work** because Pyreon signals wrap a value getter/setter to match Vue's ref shape.
+- **`reactive(obj)` returns a Proxy** that delegates to Pyreon signals — mutating `obj.x = 5` triggers subscribers as Vue does.
+- **`watch` deps are tracked automatically** for function sources. For an array of sources, the watcher fires when any one changes.
+- **`createApp(App).mount(selector)`** maps to Pyreon's `mount()` — returns an app instance with `.unmount()`.
+- **Lifecycle hooks fire ONCE** per component instance (run-once model). Vue's render-driven re-fires (`onUpdated`) translate to per-subscription effects under the hood — the visible effect is the same for most use cases.
 
-```tsx
-import { createApp, ref } from '@pyreon/vue-compat'
+## Documentation
 
-function App() {
-  const message = ref('Hello from Pyreon')
-  return <h1>{message.value}</h1>
-}
+Full docs: [docs.pyreon.dev/docs/vue-compat](https://docs.pyreon.dev/docs/vue-compat) (or `docs/docs/vue-compat.md` in this repo).
 
-const app = createApp(App)
-app.mount('#app')
-```
+## License
 
-## Key Differences from Vue
-
-- **No virtual DOM.** Pyreon uses fine-grained reactivity -- no diffing, no re-renders.
-- **Components run once** (setup phase only).
-- **`reactive()` uses Pyreon's store proxy** with deep signal wrapping.
-- **`readonly()` is strict** -- setting any property (including symbols) throws an error.
-- **`provide` / `inject` uses Pyreon's context system** -- fully isolated per component tree.
-
-## API
-
-### Reactivity: Refs
-
-- **`ref(value)`** -- returns `{ value }` with reactive `.value`.
-- **`shallowRef(value)`** -- shallow reactive ref (no deep tracking).
-- **`triggerRef(ref)`** -- force subscribers to re-run.
-- **`isRef(val)`** -- type guard.
-- **`unref(val)`** -- unwrap a ref or return value as-is.
-- **`toRef(obj, key)`** -- create a ref bound to an object property.
-- **`toRefs(obj)`** -- convert all properties to refs.
-
-### Reactivity: Computed
-
-- **`computed(fn)`** -- read-only computed ref.
-- **`computed({ get, set })`** -- writable computed ref.
-
-### Reactivity: Objects
-
-- **`reactive(obj)`** -- deep reactive proxy (Pyreon store).
-- **`shallowReactive(obj)`** -- shallow reactive proxy.
-- **`readonly(obj)`** -- read-only proxy that throws on writes.
-- **`toRaw(proxy)`** -- unwrap to the original object.
-
-### Watchers
-
-- **`watch(source, callback, options?)`** -- watch a ref, getter, or reactive object. Supports `immediate` and `deep`.
-- **`watchEffect(fn)`** -- auto-tracking effect, returns stop handle.
-
-### Lifecycle Hooks
-
-- **`onMounted(fn)`** / **`onBeforeMount(fn)`**
-- **`onUnmounted(fn)`** / **`onBeforeUnmount(fn)`**
-- **`onUpdated(fn)`**
-
-### Dependency Injection
-
-- **`provide(key, value)`** -- provide a value to descendants.
-- **`inject(key, defaultValue?)`** -- inject a value from an ancestor.
-
-### Application
-
-- **`createApp(component, props?)`** -- create an app instance with `.mount(el)` and `.unmount()`.
-- **`defineComponent(setup)`** -- wrapper for type inference (returns setup as-is).
-- **`nextTick()`** -- wait for the next microtask.
-
-### Utilities
-
-- **`h` / `Fragment`** -- JSX runtime.
-- **`batch(fn)`** -- coalesce multiple signal writes.
-
-## Composing Pyreon framework components inside vue-compat
-
-Pyreon's framework components (`RouterView`, `PyreonUI`, `FormProvider`, `QueryClientProvider`, …) ship marked with `nativeCompat()` from `@pyreon/core` — vue-compat's JSX runtime detects the marker and routes them through Pyreon's setup frame instead of the compat wrapper. **You don't need to do anything** for the 24 components shipped marked.
-
-If you write your **own** Pyreon-flavored helper that uses `provide()` / `onMount()` / `onUnmount()` / `effect()` at component-body scope and use it in a vue-compat app, mark it explicitly:
-
-```tsx
-import { nativeCompat, provide, createContext } from '@pyreon/core'
-
-const MyCtx = createContext<string>('default')
-
-function MyProvider(props: { value: string; children?: unknown }) {
-  provide(MyCtx, props.value)
-  return props.children as never
-}
-nativeCompat(MyProvider) // ← required for compat-mode apps
-```
-
-Without the marker, the wrapper relocates the body's render context and `provide()` lands in a torn-down context stack — descendants read the default. See [`packages/core/core/src/compat-marker.ts`](../../core/core/src/compat-marker.ts) for details.
+MIT

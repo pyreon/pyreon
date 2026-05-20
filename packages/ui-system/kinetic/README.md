@@ -1,14 +1,29 @@
 # @pyreon/kinetic
 
-CSS-first animation library for Pyreon. Enter/exit transitions, staggered animations, height collapse, and list reconciliation — all in ~3KB gzipped.
+CSS-transition animation library — enter/exit, stagger, collapse, list reconciliation, ~3KB.
 
-## Why Kinetic?
+`@pyreon/kinetic` delegates interpolation to the browser's CSS transition engine (GPU compositor thread for `transform` / `opacity`) and only handles orchestration: mount/unmount lifecycle, stagger timing, height measurement, and key-based list diffing. The result is 60/120fps animations with a 3.2KB footprint and four composable modes (transition, collapse, stagger, group) accessed through a chainable, immutable API. Pair with `@pyreon/kinetic-presets` for 120+ ready-made animations, or define your own via inline `.enter()` / `.enterTo()` styles or class-based transitions (Tailwind, CSS modules). Reduced-motion is detected automatically; SSR renders children in their hidden-state class so scroll-reveal patterns reach SEO crawlers.
 
-Most animation libraries run their own JavaScript animation loop on the main thread. Kinetic takes a different approach: it delegates all interpolation to the browser's CSS transition engine (compositor thread for `transform`/`opacity`), and only handles orchestration — mount/unmount lifecycle, stagger timing, height measurement, and list diffing.
+## Install
 
-The result: GPU-composited 60/120 FPS animations with a 3.2KB footprint.
+```bash
+bun add @pyreon/kinetic @pyreon/core @pyreon/reactivity @pyreon/runtime-dom
+```
 
-### How It Compares
+## Quick start
+
+```tsx
+import { kinetic, fade, slideUp } from '@pyreon/kinetic'
+import { signal } from '@pyreon/reactivity'
+
+const FadeDiv = kinetic('div').preset(fade)
+const SlideSection = kinetic('section').preset(slideUp)
+
+const show = signal(true)
+<FadeDiv show={show()}>Hello, world!</FadeDiv>
+```
+
+## How it compares
 
 | Library                | Gzipped    | Engine              | Enter/Exit | Stagger | List Recon. | Collapse | Reduced Motion |
 | ---------------------- | ---------- | ------------------- | ---------- | ------- | ----------- | -------- | -------------- |
@@ -18,132 +33,99 @@ The result: GPU-composited 60/120 FPS animations with a 3.2KB footprint.
 | react-transition-group | ~5 KB      | CSS classes         | Yes        | No      | Yes         | No       | No             |
 | AutoAnimate            | ~2.5 KB    | JS (FLIP)           | Yes        | No      | Yes         | No       | Yes            |
 
-**Key advantages:**
+Key advantages: 10x smaller than Motion for CSS-transition use cases; only library combining CSS transitions + stagger + collapse + key-based list reconciliation; 120+ presets via `@pyreon/kinetic-presets`.
 
-- **10x smaller than Motion** for CSS-transition use cases
-- **CSS-first**: `transform`/`opacity` run on GPU compositor thread, not main thread
-- **Only library** combining CSS transitions + stagger + collapse + list reconciliation
-- **122 presets** available via `@pyreon/kinetic-presets`
-
-## Install
-
-```bash
-bun add @pyreon/kinetic
-```
-
-## Quick Start
+## `kinetic(tag)` — animated component factory
 
 ```ts
-import { kinetic, fade, slideUp } from '@pyreon/kinetic'
-import { signal } from '@pyreon/reactivity'
-
-// Create animated components at module level
-const FadeDiv = kinetic('div').preset(fade)
-const SlideSection = kinetic('section').preset(slideUp)
-
-// Use with signals for reactive show/hide
-const show = signal(true)
-
-FadeDiv({ show: show(), children: 'Hello, world!' })
+kinetic('div')           // HTML element string
+kinetic('section')
+kinetic(MyComponent)     // Any Pyreon component
 ```
 
-## API
+Returns a renderable Pyreon component with chain methods. Default mode: **transition**.
 
-### `kinetic(tag)`
+## Chain methods
 
-Creates an animated component. `tag` can be any HTML element string or Pyreon component.
-
-```ts
-kinetic('div') // HTML element
-kinetic('section') // Any HTML tag
-kinetic(MyComponent) // Pyreon component
-```
-
-Returns a renderable Pyreon component with chain methods attached. Default mode: **transition**.
-
-### Chain Methods
-
-All methods return a new component (immutable). The tag generic flows through, preserving HTML attribute types.
+Every method returns a new component (immutable). The tag generic flows through, preserving HTML attribute types.
 
 ```ts
-// Style-based animation config
-.enter(styles)            // CSSProperties applied at enter start
-.enterTo(styles)          // CSSProperties applied after first frame
-.enterTransition(value)   // CSS transition string for enter
-.leave(styles)            // CSSProperties applied at leave start
-.leaveTo(styles)          // CSSProperties applied after first frame
-.leaveTransition(value)   // CSS transition string for leave
+// Inline style-based config
+.enter(styles)            // CSSProperties at enter start
+.enterTo(styles)          // CSSProperties after first frame
+.enterTransition(value)   // CSS transition string
+.leave(styles)            // CSSProperties at leave start
+.leaveTo(styles)          // CSSProperties after first frame
+.leaveTransition(value)
 
-// Class-based animation config
+// Class-based config (Tailwind / CSS modules friendly)
 .enterClass({ active?, from?, to? })
 .leaveClass({ active?, from?, to? })
 
-// Apply a preset (spreads style + class props)
+// Preset (spreads style + class props)
 .preset(preset)
 
-// Behavior config
-.config(opts)             // appear, unmount, timeout (+ mode-specific)
-.on(callbacks)            // onEnter, onAfterEnter, onLeave, onAfterLeave
+// Behaviour
+.config({ appear, unmount, timeout, ... })
+.on({ onEnter, onAfterEnter, onLeave, onAfterLeave })
 
 // Mode switches
-.collapse(opts?)          // Height animation mode
-.stagger(opts?)           // Staggered children mode
+.collapse(opts?)          // Height-animation mode
+.stagger(opts?)           // Staggered-children mode
 .group()                  // Key-based list reconciliation mode
 ```
 
-### Four Modes
+## Four modes
 
-#### Transition (default)
+### Transition (default)
 
-Single element enter/leave with CSS transitions.
+Single-element enter/leave with CSS transitions.
 
-```ts
+```tsx
 const FadeDiv = kinetic('div').preset(fade)
-
-FadeDiv({ show: isOpen, children: 'Content' })
+<FadeDiv show={isOpen}>Content</FadeDiv>
 ```
 
-#### Collapse
+### Collapse
 
 Height animation with `overflow: hidden`. Measures `scrollHeight` automatically.
 
-```ts
+```tsx
 const Accordion = kinetic('div').collapse()
 const FancyAccordion = kinetic('section').collapse({
   transition: 'height 400ms cubic-bezier(0.4, 0, 0.2, 1)',
 })
 
-Accordion({ show: isExpanded, children: 'Expandable content' })
+<Accordion show={isExpanded}>Expandable content</Accordion>
 ```
 
-#### Stagger
+### Stagger
 
 Staggered entrance/exit for child elements.
 
-```ts
+```tsx
 const StaggerList = kinetic('ul').preset(slideUp).stagger({ interval: 75 })
 
-StaggerList({
-  show: isVisible,
-  children: [
-    h('li', { key: '1' }, 'Item 1'),
-    h('li', { key: '2' }, 'Item 2'),
-    h('li', { key: '3' }, 'Item 3'),
-  ],
-})
+<StaggerList show={isVisible}>
+  <li key="1">Item 1</li>
+  <li key="2">Item 2</li>
+  <li key="3">Item 3</li>
+</StaggerList>
 ```
 
-#### Group
+### Group
 
-Key-based enter/exit — adding a child triggers enter animation, removing triggers leave + unmount. No `show` prop.
+Key-based enter/exit — adding a keyed child triggers enter; removing triggers leave + unmount. No `show` prop.
 
-```ts
+```tsx
 const AnimatedList = kinetic('ul').preset(fade).group()
 
-AnimatedList({ children: items.map((item) => h('li', { key: item.id }, item.text)) })
+<AnimatedList>
+  {items.map((item) => <li key={item.id}>{item.text}</li>)}
+</AnimatedList>
 ```
 
-### Inline Configuration
+## Inline configuration
 
 Build animations without presets:
 
@@ -157,7 +139,7 @@ const SlidePanel = kinetic('aside')
   .leaveTransition('all 200ms ease-in')
 ```
 
-### Class-Based Transitions
+## Class-based transitions
 
 Works with Tailwind CSS, CSS modules, or any class-based approach:
 
@@ -167,79 +149,85 @@ const TailwindFade = kinetic('div')
   .leaveClass({ active: 'transition-opacity duration-200', from: 'opacity-100', to: 'opacity-0' })
 ```
 
-### Lifecycle Callbacks
+## Lifecycle callbacks
 
-```ts
-FadeDiv({
-  show: isOpen,
-  onEnter: () => console.log('entering'),
-  onAfterEnter: () => console.log('entered'),
-  onLeave: () => console.log('leaving'),
-  onAfterLeave: () => console.log('left'),
-  children: 'Content',
-})
+```tsx
+<FadeDiv
+  show={isOpen}
+  onEnter={() => console.log('entering')}
+  onAfterEnter={() => console.log('entered')}
+  onLeave={() => console.log('leaving')}
+  onAfterLeave={() => console.log('left')}
+>
+  Content
+</FadeDiv>
 ```
 
-### Accessibility
-
-Kinetic automatically detects `prefers-reduced-motion: reduce`. When enabled, animations are skipped instantly — callbacks still fire, but no visual animation occurs. No configuration needed.
-
-## Built-in Presets
-
-Six presets are included in the core package:
-
-```ts
-import { fade, scaleIn, slideUp, slideDown, slideLeft, slideRight } from '@pyreon/kinetic'
-```
-
-For 122 presets, factories, and composition utilities, install `@pyreon/kinetic-presets`.
-
-## Composition with Rocketstyle
+## Composition with rocketstyle
 
 Kinetic and rocketstyle compose naturally:
 
 ```ts
 import rocketstyle from '@pyreon/rocketstyle'
 
-const Button = rocketstyle()({ component: 'button', name: 'Button' }).theme({
-  primaryColor: 'blue',
-})
+const Button = rocketstyle()({ component: 'button', name: 'Button' })
+  .theme({ primaryColor: 'blue' })
 
 const AnimatedButton = kinetic(Button).preset(fade)
-
-// Has both rocketstyle props AND kinetic props
-AnimatedButton({ show: isVisible, primary: true, size: 'large', children: 'Click me' })
+// Has BOTH rocketstyle dimension props AND kinetic show/lifecycle props
+<AnimatedButton show={isVisible} state="primary" size="large">Click me</AnimatedButton>
 ```
+
+## Built-in presets
+
+Six presets are included in the core package: `fade`, `scaleIn`, `slideUp`, `slideDown`, `slideLeft`, `slideRight`. For 120+ presets, factories, and composition utilities, add `@pyreon/kinetic-presets`.
+
+## Low-level hooks
+
+If you need transition state outside `kinetic()`:
+
+```ts
+import { useTransitionState, useAnimationEnd } from '@pyreon/kinetic'
+
+const state = useTransitionState({ show: () => isOpen() })
+// state.stage() → 'enter' | 'enter-active' | 'enter-to' | 'leave' | 'leave-active' | 'leave-to' | 'idle'
+```
+
+## Accessibility
+
+Kinetic automatically detects `prefers-reduced-motion: reduce`. When enabled, animations are skipped instantly — callbacks still fire, but no visual animation occurs. No configuration needed.
 
 ## SSR / SSG
 
 `<Transition show={() => false}>` **always renders children in SSR**, with the hidden-state class inlined (`leaveTo` if defined, else `enterFrom`). This matches Framer Motion / react-transition-group / react-spring conventions: content is structural, animation is visual.
 
-This is load-bearing for the scroll-reveal pattern on SSG sites — `useIntersection` can't fire on the server, so `show` is false at SSR. Without structural rendering, the wrapped content would be absent from prerendered HTML (bad for SEO, social scrapers, no-JS users).
+Load-bearing for scroll-reveal on SSG sites — `useIntersection` can't fire on the server, so `show` is false at SSR. Without structural rendering, the wrapped content would be absent from prerendered HTML (bad for SEO, social scrapers, no-JS users).
 
 ```tsx
 const RevealSection = kinetic('section')
-  .enter('transition-all duration-700')
-  .enterFrom('opacity-0 translate-y-8') // ← this IS the SSR hidden state
-  .enterTo('opacity-100 translate-y-0')
+  .enterClass({ active: 'transition-all duration-700', from: 'opacity-0 translate-y-8', to: 'opacity-100 translate-y-0' })
 
-// In your route — show is driven by useIntersection on the client.
-// At SSR: <section class="opacity-0 translate-y-8">…full content here…</section>
-// On client: when scrolled into view, show flips true, enter animation runs.
+// SSR: <section class="opacity-0 translate-y-8">…full content…</section>
+// Client: when scrolled into view, show flips true → enter animation runs
 <RevealSection show={isInView}>
   <h2>Work Experience</h2>
   <p>…content reaches SEO crawlers and social scrapers…</p>
 </RevealSection>
 ```
 
-**Trade-off**: for an initially-hidden Transition, `unmount: true` (the default) no longer triggers a true DOM removal after a later leave animation completes — the element stays in DOM with the leave-to class applied. **Initially-visible** Transitions (`show: () => true` at setup) keep the runtime-unmount semantic unchanged. If you need true unmount on a started-hidden element, drive mount/unmount yourself outside `<Transition>`.
+**Trade-off**: for an initially-hidden Transition, `unmount: true` (the default) no longer triggers a true DOM removal after a later leave animation completes — the element stays in DOM with the leave-to class applied. **Initially-visible** Transitions keep the runtime-unmount semantic unchanged. If you need true unmount on a started-hidden element, drive mount/unmount yourself outside `<Transition>`.
 
-## Peer Dependencies
+## Gotchas
 
-| Package            | Version  |
-| ------------------ | -------- |
-| @pyreon/core       | >= 0.0.1 |
-| @pyreon/reactivity | >= 0.0.1 |
+- **Animations run on the GPU compositor thread** only when you animate `transform` / `opacity` / `filter`. Animating `width` / `height` / `top` / `left` falls back to the main thread and may jank.
+- **Stagger `interval` is per-CHILD**, not total duration. Five children at 75ms = 375ms total stagger window.
+- **Group mode requires keyed children.** Without `key=`, every render replaces every child and you get no animation. The compiler-suggested `<For each={items} by={i => i.id}>` is the idiomatic pattern.
+- **SSR initial-hidden Transitions break true-unmount semantics.** See SSR / SSG section above — opt out by driving mount/unmount yourself.
+- **Reduced-motion skips visuals but still fires callbacks.** Don't rely on the animation completing for state machine progression — use callbacks.
+
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/kinetic](https://docs.pyreon.dev/docs/kinetic) (or `docs/docs/kinetic.md` in this repo).
 
 ## License
 

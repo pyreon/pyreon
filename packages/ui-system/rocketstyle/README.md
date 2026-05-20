@@ -1,36 +1,22 @@
 # @pyreon/rocketstyle
 
-Multi-dimensional styling system for Pyreon.
+Multi-dimensional component styling — states, sizes, variants, themes, light/dark, all cached.
 
-Organize component styles by dimensions — states, sizes, variants — instead of flat props. Chain theme values, attach CSS via `@pyreon/styler`, and get full TypeScript inference. Built-in pseudo-state handling, light/dark mode, and provider/consumer patterns for parent-child state propagation.
+`@pyreon/rocketstyle` is the styling layer Pyreon's UI system builds on. Organize styles by named DIMENSIONS — `state` (`primary` / `danger` / `success`), `size` (`sm` / `md` / `lg`), `variant`, plus any custom dimension you declare — instead of flat boolean props. Each dimension is a chainable method (`.states({...})`, `.sizes({...})`); per-dimension values are themed via `.theme()` callbacks that receive `(theme, mode, css)`, with light/dark mode threaded through and pseudo-states (`hover` / `focus` / `pressed` / `active` / `disabled`) auto-detected. Built on `@pyreon/attrs` + `@pyreon/styler`. Per-definition WeakMap caches make per-mount cost near zero for same-definition components — verified 73% reduction in `styler.resolve` calls on real-app benchmarks.
 
-## Features
-
-- **Dimension-based theming** — define style variations as named dimensions (states, sizes, variants)
-- **Immutable chaining** — `.attrs()`, `.theme()`, `.states()`, `.sizes()`, `.styles()` and more
-- **Boolean shorthand** — `Button({ primary: true, lg: true })` instead of `Button({ state: 'primary', size: 'lg' })`
-- **Pseudo-state detection** — hover, focus, pressed tracked via signals and context
-- **Light/dark mode** — theme callbacks receive a mode parameter
-- **Provider/Consumer** — propagate parent state to children through context
-- **Multi-tier WeakMap caching** — dimension maps, reserved keys, omit Sets, and theme results cached per component definition (shared across all instances). Per-mount allocations near zero for same-definition components
-- **TypeScript inference** — dimension values and prop types inferred through the chain
-
-## Installation
+## Install
 
 ```bash
-bun add @pyreon/rocketstyle
+bun add @pyreon/rocketstyle @pyreon/core @pyreon/reactivity @pyreon/ui-core @pyreon/styler
 ```
 
-## Quick Start
+## Quick start
 
-```ts
+```tsx
 import rocketstyle from '@pyreon/rocketstyle'
 import { Element } from '@pyreon/elements'
 
-const Button = rocketstyle()({
-  name: 'Button',
-  component: Element,
-})
+const Button = rocketstyle()({ name: 'Button', component: Element })
   .attrs({ tag: 'button' })
   .theme({
     fontSize: 16,
@@ -39,238 +25,178 @@ const Button = rocketstyle()({
     borderRadius: 4,
     color: '#fff',
     backgroundColor: '#0d6efd',
-    hover: {
-      backgroundColor: '#0b5ed7',
-    },
+    hover: { backgroundColor: '#0b5ed7' },
   })
   .states({
-    primary: {
-      backgroundColor: '#0d6efd',
-      hover: { backgroundColor: '#0b5ed7' },
-    },
-    danger: {
-      backgroundColor: '#dc3545',
-      hover: { backgroundColor: '#bb2d3b' },
-    },
-    success: {
-      backgroundColor: '#198754',
-      hover: { backgroundColor: '#157347' },
-    },
+    primary: { backgroundColor: '#0d6efd', hover: { backgroundColor: '#0b5ed7' } },
+    danger:  { backgroundColor: '#dc3545', hover: { backgroundColor: '#bb2d3b' } },
+    success: { backgroundColor: '#198754', hover: { backgroundColor: '#157347' } },
   })
   .sizes({
     sm: { fontSize: 14, paddingX: 12, paddingY: 6 },
     md: { fontSize: 16, paddingX: 16, paddingY: 8 },
     lg: { fontSize: 18, paddingX: 20, paddingY: 10 },
   })
+
+<Button state="danger" size="lg">Delete</Button>
 ```
 
-```ts
-// Named props
-Button({ state: 'danger', size: 'lg', label: 'Delete' })
-
-// Boolean shorthand (when useBooleans is enabled)
-Button({ danger: true, lg: true, label: 'Delete' })
-```
-
-## Core Concepts
+## Core concepts
 
 ### Dimensions
 
-A dimension is a named axis of style variation. The factory ships with four defaults:
+A dimension is a named axis of style variation. Defaults ship four:
 
-| Dimension  | Prop name | Multi | Example                        |
-| ---------- | --------- | ----- | ------------------------------ |
-| `states`   | `state`   | no    | `primary`, `danger`, `success` |
-| `sizes`    | `size`    | no    | `sm`, `md`, `lg`               |
-| `variants` | `variant` | no    | `outlined`, `filled`           |
-| `multiple` | —         | yes   | `rounded`, `shadow`            |
+| Dimension  | Prop name | Multi? | Example                        |
+| ---------- | --------- | ------ | ------------------------------ |
+| `states`   | `state`   | no     | `primary`, `danger`, `success` |
+| `sizes`    | `size`    | no     | `sm`, `md`, `lg`               |
+| `variants` | `variant` | no     | `outlined`, `filled`           |
+| `multiple` | —         | yes    | `rounded`, `shadow`            |
 
-Each dimension creates a chain method (`.states()`, `.sizes()`, etc.) and a corresponding prop on the component.
+Each declared dimension creates a chain method AND a corresponding prop on the component. Multi-dimensions accept multiple active values at once.
 
-**Multi dimensions** allow multiple values at once: `Button({ rounded: true, shadow: true })`.
+### Default: `useBooleans: false` (string prop values)
 
-### Theme Object
+```tsx
+<Button state="primary" size="lg">Save</Button>
+```
 
-The `.theme()` method defines base CSS property values. Values are processed by `@pyreon/unistyle` — numbers convert to rem, shorthand properties expand automatically.
+Boolean shorthand (`<Button primary lg>Save</Button>`) is opt-in via `rocketstyle({ useBooleans: true })`. **Important**: before April 2026 the type default was `true` but the runtime was `false` — boolean props typechecked but were silently dropped at runtime. Fixed in `rocketstyle/init.ts`; new code should not rely on the historical behaviour.
 
-Pseudo-state keys nest directly in the theme object:
+### Theme + pseudo-states
 
 ```ts
 .theme({
   color: '#333',
   fontSize: 16,
-  hover: { color: '#000' },
-  focus: { outline: '2px solid blue' },
-  active: { transform: 'scale(0.98)' },
+  hover:    { color: '#000' },
+  focus:    { outline: '2px solid blue' },
+  active:   { transform: 'scale(0.98)' },
+  disabled: { opacity: 0.5 },
 })
 ```
 
-### Styles Function
+Pseudo-state keys nest directly. Bases (`@pyreon/elements`) generate `:hover` / `:focus-visible` / `:active` / `:disabled` CSS from the nested objects. `:hover` is unconditional — applied to EVERY component with hover theme; only `cursor: pointer` is gated on `onClick` / `href`.
 
-The `.styles()` method defines the CSS template that receives the computed theme:
+### Styles callback
 
 ```ts
 .styles((css) => css`
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+
   ${({ $rocketstyle, $rocketstate }) => {
-    // $rocketstyle — computed theme values (base + active dimension values merged)
+    // $rocketstyle — computed theme (base + active dimension values merged)
     // $rocketstate — { hover, focus, pressed, active, disabled, pseudo }
-    return css`...`
+    return /* css string */
   }}
 `)
 ```
 
+`$rocketstyle` is identity-cached — same dimension-prop combo produces the same object identity, which lets the styler's `classCache` skip resolve work entirely on cache hits.
+
 ## API
 
-### rocketstyle(options?)
+### `rocketstyle(options?)({ name, component })`
 
 Factory initializer. Returns a function that accepts component configuration.
 
 ```ts
 const factory = rocketstyle({
-  dimensions: {
-    /* custom dimensions */
-  },
+  dimensions: { /* custom dimensions */ },
   useBooleans: true,
 })
 
-const Component = factory({
-  name: 'ComponentName',
-  component: BaseComponent,
-})
+const Button = factory({ name: 'Button', component: Element })
 ```
 
-### .attrs(props | callback, options?)
+### `.attrs(props | callback, options?)`
 
-Same API as `@pyreon/attrs`. Define default props with optional priority and filter.
+Same as `@pyreon/attrs` — accumulate defaults, supports callback / priority / filter.
 
-```ts
-Button.attrs({ tag: 'button', role: 'button' })
-Button.attrs((props) => ({ 'aria-label': props.label }))
-```
+### `.theme(values | callback)`
 
-### .theme(values | callback)
-
-Base theme values applied to every instance.
+Base theme applied to every instance.
 
 ```ts
-// Object form
-Button.theme({
-  fontSize: 16,
-  color: '#fff',
-  hover: { opacity: 0.9 },
-})
-
-// Callback form — receives the theme context and mode
-Button.theme((theme, mode, css) => ({
+.theme({ fontSize: 16, color: '#fff', hover: { opacity: 0.9 } })
+.theme((theme, mode, css) => ({
   fontSize: 16,
   color: mode === 'dark' ? '#fff' : '#333',
 }))
 ```
 
-### .states() / .sizes() / .variants() / .multiple()
+### `.states()` / `.sizes()` / `.variants()` / `.multiple()`
 
-Define values for each dimension. Each key becomes a selectable option.
-
-```ts
-Button.states({
-  primary: { backgroundColor: '#0d6efd' },
-  danger: { backgroundColor: '#dc3545' },
-})
-
-Button.sizes({
-  sm: { fontSize: 14, paddingX: 8 },
-  lg: { fontSize: 18, paddingX: 20 },
-})
-
-// Multi dimension — multiple can be active at once
-Button.multiple({
-  rounded: { borderRadius: 999 },
-  shadow: { boxShadow: '0 2px 8px rgba(0,0,0,0.15)' },
-})
-```
-
-Dimension methods also accept callbacks:
+Define per-dimension values.
 
 ```ts
-Button.states((theme, mode, css) => ({
+.states({ primary: { backgroundColor: '#0d6efd' }, danger: { backgroundColor: '#dc3545' } })
+.sizes({ sm: { fontSize: 14, paddingX: 8 }, lg: { fontSize: 18, paddingX: 20 } })
+.multiple({ rounded: { borderRadius: 999 }, shadow: { boxShadow: '0 2px 8px rgba(0,0,0,0.15)' } })
+
+// Callback form — receives (theme, mode, css)
+.states((theme) => ({
   primary: { backgroundColor: theme.colors?.primary ?? '#0d6efd' },
 }))
 ```
 
-### .styles(callback)
+### `.styles(callback)`
 
-Define the CSS template using `@pyreon/styler`'s `css` tagged template.
+CSS template using `@pyreon/styler`'s `css` tagged template.
 
-```ts
-Button.styles(
-  (css) => css`
-    cursor: pointer;
-    border: none;
-    transition: all 0.2s;
-
-    ${({ $rocketstyle }) => makeItResponsive({ theme: $rocketstyle, styles, css })}
-  `,
-)
-```
-
-### .config(options)
-
-Reconfigure the component.
+### `.config(options)`
 
 ```ts
 Button.config({
-  name: 'PrimaryButton',    // change displayName
-  component: NewBase,        // swap base component
-  provider: true,            // make this component a context provider
-  consumer: (ctx) => ...,   // consume parent component context
-  inversed: true,            // invert theme mode
-  DEBUG: true,               // enable debug logging
+  name: 'PrimaryButton',
+  component: NewBase,         // swap base — resets prop chains
+  provider: true,             // make this a context provider for children
+  consumer: (ctx) => …,       // consume parent component context
+  inversed: true,             // invert theme mode for subtree
+  DEBUG: true,
 })
 ```
 
-### .compose(hocs) / .statics(metadata)
+### `.compose(hocs)` / `.statics(metadata)`
 
-Same API as `@pyreon/attrs`:
+Same API as `@pyreon/attrs`.
 
-```ts
-Button.compose({ withTracking: trackingHoc })
-Button.statics({ category: 'action' })
+### `isRocketComponent(value)` / `resolveTheme(value)`
 
-Button.meta.category // => 'action'
-```
-
-### isRocketComponent(value)
-
-Runtime type guard.
+Runtime guard and theme accessor for use inside styled-component interpolations:
 
 ```ts
-import { isRocketComponent } from '@pyreon/rocketstyle'
+import { isRocketComponent, resolveTheme } from '@pyreon/rocketstyle'
 
-isRocketComponent(Button) // => true
+isRocketComponent(Button) // true
+
+styled(Component)`
+  color: ${(props) => resolveTheme(props.$rocketstyle).color};
+`
 ```
 
-## Custom Dimensions
+`resolveTheme` handles both function-accessor (reactive) and plain-object `$rocketstyle` shapes.
 
-Define your own dimensions by passing them to the factory:
+## Custom dimensions
 
 ```ts
 const rocketButton = rocketstyle({
   dimensions: {
-    intent: 'intent', // prop: intent="primary"
-    size: 'size', // prop: size="lg"
-    appearance: {
-      propName: 'appearance',
-      multi: true, // allows multiple values
-    },
+    intent: 'intent',                                  // prop: intent="primary"
+    size:   'size',
+    appearance: { propName: 'appearance', multi: true },
   },
 })
 ```
 
-This creates `.intent()`, `.size()`, and `.appearance()` chain methods.
+Creates `.intent()`, `.size()`, `.appearance()` chain methods.
 
-## Transform Dimensions
+### Transform dimensions
 
-Mark a dimension as `transform: true` to make its values receive the accumulated theme from all prior dimensions. This is ideal for modifiers like `outlined` that derive styles from the active state:
+Mark `transform: true` to make a dimension receive the accumulated theme from all prior dimensions — ideal for modifiers like `outlined` that derive from the active state.
 
 ```ts
 const rocketButton = rocketstyle({
@@ -282,51 +208,44 @@ const rocketButton = rocketstyle({
 
 const Button = rocketButton({ name: 'Button', component: Element })
   .theme({ backgroundColor: '#0d6efd', color: '#fff' })
-  .states({
-    danger: { backgroundColor: '#dc3545', color: '#fff' },
-  })
+  .states({ danger: { backgroundColor: '#dc3545', color: '#fff' } })
   .modifiers({
     outlined: (theme) => ({
-      color: theme.backgroundColor,
+      color: theme.backgroundColor,        // receives merged theme from prior dimensions
       backgroundColor: 'transparent',
     }),
   })
 
-// outlined receives { backgroundColor: '#dc3545', color: '#fff' } from the danger state
-Button({ state: 'danger', modifier: 'outlined' })
+<Button state="danger" modifier="outlined" />  // outlined sees danger's red, becomes red-on-transparent
 ```
 
-## Provider / Consumer
-
-Propagate parent component state to children through Pyreon's context system.
+## Provider / Consumer — parent-child state propagation
 
 ```ts
 // Parent provides its state
 const ButtonGroup = Button.config({ provider: true })
 
 // Child consumes parent state
-const ButtonIcon = rocketstyle()({
-  name: 'ButtonIcon',
-  component: Element,
-})
+const ButtonIcon = rocketstyle()({ name: 'ButtonIcon', component: Element })
   .config({
-    consumer: (ctx) =>
-      ctx(({ pseudo }) => ({
-        state: pseudo.hover ? 'active' : 'default',
-      })),
+    consumer: (ctx) => ctx(({ pseudo }) => ({
+      state: pseudo.hover ? 'active' : 'default',
+    })),
   })
   .states({
     default: { color: '#666' },
-    active: { color: '#fff' },
+    active:  { color: '#fff' },
   })
 
-// Icon reacts to parent's hover state
-ButtonGroup({ state: 'primary', children: [ButtonIcon({}), 'Label'] })
+<ButtonGroup state="primary">
+  <ButtonIcon />
+  Label
+</ButtonGroup>
 ```
 
-## Light / Dark Mode
+## Light / dark mode
 
-Theme callbacks receive a `mode` parameter:
+Theme + dimension callbacks receive `(theme, mode, css)`. `mode === 'light' | 'dark'`. Use `inversed: true` on `.config()` to flip the mode for a subtree.
 
 ```ts
 Button.theme((theme, mode) => ({
@@ -335,32 +254,31 @@ Button.theme((theme, mode) => ({
 }))
 ```
 
-Use `inversed: true` in `.config()` to flip the mode for a component subtree.
-
 ## Performance
 
-Rocketstyle uses a multi-tier caching architecture to minimize per-mount allocations:
+Per-definition WeakMap caches keep per-mount cost flat as instance count grows:
 
-- **Per-definition caches** (shared across all instances via `WeakMap`):
-  - `_dimensionsCache` — `getDimensionsMap` result keyed on dimension-themes identity
-  - `_reservedKeysCache` — `Object.keys(reservedPropNames)` keyed on keywords identity
-  - `_omitSetCache` — pre-built `Set<string>` for `omit()` (avoids per-mount Set construction)
-  - `ALL_PSEUDO_KEYS` / `STATIC_OMIT_KEYS` — merged key arrays computed once
-- **Theme cache** (`LocalThemeManager`): `WeakMap` tiers for baseTheme, dimensionThemes, and per-mode resolved themes
-- **getTheme in-place merge**: dimension slices merged directly onto `finalTheme` instead of allocating a new target per `merge()` call
-- **Frozen `EMPTY_PSEUDO`**: shared frozen `{}` for pseudo-state defaults instead of 6 allocations per call
-- **Dev guard**: uses `__DEV__` (`import.meta.env.DEV`) — tree-shaken to zero bytes in production
+- **`_dimensionsCache`** — `getDimensionsMap` result keyed on dimension-themes identity
+- **`_reservedKeysCache`** — `Object.keys(reservedPropNames)` keyed on keywords identity
+- **`_omitSetCache`** — pre-built `Set<string>` for `omit()` (avoids per-mount Set allocation)
+- **`LocalThemeManager`** — WeakMap tiers for baseTheme, dimensionThemes, and per-mode resolved themes
+- **`_rsMemo`** — dimension-prop memo keyed by `mode|dimensionPropTuple|pseudoState`, LRU-bounded at 32 entries per theme. Hit returns identity-stable `{ rocketstyle, rocketstate }` so the downstream styler `classCache` skips resolve entirely. Real-app E2 benchmark: 200 Buttons × 5 runs, baseline dropped from 8.80ms to 4.80ms (-45%); per-Button `styler.resolve` from 22 to 6 (-73%).
+
+Real apps MUST mount one shared `<PyreonUI>` provider for the memo to span instances — each provider mount creates a fresh `enrichedTheme` via `computed()`, which produces a different WeakMap key.
 
 For a 150-component page with 8 dimensions each: ~1,350 Set allocations, ~300 array spreads, and ~150 map rebuilds eliminated vs naive implementation.
 
-## Peer Dependencies
+## Gotchas
 
-| Package            | Version |
-| ------------------ | ------- |
-| @pyreon/core       | \*      |
-| @pyreon/reactivity | \*      |
-| @pyreon/ui-core    | \*      |
-| @pyreon/styler     | \*      |
+- **`.config({ component: NewBase })` resets `attrs` / `priorityAttrs` / `filterAttrs` / `compose` chains** — they were tailored to the previous component's prop shape. `theme` / `styles` / dimension chains are preserved. Re-chain shared attrs explicitly if you swap the base.
+- **`useBooleans: false` is the default** (since April 2026 alignment fix). String props are the idiomatic surface.
+- **Cache keys are downstream of normalization.** Under `useBooleans: true`, the memo correctly keys by the resolved dimension (not the raw boolean prop) — otherwise every boolean variant would collide on the first cached entry.
+- **Dimension props don't accept function accessors directly.** `state={() => signal()}` is wrong — write `state={signal()}` and let the compiler emit reactive `_rp()` wrapping. Caught by the Reactivity Lens.
+- **`provider: true` + `consumer:` on the same component** is a legal but rare shape. Most apps separate the two for clarity.
+
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/rocketstyle](https://docs.pyreon.dev/docs/rocketstyle) (or `docs/docs/rocketstyle.md` in this repo).
 
 ## License
 

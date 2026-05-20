@@ -1,19 +1,26 @@
 # @pyreon/validation
 
-Schema adapters for `@pyreon/form`. Duck-typed interfaces for Zod, Valibot, and ArkType — no hard version coupling.
+Schema adapters for `@pyreon/form` — Zod, Valibot, ArkType.
+
+Duck-typed adapter layer that lets you plug a Zod / Valibot / ArkType schema into `@pyreon/form` for whole-form OR per-field validation. None of the validator libraries are hard dependencies — they're declared as optional peers, and the adapters interface against duck-typed shapes (`safeParse` / `safeParseAsync` / call-as-function) so a single major upgrade in any of them does not break the adapter. Each library has its own subpath entry to avoid pulling unused adapter code into your bundle.
 
 ## Install
 
 ```bash
-bun add @pyreon/validation
+bun add @pyreon/validation @pyreon/form
+
+# Add whichever validator library you use (all peer-optional):
+bun add zod        # for zodSchema/zodField
+bun add valibot    # for valibotSchema/valibotField
+bun add arktype    # for arktypeSchema/arktypeField
 ```
 
-## Quick Start
+## Quick start
 
 ```ts
 import { z } from 'zod'
 import { useForm } from '@pyreon/form'
-import { zodSchema } from '@pyreon/validation'
+import { zodSchema } from '@pyreon/validation/zod'
 
 const schema = z.object({
   email: z.string().email(),
@@ -27,67 +34,55 @@ const form = useForm({
 })
 ```
 
-Each adapter comes in two flavors: **schema-level** (validates the whole form) and **field-level** (validates a single field).
+Each adapter ships in two flavors: **schema-level** (validates the whole form via `form.schema`) and **field-level** (validates one field via `form.validators[name]`).
 
-## API
+## Subpath imports
 
-### `zodSchema(schema)`
-
-Create a form-level schema validator from a Zod schema. Uses `safeParseAsync` internally — supports both sync and async refinements. Duck-typed to work with Zod v3 and v4.
-
-| Parameter | Type       | Description                                             |
-| --------- | ---------- | ------------------------------------------------------- |
-| `schema`  | Zod schema | Any Zod object schema with `safeParse`/`safeParseAsync` |
-
-**Returns:** `SchemaValidateFn<TValues>`
+Each library has its own entry so unused adapters are not bundled:
 
 ```ts
-import { z } from "zod"
-const form = useForm({
-  initialValues: { email: "", password: "" },
-  schema: zodSchema(z.object({
-    email: z.string().email(),
-    password: z.string().min(8),
-  })),
-  onSubmit: (values) => { ... },
-})
+import { zodSchema, zodField } from '@pyreon/validation/zod'
+import { valibotSchema, valibotField } from '@pyreon/validation/valibot'
+import { arktypeSchema, arktypeField } from '@pyreon/validation/arktype'
 ```
 
-### `zodField(schema)`
+The barrel `@pyreon/validation` re-exports all three for convenience. Use subpaths in production code to keep the bundle lean.
 
-Create a single-field validator from a Zod schema. Returns the first error message on failure.
+## Zod
 
-| Parameter | Type       | Description                           |
-| --------- | ---------- | ------------------------------------- |
-| `schema`  | Zod schema | Any Zod schema (string, number, etc.) |
-
-**Returns:** `ValidateFn<T>`
+`zodSchema(schema)` and `zodField(schema)` both use `safeParseAsync` internally — sync and async refinements both work. Duck-typed against `{ safeParse, safeParseAsync }`, so Zod v3 and v4 both work without breaking changes.
 
 ```ts
-const form = useForm({
-  initialValues: { email: "" },
+import { z } from 'zod'
+import { zodSchema, zodField } from '@pyreon/validation/zod'
+
+useForm({
+  initialValues: { email: '', password: '' },
   validators: {
-    email: zodField(z.string().email("Invalid email")),
+    email: zodField(z.string().email('Invalid email')),
   },
-  onSubmit: (values) => { ... },
+  schema: zodSchema(
+    z.object({ email: z.string().email(), password: z.string().min(8) }),
+  ),
+  onSubmit: (values) => {
+    /* ... */
+  },
 })
 ```
 
-### `valibotSchema(schema, safeParseFn)`
+## Valibot
 
-Create a form-level schema validator from a Valibot schema. Valibot uses standalone functions, so you must pass the parse function.
-
-| Parameter     | Type           | Description                                      |
-| ------------- | -------------- | ------------------------------------------------ |
-| `schema`      | Valibot schema | Any Valibot object schema                        |
-| `safeParseFn` | `Function`     | `v.safeParse` or `v.safeParseAsync` from valibot |
-
-**Returns:** `SchemaValidateFn<TValues>`
+Valibot uses standalone functions — pass `v.safeParse` or `v.safeParseAsync` as the second arg:
 
 ```ts
-import * as v from "valibot"
-const form = useForm({
-  initialValues: { email: "", password: "" },
+import * as v from 'valibot'
+import { valibotSchema, valibotField } from '@pyreon/validation/valibot'
+
+useForm({
+  initialValues: { email: '', password: '' },
+  validators: {
+    email: valibotField(v.pipe(v.string(), v.email('Invalid')), v.safeParseAsync),
+  },
   schema: valibotSchema(
     v.object({
       email: v.pipe(v.string(), v.email()),
@@ -95,129 +90,107 @@ const form = useForm({
     }),
     v.safeParseAsync,
   ),
-  onSubmit: (values) => { ... },
+  onSubmit: (values) => {
+    /* ... */
+  },
 })
 ```
 
-### `valibotField(schema, safeParseFn)`
+## ArkType
 
-Create a single-field validator from a Valibot schema.
-
-| Parameter     | Type           | Description                                      |
-| ------------- | -------------- | ------------------------------------------------ |
-| `schema`      | Valibot schema | Any Valibot schema                               |
-| `safeParseFn` | `Function`     | `v.safeParse` or `v.safeParseAsync` from valibot |
-
-**Returns:** `ValidateFn<T>`
+ArkType is synchronous — call the type directly.
 
 ```ts
-validators: {
-  email: valibotField(v.pipe(v.string(), v.email("Invalid")), v.safeParseAsync),
-}
-```
+import { type } from 'arktype'
+import { arktypeSchema, arktypeField } from '@pyreon/validation/arktype'
 
-### `arktypeSchema(schema)`
-
-Create a form-level schema validator from an ArkType schema. ArkType validation is synchronous.
-
-| Parameter | Type           | Description               |
-| --------- | -------------- | ------------------------- |
-| `schema`  | ArkType `Type` | Any callable ArkType type |
-
-**Returns:** `SchemaValidateFn<TValues>`
-
-```ts
-import { type } from "arktype"
-const form = useForm({
-  initialValues: { email: "", password: "" },
-  schema: arktypeSchema(type({
-    email: "string.email",
-    password: "string >= 8",
-  })),
-  onSubmit: (values) => { ... },
+useForm({
+  initialValues: { email: '', password: '' },
+  validators: {
+    email: arktypeField(type('string.email')),
+  },
+  schema: arktypeSchema(
+    type({
+      email: 'string.email',
+      password: 'string >= 8',
+    }),
+  ),
+  onSubmit: (values) => {
+    /* ... */
+  },
 })
 ```
 
-### `arktypeField(schema)`
+## Mixing field + schema validators
 
-Create a single-field validator from an ArkType schema.
-
-| Parameter | Type           | Description               |
-| --------- | -------------- | ------------------------- |
-| `schema`  | ArkType `Type` | Any callable ArkType type |
-
-**Returns:** `ValidateFn<T>`
+Field-level validators run first; schema errors merge after — a schema error can override a field-level error on the same key.
 
 ```ts
-validators: {
-  email: arktypeField(type("string.email")),
-}
-```
-
-### `issuesToRecord(issues)`
-
-Convert an array of `ValidationIssue` objects into a flat field-to-error record. First error per field wins. Useful for building custom adapters.
-
-| Parameter | Type                | Description                                  |
-| --------- | ------------------- | -------------------------------------------- |
-| `issues`  | `ValidationIssue[]` | Array of `{ path: string, message: string }` |
-
-**Returns:** `Partial<Record<keyof TValues, ValidationError>>`
-
-```ts
-issuesToRecord([
-  { path: 'email', message: 'Required' },
-  { path: 'email', message: 'Invalid' }, // ignored — first wins
-  { path: 'age', message: 'Too young' },
-])
-// => { email: "Required", age: "Too young" }
-```
-
-## Patterns
-
-### Subpath Imports
-
-Each adapter is available via subpath import to avoid bundling unused adapters:
-
-```ts
-import { zodSchema } from '@pyreon/validation/zod'
-import { valibotSchema } from '@pyreon/validation/valibot'
-import { arktypeSchema } from '@pyreon/validation/arktype'
-```
-
-### Mixing Field and Schema Validators
-
-Field-level validators run first. Schema errors only apply to fields that have no field-level error.
-
-```ts
-const form = useForm({
-  initialValues: { email: "", password: "", confirmPassword: "" },
+useForm({
+  initialValues: { email: '', password: '', confirmPassword: '' },
   validators: {
     email: zodField(z.string().email()),
   },
-  schema: zodSchema(z.object({ ... }).refine(
-    (data) => data.password === data.confirmPassword,
-    { path: ["confirmPassword"], message: "Passwords must match" },
-  )),
-  onSubmit: (values) => { ... },
+  schema: zodSchema(
+    z
+      .object({
+        email: z.string(),
+        password: z.string(),
+        confirmPassword: z.string(),
+      })
+      .refine((d) => d.password === d.confirmPassword, {
+        path: ['confirmPassword'],
+        message: 'Passwords must match',
+      }),
+  ),
+  onSubmit: (values) => {
+    /* ... */
+  },
 })
 ```
 
+## `issuesToRecord(issues)`
+
+Utility for building custom adapters. Converts an array of `ValidationIssue` (`{ path, message }`) into a flat field-to-error record. First error per field wins.
+
+```ts
+import { issuesToRecord } from '@pyreon/validation'
+
+issuesToRecord([
+  { path: 'email', message: 'Required' },
+  { path: 'email', message: 'Invalid' }, // dropped — first wins
+  { path: 'age', message: 'Too young' },
+])
+// => { email: 'Required', age: 'Too young' }
+```
+
+Nested paths like `address.city` become dot-separated string keys in the output record.
+
 ## Types
 
-| Type                        | Description                                             |
-| --------------------------- | ------------------------------------------------------- |
-| `ValidationIssue`           | `{ path: string, message: string }` — normalized issue  |
-| `SchemaAdapter<TSchema>`    | Generic schema adapter factory type                     |
-| `FieldAdapter<TSchema>`     | Generic field adapter factory type                      |
-| `SchemaValidateFn<TValues>` | Re-exported from `@pyreon/form`                         |
-| `ValidateFn<T>`             | Re-exported from `@pyreon/form`                         |
-| `ValidationError`           | Re-exported from `@pyreon/form` — `string \| undefined` |
+| Type                          | Description                                                       |
+| ----------------------------- | ----------------------------------------------------------------- |
+| `ValidationIssue`             | `{ path: string; message: string }` — normalized issue            |
+| `SchemaAdapter<TSchema>`      | Generic schema adapter factory type                               |
+| `FieldAdapter<TSchema>`       | Generic field adapter factory type                                |
+| `TypedSchemaAdapter<TValues>` | Adapter returned by `zodSchema` — preserves inferred value types  |
+| `SchemaValidateFn<TValues>`   | Re-exported from `@pyreon/form` — `(values) => Record<key, error>` |
+| `ValidateFn<T>`               | Re-exported from `@pyreon/form` — `(value, allValues) => string \| undefined` |
+| `ValidationError`             | Re-exported from `@pyreon/form` — `string \| undefined`           |
 
 ## Gotchas
 
-- All adapters are duck-typed — they do not import types from Zod, Valibot, or ArkType. This means they work across major versions without breaking.
-- Zod and Valibot adapters use async parsing internally (`safeParseAsync`), so validation is always async even for sync schemas.
-- ArkType adapters are synchronous — ArkType does not support async validation.
-- When a validator throws, the error is caught and converted to a string error message rather than propagating.
-- For nested paths like `address.city`, the dot-separated path is used as the field key in the error record.
+- **All adapters are duck-typed** — they never `import` from Zod / Valibot / ArkType. Major version bumps in any validator library do not break the adapter.
+- **Zod + Valibot adapters are async**, even when the schema only contains sync refinements (they call `safeParseAsync`). The form's `isValidating` signal is `true` until the promise resolves.
+- **ArkType adapters are synchronous** — ArkType has no async-validation surface.
+- **Thrown errors are caught** and converted to error strings — the form does NOT crash on a validator throw, but you lose stack-trace context. Audit validator logic if errors look truncated.
+- **Nested paths are dot-flattened** — `{ address: { city: 'Required' } }` becomes `{ 'address.city': 'Required' }` in the record. Form keys must match.
+- **Field validators run first** — schema errors only apply where no field-level error already exists on that key. Reorder by removing the per-field validator if you want the schema to win.
+
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/validation](https://docs.pyreon.dev/docs/validation) (or `docs/docs/validation.md` in this repo).
+
+## License
+
+MIT

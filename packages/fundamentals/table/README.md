@@ -1,14 +1,17 @@
 # @pyreon/table
 
-Pyreon adapter for TanStack Table. Reactive signal-driven table state with `flexRender` for column templates.
+Pyreon adapter for TanStack Table — reactive `useTable` + `flexRender`.
+
+`@pyreon/table` wraps `@tanstack/table-core` so a Pyreon app gets all the headless table machinery (sorting, filtering, pagination, grouping, expanding, faceting) with signal-driven options. `useTable(() => opts)` returns a `Computed<Table<TData>>` whose backing instance is mutated in place — a version counter forces the computed to re-notify on state changes. `flexRender` handles the four column-def shapes TanStack supports (string, number, function, VNode). The full `@tanstack/table-core` surface is re-exported, so consumers import everything from `@pyreon/table`.
 
 ## Install
 
 ```bash
-bun add @pyreon/table @tanstack/table-core
+bun add @pyreon/table @pyreon/core @pyreon/reactivity
+# @tanstack/table-core is a hard dependency, installed automatically
 ```
 
-## Quick Start
+## Quick start
 
 ```tsx
 import { signal } from '@pyreon/reactivity'
@@ -47,11 +50,9 @@ function UserTable() {
         {table()
           .getHeaderGroups()
           .map((hg) => (
-            <tr key={hg.id}>
+            <tr>
               {hg.headers.map((header) => (
-                <th key={header.id}>
-                  {flexRender(header.column.columnDef.header, header.getContext())}
-                </th>
+                <th>{flexRender(header.column.columnDef.header, header.getContext())}</th>
               ))}
             </tr>
           ))}
@@ -60,9 +61,9 @@ function UserTable() {
         {table()
           .getRowModel()
           .rows.map((row) => (
-            <tr key={row.id}>
+            <tr>
               {row.getVisibleCells().map((cell) => (
-                <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
+                <td>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
               ))}
             </tr>
           ))}
@@ -72,63 +73,24 @@ function UserTable() {
 }
 ```
 
-## API
+## `useTable(() => options)`
 
-### `useTable(options)`
+Create a reactive table instance. **Options are a function** — read signals (data, columns, sorting state) inside and the table updates automatically.
 
-Create a reactive TanStack Table instance. Options are passed as a function so reactive signals (data, columns, sorting state) can be read inside, and the table updates automatically when they change.
+| Parameter | Type                          | Description                                   |
+| --------- | ----------------------------- | --------------------------------------------- |
+| `options` | `() => TableOptions<TData>`   | Function returning TanStack `TableOptions`    |
 
-| Parameter | Type                        | Description                               |
-| --------- | --------------------------- | ----------------------------------------- |
-| `options` | `() => TableOptions<TData>` | Function returning TanStack Table options |
+Returns `Computed<Table<TData>>` — **call it** to get the instance: `table().getRowModel()`.
 
-**Returns:** `Computed<Table<TData>>` — a read-only computed signal holding the table instance.
+The adapter creates the table instance once (via `createTable`) and mutates it in place on option changes. State sync is wired via the adapter's own `onStateChange` (composed with the user's, if any). A version counter is bumped on every state / option change so the computed re-emits even though the table reference is stable.
 
-The adapter handles internal state synchronization. When the table state changes (e.g. sorting, pagination), a version counter is bumped so the computed signal re-notifies consumers.
-
-```ts
-const sorting = signal<SortingState>([])
-const table = useTable(() => ({
-  data: data(),
-  columns,
-  state: { sorting: sorting() },
-  onSortingChange: (updater) => {
-    sorting.set(typeof updater === 'function' ? updater(sorting.peek()) : updater)
-  },
-  getCoreRowModel: getCoreRowModel(),
-  getSortedRowModel: getSortedRowModel(),
-}))
-```
-
-### `flexRender(component, props)`
-
-Render a TanStack Table column definition template. Handles strings, numbers, component functions, and VNodes.
-
-| Parameter   | Type                                            | Description                                   |
-| ----------- | ----------------------------------------------- | --------------------------------------------- |
-| `component` | `Function \| string \| number \| VNode \| null` | Column def template (header, cell, or footer) |
-| `props`     | `TValue`                                        | Context object from `getContext()`            |
-
-**Returns:** `unknown` (string, VNode, or null)
+### Controlled state
 
 ```ts
-// In a header cell:
-flexRender(header.column.columnDef.header, header.getContext())
+import { signal } from '@pyreon/reactivity'
+import type { SortingState, PaginationState } from '@pyreon/table'
 
-// In a data cell:
-flexRender(cell.column.columnDef.cell, cell.getContext())
-
-// In a footer cell:
-flexRender(footer.column.columnDef.footer, footer.getContext())
-```
-
-## Patterns
-
-### Controlled State
-
-Manage table state externally with signals for full control.
-
-```ts
 const sorting = signal<SortingState>([])
 const pagination = signal<PaginationState>({ pageIndex: 0, pageSize: 10 })
 
@@ -140,39 +102,56 @@ const table = useTable(() => ({
     pagination: pagination(),
   },
   onSortingChange: (u) => sorting.set(typeof u === 'function' ? u(sorting.peek()) : u),
-  onPaginationChange: (u) => pagination.set(typeof u === 'function' ? u(pagination.peek()) : u),
+  onPaginationChange: (u) =>
+    pagination.set(typeof u === 'function' ? u(pagination.peek()) : u),
   getCoreRowModel: getCoreRowModel(),
   getSortedRowModel: getSortedRowModel(),
-  getPaginatedRowModel: getPaginatedRowModel(),
+  getPaginationRowModel: getPaginationRowModel(),
 }))
 ```
 
-### Custom Cell Renderers
+## `flexRender(component, props)`
 
-Use functions in column definitions to render custom content.
+Render any TanStack column-def template (header, cell, footer). Handles strings, numbers, functions, and VNodes; returns `null` for anything else (including `null`/`undefined`).
 
 ```tsx
-const columns = [
-  columnHelper.accessor('name', {
-    header: 'Name',
-    cell: (info) => <strong>{info.getValue()}</strong>,
-  }),
-  columnHelper.accessor('age', {
-    header: 'Age',
-    cell: (info) => `${info.getValue()} years`,
-  }),
-]
+// Header cell:
+flexRender(header.column.columnDef.header, header.getContext())
+
+// Data cell:
+flexRender(cell.column.columnDef.cell, cell.getContext())
+
+// Footer cell:
+flexRender(footer.column.columnDef.footer, footer.getContext())
+```
+
+Custom cell renderers can be functions that return JSX:
+
+```tsx
+columnHelper.accessor('name', {
+  header: 'Name',
+  cell: (info) => <strong>{info.getValue()}</strong>,
+})
 ```
 
 ## Re-exports from `@tanstack/table-core`
 
-Everything from `@tanstack/table-core` is re-exported. This includes all utilities, types, and built-in row model functions:
+Everything from `@tanstack/table-core` is re-exported — `createColumnHelper`, `getCoreRowModel`, `getSortedRowModel`, `getFilteredRowModel`, `getPaginationRowModel`, `getGroupedRowModel`, `getExpandedRowModel`, `getFacetedRowModel`, `getFacetedMinMaxValues`, `getFacetedUniqueValues`, plus types `Table`, `ColumnDef`, `SortingState`, `PaginationState`, `RowData`, `RowSelectionState`, `ColumnFiltersState`, `GroupingState`, `ExpandedState`, etc.
 
-`createColumnHelper`, `getCoreRowModel`, `getSortedRowModel`, `getFilteredRowModel`, `getPaginatedRowModel`, `getGroupedRowModel`, `getExpandedRowModel`, `getFacetedRowModel`, `getFacetedMinMaxValues`, `getFacetedUniqueValues`, `Table`, `ColumnDef`, `SortingState`, `PaginationState`, `RowData`, and more.
+A drift snapshot test in `src/tests/public-surface.test.ts` locks the re-export set — when TanStack adds, renames, or removes an export in a minor bump, the snapshot fails and the diff becomes the deliberate decision moment (run `bunx vitest run --update public-surface` to accept).
 
 ## Gotchas
 
-- `useTable` returns a `Computed<Table>` — you must call `table()` to access the table instance. This ensures reactive tracking.
-- Options must be a function `() => opts`, not a plain object. Reading signals inside the function auto-tracks dependencies.
-- The table instance is created once and mutated in place. A version counter forces the computed to re-notify even though the reference is the same.
-- The effect that syncs options is automatically disposed on component unmount.
+- **`useTable` returns `Computed<Table<TData>>`** — call it (`table()`) to access the table. Reading without calling captures the computed reference, not the instance.
+- **Options must be a function** `() => opts`, not a plain object. Signals read inside the function auto-track and the table reconfigures on change.
+- **Same instance, version counter** — the table reference is stable across updates; the adapter bumps a version signal so the computed re-emits. Don't compare table references for change detection.
+- **`onStateChange` composition** — the adapter wires its own handler that updates internal state, then calls your `onStateChange` after. If you override at the option-level it still runs; if you wire per-field (`onSortingChange`, etc.), only those fire.
+- **Sync effect disposes on unmount** via `onUnmount`. The table instance itself has no `dispose` — its lifecycle is the component's.
+
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/table](https://docs.pyreon.dev/docs/table) (or `docs/docs/table.md` in this repo).
+
+## License
+
+MIT

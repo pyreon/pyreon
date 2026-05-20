@@ -1,16 +1,18 @@
 # @pyreon/feature
 
-Schema-driven feature primitives for Pyreon. Define a Zod schema and API path once, get fully typed CRUD hooks, forms, tables, stores, pagination, optimistic updates, and references -- all wired together automatically.
+Schema-driven CRUD primitives — define a Zod schema once, get queries / forms / tables / stores.
+
+`defineFeature({ name, schema, api })` takes a Zod schema and a REST endpoint and produces a complete set of auto-wired hooks: `useList` / `useById` / `useSearch` (queries), `useCreate` / `useUpdate` / `useDelete` (mutations with auto-invalidation + optimistic updates on update), `useForm` (with schema validation + auto-fetch in edit mode), `useTable` (with schema-inferred columns), and `useStore` (cached selection + items). Composes `@pyreon/query` + `@pyreon/form` + `@pyreon/validation` + `@pyreon/store` + `@pyreon/table` under the hood — the feature definition is the single source of truth that lets an AI agent (or a human) write 10 lines of schema instead of 200 lines of wiring.
 
 ## Install
 
 ```bash
-bun add @pyreon/feature
+bun add @pyreon/feature @pyreon/core @pyreon/reactivity zod
 ```
 
-Peer dependencies: `@pyreon/core`, `@pyreon/reactivity`
+Transitive workspace dependencies (`@pyreon/form` / `@pyreon/query` / `@pyreon/validation` / `@pyreon/store` / `@pyreon/table`) come with `@pyreon/feature`. **A `<QueryClientProvider>` must be mounted in the component tree** — every query / mutation hook depends on `@pyreon/query`'s context.
 
-## Quick Start
+## Quick start
 
 ```tsx
 import { defineFeature, reference } from '@pyreon/feature'
@@ -41,7 +43,7 @@ function UserList() {
   )
 }
 
-// Create form
+// Create form — schema validation + POST /api/users
 function CreateUser() {
   const form = users.useForm()
   return (
@@ -58,10 +60,9 @@ function CreateUser() {
   )
 }
 
-// Edit form (auto-fetches data)
+// Edit form — auto-fetches existing data, PUT /api/users/:id on submit
 function EditUser({ id }: { id: number }) {
   const form = users.useForm({ mode: 'edit', id })
-  if (form.isSubmitting()) return <p>Loading...</p>
   return (
     <form onSubmit={(e) => form.handleSubmit(e)}>
       <input {...form.register('name')} />
@@ -72,214 +73,96 @@ function EditUser({ id }: { id: number }) {
 }
 ```
 
-## API Reference
+## `defineFeature(config)`
 
-### `defineFeature(config)`
+| Option           | Type                        | Description                                                              |
+| ---------------- | --------------------------- | ------------------------------------------------------------------------ |
+| `name`           | `string`                    | Unique feature name — used for store ID and query-key namespace          |
+| `schema`         | Zod-compatible schema       | Validation schema (Zod v3 / v4, duck-typed; ArkType / Valibot also work) |
+| `api`            | `string`                    | REST base path (e.g. `'/api/users'`)                                     |
+| `initialValues?` | `Partial<TValues>`          | Default create-form values (auto-generated from schema field types if omitted) |
+| `validate?`      | `SchemaValidateFn<TValues>` | Custom schema-level validation (overrides schema-from-`safeParseAsync`)  |
+| `fetcher?`       | `typeof fetch`              | Custom fetch (e.g. for auth headers); defaults to global `fetch`         |
 
-Creates a feature object with all CRUD hooks, form, table, and store.
+`TValues` is inferred from `schema._output` (Zod v3/v4 carry it) — all generated hooks are end-to-end typed.
 
-| Parameter        | Type                        | Description                                                             |
-| ---------------- | --------------------------- | ----------------------------------------------------------------------- |
-| `name`           | `string`                    | Unique feature name -- used for store ID and query key namespace        |
-| `schema`         | `ZodSchema`                 | Validation schema -- passed to `zodSchema()` for form validation        |
-| `api`            | `string`                    | API base path (e.g., `/api/users`)                                      |
-| `initialValues?` | `Partial<TValues>`          | Default values for create forms (auto-generated from schema if omitted) |
-| `validate?`      | `SchemaValidateFn<TValues>` | Custom schema-level validation (overrides auto-detection)               |
-| `fetcher?`       | `typeof fetch`              | Custom fetch function (defaults to global `fetch`)                      |
+## Returned `Feature<TValues>`
 
-### Returned Feature Object
-
-| Property / Hook          | Returns                     | Description                                                 |
-| ------------------------ | --------------------------- | ----------------------------------------------------------- |
-| `name`                   | `string`                    | Feature name                                                |
-| `api`                    | `string`                    | API base path                                               |
-| `schema`                 | `unknown`                   | The schema passed to `defineFeature`                        |
-| `fields`                 | `FieldInfo[]`               | Introspected field metadata from the schema                 |
-| `queryKey(suffix?)`      | `QueryKey`                  | Generate namespaced query keys                              |
-| `useList(opts?)`         | `UseQueryResult<T[]>`       | GET `api` -- list query with optional pagination and params |
-| `useById(id)`            | `UseQueryResult<T>`         | GET `api/:id` -- single item query                          |
-| `useSearch(term, opts?)` | `UseQueryResult<T[]>`       | GET `api?q=term` -- search with reactive signal             |
-| `useCreate()`            | `UseMutationResult`         | POST `api` -- invalidates list on success                   |
-| `useUpdate()`            | `UseMutationResult`         | PUT `api/:id` -- optimistic update with rollback on error   |
-| `useDelete()`            | `UseMutationResult`         | DELETE `api/:id` -- invalidates list on success             |
-| `useForm(opts?)`         | `FormState<T>`              | Form with schema validation + API submit                    |
-| `useTable(data, opts?)`  | `FeatureTableResult<T>`     | Reactive table with schema-inferred columns                 |
-| `useStore()`             | `StoreApi<FeatureStore<T>>` | Reactive store for items, selection, and loading state      |
-
-### `reference(feature)`
-
-Creates a typed foreign key field for cross-feature relationships.
-
-| Parameter | Type               | Description                                                   |
-| --------- | ------------------ | ------------------------------------------------------------- |
-| `feature` | `{ name: string }` | The referenced feature (or any object with a `name` property) |
-
-Returns a Zod-compatible schema that validates as `string | number` and carries metadata about the referenced feature.
-
-### `extractFields(schema)`
-
-Extracts field metadata from a Zod object schema.
-
-| Parameter | Type      | Description                                            |
-| --------- | --------- | ------------------------------------------------------ |
-| `schema`  | `unknown` | A Zod object schema (duck-typed, works with v3 and v4) |
-
-Returns `FieldInfo[]` with `name`, `type`, `optional`, `enumValues`, `referenceTo`, and `label` for each field.
-
-### `isReference(value)`
-
-Returns `true` if a value is a reference schema created by `reference()`.
-
-### `defaultInitialValues(fields)`
-
-Generates default initial values from a `FieldInfo[]` array. Strings default to `''`, numbers to `0`, booleans to `false`, enums to the first value.
-
-## useStore
-
-The feature store provides a reactive cache for list data and selection state. It uses `@pyreon/store` internally with the feature name as the store ID.
-
-```tsx
-function UserManager() {
-  const { store } = users.useStore()
-  const { data } = users.useList()
-
-  // Sync query data to store
-  effect(() => {
-    const items = data()
-    if (items) store.items.set(items)
-  })
-
-  return (
-    <div>
-      <ul>
-        {store.items().map((u) => (
-          <li onClick={() => store.select(u.id)}>{u.name}</li>
-        ))}
-      </ul>
-      {store.selected() && <div>Selected: {store.selected()!.name}</div>}
-      <button onClick={() => store.clear()}>Clear Selection</button>
-    </div>
-  )
-}
-```
-
-**Store API:**
-
-| Property     | Type                             | Description                                       |
-| ------------ | -------------------------------- | ------------------------------------------------- |
-| `items`      | `Signal<TValues[]>`              | Cached list of items                              |
-| `selected`   | `Signal<TValues \| null>`        | Currently selected item                           |
-| `loading`    | `Signal<boolean>`                | Loading state                                     |
-| `select(id)` | `(id: string \| number) => void` | Find and select an item by ID from the items list |
-| `clear()`    | `() => void`                     | Clear the current selection                       |
+| Hook / Property          | Returns                       | Description                                                  |
+| ------------------------ | ----------------------------- | ------------------------------------------------------------ |
+| `name`                   | `string`                      | Feature name                                                 |
+| `api`                    | `string`                      | API base path                                                |
+| `schema`                 | `unknown`                     | The original schema reference                                |
+| `fields`                 | `FieldInfo[]`                 | Schema-introspected field metadata                           |
+| `queryKey(suffix?)`      | `QueryKey`                    | Namespaced query keys: `[name, ...]`                         |
+| `useList(opts?)`         | `UseQueryResult<TValues[]>`   | `GET /api` — list with optional pagination + params          |
+| `useById(id)`            | `UseQueryResult<TValues>`     | `GET /api/:id`                                               |
+| `useSearch(term, opts?)` | `UseQueryResult<TValues[]>`   | `GET /api?q=…` — reactive signal term                        |
+| `useCreate()`            | `UseMutationResult`           | `POST /api`, auto-invalidates list on success                |
+| `useUpdate()`            | `UseMutationResult`           | `PUT /api/:id`, **optimistic update with rollback on error** |
+| `useDelete()`            | `UseMutationResult`           | `DELETE /api/:id`, auto-invalidates list                     |
+| `useForm(opts?)`         | `FormState<TValues>`          | Schema-validated form + API submit                           |
+| `useTable(data, opts?)`  | `FeatureTableResult<TValues>` | Reactive TanStack Table with schema-inferred columns         |
+| `useStore()`             | `StoreApi<FeatureStore>`      | Items + selected + loading state                             |
 
 ## Pagination
 
-Pass `page` (number or reactive signal) and `pageSize` to `useList()` for automatic pagination. Each page is cached independently.
+Pass `page` (number or signal) and `pageSize` to `useList()` — each page is cached independently via the query key.
 
 ```tsx
-function PaginatedUsers() {
-  const page = signal(1)
-  const { data, isPending } = users.useList({ page, pageSize: 10 })
-
-  return (
-    <div>
-      {isPending() ? (
-        <p>Loading...</p>
-      ) : (
-        <ul>
-          {data()!.map((u) => (
-            <li>{u.name}</li>
-          ))}
-        </ul>
-      )}
-      <button onClick={() => page.set(page() - 1)} disabled={page() <= 1}>
-        Previous
-      </button>
-      <button onClick={() => page.set(page() + 1)}>Next</button>
-    </div>
-  )
-}
+const page = signal(1)
+const { data, isPending } = users.useList({ page, pageSize: 10 })
 ```
 
-**ListOptions:**
+`ListOptions`:
 
-| Parameter    | Type                                          | Description                                        |
-| ------------ | --------------------------------------------- | -------------------------------------------------- |
-| `params?`    | `Record<string, string \| number \| boolean>` | Additional query parameters                        |
-| `page?`      | `number \| Signal<number>`                    | Page number (reactive or static)                   |
-| `pageSize?`  | `number`                                      | Items per page (defaults to 20 when `page` is set) |
-| `staleTime?` | `number`                                      | Override stale time for this query                 |
-| `enabled?`   | `boolean`                                     | Enable/disable the query                           |
+| Field         | Type                                          | Description                                       |
+| ------------- | --------------------------------------------- | ------------------------------------------------- |
+| `params?`     | `Record<string, string \| number \| boolean>` | Additional query parameters                       |
+| `page?`       | `number \| Signal<number>`                    | Reactive page number                              |
+| `pageSize?`   | `number`                                      | Items per page (defaults to `20` if `page` is set) |
+| `staleTime?`  | `number`                                      | Override stale time for this query                |
+| `enabled?`    | `boolean`                                     | Enable/disable                                    |
 
-## Edit Form (Auto-fetch)
+## Edit form (auto-fetch)
 
-When `useForm()` is called with `mode: 'edit'` and an `id`, it automatically fetches the item and populates the form. The form's `isSubmitting` signal is `true` until the data loads.
+`useForm({ mode: 'edit', id })` fetches the item by ID and populates the form. `isSubmitting` is `true` until the data lands.
 
 ```tsx
-function EditUser({ id }: { id: number }) {
-  const form = users.useForm({
-    mode: 'edit',
-    id,
-    onSuccess: () => console.log('Updated!'),
-    onError: (err) => console.error(err),
-  })
-
-  if (form.isSubmitting()) return <p>Loading user...</p>
-
-  return (
-    <form onSubmit={(e) => form.handleSubmit(e)}>
-      <input {...form.register('name')} />
-      <input {...form.register('email')} />
-      <button type="submit">Save</button>
-    </form>
-  )
-}
+const form = users.useForm({
+  mode: 'edit',
+  id,
+  onSuccess: () => console.log('Updated!'),
+  onError: (err) => console.error(err),
+})
 ```
 
-**FeatureFormOptions:**
+`FeatureFormOptions`:
 
-| Parameter        | Type                             | Description                                 |
-| ---------------- | -------------------------------- | ------------------------------------------- |
-| `mode?`          | `'create' \| 'edit'`             | Form mode (default: `'create'`)             |
-| `id?`            | `string \| number`               | Item ID for edit mode (triggers auto-fetch) |
-| `initialValues?` | `Partial<TValues>`               | Override initial values                     |
-| `validateOn?`    | `'blur' \| 'change' \| 'submit'` | Validation trigger (default: `'blur'`)      |
-| `onSuccess?`     | `(result: unknown) => void`      | Called after successful submit              |
-| `onError?`       | `(error: unknown) => void`       | Called on submit error                      |
+| Field            | Type                             | Description                            |
+| ---------------- | -------------------------------- | -------------------------------------- |
+| `mode?`          | `'create' \| 'edit'`             | Default: `'create'`                    |
+| `id?`            | `string \| number`               | Required when `mode: 'edit'`           |
+| `initialValues?` | `Partial<TValues>`               | Override defaults                      |
+| `validateOn?`    | `'blur' \| 'change' \| 'submit'` | Default: `'blur'`                      |
+| `onSuccess?`     | `(result: unknown) => void`      | After successful submit                |
+| `onError?`       | `(error: unknown) => void`       | On submit error                        |
 
-## Optimistic Updates
+## Optimistic updates (useUpdate)
 
-`useUpdate()` automatically performs optimistic cache updates. When a mutation starts, the query cache is updated immediately with the new data. If the server returns an error, the cache rolls back to the previous value.
+`useUpdate()` writes to the query cache immediately, then rolls back if the server returns an error.
 
 ```tsx
-function UserRow({ user }: { user: User }) {
-  const { mutate: update } = users.useUpdate()
-
-  const toggleActive = () => {
-    // Cache updates immediately, rolls back on error
-    update({ id: user.id, data: { active: !user.active } })
-  }
-
-  return (
-    <tr>
-      <td>{user.name}</td>
-      <td>
-        <button onClick={toggleActive}>{user.active ? 'Deactivate' : 'Activate'}</button>
-      </td>
-    </tr>
-  )
-}
+const { mutate: update } = users.useUpdate()
+update({ id: user.id, data: { active: !user.active } })
+// Cache updates immediately, rolls back on error
 ```
 
-## References
+## `reference(feature)`
 
-Use `reference()` to define typed foreign keys between features. Reference fields validate as `string | number` and carry metadata for form dropdowns and table links.
+Foreign-key field for cross-feature relationships. Returns a Zod-compatible schema that validates as `string | number` and carries metadata about the referenced feature for form dropdowns and table links.
 
 ```tsx
-import { defineFeature, reference } from '@pyreon/feature'
-import { z } from 'zod'
-
 const users = defineFeature({
   name: 'users',
   schema: z.object({ name: z.string(), email: z.string().email() }),
@@ -296,16 +179,15 @@ const posts = defineFeature({
   api: '/api/posts',
 })
 
-// Field introspection detects the reference
 const authorField = posts.fields.find((f) => f.name === 'authorId')
-// { name: 'authorId', type: 'reference', referenceTo: 'users', ... }
+// { name: 'authorId', type: 'reference', referenceTo: 'users', label: 'Author Id' }
 ```
 
-## Schema Introspection
+## Schema introspection
 
-Every feature exposes `fields: FieldInfo[]` with metadata extracted from the schema at runtime. This powers automatic table columns, form generation, and reference detection.
+Every feature exposes `fields: FieldInfo[]` extracted from the schema at runtime (duck-typed against Zod v3 + v4). Powers auto-generated form fields, table columns, and reference detection.
 
-```tsx
+```ts
 function AutoForm({ feature }: { feature: Feature<any> }) {
   const form = feature.useForm()
   return (
@@ -314,18 +196,14 @@ function AutoForm({ feature }: { feature: Feature<any> }) {
         if (field.type === 'enum') {
           return (
             <select {...form.register(field.name)}>
-              {field.enumValues!.map((v) => (
-                <option value={v}>{v}</option>
-              ))}
+              {field.enumValues!.map((v) => <option value={v}>{v}</option>)}
             </select>
           )
         }
         if (field.type === 'boolean') {
           return <input type="checkbox" {...form.register(field.name, { type: 'checkbox' })} />
         }
-        if (field.type === 'reference') {
-          return <p>Reference to: {field.referenceTo}</p>
-        }
+        if (field.type === 'reference') return <p>Reference to: {field.referenceTo}</p>
         return <input {...form.register(field.name)} placeholder={field.label} />
       })}
       <button type="submit">Submit</button>
@@ -334,43 +212,75 @@ function AutoForm({ feature }: { feature: Feature<any> }) {
 }
 ```
 
-**FieldInfo:**
+`FieldInfo`:
 
 | Property       | Type                   | Description                                                                                                   |
 | -------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `name`         | `string`               | Field name (key in the schema)                                                                                |
-| `type`         | `FieldType`            | `'string'`, `'number'`, `'boolean'`, `'date'`, `'enum'`, `'array'`, `'object'`, `'reference'`, or `'unknown'` |
-| `optional`     | `boolean`              | Whether the field is optional                                                                                 |
-| `enumValues?`  | `(string \| number)[]` | Allowed values for enum fields                                                                                |
-| `referenceTo?` | `string`               | Referenced feature name for reference fields                                                                  |
-| `label`        | `string`               | Human-readable label (e.g., `firstName` becomes `First Name`)                                                 |
+| `name`         | `string`               | Schema key                                                                                                    |
+| `type`         | `FieldType`            | `'string' \| 'number' \| 'boolean' \| 'date' \| 'enum' \| 'array' \| 'object' \| 'reference' \| 'unknown'`     |
+| `optional`     | `boolean`              | Schema `.optional()` / `.nullable()`                                                                          |
+| `enumValues?`  | `(string \| number)[]` | Enum-only                                                                                                     |
+| `referenceTo?` | `string`               | Reference-only — name of the referenced feature                                                               |
+| `label`        | `string`               | Auto-derived from name (`firstName` → `'First Name'`, `created_at` → `'Created At'`)                          |
 
-## Error Handling
+Helpers: `extractFields(schema)` returns the `FieldInfo[]` for any Zod schema; `isReference(value)` checks for the `reference()` brand; `defaultInitialValues(fields)` generates default values from field types.
 
-The built-in fetcher parses structured error responses from the API. Errors with a `message` field in the response body use that as the error message. Errors with an `errors` object attach it to the thrown error for field-level error handling.
+## `useStore`
+
+Reactive cache for items, selection, and loading state — composed via `@pyreon/store` under the feature's name.
 
 ```tsx
-function CreateUser() {
-  const { mutate, error, isError } = users.useCreate()
+const { store } = users.useStore()
+const { data } = users.useList()
 
-  const handleCreate = () => {
-    mutate({ name: 'Alice', email: 'taken@example.com' })
-  }
+effect(() => {
+  const items = data()
+  if (items) store.items.set(items)
+})
 
-  return (
-    <div>
-      <button onClick={handleCreate}>Create</button>
-      {isError() && (
-        <div>
-          <p>{(error() as Error).message}</p>
-          {(error() as any).errors?.email && <p>Email: {(error() as any).errors.email}</p>}
-        </div>
-      )}
-    </div>
-  )
-}
+// store.items() | store.selected() | store.loading() | store.select(id) | store.clear()
 ```
 
-## Why
+`FeatureStore<TValues>`:
 
-An AI agent asked to "add user management" writes 10 lines of schema instead of 200 lines of components, hooks, and wiring. The feature definition is the single source of truth -- types, validation, API calls, cache management, optimistic updates, pagination, and store state all flow from the schema. Human developers get the same leverage: one `defineFeature()` call replaces dozens of boilerplate files.
+| Property     | Type                             | Description                            |
+| ------------ | -------------------------------- | -------------------------------------- |
+| `items`      | `Signal<TValues[]>`              | Cached list                            |
+| `selected`   | `Signal<TValues \| null>`        | Currently selected item                |
+| `loading`    | `Signal<boolean>`                | Loading state                          |
+| `select(id)` | `(id: string \| number) => void` | Select by ID from `items`              |
+| `clear()`    | `() => void`                     | Clear selection                        |
+
+## Error handling
+
+The built-in fetcher parses structured error responses — `{ message: string }` becomes `error().message`, and `{ errors: { field: string } }` is attached to the thrown error for field-level handling.
+
+```tsx
+const { mutate, error, isError } = users.useCreate()
+mutate({ name: 'Alice', email: 'taken@example.com' })
+
+isError() && (
+  <div>
+    <p>{(error() as Error).message}</p>
+    {(error() as any).errors?.email && <p>Email: {(error() as any).errors.email}</p>}
+  </div>
+)
+```
+
+## Gotchas
+
+- **Requires a `<QueryClientProvider>`** mounted above the feature's hooks. `useList` / `useById` / `useSearch` / `useCreate` / `useUpdate` / `useDelete` all depend on `@pyreon/query`'s context.
+- **`schema` is a real Zod (or Zod-compatible) schema**, not a runtime-string map. `TValues` is inferred via the `_output` field that Zod v3 and v4 both expose.
+- **`api` is a string base path**, not an object. RESTful URLs are derived: `GET /api`, `GET /api/:id`, `POST /api`, `PUT /api/:id`, `DELETE /api/:id`, `GET /api?q=…`.
+- **`useUpdate` does optimistic updates with rollback** — the cache reflects the new value immediately and rolls back on error. Useful by default; if you don't want this, write the mutation manually via `useMutation`.
+- **`useForm({ mode: 'edit', id })` triggers a fetch** — `isSubmitting` is `true` while loading. Skip the `id` (or pass `mode: 'create'`) to use the form for creation.
+- **`reference(feature)` is a Zod-shaped schema** — it returns `string | number` runtime-validated values. Pass any `{ name: string }` (a Feature is one) — the metadata flows into the generated form / table renderers.
+- **Auto-generated `initialValues` use type defaults** — `string → ''`, `number → 0`, `boolean → false`, `enum → first value`. Override via `initialValues` if your schema has non-default defaults.
+
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/feature](https://docs.pyreon.dev/docs/feature) (or `docs/docs/feature.md` in this repo).
+
+## License
+
+MIT

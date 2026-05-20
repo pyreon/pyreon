@@ -1,6 +1,8 @@
 # @pyreon/preact-compat
 
-Preact-compatible API shim that runs on Pyreon's signal-based reactive engine. Migrate Preact code by swapping the import path.
+Preact-compatible API shim — write Preact-style code that runs on Pyreon's reactive engine.
+
+`@pyreon/preact-compat` mirrors Preact's module structure (`@pyreon/preact-compat`, `@pyreon/preact-compat/hooks`, `@pyreon/preact-compat/signals`) and provides `h` / `Fragment` / `render` / `hydrate` / `Component` / `PureComponent` / `createContext` / `createRef` / `cloneElement` / `createPortal` / `lazy` / `Suspense` / `ErrorBoundary` plus the standard hooks set, all backed by Pyreon's signal-based reactivity. **This is a compat shim, not Preact** — it intentionally diverges in places where Preact's render-on-state-change model conflicts with Pyreon's run-once + fine-grained-reactivity model. The escape hatch is to drop the compat layer and use Pyreon's native API directly.
 
 ## Install
 
@@ -8,139 +10,124 @@ Preact-compatible API shim that runs on Pyreon's signal-based reactive engine. M
 bun add @pyreon/preact-compat
 ```
 
-## Quick Start
+Then alias your Preact imports (or use `pyreon({ compat: 'preact' })` from `@pyreon/vite-plugin` for zero code changes):
+
+```ts
+import { h, render, Fragment } from '@pyreon/preact-compat'
+import { useState, useEffect } from '@pyreon/preact-compat/hooks'
+import { signal, computed } from '@pyreon/preact-compat/signals'
+```
+
+## Quick start
 
 ```tsx
-// Replace:
-// import { render } from "preact"
-// import { useState, useEffect } from "preact/hooks"
-// With:
-import { render } from '@pyreon/preact-compat'
+import { h, render } from '@pyreon/preact-compat'
 import { useState, useEffect } from '@pyreon/preact-compat/hooks'
 
 function Counter() {
   const [count, setCount] = useState(0)
+
   useEffect(() => {
-    console.log('count changed:', count())
+    document.title = `Count: ${count()}`
   })
-  return <button onClick={() => setCount((c) => c + 1)}>{count}</button>
+
+  return (
+    <div>
+      <p>Count: {count()}</p>
+      <button onClick={() => setCount((prev) => prev + 1)}>+1</button>
+    </div>
+  )
 }
 
 render(<Counter />, document.getElementById('app')!)
 ```
 
-### Signals
+## Subpath exports
+
+| Subpath                                 | Surface                                                                                       |
+| --------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `@pyreon/preact-compat`                 | Core: `h` / `createElement`, `Fragment`, `render`, `hydrate`, `Component`, `PureComponent`, `createContext` / `useContext`, `createRef`, `cloneElement`, `toChildArray`, `isValidElement`, `createPortal`, `lazy`, `Suspense`, `ErrorBoundary`, `options`, `version` |
+| `@pyreon/preact-compat/hooks`           | `useState`, `useReducer`, `useEffect`, `useLayoutEffect`, `useMemo`, `useCallback`, `useRef`, `useId`, `memo`, `forwardRef`, `useImperativeHandle`, `useDebugValue`, `useTransition`, `useDeferredValue`, `useErrorBoundary` |
+| `@pyreon/preact-compat/signals`         | `signal`, `computed`, `effect`, `batch`, `ReadonlySignal`, `WritableSignal`                   |
+| `@pyreon/preact-compat/jsx-runtime`     | JSX automatic runtime (`jsx`, `jsxs`, `Fragment`)                                              |
+| `@pyreon/preact-compat/jsx-dev-runtime` | Dev variant — same runtime, with source location info                                          |
+
+## Key differences from Preact
+
+| Behavior            | Preact                                | `@pyreon/preact-compat`                                                |
+| ------------------- | ------------------------------------- | ---------------------------------------------------------------------- |
+| Component execution | Re-runs render on every state change  | Runs **once** (setup phase)                                            |
+| `useState` getter   | Returns the value directly            | Returns a **getter function** — call `count()` to read                 |
+| `useEffect` deps    | Controls when the effect re-runs      | Deps array is **ignored** — Pyreon tracks dependencies automatically   |
+| `useCallback`       | Memoizes across renders               | **No-op** — returns `fn` as-is                                         |
+| `useMemo`           | Returns the memoized value            | Returns a **getter function** — call `value()` to read                 |
+| `useLayoutEffect`   | Fires synchronously before paint      | Same as `useEffect`                                                    |
+| Signals `.value`    | Native Preact Signals API             | Wrapped Pyreon signals with the same `.value` interface                |
+| Class components    | Full lifecycle support                | `setState` and `forceUpdate` work; lifecycle methods are not called    |
+| Hooks rules         | Must be called at top level           | **No restrictions** — call anywhere in component setup                 |
+
+### Read state via a getter
 
 ```tsx
-import { signal, computed, effect } from '@pyreon/preact-compat/signals'
+// Preact
+const [count, setCount] = useState(0)
+console.log(count) // 0
 
-const count = signal(0)
-const doubled = computed(() => count.value * 2)
-
-function Display() {
-  effect(() => console.log('doubled:', doubled.value))
-  return (
-    <div>
-      <span>{doubled.value}</span>
-      <button onClick={() => count.value++}>+</button>
-    </div>
-  )
-}
+// @pyreon/preact-compat
+const [count, setCount] = useState(0)
+console.log(count()) // 0 — call the function
 ```
 
-### Class Components
+### No stale closures
+
+Signal reads always return the current value. Preact-style `setInterval` callbacks that needed `[count]` deps to avoid stale closures Just Work without them:
 
 ```tsx
-import { Component } from '@pyreon/preact-compat'
+useEffect(() => {
+  const id = setInterval(() => {
+    setCount((prev) => prev + 1)   // always reads the latest
+  }, 1000)
+  return () => clearInterval(id)
+})
+```
 
-interface Props {
-  name: string
-}
-interface State {
-  clicked: boolean
-}
+### Signals subpath
 
-class Greeting extends Component<Props, State> {
-  state = { clicked: false }
+`@pyreon/preact-compat/signals` mirrors `@preact/signals` — `signal(initial)` / `computed(fn)` / `effect(fn)` / `batch(fn)` — and the returned objects expose a `.value` getter/setter so existing `@preact/signals` consumer code keeps working.
 
-  handleClick = () => {
-    this.setState({ clicked: true })
+## Drop-in compat mode
+
+`@pyreon/vite-plugin` can alias every `preact` / `preact/hooks` / `@preact/signals` import to this package — no code changes:
+
+```ts
+// vite.config.ts
+import pyreon from '@pyreon/vite-plugin'
+export default { plugins: [pyreon({ compat: 'preact' })] }
+```
+
+`tsconfig.json`:
+
+```jsonc
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "@pyreon/preact-compat"
   }
-
-  render() {
-    return (
-      <div>
-        <p>Hello, {this.props.name}!</p>
-        <button onClick={this.handleClick}>{this.state.clicked ? 'Clicked' : 'Click me'}</button>
-      </div>
-    )
-  }
 }
 ```
 
-## Key Differences from Preact
+## Gotchas
 
-- **No hooks rules.** Call hooks anywhere -- in loops, conditions, nested functions.
-- **Components run once** (setup phase only), not on every render.
-- **`useEffect` deps are ignored.** Pyreon tracks reactive dependencies automatically. Pass `[]` to run once on mount.
-- **`useCallback` and `memo` are no-ops.** No re-renders means no stale closures.
+- **Run-once mental model.** Components don't re-run on state change — read signals/getters where they're used, not destructured into locals at the top of the function.
+- **`useEffect` deps are ignored.** Dependency tracking is automatic. Effects re-run when any signal they read changes.
+- **`useCallback` is a no-op.** Pyreon doesn't need referential stability across renders because there are no renders.
+- **Class-component lifecycle methods don't fire.** `setState` + `forceUpdate` work, but `componentDidMount` / `componentDidUpdate` / `componentWillUnmount` are not invoked. Use `onMount` / `onUnmount` from `@pyreon/core` for lifecycle.
+- **`version`** reports `10.0.0-pyreon` — code that gates on Preact 10 keeps working; code that asserts equality to a specific Preact version won't match.
 
-## Entry Points
+## Documentation
 
-### `@pyreon/preact-compat`
+Full docs: [docs.pyreon.dev/docs/preact-compat](https://docs.pyreon.dev/docs/preact-compat) (or `docs/docs/preact-compat.md` in this repo).
 
-Core Preact API.
+## License
 
-- **`h` / `createElement`** -- JSX factory.
-- **`Fragment`** -- fragment component.
-- **`render(vnode, container)`** -- mount a tree into a DOM element.
-- **`hydrate(vnode, container)`** -- hydrate server-rendered HTML.
-- **`createContext` / `useContext`** -- context API.
-- **`createRef`** -- mutable ref container.
-- **`Component`** -- class component base (lifecycle methods supported).
-- **`cloneElement(vnode, props, ...children)`** -- clone with overrides.
-- **`toChildArray(children)`** -- normalize children to a flat array.
-- **`isValidElement(x)`** -- type guard for VNodes.
-
-### `@pyreon/preact-compat/hooks`
-
-Hooks API (mirrors `preact/hooks`).
-
-- **`useState(initial)`** -- returns `[getter, setter]`. Call `getter()` to read.
-- **`useReducer(reducer, initial)`** -- returns `[getter, dispatch]`.
-- **`useEffect(fn, deps?)`** -- reactive effect. `[]` deps means mount-only.
-- **`useLayoutEffect`** -- alias for `useEffect`.
-- **`useMemo(fn, deps?)`** -- returns a computed getter. Deps are ignored.
-- **`useCallback(fn, deps?)`** -- returns `fn` as-is (no-op).
-- **`useRef(initial?)`** -- returns `{ current }`.
-- **`useId()`** -- stable unique string per component instance.
-- **`useErrorBoundary`** -- alias for `onErrorCaptured`.
-
-### `@pyreon/preact-compat/signals`
-
-Preact Signals API (mirrors `@preact/signals`).
-
-- **`signal(initial)`** -- returns `{ value }` read/write accessor.
-- **`computed(fn)`** -- returns `{ value }` read-only accessor.
-- **`effect(fn)`** -- reactive side effect, returns dispose function.
-- **`batch(fn)`** -- coalesce multiple signal writes.
-
-## Composing Pyreon framework components inside preact-compat
-
-Pyreon's framework components (`RouterView`, `PyreonUI`, `FormProvider`, `QueryClientProvider`, …) ship marked with `nativeCompat()` from `@pyreon/core` — preact-compat's JSX runtime detects the marker and routes them through Pyreon's setup frame instead of the compat wrapper. **You don't need to do anything** for the 24 components shipped marked.
-
-If you write your **own** Pyreon-flavored helper that uses `provide()` / `onMount()` / `onUnmount()` / `effect()` at component-body scope and use it in a preact-compat app, mark it explicitly:
-
-```tsx
-import { nativeCompat, provide, createContext } from '@pyreon/core'
-
-const MyCtx = createContext<string>('default')
-
-function MyProvider(props: { value: string; children?: unknown }) {
-  provide(MyCtx, props.value)
-  return props.children as never
-}
-nativeCompat(MyProvider) // ← required for compat-mode apps
-```
-
-Without the marker, the wrapper relocates the body's render context and `provide()` lands in a torn-down context stack — descendants read the default. See [`packages/core/core/src/compat-marker.ts`](../../core/core/src/compat-marker.ts) for details.
+MIT

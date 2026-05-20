@@ -1,167 +1,134 @@
 # @pyreon/coolgrid
 
-Responsive grid system for Pyreon.
+Context-cascading responsive grid — Container, Row, Col with custom columns and breakpoints.
 
-Bootstrap-inspired Container / Row / Col grid with context-cascading configuration. Define breakpoints, column count, gaps, and gutters at any level — children inherit automatically. Every value is responsive.
+`@pyreon/coolgrid` is a Bootstrap-style flexbox grid where every numeric prop is responsive (single value, mobile-first array, or breakpoint-keyed object). Configuration (`columns`, `gap`, `gutter`, `padding`, `contentAlignX`) cascades through Pyreon's context system — set it on `Container` and every nested `Row` / `Col` inherits, with explicit per-element overrides. Breakpoint names and column counts are not hardcoded: ship with the default Bootstrap-4 theme or define your own (`{ phone: 0, tablet: 600, desktop: 1024 }` × `columns: 24`). Built on `@pyreon/unistyle` + `@pyreon/styler`.
 
-## Features
-
-- **Familiar mental model** — Container, Row, Col just like Bootstrap
-- **Context cascading** — set columns, gaps, and gutters at Container level, inherited by all Rows and Cols
-- **Responsive values** — single value, mobile-first array, or breakpoint object on every prop
-- **Custom breakpoints** — name and size them however you want
-- **Custom column counts** — 12, 24, 5 — any number
-- **Custom components** — swap Container, Row, or Col underlying elements
-- **Default Bootstrap theme** — included and ready to use
-
-## Installation
+## Install
 
 ```bash
-bun add @pyreon/coolgrid
+bun add @pyreon/coolgrid @pyreon/core @pyreon/reactivity @pyreon/ui-core @pyreon/unistyle @pyreon/styler
 ```
 
-## Quick Start
+## Quick start
 
-```ts
-import { Container, Row, Col, Provider, theme } from '@pyreon/coolgrid'
+```tsx
+import { Provider, Container, Row, Col, theme } from '@pyreon/coolgrid'
 
-Provider({
-  theme,
-  children: Container({
-    children: Row({
-      children: [Col({ size: 8, children: 'Main content' }), Col({ size: 4, children: 'Sidebar' })],
-    }),
-  }),
-})
+<Provider theme={theme}>
+  <Container>
+    <Row>
+      <Col size={{ xs: 12, md: 8 }}>Main content</Col>
+      <Col size={{ xs: 12, md: 4 }}>Sidebar</Col>
+    </Row>
+  </Container>
+</Provider>
 ```
+
+Provider wraps `@pyreon/unistyle`'s provider — it scopes breakpoints, root-size, and grid defaults to the subtree. One provider per app at the root.
 
 ## Components
 
-### Container
+### `<Container>` — outermost grid boundary
 
-Outermost grid boundary. Sets max-width and provides configuration context to descendants.
+Sets max-width and seeds the configuration context for descendants.
 
-```ts
-Container({
-  columns: 12,
-  gap: 16,
-  gutter: 24,
-  padding: 16,
-  children: Row({ children: '...' }),
-})
+```tsx
+<Container columns={12} gap={16} gutter={24} padding={16} width={{ xs: '100%', lg: 1140 }}>
+  <Row>…</Row>
+</Container>
 ```
 
-| Prop          | Type                | Description                                  |
-| ------------- | ------------------- | -------------------------------------------- |
-| columns       | `number`            | Number of grid columns (default: 12)         |
-| gap           | `number`            | Space between columns                        |
-| gutter        | `number`            | Outer gutter (negative margin offset on Row) |
-| padding       | `number`            | Column inner padding                         |
-| width         | `value \| function` | Override container max-width                 |
-| component     | `ComponentFn`       | Custom root element                          |
-| css           | `ExtendCss`         | Extend container styling                     |
-| contentAlignX | `AlignX`            | Horizontal alignment of columns              |
+| Prop | Type | Description |
+|---|---|---|
+| `columns` | `ValueType` | Number of grid columns (default 12) |
+| `gap` | `ValueType` | Space between columns |
+| `gutter` | `ValueType` | Outer gutter (negative-margin offset on Row) |
+| `padding` | `ValueType` | Column inner padding |
+| `contentAlignX` | `'center' \| 'left' \| 'right' \| 'spaceAround' \| 'spaceBetween' \| 'spaceEvenly'` | Horizontal alignment |
+| `width` | `ContainerWidth \| (widths) => ContainerWidth` | Container max-width override |
+| `component` | `ComponentFn` | Custom root element |
+| `css` | `ExtraStyles` | Extend container styling |
 
-All configuration props cascade to Row and Col through context.
+Container-level configuration props cascade to every nested Row and Col through context (built on Pyreon's `pushContext` / `popContext`).
 
-### Row
+### `<Row>` — flex wrapper
 
-Flex wrapper with column management. Inherits Container config and can override it.
+Inherits Container config; can override any cascading prop.
 
-```ts
-Row({
-  size: { xs: 12, md: 6 },
-  contentAlignX: 'center',
-  children: [Col({ children: 'Column 1' }), Col({ children: 'Column 2' })],
-})
+```tsx
+<Row contentAlignX="center" gap={[8, 16, 24]}>
+  <Col>One</Col>
+  <Col>Two</Col>
+</Row>
 ```
 
-Setting `size` on Row applies it to all Cols inside:
+Setting `size` on Row applies it as the DEFAULT for every Col inside:
 
-```ts
-// All columns are 6 of 12
-Row({
-  size: 6,
-  children: [Col({ children: 'Half' }), Col({ children: 'Half' })],
-})
+```tsx
+<Row size={6}>
+  <Col>Half</Col>
+  <Col>Half</Col>
+</Row>
 ```
 
-| Prop          | Type          | Description                             |
-| ------------- | ------------- | --------------------------------------- |
-| size          | `number`      | Default column size for all Cols inside |
-| component     | `ComponentFn` | Custom row element                      |
-| css           | `ExtendCss`   | Extend row styling                      |
-| contentAlignX | `AlignX`      | Override horizontal alignment           |
+### `<Col>` — individual column
 
-### Col
+Width is calculated as `(size / columns)` of the parent Row.
 
-Individual column. Width is calculated as a fraction of total columns.
-
-```ts
-// Fixed size
-Col({ size: 4, children: '1/3 width' })
-
-// Responsive size
-Col({ size: { xs: 12, sm: 6, lg: 4 }, children: 'Responsive' })
-
-// Hidden on mobile
-Col({ size: { xs: 0, md: 6 }, children: 'Hidden on xs' })
+```tsx
+<Col size={4}>1/3 width on every breakpoint</Col>
+<Col size={{ xs: 12, sm: 6, lg: 4 }}>Responsive</Col>
+<Col size={{ xs: 0, md: 6 }}>Hidden on xs (size 0 → display:none)</Col>
 ```
 
-| Prop      | Type          | Description                   |
-| --------- | ------------- | ----------------------------- |
-| size      | `number`      | Column span (e.g. 4 of 12)    |
-| padding   | `number`      | Override column inner padding |
-| component | `ComponentFn` | Custom column element         |
-| css       | `ExtendCss`   | Extend column styling         |
+| Prop | Type | Description |
+|---|---|---|
+| `size` | `ValueType` | Column span (of `columns`) |
+| `padding` | `ValueType` | Override inner padding |
+| `component` | `ComponentFn` | Custom column element |
+| `css` | `ExtraStyles` | Extend column styling |
 
-## Configuration
+## Responsive values
 
-### Custom Breakpoints
+Every numeric prop accepts three shapes:
 
 ```ts
-Provider({
-  theme: {
+// Single value — applies at every breakpoint
+size={6}
+
+// Mobile-first array — positional [xs, sm, md, lg, xl]
+size={[12, 6, 4]}
+
+// Breakpoint-keyed object — explicit
+size={{ xs: 12, md: 6, lg: 4 }}
+```
+
+## Custom breakpoints / columns
+
+```tsx
+<Provider
+  theme={{
     rootSize: 16,
-    breakpoints: {
-      phone: 0,
-      tablet: 600,
-      desktop: 1024,
-      wide: 1440,
+    breakpoints: { phone: 0, tablet: 600, desktop: 1024, wide: 1440 },
+    grid: {
+      columns: 24,
+      container: { phone: '100%', tablet: 540, desktop: 960, wide: 1400 },
     },
-  },
-  children: [
-    /* ... */
-  ],
-})
+  }}
+>
+  <Container columns={24}>
+    <Row>
+      <Col size={16}>Two thirds of 24</Col>
+      <Col size={8}>One third of 24</Col>
+    </Row>
+  </Container>
+</Provider>
 ```
 
-### Custom Column Count
+## Default theme
 
-```ts
-Container({
-  columns: 24,
-  children: Row({
-    children: [Col({ size: 16, children: 'Two thirds' }), Col({ size: 8, children: 'One third' })],
-  }),
-})
-```
-
-### Context Cascading
-
-Configuration flows from Container through Row to Col via Pyreon's context system (`pushContext`/`popContext`):
-
-```text
-Container (columns: 12, gap: 16)
-  └─ Row (inherits columns, gap)
-       └─ Col (inherits columns, gap, calculates width)
-```
-
-Props set on a child override the inherited value for that level and below.
-
-## Default Theme
-
-The included `theme` export provides Bootstrap 4 defaults:
+The `theme` export ships Bootstrap-4 defaults:
 
 ```ts
 {
@@ -174,30 +141,41 @@ The included `theme` export provides Bootstrap 4 defaults:
 }
 ```
 
-## Responsive Values
+## Cascading model
 
-All numeric props support three formats:
-
-```ts
-// Single value
-Col({ size: 6 })
-
-// Array (mobile-first, by breakpoint position)
-Col({ size: [12, 6, 4] })
-
-// Object (explicit breakpoints)
-Col({ size: { xs: 12, md: 6, lg: 4 } })
+```text
+<Container columns={12} gap={16}>
+   ↓ context push
+  <Row>          inherits columns=12, gap=16; can override
+     ↓ context push
+    <Col size={4}> inherits columns, gap → width = 4 / 12 = 33.33%
 ```
 
-## Peer Dependencies
+Each level pushes its overrides into the context; children read the merged stack. Props set at a deeper level override the ancestor for that subtree only.
 
-| Package            | Version  |
-| ------------------ | -------- |
-| @pyreon/core       | >= 0.0.1 |
-| @pyreon/reactivity | >= 0.0.1 |
-| @pyreon/ui-core    | >= 0.0.1 |
-| @pyreon/unistyle   | >= 0.0.1 |
-| @pyreon/styler     | >= 0.0.1 |
+## Custom underlying elements
+
+Swap any layer's root element via `component`:
+
+```tsx
+<Container component={MyContainerWrapper}>
+  <Row component="section">
+    <Col component="article">…</Col>
+  </Row>
+</Container>
+```
+
+## Gotchas
+
+- **`Provider` is the unistyle provider** under the hood. If you already render `<PyreonUI>` (from `@pyreon/ui-core`) at your app root, it sets up unistyle context — you only need a fresh `<Provider>` if you want different breakpoints in a subtree.
+- **`size: 0` is meaningful** — it sets the column to `display: none` at that breakpoint (hidden), not "zero-width but still in flow".
+- **`gutter` is negative-margin on the Row** + matching padding on each Col. Setting `gutter` and `padding` independently is fine but be aware of the visual offset.
+- **`columns` MUST be set on a Container** if you want a non-default count. Setting it on a Row works for that Row only, but the visual cascade is harder to reason about — keep it at Container level.
+- **Context is per-Provider.** If you nest two `<Provider>` blocks, the inner one starts fresh from its own theme — not from the outer Provider's overrides.
+
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/coolgrid](https://docs.pyreon.dev/docs/coolgrid) (or `docs/docs/coolgrid.md` in this repo).
 
 ## License
 

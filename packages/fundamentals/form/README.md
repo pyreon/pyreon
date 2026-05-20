@@ -1,14 +1,16 @@
 # @pyreon/form
 
-Signal-based form management for Pyreon. Fields, validation, submission, arrays, and context.
+Signal-based form management — fields, validation, arrays, and context.
+
+Every field on a Pyreon form is its own `Signal<T>` (one each for `value`, `error`, `touched`, `dirty`), so templates only re-run for the slice they read. Two complementary APIs: the classic `useForm({ initialValues, validators, onSubmit })`, and the composable `field('name', default, validator) → useForm({ fields }) + useField('name')` that infers `FormState` from a field array and skips prop drilling via `<Form of={form}>` / `FormProvider`. Pairs with `@pyreon/validation` for Zod/Valibot/ArkType schema integration.
 
 ## Install
 
 ```bash
-bun add @pyreon/form
+bun add @pyreon/form @pyreon/core @pyreon/reactivity
 ```
 
-## Quick Start
+## Quick start
 
 ```tsx
 import { useForm } from '@pyreon/form'
@@ -26,7 +28,7 @@ function LoginForm() {
     },
   })
 
-  return () => (
+  return (
     <form onSubmit={form.handleSubmit}>
       <input type="email" {...form.register('email')} />
       <input type="password" {...form.register('password')} />
@@ -36,206 +38,162 @@ function LoginForm() {
 }
 ```
 
-## Composable Fields (recommended)
+## Composable fields + `<Form>` (recommended)
 
-Define fields as reusable data, compose into type-safe forms:
+Define fields once, infer the form shape automatically, and read from context instead of prop drilling:
 
 ```tsx
 import { field, useForm, useField, Form, Submit } from '@pyreon/form'
 
-// Define fields — name, default, validator. Reusable across forms.
-const email = field('email', '', (v) => !v.includes('@') ? 'Invalid' : undefined)
-const password = field('password', '', (v) => v.length < 8 ? 'Too short' : undefined)
-const confirm = field('confirmPassword', '', (v, all) => v !== all.password ? 'Mismatch' : undefined)
+const email = field('email', '', (v) => (!v.includes('@') ? 'Invalid' : undefined))
+const password = field('password', '', (v) => (v.length < 8 ? 'Too short' : undefined))
+const confirm = field('confirmPassword', '', (v, all) =>
+  v !== all.password ? 'Mismatch' : undefined,
+)
 
-// Compose — types fully inferred from field array
 const form = useForm({
   fields: [email, password, confirm],
-  onSubmit: (values) => { /* { email: string; password: string; confirmPassword: string } */ },
+  onSubmit: (values) => {
+    /* { email: string; password: string; confirmPassword: string } */
+  },
 })
 
-// Components use useField('name') from context — no form prop needed
 function EmailInput() {
   const f = useField<string>('email')
-  return <><input {...f.register()} />{f.showError() && <span>{f.error()}</span>}</>
+  return (
+    <>
+      <input {...f.register()} />
+      {() => (f.showError() ? <span>{f.error()}</span> : null)}
+    </>
+  )
 }
 
-// Render
-<Form of={form}>
+;<Form of={form}>
   <EmailInput />
   <PasswordInput />
   <Submit>Login</Submit>
 </Form>
 ```
 
-## API
+`<Form of={form}>` renders a `<form>` element, binds `onSubmit` to `form.handleSubmit`, and provides the form via context. `<Submit>` auto-disables during `form.isSubmitting()`.
 
-### `useForm(options)`
+## `useForm(options)`
 
-Create a reactive form instance with field states, validation, and submission handling.
+| Option           | Type                                         | Description                                                             |
+| ---------------- | -------------------------------------------- | ----------------------------------------------------------------------- |
+| `initialValues`  | `TValues`                                    | Required when using the value-form. Drives field keys + types.          |
+| `fields`         | `FieldDefinition[]`                          | Required when using the composable form. Drives `TValues` via inference. |
+| `onSubmit`       | `(values: TValues) => void \| Promise<void>` | Submit handler — receives validated values                              |
+| `validators`     | `Partial<Record<keyof TValues, ValidateFn>>` | Per-field validators; signature `(value, allValues) => string \| undefined` |
+| `schema`         | `SchemaValidateFn<TValues>`                  | Whole-form schema validator (from `@pyreon/validation` adapters)         |
+| `validateOn`     | `'blur' \| 'change' \| 'submit'`             | When to validate. **Default: `'blur'`**                                   |
+| `debounceMs`     | `number`                                     | Debounce delay for validators (especially async)                         |
 
-| Parameter               | Type                                         | Description                                          |
-| ----------------------- | -------------------------------------------- | ---------------------------------------------------- |
-| `options.initialValues` | `TValues`                                    | Initial values for each field                        |
-| `options.onSubmit`      | `(values: TValues) => void \| Promise<void>` | Called with validated values on submit               |
-| `options.validators`    | `Partial<Record<keyof TValues, ValidateFn>>` | Per-field validators (receives value + all values)   |
-| `options.schema`        | `SchemaValidateFn<TValues>`                  | Schema-level validator (runs after field validators) |
-| `options.validateOn`    | `"blur" \| "change" \| "submit"`             | When to trigger validation (default: `"blur"`)       |
-| `options.debounceMs`    | `number`                                     | Debounce delay for validators in ms                  |
-
-**Returns:** `FormState<TValues>` with these properties:
-
-| Property                      | Type                                  | Description                            |
-| ----------------------------- | ------------------------------------- | -------------------------------------- |
-| `fields`                      | `Record<keyof TValues, FieldState>`   | Individual field states                |
-| `isSubmitting`                | `Signal<boolean>`                     | Whether the form is being submitted    |
-| `isValidating`                | `Signal<boolean>`                     | Whether async validation is running    |
-| `isValid`                     | `Accessor<boolean>`                   | Whether all fields pass validation     |
-| `isDirty`                     | `Accessor<boolean>`                   | Whether any field differs from initial |
-| `submitCount`                 | `Signal<number>`                      | Number of submission attempts          |
-| `submitError`                 | `Signal<unknown>`                     | Error thrown by `onSubmit`             |
-| `values()`                    | `() => TValues`                       | Get all current values                 |
-| `errors()`                    | `() => Record<keyof TValues, string>` | Get all current errors                 |
-| `register(field, opts?)`      | `Function`                            | Bind an input to a field               |
-| `handleSubmit(e?)`            | `(e?: Event) => Promise<void>`        | Submit handler                         |
-| `validate()`                  | `() => Promise<boolean>`              | Validate all fields                    |
-| `reset()`                     | `() => void`                          | Reset all fields to initial values     |
-| `setFieldValue(field, value)` | `Function`                            | Set a single field's value             |
-| `setFieldError(field, error)` | `Function`                            | Set a single field's error             |
-| `setErrors(errors)`           | `Function`                            | Set multiple field errors              |
-| `clearErrors()`               | `() => void`                          | Clear all errors                       |
-| `resetField(field)`           | `Function`                            | Reset a single field                   |
+Returns `FormState<TValues>` with per-field `Signal`s (`value`, `error`, `touched`, `dirty`), form-level signals (`isSubmitting`, `isValidating`, `submitCount`, `submitError`), computed accessors (`isValid()`, `isDirty()`, `values()`, `errors()`), and handlers (`handleSubmit`, `register`, `validate`, `reset`, `setFieldValue`, `setFieldError`, `setErrors`, `clearErrors`, `resetField`).
 
 ```tsx
-const form = useForm({
-  initialValues: { email: "", remember: false },
-  onSubmit: async (values) => console.log(values),
-})
-
 // Bind text input:
-<input {...form.register("email")} />
+<input {...form.register('email')} />
 
-// Bind checkbox:
-<input type="checkbox" {...form.register("remember", { type: "checkbox" })} />
+// Bind checkbox (boolean field):
+<input type="checkbox" {...form.register('remember', { type: 'checkbox' })} />
 
-// Bind number input:
-<input type="number" {...form.register("age", { type: "number" })} />
+// Bind number input (auto-parses to number):
+<input type="number" {...form.register('age', { type: 'number' })} />
 ```
 
-### `useField(form, name)`
+## `useField(name)` / `useField(form, name)`
 
-Extract a single field's state with computed helpers. Useful for building isolated field components.
-
-| Parameter | Type                     | Description                  |
-| --------- | ------------------------ | ---------------------------- |
-| `form`    | `FormState<TValues>`     | Form instance from `useForm` |
-| `name`    | `keyof TValues & string` | Field name                   |
-
-**Returns:** `UseFieldResult<T>` with `value`, `error`, `touched`, `dirty`, `setValue`, `setTouched`, `reset`, `register`, `hasError` (Computed), `showError` (Computed: touched AND has error).
+Extracts a single field's state with computed helpers (`hasError`, `showError`). Two overloads:
 
 ```tsx
-function EmailField({ form }) {
-  const field = useField(form, 'email')
-  return () => (
-    <div>
-      <input {...field.register()} />
-      {() => (field.showError() ? <span>{field.error()}</span> : null)}
-    </div>
-  )
-}
+// Context form — reads form from <Form>/<FormProvider>. Accepts generic.
+const f = useField<string>('email')
+
+// Explicit form — pass a known FormState.
+const f = useField(form, 'email')
 ```
 
-### `useFieldArray(initial?)`
+Returns `UseFieldResult<T>`:
 
-Manage a dynamic array of form fields with stable keys for keyed rendering.
+| Property      | Type                                            | Description                                  |
+| ------------- | ----------------------------------------------- | -------------------------------------------- |
+| `value`       | `Signal<T>`                                     | Field value                                  |
+| `error`       | `Signal<ValidationError>`                       | `string \| undefined`                        |
+| `touched`     | `Signal<boolean>`                               | True after first blur                        |
+| `dirty`       | `Signal<boolean>`                               | True when value differs from initial         |
+| `hasError`    | `Computed<boolean>`                             | True when an error string exists             |
+| `showError`   | `Computed<boolean>`                             | True when `touched()` AND `hasError()`       |
+| `setValue`    | `(v: T) => void`                                | Programmatic set                             |
+| `setTouched`  | `(b: boolean) => void`                          | Mark touched                                 |
+| `reset`       | `() => void`                                    | Reset to field's initial value               |
+| `register`    | `() => FieldRegisterProps<T>`                   | Spreadable input props                       |
 
-| Parameter | Type  | Description                          |
-| --------- | ----- | ------------------------------------ |
-| `initial` | `T[]` | Initial array values (default: `[]`) |
+`showError` is the right gate for displaying error messages — it stays silent until the user has blurred at least once, even when `validateOn: 'change'`.
 
-**Returns:** `UseFieldArrayResult<T>` with:
+## `useFieldArray(initial?)`
 
-| Property               | Type                          | Description                               |
-| ---------------------- | ----------------------------- | ----------------------------------------- |
-| `items`                | `Signal<FieldArrayItem<T>[]>` | Reactive list with `{ key, value }` items |
-| `length`               | `Computed<number>`            | Number of items                           |
-| `append(value)`        | `(value: T) => void`          | Add to end                                |
-| `prepend(value)`       | `(value: T) => void`          | Add to start                              |
-| `insert(index, value)` | `Function`                    | Insert at index                           |
-| `remove(index)`        | `(index: number) => void`     | Remove at index                           |
-| `update(index, value)` | `Function`                    | Update item at index                      |
-| `move(from, to)`       | `Function`                    | Move item between indices                 |
-| `swap(a, b)`           | `Function`                    | Swap two items                            |
-| `replace(values)`      | `(values: T[]) => void`       | Replace all items                         |
-| `values()`             | `() => T[]`                   | Get current values as plain array         |
+Dynamic arrays with stable monotonic keys for keyed rendering.
 
 ```ts
 const tags = useFieldArray<string>(['typescript'])
 tags.append('pyreon')
-tags.items() // [{ key: 0, value: Signal("typescript") }, { key: 1, value: Signal("pyreon") }]
+tags.prepend('signals')
+tags.insert(1, 'reactive')
+tags.move(0, 2)
+tags.swap(0, 1)
+tags.update(0, 'updated')
+tags.remove(0)
+tags.replace(['a', 'b', 'c'])
+tags.values() // string[]
+tags.length() // number
+tags.items() // FieldArrayItem<string>[] — { key: number, value: Signal<T> }
 ```
 
-### `useWatch(form, name?)`
+Each item carries a `key: number` — monotonically increasing, assigned at insert time. Render with `<For each={tags.items()} by={(i) => i.key}>` so reordering / insertion preserves component identity (and input focus). **Index-based keys defeat the stable-key design.**
 
-Watch specific field values reactively.
+## `useWatch(form, name?)`
 
-| Signature                           | Returns                                     |
-| ----------------------------------- | ------------------------------------------- |
-| `useWatch(form, "email")`           | `Signal<string>` — single field value       |
-| `useWatch(form, ["first", "last"])` | `[Signal, Signal]` — tuple of field signals |
-| `useWatch(form)`                    | `Computed<TValues>` — all fields as object  |
+Typed overloads for reactive field watchers:
 
 ```ts
-const email = useWatch(form, 'email')
-// email() re-evaluates reactively when the email field changes
-
-const all = useWatch(form)
-// all() => { email: "...", password: "..." }
+const email = useWatch(form, 'email') // Signal<string>
+const [first, last] = useWatch(form, ['firstName', 'lastName']) // tuple of Signals
+const all = useWatch(form) // Computed<TValues>
 ```
 
-### `useFormState(form, selector?)`
+Single-field form returns the underlying `Signal<T>` directly (no wrapper). Prefer the narrowest form — watching the whole form re-runs your effect on every field change.
 
-Subscribe to the full form state as a computed signal. Optionally pass a selector for fine-grained reactivity.
+## `useFormState(form, selector?)`
 
-| Parameter  | Type                             | Description                  |
-| ---------- | -------------------------------- | ---------------------------- |
-| `form`     | `FormState<TValues>`             | Form instance                |
-| `selector` | `(state: FormStateSummary) => R` | Optional projection function |
-
-**Returns:** `Computed<FormStateSummary>` or `Computed<R>` when using a selector.
-
-`FormStateSummary` contains: `isSubmitting`, `isValidating`, `isValid`, `isDirty`, `submitCount`, `submitError`, `touchedFields`, `dirtyFields`, `errors`.
+Computed summary of form-level state. Pass a selector to narrow the tracked subset.
 
 ```ts
-const state = useFormState(form)
-state().isValid // boolean
-
-const canSubmit = useFormState(form, (s) => s.isValid && !s.isSubmitting)
-canSubmit() // boolean
+const canSubmit = useFormState(form, (s) => s.isValid && !s.isSubmitting && s.isDirty)
+// canSubmit() updates only when those 3 booleans flip
 ```
 
-### `FormProvider` / `useFormContext()`
+`FormStateSummary` fields: `isSubmitting`, `isValidating`, `isValid`, `isDirty`, `submitCount`, `submitError`, `touchedFields`, `dirtyFields`, `errors`. Without a selector the computed re-derives on ANY summary field change — always pass a selector for UI-bound computeds.
 
-Context pattern for sharing a form instance with nested components.
+## `FormProvider` / `useFormContext()` / `<Form>` / `<Submit>`
 
 ```tsx
-// Parent:
-;<FormProvider form={form}>
-  <EmailField />
+<FormProvider form={form}>
+  <DeepInputs />
 </FormProvider>
 
-// Child:
-function EmailField() {
-  const form = useFormContext<{ email: string }>()
-  return () => <input {...form.register('email')} />
+// Inside any descendant:
+function DeepInputs() {
+  const form = useFormContext<{ email: string; password: string }>()
+  return <input {...form.register('email')} />
 }
 ```
 
-## Patterns
+`<Form of={form}>` is sugar: renders `<form onSubmit={form.handleSubmit}>` + `<FormProvider>`. `<Submit>` reads `form.isSubmitting()` from context and auto-disables.
 
-### Server-Side Validation
+Pass the `<TValues>` generic on `useFormContext` — otherwise TypeScript infers `Record<string, unknown>` and field names lose type narrowing.
 
-Use `setErrors()` to apply errors returned from your API.
+## Server-side errors
 
 ```ts
 const form = useForm({
@@ -244,52 +202,55 @@ const form = useForm({
     const res = await fetch('/api/register', { method: 'POST', body: JSON.stringify(values) })
     if (!res.ok) {
       const errors = await res.json()
-      form.setErrors(errors) // { email: "Already taken" }
+      form.setErrors(errors) // { email: 'Already registered' }
     }
   },
 })
 ```
 
-### Schema Validation
+`setFieldError` / `setErrors` do NOT touch `touched` state — server errors display immediately regardless of blur status.
 
-Use `@pyreon/validation` adapters for schema-level validation.
+## Schema validation
+
+Pair with `@pyreon/validation` adapters. Per-field validators run first; schema errors merge after.
 
 ```ts
-import { zodSchema } from "@pyreon/validation"
-import { z } from "zod"
+import { zodSchema } from '@pyreon/validation/zod'
+import { z } from 'zod'
 
 const form = useForm({
-  initialValues: { email: "", age: 0 },
+  initialValues: { email: '', age: 0 },
   schema: zodSchema(z.object({ email: z.string().email(), age: z.number().min(13) })),
-  onSubmit: async (values) => { ... },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 ```
 
-## Types
+## Devtools
 
-| Type                        | Description                                                                              |
-| --------------------------- | ---------------------------------------------------------------------------------------- |
-| `Accessor<T>`               | `Signal<T> \| Computed<T>` — a readable reactive value                                   |
-| `FormState<TValues>`        | Full form instance returned by `useForm`                                                 |
-| `FieldState<T>`             | Per-field state: `value`, `error`, `touched`, `dirty`, `setValue`, `setTouched`, `reset` |
-| `FieldRegisterProps<T>`     | Props returned by `register()`: `value`, `onInput`, `onBlur`, `checked?`                 |
-| `UseFormOptions<TValues>`   | Options for `useForm`                                                                    |
-| `ValidateFn<T, TValues>`    | `(value: T, allValues: TValues) => ValidationError \| Promise<ValidationError>`          |
-| `SchemaValidateFn<TValues>` | `(values: TValues) => Record<keyof TValues, string>`                                     |
-| `ValidationError`           | `string \| undefined`                                                                    |
-| `FieldArrayItem<T>`         | `{ key: number, value: Signal<T> }`                                                      |
-| `UseFieldArrayResult<T>`    | Return type of `useFieldArray`                                                           |
-| `UseFieldResult<T>`         | Return type of `useField`                                                                |
-| `FormStateSummary<TValues>` | Snapshot object returned by `useFormState`                                               |
+```ts
+import { formRegistry } from '@pyreon/form/devtools'
+// WeakRef registry of live form instances — tree-shakeable.
+```
 
 ## Gotchas
 
-- `register()` results are memoized per field+type combo. Calling `register("email")` twice returns the same object.
-- `validateOn: "change"` creates an `effect()` per field — for large forms, prefer `"blur"` or `"submit"`. Pair with `debounceMs` for async validators.
-- Field validators receive all current form values as the second argument for cross-field validation.
-- `handleSubmit` marks all fields as touched before validating, so error messages appear on submit. It calls `preventDefault()` so it must receive the form event, or be called with no argument for programmatic submit.
-- `schema` validators run AFTER per-field `validators` — errors from both merge; a schema error can override a field-level error on the same key.
-- Debounce timers and in-flight validators are automatically cleaned up on component unmount.
-- `useFormState(form)` without a selector re-derives on ANY form-level state change — always pass a selector for UI-bound computeds.
-- `FormProvider` does not support nesting — the inner provider shadows the outer. For multi-form pages, use separate sibling providers.
-- `useFormContext<TValues>()` — pass the generic or TypeScript infers `Record<string, unknown>` and field names lose type narrowing.
+- **`validateOn` defaults to `'blur'`, not `'change'`** — users aren't scolded mid-keystroke. Pair `'change'` with `debounceMs` for async validators.
+- **Async validators are version-tracked** — stale results are discarded if the user types faster than the validator resolves. `form.isValidating` is `true` while any field has a pending async validation; gate the submit button on it.
+- **Mutating `initialValues` after creation has no effect** — they're read once at setup. Use `setFieldValue` for programmatic updates.
+- **`form.fields[name].value` is `Signal<T>`** — call it: `form.fields.email.value()`. Reading without calling captures the signal reference, not the value.
+- **`handleSubmit` calls `preventDefault()`** — wire it as `<form onSubmit={form.handleSubmit}>` or call with no argument for programmatic submit.
+- **`schema` runs AFTER per-field `validators`** — both error sources merge; a schema error can override a field-level error on the same key.
+- **`FormProvider` doesn't support nesting** — the inner shadows the outer. For multi-form pages use separate sibling providers.
+- **`register()` results are memoized per field+type combo** — calling `register('email')` twice returns the same object.
+- **`useFormState(form)` without a selector** re-derives on every state change. Always pass a selector.
+- **Don't pass a signal-read into `initialValues`** — `initialValues: { name: user() }` snapshots once. Use `setFieldValue` reactively. Caught by the opt-in lint rule `pyreon/no-signal-in-form-initial-values`.
+
+## Documentation
+
+Full docs: [docs.pyreon.dev/docs/form](https://docs.pyreon.dev/docs/form) (or `docs/docs/form.md` in this repo).
+
+## License
+
+MIT
