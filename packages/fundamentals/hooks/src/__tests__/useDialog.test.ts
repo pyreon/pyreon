@@ -95,4 +95,29 @@ describe('useDialog', () => {
     expect(() => close()).not.toThrow()
     expect(() => toggle()).not.toThrow()
   })
+
+  // REGRESSION: Pyreon's RefCallback contract is `(el: T | null) => void` —
+  // refs fire with `null` on unmount. `useDialog`'s `ref` declared its
+  // parameter as `(el: HTMLDialogElement) => void` (lying type) AND tried to
+  // call `el.addEventListener('close', ...)` on the null path, throwing
+  // `TypeError: Cannot read properties of null`. The `onCleanup` listener
+  // removal at the bottom of the function was correct, but the crash on the
+  // ref-with-null call fired BEFORE cleanup could even register intent.
+  it('REGRESSION: ref(null) on unmount does not throw and cleans up the close listener', () => {
+    const onClose = vi.fn()
+    const { ref } = useDialog({ onClose })
+    const el = createMockDialog()
+
+    ref(el)
+
+    // Pyreon's runtime-dom invokes the ref with `null` when the element
+    // unmounts. The type signature said `HTMLDialogElement`, but the
+    // runtime contract is `HTMLDialogElement | null`.
+    expect(() => (ref as (el: HTMLDialogElement | null) => void)(null)).not.toThrow()
+
+    // After unmount, dispatching a close event on the OLD element must not
+    // re-trigger the handler (listener was removed).
+    el.dispatchEvent(new Event('close'))
+    expect(onClose).not.toHaveBeenCalled()
+  })
 })

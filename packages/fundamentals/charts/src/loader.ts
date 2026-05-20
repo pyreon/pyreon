@@ -123,11 +123,21 @@ async function loadAndRegister(
   if (registered.has(key)) return
   if (inflight.has(key)) return inflight.get(key)
 
-  const promise = loader().then((mod) => {
-    core.use(mod as EChartsUseArg)
-    registered.add(key)
-    inflight.delete(key)
-  })
+  // .then-without-catch would cache rejected promises forever — a single
+  // failed network fetch of an ECharts module would permanently break
+  // every chart of that type for the page lifetime (subsequent calls
+  // return the cached rejection). Clear the inflight entry on BOTH
+  // settle paths so a transient failure can be retried.
+  const promise = loader()
+    .then((mod) => {
+      core.use(mod as EChartsUseArg)
+      registered.add(key)
+      inflight.delete(key)
+    })
+    .catch((err) => {
+      inflight.delete(key)
+      throw err
+    })
   inflight.set(key, promise)
   return promise
 }

@@ -1,5 +1,5 @@
 import { signal } from '@pyreon/reactivity'
-import { getEntry, removeEntry, setEntry } from './registry'
+import { getEntry, releaseEntry, retainEntry, setEntry } from './registry'
 import type { StorageOptions, StorageSignal } from './types'
 import { deserialize, getWebStorage, isBrowser, serialize } from './utils'
 import { wrapBaseSignal } from './wrap-base-signal'
@@ -79,9 +79,18 @@ export function useStorage<T>(
   defaultValue: T,
   options?: StorageOptions<T>,
 ): StorageSignal<T> {
-  // Return existing signal if already registered
+  // Same-key consumers must each retain the per-key registry refcount AND
+  // the cross-tab listener. Pre-fix: only the FIRST call retained, but
+  // every `.remove()` released — driving refcounts below the actual
+  // consumer count. The post-fix invariant is that the entry destruction
+  // (and cross-tab listener detach) happens only on the LAST consumer's
+  // `.remove()`, not the first.
   const existing = getEntry<T>('local', key)
-  if (existing) return existing.signal
+  if (existing) {
+    retainEntry('local', key)
+    retainStorageListener()
+    return existing.signal
+  }
 
   const storage = getWebStorage('local')
 
@@ -144,13 +153,26 @@ export function createStorageSignal<T>(
     storageSig.set(newValue)
   }
 
-  // Add remove method
+  // Add remove method.
+  //
+  // `.remove()` clears the underlying storage entry, resets the shared
+  // signal to its default, and releases ONE refcount on BOTH the per-key
+  // registry entry AND the cross-tab listener. The registry entry is
+  // destroyed only when its refcount drops to 0 (true last-consumer
+  // release) — preserving cross-tab routing for surviving N-1 consumers.
+  //
+  // Pre-fix `.remove()` unconditionally deleted the registry entry,
+  // orphaning every sibling consumer from cross-tab updates the moment
+  // any one of them called `.remove()`. Post-fix: surviving consumers
+  // keep receiving cross-tab events; the entry destruction (and
+  // listener detach via `releaseStorageListener`) is gated on the LAST
+  // consumer's release.
   storageSig.remove = () => {
     sig.set(defaultValue)
     if (storage) {
       storage.removeItem(key)
     }
-    removeEntry(backend, key)
+    releaseEntry(backend, key)
     if (backend === 'local') {
       releaseStorageListener()
     }

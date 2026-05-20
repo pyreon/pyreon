@@ -11,8 +11,15 @@ export interface UseDialogResult {
   close: () => void
   /** Toggle open/closed state. */
   toggle: () => void
-  /** Ref callback — pass to `ref` prop on a `<dialog>` element. */
-  ref: (el: HTMLDialogElement) => void
+  /**
+   * Ref callback — pass to `ref` prop on a `<dialog>` element.
+   *
+   * Pyreon's `RefCallback<T>` contract: refs fire with the element on
+   * mount and with `null` on unmount. `useDialog`'s ref handles both —
+   * the null call removes the bound `close` listener and clears the
+   * internal element reference.
+   */
+  ref: (el: HTMLDialogElement | null) => void
 }
 
 /**
@@ -54,22 +61,27 @@ export function useDialog(options?: { onClose?: () => void }): UseDialogResult {
     else showModal()
   }
 
-  // Attach the close listener in the ref callback — guaranteed to have
-  // the element. onMount fires at the same time as ref in Pyreon, but
-  // ref is more reliable since it's called with the actual element.
-  const ref = (el: HTMLDialogElement) => {
-    // Clean up previous element if ref is called again
+  // Attach the close listener in the ref callback. Pyreon's RefCallback
+  // contract fires the ref with the element on mount AND with `null` on
+  // unmount — early-return on the null path after cleaning up the previous
+  // binding. The pre-fix `el.addEventListener('close', …)` after assigning
+  // `dialogEl = null` would throw `TypeError: Cannot read properties of
+  // null` on every component unmount.
+  const ref = (el: HTMLDialogElement | null) => {
+    // Clean up previous element if ref is called again (re-bind or unmount)
     if (dialogEl && closeHandler) {
       dialogEl.removeEventListener('close', closeHandler)
     }
 
     dialogEl = el
+    closeHandler = null
+
+    if (el === null) return
 
     closeHandler = () => {
       open.set(false)
       options?.onClose?.()
     }
-
     el.addEventListener('close', closeHandler)
   }
 
