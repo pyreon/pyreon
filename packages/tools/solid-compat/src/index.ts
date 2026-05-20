@@ -54,6 +54,10 @@ import {
 import { hydrateRoot, mount as pyreonMount } from '@pyreon/runtime-dom'
 import { getCurrentCtx, getHookIndex } from './jsx-runtime'
 
+// Dev-mode counter sink — see packages/internals/perf-harness for contract.
+const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 // ─── Type exports (Solid API surface) ───────────────────────────────────────
 
 /** Solid-compatible read accessor type */
@@ -689,7 +693,15 @@ export function createResource<T, S = true>(
         result.then(
           (val) => {
             // Discard stale resolution — a refetch ran while we awaited.
-            if (myVersion !== fetchVersion) return
+            if (myVersion !== fetchVersion) {
+              // Leak-class F diagnostic — emit per discarded stale
+              // resolution. Non-zero confirms refetch races are
+              // happening (and being handled correctly). Zero on a
+              // refetch-heavy load means either no races or — bug —
+              // the version check was lost.
+              if (__DEV__) _countSink.__pyreon_count__?.('solid-compat.createResource.staleDiscarded')
+              return
+            }
             latestValue = val
             fetchPromise = null
             setData(() => val)
@@ -697,7 +709,10 @@ export function createResource<T, S = true>(
           },
           (err) => {
             // Discard stale rejection — a refetch ran while we awaited.
-            if (myVersion !== fetchVersion) return
+            if (myVersion !== fetchVersion) {
+              if (__DEV__) _countSink.__pyreon_count__?.('solid-compat.createResource.staleDiscarded')
+              return
+            }
             fetchPromise = null
             setError(() => (err instanceof Error ? err : new Error(String(err))))
             setLoading(false)
@@ -872,6 +887,13 @@ export function createStore<T extends object>(
       const hasSubscribers = sigInternal._s && sigInternal._s.size > 0
       const hasDirect = sigInternal._d && sigInternal._d.size > 0
       if (!hasSubscribers && !hasDirect) {
+        // Leak-class C diagnostic — emit per evicted signal entry.
+        // A high count after a stable workload = the store has a
+        // dynamic key space (dictionaries, pagination, logs) and
+        // the sweep is doing its job. Zero count past the threshold
+        // = either sweep didn't fire OR every read path still has
+        // a tracked subscriber (correctness preserved, no leak).
+        if (__DEV__) _countSink.__pyreon_count__?.('solid-compat.createStore.signalEvicted')
         signals.delete(path)
       }
     }

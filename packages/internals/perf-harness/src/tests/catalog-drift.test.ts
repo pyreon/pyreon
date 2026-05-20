@@ -45,8 +45,16 @@ const INSTRUMENTED_PACKAGE_ROOTS = [
   'packages/fundamentals/query/src',
   'packages/fundamentals/i18n/src',
   // M2.3 — SSG perf counters live on the zero plugin (build-time, not
-  // runtime); the package emits under the `ssg.*` namespace.
+  // runtime); the package emits under the `ssg.*` namespace. The zero
+  // package also emits `isr.*` (ISR revalidate timer clear) and `theme.*`
+  // (ThemeToggle refcount) leak-class diagnostics.
   'packages/zero/zero/src',
+  // Post-#741 leak-class diagnostic counters across the compat layers
+  // and vite plugin. Each emits under its own namespace (`solid-compat`,
+  // `svelte-compat`, `vite-plugin`) — see COUNTERS.md for the list.
+  'packages/tools/solid-compat/src',
+  'packages/tools/svelte-compat/src',
+  'packages/tools/vite-plugin/src',
 ]
 
 // Some packages emit counters under a namespace that doesn't match the package

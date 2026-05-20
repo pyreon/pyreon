@@ -1,5 +1,10 @@
 import type { ISRConfig } from './types'
 
+// Dev-mode counter sink — see packages/internals/perf-harness for contract.
+// Zero cost in prod (gate folds to `false`, optional-chain short-circuits).
+const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 // ─── ISR Cache ───────────────────────────────────────────────────────────────
 
 /** Serialized SSR response cached by the ISR layer (one per cache key). */
@@ -210,7 +215,14 @@ export function createISRHandler(
     } catch {
       // Revalidation failed / timed out — stale cache entry remains valid
     } finally {
-      if (timeoutId !== undefined) clearTimeout(timeoutId)
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId)
+        // Leak-class I diagnostic — emit one per cleared timer. Healthy
+        // count = revalidation-attempts (every attempt should clear its
+        // timer in finally). A LOWER count than revalidations means
+        // clearTimeout failed to fire — the orphan-timer leak is back.
+        if (__DEV__) _countSink.__pyreon_count__?.('isr.revalidate.timerClear')
+      }
       revalidating.delete(key)
     }
   }

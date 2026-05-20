@@ -47,6 +47,10 @@ import {
 import { mount as pyreonMount } from '@pyreon/runtime-dom'
 import { getCurrentCtx, getHookIndex, jsx } from './jsx-runtime'
 
+// Dev-mode counter sink — see packages/internals/perf-harness for contract.
+const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 // ─── Store types (Svelte API surface) ───────────────────────────────────────
 
 export type Subscriber<T> = (value: T) => void
@@ -188,6 +192,14 @@ export function writable<T>(value?: T, start: StartStopNotifier<T> = noop): Writ
           // `writable.subscribe()` call per parent re-render cycle.
           if (!ctx.unmountCallbacks.includes(cached.unsub)) {
             ctx.unmountCallbacks.push(cached.unsub)
+            // Leak-class D diagnostic — emit per re-push that fires
+            // during the cached fast-path. Non-zero confirms parent
+            // re-renders are actually exercising the cached subscribe
+            // path (and the unsub stays bound to the live cleanup
+            // array). Zero on a render-heavy workload = either no
+            // cached subscriptions OR — bug — the includes() guard
+            // suppressed a valid re-push.
+            if (__DEV__) _countSink.__pyreon_count__?.('svelte-compat.subscribe.cachedRePush')
           }
           return cached.unsub
         }

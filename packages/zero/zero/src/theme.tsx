@@ -2,6 +2,10 @@ import type { VNodeChild } from '@pyreon/core'
 import { onMount } from '@pyreon/core'
 import { effect, signal } from '@pyreon/reactivity'
 
+// Dev-mode counter sink — see packages/internals/perf-harness for contract.
+const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
+const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+
 // ─── Theme system ───────────────────────────────────────────────────────────
 //
 // Provides dark/light/system theme support with:
@@ -157,9 +161,18 @@ export function initTheme() {
       _disposeShared = _setupShared()
     }
     _initRefCount++
+    // Leak-class D diagnostic — emit per refcount++. Net (acquire -
+    // release) = currently-mounted ThemeToggle count; should be
+    // bounded by the user's UI shape. Steady-state monotonic growth
+    // signals the refcount guard regressed (every mount registers a
+    // fresh listener again).
+    if (__DEV__) _countSink.__pyreon_count__?.('theme.initRefAcquire')
 
     return () => {
       _initRefCount--
+      // Pair with `theme.initRefAcquire`. Equal counts at process exit
+      // = healthy lifecycle. Diff = active subscribers / orphan inits.
+      if (__DEV__) _countSink.__pyreon_count__?.('theme.initRefRelease')
       if (_initRefCount === 0 && _disposeShared) {
         _disposeShared()
         _disposeShared = null
