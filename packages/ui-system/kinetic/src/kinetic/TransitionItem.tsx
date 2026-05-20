@@ -5,7 +5,15 @@ import type { ClassTransitionProps, StyleTransitionProps, TransitionCallbacks } 
 import useAnimationEnd from '../useAnimationEnd'
 import { useReducedMotion } from '../useReducedMotion'
 import useTransitionState from '../useTransitionState'
-import { addClasses, cloneVNode, mergeRefs, mergeStyles, nextFrame, removeClasses } from '../utils'
+import {
+  addClasses,
+  cloneVNode,
+  mergeRefs,
+  mergeStyles,
+  nextFrame,
+  removeClasses,
+  resolveChildren,
+} from '../utils'
 
 type TransitionItemProps = ClassTransitionProps &
   StyleTransitionProps &
@@ -78,6 +86,18 @@ const applyReducedMotion = (
  * Uses cloneVNode to inject ref onto the child — the child must accept ref.
  */
 const TransitionItem = (props: TransitionItemProps): VNode | null => {
+  // The Pyreon compiler wraps `{cloneVNode(child, {...})}` JSX child
+  // expressions in StaggerRenderer/GroupRenderer as `() => cloneVNode(...)`
+  // (prop-inlining for reactivity — see `resolveChildren` jsdoc). At this
+  // boundary `props.children` therefore arrives as a FUNCTION instead of a
+  // VNode. cloneVNode-on-a-function silently produces `{type: undefined,
+  // props: {ref: ...}}` (spreading a function yields no own properties
+  // because functions have none enumerable), which mountElement renders
+  // as a literal `<undefined>` tag in the DOM — the SSG'd `<h1>Hello</h1>`
+  // becomes an empty `<undefined></undefined>` post-hydrate (reproducer:
+  // bokisch.com Intro section). Resolve eagerly so the entire body below
+  // can treat `child` as a static VNode.
+  const child = resolveChildren(props.children) as VNode
   const appear = props.appear ?? false
   const unmount = props.unmount ?? true
   const timeout = props.timeout ?? 5000
@@ -91,7 +111,7 @@ const TransitionItem = (props: TransitionItemProps): VNode | null => {
   const mergedRef = mergeRefs(
     elementRef,
     stateRef,
-    (props.children.props as Record<string, unknown>)?.ref as
+    (child?.props as Record<string, unknown>)?.ref as
       | ((el: HTMLElement | null) => void)
       | undefined,
   )
@@ -182,10 +202,10 @@ const TransitionItem = (props: TransitionItemProps): VNode | null => {
         fallback={
           unmount
             ? null
-            : cloneVNode(props.children, {
+            : cloneVNode(child, {
                 ref: mergedRef,
                 style: mergeStyles(
-                  (props.children.props as Record<string, unknown>)?.style as
+                  (child?.props as Record<string, unknown>)?.style as
                     | Record<string, string | number | undefined>
                     | undefined,
                   { display: 'none' },
@@ -193,7 +213,7 @@ const TransitionItem = (props: TransitionItemProps): VNode | null => {
               })
         }
       >
-        {cloneVNode(props.children, { ref: mergedRef })}
+        {cloneVNode(child, { ref: mergedRef })}
       </Show>
     )
   }
@@ -210,7 +230,7 @@ const TransitionItem = (props: TransitionItemProps): VNode | null => {
   // Initially-visible items keep the unmount semantic.
   const hiddenClass = props.leaveTo ?? props.enterFrom
   const hiddenStyle = props.leaveToStyle ?? props.enterStyle
-  const childProps = (props.children.props ?? {}) as Record<string, unknown>
+  const childProps = (child?.props ?? {}) as Record<string, unknown>
   const childClass = childProps.class
   const mergedClass = hiddenClass
     ? cx([childClass as Parameters<typeof cx>[0], hiddenClass])
@@ -224,7 +244,7 @@ const TransitionItem = (props: TransitionItemProps): VNode | null => {
   if (mergedClass !== undefined) extra.class = mergedClass
   if (mergedStyle !== undefined) extra.style = mergedStyle
 
-  return cloneVNode(props.children, extra)
+  return cloneVNode(child, extra)
 }
 
 export default TransitionItem
