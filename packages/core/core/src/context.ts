@@ -73,10 +73,42 @@ export function pushContext(values: Map<symbol, unknown>) {
   getStack().push(values)
 }
 
+/**
+ * Pop the LAST frame from the context stack.
+ *
+ * NOTE: position-based pop. Safe ONLY when the caller can guarantee that the
+ * top of the stack is the frame they want to remove (the strict LIFO contract).
+ * The `provide()` helper does NOT use this — it uses identity-based removal
+ * via `removeContextFrame` because reactive boundaries can push snapshot
+ * frames between a component's `provide(ctx, value)` and its eventual
+ * unmount, making the top-of-stack unsafe to assume.
+ */
 export function popContext() {
   const stack = getStack()
   if (stack.length === 0) return
   stack.pop()
+}
+
+/**
+ * Remove a SPECIFIC frame from the context stack by reference identity.
+ *
+ * Internal — used by `provide()` and `withContext()` to safely clean up
+ * their pushed frame on unmount even when other frames have been pushed
+ * between push and pop (e.g. a reactive boundary's `restoreContextStack`
+ * pushing snapshot frames during the descendant's lifecycle). The
+ * symmetric position-based `popContext()` would pop the wrong frame in
+ * that case and orphan the descendant's provider frame on the live stack
+ * — the root cause of the 321k-entry context-stack leak under repeated
+ * reactive remounts.
+ *
+ * Uses `lastIndexOf` (LIFO match) — picks the most-recently-pushed frame
+ * with that exact reference, so `provide(ctx, a); provide(ctx, b)` followed
+ * by two unmounts removes them in reverse order.
+ */
+function removeContextFrame(frame: Map<symbol, unknown>): void {
+  const stack = getStack()
+  const idx = stack.lastIndexOf(frame)
+  if (idx !== -1) stack.splice(idx, 1)
 }
 
 /**
@@ -111,8 +143,17 @@ export function useContext<T>(context: Context<T>): T {
  * }
  */
 export function provide<T>(context: Context<T>, value: T): void {
-  pushContext(new Map<symbol, unknown>([[context.id, value]]))
-  onUnmount(() => popContext())
+  const frame = new Map<symbol, unknown>([[context.id, value]])
+  pushContext(frame)
+  // Identity-based removal — the top of the stack is NOT guaranteed to be
+  // this frame at unmount time. Reactive boundaries (`mountReactive`'s
+  // effect snapshot-restore + the inner `restoreContextStack` call) push
+  // additional snapshot frames during a descendant's lifecycle. A
+  // position-based `popContext()` would pop the snapshot frame instead
+  // of this provider's frame and orphan the provider on the live stack.
+  // See `.claude/rules/anti-patterns.md` "Context-stack frame identity"
+  // for the full bug class.
+  onUnmount(() => removeContextFrame(frame))
 }
 
 /**
@@ -125,7 +166,11 @@ export function withContext<T>(context: Context<T>, value: T, fn: () => void) {
   try {
     fn()
   } finally {
-    popContext()
+    // Same identity-based-removal rationale as `provide()` — `fn()` may
+    // synchronously trigger a `mountReactive` re-run whose snapshot-restore
+    // window leaves the top-of-stack pointing at a snapshot push, not our
+    // frame.
+    removeContextFrame(frame)
   }
 }
 
@@ -162,7 +207,6 @@ export function captureContextStack(): ContextSnapshot {
  */
 export function restoreContextStack<T>(snapshot: ContextSnapshot, fn: () => T): T {
   const stack = getStack()
-  const insertIndex = stack.length
 
   // Push captured snapshot frames at the END of the current stack.
   for (const frame of snapshot) {
@@ -172,15 +216,27 @@ export function restoreContextStack<T>(snapshot: ContextSnapshot, fn: () => T): 
   try {
     return fn()
   } finally {
-    // Splice out exactly the snapshot frames we pushed (they sit at
-    // [insertIndex, insertIndex + snapshot.length)). Any frames `fn()`
-    // pushed AFTER our snapshot (provider frames) get shifted down by
-    // `snapshot.length` positions but remain on the stack. Their owning
-    // components' `onUnmount(popContext)` handlers will pop them in
-    // LIFO order on subtree teardown — splice preserves that ordering
-    // because it doesn't touch frames at indices >= insertIndex +
-    // snapshot.length until the splice operation itself.
-    stack.splice(insertIndex, snapshot.length)
+    // Remove our pushed snapshot frames by REFERENCE IDENTITY (not by
+    // position). `fn()` may legitimately remove frames at indices BEFORE
+    // our push window — most commonly via `provide()` registering
+    // `onUnmount(removeContextFrame(frame))` and a descendant unmount
+    // firing inside this restore window. A position-based `splice` would
+    // either pull the wrong frames or no-op when the live stack has
+    // shrunk below the original `insertIndex + snapshot.length` —
+    // orphaning the snapshot pushes on the live stack and producing the
+    // 321k-frame leak reported under repeated reactive remounts.
+    //
+    // Iterate in reverse so multi-occurrence frames (the same Map ref
+    // pushed by multiple nested restores) are removed in LIFO push order.
+    // `lastIndexOf` is O(N); N is small in practice (single-digit nesting),
+    // and the alternative `findLastIndex(f => f === frame)` is the same
+    // cost.
+    for (let i = snapshot.length - 1; i >= 0; i--) {
+      const frame = snapshot[i]
+      if (!frame) continue
+      const idx = stack.lastIndexOf(frame)
+      if (idx !== -1) stack.splice(idx, 1)
+    }
   }
 }
 
