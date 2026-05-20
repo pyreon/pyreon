@@ -52,17 +52,27 @@ describe('scanCollapsibleSites — dynamic-prop expansion (PR 3)', () => {
     expect(keys).toEqual([truthyKey, falsyKey].sort())
   })
 
-  it('SKIPS expansion when the dynamic site ALSO has on*-handlers (PR 3 scope: no-handler only)', () => {
-    // The emit will bail on handler-bearing dynamic sites; the scan
-    // skips them too so the resolver doesn't pre-render variants that
-    // can never be claimed. Same conservative shape as the rest of
-    // the family — never resolve what won't emit.
+  it('EXPANDS handler-combined dynamic sites too (handler-combined emit unlocks the 15.4% bucket)', () => {
+    // The follow-up emit (`__rsCollapseDynH` from `tryDynamicCollapse`)
+    // handles ternary-plus-handler sites via the combined runtime
+    // helper. The scan emits both literal-value expansions identically
+    // — handlers don't affect the resolver's input (componentName,
+    // props, childrenText). Handlers are re-attached by the runtime
+    // helper, not by the resolver.
+    //
+    // Previously the scan SKIPPED handler-combined sites (matching
+    // the PR 3 emit's no-handler scope); the follow-up lifts that
+    // restriction so the resolver pre-renders both values for
+    // handler-bearing sites too.
     const src = `
       import { Button } from '@pyreon/ui-components'
       const x = <Button state={c ? "primary" : "secondary"} onClick={go}>H</Button>
     `
     const sites = scanCollapsibleSites(src, 'C.tsx', COLLAPSIBLE)
-    expect(sites).toHaveLength(0)
+    expect(sites).toHaveLength(2)
+    const byState = new Map(sites.map((s) => [s.props.state, s]))
+    expect(byState.get('primary')!.childrenText).toBe('H')
+    expect(byState.get('secondary')!.childrenText).toBe('H')
   })
 
   it('does not double-emit when the FULL detector already claims the site (literal-only)', () => {
