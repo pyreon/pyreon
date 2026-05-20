@@ -994,12 +994,9 @@ export function hasPyreonPatterns(code: string): boolean {
     /\b(?:add|remove)EventListener\s*\(/.test(code) ||
     (/\bDate\.now\s*\(/.test(code) && /\bMath\.random\s*\(/.test(code)) ||
     /on[A-Z]\w*\s*=\s*\{\s*undefined\s*\}/.test(code) ||
-    // CodeQL #9/#10/#11: bound the `[^}]+` / `[^)]+` ranges so a
-    // pathological single-line input can't drive polynomial backtracking.
-    // 500 chars is larger than any realistic destructure / if-condition
-    // in source; if a legitimate pattern exceeds it we lose detector
-    // recall on that one line, acceptable (this is a footgun-detector
-    // PRE-FILTER — the AST walker is the precise gate).
+    // Bounded `{0,500}` / `{1,500}` quantifiers — this is a pre-filter
+    // scan before the precise AST walker, so losing detector recall on
+    // a pathologically long single-line input is acceptable.
     /=\s*\(\s*\{[^}]{1,500}\}\s*[:)]/.test(code) ||
     // props-destructured-body: `const { … } = <ident>` anywhere.
     /\b(?:const|let|var)\s+\{[^}]{0,500}\}\s*=\s*[A-Za-z_$]/.test(code) ||

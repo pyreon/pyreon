@@ -978,12 +978,11 @@ export function createStore<T extends object>(
    * Applies a value at a path, supporting numeric indices (array access)
    * and filter predicates (functions that select matching array items).
    *
-   * Prototype-pollution guard (CodeQL #20/#21/#22): `setStore` accepts
-   * user-controlled path keys and value objects. Without filtering,
-   * `setStore('__proto__', { polluted: true })` or `setStore({
-   * __proto__: { polluted: true } })` would walk into / mutate
-   * `Object.prototype` and affect every other object in the runtime.
-   * Same `DANGEROUS_KEYS` set as `@pyreon/reactivity reconcile.ts:34`.
+   * Prototype-pollution guard: `setStore` takes user-controlled path
+   * keys and value objects, so `setStore('__proto__', {…})` or
+   * `setStore({ __proto__: {…} })` could mutate `Object.prototype`
+   * without the `DANGEROUS_KEYS` filter. Same shape as
+   * `@pyreon/reactivity reconcile.ts:34`.
    */
   const DANGEROUS_KEYS: Set<unknown> = new Set([
     '__proto__',

@@ -7,12 +7,9 @@ on:
       - 'release/**'
   workflow_dispatch:
 
-# CodeQL #2 (TokenPermissionsID): default read-only at the top level;
-# per-job blocks below grant only what each step actually needs. Both
-# publishing jobs (`stable`, `prerelease`) need the same write grants:
-# `contents: write` (git tags + version commits), `pull-requests: write`
-# (changeset's Release PR), `id-token: write` (npm OIDC trusted
-# publishing).
+# Read-only default; per-job blocks below grant write only to the
+# `stable` and `prerelease` publishing jobs that actually need it
+# (git tags, changeset Release PR, npm OIDC trusted publishing).
 permissions:
   contents: read
 

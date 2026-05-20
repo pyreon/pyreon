@@ -37,10 +37,8 @@ on:
   schedule:
     - cron: '17 3 * * *'
 
-# CodeQL #1 (TokenPermissionsID): explicit top-level permissions block.
-# Default to read-only; per-job grants only the permissions actually
-# needed. This workflow only reads source + uploads artifacts —
-# `contents: read` covers checkout, no write surface needed.
+# Read-only default — this workflow checks out source + uploads artifacts;
+# no write surface needed.
 permissions:
   contents: read
 

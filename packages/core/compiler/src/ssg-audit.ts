@@ -278,9 +278,7 @@ function detectDynamicRouteMissingGetStaticPaths(
   const findings: SsgFinding[] = []
   for (const file of routeFiles) {
     const base = file.split('/').pop() ?? ''
-    // CodeQL #12: `.+` is greedy + unbounded; `[^\]]+` matches the
-    // bracket content without backtrack potential and can't overshoot
-    // the closing `]`. Filenames are OS-bounded (~255 chars) anyway.
+    // `[^\]]+` instead of `.+` — bounded, no backtrack potential.
     if (!/\[[^\]]+\]/.test(base)) continue
     // Skip layouts / errors / 404s — only PAGE files take getStaticPaths.
     if (/^_(layout|error|loading|404|not-found)\./.test(base)) continue
@@ -427,7 +425,6 @@ export function auditSsg(rootDir: string): SsgAuditResult {
   let revalidateExports = 0
   for (const file of routeFiles) {
     const base = file.split('/').pop() ?? ''
-    // CodeQL #13: same fix as line 282 — bounded inner class.
     if (/\[[^\]]+\]/.test(base) && !/^_(layout|error|loading|404|not-found)\./.test(base)) {
       dynamicRoutes++
     }

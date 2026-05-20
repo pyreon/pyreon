@@ -1231,13 +1231,9 @@ function scanIslandDeclarations(
   // `[\s\S]` lets the options block span multiple lines. The lazy `?` after
   // the options block prevents over-matching when several `island()` calls
   // appear in the same file.
-  // CodeQL #16 polynomial-redos: the original `[\s\S]*?` (lazy any-char)
-  // could backtrack quadratically on a pathological prefix. Bound the
-  // option-block contents to 500 chars and disallow `}` inside —
-  // real island() option blocks are tiny (`{ name: 'X', hydrate: 'load' }`),
-  // and the closing `}` matched at the outer `\}` is what terminates
-  // the call, so excluding it from the inner class can't lose
-  // legitimate matches.
+  // `[^}]{0,500}` instead of `[\s\S]*?` — real island() option blocks
+  // are tiny (`{ name: 'X', hydrate: 'load' }`); excluding `}` from
+  // the inner class also tightens the match against the outer `\}`.
   const ISLAND_CALL_RE =
     /island\s*\(\s*\(\s*\)\s*=>\s*import\s*\(\s*['"]([^'"]+)['"]\s*\)\s*,\s*\{([^}]{0,500})\}\s*\)/g
   const decls: IslandDecl[] = []
@@ -1379,12 +1375,8 @@ async function prescanSignalExports(root: string, registry: Map<string, Set<stri
  *
  * Uses simple regex — no AST parse needed.
  */
-// CodeQL #18/#19 polynomial-redos: `/\s+as\s+/` has greedy `\s+` on
-// both sides — a pathological run of whitespace can drive polynomial
-// backtracking. Bounded `\s{1,10}` quantifiers eliminate the
-// worst-case while keeping all realistic input matchable (real
-// import specifiers have 1-2 spaces around `as`; even an extremely
-// formatted file rarely exceeds 5). Pre-compiled at module scope.
+// Bounded `\s{1,10}` instead of unbounded `\s+` to remove worst-case
+// backtracking; real import specifiers have 1-2 spaces around `as`.
 const AS_SPLIT_RE = /\s{1,10}as\s{1,10}/
 
 function scanSignalExports(code: string, moduleId: string, registry: Map<string, Set<string>>): void {
@@ -1408,8 +1400,7 @@ function scanSignalExports(code: string, moduleId: string, registry: Map<string,
 
   // Then check named exports: export { x, y as z }
   if (localSignals.size > 0) {
-    // CodeQL #17 polynomial-redos: bound the export-specifier block.
-    // A real `export { a, b, c }` block fits in <500 chars.
+    // Bounded `[^}]{1,500}` — real export blocks fit easily.
     const NAMED_EXPORT_RE = /export\s*\{([^}]{1,500})\}/g
     while ((match = NAMED_EXPORT_RE.exec(code)) !== null) {
       // Skip re-exports (export { x } from '...')
