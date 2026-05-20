@@ -392,6 +392,37 @@ describe('createHandler — stream mode', () => {
     expect(await res.text()).toBe('blocked')
   })
 
+  test('stream mode forwards suspenseTimeoutMs to renderToStream — short timeout drops slow boundary content', async () => {
+    // Public-API integration test for the new `suspenseTimeoutMs`
+    // handler option. The 100ms boundary should time out at 20ms,
+    // leaving only the fallback in the rendered HTML. Without the
+    // forward through to renderToStream, the 30s default would let
+    // the boundary resolve and `loaded-too-late` would land in the
+    // response.
+    const { Suspense } = await import('@pyreon/core')
+    async function SlowBoundary() {
+      await new Promise<void>((r) => setTimeout(r, 100))
+      return h('div', null, 'loaded-too-late')
+    }
+    const App: ComponentFn = () =>
+      h(Suspense, {
+        fallback: h('span', null, 'loading-shown'),
+        children: h(SlowBoundary as unknown as ComponentFn, null),
+      })
+    const routes = [{ path: '/', component: App }]
+    const handler = createHandler({
+      App,
+      routes,
+      mode: 'stream',
+      suspenseTimeoutMs: 20,
+    })
+    const res = await handler(new Request('http://localhost/'))
+    const html = await res.text()
+    expect(html).toContain('loading-shown')
+    expect(html).not.toContain('loaded-too-late')
+    expect(html).not.toMatch(/__NS\(\s*["']pyreon-s-/)
+  })
+
   test('stream mode threads request.signal through to renderToStream — upstream abort skips post-resolve Suspense enqueue', async () => {
     // End-to-end gate for the AbortSignal wire. `renderToStream` gained
     // `{ signal }` support in #745; this test proves `createHandler`

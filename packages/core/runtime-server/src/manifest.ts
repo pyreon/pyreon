@@ -10,7 +10,7 @@ export default defineManifest({
   category: 'server',
   features: [
     'renderToString(vnode) → Promise<string> — one-shot HTML, awaits async components',
-    'renderToStream(vnode) → ReadableStream<string> — progressive, out-of-order Suspense (30s timeout → fallback stays)',
+    'renderToStream(vnode, { signal?, suspenseTimeoutMs? }) → ReadableStream<string> — progressive, out-of-order Suspense (default 30s per-boundary timeout, configurable; signal threads AbortSignal end-to-end)',
     'Per-request ALS context isolation — concurrent requests never share provide() frames',
     'runWithRequestContext(fn) — isolated context+store for Pyreon APIs called outside renderToString',
     'configureStoreIsolation(setStoreRegistryProvider) — opt-in per-request @pyreon/store isolation',
@@ -38,19 +38,23 @@ const html = await renderToString(<App />)`,
     {
       name: 'renderToStream',
       kind: 'function',
-      signature: 'renderToStream(root: VNode | null): ReadableStream<string>',
+      signature: 'renderToStream(root: VNode | null, options?: { signal?: AbortSignal; suspenseTimeoutMs?: number }): ReadableStream<string>',
       summary:
-        'Render to a Web-standard `ReadableStream<string>` with true progressive flushing — synchronous subtrees enqueue immediately, async component boundaries are awaited in order. Suspense boundaries stream OUT OF ORDER: the fallback is emitted inline at once, and the resolved children arrive later as a `<template>` + a tiny inline swap `<script>` that replaces the placeholder client-side — without blocking the rest of the page. Each call gets its own isolated ALS context stack. A Suspense boundary that does not resolve within 30s leaves its fallback in place (a dev-mode warning fires); a boundary that throws also leaves the fallback (no swap script emitted).',
+        'Render to a Web-standard `ReadableStream<string>` with true progressive flushing — synchronous subtrees enqueue immediately, async component boundaries are awaited in order. Suspense boundaries stream OUT OF ORDER: the fallback is emitted inline at once, and the resolved children arrive later as a `<template>` + a tiny inline swap `<script>` that replaces the placeholder client-side — without blocking the rest of the page. Each call gets its own isolated ALS context stack. A Suspense boundary that does not resolve within the per-boundary timeout (default 30_000 ms, configurable via `options.suspenseTimeoutMs`; pass `Infinity` to disable) leaves its fallback in place and a dev-mode warning fires; a boundary that throws also leaves the fallback (no swap script emitted). Pass `options.signal` (e.g. `Request.signal`) to abort pending Suspense work when the consumer disconnects.',
       example: `import { renderToStream } from "@pyreon/runtime-server"
 
-return new Response(renderToStream(<App />), {
+return new Response(renderToStream(<App />, {
+  signal: req.signal,
+  suspenseTimeoutMs: 5_000, // ops-controlled per-boundary cap
+}), {
   headers: { "content-type": "text/html" },
 })`,
       mistakes: [
         'Assuming Suspense children arrive in source order — they are swapped in as each boundary resolves; the fallback ships first, resolved content can arrive in any order',
         'Expecting `@pyreon/head` tags registered inside a Suspense child to reach the document `<head>` — the head is flushed in the shell BEFORE any boundary resolves, so async-loaded data does not contribute to it',
-        'Treating a 30s-timed-out boundary as an error — by design the fallback simply stays; only a dev-mode `console.warn` signals it. Budget your async children well under 30s',
+        'Treating a timed-out boundary as an error — by design the fallback simply stays; only a dev-mode `console.warn` signals it. Tune `options.suspenseTimeoutMs` to match your SLA (5_000–10_000 typical for user-facing apps; `Infinity` to disable entirely for export jobs / reports)',
         'Buffering the whole stream before responding — that throws away the progressive-flush benefit; pass the stream straight into the `Response`',
+        'Forgetting `signal: req.signal` — without it, in-flight Suspense work keeps running (and tries to write to a closed stream) after the consumer disconnects',
       ],
       seeAlso: ['renderToString'],
     },

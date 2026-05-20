@@ -290,7 +290,10 @@ const html = await renderToString(<App />)
 
 import { renderToStream } from "@pyreon/runtime-server"
 
-return new Response(renderToStream(<App />), {
+return new Response(renderToStream(<App />, {
+  signal: req.signal,
+  suspenseTimeoutMs: 5_000, // ops-controlled per-boundary cap
+}), {
   headers: { "content-type": "text/html" },
 })
 

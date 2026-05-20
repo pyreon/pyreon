@@ -89,6 +89,18 @@ export interface HandlerOptions {
    * })
    */
   collectStyles?: () => string
+  /**
+   * Per-boundary Suspense timeout in milliseconds, forwarded to
+   * `renderToStream` for `mode: 'stream'` deploys. Defaults to 30_000
+   * (30s). Set lower (5_000–10_000) for tight-SLA user-facing apps
+   * where the fallback is preferable to a delayed render; set to
+   * `Infinity` to disable the timeout entirely for renders that
+   * legitimately need long async work (exports / reports / scheduled
+   * jobs). Ignored in `mode: 'string'` (no Suspense streaming).
+   *
+   * Values ≤0 or `NaN` fall back to the default.
+   */
+  suspenseTimeoutMs?: number
 }
 
 export function createHandler(options: HandlerOptions): (req: Request) => Promise<Response> {
@@ -100,6 +112,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
     middleware = [],
     mode = 'string',
     collectStyles,
+    suspenseTimeoutMs,
   } = options
 
   // Pre-compile once at handler creation — avoids 3x string scan per request
@@ -157,6 +170,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
             clientEntryTag,
             ctx.headers,
             req.signal,
+            suspenseTimeoutMs,
           )
         }
 
@@ -219,6 +233,7 @@ async function renderStreamResponse(
   clientEntryTag: string,
   extraHeaders: Headers,
   signal?: AbortSignal,
+  suspenseTimeoutMs?: number,
 ): Promise<Response> {
   const loaderData = serializeLoaderData(router as never)
   const scripts = buildScriptsFast(clientEntryTag, loaderData)
@@ -228,11 +243,19 @@ async function renderStreamResponse(
   const shellHead = p0 + p1
   const shellTail = p2 + scripts + p3
 
-  // Forward the upstream request's abort signal so renderToStream can skip
-  // post-resolve Suspense enqueues when the consumer disconnects.
-  const appStream = signal !== undefined
-    ? renderToStream(app, { signal })
-    : renderToStream(app)
+  // Forward the upstream request's abort signal AND the Suspense
+  // timeout config so renderToStream can (a) skip post-resolve
+  // Suspense enqueues when the consumer disconnects, (b) honor the
+  // ops-controlled per-boundary timeout. Both options are only
+  // included when defined, so unconfigured deploys land on
+  // renderToStream's defaults byte-identically.
+  const streamOptions: { signal?: AbortSignal; suspenseTimeoutMs?: number } = {}
+  if (signal !== undefined) streamOptions.signal = signal
+  if (suspenseTimeoutMs !== undefined) streamOptions.suspenseTimeoutMs = suspenseTimeoutMs
+  const appStream
+    = Object.keys(streamOptions).length > 0
+      ? renderToStream(app, streamOptions)
+      : renderToStream(app)
   const reader = appStream.getReader()
 
   const stream = new ReadableStream<Uint8Array>({
