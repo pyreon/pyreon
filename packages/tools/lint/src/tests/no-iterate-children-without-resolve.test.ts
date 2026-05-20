@@ -67,6 +67,49 @@ describe('pyreon/no-iterate-children-without-resolve', () => {
       expect(diagIds(result)).toContain('pyreon/no-iterate-children-without-resolve')
     })
 
+    it('variable-bound iteration: `const xs = (Array.isArray(X) ? X : [X]); xs.filter(…)`', () => {
+      // Gap 2: bind the iteration-shape conditional to a variable, then
+      // iterate later. The bug fires the same way as the inline form —
+      // `[function].filter(…)` collapses to `[]`. Detection tracks the
+      // binding via `boundIterationTargets` and flags the later
+      // `NAME.METHOD(…)` call.
+      const result = lint(`
+        const Stagger = (props) => {
+          const [own] = splitProps(props, ['children'])
+          const xs = (Array.isArray(own.children) ? own.children : [own.children])
+          const filtered = xs.filter(isVNode)
+          return h('div', null, ...filtered)
+        }
+      `)
+      expect(diagIds(result)).toContain('pyreon/no-iterate-children-without-resolve')
+    })
+
+    it('variable-bound iteration: `const NAME = COND; NAME.map(...)` across statement boundaries', () => {
+      // Same gap-2 shape with `.map(...)` and unparen'd binding.
+      const result = lint(`
+        const Iterator = (props) => {
+          const [own] = splitProps(props, ['children'])
+          const items = Array.isArray(own.children) ? own.children : [own.children]
+          return h('ul', null, items.map((child) => h('li', null, child)))
+        }
+      `)
+      expect(diagIds(result)).toContain('pyreon/no-iterate-children-without-resolve')
+    })
+
+    it('variable-bound iteration with `resolveChildren` mitigation does NOT fire', () => {
+      // The mitigation still works for the variable-bound shape because
+      // it's checked against the underlying source path, not the binding.
+      const result = lint(`
+        const Stagger = (props) => {
+          const [own] = splitProps(props, ['children'])
+          const resolved = resolveChildren(own.children)
+          const xs = (Array.isArray(resolved) ? resolved : [resolved])
+          return h('div', null, ...xs.filter(isVNode))
+        }
+      `)
+      expect(diagIds(result)).not.toContain('pyreon/no-iterate-children-without-resolve')
+    })
+
     it('iteration-pattern variable then `.filter()` later in the same scope', () => {
       // The risky shape is the `.METHOD(…)` call on a CONDITIONAL that
       // matches `Array.isArray(X) ? X : [X]`. Detection fires at the
@@ -132,6 +175,25 @@ describe('pyreon/no-iterate-children-without-resolve', () => {
         }
       `)
       expect(diagIds(result)).not.toContain('pyreon/no-iterate-children-without-resolve')
+    })
+
+    it('outer mitigation on `props.children` does NOT cover INNER inline-component\'s `innerProps.children`', () => {
+      // Gap 3: mitigations track PER-SOURCE-PATH, not "any mitigation
+      // anywhere in scope chain." Outer resolves `props.children` →
+      // `unwrappedSources = {'props.children'}` + `safeIdents = {'child'}`.
+      // Inner inline-defined component receives its OWN `innerProps` arg;
+      // `innerProps.children` is a DIFFERENT source path that the outer
+      // mitigation doesn't cover. Inner's `cloneVNode(innerProps.children, …)`
+      // MUST be flagged — the function-shape bug fires per-prop-source,
+      // not per-component-tree.
+      const result = lint(`
+        const Outer = (props) => {
+          const child = resolveChildren(props.children)
+          const Inner = (innerProps) => cloneVNode(innerProps.children, { ref })
+          return Inner({})
+        }
+      `)
+      expect(diagIds(result)).toContain('pyreon/no-iterate-children-without-resolve')
     })
 
     it('mitigation inherits through nested function scope (Iterator shape)', () => {
