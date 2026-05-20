@@ -149,6 +149,72 @@ function assertFileDoesNotExist(path: string): void {
  * Bisect: with collapse OFF the probe builds the real 5-layer Button →
  * neither fingerprint is present → this throws.
  */
+/**
+ * Assert the `rs-collapse-dyn-probe` route chunk actually dynamic-collapsed
+ * in a REAL production `vite build`. Mirrors `assertProbeCollapsed`'s
+ * minification-stable-fingerprint approach (PR 4 of the dynamic-prop
+ * partial-collapse build).
+ *
+ * The chunk MUST be checked by minification-stable, dynamic-emit-EXCLUSIVE
+ * fingerprints — NOT the pre-minification `__rsCollapseDyn(` identifier
+ * (Vite renames it). What IS stable across minification AND emitted
+ * ONLY by `_rsCollapseDyn`:
+ *   (A) static children baked into the template literal — `Dyn</span></button>`
+ *       (a non-collapsed Button never serializes children to a literal)
+ *   (B) the stride-2 value-major class array — 4 quoted class strings
+ *       in a row, contains `pyr-` prefix (FNV-1a styler class hashes)
+ *   (C) the value dispatcher `?0:1` (or `? 0 : 1` pre-minify) —
+ *       unique to `_rsCollapseDyn`'s `() => (cond) ? 0 : 1` emit; the
+ *       regular `_rsCollapse` emit doesn't have this ternary
+ * Bisect: with PR 3's dynamic emit reverted the probe falls back to
+ * the normal mount and none of these fingerprints are present.
+ */
+function assertDynProbeCollapsed(distDir: string): void {
+  const assetsDir = join(distDir, 'assets')
+  if (!existsSync(assetsDir)) throw new Error(`expected ${assetsDir} to exist`)
+  const probe = readdirSync(assetsDir).find(
+    (f) => f.startsWith('rs-collapse-dyn-probe') && f.endsWith('.js'),
+  )
+  if (!probe) {
+    throw new Error(
+      `expected an \`rs-collapse-dyn-probe-*.js\` route chunk under ${assetsDir} ` +
+        `(the fs-router lazy chunk for the dynamic-collapsible probe route). ` +
+        `Got: ${readdirSync(assetsDir)
+          .filter((f) => f.endsWith('.js'))
+          .join(', ')}`,
+    )
+  }
+  const src = readFileSync(join(assetsDir, probe), 'utf-8')
+  const bakedChildren = src.includes('Dyn</span></button>')
+  // Stride-2 value-major class array — 4 styler class strings in a row.
+  // Real styler classes are SPACE-SEPARATED COMPOUND (e.g.
+  // `pyr-1cwii7n pyr-nk7f91` — rocketstyle layer + element layer
+  // identity classes), and the minifier preserves them as
+  // backtick-quoted template literals. Match a `[` followed by 4
+  // backtick-quoted strings each CONTAINING a `pyr-` prefix.
+  // The regular `_rsCollapse` emit takes only TWO class args
+  // (light/dark); a 4-element class array is unique to `_rsCollapseDyn`.
+  const classArray = /\[`[^`]*pyr-[^`]*`,\s*`[^`]*pyr-[^`]*`,\s*`[^`]*pyr-[^`]*`,\s*`[^`]*pyr-[^`]*`\]/.test(src)
+  // Value dispatcher — `()=>+!cond` is the minifier's canonical
+  // transform of `() => (cond) ? 0 : 1` (both produce 0 for truthy
+  // cond, 1 for falsy: `+!true=0, +!false=1`). The regular `_rsCollapse`
+  // emit has no `+!` pattern at all — it dispatches solely on the mode
+  // accessor returning a boolean used as a ternary against light/dark
+  // classes. The `=>+!` is unique to `_rsCollapseDyn`. Also accept the
+  // un-minified form for safety / non-minified verify cells.
+  const valueDispatcher = /=>\s*\+!|=>\s*\([^)]*\)\s*\?\s*0\s*:\s*1/.test(src)
+  if (!bakedChildren || !classArray || !valueDispatcher) {
+    const preview = src.length > 800 ? `${src.slice(0, 800)}…` : src
+    throw new Error(
+      `expected probe chunk ${probe} to be DYNAMIC-COLLAPSED ` +
+        `(bakedChildren=${bakedChildren}, classArray=${classArray}, valueDispatcher=${valueDispatcher}). ` +
+        `A dynamic-collapsed route emits a class-stripped template, a 4-element backtick-quoted ` +
+        `pyr-* class array, and a \`()=>+!cond\` (or unminified \`() => (cond) ? 0 : 1\`) ` +
+        `value dispatcher. Got:\n${preview}`,
+    )
+  }
+}
+
 function assertProbeCollapsed(distDir: string): void {
   const assetsDir = join(distDir, 'assets')
   if (!existsSync(assetsDir)) throw new Error(`expected ${assetsDir} to exist`)
@@ -460,6 +526,15 @@ const MATRIX: Cell[] = [
     smoke: (dist) => {
       assertFileContains(join(dist, 'index.html'), 'id="app"')
       assertProbeCollapsed(dist)
+      // PR 4 of the dynamic-prop partial-collapse build — the SAME cell
+      // also exercises the dynamic-collapse probe (`rs-collapse-dyn-probe.tsx`).
+      // Sharing a single cell keeps the build cost amortized (one
+      // `vite build` covers both gates); both fingerprint sets are
+      // collapse-emit-EXCLUSIVE so the dynamic assertion is
+      // independent of the static one — bisecting PR 3's dynamic emit
+      // fails ONLY this assertion while `assertProbeCollapsed` keeps
+      // passing.
+      assertDynProbeCollapsed(dist)
     },
   },
 

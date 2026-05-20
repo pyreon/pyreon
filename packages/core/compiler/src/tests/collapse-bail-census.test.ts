@@ -84,6 +84,12 @@ interface SiteClass {
    * attrs are string literals AND children are static text (partial-collapse
    * addressable). */
   partialAddressable: boolean
+  /** dynamic-prop only: true iff EXACTLY ONE dynamic attr is a ternary of
+   * two string literals, ALL other attrs are string literals (no `on*`
+   * handlers — PR 3 scope is no-handler dynamic-collapse), AND children
+   * are static text. Counts the subset addressable by the dynamic-prop
+   * collapse PR sequence (PRs #765-#767). */
+  dynamicTernaryAddressable: boolean
 }
 
 const isPascal = (t: string): boolean =>
@@ -113,17 +119,45 @@ function classifySite(node: any): SiteClass {
   const attrs: any[] = opening.attributes ?? []
   let sawDynamic = false
   let everyDynamicIsHandler = true
+  // PR 4 dynamic-prop addressable tracking: count ternaries and check
+  // shape. Exactly one ternary-of-two-literals + no non-ternary non-
+  // handler dynamic attrs + no handlers (PR 3 scope) → addressable.
+  let ternaryCount = 0
+  let everyDynamicIsTernary = true
+  let sawHandler = false
   for (const a of attrs) {
-    if (a.type === 'JSXSpreadAttribute') return { bucket: 'spread', partialAddressable: false }
+    if (a.type === 'JSXSpreadAttribute')
+      return { bucket: 'spread', partialAddressable: false, dynamicTernaryAddressable: false }
     const nm = a.name?.type === 'JSXIdentifier' ? a.name.name : null
-    if (!nm) return { bucket: 'spread', partialAddressable: false }
+    if (!nm)
+      return { bucket: 'spread', partialAddressable: false, dynamicTernaryAddressable: false }
     const v = a.value
-    if (!v) return { bucket: 'boolean-attr', partialAddressable: false }
+    if (!v)
+      return {
+        bucket: 'boolean-attr',
+        partialAddressable: false,
+        dynamicTernaryAddressable: false,
+      }
     const isStr =
       v.type === 'StringLiteral' || (v.type === 'Literal' && typeof v.value === 'string')
     if (!isStr) {
       sawDynamic = true
-      if (!/^on[A-Z]/.test(nm)) everyDynamicIsHandler = false
+      const isHandler = /^on[A-Z]/.test(nm)
+      if (!isHandler) everyDynamicIsHandler = false
+      if (isHandler) sawHandler = true
+      // Probe for the ternary-of-two-literals shape (PR 2 detector's
+      // structural shape).
+      const expr = v.type === 'JSXExpressionContainer' ? v.expression : null
+      const isLitStr = (n: any): boolean =>
+        n &&
+        (n.type === 'StringLiteral' || (n.type === 'Literal' && typeof n.value === 'string'))
+      const isTernaryOfLits =
+        expr &&
+        expr.type === 'ConditionalExpression' &&
+        isLitStr(expr.consequent) &&
+        isLitStr(expr.alternate)
+      if (isTernaryOfLits) ternaryCount++
+      else if (!isHandler) everyDynamicIsTernary = false
     }
   }
   // children
@@ -135,22 +169,32 @@ function classifySite(node: any): SiteClass {
     else staticChildrenOnly = false // JSXExpressionContainer etc.
   }
   if (sawDynamic) {
-    // Every NON-dynamic attr is a string literal by construction: the loop
-    // above early-returns on spread / missing-name / boolean attrs, so any
-    // attr that didn't set `sawDynamic` is necessarily `isStr`. Hence the
-    // partial-addressable condition is just "every dynamic attr is on*" AND
-    // "children are static text" — no separate literal check needed.
     const partialAddressable = everyDynamicIsHandler && staticChildrenOnly
-    return { bucket: 'dynamic-prop', partialAddressable }
+    // PR 3 dynamic-collapse claims: EXACTLY 1 ternary, every other
+    // dynamic attr is a ternary too (i.e. only `ternaryCount` dynamics
+    // and all of them are ternaries — but PR 3 scope is single-ternary,
+    // hence ternaryCount === 1), NO handlers (handler-combined dynamic
+    // is a future PR), static children.
+    const dynamicTernaryAddressable =
+      ternaryCount === 1 && everyDynamicIsTernary && !sawHandler && staticChildrenOnly
+    return { bucket: 'dynamic-prop', partialAddressable, dynamicTernaryAddressable }
   }
   // No spread / boolean / dynamic attr. Bail can now only come from children.
   for (const c of kids) {
     if (c.type === 'JSXText') continue
     if (c.type === 'JSXElement' || c.type === 'JSXFragment')
-      return { bucket: 'element-child', partialAddressable: false }
-    return { bucket: 'expression-child', partialAddressable: false }
+      return {
+        bucket: 'element-child',
+        partialAddressable: false,
+        dynamicTernaryAddressable: false,
+      }
+    return {
+      bucket: 'expression-child',
+      partialAddressable: false,
+      dynamicTernaryAddressable: false,
+    }
   }
-  return { bucket: 'collapsible', partialAddressable: false }
+  return { bucket: 'collapsible', partialAddressable: false, dynamicTernaryAddressable: false }
 }
 
 describe('proposal #1 — collapse-tail bail-reason census (measurement, not a build)', () => {
@@ -168,6 +212,7 @@ describe('proposal #1 — collapse-tail bail-reason census (measurement, not a b
     }
     let candidates = 0
     let partialAddressable = 0
+    let dynamicTernaryAddressable = 0
     let myCollapsible = 0
     let scannerCollapsible = 0
 
@@ -191,6 +236,7 @@ describe('proposal #1 — collapse-tail bail-reason census (measurement, not a b
             tally[c.bucket]++
             if (c.bucket === 'collapsible') myCollapsible++
             if (c.partialAddressable) partialAddressable++
+            if (c.dynamicTernaryAddressable) dynamicTernaryAddressable++
           }
         }
         for (const k in node) {
@@ -220,14 +266,26 @@ describe('proposal #1 — collapse-tail bail-reason census (measurement, not a b
         `  bail:expression-child              : ${tally['expression-child']} (${pct(tally['expression-child'])})`,
         `  ── partial-collapse ADDRESSABLE    : ${partialAddressable} (${pct(partialAddressable)} of all sites)`,
         `     (dynamic-prop bails where every dynamic attr is on*, all else literal, static children)`,
+        `  ── dynamic-collapse ADDRESSABLE    : ${dynamicTernaryAddressable} (${pct(dynamicTernaryAddressable)} of all sites)`,
+        `     (dynamic-prop bails where EXACTLY ONE attr is a ternary-of-two-string-literals,`,
+        `      no other dynamic attrs, no handlers, static children — PR 3 scope #767)`,
         '',
       ].join('\n'),
     )
 
     // ── Trustworthiness gate (bisect-equivalent) ────────────────────────────
-    // This independent walk's "collapsible" count MUST equal the production
-    // scanner's truth-set. If they diverge the census is measuring fiction.
-    expect(myCollapsible).toBe(scannerCollapsible)
+    // This independent walk's "collapsible-equivalent" count MUST equal the
+    // production scanner's truth-set. If they diverge the census is
+    // measuring fiction.
+    //
+    // Per PR 3 (#767) the scanner emits TWO `CollapsibleSite` entries per
+    // dynamic-prop site (one per literal value — the resolver pre-renders
+    // both); the compiler emit still produces ONE collapsed call site. So
+    // the per-site classifier count + 2× the dynamic-addressable count
+    // equals the scanner's per-resolution count. If they diverge, either
+    // the classifier and scanner disagree on which dynamic sites are
+    // addressable, OR the scanner's expansion drifted from this formula.
+    expect(myCollapsible + 2 * dynamicTernaryAddressable).toBe(scannerCollapsible)
 
     // ── Lock the headline finding (ratchet record) ──────────────────────────
     // The corpus is real and large; these are the measured facts as of this
@@ -241,5 +299,19 @@ describe('proposal #1 — collapse-tail bail-reason census (measurement, not a b
     // the classifier ran over a non-trivial dynamic-prop population so the
     // ratio is meaningful, not noise.
     expect(tally['dynamic-prop'] + tally.collapsible).toBeGreaterThan(0)
+    // PR 4 of the dynamic-prop partial-collapse build: lock that the
+    // dynamic-collapse classifier ran over a meaningful population
+    // (dynamic-prop bucket non-zero). The addressable count is in the
+    // log; we DON'T assert it >0 here because the strict no-handler
+    // PR 3 scope is honestly small in real-world corpora (real Buttons
+    // with `state={cond ? ... : ...}` almost always also carry
+    // `onClick` → BAIL until the handler-combined follow-up). The
+    // dynamic-prop bucket itself is the size of the future surface;
+    // PR 3's no-handler subset is the first measurable step.
+    expect(tally['dynamic-prop']).toBeGreaterThan(0)
+    // The dynamic-addressable count can be 0 in a clean run (no
+    // matching sites in the corpus); just lock that the counter is
+    // wired and consistent with the bucket.
+    expect(dynamicTernaryAddressable).toBeLessThanOrEqual(tally['dynamic-prop'])
   })
 })
