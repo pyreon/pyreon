@@ -104,6 +104,26 @@ describe('vercel adapter build', () => {
     const vcConfig = JSON.parse(await readFile(join(vercelDir, 'functions', 'ssr.func', '.vc-config.json'), 'utf-8'))
     expect(vcConfig.runtime).toMatch(/^nodejs/)
 
+    // Verify the SSR module import is HOISTED to module scope, NOT
+    // dynamically imported inside the handler. Pre-fix the emitted
+    // function called `(await import("./entry-server.js")).default`
+    // on every invocation — Node's module cache makes calls after
+    // the first one near-free, but the FIRST request on every fresh
+    // serverless instance (every cold start) paid the full module
+    // evaluation cost inside the request budget. Hoisting it
+    // evaluates once at function-init, before the first request.
+    const funcSrc = await readFile(
+      join(vercelDir, 'functions', 'ssr.func', 'index.js'),
+      'utf-8',
+    )
+    expect(funcSrc).toMatch(/^import\s+handler\s+from\s+["']\.\/entry-server\.js["']/m)
+    expect(funcSrc).not.toMatch(/await\s+import\s*\(\s*["']\.\/entry-server\.js["']\s*\)/)
+
+    // Production crashes must surface to Vercel Function logs with a
+    // greppable prefix. Pre-fix the handler had no try/catch at all
+    // and Vercel's launcher logged generic 500s without context.
+    expect(funcSrc).toMatch(/console\.error\([^)]*Pyreon SSR/)
+
     await cleanup()
   })
 })
@@ -134,6 +154,21 @@ describe('cloudflare adapter build', () => {
     // Verify worker imports from _server
     const worker = await readFile(join(outDir, '_worker.js'), 'utf-8')
     expect(worker).toContain('_server/entry-server.js')
+
+    // Production crashes must surface to Cloudflare Tail logs. Pre-fix
+    // the `catch (err) { return 500 }` block swallowed `err` entirely
+    // and the operator saw a bare "Internal Server Error" with no
+    // stack, no message, no path. The `console.error` call is the
+    // standard Workers logging surface (lands in `wrangler tail` + the
+    // dashboard log stream).
+    expect(worker).toMatch(/console\.error\([^)]*Pyreon SSR/)
+
+    // Verify the previously-dead static-asset code block was removed.
+    // The pre-fix harness had `const ext = url.pathname.split(".").pop()`
+    // followed by an `if (ext && ...)` block with an empty body — pure
+    // dead code that consumed an extra LOC budget on every cold start
+    // for no behavioral effect. The audit removed it.
+    expect(worker).not.toMatch(/const\s+ext\s*=\s*url\.pathname\.split/)
 
     // Runtime-contract gate: the emitted `_worker.js` runs inside the
     // Cloudflare Worker runtime, which does NOT have Node APIs available
@@ -195,6 +230,12 @@ describe('netlify adapter build', () => {
     const func = await readFile(join(outDir, 'netlify', 'functions', 'ssr.mjs'), 'utf-8')
     expect(func).toContain('export default')
     expect(func).toContain('export const config')
+
+    // Production crashes must surface to Netlify Function logs. Pre-fix
+    // the `catch (err) { return 500 }` block swallowed `err` entirely.
+    // `console.error` lands in the function's runtime logs panel +
+    // `netlify functions:log`.
+    expect(func).toMatch(/console\.error\([^)]*Pyreon SSR/)
 
     await cleanup()
   })

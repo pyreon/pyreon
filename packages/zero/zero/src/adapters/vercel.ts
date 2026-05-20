@@ -71,11 +71,32 @@ export function vercelAdapter(): Adapter {
       // Copy server build to function directory
       await cp(join(options.serverEntry, '..'), funcDir, { recursive: true })
 
-      // Generate serverless function entry
+      // Generate serverless function entry.
+      //
+      // Pre-fix the handler dynamically imported \`./entry-server.js\` on
+      // EVERY invocation. Node's module cache makes calls after the
+      // first one near-free, but the FIRST request on every fresh
+      // serverless instance (i.e. every cold start) paid the full
+      // module evaluation cost inside the request budget — observable
+      // as a TTFB spike on cold starts. Hoisting the import to module
+      // scope evaluates the SSR module once at function-init time,
+      // before the first request lands.
+      //
+      // Also surface SSR errors to Vercel function logs via
+      // \`console.error\` (mirrors the cloudflare + netlify fix). Pre-fix
+      // an unhandled SSR throw propagated to Vercel's launcher (which
+      // logs it generically); adding our own prefix makes the cause
+      // trivially greppable in the dashboard log stream.
       const funcEntry = `
-export default async function handler(req) {
-  const handler = (await import("./entry-server.js")).default
-  return handler(req)
+import handler from "./entry-server.js"
+
+export default async function vercelHandler(req) {
+  try {
+    return await handler(req)
+  } catch (err) {
+    console.error("[Pyreon SSR] handler failed:", err)
+    return new Response("Internal Server Error", { status: 500 })
+  }
 }
 `.trimStart()
 
