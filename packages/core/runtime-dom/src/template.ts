@@ -294,6 +294,88 @@ export function _rsCollapseH(
 }
 
 /**
+ * Compiler-emitted DYNAMIC-prop collapsed rocketstyle call site — PR 1
+ * of the dynamic-prop partial-collapse build (next bite after the
+ * `on*`-handler partial-collapse `_rsCollapseH`, `.claude/plans/open-work-2026-q3.md`
+ * → #1 dynamic-prop bucket = 15.3% of all real-corpus sites).
+ *
+ * Generalises {@link _rsCollapse}'s 2-class (light/dark) dispatch to an
+ * N-class dispatch for sites where one dimension prop is an enumerable
+ * dynamic expression (e.g. `<Button state={cond ? 'primary' : 'secondary'}>`).
+ * The compiler resolves EVERY value of that prop through the existing
+ * SSR-render resolver (so each value gets its own light + dark class
+ * baked in, byte-identical to a `_rsCollapse` site for that value), and
+ * the runtime picks the right `(value × mode)` class via the user's
+ * expression.
+ *
+ * Class layout in `classes` is **stride-2, value-major**: index
+ * `2 * valueIndex + (isDark ? 1 : 0)`. For the canonical ternary case:
+ *
+ * ```
+ * <Button state={cond ? 'primary' : 'secondary'}>Save</Button>
+ *   →
+ * __rsCollapseDyn(
+ *   "<button>Save</button>",
+ *   ["btn-primary-light", "btn-primary-dark", "btn-secondary-light", "btn-secondary-dark"],
+ *   () => cond ? 0 : 1,
+ *   () => __pyrMode() === "dark"
+ * )
+ * ```
+ *
+ * Both the value expression AND the mode accessor are reactive: a change
+ * to either re-runs ONLY this className assignment, no remount (same
+ * contract as `_rsCollapse`'s mode flip). Both dispatches share a single
+ * `_bindDirect` so reading both inside one effect subscribes once per
+ * source — Pyreon's effect dedupe handles the rest.
+ *
+ * The structural HTML template is shared across every value (asserted
+ * by the resolver — divergent markup between values bails the collapse).
+ * Mirrors `_rsCollapse`'s mode-divergence-bails invariant.
+ *
+ * `bind` follows the same contract as `_rsCollapse` — standard `_tpl`
+ * child/event binder, runs after class binding, disposers chained.
+ *
+ * @param html  static element HTML WITHOUT the root `class=` attr
+ * @param classes  flat array of `2 × valueCount` class strings,
+ *   indexed `[v0_light, v0_dark, v1_light, v1_dark, ...]`. The runtime
+ *   does no validation — the compiler is the source of truth (an
+ *   out-of-range `valueIndex()` would coerce to `undefined` className,
+ *   which is correct-for-zero-style — never crashes)
+ * @param valueIndex  user expression returning 0..valueCount-1 — reactive
+ * @param isDark  app mode accessor — reactive
+ * @param bind  standard _tpl binder for children/events (or null)
+ */
+export function _rsCollapseDyn(
+  html: string,
+  classes: readonly string[],
+  valueIndex: () => number,
+  isDark: () => boolean,
+  bind?: ((el: HTMLElement) => (() => void) | null) | null,
+): NativeItem {
+  return _tpl(html, (el) => {
+    // One renderEffect drives the className from both accessors. Wrap a
+    // dummy reactive source — `_bindDirect`'s plain-callable fallback
+    // wraps the inner callback in `renderEffect`, so reading both
+    // `valueIndex()` and `isDark()` inside the callback subscribes to
+    // BOTH live signals; a change to EITHER re-runs only this assignment.
+    // We pass `valueIndex as { _v?: unknown }` to satisfy the helper's
+    // signature (it short-circuits to the renderEffect path when `_v` is
+    // absent — same fallback `_rsCollapse` uses for the mode accessor).
+    const disposeClass = _bindDirect(valueIndex as unknown as { _v?: unknown }, () => {
+      const v = valueIndex()
+      const idx = (v << 1) | (isDark() ? 1 : 0)
+      el.className = classes[idx] ?? ''
+    })
+    const disposeChildren = bind ? bind(el) : null
+    if (!disposeChildren) return disposeClass
+    return () => {
+      disposeClass()
+      disposeChildren()
+    }
+  })
+}
+
+/**
  * Test-only: clear the template cache. Used by tests that assert on
  * cache size; never called by runtime code. Not exported from the
  * package's public index.
