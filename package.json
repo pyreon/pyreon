@@ -50,6 +50,7 @@
     "visual-test:update": "bun scripts/visual-test/update.ts",
     "coverage": "bun scripts/check-coverage.ts",
     "test:coverage": "bun scripts/check-coverage.ts",
+    "audit-leak-classes": "bun scripts/audit-leak-classes.ts",
     "audit-types": "bun scripts/audit-types.ts",
     "verify-modes": "bun scripts/verify-modes.ts",
     "scaffold-smoke": "bun scripts/scaffold-smoke.ts",

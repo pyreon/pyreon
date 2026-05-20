@@ -427,11 +427,24 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
         ctx.suspenseDepth++
         const buf: string[] = []
 
-        // Race the async children against a timeout
-        const result = await Promise.race([
-          streamNode(children ?? null, (s) => buf.push(s)).then(() => 'resolved' as const),
-          new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), SUSPENSE_TIMEOUT_MS)),
-        ])
+        // Race the async children against a timeout. Class I — capture
+        // the timer id and clear on the success path; without this,
+        // every successful Suspense boundary leaks a 30s pending timer
+        // + resolve callback until it fires. Caught by the
+        // `audit-leak-classes` script's promise-race-no-clear detector.
+        let timeoutId: ReturnType<typeof setTimeout> | undefined
+        let result: 'resolved' | 'timeout'
+        try {
+          result = await Promise.race([
+            streamNode(children ?? null, (s) => buf.push(s)).then(() => 'resolved' as const),
+            new Promise<'timeout'>((resolve) => {
+              timeoutId = setTimeout(() => resolve('timeout'), SUSPENSE_TIMEOUT_MS)
+            }),
+          ])
+        }
+        finally {
+          if (timeoutId !== undefined) clearTimeout(timeoutId)
+        }
 
         if (result === 'timeout') {
           if (__DEV__) {

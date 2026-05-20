@@ -81,12 +81,26 @@ export async function prerender(options: PrerenderOptions): Promise<PrerenderRes
   async function renderPage(path: string): Promise<void> {
     const url = new URL(path, origin)
     const req = new Request(url.href)
-    const res = await Promise.race([
-      handler(req),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`Prerender timeout for "${path}" (30s)`)), 30_000),
-      ),
-    ])
+    // Class I — capture timer id outside Promise.race; clearTimeout
+    // on the success path in finally. Without this, every successful
+    // prerender leaks a 30s pending timer + reject callback until it
+    // fires. Same shape as #734's isr.ts revalidate() fix.
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+    let res: Response
+    try {
+      res = await Promise.race([
+        handler(req),
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(
+            () => reject(new Error(`Prerender timeout for "${path}" (30s)`)),
+            30_000,
+          )
+        }),
+      ])
+    }
+    finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId)
+    }
 
     if (!res.ok) {
       errors.push({ path, error: new Error(`HTTP ${res.status}`) })
