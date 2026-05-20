@@ -118,33 +118,21 @@ function removeContainer(el: HTMLElement) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-async function runAll(): Promise<BenchSuite[]> {
+const ALL_FRAMEWORKS = [
+  { name: 'Vanilla JS', run: runVanilla },
+  { name: 'Preact', run: runPreact },
+  { name: 'React 19', run: runReact },
+  { name: 'Vue 3', run: runVue },
+  { name: 'SolidJS', run: runSolid },
+  { name: 'Svelte 5', run: runSvelte },
+  { name: 'Pyreon', run: runPyreon },
+  { name: 'Pyreon (compiled)', run: runPyreonTpl },
+] as const
+
+async function runSelected(frameworks: typeof ALL_FRAMEWORKS | { name: string; run: typeof ALL_FRAMEWORKS[number]['run'] }[]): Promise<BenchSuite[]> {
   runBtn.disabled = true
   tableEl.innerHTML = ''
-
   const suites: BenchSuite[] = []
-
-  const frameworks = [
-    { name: 'Vanilla JS', run: runVanilla },
-    { name: 'Preact', run: runPreact },
-    { name: 'React 19', run: runReact },
-    { name: 'Vue 3', run: runVue },
-    { name: 'SolidJS', run: runSolid },
-    { name: 'Svelte 5', run: runSvelte },
-    { name: 'Pyreon', run: runPyreon },
-    { name: 'Pyreon (compiled)', run: runPyreonTpl },
-  ]
-
-  // Randomize execution order to avoid GC pressure bias
-  for (let i = frameworks.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    const a = frameworks[i]
-    const b = frameworks[j]
-    if (a && b) {
-      frameworks[i] = b
-      frameworks[j] = a
-    }
-  }
 
   for (const { name, run } of frameworks) {
     setStatus(`Running ${name}…`)
@@ -157,7 +145,6 @@ async function runAll(): Promise<BenchSuite[]> {
     } finally {
       removeContainer(container)
     }
-    // Partial update after each suite
     buildTable(suites)
   }
 
@@ -168,12 +155,51 @@ async function runAll(): Promise<BenchSuite[]> {
   return suites
 }
 
+async function runAll(): Promise<BenchSuite[]> {
+  // In-browser button-driven flow — shuffle order so a curious user
+  // doesn't see consistent first-run GC pressure on the same framework.
+  // The fair-bench Playwright runner uses ?framework=<name> to get
+  // ONE framework per fresh page-load, which is strictly more
+  // objective than even a shuffled all-in-one-page run.
+  const shuffled = [...ALL_FRAMEWORKS]
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const a = shuffled[i]
+    const b = shuffled[j]
+    if (a && b) {
+      shuffled[i] = b
+      shuffled[j] = a
+    }
+  }
+  return runSelected(shuffled)
+}
+
 runBtn.addEventListener('click', () => {
   void runAll()
 })
 
-// Auto-run when loaded with `?auto=1` — drives the headless Chromium
-// fair-bench harness without needing to script clicks.
-if (new URL(window.location.href).searchParams.get('auto') === '1') {
+// URL-flag driven entry points:
+//
+//   ?framework=<name>   Run ONLY that framework, then set status to
+//                       Done. Fresh page-load per framework means
+//                       zero cross-suite memory pressure / heap bias.
+//                       This is what `bench-fair.ts` uses now.
+//
+//   ?auto=1             Run all 8 frameworks in this page (legacy
+//                       in-page flow). Retained for the button UI
+//                       and for backwards compatibility — but the
+//                       fair-bench runner has switched to
+//                       per-framework page isolation.
+const __url = new URL(window.location.href)
+const __frameworkParam = __url.searchParams.get('framework')
+if (__frameworkParam) {
+  const entry = ALL_FRAMEWORKS.find((f) => f.name === __frameworkParam)
+  if (entry) {
+    void runSelected([entry])
+  } else {
+    setStatus(`Unknown framework: ${__frameworkParam}`)
+    console.error(`[bench] unknown framework "${__frameworkParam}". Valid:`, ALL_FRAMEWORKS.map((f) => f.name))
+  }
+} else if (__url.searchParams.get('auto') === '1') {
   void runAll()
 }
