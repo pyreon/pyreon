@@ -346,6 +346,103 @@ describe('renderToStream — Suspense boundaries', () => {
   })
 })
 
+// ─── Configurable Suspense timeout (renderToStream options.suspenseTimeoutMs) ─
+
+describe('renderToStream — suspenseTimeoutMs config', () => {
+  async function collect(stream: ReadableStream<string>): Promise<string> {
+    const reader = stream.getReader()
+    const chunks: string[] = []
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      chunks.push(value)
+    }
+    return chunks.join('')
+  }
+
+  test('explicit short timeout drops post-resolve content for slow boundary', async () => {
+    // Boundary takes 100ms to resolve; timeout fires at 20ms → fallback
+    // stays visible, no `__NS(` swap call lands. The hard-coded 30_000
+    // default would let it through; this asserts the config knob is
+    // actually honored end-to-end.
+    async function Slow() {
+      await new Promise<void>((r) => setTimeout(r, 100))
+      return h('div', null, 'resolved-too-late')
+    }
+    const vnode = h(Suspense, {
+      fallback: h('span', null, 'still-loading'),
+      children: h(Slow as unknown as ComponentFn, null),
+    })
+    const html = await collect(renderToStream(vnode, { suspenseTimeoutMs: 20 }))
+    // Fallback was emitted before timeout fired
+    expect(html).toContain('still-loading')
+    // Resolved content was dropped (timed out)
+    expect(html).not.toContain('resolved-too-late')
+    expect(html).not.toMatch(/__NS\(\s*["']pyreon-s-/)
+  })
+
+  test('default 30s timeout preserves pre-config behavior (fast boundary completes)', async () => {
+    // Boundary completes in 10ms — well within the 30_000 default.
+    // Asserts the default path still works (no regression from
+    // adding the option).
+    async function Fast() {
+      await new Promise<void>((r) => setTimeout(r, 10))
+      return h('div', null, 'arrived')
+    }
+    const vnode = h(Suspense, {
+      fallback: h('span', null, 'briefly-loading'),
+      children: h(Fast as unknown as ComponentFn, null),
+    })
+    // No suspenseTimeoutMs → falls back to 30_000 default.
+    const html = await collect(renderToStream(vnode))
+    expect(html).toContain('briefly-loading') // fallback was emitted
+    expect(html).toContain('arrived') // resolved content swapped in
+    expect(html).toMatch(/__NS\(\s*["']pyreon-s-0/) // swap call landed
+  })
+
+  test('invalid timeout values fall back to default (0, NaN, negative)', async () => {
+    // Each of these should be treated as "use the default 30_000"
+    // rather than "fire immediately" (a 0ms timeout that fired
+    // synchronously would drop EVERY boundary, breaking apps that
+    // pass an invalid value through a config layer).
+    async function Fast() {
+      await new Promise<void>((r) => setTimeout(r, 10))
+      return h('div', null, 'arrived')
+    }
+    const vnode = h(Suspense, {
+      fallback: h('span', null, 'briefly-loading'),
+      children: h(Fast as unknown as ComponentFn, null),
+    })
+
+    for (const bad of [0, -1, Number.NaN]) {
+      const html = await collect(
+        renderToStream(vnode, { suspenseTimeoutMs: bad }),
+      )
+      expect(html, `value ${bad} should fall back to default and let the boundary resolve`).toContain('arrived')
+    }
+  })
+
+  test('Infinity disables the timeout — boundary resolves regardless of duration', async () => {
+    // Apps that legitimately need long async work (exports, reports,
+    // scheduled SSR jobs) can opt out of the timeout entirely. The
+    // race is skipped — only the AbortSignal can stop a hung boundary.
+    async function Fast() {
+      await new Promise<void>((r) => setTimeout(r, 10))
+      return h('div', null, 'arrived')
+    }
+    const vnode = h(Suspense, {
+      fallback: h('span', null, 'briefly-loading'),
+      children: h(Fast as unknown as ComponentFn, null),
+    })
+    const html = await collect(
+      renderToStream(vnode, { suspenseTimeoutMs: Infinity }),
+    )
+    expect(html).toContain('briefly-loading')
+    expect(html).toContain('arrived')
+    expect(html).toMatch(/__NS\(\s*["']pyreon-s-0/)
+  })
+})
+
 // ─── Concurrent SSR — context isolation ───────────────────────────────────────
 
 describe('concurrent SSR — context isolation', () => {

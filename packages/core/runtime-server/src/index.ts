@@ -53,6 +53,15 @@ interface StreamCtx {
    * stop streaming once the client has hung up.
    */
   signal?: AbortSignal
+  /**
+   * Per-boundary Suspense timeout (ms). When an async Suspense child
+   * doesn't resolve within this window, the fallback stays visible and
+   * the resolved content is dropped. Set to `Infinity` to disable the
+   * timeout entirely (apps that prefer waiting indefinitely over showing
+   * the fallback). Defaults to 30_000 (30s) — matches the pre-config
+   * hard-coded value, so unset is byte-identical to prior behavior.
+   */
+  suspenseTimeoutMs: number
 }
 
 const _streamCtxAls = new AsyncLocalStorage<StreamCtx>()
@@ -140,6 +149,26 @@ export interface RenderToStreamOptions {
    * to chain abort propagation.
    */
   signal?: AbortSignal
+  /**
+   * Per-boundary Suspense timeout in milliseconds. When an async
+   * Suspense child doesn't resolve within this window, its fallback
+   * stays visible (the resolved content is dropped — no `<template>`
+   * + swap script is emitted) and a dev-mode warning fires. Defaults
+   * to 30_000 (30s); unset behavior is byte-identical to the
+   * pre-config implementation.
+   *
+   * Ops control: tighten this for tight-SLA deploys (5_000–10_000 is
+   * typical for user-facing apps where a fallback is preferable to a
+   * delayed full render). Loosen it (or pass `Infinity` to disable)
+   * for renders that legitimately need long async work — exports,
+   * reports, scheduled jobs, etc.
+   *
+   * Values ≤0 or `NaN` fall back to the default. `Infinity` is honored
+   * verbatim — the timeout race is skipped entirely so a hung boundary
+   * keeps the stream open until the AbortSignal fires or the consumer
+   * cancels.
+   */
+  suspenseTimeoutMs?: number
 }
 
 export function renderToStream(
@@ -156,6 +185,17 @@ export function renderToStream(
     if (options.signal.aborted) ac.abort(options.signal.reason)
     else options.signal.addEventListener('abort', () => ac.abort(options.signal!.reason), { once: true })
   }
+  // Resolve the Suspense timeout. Invalid input (≤0, NaN) falls back to
+  // 30_000 — same as pre-config behavior. `Infinity` is preserved so the
+  // boundary code can detect it and skip the race entirely.
+  const userTimeout = options.suspenseTimeoutMs
+  const suspenseTimeoutMs
+    = userTimeout === Infinity
+      ? Infinity
+      : userTimeout !== undefined && Number.isFinite(userTimeout) && userTimeout > 0
+        ? userTimeout
+        : 30_000
+
   return new ReadableStream<string>({
     start(controller) {
       const enqueue = (chunk: string) => {
@@ -169,6 +209,7 @@ export function renderToStream(
         mainEnqueue: enqueue,
         suspenseDepth: 0,
         signal,
+        suspenseTimeoutMs,
       }
       // One shared abort-promise — registered ONCE, resolved on signal
       // abort. Racing each pending batch against this lets the drain
@@ -419,7 +460,10 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
   // Queue async resolution — runs in parallel, emits to main stream when done.
   // Errors are caught per-boundary so one failing Suspense doesn't abort the stream.
   // Timeout prevents hung async children from keeping the stream open forever.
-  const SUSPENSE_TIMEOUT_MS = 30_000
+  // Configurable via `RenderToStreamOptions.suspenseTimeoutMs` (default 30_000;
+  // `Infinity` disables the race so a hung boundary waits indefinitely until
+  // the upstream AbortSignal or consumer cancel fires).
+  const suspenseTimeoutMs = ctx.suspenseTimeoutMs
 
   ctx.pending.push(
     _contextAls.run(ctxStore, async () => {
@@ -427,30 +471,38 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
         ctx.suspenseDepth++
         const buf: string[] = []
 
-        // Race the async children against a timeout. Class I — capture
-        // the timer id and clear on the success path; without this,
-        // every successful Suspense boundary leaks a 30s pending timer
-        // + resolve callback until it fires. Caught by the
-        // `audit-leak-classes` script's promise-race-no-clear detector.
-        let timeoutId: ReturnType<typeof setTimeout> | undefined
+        // Race the async children against a timeout (skipped when the
+        // user passed `Infinity` to opt out). Class I — capture the
+        // timer id and clear on the success path; without this, every
+        // successful Suspense boundary leaks a pending timer + resolve
+        // callback until it fires. Caught by the `audit-leak-classes`
+        // script's promise-race-no-clear detector.
         let result: 'resolved' | 'timeout'
-        try {
-          result = await Promise.race([
-            streamNode(children ?? null, (s) => buf.push(s)).then(() => 'resolved' as const),
-            new Promise<'timeout'>((resolve) => {
-              timeoutId = setTimeout(() => resolve('timeout'), SUSPENSE_TIMEOUT_MS)
-            }),
-          ])
-        }
-        finally {
-          if (timeoutId !== undefined) clearTimeout(timeoutId)
+        if (suspenseTimeoutMs === Infinity) {
+          // No-timeout mode: just await children. AbortSignal still
+          // applies via the outer drain-loop race in renderToStream.
+          await streamNode(children ?? null, (s) => buf.push(s))
+          result = 'resolved'
+        } else {
+          let timeoutId: ReturnType<typeof setTimeout> | undefined
+          try {
+            result = await Promise.race([
+              streamNode(children ?? null, (s) => buf.push(s)).then(() => 'resolved' as const),
+              new Promise<'timeout'>((resolve) => {
+                timeoutId = setTimeout(() => resolve('timeout'), suspenseTimeoutMs)
+              }),
+            ])
+          }
+          finally {
+            if (timeoutId !== undefined) clearTimeout(timeoutId)
+          }
         }
 
         if (result === 'timeout') {
           if (__DEV__) {
             _countSink.__pyreon_count__?.('runtime-server.suspense.fallback')
             console.warn(
-              `[Pyreon SSR] Suspense boundary timed out after ${SUSPENSE_TIMEOUT_MS}ms — fallback will remain.`,
+              `[Pyreon SSR] Suspense boundary timed out after ${suspenseTimeoutMs}ms — fallback will remain.`,
             )
           }
           // Fallback stays visible — no swap
