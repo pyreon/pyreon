@@ -30,6 +30,7 @@ export {
   _mountSlot,
   _rsCollapse,
   _rsCollapseDyn,
+  _rsCollapseDynH,
   _rsCollapseH,
   _tpl,
   createTemplate,

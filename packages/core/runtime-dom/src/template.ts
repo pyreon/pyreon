@@ -376,6 +376,93 @@ export function _rsCollapseDyn(
 }
 
 /**
+ * Compiler-emitted DYNAMIC-prop + HANDLER collapsed rocketstyle call
+ * site — closes the largest remaining real-corpus dynamic-collapse
+ * gap (`.claude/plans/open-work-2026-q3.md` → #1 dynamic-prop bucket
+ * = 15.4% of all real-corpus sites; the strict no-handler subset was
+ * only 0.2% measured; this helper unlocks the handler-combined slice
+ * that was bailed by `tryDynamicCollapse` in PR #767 by design).
+ *
+ * Combines {@link _rsCollapseDyn}'s value-major class dispatch with
+ * {@link _rsCollapseH}'s handler re-attachment. Handlers are orthogonal
+ * to both the SSR-resolved styler class AND the value dispatcher (a
+ * `state={cond ? 'a' : 'b'} onClick={h}` site's onClick is identical
+ * for both `state="a"` and `state="b"` resolutions — the styler class
+ * varies, the handler does not). So this helper is structurally the
+ * union of the two, no new behavior:
+ *
+ * ```
+ * <Button state={cond ? 'primary' : 'secondary'} onClick={go}>Save</Button>
+ *   →
+ * __rsCollapseDynH(
+ *   "<button>Save</button>",
+ *   ["pri-L", "pri-D", "sec-L", "sec-D"],
+ *   () => cond ? 0 : 1,
+ *   () => __pyrMode() === "dark",
+ *   { onClick: go }
+ * )
+ * ```
+ *
+ * Class layout matches `_rsCollapseDyn` (stride-2 value-major):
+ * `index = 2 * valueIndex + (isDark ? 1 : 0)`. Handler attachment
+ * matches `_rsCollapseH` — routed through the canonical `_bindEvent`
+ * → `applyEventProp` path (delegation + batching + name
+ * normalization). All three reactives (valueIndex, isDark, handlers
+ * — though handler identity is captured at the call site) compose
+ * cleanly: a value flip OR a mode flip patches className IN PLACE
+ * on the SAME node, handlers stay attached across both.
+ *
+ * Layer-pure: no styler / ui-core imports (the styler injection is
+ * the emitted code's job via `__rsSheet.injectRules`).
+ *
+ * @param html        static element HTML WITHOUT the root `class=` attr
+ * @param classes     flat array of `2 × valueCount` class strings, indexed
+ *                    `[v0_L, v0_D, v1_L, v1_D, …]`
+ * @param valueIndex  user expression returning 0..valueCount-1 — reactive
+ * @param isDark      app mode accessor — reactive
+ * @param handlers    `{ onClick: fn, onPointerEnter: fn, … }` — the
+ *                    residual handlers peeled off the call site by the
+ *                    compiler's emit (sliced source spans re-emitted
+ *                    verbatim, paren-wrapped to keep arrow / sequence
+ *                    expressions a single value)
+ * @param bind        standard _tpl binder for children/events (or null)
+ */
+export function _rsCollapseDynH(
+  html: string,
+  classes: readonly string[],
+  valueIndex: () => number,
+  isDark: () => boolean,
+  handlers: Record<string, unknown>,
+  bind?: ((el: HTMLElement) => (() => void) | null) | null,
+): NativeItem {
+  return _tpl(html, (el) => {
+    // Reactive class — identical to _rsCollapseDyn: one `_bindDirect`
+    // wraps the inner callback in a renderEffect, reading both
+    // `valueIndex()` and `isDark()` inside subscribes to BOTH signals;
+    // a change to EITHER re-runs only this className assignment.
+    const disposeClass = _bindDirect(valueIndex as unknown as { _v?: unknown }, () => {
+      const v = valueIndex()
+      const idx = (v << 1) | (isDark() ? 1 : 0)
+      el.className = classes[idx] ?? ''
+    })
+    // Handler attachment — identical to _rsCollapseH: routes through
+    // the canonical _bindEvent path so delegation / batching / name
+    // normalization behave byte-identically to the 5-layer mount.
+    const handlerDisposers: (() => void)[] = []
+    for (const key in handlers) {
+      const d = _bindEvent(el, key, handlers[key])
+      if (d) handlerDisposers.push(d)
+    }
+    const disposeChildren = bind ? bind(el) : null
+    return () => {
+      disposeClass()
+      for (const d of handlerDisposers) d()
+      if (disposeChildren) disposeChildren()
+    }
+  })
+}
+
+/**
  * Test-only: clear the template cache. Used by tests that assert on
  * cache size; never called by runtime code. Not exported from the
  * package's public index.
