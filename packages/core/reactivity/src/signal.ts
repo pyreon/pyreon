@@ -1,6 +1,6 @@
 import { batch, enqueuePendingNotification, isBatching } from './batch'
 import { _notifyTraceListeners, isTracing } from './debug'
-import { _rdRecordFire, _rdRegister } from './reactive-devtools'
+import { _captureCallerLocation, _rdRecordFire, _rdRegister } from './reactive-devtools'
 import { _recordSignalWrite } from './reactive-trace'
 import { notifySubscribers, trackSubscriber } from './tracking'
 
@@ -235,7 +235,8 @@ export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
   read.label = options?.name
 
   if (process.env.NODE_ENV !== 'production')
-    _rdRegister(read, 'signal', read, null, read.label)
+    // skipFrames=1: skip the `signal()` frame, capture the user's call site.
+    _rdRegister(read, 'signal', read, null, read.label, _captureCallerLocation(1))
 
   return read as unknown as Signal<T>
 }

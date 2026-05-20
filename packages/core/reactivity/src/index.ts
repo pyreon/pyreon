@@ -6,19 +6,27 @@ export { type Computed, type ComputedOptions, computed } from './computed'
 export { createSelector } from './createSelector'
 export { inspectSignal, onSignalUpdate, why } from './debug'
 export type {
+  FireSummary,
   ReactiveEdge,
   ReactiveFire,
   ReactiveGraph,
   ReactiveNode,
   ReactiveNodeKind,
+  SourceLocation,
 } from './reactive-devtools'
 export {
   activateReactiveDevtools,
   deactivateReactiveDevtools,
+  getFireSummaries,
   getReactiveFires,
   getReactiveGraph,
   isReactiveDevtoolsActive,
 } from './reactive-devtools'
+// `writeLpihCache` + `startLpihPolling` ship at the `@pyreon/reactivity/lpih`
+// subpath. They depend on `node:fs/promises` (Node-only) and are dev-mode
+// integration utilities — separating them keeps the core main-entry bundle
+// smaller AND clarifies that LPIH writes are an opt-in side-channel, not a
+// core reactivity primitive. See `./lpih.ts` and `docs/docs/lpih.md`.
 export type { ReactiveTraceEntry } from './reactive-trace'
 export { clearReactiveTrace, getReactiveTrace } from './reactive-trace'
 export {

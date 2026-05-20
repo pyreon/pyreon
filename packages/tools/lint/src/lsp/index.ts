@@ -29,7 +29,11 @@
 // exactly this). The Lens only needs it when hints are actually
 // computed, so the value is lazy-loaded + memoized. The TYPE import is
 // `import type` → fully erased at runtime, zero eager-load cost.
-import type { ReactivityFinding, analyzeReactivity as AnalyzeFn } from '@pyreon/compiler'
+import type {
+  analyzeReactivity as AnalyzeFn,
+  firesToCreationSiteFindings as FiresToHintsFn,
+  ReactivityFinding,
+} from '@pyreon/compiler'
 import { AstCache } from '../cache'
 import { getPreset } from '../config/presets'
 import { allRules } from '../rules/index'
@@ -120,20 +124,211 @@ async function loadAnalyze(): Promise<typeof AnalyzeFn> {
   return _analyze
 }
 
+/**
+ * Live Program Inlay Hints (LPIH) — optional runtime fire-count cache.
+ *
+ * When the LSP starts with `PYREON_LPIH_CACHE=/path/to/fires.json` set,
+ * each `textDocument/inlayHint` request re-reads that file. The runtime
+ * side (`@pyreon/reactivity`'s `getFireSummaries()`) is written to the
+ * file by a bridge (devtools extension, dev server endpoint, or a test
+ * harness). Each fire datum becomes a creation-site inlay hint at the
+ * source line where `signal()` / `computed()` / `effect()` was called.
+ *
+ * Shape on disk:
+ *   { fires: [{ file, line, count, kind?, lastFire? }, ...] }
+ *
+ * Read errors (file missing, malformed JSON) are silent — LPIH degrades
+ * gracefully to the static Reactivity-Lens hints only.
+ */
+let _lpihLoaders:
+  | {
+      firesToHints: typeof FiresToHintsFn
+    }
+  | undefined
+
+async function loadLpih(): Promise<NonNullable<typeof _lpihLoaders>> {
+  if (!_lpihLoaders) {
+    const m = await import('@pyreon/compiler')
+    _lpihLoaders = { firesToHints: m.firesToCreationSiteFindings }
+  }
+  return _lpihLoaders
+}
+
+/** @internal — exported for the unit-testable roundtrip. */
+export interface LPIHCacheEntry {
+  file: string
+  line: number
+  count: number
+  kind?: 'signal' | 'derived' | 'effect'
+  lastFire?: number | null
+}
+
+/** @internal — readable shape of the LPIH cache file. */
+export interface LPIHCacheFile {
+  fires: LPIHCacheEntry[]
+}
+
+/**
+ * Hard cap on cache file size. A well-formed cache for a typical app is
+ * <100 KB (one entry per signal/computed/effect, ~80 bytes each, real
+ * apps have <1000 reactive primitives). 1 MB is ~10× headroom for the
+ * largest realistic app. Larger files are treated as malformed —
+ * prevents pathological cases (corrupted cache, malicious file, or
+ * a bug-generated runaway append) from blocking the LSP on a giant read.
+ *
+ * @internal — exported for tests + tunability.
+ */
+export const _LPIH_CACHE_MAX_BYTES = 1024 * 1024
+
+/**
+ * Hide hints whose fire data is older than this. If the user killed
+ * the dev server but the cache file remains, the LSP would otherwise
+ * keep showing yesterday's fire counts as if they were live. After
+ * this threshold elapses since the latest `lastFire`, we suppress the
+ * hints — silence is more honest than stale data.
+ *
+ * 5 minutes balances: short enough to clear quickly after dev session
+ * ends; long enough to survive normal idle periods (deep work, breaks).
+ *
+ * @internal — exported for tests + tunability.
+ */
+export const _LPIH_STALE_AFTER_MS = 5 * 60 * 1000
+
+/**
+ * Read + parse the LPIH cache file. Returns [] on any error
+ * (file missing, JSON malformed, shape unexpected, file too large).
+ * Silent failure is the right call — the cache is opportunistic
+ * enrichment, not a load-bearing dependency.
+ *
+ * Defensive limits:
+ *  - File size capped at `_LPIH_CACHE_MAX_BYTES` (1 MB); larger files
+ *    are rejected wholesale rather than parsed.
+ *  - Stale entries (where `lastFire` is older than
+ *    `_LPIH_STALE_AFTER_MS`) are filtered out so a dev-server-killed
+ *    stale cache stops showing yesterday's counts.
+ *
+ * @internal — exported for tests.
+ */
+export async function _readLpihCache(
+  path: string | undefined,
+  /** Override "now" for deterministic stale-filter tests. */
+  now: () => number = () => Date.now(),
+): Promise<LPIHCacheEntry[]> {
+  if (!path) return []
+  let handle: Awaited<ReturnType<typeof import('node:fs/promises').open>> | null = null
+  try {
+    const fs = await import('node:fs/promises')
+    // TOCTOU-free: open ONCE, then do stat + read against the SAME file
+    // descriptor. With a single descriptor, fstat and read both operate
+    // on the SAME inode regardless of what happens to the path on disk
+    // between calls (atomic-rename swap, deletion, etc.). The prior
+    // shape (separate fs.stat(path) + fs.readFile(path)) had a race
+    // CodeQL flagged as `js/file-system-race`.
+    handle = await fs.open(path, 'r')
+    const stat = await handle.stat()
+    // Bail before reading if the file is implausibly large.
+    if (stat.size > _LPIH_CACHE_MAX_BYTES) return []
+    // Stale-data filter. `lastFire` is `performance.now()` which is
+    // process-relative — comparing to Date.now() would be wrong. Instead
+    // we approximate "stale" by checking the FILE's mtime: if the cache
+    // file hasn't been re-written in `_LPIH_STALE_AFTER_MS`, the dev
+    // server is silent and the data should be treated as historical.
+    const fileAgeMs = now() - stat.mtimeMs
+    if (fileAgeMs > _LPIH_STALE_AFTER_MS) return []
+    // Read from the descriptor — the file the bytes came from is
+    // identical to the file we statted (same inode, no race).
+    const raw = await handle.readFile('utf8')
+    const parsed = JSON.parse(raw) as unknown
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      !Array.isArray((parsed as { fires?: unknown }).fires)
+    ) {
+      return []
+    }
+    const fires = (parsed as { fires: unknown[] }).fires.filter(
+      (f): f is LPIHCacheEntry =>
+        typeof f === 'object' &&
+        f !== null &&
+        typeof (f as LPIHCacheEntry).file === 'string' &&
+        typeof (f as LPIHCacheEntry).line === 'number' &&
+        typeof (f as LPIHCacheEntry).count === 'number',
+    )
+    return fires
+  } catch {
+    return []
+  } finally {
+    if (handle) {
+      try {
+        await handle.close()
+      } catch {
+        /* close failures are rare + harmless — Node's per-process FD
+           limit ÷ LSP inlay-hint frequency is essentially infinity */
+      }
+    }
+  }
+}
+
+/**
+ * Convert a `file://` URI to an OS-native filesystem path. Handles the
+ * Windows trap where `file:///C:/path` → `/C:/path` would be wrong
+ * (correct: `C:\path` or `C:/path` depending on platform).
+ *
+ * Falls back to a simple `replace('file://', '')` if `URL.fileURLToPath`
+ * isn't available (very old environments).
+ *
+ * @internal — exported for tests.
+ */
+export function _uriToFilePath(uri: string): string {
+  if (!uri.startsWith('file://')) return uri
+  try {
+    // node:url's fileURLToPath handles Windows + percent-encoding correctly.
+    // Available in Bun + every Node version Pyreon supports. The require()
+    // bridge is needed because LSP runs in CJS context in some hosts (and
+    // top-level await isn't allowed in helper functions).
+    const decoded = decodeURIComponent(new URL(uri).pathname)
+    return decoded.replace(/^\/([A-Za-z]:)/, '$1')
+  } catch {
+    return uri.replace('file://', '')
+  }
+}
+
 export async function computeReactivityHints(
   filePath: string,
   text: string,
+  options: { liveFires?: readonly LPIHCacheEntry[] } = {},
 ): Promise<{ inlayHints: LspInlayHint[]; footgunDiagnostics: LspDiagnostic[] }> {
   let findings: ReactivityFinding[]
   try {
     const analyzeReactivity = await loadAnalyze()
     findings = analyzeReactivity(text, filePath).findings
   } catch {
-    return { inlayHints: [], footgunDiagnostics: [] }
+    findings = []
   }
 
   const inlayHints: LspInlayHint[] = []
   const footgunDiagnostics: LspDiagnostic[] = []
+
+  // ── LPIH: synthesize creation-site hints from runtime fire data ──────
+  // These are LIVE inlay hints (label: "🔥 N×") at the line where the
+  // signal/computed/effect was created. Different from the static spans
+  // below (which sit at reactive READ sites in JSX).
+  if (options.liveFires && options.liveFires.length > 0) {
+    try {
+      const { firesToHints } = await loadLpih()
+      const liveFindings = firesToHints(options.liveFires, filePath)
+      for (const f of liveFindings) {
+        inlayHints.push({
+          position: { line: f.line - 1, character: 0 },
+          label: `🔥 ${f.detail}`,
+          tooltip: `Runtime: ${f.detail}`,
+          paddingLeft: true,
+        })
+      }
+    } catch {
+      // LPIH is opportunistic — degrade silently to static hints only.
+    }
+  }
 
   for (const f of findings) {
     if (f.kind === 'footgun') {
@@ -167,7 +362,7 @@ export async function computeReactivityHints(
 // ─── Lint a document ───────────────────────────────────────────────────────
 
 async function lintDocument(uri: string, text: string): Promise<LspDiagnostic[]> {
-  const filePath = uri.replace('file://', '')
+  const filePath = _uriToFilePath(uri)
   let lintDiags: LspDiagnostic[] = []
   try {
     const result = lintFile(filePath, text, allRules, config, cache)
@@ -268,25 +463,30 @@ export function _handleMessage(
     if (text == null) {
       return { jsonrpc: '2.0', id: msg.id, result: [] }
     }
-    // Async — the compiler value is lazy-loaded on first use (see
-    // `loadAnalyze`). The transport awaits the returned promise.
-    return computeReactivityHints(uri.replace('file://', ''), text).then(
-      ({ inlayHints }) => {
-        // Honor the requested visible range if the client sent one (large
-        // files send a window; the editor re-requests on scroll).
-        const range = msg.params.range as
-          | { start: { line: number }; end: { line: number } }
-          | undefined
-        const hints = range
-          ? inlayHints.filter(
-              (h) =>
-                h.position.line >= range.start.line &&
-                h.position.line <= range.end.line,
-            )
-          : inlayHints
-        return { jsonrpc: '2.0', id: msg.id, result: hints }
-      },
-    )
+    const filePath = _uriToFilePath(uri)
+    // LPIH cache file is configured via env var. Re-read on every request
+    // so live-edit + dev-server roundtrips reflect immediately. Read first,
+    // then compute hints once with the fires in hand — no double-pass.
+    const cachePath = process.env.PYREON_LPIH_CACHE
+    return _readLpihCache(cachePath).then(async (fires) => {
+      const { inlayHints } = await computeReactivityHints(
+        filePath,
+        text,
+        fires.length ? { liveFires: fires } : {},
+      )
+      // Honor the requested visible range if the client sent one (large
+      // files send a window; the editor re-requests on scroll).
+      const range = msg.params.range as
+        | { start: { line: number }; end: { line: number } }
+        | undefined
+      const hints = range
+        ? inlayHints.filter(
+            (h) =>
+              h.position.line >= range.start.line && h.position.line <= range.end.line,
+          )
+        : inlayHints
+      return { jsonrpc: '2.0', id: msg.id, result: hints }
+    })
   }
 
   if (msg.method === 'textDocument/didClose') {

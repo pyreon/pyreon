@@ -27,6 +27,26 @@
 
 export type ReactiveNodeKind = 'signal' | 'derived' | 'effect'
 
+/**
+ * Source location of a reactive node's creation — captured at registration
+ * time from the user's call stack. Powers "Live Program Inlay Hints" — the
+ * editor surfaces fire counts at the source line where the node was created.
+ *
+ * Captured ONLY when devtools is active (`_active === true`). Stack parsing
+ * is best-effort across V8 / JSC / SpiderMonkey; returns undefined when the
+ * stack format isn't recognized (older runtimes, minified prod, web workers
+ * without source maps). Dev gate is the existing `process.env.NODE_ENV` at
+ * each caller — production paths never run the capture.
+ */
+export interface SourceLocation {
+  /** Absolute path or file URL parsed from the stack frame. */
+  file: string
+  /** 1-based line number. */
+  line: number
+  /** 1-based column number. */
+  col: number
+}
+
 export interface ReactiveNode {
   id: number
   kind: ReactiveNodeKind
@@ -40,6 +60,13 @@ export interface ReactiveNode {
   fires: number
   /** `performance.now()` of the most recent fire, or null. */
   lastFire: number | null
+  /**
+   * Source location of the creation call (`signal(0)` / `computed(...)` /
+   * `effect(...)`). Undefined when devtools wasn't active at creation
+   * time OR the stack format wasn't parseable. Editor inlay-hint surfaces
+   * consume this to merge live fire counts onto static spans.
+   */
+  loc?: SourceLocation
 }
 
 export interface ReactiveEdge {
@@ -60,6 +87,22 @@ export interface ReactiveFire {
   ts: number
 }
 
+/**
+ * Per-source-location fire-count summary. Aggregated from the fire ring
+ * buffer + node registry. The shape an editor / LSP inlay-hint consumer
+ * needs to merge "this signal at line N fires K times" onto static
+ * Reactivity-Lens spans. Pure data, JSON-serializable, no node refs.
+ */
+export interface FireSummary {
+  loc: SourceLocation
+  /** Total fires in the visible ring buffer at this location. */
+  count: number
+  /** Most recent fire `performance.now()` at this location, or null. */
+  lastFire: number | null
+  /** Node kind that fired most recently at this location. */
+  kind: ReactiveNodeKind
+}
+
 // ── Internal node record ─────────────────────────────────────────────────
 
 interface NodeRec {
@@ -72,6 +115,8 @@ interface NodeRec {
   hostRef: WeakRef<{ _s: Set<() => void> | null }> | null
   fires: number
   lastFire: number | null
+  /** Source location captured at registration. Undefined if stack parse failed. */
+  loc?: SourceLocation | undefined
 }
 
 let _active = false
@@ -155,6 +200,70 @@ export function isReactiveDevtoolsActive(): boolean {
 //    after the existing prod gate; each is a no-op until activated) ──────
 
 /**
+ * Parse the user's call site from `new Error().stack`. Returns undefined
+ * when devtools isn't active (zero-cost early-return — no Error allocated)
+ * OR when the stack format isn't recognized.
+ *
+ * `skipFrames` is the number of caller-frames to skip past _captureCallerLocation
+ * itself. The framework's hot-path callers (signal / computedLazy / effect)
+ * pass their own depth so the captured frame is the USER's call to
+ * `signal()` / `computed()` / `effect()`, not the framework's internals.
+ *
+ * Recognized stack formats:
+ *   - V8 (Chrome / Node / Bun):     `    at fn (file:line:col)`
+ *   - V8 (anonymous):               `    at file:line:col`
+ *   - JSC (Safari) + SpiderMonkey:  `fn@file:line:col`
+ *
+ * @internal
+ */
+export function _captureCallerLocation(skipFrames: number): SourceLocation | undefined {
+  if (!_active) return undefined
+  const err = new Error()
+  const raw = err.stack
+  if (!raw) return undefined
+  const lines = raw.split('\n')
+  // V8 prepends "Error\n"; JSC doesn't. Detect and offset.
+  const startIdx = lines[0] && lines[0].trim().startsWith('Error') ? 1 : 0
+  // Skip past _captureCallerLocation's own frame (always +1) + caller's depth.
+  const target = lines[startIdx + 1 + skipFrames]
+  if (!target) return undefined
+  return parseStackLine(target)
+}
+
+/** @internal — exported for unit testing across runtimes. */
+export function _parseStackLine(line: string): SourceLocation | undefined {
+  return parseStackLine(line)
+}
+
+function parseStackLine(line: string): SourceLocation | undefined {
+  // V8 parenthesized form: "    at fnName (file:line:col)"
+  const v8Paren = line.match(/\(([^()]+):(\d+):(\d+)\)\s*$/)
+  if (v8Paren && v8Paren[1] && v8Paren[2] && v8Paren[3]) {
+    const file = v8Paren[1]
+    const lineN = Number.parseInt(v8Paren[2], 10)
+    const col = Number.parseInt(v8Paren[3], 10)
+    if (Number.isFinite(lineN) && Number.isFinite(col)) return { file, line: lineN, col }
+  }
+  // V8 anonymous form: "    at file:line:col"
+  const v8Bare = line.match(/at\s+([^\s()]+):(\d+):(\d+)\s*$/)
+  if (v8Bare && v8Bare[1] && v8Bare[2] && v8Bare[3]) {
+    const file = v8Bare[1]
+    const lineN = Number.parseInt(v8Bare[2], 10)
+    const col = Number.parseInt(v8Bare[3], 10)
+    if (Number.isFinite(lineN) && Number.isFinite(col)) return { file, line: lineN, col }
+  }
+  // JSC / SpiderMonkey form: "fnName@file:line:col"
+  const jsc = line.match(/@([^@\s]+):(\d+):(\d+)\s*$/)
+  if (jsc && jsc[1] && jsc[2] && jsc[3]) {
+    const file = jsc[1]
+    const lineN = Number.parseInt(jsc[2], 10)
+    const col = Number.parseInt(jsc[3], 10)
+    if (Number.isFinite(lineN) && Number.isFinite(col)) return { file, line: lineN, col }
+  }
+  return undefined
+}
+
+/**
  * Register a signal/computed/effect node. `host` is the object carrying
  * the `_s` subscriber Set (the signal read fn itself, or a computed's
  * internal host). `sub` is the notify closure (`recompute`/`run`) whose
@@ -168,6 +277,7 @@ export function _rdRegister(
   host: { _s: Set<() => void> | null } | null,
   sub: object | null,
   label: string | undefined,
+  loc?: SourceLocation,
 ): number | undefined {
   if (!_active) return undefined
   const id = _nextId++
@@ -179,6 +289,7 @@ export function _rdRegister(
     hostRef: host ? new WeakRef(host) : null,
     fires: 0,
     lastFire: null,
+    loc,
   })
   if (sub) _subId.set(sub, id)
   _finalizer.register(node, id)
@@ -255,6 +366,7 @@ export function getReactiveGraph(): ReactiveGraph {
       subscribers: subs?.size ?? 0,
       fires: rec.fires,
       lastFire: rec.lastFire,
+      ...(rec.loc ? { loc: rec.loc } : {}),
     })
     if (subs) {
       for (const cb of subs) {
@@ -264,6 +376,45 @@ export function getReactiveGraph(): ReactiveGraph {
     }
   }
   return { nodes, edges }
+}
+
+/**
+ * Aggregate fire counts by source-location — powers Live Program Inlay
+ * Hints. Walks the live node registry, keys each node by its captured
+ * `loc`, and returns one summary per unique `file:line:col`. Nodes
+ * without a captured location are skipped (their fires are still
+ * visible via `getReactiveGraph()` and `getReactiveFires()` for the
+ * existing graph / timeline surfaces).
+ *
+ * Returns a fresh array, JSON-serializable, safe to ship across the
+ * devtools-host bridge or to write into an LSP cache file.
+ */
+export function getFireSummaries(): FireSummary[] {
+  const byKey = new Map<string, FireSummary>()
+  for (const rec of _byId.values()) {
+    if (!rec.loc) continue
+    if (!rec.ref.deref()) continue
+    const k = `${rec.loc.file}:${rec.loc.line}:${rec.loc.col}`
+    const existing = byKey.get(k)
+    if (existing) {
+      existing.count += rec.fires
+      if (
+        rec.lastFire !== null &&
+        (existing.lastFire === null || rec.lastFire > existing.lastFire)
+      ) {
+        existing.lastFire = rec.lastFire
+        existing.kind = rec.kind
+      }
+    } else {
+      byKey.set(k, {
+        loc: rec.loc,
+        count: rec.fires,
+        lastFire: rec.lastFire,
+        kind: rec.kind,
+      })
+    }
+  }
+  return [...byKey.values()]
 }
 
 /** Bounded recent-fire timeline (oldest → newest). Fresh copy. */

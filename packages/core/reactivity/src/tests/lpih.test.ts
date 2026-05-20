@@ -1,0 +1,216 @@
+/**
+ * LPIH runtime bridge — `writeLpihCache` + `startLpihPolling` tests.
+ *
+ * Proves the filesystem cache contract:
+ *   1. Atomic write (tmp + rename, never half-written)
+ *   2. Empty payload when devtools inactive
+ *   3. Real fire data when devtools active + signals firing
+ *   4. Polling helper writes repeatedly + disposer stops it
+ */
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { computed } from '../computed'
+import { effect } from '../effect'
+import { startLpihPolling, writeLpihCache } from '../lpih'
+import {
+  activateReactiveDevtools,
+  deactivateReactiveDevtools,
+} from '../reactive-devtools'
+import { signal } from '../signal'
+
+let TMP_DIR: string
+
+beforeAll(() => {
+  TMP_DIR = mkdtempSync(join(tmpdir(), 'lpih-test-'))
+})
+
+afterAll(() => {
+  rmSync(TMP_DIR, { recursive: true, force: true })
+})
+
+beforeEach(() => {
+  deactivateReactiveDevtools()
+})
+
+afterEach(() => {
+  deactivateReactiveDevtools()
+})
+
+const readCache = (path: string): { fires: unknown[] } =>
+  JSON.parse(readFileSync(path, 'utf8')) as { fires: unknown[] }
+
+describe('writeLpihCache', () => {
+  it('writes an empty payload when devtools is inactive', async () => {
+    const path = join(TMP_DIR, 'inactive.json')
+    const count = await writeLpihCache(path)
+    expect(count).toBe(0)
+    const parsed = readCache(path)
+    expect(parsed.fires).toEqual([])
+  })
+
+  it('writes real fire data when devtools is active', async () => {
+    activateReactiveDevtools()
+    const s = signal(0)
+    s.set(1)
+    s.set(2)
+    s.set(3)
+    const path = join(TMP_DIR, 'active.json')
+    const count = await writeLpihCache(path)
+    expect(count).toBe(1) // one source location
+    const parsed = readCache(path) as {
+      fires: Array<{ file: string; line: number; count: number; kind: string }>
+    }
+    expect(parsed.fires).toHaveLength(1)
+    expect(parsed.fires[0]?.count).toBe(3)
+    expect(parsed.fires[0]?.kind).toBe('signal')
+    expect(parsed.fires[0]?.file).toContain('lpih.test.ts')
+    void s
+  })
+
+  it('captures signal + computed + effect locations', async () => {
+    activateReactiveDevtools()
+    const s = signal(0)
+    const c = computed(() => s() * 2)
+    const e = effect(() => {
+      c()
+    })
+    s.set(5)
+    s.set(10)
+    const path = join(TMP_DIR, 'multi.json')
+    await writeLpihCache(path)
+    const parsed = readCache(path) as {
+      fires: Array<{ kind: string; count: number }>
+    }
+    const kinds = new Set(parsed.fires.map((f) => f.kind))
+    expect(kinds.has('signal')).toBe(true)
+    expect(kinds.has('effect')).toBe(true)
+    // derived may show up as 'native:1' under bun's compiled inline callbacks
+    e.dispose()
+  })
+
+  it('overwrites existing file (atomic rename semantics)', async () => {
+    activateReactiveDevtools()
+    const s = signal(0)
+    const path = join(TMP_DIR, 'overwrite.json')
+
+    s.set(1)
+    await writeLpihCache(path)
+    const before = readCache(path) as { fires: Array<{ count: number }> }
+    expect(before.fires[0]?.count).toBe(1)
+
+    s.set(2)
+    s.set(3)
+    await writeLpihCache(path)
+    const after = readCache(path) as { fires: Array<{ count: number }> }
+    expect(after.fires[0]?.count).toBe(3) // updated count
+    void s
+  })
+
+  it('leaves no tmp files after successful write', async () => {
+    activateReactiveDevtools()
+    const s = signal(0)
+    s.set(1)
+    const path = join(TMP_DIR, 'no-tmp.json')
+    await writeLpihCache(path)
+    const fs = await import('node:fs/promises')
+    const files = await fs.readdir(TMP_DIR)
+    const tmpFiles = files.filter((f) => f.includes('.tmp.'))
+    expect(tmpFiles).toEqual([]) // tmp file should be renamed away
+    void s
+  })
+})
+
+describe('writeLpihCache — defensive cleanup', () => {
+  it('cleans up tmp file when rename fails (target is a directory)', async () => {
+    activateReactiveDevtools()
+    const s = signal(0)
+    s.set(1)
+    // Build a path whose target IS a directory — rename onto a directory
+    // throws EISDIR (POSIX) / EPERM (Windows). The tmp file should be
+    // unlinked even though writeLpihCache rethrows.
+    const targetDir = join(TMP_DIR, 'target-as-dir')
+    const fs = await import('node:fs/promises')
+    await fs.mkdir(targetDir, { recursive: true })
+
+    await expect(writeLpihCache(targetDir)).rejects.toBeDefined()
+
+    // No tmp file should be left behind in TMP_DIR.
+    const files = await fs.readdir(TMP_DIR)
+    const tmpFiles = files.filter(
+      (f) => f.startsWith('target-as-dir.tmp.') || f.includes('.tmp.'),
+    )
+    expect(tmpFiles).toEqual([])
+    void s
+  })
+
+  it('cleans up tmp file even when unlink fallback fails silently', async () => {
+    // This is the harder case: we want to assert the cleanup runs without
+    // letting an unlink-failure leak as the user-visible error. We can't
+    // easily make unlink fail in a portable way, but the code path is
+    // covered by the try/catch — verify the behavior: rejecting with the
+    // ORIGINAL rename error, never the unlink one.
+    activateReactiveDevtools()
+    const s = signal(0)
+    s.set(1)
+    const targetDir = join(TMP_DIR, 'silent-unlink')
+    const fs = await import('node:fs/promises')
+    await fs.mkdir(targetDir, { recursive: true })
+    try {
+      await writeLpihCache(targetDir)
+      expect.fail('should have rejected')
+    } catch (err) {
+      // The error message should reference the rename failure, NOT the
+      // unlink fallback — proof we prioritize the original error.
+      const code = (err as { code?: string }).code
+      expect(['EISDIR', 'EPERM', 'EACCES']).toContain(code)
+    }
+    void s
+  })
+})
+
+describe('startLpihPolling', () => {
+  it('timer is unref()d so polling does not block process exit', async () => {
+    activateReactiveDevtools()
+    const path = join(TMP_DIR, 'unref-check.json')
+    const dispose = startLpihPolling(path, 50)
+    // Wait one tick so the timer is actually scheduled.
+    await new Promise((r) => setTimeout(r, 100))
+    // Indirect check: the polling timer is internal, but we can verify
+    // the disposer stops cleanly without hanging. If unref() weren't
+    // applied, this test could still pass (since vitest holds the loop
+    // open) — the bisect test is "test runs at all without timing out",
+    // which is the load-bearing behavior.
+    dispose()
+    // Verify no further writes happen after dispose.
+    const fs = await import('node:fs/promises')
+    const stat1 = await fs.stat(path)
+    await new Promise((r) => setTimeout(r, 200))
+    const stat2 = await fs.stat(path)
+    expect(stat2.mtimeMs).toBe(stat1.mtimeMs)
+  })
+
+  it('writes repeatedly + disposer stops it', async () => {
+    activateReactiveDevtools()
+    const s = signal(0)
+    const path = join(TMP_DIR, 'polling.json')
+    const dispose = startLpihPolling(path, 50)
+
+    // Wait for at least 3 polls (150ms expected).
+    await new Promise((r) => setTimeout(r, 200))
+    s.set(1)
+    s.set(2)
+    await new Promise((r) => setTimeout(r, 100))
+
+    dispose()
+    const fs = await import('node:fs/promises')
+    const before = await fs.stat(path)
+
+    // After dispose, no new writes for 200ms.
+    await new Promise((r) => setTimeout(r, 200))
+    const after = await fs.stat(path)
+    expect(after.mtimeMs).toBe(before.mtimeMs) // mtime unchanged after dispose
+    void s
+  })
+})

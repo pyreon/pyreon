@@ -1,6 +1,6 @@
 import { _markRecompute } from './batch'
 import { _errorHandler } from './effect'
-import { _rdRecordFire, _rdRegister } from './reactive-devtools'
+import { _captureCallerLocation, _rdRecordFire, _rdRegister } from './reactive-devtools'
 import { getCurrentScope } from './scope'
 import {
   cleanupEffect,
@@ -165,7 +165,8 @@ function computedLazy<T>(fn: () => T): Computed<T> {
   }
 
   if (process.env.NODE_ENV !== 'production')
-    _rdRegister(read, 'derived', host, recompute, undefined)
+    // skipFrames=2: skip computedLazy/computedWithEquals + computed, capture user's call site.
+    _rdRegister(read, 'derived', host, recompute, undefined, _captureCallerLocation(2))
 
   getCurrentScope()?.add({ dispose: read.dispose })
   return read as Computed<T>
@@ -265,7 +266,8 @@ function computedWithEquals<T>(fn: () => T, equals: (prev: T, next: T) => boolea
   }
 
   if (process.env.NODE_ENV !== 'production')
-    _rdRegister(read, 'derived', host, recompute, undefined)
+    // skipFrames=2: skip computedLazy/computedWithEquals + computed, capture user's call site.
+    _rdRegister(read, 'derived', host, recompute, undefined, _captureCallerLocation(2))
 
   getCurrentScope()?.add({ dispose: read.dispose })
   return read as Computed<T>

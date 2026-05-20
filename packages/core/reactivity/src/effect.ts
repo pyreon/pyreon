@@ -1,4 +1,4 @@
-import { _rdRecordFire, _rdRegister } from './reactive-devtools'
+import { _captureCallerLocation, _rdRecordFire, _rdRegister } from './reactive-devtools'
 import { getCurrentScope } from './scope'
 import { _restoreActiveEffect, _setActiveEffect, setDepsCollector, withTracking } from './tracking'
 
@@ -258,7 +258,8 @@ export function effect(fn: () => (() => void) | void): Effect {
   }
 
   if (process.env.NODE_ENV !== 'production')
-    _rdRegister(run, 'effect', null, run, undefined)
+    // skipFrames=1: skip the `effect()` / `renderEffect()` frame, capture the user's call site.
+    _rdRegister(run, 'effect', null, run, undefined, _captureCallerLocation(1))
 
   run()
 
@@ -416,7 +417,8 @@ export function renderEffect(fn: () => void): () => void {
   }
 
   if (process.env.NODE_ENV !== 'production')
-    _rdRegister(run, 'effect', null, run, undefined)
+    // skipFrames=1: skip the `effect()` / `renderEffect()` frame, capture the user's call site.
+    _rdRegister(run, 'effect', null, run, undefined, _captureCallerLocation(1))
 
   run()
 
