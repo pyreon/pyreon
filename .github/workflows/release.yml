@@ -5,6 +5,39 @@ on:
     branches:
       - main
       - 'release/**'
+    # Trigger ONLY on changeset-file activity. The Release workflow's
+    # entire job is "process unconsumed changesets" (either add them to
+    # the Version PR, or publish them when the Version PR merges). Any
+    # push that doesn't touch `.changeset/*.md` has nothing for Release
+    # to do — yet the prior unfiltered `push: main` trigger fired on
+    # every commit anyway, and `changesets/action` would rebase + force-
+    # push the active Version PR ("chore: version packages") even when
+    # no new changeset content existed. That spammed the Version PR's
+    # commit history on every unrelated merge (docs, internal planning,
+    # private/experimental packages, dependency bumps without changesets).
+    #
+    # Trigger surface — fires when ANY of:
+    #   - new changeset added (developer's PR merges with a .changeset/foo.md)
+    #   - existing changeset edited (rare, intent: amend the description)
+    #   - changesets removed (the "chore: version packages" commit
+    #     consumes them when the Version PR merges → publish path runs)
+    #
+    # What deliberately does NOT trigger Release:
+    #   - any doc-only change (.claude/, docs/, root README, etc.)
+    #   - any change to private/experimental packages without a changeset
+    #     (packages/native/**, packages/internals/**, examples/**)
+    #   - dependency bumps in package.json without a changeset
+    #   - workflow / CI / tooling changes (caught by their own gates)
+    #   - any [skip-changeset]-labeled PR's merge (no changeset = no trigger)
+    #
+    # The contract: a release is intentional. If you want code to ship,
+    # write a changeset. If you don't want it to ship, don't. The trigger
+    # mirrors the intent exactly — no path-blacklist approximation needed.
+    paths:
+      - '.changeset/**'
+    paths-ignore:
+      - '.changeset/README.md'      # changesets package's own README
+      - '.changeset/config.json'    # config edits don't ship; rare
   workflow_dispatch:
 
 # Read-only default; per-job blocks below grant write only to the
