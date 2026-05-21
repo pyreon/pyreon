@@ -1,11 +1,20 @@
-// User-authored Pyreon source for the iOS counter sample.
+// The canonical PMTC counter — proves the signal → @State round-trip
+// works end-to-end. Per PMTC Phase 0 success criterion 2.
 //
-// Phase 0 PR 3 ships this as an EMPTY component shell — just enough
-// to prove the build pipeline emits a valid Swift file. The actual
-// Counter implementation (signal + button-driven increment) lands in
-// roadmap PR 4 along with the end-to-end "counter on iOS simulator
-// renders and ticks" validation.
+// On iOS this compiles to a SwiftUI struct with `@State private var
+// count: Int = 0`, displays "Count: \(count)", and increments on
+// button tap. SwiftUI's automatic re-render fires when count changes
+// via `count.set(...)` (the compiler emits as `count = ...` since
+// SwiftUI's @State is a var, not a method).
+
+import { signal } from '@pyreon/reactivity'
 
 export function Counter() {
-  return <Text>Counter (placeholder — see roadmap PR 4)</Text>
+  const count = signal<number>(0)
+  return (
+    <VStack>
+      <Text>Count: {count}</Text>
+      <Button onClick={() => count.set(count() + 1)}>Increment</Button>
+    </VStack>
+  )
 }

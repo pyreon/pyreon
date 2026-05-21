@@ -279,7 +279,22 @@ function parseJsxAttr(node: AnyNode, ctx: ParseCtx): AttrIR | null {
 
 function parseJsxChild(node: AnyNode, ctx: ParseCtx): ChildIR | null {
   if (node.type === 'JSXText') {
-    const v = (node.value as string).trim()
+    // JSX whitespace handling per Babel / React convention:
+    //
+    //   - JSXText that's ALL whitespace + newlines is dropped
+    //   - Multi-line text (formatted JSX with newlines between tags)
+    //     collapses whitespace + trims edges — that's just layout
+    //     whitespace, not content
+    //   - Single-line text preserves whitespace AS-IS — including
+    //     the trailing space in `<Text>Count: {count}</Text>` before
+    //     the `{count}` expression. Without this, the emit produced
+    //     `Text("Count:\(count)")` instead of `"Count: \(count)"`.
+    //
+    // The naive pre-PR-9 `.trim()` was correct for layout whitespace
+    // but wrong for content-adjacent whitespace.
+    const raw = node.value as string
+    if (!/\S/.test(raw)) return null
+    const v = /\n/.test(raw) ? raw.replace(/\s+/g, ' ').trim() : raw
     if (v === '') return null
     return { kind: 'text', value: v }
   }

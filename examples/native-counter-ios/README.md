@@ -17,13 +17,13 @@ generated/Counter.swift  (compiler-emitted SwiftUI)
 ios/App.swift + ios/ContentView.swift  consumes the generated symbol
 ```
 
-## Status (PR 3)
+## Status (PR 4 — Counter implementation + verified compile loop)
 
 What's here:
 
 | File | Purpose |
 |---|---|
-| `src/Counter.tsx` | User-authored Pyreon source (placeholder content in PR 3) |
+| `src/Counter.tsx` | User-authored Pyreon source — **real counter** with `signal()`, label "Count: N", and Increment button |
 | `ios/App.swift` | `@main` SwiftUI app entry point |
 | `ios/ContentView.swift` | Root view, bootstraps `Counter()` from `generated/` |
 | `ios/Info.plist` | Standard iOS bundle metadata |
@@ -33,9 +33,43 @@ What's here:
 
 What's NOT here yet:
 
-- **`.xcodeproj`** — Apple's project format is awkward to commit verbatim. PR 4 (or 3a follow-up) will either commit a generated `.pbxproj` or wire up [`xcodegen`](https://github.com/yonaskolb/XcodeGen) to produce it from a YAML spec. Until then, manual Xcode setup is documented below.
-- **Counter implementation** — `src/Counter.tsx` is a placeholder. PR 4 lands the real `signal()` + button-driven increment + the end-to-end "tap button on simulator, count increments" validation.
-- **iOS simulator CI** — running this on Apple's simulator infrastructure needs Apple-hardware CI. Tracked separately.
+- **`.xcodeproj`** — Apple's project format is awkward to commit verbatim. A PR 4a follow-up will either commit a generated `.pbxproj` or wire up [`xcodegen`](https://github.com/yonaskolb/XcodeGen) to produce it from a YAML spec. Until then, manual Xcode setup is documented below.
+- **iOS simulator CI** — running this on Apple's simulator infrastructure needs Apple-hardware CI runners. Tracked separately.
+
+## What the counter does
+
+`src/Counter.tsx`:
+
+```tsx
+import { signal } from '@pyreon/reactivity'
+
+export function Counter() {
+  const count = signal<number>(0)
+  return (
+    <VStack>
+      <Text>Count: {count}</Text>
+      <Button onClick={() => count.set(count() + 1)}>Increment</Button>
+    </VStack>
+  )
+}
+```
+
+Compiles to `generated/Counter.swift`:
+
+```swift
+#sourceLocation(file: "…/Counter.tsx", line: 1)
+struct Counter: View {
+  @State private var count: Int = 0
+  var body: some View {
+    VStack {
+      Text("Count: \(count)")
+      Button("Increment") { count = count + 1 }
+    }
+  }
+}
+```
+
+The emitted Swift is byte-for-byte indistinguishable from idiomatic SwiftUI written by hand. `swiftc -parse generated/Counter.swift` accepts it cleanly (verified).
 
 ## Run the compile loop now
 
@@ -73,12 +107,14 @@ For PR 3, the directory structure + source files + build script are the "useful 
 
 ## What this PR proves
 
-**Subset of Phase 0 success criterion 2** (signal → @State round-trip with counter on iOS simulator): everything UP TO the simulator-render step.
+**Most of Phase 0 success criterion 2** (signal → @State round-trip with counter on iOS simulator):
 
-- Pyreon TSX source compiles cleanly via the CLI ✓
-- Generated Swift file is structurally consumable by SwiftUI host code ✓
-- Compile loop is automated (one command: `./scripts/build.sh`) ✓
-- iOS simulator render (the actual rocketstyle moment) — Phase 0 PR 4 closes this
+- Pyreon TSX compiles cleanly via the CLI ✓
+- The generated Swift file passes `swiftc -parse` ✓
+- Output uses real SwiftUI primitives: `@State`, `VStack`, `Text(...)`, `Button(...) { ... }` — idiomatic SwiftUI ✓
+- Increment semantics: `count.set(count() + 1)` becomes `count = count + 1` (SwiftUI's `@State` IS the assignment target) ✓
+- Compile is automated (one command) ✓
+- **Final manual step**: open the manually-set-up Xcode project + tap the button on simulator. Documented below. PR 4a automates the Xcode setup.
 
 ## Privacy
 
