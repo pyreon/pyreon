@@ -21,6 +21,11 @@ import type {
 // `_enumNames` / `_signalEnumTypes` / `_activeEnumType` comment for
 // the structural rationale (avoiding ctx-threading at all call sites).
 let _enumNames: Set<string> = new Set()
+/**
+ * Struct name → sorted-field-names key. Mirror of emit-swift.ts's
+ * `_structFieldsToName`. See that file for the structural rationale.
+ */
+let _structFieldsToName: Map<string, string> = new Map()
 let _signalEnumTypes: Map<string, string> = new Map()
 let _activeEnumType: string | undefined
 /** G1: every signal name in scope — see emit-swift.ts for the rationale. */
@@ -34,11 +39,18 @@ export function emitKotlin(
   structs: StructIR[] = [],
 ): string {
   _enumNames = new Set(enums.map((e) => e.name))
+  // Build the struct-fields key map — mirror of emit-swift's logic.
+  _structFieldsToName = new Map()
+  for (const s of structs) {
+    const key = s.fields.map((f) => f.name).sort().join(',')
+    if (!_structFieldsToName.has(key)) _structFieldsToName.set(key, s.name)
+  }
   const parts: string[] = []
   for (const e of enums) parts.push(emitKotlinEnum(e))
   for (const s of structs) parts.push(emitKotlinStruct(s))
   for (const c of components) parts.push(emitKotlinComponent(c))
   _enumNames = new Set()
+  _structFieldsToName = new Map()
   return parts.join('\n\n')
 }
 
@@ -460,6 +472,22 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
           .join(', ')
         return `${target}.copy(${overrides})`
+      }
+      // Phase 2 follow-up — when no spread + field-set matches a known
+      // struct exactly, emit as data-class constructor call. Kotlin's
+      // data-class constructor uses named arguments so the source order
+      // can differ from the declared order (clearer than Swift's struct
+      // init which requires order match). See emit-swift.ts for the
+      // structural rationale.
+      if (!e.spreads || e.spreads.length === 0) {
+        const fieldSet = e.fields.map((f) => f.name).sort().join(',')
+        const structName = _structFieldsToName.get(fieldSet)
+        if (structName !== undefined) {
+          const args = e.fields
+            .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
+            .join(', ')
+          return `${kotlinIdent(structName)}(${args})`
+        }
       }
       const fields = e.fields.map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`).join(', ')
       return `(${fields})`

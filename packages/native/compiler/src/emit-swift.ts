@@ -34,6 +34,21 @@ import type {
 // Identical module-state pattern to `_activePropsParamName` below —
 // the emitter avoids ctx-threading at 22+ call sites.
 let _enumNames: Set<string> = new Set()
+/**
+ * Struct name → sorted-field-names key. Phase 2 follow-up to the
+ * struct-emit PR. Used by the object-expression emit to detect when
+ * an anonymous object literal (`{ id: ..., text: ..., done: false }`)
+ * matches a known struct's fields exactly. If so, emit as a struct
+ * initializer (`Todo(id: ..., text: ..., done: false)`) instead of
+ * a labelled tuple. Matches by EXACT field-name set — superset /
+ * partial matches conservatively fall through to tuple emit.
+ *
+ * The sorted-fields key (`'done,id,text'`) is stored as a comma-
+ * joined string so a `Map<string, string>` lookup is O(1) per object
+ * expression. Multiple structs with the same field-set would collide;
+ * we keep the first-seen struct (alphabetical via Map insertion).
+ */
+let _structFieldsToName: Map<string, string> = new Map()
 /** Per-component: signal/computed name → enum-type-name when typed as one. */
 let _signalEnumTypes: Map<string, string> = new Map()
 /** Set when emitting a signal initial value that's an enum-typed signal. */
@@ -61,11 +76,20 @@ export function emitSwift(
   structs: StructIR[] = [],
 ): string {
   _enumNames = new Set(enums.map((e) => e.name))
+  // Build the struct-fields key map for object-expression detection.
+  // Sorted-field-name string `'done,id,text'` → struct name `'Todo'`.
+  // First-seen struct wins on field-set collision (rare in practice).
+  _structFieldsToName = new Map()
+  for (const s of structs) {
+    const key = s.fields.map((f) => f.name).sort().join(',')
+    if (!_structFieldsToName.has(key)) _structFieldsToName.set(key, s.name)
+  }
   const parts: string[] = []
   for (const e of enums) parts.push(emitSwiftEnum(e))
   for (const s of structs) parts.push(emitSwiftStruct(s))
   for (const c of components) parts.push(emitSwiftComponent(c))
   _enumNames = new Set()
+  _structFieldsToName = new Map()
   return parts.join('\n\n')
 }
 
@@ -490,6 +514,28 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           .map((f) => `c.${swiftIdent(f.name)} = ${emitSwiftExpr(f.value, indent)}`)
           .join('; ')
         return `{ var c = ${target}; ${overrides}; return c }()`
+      }
+      // Phase 2 follow-up to the struct-emit PR — object literal with
+      // no spread + field-name set matching a known struct EXACTLY
+      // emits as a struct initializer `Todo(id: ..., text: ..., done: ...)`
+      // instead of the labelled tuple. The fields are emitted in the
+      // ORDER the source wrote them (struct init accepts arg-label
+      // ordering matching the struct's declared order; Swift compiler
+      // raises a clear error if the user-source order doesn't match).
+      // Falls through to tuple emit when:
+      //   - any spread is present (G4 handles those above)
+      //   - field-set doesn't match any known struct exactly
+      //   - multiple structs have the same field-set (collision —
+      //     can't disambiguate without type-context)
+      if (!e.spreads || e.spreads.length === 0) {
+        const fieldSet = e.fields.map((f) => f.name).sort().join(',')
+        const structName = _structFieldsToName.get(fieldSet)
+        if (structName !== undefined) {
+          const args = e.fields
+            .map((f) => `${swiftIdent(f.name)}: ${emitSwiftExpr(f.value, indent)}`)
+            .join(', ')
+          return `${swiftIdent(structName)}(${args})`
+        }
       }
       const fields = e.fields.map((f) => `${f.name}: ${emitSwiftExpr(f.value, indent)}`).join(', ')
       return `(${fields})`
