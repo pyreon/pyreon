@@ -34,16 +34,38 @@ function captureCallSite(): string {
   const lines = stack.split('\n')
   // Framework paths to skip — conservative, matches the packages that
   // contain lifecycle / provide / context internals and call these hooks.
+  // Framework / infra paths + function names to skip. Match BOTH source
+  // form (`packages/X/src/...` — workspace consumers via the `bun`
+  // condition) AND published-bundle form (`node_modules/@pyreon/X/lib/...`
+  // — npm consumers). Pre-fix only the source paths were covered, so
+  // every published-package consumer (i.e. almost everyone in production
+  // dev) saw the warning's "Called from:" line point at the framework's
+  // own bundle code, defeating the user-actionable hint. Function-name
+  // patterns (`captureCallSite`, `warnOutsideSetup`) cover the case where
+  // bundling rewrites the source path but the symbol name survives.
   const skipPatterns = [
-    /lifecycle\.ts/,
-    /\/context\.ts/,
-    /\/component\.ts/,
-    /\/core\/src\//,
-    /\/runtime-dom\/src\//,
-    /\/runtime-server\/src\//,
-    // node:internal frames
+    // ── Source form (workspace / `bun` condition) ──────────────────────
+    /\/lifecycle\.[tj]s/,
+    /\/context\.[tj]s/,
+    /\/component\.[tj]s/,
+    // ── Function-name match (works through bundling / minification when
+    //    symbol names survive) ─────────────────────────────────────────
+    /\bcaptureCallSite\b/,
+    /\bwarnOutsideSetup\b/,
+    // ── Source-tree paths for every framework package that internally
+    //    calls lifecycle hooks (HeadProvider, RouterProvider, ThemeProvider,
+    //    PyreonUI, etc.). Without each, a published-package consumer with
+    //    `useHead()` or `provide()` would see the "Called from:" line
+    //    point at the LIBRARY's source, not their own component. ───────
+    /\/(core|reactivity|runtime-dom|runtime-server|router|head|ui-core|styler|unistyle|rocketstyle|attrs|elements|kinetic)\/src\//,
+    // ── Published-bundle form (npm consumers): bundles always at
+    //    `node_modules/@pyreon/<name>/lib/...`. The blanket
+    //    `@pyreon/[a-z-]+/lib/` catches every package without per-name
+    //    maintenance. ────────────────────────────────────────────────────
+    /node_modules\/@pyreon\/[^/]+\/lib\//,
+    /@pyreon\/[a-z-]+\/lib\//,
+    // ── Runtime / engine internals ─────────────────────────────────────
     /node:internal/,
-    // chrome devtools source mappings
     /webpack-internal/,
     /<anonymous>/,
   ]
