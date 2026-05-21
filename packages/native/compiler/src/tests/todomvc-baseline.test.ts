@@ -71,7 +71,20 @@ describe('TodoMVC compile baseline', () => {
       }
 
       struct TodoApp: View {
-        @AppStorage("pyreon-todomvc:todos") private var todos: [Todo] = []
+        @AppStorage("pyreon-todomvc:todos") private var todosData: Data = Data()
+        private var todos: [Todo] {
+          get {
+            guard !todosData.isEmpty,
+                  let decoded = try? JSONDecoder().decode([Todo].self, from: todosData)
+            else { return [] }
+            return decoded
+          }
+          nonmutating set {
+            if let encoded = try? JSONEncoder().encode(newValue) {
+              todosData = encoded
+            }
+          }
+        }
         @State private var filter: Filter = .all
         @State private var draft: String = ""
         private var visible: Any { xs }
@@ -227,15 +240,42 @@ describe('TodoMVC gap-tracking baseline', () => {
     expect(out.code).toMatch(/t\.copy\(done = !t\.done\)/)
   })
 
-  it('G5 — useStorage<T>(key, default) emits @AppStorage on Swift', () => {
-    // CLOSED by this PR. The parser now recognises
-    // `const x = useStorage<T>('key', default)` as a persistent signal
-    // (DeclIR.signal with `storageKey`). The Swift emit routes it to
-    // SwiftUI's `@AppStorage("key")` property wrapper. The locked
-    // Swift-emit snapshot above already proves this; the explicit
-    // assertion here is the gap-closure marker.
+  it('G5 — useStorage<T>(key, default) emits @AppStorage Codable-Data bridge on Swift for non-native types', () => {
+    // CLOSED by G5 #849. Phase 2 follow-up: when the value type is
+    // NOT one of @AppStorage's native types (String / Int / Double /
+    // Bool / URL / Data / RawRepresentable), the Swift emit produces
+    // a Codable-Data bridge — a `Data`-backed `@AppStorage` slot + a
+    // computed property doing JSON round-trip. Closes G5's known
+    // typecheck caveat (`@AppStorage([Todo])` was rejected by
+    // `swiftc -typecheck`); now `[Todo]` round-trips cleanly.
+    //
+    // TodoMVC's `Todo[]` is non-native, so this test asserts the
+    // bridge shape. Native-typed storage signals (e.g. `useStorage<string>`)
+    // continue to use the direct `@AppStorage` shape — see the
+    // separate native-typed test below.
     const out = transform(source, { target: 'swift' })
-    expect(out.code).toContain('@AppStorage("pyreon-todomvc:todos") private var todos: [Todo] = []')
+    expect(out.code).toContain('@AppStorage("pyreon-todomvc:todos") private var todosData: Data = Data()')
+    expect(out.code).toContain('private var todos: [Todo] {')
+    expect(out.code).toContain('JSONDecoder().decode([Todo].self, from: todosData)')
+    expect(out.code).toContain('JSONEncoder().encode(newValue)')
+  })
+
+  it('Phase 2 — useStorage<string> on Swift uses direct @AppStorage shape (no Codable bridge)', () => {
+    // Confirms the type predicate works — native-typed storage signals
+    // continue to emit the direct shape, no Codable-Data bridge.
+    // Minimal source covering only a string-typed useStorage; we don't
+    // need TodoMVC's full source for this assertion.
+    const minimalSource = `
+      import { useStorage } from '@pyreon/storage'
+      export function Settings() {
+        const username = useStorage<string>('user:name', 'guest')
+        return <Text>{username()}</Text>
+      }
+    `
+    const out = transform(minimalSource, { target: 'swift' })
+    expect(out.code).toContain('@AppStorage("user:name") private var username: String = "guest"')
+    expect(out.code).not.toContain('JSONDecoder')
+    expect(out.code).not.toContain('JSONEncoder')
   })
 
   it('G5 — useStorage<T>(key, default) emits `rememberSaveable` on Kotlin', () => {
