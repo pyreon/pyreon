@@ -47,6 +47,44 @@ export interface PropIR {
 export type DeclIR =
   | { kind: 'signal'; name: string; type: TypeIR; initial: ExprIR }
   | { kind: 'computed'; name: string; expr: ExprIR }
+  /**
+   * Local function declaration via `const fn = () => { ... }`
+   * (Parser-A from `native-platforms-todomvc-walkthrough.md`). Emits
+   * as a `private func` on Swift / a private fn on Kotlin.
+   *
+   * Multi-statement BlockStatement bodies are supported via `body`
+   * carrying StatementIR[]; a single-expression arrow body lands as
+   * `body: [{ kind: 'return', expr }]` for uniformity.
+   */
+  | {
+      kind: 'function'
+      name: string
+      params: { name: string; type: TypeIR }[]
+      returnType: TypeIR
+      body: StatementIR[]
+    }
+
+/**
+ * Statement IR — sequence of operations inside a function body. The
+ * existing parser walks Pyreon JSX components via top-level
+ * VariableDeclaration / ReturnStatement; this adds the imperative
+ * shape needed for TodoMVC's mutation functions (`addTodo`, `toggle`,
+ * `remove`, `clearCompleted`).
+ *
+ * Kinds intentionally minimal for the immediate TodoMVC slice:
+ * `let` (local const binding), `if` (with optional else), `return`,
+ * and `expr` (call-expression as statement). Future expansions
+ * (`for`, `while`, `try`) deliberately deferred.
+ */
+export type StatementIR =
+  /** `const text = draft().trim()` — local const binding inside fn body. */
+  | { kind: 'let'; name: string; expr: ExprIR }
+  /** `if (cond) { then } [else { else }]`. */
+  | { kind: 'if'; cond: ExprIR; then: StatementIR[]; elseBody?: StatementIR[] }
+  /** `return [expr]` — bare early-return uses `expr: undefined`. */
+  | { kind: 'return'; expr?: ExprIR }
+  /** Bare expression statement: `todos.set([...])`, `draft.set('')`. */
+  | { kind: 'expr'; expr: ExprIR }
 
 /** Type annotation, parsed from `signal<T>(...)` generics. */
 export type TypeIR =
@@ -91,12 +129,63 @@ export type ExprIR =
   | { kind: 'call'; callee: ExprIR; args: ExprIR[] }
   | { kind: 'member'; object: ExprIR; property: string }
   | { kind: 'binary'; op: '+' | '-' | '*' | '/' | '%'; left: ExprIR; right: ExprIR }
+  /**
+   * Comparison + equality operators emit as-is on both Swift and Kotlin
+   * (`==` / `!=` / `<` / `>` / `<=` / `>=`). Added in the Parser-A slice
+   * because TodoMVC's filter conditionals (`t.id === id`, `filter() === 'active'`)
+   * require them. Pyreon source uses `===` / `!==` which JS-evaluates
+   * the same as `==` / `!=` for the value types Pyreon signals carry;
+   * the emitter coalesces to the native target's `==` / `!=`.
+   */
+  | {
+      kind: 'comparison'
+      op: '==' | '!=' | '<' | '>' | '<=' | '>='
+      left: ExprIR
+      right: ExprIR
+    }
+  /**
+   * Unary operators (Parser-B). TodoMVC uses `!t.done` in filter
+   * callbacks. Both Swift and Kotlin support `!` / `-` / `+` as
+   * prefix unary; the emitter passes them through verbatim.
+   */
+  | { kind: 'unary'; op: '!' | '-' | '+'; argument: ExprIR }
+  /**
+   * Logical operators (Parser-C). TodoMVC uses `e.key === 'Enter' && addTodo()`
+   * in the keyboard handler. Swift and Kotlin both have `&&` / `||` with
+   * the same short-circuit semantics. JS's `??` (nullish coalescing) maps
+   * differently per target but isn't in the TodoMVC slice — deferred.
+   */
+  | { kind: 'logical'; op: '&&' | '||'; left: ExprIR; right: ExprIR }
+  /**
+   * Ternary conditional (`cond ? a : b`). Both Swift and Kotlin have
+   * the ternary form verbatim (Kotlin uses `if (cond) a else b` as the
+   * idiomatic equivalent — same expression-form semantics). TodoMVC's
+   * `toggle` uses this in the map callback.
+   */
+  | { kind: 'ternary'; cond: ExprIR; then: ExprIR; otherwise: ExprIR }
+  /**
+   * Post-increment / -decrement (`x++`, `x--`). JavaScript evaluates
+   * to the OLD value while side-effect-incrementing. In Pyreon source
+   * the common use is `someCounter++` in an array literal (TodoMVC:
+   * `{ id: nextId++, ... }`). The emit on both Swift and Kotlin
+   * degrades to `x + 1` for the value (Swift @State / Kotlin var don't
+   * support `++` natively in expression position) — the side-effect
+   * increment is lost. Phase 2 refines if needed.
+   */
+  | { kind: 'update'; op: '++' | '--'; argument: ExprIR }
   | { kind: 'arrow'; params: string[]; body: ExprIR }
   | { kind: 'jsx-element'; tag: string; attrs: AttrIR[]; children: ChildIR[] }
   | { kind: 'jsx-fragment'; children: ChildIR[] }
   | { kind: 'array'; elements: ExprIR[] }
   | { kind: 'object'; fields: { name: string; value: ExprIR }[] }
   | { kind: 'paren'; inner: ExprIR }
+  /**
+   * Spread element in array literal (`[...todos(), newTodo]`) used by
+   * TodoMVC's mutation functions. The emit on Swift becomes `todos +
+   * [newTodo]` (immutable concat) — preserves the source's
+   * value-semantics. Kotlin emit: `todos + listOf(newTodo)`.
+   */
+  | { kind: 'spread'; argument: ExprIR }
 
 export type AttrIR =
   /** Regular attribute: `each={items}`, `by={(i) => i.id}`, `when={visible}`. */

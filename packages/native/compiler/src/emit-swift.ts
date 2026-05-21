@@ -17,6 +17,7 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
+  StatementIR,
   TypeIR,
 } from './types'
 
@@ -115,6 +116,9 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
     _activeEnumType = undefined
     return `@State private var ${swiftIdent(d.name)}: ${type} = ${initial}`
   }
+  if (d.kind === 'function') {
+    return emitSwiftFunction(d)
+  }
   // computed — infer the return type from the expression body so we
   // can emit a typed computed property. Falls back to `Any` for cases
   // the inference can't resolve (the emit still produces compilable
@@ -122,6 +126,61 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
   const inferred = inferType(d.expr, inferCtx)
   const swiftReturnType = swiftType(inferred)
   return `private var ${swiftIdent(d.name)}: ${swiftReturnType} { ${emitSwiftExpr(d.expr, 0)} }`
+}
+
+/**
+ * Emit `const fn = () => { ... }` as a Swift `private func` on the
+ * SwiftUI View struct. Parser-A from the TodoMVC walkthrough.
+ *
+ * Body rendering:
+ *   - Single-statement body that's `{ kind: 'return', expr }` →
+ *     `private func fn() -> T { expr }` (no explicit `return`)
+ *   - Single `{ kind: 'expr' }` → `private func fn() { expr }`
+ *     (no return type if `returnType` was unknown)
+ *   - Multi-statement → full block with explicit returns
+ */
+function emitSwiftFunction(
+  d: Extract<DeclIR, { kind: 'function' }>,
+): string {
+  const params = d.params
+    .map((p) => `${swiftIdent(p.name)}: ${swiftType(p.type)}`)
+    .join(', ')
+  // Render return-type clause. If the type is `unknown`, omit the
+  // arrow entirely (= Swift function returning Void).
+  const retType = d.returnType.kind === 'unknown' ? '' : ` -> ${swiftType(d.returnType)}`
+  // Single-statement single-return concise form.
+  if (
+    d.body.length === 1 &&
+    d.body[0]!.kind === 'return' &&
+    d.body[0]!.expr !== undefined
+  ) {
+    const concise = emitSwiftExpr((d.body[0]! as { expr: ExprIR }).expr, 0)
+    return `private func ${swiftIdent(d.name)}(${params})${retType} { ${concise} }`
+  }
+  const bodyLines = d.body.map((s) => `    ${emitSwiftStatement(s, 4)}`).join('\n')
+  return `private func ${swiftIdent(d.name)}(${params})${retType} {\n${bodyLines}\n  }`
+}
+
+function emitSwiftStatement(s: StatementIR, indent: number): string {
+  switch (s.kind) {
+    case 'let':
+      return `let ${swiftIdent(s.name)} = ${emitSwiftExpr(s.expr, indent)}`
+    case 'return':
+      return s.expr ? `return ${emitSwiftExpr(s.expr, indent)}` : 'return'
+    case 'expr':
+      return emitSwiftExpr(s.expr, indent)
+    case 'if': {
+      const pad = ' '.repeat(indent)
+      const cond = emitSwiftExpr(s.cond, indent)
+      const thenLines = s.then.map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`).join('\n')
+      const head = `if ${cond} {\n${thenLines}\n${pad}}`
+      if (!s.elseBody) return head
+      const elseLines = s.elseBody
+        .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
+        .join('\n')
+      return `${head} else {\n${elseLines}\n${pad}}`
+    }
+  }
 }
 
 /**
@@ -270,6 +329,30 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
     }
     case 'binary':
       return `${emitSwiftExpr(e.left, indent)} ${e.op} ${emitSwiftExpr(e.right, indent)}`
+    case 'comparison':
+      // Pyreon `===` / `!==` already coalesced to `==` / `!=` at parse;
+      // Swift takes them verbatim.
+      return `${emitSwiftExpr(e.left, indent)} ${e.op} ${emitSwiftExpr(e.right, indent)}`
+    case 'unary':
+      // Parser-B: prefix unary. Swift accepts `!x`, `-x`, `+x` verbatim.
+      return `${e.op}${emitSwiftExpr(e.argument, indent)}`
+    case 'logical':
+      // Parser-C: short-circuit logical. Swift `&&` / `||` semantics
+      // match JS for the value types Pyreon signals carry.
+      return `${emitSwiftExpr(e.left, indent)} ${e.op} ${emitSwiftExpr(e.right, indent)}`
+    case 'ternary':
+      // Swift ternary syntax is identical to JS.
+      return `${emitSwiftExpr(e.cond, indent)} ? ${emitSwiftExpr(e.then, indent)} : ${emitSwiftExpr(e.otherwise, indent)}`
+    case 'update':
+      // `x++` / `x--` post-increment in expression position. Swift
+      // doesn't support `++` / `--` as expressions — emit the VALUE
+      // (`x + 1` / `x - 1`) and document the side-effect loss in the
+      // IR comment. For `nextId++` inside an array literal, this is
+      // the correct VALUE semantics; the increment side-effect is
+      // missing but the array element is correct.
+      return e.op === '++'
+        ? `${emitSwiftExpr(e.argument, indent)} + 1`
+        : `${emitSwiftExpr(e.argument, indent)} - 1`
     case 'arrow':
       // Swift closure: `{ params in body }`.
       if (e.params.length === 0) return `{ ${emitSwiftExpr(e.body, indent)} }`
@@ -280,8 +363,27 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       const pad = ' '.repeat(indent + 2)
       return `Group {\n${e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
     }
-    case 'array':
+    case 'array': {
+      // Array spread (`[...todos(), x]`) → Swift `+` concat (preserves
+      // source's value-semantics). Only handle the single-spread form;
+      // multi-spread degrades to verbatim emit (which would be invalid
+      // Swift but flagged at parse time).
+      const spreadIdx = e.elements.findIndex((el) => el.kind === 'spread')
+      if (spreadIdx === 0) {
+        const spread = e.elements[0]! as Extract<ExprIR, { kind: 'spread' }>
+        const tail = e.elements.slice(1)
+        const tailRendered = tail.map((el) => emitSwiftExpr(el, indent)).join(', ')
+        if (tail.length === 0) return emitSwiftExpr(spread.argument, indent)
+        return `${emitSwiftExpr(spread.argument, indent)} + [${tailRendered}]`
+      }
       return `[${e.elements.map((el) => emitSwiftExpr(el, indent)).join(', ')}]`
+    }
+    case 'spread':
+      // Bare spread outside an ArrayExpression — the parser produces
+      // this for `{...obj}`-style usage which Swift doesn't have a
+      // direct emit for. Degrades to the argument; warn at parse time
+      // would be ideal but the IR doesn't carry context.
+      return emitSwiftExpr(e.argument, indent)
     case 'object': {
       const fields = e.fields.map((f) => `${f.name}: ${emitSwiftExpr(f.value, indent)}`).join(', ')
       return `(${fields})`

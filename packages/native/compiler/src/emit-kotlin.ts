@@ -12,6 +12,7 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
+  StatementIR,
   TypeIR,
 } from './types'
 
@@ -119,8 +120,69 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     }
     return `var ${kotlinIdent(d.name)} by remember { mutableStateOf(${initial}) }`
   }
+  if (d.kind === 'function') {
+    return emitKotlinFunction(d, ctx)
+  }
   // computed → derivedStateOf, accessed via the `by` delegate.
   return `val ${kotlinIdent(d.name)} by remember { derivedStateOf { ${emitKotlinExpr(d.expr, 0)} } }`
+}
+
+/**
+ * Emit `const fn = () => { ... }` as a Kotlin local function inside the
+ * Composable. Parser-A from the TodoMVC walkthrough. Mirrors the Swift
+ * emit's body shape.
+ *
+ * Body rendering:
+ *   - Single \`{ kind: 'return', expr }\` → \`fun fn(): T = expr\` (
+ *     single-expression body form; idiomatic Kotlin)
+ *   - Multi-statement → full block with explicit returns
+ */
+function emitKotlinFunction(
+  d: Extract<DeclIR, { kind: 'function' }>,
+  ctx: KotlinCtx,
+): string {
+  const params = d.params
+    .map((p) => `${kotlinIdent(p.name)}: ${kotlinType(p.type, ctx, p.name)}`)
+    .join(', ')
+  // Kotlin function return-type clause. Unknown return type degrades
+  // to `Unit` (void); a known return type emits as `: T`.
+  const retType = d.returnType.kind === 'unknown' ? '' : `: ${kotlinType(d.returnType, ctx)}`
+  if (
+    d.body.length === 1 &&
+    d.body[0]!.kind === 'return' &&
+    d.body[0]!.expr !== undefined
+  ) {
+    const concise = emitKotlinExpr((d.body[0]! as { expr: ExprIR }).expr, 0)
+    return `fun ${kotlinIdent(d.name)}(${params})${retType} = ${concise}`
+  }
+  const bodyLines = d.body
+    .map((s) => `    ${emitKotlinStatement(s, 4, ctx)}`)
+    .join('\n')
+  return `fun ${kotlinIdent(d.name)}(${params})${retType} {\n${bodyLines}\n  }`
+}
+
+function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): string {
+  switch (s.kind) {
+    case 'let':
+      return `val ${kotlinIdent(s.name)} = ${emitKotlinExpr(s.expr, indent)}`
+    case 'return':
+      return s.expr ? `return ${emitKotlinExpr(s.expr, indent)}` : 'return'
+    case 'expr':
+      return emitKotlinExpr(s.expr, indent)
+    case 'if': {
+      const pad = ' '.repeat(indent)
+      const cond = emitKotlinExpr(s.cond, indent)
+      const thenLines = s.then
+        .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
+        .join('\n')
+      const head = `if (${cond}) {\n${thenLines}\n${pad}}`
+      if (!s.elseBody) return head
+      const elseLines = s.elseBody
+        .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
+        .join('\n')
+      return `${head} else {\n${elseLines}\n${pad}}`
+    }
+  }
 }
 
 /**
@@ -278,6 +340,28 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
     }
     case 'binary':
       return `${emitKotlinExpr(e.left, indent)} ${e.op} ${emitKotlinExpr(e.right, indent)}`
+    case 'comparison':
+      // Pyreon `===` / `!==` already coalesced to `==` / `!=` at parse;
+      // Kotlin's `==` is structural-equality (matches what Pyreon source
+      // expects). `!=` is the negation.
+      return `${emitKotlinExpr(e.left, indent)} ${e.op} ${emitKotlinExpr(e.right, indent)}`
+    case 'unary':
+      // Parser-B: prefix unary. Kotlin accepts `!x`, `-x`, `+x` verbatim.
+      return `${e.op}${emitKotlinExpr(e.argument, indent)}`
+    case 'logical':
+      // Parser-C: short-circuit logical. Kotlin `&&` / `||` semantics
+      // match JS.
+      return `${emitKotlinExpr(e.left, indent)} ${e.op} ${emitKotlinExpr(e.right, indent)}`
+    case 'ternary':
+      // Kotlin doesn't have a ternary operator; the idiomatic form is
+      // an if-expression. Same value semantics.
+      return `if (${emitKotlinExpr(e.cond, indent)}) ${emitKotlinExpr(e.then, indent)} else ${emitKotlinExpr(e.otherwise, indent)}`
+    case 'update':
+      // Same value-semantic degrade as Swift — emit `x + 1` / `x - 1`,
+      // side-effect lost.
+      return e.op === '++'
+        ? `${emitKotlinExpr(e.argument, indent)} + 1`
+        : `${emitKotlinExpr(e.argument, indent)} - 1`
     case 'arrow':
       if (e.params.length === 0) return `{ ${emitKotlinExpr(e.body, indent)} }`
       return `{ ${e.params.map(kotlinIdent).join(', ')} -> ${emitKotlinExpr(e.body, indent)} }`
@@ -288,8 +372,21 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       const body = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
       return `Column {\n${body}\n${' '.repeat(indent)}}`
     }
-    case 'array':
+    case 'array': {
+      // Array spread (`[...todos(), x]`) → Kotlin `+` concat
+      // (preserves source's value-semantics).
+      const spreadIdx = e.elements.findIndex((el) => el.kind === 'spread')
+      if (spreadIdx === 0) {
+        const spread = e.elements[0]! as Extract<ExprIR, { kind: 'spread' }>
+        const tail = e.elements.slice(1)
+        const tailRendered = tail.map((el) => emitKotlinExpr(el, indent)).join(', ')
+        if (tail.length === 0) return emitKotlinExpr(spread.argument, indent)
+        return `${emitKotlinExpr(spread.argument, indent)} + listOf(${tailRendered})`
+      }
       return `listOf(${e.elements.map((el) => emitKotlinExpr(el, indent)).join(', ')})`
+    }
+    case 'spread':
+      return emitKotlinExpr(e.argument, indent)
     case 'object': {
       const fields = e.fields.map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`).join(', ')
       return `(${fields})`

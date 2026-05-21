@@ -60,12 +60,33 @@ describe('TodoMVC compile baseline', () => {
   it('Swift emit — current partial output', () => {
     const out = transform(source, { target: 'swift' })
     expect(out.code).toMatchInlineSnapshot(`
-      "struct TodoApp: View {
-        @State private var filter: Filter = "all"
+      "enum Filter: String {
+        case all, active, completed
+      }
+
+      struct TodoApp: View {
+        @State private var filter: Filter = .all
         @State private var draft: String = ""
-        private var visible: String { "" }
-        private var remaining: Any { todos.filter({ t in "" }).length }
+        private var visible: Any { xs }
+        private var remaining: Any { todos.filter({ t in !t.done }).length }
         private var hasCompleted: Any { todos.some({ t in t.done }) }
+        private func addTodo() {
+          let text = draft.trim()
+          if text.length == 0 {
+            return
+          }
+          todos = todos + [(id: nextId + 1, text: text, done: false)]
+          draft = ""
+        }
+        private func toggle(id: Int) {
+          todos = todos.map({ t in t.id == id ? (done: !t.done) : t })
+        }
+        private func remove(id: Int) {
+          todos = todos.filter({ t in t.id != id })
+        }
+        private func clearCompleted() {
+          todos = todos.filter({ t in !t.done })
+        }
         var body: some View {
           VStack {
             TextField(value: draft, placeholder: "What needs to be done?")
@@ -74,9 +95,9 @@ describe('TodoMVC compile baseline', () => {
             }
             HStack {
               Text("\\(remaining) remaining")
-              Button("All") { filter = "all" }
-              Button("Active") { filter = "active" }
-              Button("Completed") { filter = "completed" }
+              Button("All") { filter = .all }
+              Button("Active") { filter = .active }
+              Button("Completed") { filter = .completed }
               if hasCompleted {
                 Button("Clear completed") { clearCompleted }
               }
@@ -107,9 +128,7 @@ describe('TodoMVC compile baseline', () => {
     const unique = Array.from(new Set(out.warnings)).sort()
     expect(unique).toMatchInlineSnapshot(`
       [
-        "Unsupported expression: BlockStatement.",
-        "Unsupported expression: LogicalExpression.",
-        "Unsupported expression: UnaryExpression.",
+        "Computed visible: multi-statement body collapsed to its return expression — pre-return statements silently dropped (Phase 1 emit limitation)",
       ]
     `)
   })
@@ -150,15 +169,20 @@ describe('TodoMVC gap-tracking baseline', () => {
     expect(out.code).toContain('@AppStorage("pyreon-todomvc:todos")')
   })
 
-  it.todo('G6 — string-literal union Filter type emits `enum Filter: String`', () => {
+  it('G6 — string-literal union Filter type emits `enum Filter: String`', () => {
+    // CLOSED by #835. The locked Swift-emit snapshot above already
+    // proves this; the explicit assertion here is the gap-closure
+    // marker for readers scanning the test file.
     const out = transform(source, { target: 'swift' })
     expect(out.code).toContain('enum Filter: String')
     expect(out.code).toContain('case all, active, completed')
   })
 
-  it.todo(
+  it(
     'Parser-A — BlockStatement arrow bodies parse + emit (addTodo / toggle / remove / clearCompleted as Swift functions)',
     () => {
+      // CLOSED by Parser-A/B/C PR. All 4 mutation functions now emit
+      // as real `private func` declarations.
       const out = transform(source, { target: 'swift' })
       // Each of the 4 const-arrow-function decls should land as a
       // Swift method on the struct.
