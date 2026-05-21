@@ -140,4 +140,27 @@ describe('Pyreon → Swift emit', () => {
       }"
     `)
   })
+
+  it('10 — multi-component file + cross-component call', () => {
+    // Two components in one file. `App` calls `<Card title="Hello" />`,
+    // which goes through the existing emit-generic path — an unknown
+    // JSX tag becomes a constructor call with named-arg syntax, which
+    // is exactly what SwiftUI's `Card(title: "Hello")` initializer
+    // wants. No compiler changes needed for this; the fixture locks
+    // the behavior as a contract so future PRs don't break it.
+    expect(emit('10-multi-component.tsx')).toMatchInlineSnapshot(`
+      "struct Card: View {
+        let title: String
+        var body: some View {
+          Text("\\(title)")
+        }
+      }
+
+      struct App: View {
+        var body: some View {
+          Card(title: "Hello")
+        }
+      }"
+    `)
+  })
 })

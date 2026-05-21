@@ -44,6 +44,7 @@ describe.skipIf(skipCondition)('Swift emit — swiftc -parse validates each fixt
     '07-show.tsx',
     '08-string-computed.tsx',
     '09-props.tsx',
+    '10-multi-component.tsx',
   ] as const
 
   for (const fixture of fixtures) {

@@ -132,4 +132,23 @@ describe('Pyreon → Kotlin emit', () => {
       }"
     `)
   })
+
+  it('10 — multi-component file + cross-component call', () => {
+    // Two components in one file. `App` calls `Card(title = "Hello")` —
+    // the existing emit-generic path turns an unknown JSX tag into a
+    // function call with named-arg syntax, which is exactly what
+    // Compose's `Card(title = "Hello")` invocation wants. Contract
+    // lock: future PRs shouldn't accidentally break this shape.
+    expect(emit('10-multi-component.tsx')).toMatchInlineSnapshot(`
+      "@Composable
+      fun Card(title: String) {
+        Text(text = "\${title}")
+      }
+
+      @Composable
+      fun App() {
+        Card(title = "Hello")
+      }"
+    `)
+  })
 })
