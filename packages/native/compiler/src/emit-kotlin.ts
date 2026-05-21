@@ -24,7 +24,14 @@ interface KotlinCtx {
   componentName: string
 }
 
+// Module-scoped state for the active component's props-param-name —
+// same pattern as emit-swift.ts. Set at the start of each component
+// emit so the `member` case can rewrite `props.title` → `title`.
+// Reset to undefined after each component.
+let _activePropsParamName: string | undefined
+
 function emitKotlinComponent(c: ComponentIR): string {
+  _activePropsParamName = c.propsParamName
   const ctx: KotlinCtx = { synthesizedDataClasses: [], componentName: c.name }
   // First pass: walk decls, synthesizing data classes for anonymous object
   // types found in array-of-object signals. The decls themselves are
@@ -35,13 +42,20 @@ function emitKotlinComponent(c: ComponentIR): string {
     lines.push(emitKotlinDataClass(synth))
     lines.push('')
   }
+  // Props become Composable function parameters. Compose canonical
+  // pattern — parent code calls `Card(title = "...", body = "...")`,
+  // params are immutable per call.
+  const propsList = c.props
+    .map((p) => `${p.name}: ${kotlinType(p.type, ctx, p.name)}`)
+    .join(', ')
   lines.push(`@Composable`)
-  lines.push(`fun ${c.name}() {`)
+  lines.push(`fun ${c.name}(${propsList}) {`)
   for (const declText of declTexts) {
     lines.push(`  ${declText}`)
   }
   lines.push(`  ${emitKotlinExpr(c.returnExpr, 2)}`)
   lines.push(`}`)
+  _activePropsParamName = undefined
   return lines.join('\n')
 }
 
@@ -128,8 +142,20 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       const args = e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')
       return `${callee}(${args})`
     }
-    case 'member':
+    case 'member': {
+      // Rewrite `<propsParamName>.X` → `X`. The active component's
+      // props-param binding is exposed as direct function parameters
+      // in the Composable signature, so the user-source `props.title`
+      // becomes a bare `title` reference in the function body.
+      if (
+        _activePropsParamName !== undefined &&
+        e.object.kind === 'identifier' &&
+        e.object.name === _activePropsParamName
+      ) {
+        return e.property
+      }
       return `${emitKotlinExpr(e.object, indent)}.${e.property}`
+    }
     case 'binary':
       return `${emitKotlinExpr(e.left, indent)} ${e.op} ${emitKotlinExpr(e.right, indent)}`
     case 'arrow':
