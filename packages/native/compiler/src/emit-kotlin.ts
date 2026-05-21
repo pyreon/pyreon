@@ -408,6 +408,23 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
     case 'spread':
       return emitKotlinExpr(e.argument, indent)
     case 'object': {
+      // G4 — partial-update form. When the object has EXACTLY ONE
+      // spread and that spread argument is a bare identifier (typical
+      // shape: `{ ...t, done: !t.done }` inside a `.map(t => ...)`
+      // callback), emit Kotlin's idiomatic data class `.copy(...)`:
+      //
+      //   { ...t, done: !t.done }   →   t.copy(done = !t.done)
+      //
+      // Other shapes (multi-spread, non-identifier spread, no spread
+      // with overrides) fall through to the existing `(field = value)`
+      // tuple-literal emit.
+      if (e.spreads && e.spreads.length === 1 && e.spreads[0]!.kind === 'identifier') {
+        const target = emitKotlinExpr(e.spreads[0]!, indent)
+        const overrides = e.fields
+          .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
+          .join(', ')
+        return `${target}.copy(${overrides})`
+      }
       const fields = e.fields.map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`).join(', ')
       return `(${fields})`
     }
