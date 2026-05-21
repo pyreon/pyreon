@@ -19,25 +19,25 @@ const createMediaQueries: CreateMediaQueries = ((props: {
 }) => {
   const { breakpoints, rootSize, css } = props
 
-  return Object.keys(breakpoints).reduce<
-    Record<string, (...args: [TemplateStringsArray, ...any[]]) => string>
-  >((acc, key) => {
+  // Direct for-in + mutation. The prior `Object.keys.reduce` allocated the
+  // keys array and paid reduce-callback overhead per iteration. Hot at
+  // PyreonUI mount and on any theme/rootSize change. Ported from
+  // vitus-labs `e573e6c4`; measured upstream: +15.9%.
+  const acc: Record<string, (...args: [TemplateStringsArray, ...any[]]) => string> = {}
+  for (const key in breakpoints) {
     const breakpointValue = breakpoints[key]
-
     if (breakpointValue === 0) {
       acc[key] = (...args: [TemplateStringsArray, ...any[]]) => css(...args)
     } else if (breakpointValue != null) {
       const emSize = breakpointValue / rootSize
-
       acc[key] = (...args: [TemplateStringsArray, ...any[]]) => css`
         @media only screen and (min-width: ${emSize}em) {
           ${css(...args)};
         }
       `
     }
-
-    return acc
-  }, {})
+  }
+  return acc
 }) as CreateMediaQueries
 
 export default createMediaQueries

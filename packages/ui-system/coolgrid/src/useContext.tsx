@@ -5,16 +5,6 @@ import { CONTEXT_KEYS } from './constants'
 import type { Context, Obj, ValueType } from './types'
 
 /**
- * Picks only the recognized grid configuration keys from a props object,
- * filtering out any non-grid props before they enter context resolution.
- */
-export type PickThemeProps = <T extends Record<string, unknown>>(
-  props: T,
-  keywords: Array<keyof T>,
-) => ReturnType<typeof pick>
-const pickThemeProps: PickThemeProps = (props, keywords) => pick(props, keywords)
-
-/**
  * Resolves grid columns and container width using a three-layer fallback:
  * 1. Explicit component props (e.g. `columns={6}`)
  * 2. `theme.grid.columns` / `theme.grid.container`
@@ -29,10 +19,15 @@ type GetGridContext = (
 }
 
 export const getGridContext: GetGridContext = (props = {}, theme = {}) => ({
-  columns: (get(props, 'columns') ||
+  // `props` is always a plain object (callers pass a `pick()` result or a
+  // user-supplied object literal), so direct property access is safe and
+  // skips `get`'s path-parsing for these single-key lookups. Ported from
+  // vitus-labs `55402572`. Two `get` calls per `getGridContext` invocation
+  // saved; fires once per Container/Row/Col render.
+  columns: ((props as Obj).columns ||
     get(theme, 'grid.columns') ||
     get(theme, 'coolgrid.columns')) as ValueType,
-  containerWidth: (get(props, 'width') ||
+  containerWidth: ((props as Obj).width ||
     get(theme, 'grid.container') ||
     get(theme, 'coolgrid.container')) as Record<string, number>,
 })
@@ -46,7 +41,9 @@ type UseGridContext = (props: Obj) => Context
 const useGridContext: UseGridContext = (props) => {
   const getCtx = useContext(context)
   const { theme } = getCtx()
-  const ctxProps = pickThemeProps(props, CONTEXT_KEYS)
+  // Direct `pick` (vs the `pickThemeProps` one-liner wrapper that was
+  // removed in vitus-labs `55402572`) saves one function call per render.
+  const ctxProps = pick(props, CONTEXT_KEYS as Array<keyof typeof props>)
   const gridContext = getGridContext(ctxProps, theme as Record<string, unknown>)
 
   return { ...gridContext, ...ctxProps }

@@ -218,16 +218,21 @@ export class StyleSheet {
 
     const atRules: string[] = []
     const baseParts: string[] = []
+    const len = cssText.length
     let depth = 0
     let atStart = -1
     let lastBase = 0
 
-    for (let i = 0; i < cssText.length; i++) {
-      const ch = cssText[i]
+    // `charCodeAt(i)` returns a primitive int; `cssText[i]` allocates a
+    // fresh 1-char string in V8 per iteration. On long stylesheets with
+    // at-rule blocks the per-char allocation dominates. Ported from
+    // vitus-labs `c483cabc`.
+    for (let i = 0; i < len; i++) {
+      const ch = cssText.charCodeAt(i)
 
-      if (ch === '{') {
+      if (ch === 123 /* { */) {
         depth++
-      } else if (ch === '}') {
+      } else if (ch === 125 /* } */) {
         depth--
         if (depth === 0 && atStart >= 0) {
           // End of a tracked at-rule block — extract and wrap with selector
@@ -240,7 +245,7 @@ export class StyleSheet {
           atStart = -1
           lastBase = i + 1
         }
-      } else if (depth === 0 && ch === '@' && atStart < 0) {
+      } else if (depth === 0 && ch === 64 /* @ */ && atStart < 0) {
         // Check if this starts a splittable at-rule (not @keyframes, @font-face, etc.)
         const remaining = cssText.slice(i, i + 20)
         if (/^@(?:media|supports|container)\b/.test(remaining)) {
@@ -377,13 +382,16 @@ export class StyleSheet {
    */
   private splitRules(cssText: string): string[] {
     const rules: string[] = []
+    const len = cssText.length
     let depth = 0
     let start = 0
 
-    for (let i = 0; i < cssText.length; i++) {
-      const ch = cssText[i]
-      if (ch === '{') depth++
-      else if (ch === '}') {
+    // `charCodeAt(i)` returns a primitive int; `cssText[i]` allocates a
+    // fresh 1-char string per iteration. Ported from vitus-labs `c483cabc`.
+    for (let i = 0; i < len; i++) {
+      const ch = cssText.charCodeAt(i)
+      if (ch === 123 /* { */) depth++
+      else if (ch === 125 /* } */) {
         depth--
         if (depth === 0) {
           const rule = cssText.slice(start, i + 1).trim()

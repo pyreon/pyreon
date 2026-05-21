@@ -41,12 +41,11 @@ const Component: PyreonComponent<Props> & {
 } = (props) => {
   const [own, rest] = splitProps(props, ['paragraph', 'label', 'children', 'tag', 'css', 'ref'])
 
-  let finalTag: string | undefined
-
-  if (own.paragraph) finalTag = 'p'
-  else {
-    finalTag = own.tag
-  }
+  // `paragraph` shorthand maps to <p>; otherwise pass through `tag`. Ternary
+  // form replaces the prior `let finalTag` + if/else block — V8 prefers the
+  // single-assignment shape for inline-cache stability. Ported from
+  // vitus-labs `804dd0e2`.
+  const finalTag = own.paragraph ? 'p' : own.tag
 
   return (
     <Styled ref={own.ref} as={finalTag} $text={{ extraStyles: own.css }} {...rest}>

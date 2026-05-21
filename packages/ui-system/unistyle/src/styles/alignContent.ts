@@ -47,7 +47,11 @@ const alignContent: AlignContent = (attrs) => {
     return null
   }
 
-  const isReverted = ['inline', 'reverseInline'].includes(direction)
+  // Direct comparisons avoid the per-call 2-element array allocation that
+  // `['inline', 'reverseInline'].includes(direction)` paid. Hot path: fires
+  // for every styled component with a `direction` prop. Ported from
+  // vitus-labs `e573e6c4`.
+  const isReverted = direction === 'inline' || direction === 'reverseInline'
   const dir = ALIGN_CONTENT_DIRECTION[direction]
   const x = ALIGN_CONTENT_MAP_X[alignX]
   const y = ALIGN_CONTENT_MAP_Y[alignY]

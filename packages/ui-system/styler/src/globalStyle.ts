@@ -26,8 +26,11 @@ export const createGlobalStyle = (
   if (!hasDynamicValues) {
     const cssText = normalizeCSS(resolve(strings, values, {}))
 
-    // Inject into sheet immediately
-    if (cssText.trim()) sheet.insertGlobal(cssText)
+    // Inject into sheet immediately. `normalizeCSS` already strips
+    // leading/trailing whitespace, so a length check is equivalent to the
+    // prior `.trim()` (no O(n) whitespace scan, no string allocation).
+    // Ported from vitus-labs `be471b19`.
+    if (cssText.length > 0) sheet.insertGlobal(cssText)
 
     const StaticGlobal: ComponentFn = () => null
     return StaticGlobal
@@ -39,7 +42,9 @@ export const createGlobalStyle = (
     const allProps = { ...props, theme }
     const cssText = normalizeCSS(resolve(strings, values, allProps))
 
-    if (cssText.trim()) sheet.insertGlobal(cssText)
+    // Length check — `normalizeCSS` already trims. Ported from
+    // vitus-labs `be471b19`.
+    if (cssText.length > 0) sheet.insertGlobal(cssText)
 
     return null
   }

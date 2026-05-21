@@ -24,23 +24,29 @@ const transformTheme: TransformTheme = ({ theme, breakpoints }) => {
 
   if (isEmpty(theme) || isEmpty(breakpoints)) return result
 
-  Object.entries(theme).forEach(([key, value]) => {
+  // for-in + nested for-in avoids the two `Object.entries(...)` array
+  // allocations (outer + inner per object value) the prior forEach paid.
+  // Same for `value.forEach((child, i) => ...)` → indexed for-loop.
+  // Ported from vitus-labs `e573e6c4`.
+  for (const key in theme) {
+    const value = theme[key]
     if (Array.isArray(value) && value.length > 0) {
-      value.forEach((child, i) => {
+      for (let i = 0; i < value.length; i++) {
         const indexBreakpoint = breakpoints[i]
-        if (indexBreakpoint == null) return
-        set(result, [indexBreakpoint, key], child)
-      })
+        if (indexBreakpoint == null) continue
+        set(result, [indexBreakpoint, key], value[i])
+      }
     } else if (typeof value === 'object' && value !== null) {
-      Object.entries(value).forEach(([childKey, childValue]) => {
-        set(result, [childKey, key], childValue)
-      })
+      const obj = value as Record<string, unknown>
+      for (const childKey in obj) {
+        set(result, [childKey, key], obj[childKey])
+      }
     } else if (value != null) {
       const firstBreakpoint = breakpoints[0]
-      if (firstBreakpoint == null) return
+      if (firstBreakpoint == null) continue
       set(result, [firstBreakpoint, key], value)
     }
-  })
+  }
 
   return removeUnexpectedKeys(result, breakpoints)
 }
