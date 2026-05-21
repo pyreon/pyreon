@@ -1,0 +1,13 @@
+{
+  "name": "@pyreon/native-runtime-swift",
+  "version": "0.0.0",
+  "private": true,
+  "description": "PRIVATE / EXPERIMENTAL — Swift Package Manager package that compiler-emitted Swift code links against on iOS. Phase 0 scaffold; see .claude/plans/native-platforms-phase0-roadmap.md PR 1.",
+  "license": "MIT",
+  "scripts": {
+    "build": "if command -v swift >/dev/null 2>&1; then swift build; else echo '[native-runtime-swift] swift not on PATH; skipping build'; fi",
+    "test": "if command -v swift >/dev/null 2>&1; then swift test; else echo '[native-runtime-swift] swift not on PATH; skipping tests'; fi",
+    "lint": "echo '[native-runtime-swift] SwiftLint not yet integrated; skipping lint'",
+    "typecheck": "if command -v swift >/dev/null 2>&1; then swift build; else echo '[native-runtime-swift] swift not on PATH; skipping typecheck'; fi"
+  }
+}

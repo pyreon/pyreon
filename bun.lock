@@ -1202,6 +1202,10 @@
         "vitest": "^4.1.4",
       },
     },
+    "packages/native/runtime-swift": {
+      "name": "@pyreon/native-runtime-swift",
+      "version": "0.0.0",
+    },
     "packages/tools/cli": {
       "name": "@pyreon/cli",
       "version": "0.24.1",
@@ -2392,6 +2396,8 @@
     "@pyreon/native-cli": ["@pyreon/native-cli@workspace:packages/native/cli"],
 
     "@pyreon/native-compiler": ["@pyreon/native-compiler@workspace:packages/native/compiler"],
+
+    "@pyreon/native-runtime-swift": ["@pyreon/native-runtime-swift@workspace:packages/native/runtime-swift"],
 
     "@pyreon/perf-harness": ["@pyreon/perf-harness@workspace:packages/internals/perf-harness"],
 

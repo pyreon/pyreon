@@ -1,0 +1,640 @@
+{
+  "builtTestProducts" : [
+    {
+      "binaryPath" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.xctest/Contents/MacOS/PyreonRuntimePackageTests",
+      "packagePath" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift",
+      "productName" : "PyreonRuntimePackageTests"
+    }
+  ],
+  "copyCommands" : {
+
+  },
+  "explicitTargetDependencyImportCheckingMode" : {
+    "none" : {
+
+    }
+  },
+  "generatedSourceTargetSet" : [
+
+  ],
+  "pluginDescriptions" : [
+
+  ],
+  "swiftCommands" : {
+    "C.PyreonRuntime-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntime.build/sources",
+      "importPath" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/Sources/PyreonRuntime/PyreonReactivity.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/Sources/PyreonRuntime/PyreonTokens.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/Sources/PyreonRuntime/PyreonViewModifier.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntime.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "PyreonRuntime",
+      "moduleOutputPath" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/Modules/PyreonRuntime.swiftmodule",
+      "objects" : [
+        "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntime.build/PyreonReactivity.swift.o",
+        "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntime.build/PyreonTokens.swift.o",
+        "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntime.build/PyreonViewModifier.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx14.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j14",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntime.build/include/PyreonRuntime-Swift.h",
+        "-swift-version",
+        "5",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "runtime_swift"
+      ],
+      "outputFileMapPath" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntime.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntime.build/PyreonReactivity.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntime.build/PyreonTokens.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntime.build/PyreonViewModifier.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/Modules/PyreonRuntime.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/Sources/PyreonRuntime/PyreonReactivity.swift",
+        "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/Sources/PyreonRuntime/PyreonTokens.swift",
+        "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/Sources/PyreonRuntime/PyreonViewModifier.swift"
+      ],
+      "tempsPath" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntime.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.PyreonRuntimePackageTests-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.build/sources",
+      "importPath" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.derived/runner.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/Modules/PyreonRuntimeTests.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "PyreonRuntimePackageTests",
+      "moduleOutputPath" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/Modules/PyreonRuntimePackageTests.swiftmodule",
+      "objects" : [
+        "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.build/runner.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx14.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-Xfrontend",
+        "-enable-cross-import-overlays",
+        "-j14",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.build/include/PyreonRuntimePackageTests-Swift.h",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "runtime_swift"
+      ],
+      "outputFileMapPath" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.build/runner.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/Modules/PyreonRuntimePackageTests.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.derived/runner.swift"
+      ],
+      "tempsPath" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.PyreonRuntimeTests-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimeTests.build/sources",
+      "importPath" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/Tests/PyreonRuntimeTests/PyreonRuntimeTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/Modules/PyreonRuntime.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimeTests.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "PyreonRuntimeTests",
+      "moduleOutputPath" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/Modules/PyreonRuntimeTests.swiftmodule",
+      "objects" : [
+        "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimeTests.build/PyreonRuntimeTests.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx14.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-Xfrontend",
+        "-enable-cross-import-overlays",
+        "-j14",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-swift-version",
+        "5",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "runtime_swift"
+      ],
+      "outputFileMapPath" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimeTests.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimeTests.build/PyreonRuntimeTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/Modules/PyreonRuntimeTests.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/Tests/PyreonRuntimeTests/PyreonRuntimeTests.swift"
+      ],
+      "tempsPath" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimeTests.build",
+      "wholeModuleOptimization" : false
+    }
+  },
+  "swiftFrontendCommands" : {
+
+  },
+  "swiftTargetScanArgs" : {
+    "PyreonRuntime" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "PyreonRuntime",
+      "-package-name",
+      "runtime_swift",
+      "-c",
+      "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/Sources/PyreonRuntime/PyreonReactivity.swift",
+      "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/Sources/PyreonRuntime/PyreonTokens.swift",
+      "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/Sources/PyreonRuntime/PyreonViewModifier.swift",
+      "-I",
+      "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx14.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j14",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntime.build/include/PyreonRuntime-Swift.h",
+      "-swift-version",
+      "5",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "runtime_swift",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "PyreonRuntimePackageTests" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "PyreonRuntimePackageTests",
+      "-package-name",
+      "runtime_swift",
+      "-c",
+      "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.derived/runner.swift",
+      "-I",
+      "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx14.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-Xfrontend",
+      "-enable-cross-import-overlays",
+      "-j14",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.build/include/PyreonRuntimePackageTests-Swift.h",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "runtime_swift",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "PyreonRuntimeTests" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "PyreonRuntimeTests",
+      "-package-name",
+      "runtime_swift",
+      "-c",
+      "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/Tests/PyreonRuntimeTests/PyreonRuntimeTests.swift",
+      "-I",
+      "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx14.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-Xfrontend",
+      "-enable-cross-import-overlays",
+      "-j14",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-swift-version",
+      "5",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "runtime_swift",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ]
+  },
+  "targetDependencyMap" : {
+    "PyreonRuntime" : [
+
+    ],
+    "PyreonRuntimePackageTests" : [
+      "PyreonRuntimeTests",
+      "PyreonRuntime"
+    ],
+    "PyreonRuntimeTests" : [
+      "PyreonRuntime"
+    ]
+  },
+  "testDiscoveryCommands" : {
+
+  },
+  "testEntryPointCommands" : {
+    "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.derived/runner.swift" : {
+      "inputs" : [
+
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.derived/runner.swift"
+        }
+      ]
+    }
+  },
+  "traitConfiguration" : {
+    "default" : {
+
+    }
+  },
+  "writeCommands" : {
+    "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntime.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/Sources/PyreonRuntime/PyreonReactivity.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/Sources/PyreonRuntime/PyreonTokens.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/Sources/PyreonRuntime/PyreonViewModifier.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntime.build/sources"
+    },
+    "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.derived/runner.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.build/sources"
+    },
+    "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntime.build/PyreonReactivity.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntime.build/PyreonTokens.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntime.build/PyreonViewModifier.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.build/runner.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimeTests.build/PyreonRuntimeTests.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.product/Objects.LinkFileList"
+    },
+    "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimeTests.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/Tests/PyreonRuntimeTests/PyreonRuntimeTests.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimeTests.build/sources"
+    },
+    "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt" : {
+      "alwaysOutOfDate" : true,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<swift-get-version>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+        }
+      ],
+      "outputFilePath" : "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+    }
+  }
+}
