@@ -4,6 +4,7 @@
 // `var x by remember { mutableStateOf(initial) }`, computeds to
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
+import { safeIdent } from './identifier-safety'
 import type {
   AttrIR,
   ChildIR,
@@ -328,7 +329,11 @@ function emitKotlinGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     .filter((a) => a.kind === 'attr')
     .map((a) => {
       const aa = a as Extract<AttrIR, { kind: 'attr' }>
-      return `${aa.name} = ${emitKotlinExpr(aa.value, indent)}`
+      // `safeIdent` converts kebab-case HTML attrs (`data-test`,
+      // `aria-label`) to camelCase. Kotlin rejects `-` in named
+      // arguments the same way Swift does. Mirrors the Swift emit
+      // — see `safeIdent` for the structural rationale.
+      return `${safeIdent(aa.name)} = ${emitKotlinExpr(aa.value, indent)}`
     })
     .join(', ')
   if (e.children.length === 0) {
