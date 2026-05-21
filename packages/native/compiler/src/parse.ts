@@ -615,10 +615,24 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       return { kind: 'array', elements }
     }
     case 'ObjectExpression': {
-      const fields = (node.properties as AnyNode[])
-        .filter((p) => p.type === 'Property' && p.key?.name)
-        .map((p) => ({ name: p.key.name as string, value: parseExpr(p.value, ctx) }))
-      return { kind: 'object', fields }
+      // G4: ObjectExpression carries both regular fields (`a: 1`) AND
+      // spread members (`...x`) in `properties`. The parser previously
+      // filtered out spreads silently — the partial-update idiom
+      // `{ ...t, done: !t.done }` lost the spread data, leaving emit
+      // targets unable to produce correct copy-with-overrides shapes.
+      const properties = node.properties as AnyNode[]
+      const fields: { name: string; value: ExprIR }[] = []
+      const spreads: ExprIR[] = []
+      for (const p of properties) {
+        if (p.type === 'Property' && p.key?.name) {
+          fields.push({ name: p.key.name as string, value: parseExpr(p.value, ctx) })
+        } else if (p.type === 'SpreadElement') {
+          spreads.push(parseExpr(p.argument, ctx))
+        }
+      }
+      return spreads.length > 0
+        ? { kind: 'object', fields, spreads }
+        : { kind: 'object', fields }
     }
     case 'ParenthesizedExpression': {
       // Parens around JSX in source (`return (<X>...)`) are syntactic

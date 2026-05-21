@@ -177,7 +177,19 @@ export type ExprIR =
   | { kind: 'jsx-element'; tag: string; attrs: AttrIR[]; children: ChildIR[] }
   | { kind: 'jsx-fragment'; children: ChildIR[] }
   | { kind: 'array'; elements: ExprIR[] }
-  | { kind: 'object'; fields: { name: string; value: ExprIR }[] }
+  /**
+   * Object literal with optional spread members. The classic shape is
+   * `{ a: 1, b: 2 }` (zero spreads); G4 (TodoMVC walkthrough) adds the
+   * partial-update form `{ ...t, done: !t.done }` — the spread carries
+   * the existing fields, the explicit fields override.
+   *
+   * Spreads are emitted in source order; emit targets that support a
+   * native copy-with-overrides shape (Kotlin data class `.copy()`,
+   * Swift struct construction) consume the array. `spreads.length === 0`
+   * is the canonical zero-spread case; the field is optional for
+   * backward compat with pre-G4 IR consumers.
+   */
+  | { kind: 'object'; fields: { name: string; value: ExprIR }[]; spreads?: ExprIR[] }
   | { kind: 'paren'; inner: ExprIR }
   /**
    * Spread element in array literal (`[...todos(), newTodo]`) used by

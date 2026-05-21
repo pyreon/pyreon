@@ -21,9 +21,9 @@
 // 8 named gaps):
 //
 //   G1 TextField two-way binding (`text: $draft` on Swift)   ✓ CLOSED
-//   G2 Keyboard event handling (`onKeyDown` → `.onSubmit`)
+//   G2 Keyboard event handling (`onKeyDown` → `.onSubmit`)   ✓ CLOSED
 //   G3 Array mutation idioms (immutable spread vs platform mutate)
-//   G4 Object-in-array partial updates (`map(t => t.id === id ? ... : t)`)
+//   G4 Object-in-array partial updates (`map(t => t.id === id ? ... : t)`)   ✓ CLOSED
 //   G5 @pyreon/storage cross-platform abstraction (`useStorage`)
 //   G6 String-literal union → native enum (`'all' | 'active' | 'completed'`)   ✓ CLOSED
 //   G7 rocketstyle conditional dimension expressions
@@ -79,7 +79,7 @@ describe('TodoMVC compile baseline', () => {
           draft = ""
         }
         private func toggle(id: Int) {
-          todos = todos.map({ t in t.id == id ? (done: !t.done) : t })
+          todos = todos.map({ t in t.id == id ? { var c = t; c.done = !t.done; return c }() : t })
         }
         private func remove(id: Int) {
           todos = todos.filter({ t in t.id != id })
@@ -90,6 +90,7 @@ describe('TodoMVC compile baseline', () => {
         var body: some View {
           VStack {
             TextField("What needs to be done?", text: $draft)
+              .onSubmit { addTodo() }
             ForEach(visible, id: \\.id) { t in
               TodoRow(todo: t)
             }
@@ -176,9 +177,47 @@ describe('TodoMVC gap-tracking baseline', () => {
     expect(out.code).toContain('onValueChange = { draft = it }')
   })
 
-  it.todo('G2 — onKeyDown=Enter handler emits `.onSubmit { ... }` on Swift', () => {
+  it('G2 — onKeyDown=Enter handler emits `.onSubmit { ... }` on Swift', () => {
+    // CLOSED by this PR. The TextField emit pattern-matches the
+    // canonical `(e) => e.key === 'Enter' && action()` shape on the
+    // `onKeyDown` event and appends a SwiftUI `.onSubmit { action() }`
+    // modifier. The locked Swift-emit snapshot above already proves
+    // this; the explicit assertion here is the gap-closure marker.
     const out = transform(source, { target: 'swift' })
-    expect(out.code).toMatch(/\.onSubmit\s*\{/)
+    expect(out.code).toMatch(/\.onSubmit\s*\{\s*addTodo\(\)\s*\}/)
+  })
+
+  it('G2 — onKeyDown=Enter handler emits Compose `keyboardActions` on Kotlin', () => {
+    // CLOSED by this PR. Same pattern as Swift — the Kotlin emit pairs
+    // `keyboardOptions(imeAction = ImeAction.Done)` so the soft keyboard
+    // shows "Done" + `keyboardActions(onDone = { action() })` so the
+    // submit fires the action.
+    const out = transform(source, { target: 'kotlin' })
+    expect(out.code).toContain('keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)')
+    expect(out.code).toMatch(/keyboardActions = KeyboardActions\(onDone = \{ addTodo\(\) \}\)/)
+  })
+
+  it('G4 — object partial-update {...t, k: v} emits IIFE copy on Swift', () => {
+    // CLOSED by this PR. The object emit now pattern-matches a single-
+    // spread + override-fields shape and emits Swift's immediately-
+    // invoked closure form:
+    //   `{ var c = t; c.done = !t.done; return c }()`
+    // Works for both struct sources and labelled-tuple sources (what
+    // Pyreon currently emits for anonymous record types). The locked
+    // Swift-emit snapshot above proves this; the explicit assertion
+    // here is the gap-closure marker.
+    const out = transform(source, { target: 'swift' })
+    expect(out.code).toMatch(/\{ var c = t; c\.done = !t\.done; return c \}\(\)/)
+  })
+
+  it('G4 — object partial-update {...t, k: v} emits data class `.copy(...)` on Kotlin', () => {
+    // CLOSED by this PR. Kotlin's data class `.copy(field = value)` is
+    // the canonical copy-with-overrides idiom and maps 1:1 to the JS
+    // `{...t, k: v}` source. Single-spread + identifier source only;
+    // multi-spread and non-identifier sources fall through to the
+    // tuple-literal emit.
+    const out = transform(source, { target: 'kotlin' })
+    expect(out.code).toMatch(/t\.copy\(done = !t\.done\)/)
   })
 
   it.todo('G5 — useStorage<T>(key, default) emits @AppStorage on Swift', () => {
