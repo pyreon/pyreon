@@ -8,6 +8,7 @@
 // Type inference is deliberately naive — numeric assumption for
 // computed properties. Phase 1 grows a real inference pass.
 
+import { buildInferenceCtx, inferType } from './infer-type'
 import type {
   AttrIR,
   ChildIR,
@@ -22,10 +23,11 @@ export function emitSwift(components: ComponentIR[]): string {
 }
 
 function emitSwiftComponent(c: ComponentIR): string {
+  const inferCtx = buildInferenceCtx(c.decls)
   const lines: string[] = []
   lines.push(`struct ${c.name}: View {`)
   for (const d of c.decls) {
-    lines.push(`  ${emitSwiftDecl(d)}`)
+    lines.push(`  ${emitSwiftDecl(d, inferCtx)}`)
   }
   lines.push(`  var body: some View {`)
   lines.push(`    ${emitSwiftExpr(c.returnExpr, 4)}`)
@@ -34,14 +36,18 @@ function emitSwiftComponent(c: ComponentIR): string {
   return lines.join('\n')
 }
 
-function emitSwiftDecl(d: DeclIR): string {
+function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>): string {
   if (d.kind === 'signal') {
     const type = swiftType(d.type)
     return `@State private var ${d.name}: ${type} = ${emitSwiftExpr(d.initial, 0)}`
   }
-  // computed — naive Int assumption for Phase 0 (covers the fixtures);
-  // future phases need real inference.
-  return `private var ${d.name}: Int { ${emitSwiftExpr(d.expr, 0)} }`
+  // computed — infer the return type from the expression body so we
+  // can emit a typed computed property. Falls back to `Any` for cases
+  // the inference can't resolve (the emit still produces compilable
+  // code via the fallback `swiftType` for `unknown`).
+  const inferred = inferType(d.expr, inferCtx)
+  const swiftReturnType = swiftType(inferred)
+  return `private var ${d.name}: ${swiftReturnType} { ${emitSwiftExpr(d.expr, 0)} }`
 }
 
 function swiftType(t: TypeIR): string {

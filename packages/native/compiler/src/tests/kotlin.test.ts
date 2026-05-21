@@ -104,4 +104,20 @@ describe('Pyreon → Kotlin emit', () => {
       }"
     `)
   })
+
+  it('08 — string-typed computed', () => {
+    // Kotlin's `by remember { derivedStateOf { ... } }` infers the
+    // result type natively (the `by` delegate unwraps `State<T>` to
+    // `T`), so no emitter change needed on this side. The fixture
+    // still validates the cross-target story: same Pyreon source,
+    // both targets produce idiomatic per-platform computed code.
+    expect(emit('08-string-computed.tsx')).toMatchInlineSnapshot(`
+      "@Composable
+      fun Greeting() {
+        var name by remember { mutableStateOf("world") }
+        val message by remember { derivedStateOf { "Hello, " + name } }
+        Text(text = "\${message}")
+      }"
+    `)
+  })
 })

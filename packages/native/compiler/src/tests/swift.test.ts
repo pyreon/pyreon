@@ -109,4 +109,20 @@ describe('Pyreon → Swift emit', () => {
       }"
     `)
   })
+
+  it('08 — string-typed computed (proves type inference)', () => {
+    // Pre-PR-3 the naive emitter would have produced
+    // `private var message: Int { ... }` which swiftc would reject.
+    // PR 3's `inferType` walks `'Hello, ' + name()` to `string` so
+    // the computed property gets the right Swift type.
+    expect(emit('08-string-computed.tsx')).toMatchInlineSnapshot(`
+      "struct Greeting: View {
+        @State private var name: String = "world"
+        private var message: String { "Hello, " + name }
+        var body: some View {
+          Text("\\(message)")
+        }
+      }"
+    `)
+  })
 })
