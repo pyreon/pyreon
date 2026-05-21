@@ -5,9 +5,9 @@
   "description": "PRIVATE / EXPERIMENTAL — Swift Package Manager package that compiler-emitted Swift code links against on iOS. Phase 0 scaffold; see .claude/plans/native-platforms-phase0-roadmap.md PR 1.",
   "license": "MIT",
   "scripts": {
-    "build": "if command -v swift >/dev/null 2>&1; then swift build; else echo '[native-runtime-swift] swift not on PATH; skipping build'; fi",
-    "test": "if command -v swift >/dev/null 2>&1; then swift test; else echo '[native-runtime-swift] swift not on PATH; skipping tests'; fi",
+    "build": "if [ \"$(uname -s)\" = Darwin ] && command -v swift >/dev/null 2>&1; then swift build; else echo '[native-runtime-swift] non-Darwin or no swift on PATH; skipping build (SwiftUI is Darwin-only)'; fi",
+    "test": "if [ \"$(uname -s)\" = Darwin ] && command -v swift >/dev/null 2>&1; then swift test; else echo '[native-runtime-swift] non-Darwin or no swift on PATH; skipping tests (SwiftUI is Darwin-only)'; fi",
     "lint": "echo '[native-runtime-swift] SwiftLint not yet integrated; skipping lint'",
-    "typecheck": "if command -v swift >/dev/null 2>&1; then swift build; else echo '[native-runtime-swift] swift not on PATH; skipping typecheck'; fi"
+    "typecheck": "if [ \"$(uname -s)\" = Darwin ] && command -v swift >/dev/null 2>&1; then swift build; else echo '[native-runtime-swift] non-Darwin or no swift on PATH; skipping typecheck (SwiftUI is Darwin-only)'; fi"
   }
 }
