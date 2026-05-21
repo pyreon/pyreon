@@ -16,6 +16,28 @@
 // `remember`, `items`. The `by`-delegate protocol on `MutableState` and
 // `State` is included so `var x by remember { mutableStateOf(...) }`
 // works at the typechecker level.
+//
+// ## Stub-shape design notes
+//
+// Why `getValue` / `setValue` are TOP-LEVEL EXTENSION functions, not
+// members: real Jetpack Compose ships them as `inline` extensions on
+// `State<T>` / `MutableState<T>` (consumers `import androidx.compose.runtime.{getValue, setValue}`).
+// The same shape is load-bearing here for type-inference reasons:
+// when `remember<T>(...)` is generic and the call site is
+// `var x by remember { mutableStateOf(0) }`, kotlinc's delegate
+// resolution for `by` needs the delegate operators reachable WITHOUT
+// first resolving T. Member-function operators on `MutableState<T>`
+// cause a circular inference (T's resolution depends on the delegate
+// site, which depends on T). Extension-function operators on
+// `State<T>` sidestep that — they bind via the receiver SUBTYPE walk,
+// which kotlinc can perform before T is concrete. Mirrors the
+// structural shape of `androidx.compose.runtime`.
+//
+// Why `MutableState` extends `State`: also mirrors Compose. `getValue`
+// is defined on `State<T>` so it covers BOTH read-only `val by`
+// derivations AND mutable `var by` delegations (because
+// `MutableState<T>` inherits from `State<T>`). `setValue` only makes
+// sense on `MutableState<T>` and is defined only there.
 
 export const KOTLIN_COMPOSE_STUBS = `// Auto-generated Compose stubs for Pyreon native-compiler validation.
 // DO NOT EDIT — sourced from @pyreon/native-compiler/src/kotlin-stubs.ts.
@@ -29,20 +51,30 @@ export const KOTLIN_COMPOSE_STUBS = `// Auto-generated Compose stubs for Pyreon 
 @Retention(AnnotationRetention.SOURCE)
 annotation class Composable
 
-class MutableState<T>(private var current: T) {
-  operator fun getValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>): T = current
-  operator fun setValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>, newValue: T) {
-    current = newValue
-  }
+abstract class State<out T> {
+  abstract val value: T
+}
+
+class MutableState<T>(initial: T) : State<T>() {
+  override var value: T = initial
+}
+
+inline operator fun <T> State<T>.getValue(
+  thisRef: Any?,
+  property: kotlin.reflect.KProperty<*>,
+): T = value
+
+inline operator fun <T> MutableState<T>.setValue(
+  thisRef: Any?,
+  property: kotlin.reflect.KProperty<*>,
+  newValue: T,
+) {
+  value = newValue
 }
 
 fun <T> mutableStateOf(initial: T): MutableState<T> = MutableState(initial)
 
-class State<T>(private val current: T) {
-  operator fun getValue(thisRef: Any?, property: kotlin.reflect.KProperty<*>): T = current
-}
-
-fun <T> derivedStateOf(block: () -> T): State<T> = State(block())
+fun <T> derivedStateOf(block: () -> T): State<T> = MutableState(block())
 
 @Composable
 fun <T> remember(calculation: () -> T): T = calculation()
