@@ -871,6 +871,22 @@ The mount pipeline is optimized for zero unnecessary allocations in production:
 - **Lazy mountCleanups**: Only allocated when an `onMount` callback actually returns a cleanup function.
 - **Per 150-component page**: ~2,020 allocations + ~1,050 operations eliminated vs naive implementation.
 
+### Mount-loop closure hazards — reactive entry points read marker.parentNode live
+
+Any framework primitive that (a) accepts `parent` as a setup arg, (b) inserts a marker into that `parent`, and (c) calls `parent.insertBefore(...)` from inside an effect re-run is structurally unsafe under `mountFor`'s frag-then-move pattern. `mountFor` builds its children into a `DocumentFragment` and commits via `liveParent.insertBefore(frag, tailMarker)` — the move carries markers and all sibling DOM along, but inner mount loops still hold the original (now-empty) fragment as `parent`. Next signal-driven re-run → `insertBefore(node, marker)` against the stale fragment → `NotFoundError` → child-loss.
+
+Closed across two PRs in 2026-Q2:
+- **#776** — `mountReactive` reads `marker.parentNode ?? parent` at each effect run. Surfaced by the For-of-`<Show>` batched-toggle journey in `scripts/leak-sweep.ts` (#772). CONTRACT regression: `packages/core/runtime-dom/src/tests/show-of-for-batched-toggle.browser.test.ts`.
+- **#783** — `mountKeyedList` reads `tailMarker.parentNode ?? parent` at each effect run, threads `liveParent` through `mountNewEntries` + `keyedListReorder` (which propagates to `applyKeyedMoves` → `moveEntryBefore`). Bug reachable only when a `<For>` child returns a function directly (`(i) => () => signal().map(...)`) so the inner keyed array lands in the For's frag — a `<div>` wrapper isolates from the frag-move. CONTRACT regression: `packages/core/runtime-dom/src/tests/keyed-array-in-for-batched-toggle.browser.test.ts`.
+
+Sibling primitives audited safe — no remaining instances of this class in runtime-dom:
+- `mountFor` itself reads `startMarker.parentNode` at the top of its effect (pre-existing pattern; same shape as the post-#776/#783 fixes).
+- `KeepAlive` / `TransitionGroup` / `Transition` use `containerRef.current` (live DOM-element refs that move atomically with the surrounding tree, never stale).
+- `_bindText` / `_bindDirect` (template.ts) operate on text-node `.data` only — no `parent.insertBefore` from inside an effect.
+- Hydrate paths inherit through `mountReactive`'s call.
+
+General rule for framework code: any mount loop running inside an effect that accepts `parent` as a setup arg should compute the live parent from a marker at each re-run — `parent` is captured at setup and the DOM moves; markers move with the DOM, so their `parentNode` is the source of truth. Full anti-pattern entry in `.claude/rules/anti-patterns.md` under "Architecture Mistakes". Reproducer for the For-of-Show shape: `bun run perf:leak-sweep --app perf-dashboard --journeys domConditionalToggle-1000`.
+
 ### Dev-Mode Warnings (`__DEV__`)
 
 - `mount()` validates container is not null/undefined
@@ -1484,7 +1500,7 @@ It is a **ratchet, not a target** (same shape as `check-bundle-budgets` / audit-
 
 ## Leak Sweep — nightly heap-growth regression gate
 
-`.github/workflows/leak-sweep.yml` drives `scripts/leak-sweep.ts` (#772) across the perf-dashboard journey catalog: ~43 journeys, 15 cycles each, two forced GCs between samples, least-squares regression over the resulting heap series. A non-trivial positive slope flags a journey as leaking. Same surface that surfaced the `<For>`-of-`<Show>` batched-toggle bug fixed in #776 (discovery chain: #770 leak-audit harness → #772 leak-sweep multi-journey driver → #774 it.fails CONTRACT lock → #776 root-cause fix).
+`.github/workflows/leak-sweep.yml` drives `scripts/leak-sweep.ts` (#772) across the perf-dashboard journey catalog: ~43 journeys, 15 cycles each, two forced GCs between samples, least-squares regression over the resulting heap series. A non-trivial positive slope flags a journey as leaking. Same surface that surfaced the `<For>`-of-`<Show>` batched-toggle bug fixed in #776, and the `<For>`-of-direct-keyed-array sibling bug fixed in #783 (full discovery chain: #770 leak-audit harness → #772 leak-sweep multi-journey driver → #774 `it.fails()` CONTRACT lock → #776 `mountReactive` root-cause fix → #779 nightly gate → #783 `mountKeyedList` sibling fix → #784 anti-pattern doc entry).
 
 Triggers (mirrors `perf.yml` shape):
 
@@ -1496,7 +1512,7 @@ Advisory-only. Exit code 6 from leak-sweep (≥1 journey exceeded the 50,000 byt
 
 **Dev mode is mandatory**: counter emits and the perf-harness install hook are both gated on `import.meta.env.DEV`, so a preview/prod build tree-shakes them and the page records zero heap movement (false-clean). Same constraint as `perf.yml`. The workflow hardcodes `--mode dev`; no opt-out.
 
-**Artifacts**: every run uploads `perf-results/leak-sweep-<sha>-<app>.{json,md}` with 30-day retention. The JSON shape (per-journey `slope`, `r2`, `cv`, plus aggregate verdict) is stable for downstream tooling — diff scripts, dashboards, future regression-comment automation.
+**Artifacts**: every run uploads `perf-results/leak-sweep-<sha>-<app>.json` + `.md` (two-line multi-path form in the workflow's `path:`; the previous `*.{json,md}` shorthand was undocumented brace expansion that worked through @actions/glob's Minimatch but wasn't part of `actions/upload-artifact`'s contract). 30-day retention. The JSON shape (per-journey `slope`, `r2`, `cv`, plus aggregate verdict) is stable for downstream tooling — diff scripts, dashboards, future regression-comment automation.
 
 ## E2E — real-Chromium tests against example apps
 
