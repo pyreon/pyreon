@@ -36,6 +36,17 @@ export interface ComputedOptions<T> {
    * })
    */
   equals?: (prev: T, next: T) => boolean
+  /**
+   * @internal — source location injected by `@pyreon/vite-plugin` at build
+   * time. When present, the runtime skips the `new Error().stack` capture
+   * in `_rdRegister` — saves ~2.2µs per computed creation when devtools is
+   * active. Plain user code should NOT set this; the field is opaque
+   * (no public type) so it's not part of the public API surface.
+   *
+   * Shape: `{ file: string; line: number; col: number }` matching
+   * `@pyreon/reactivity`'s `SourceLocation`.
+   */
+  __sourceLocation?: { file: string; line: number; col: number }
 }
 
 /** Remove a computed from all dependency subscriber sets (local deps array). */
@@ -68,7 +79,14 @@ export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed
       )
     }
   }
-  return options?.equals ? computedWithEquals(fn, options.equals) : computedLazy(fn)
+  // Prefer build-time-injected location (zero runtime cost) over the
+  // ~2.2µs stack-capture fallback. @pyreon/vite-plugin's `injectSignalNames`
+  // rewrites `computed(() => …)` to `computed(() => …, { __sourceLocation: {…} })`
+  // at transform time so most dev-mode computeds never pay the stack-capture cost.
+  const loc = options?.__sourceLocation
+  return options?.equals
+    ? computedWithEquals(fn, options.equals, loc)
+    : computedLazy(fn, loc)
 }
 
 /**
@@ -81,7 +99,10 @@ export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed
  * in diamond patterns (a→b,c→d: b notifies d, c tries to notify d again —
  * skipped because d is already dirty).
  */
-function computedLazy<T>(fn: () => T): Computed<T> {
+function computedLazy<T>(
+  fn: () => T,
+  injectedLoc?: { file: string; line: number; col: number },
+): Computed<T> {
   let value: T
   let dirty = true
   let disposed = false
@@ -166,7 +187,14 @@ function computedLazy<T>(fn: () => T): Computed<T> {
 
   if (process.env.NODE_ENV !== 'production')
     // skipFrames=2: skip computedLazy/computedWithEquals + computed, capture user's call site.
-    _rdRegister(read, 'derived', host, recompute, undefined, _captureCallerLocation(2))
+    _rdRegister(
+      read,
+      'derived',
+      host,
+      recompute,
+      undefined,
+      injectedLoc ?? _captureCallerLocation(2),
+    )
 
   getCurrentScope()?.add({ dispose: read.dispose })
   return read as Computed<T>
@@ -178,7 +206,11 @@ function computedLazy<T>(fn: () => T): Computed<T> {
  * Re-evaluates immediately when deps change and only notifies downstream
  * if `equals(prev, next)` returns false.
  */
-function computedWithEquals<T>(fn: () => T, equals: (prev: T, next: T) => boolean): Computed<T> {
+function computedWithEquals<T>(
+  fn: () => T,
+  equals: (prev: T, next: T) => boolean,
+  injectedLoc?: { file: string; line: number; col: number },
+): Computed<T> {
   let value: T
   let dirty = true
   let initialized = false
@@ -267,7 +299,14 @@ function computedWithEquals<T>(fn: () => T, equals: (prev: T, next: T) => boolea
 
   if (process.env.NODE_ENV !== 'production')
     // skipFrames=2: skip computedLazy/computedWithEquals + computed, capture user's call site.
-    _rdRegister(read, 'derived', host, recompute, undefined, _captureCallerLocation(2))
+    _rdRegister(
+      read,
+      'derived',
+      host,
+      recompute,
+      undefined,
+      injectedLoc ?? _captureCallerLocation(2),
+    )
 
   getCurrentScope()?.add({ dispose: read.dispose })
   return read as Computed<T>

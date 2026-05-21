@@ -272,7 +272,18 @@ The LSP server reads `PYREON_LPIH_CACHE` env var on every `textDocument/inlayHin
 
 Foundation work — the editor extension (VS Code / Neovim) that auto-bridges devtools fire data to the cache file is a follow-up. The current setup requires manually wiring `startLpihPolling()` in your dev entry; the LSP auto-discovers the cache file from `<project-root>/.pyreon-lpih.json` so no env var is needed.
 
-A further follow-up: `@pyreon/vite-plugin` build-time location injection. This replaces the runtime stack capture with a compile-time literal (`signal(0, { __sourceLocation: { file, line, col } })`), eliminating the 2.2 µs/creation overhead even when devtools is active.
+`@pyreon/vite-plugin` does **build-time location injection** for all three reactive primitives — `signal()`, `computed()`, and `effect()`. The plugin rewrites these calls at transform time to embed `{ name?, __sourceLocation: { file, line, col } }`, so the runtime never pays the `new Error().stack` capture cost (~2.2 µs/creation) when devtools is active. Three forms covered:
+
+```ts
+// before (your source)               // after (vite-plugin transform)
+const count = signal(0)               → signal(0, { name: "count", __sourceLocation: {...} })
+const doubled = computed(() => …)     → computed(…, { name: "doubled", __sourceLocation: {...} })
+effect(() => …)                       → effect(…, { __sourceLocation: {...} })  // unbound, no name
+```
+
+Unbound `effect()` (the most common form — no `const` binding) gets `__sourceLocation` only since there's no name to derive. Unbound `signal()` / `computed()` are left untouched (rare anonymous patterns where the user binds to something other than a const/let, e.g. as a return value).
+
+The transform is dev-only (`!isBuild`); production builds tree-shake the entire devtools path including the option-arg path, so the injected literals don't ship to end users.
 
 See also:
 
