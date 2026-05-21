@@ -19,7 +19,7 @@
 // toolchain SHOULD be installed.
 
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, writeFileSync, unlinkSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -76,14 +76,17 @@ export function validateSwift(source: string): ValidationResult {
   }
 
   // Write to a temp file (swiftc -parse expects a path arg, not stdin).
-  // Filename gets `${pid}-${rand}.swift` to avoid collisions if tests
-  // run in parallel.
-  const dir = join(tmpdir(), 'pyreon-native-validate')
-  mkdirSync(dir, { recursive: true })
-  const filename = join(
-    dir,
-    `swift-${process.pid}-${Math.random().toString(36).slice(2, 10)}.swift`,
-  )
+  // Use `mkdtempSync` to create a unique directory with secure
+  // randomness (Node uses the platform's crypto-secure RNG). Writing
+  // a fixed filename inside that directory is safe because the
+  // directory itself is uniquely owned by this process.
+  //
+  // Avoid using `Math.random()` for any part of the temp path — CodeQL
+  // (rightly) flags that pattern as insecure-temp-file: predictable
+  // names in world-writable dirs can be hijacked via symlink attacks
+  // before the write.
+  const tempDir = mkdtempSync(join(tmpdir(), 'pyreon-native-validate-'))
+  const filename = join(tempDir, 'input.swift')
   writeFileSync(filename, source, 'utf8')
 
   try {
@@ -103,9 +106,9 @@ export function validateSwift(source: string): ValidationResult {
     }
   } finally {
     try {
-      unlinkSync(filename)
+      rmSync(tempDir, { recursive: true, force: true })
     } catch {
-      // Cleanup best-effort; non-critical if the temp file lingers.
+      // Cleanup best-effort; non-critical if the temp dir lingers.
     }
   }
 }
