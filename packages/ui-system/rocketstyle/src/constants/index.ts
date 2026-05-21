@@ -14,6 +14,14 @@ export const PSEUDO_KEYS = ['hover', 'active', 'focus', 'pressed'] as const
 /** Meta pseudo-state keys representing non-interactive states (disabled, readOnly). */
 export const PSEUDO_META_KEYS = ['disabled', 'readOnly'] as const
 
+/**
+ * Pre-merged interaction + meta keys. Hoisted from `rocketstyle.ts`'s
+ * `rocketComponent` definition scope to module scope so the merged
+ * 6-element array is allocated ONCE per process, not once per
+ * rocketstyle definition. Ported from vitus-labs `00fdadc2`.
+ */
+export const PSEUDO_AND_META_KEYS = [...PSEUDO_KEYS, ...PSEUDO_META_KEYS] as const
+
 /** Supported theme mode flags. */
 export const THEME_MODES = {
   light: true,

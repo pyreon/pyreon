@@ -1,6 +1,6 @@
 import { compose, config, hoistNonReactStatics, omit, pick, render } from '@pyreon/ui-core'
 import { LocalThemeManager } from './cache'
-import { CONFIG_KEYS, PSEUDO_KEYS, PSEUDO_META_KEYS, STYLING_KEYS, __DEV__ } from './constants'
+import { CONFIG_KEYS, PSEUDO_AND_META_KEYS, PSEUDO_KEYS, STYLING_KEYS, __DEV__ } from './constants'
 import createLocalProvider from './context/createLocalProvider'
 import { useLocalContext } from './context/localContext'
 import { rocketstyleAttrsHoc } from './hoc'
@@ -130,8 +130,11 @@ const rocketComponent: RocketComponent = (options) => {
   >()
   const _reservedKeysCache = new WeakMap<object, string[]>()
 
-  // Pre-compute merged key arrays once per definition (not per mount)
-  const ALL_PSEUDO_KEYS = [...PSEUDO_KEYS, ...PSEUDO_META_KEYS]
+  // Reuse the module-scope pre-merged constant. Cast away `readonly` for
+  // the downstream consumers that take a plain `string[]`. Saves the
+  // 6-element array allocation that fired once per `rocketstyle()`
+  // definition. Ported from vitus-labs `00fdadc2`.
+  const ALL_PSEUDO_KEYS = PSEUDO_AND_META_KEYS as unknown as string[]
   // Static portion of omit keys — PSEUDO_KEYS + filterAttrs + 'pseudo' are definition-scoped.
   // RESERVED_STYLING_PROPS_KEYS is dimension-dependent but also cached per definition.
   // 'pseudo' is included here so we can skip the destructuring spread of mergeProps.

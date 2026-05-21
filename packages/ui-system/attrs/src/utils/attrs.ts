@@ -10,12 +10,18 @@ type RemoveUndefinedProps = <T extends Record<string, any>>(
   props: T,
 ) => { [I in keyof T as T[I] extends undefined ? never : I]: T[I] }
 
-export const removeUndefinedProps = (<T extends Record<string, any>>(props: T) =>
-  Object.keys(props).reduce<Record<string, unknown>>((acc, key) => {
-    const currentValue = props[key]
-    if (currentValue !== undefined) acc[key] = currentValue
-    return acc
-  }, {})) as RemoveUndefinedProps
+export const removeUndefinedProps = (<T extends Record<string, any>>(props: T) => {
+  // Direct for-in loop avoids the `Object.keys` array allocation that
+  // the prior `reduce` over `Object.keys(props)` paid on every render.
+  // The hot path fires on every content-equal re-render of any attrs-
+  // wrapped component. Ported from vitus-labs `b003de47`.
+  const result: Record<string, unknown> = {}
+  for (const key in props) {
+    const value = props[key]
+    if (value !== undefined) result[key] = value
+  }
+  return result
+}) as RemoveUndefinedProps
 
 /**
  * Reduces an array of option functions (from chained `.attrs()` calls)

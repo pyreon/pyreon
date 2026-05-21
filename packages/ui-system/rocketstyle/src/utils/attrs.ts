@@ -72,8 +72,13 @@ export const pickStyledAttrs = <
   props: T,
   keywords: K,
 ): { [I in keyof K & keyof T]: T[I] } => {
+  // Direct `for...in` avoids the `Object.keys(props)` array allocation
+  // that `for (const key of Object.keys(props))` paid on every render.
+  // The hot path is rocketstyle's `EnhancedComponent` body — fires once
+  // per render of every rocketstyle-wrapped component. Ported from
+  // vitus-labs `00fdadc2`.
   const result: Record<string, unknown> = {}
-  for (const key of Object.keys(props)) {
+  for (const key in props) {
     if (keywords[key] && props[key]) result[key] = props[key]
   }
   return result as { [I in keyof K & keyof T]: T[I] }

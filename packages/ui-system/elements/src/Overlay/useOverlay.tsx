@@ -46,6 +46,15 @@ export type UseOverlayProps = Partial<{
 // Reference counter for nested modals sharing document.body overflow lock.
 let modalOverflowCount = 0
 
+// Hoisted: closeOn values that count as "click-driven close". Inlined
+// previously, allocating a fresh 3-element array on each click-listener
+// setupListeners re-run. Ported from vitus-labs `804dd0e2`.
+const CLICK_CLOSE_KINDS: ReadonlySet<string> = new Set([
+  'click',
+  'clickOnTrigger',
+  'clickOutsideContent',
+])
+
 const devWarn = (msg: string) => {
   if (!IS_DEVELOPMENT) return
   // oxlint-disable-next-line no-console
@@ -300,8 +309,7 @@ const useOverlay = ({
     const cleanups: (() => void)[] = []
 
     // Click-based open/close
-    const enabledClick =
-      openOn === 'click' || ['click', 'clickOnTrigger', 'clickOutsideContent'].includes(closeOn)
+    const enabledClick = openOn === 'click' || CLICK_CLOSE_KINDS.has(closeOn)
 
     if (enabledClick) {
       window.addEventListener('click', handleClick)

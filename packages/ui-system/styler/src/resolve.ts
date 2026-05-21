@@ -40,6 +40,29 @@ export type Interpolation<P extends object = Record<string, unknown>> =
  * deferred until a styled component renders (or until explicitly resolved).
  */
 export class CSSResult {
+  /**
+   * Memoized result of `isDynamic(this)`. Populated on first access from
+   * `shared.ts#isDynamic`. CSSResult instances are typically created once
+   * at module load (one per `css\`...\`` literal) and reused everywhere —
+   * a `styled()` component, a `useCSS` consumer, a nested interpolation,
+   * etc. Lazy-cache avoids rescanning whole sub-trees on every consumer.
+   * Ported from vitus-labs `c483cabc`.
+   */
+  _isDynamic: boolean | undefined = undefined
+
+  /**
+   * Memoized resolved CSS string for STATIC CSSResults — populated by
+   * `resolveValue` the first time a known-static nested CSSResult is
+   * resolved. Safe because props don't affect output when there are no
+   * function interpolations. Skipped for dynamic CSSResults (the resolved
+   * string depends on props each call). Common pattern: a shared static
+   * snippet interpolated into many dynamic components — pre-cache, that
+   * snippet was re-resolved per-render of every consumer. Ported from
+   * vitus-labs `754cd203`; measured upstream: 2.6M→6.5M ops/s (+149%,
+   * ~2.5× speedup on the 8-repeated-resolve micro).
+   */
+  _staticResolved: string | undefined = undefined
+
   constructor(
     readonly strings: TemplateStringsArray,
     readonly values: Interpolation[],
@@ -173,8 +196,21 @@ export const resolveValue = (value: Interpolation, props: Record<string, any>): 
   // function interpolation → call with props/theme context, resolve result
   if (typeof value === 'function') return resolveValue(value(props) as Interpolation, props)
 
-  // nested CSSResult → recursively resolve
-  if (value instanceof CSSResult) return resolve(value.strings, value.values, props)
+  // nested CSSResult → recursively resolve, with static-result memoization.
+  // When `_isDynamic === false` (populated by shared.ts#isDynamic at styled
+  // component creation), the resolved string is independent of props and can
+  // be cached on the instance. Saves re-walking strings/values for every
+  // consumer of a shared static snippet. Ported from vitus-labs `754cd203`;
+  // measured upstream: ~2.5× speedup on 8-repeated-resolve micro.
+  if (value instanceof CSSResult) {
+    if (value._isDynamic === false) {
+      if (value._staticResolved === undefined) {
+        value._staticResolved = resolve(value.strings, value.values, {})
+      }
+      return value._staticResolved
+    }
+    return resolve(value.strings, value.values, props)
+  }
 
   // array of results (e.g. from makeItResponsive's breakpoints.map())
   if (Array.isArray(value)) {
