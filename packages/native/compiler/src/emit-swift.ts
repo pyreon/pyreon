@@ -209,13 +209,53 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
     // G5 — persistent signal via `useStorage<T>('key', default)`. SwiftUI's
     // `@AppStorage("key")` property wrapper writes through to UserDefaults
     // and triggers re-renders on change (same reactive contract as @State).
-    // Note: @AppStorage's value-type constraint (String / Int / Double /
-    // Bool / URL / Data / RawRepresentable) is enforced by swiftc at
-    // typecheck — not by this emitter. Complex types (arrays of structs,
-    // nested objects) emit the @AppStorage shape but will fail typecheck
-    // downstream; Phase 2 will add a Codable-Data bridge for those cases.
+    //
+    // Phase 2 follow-up — when the declared type is NOT one of @AppStorage's
+    // native types (String / Int / Double / Bool / URL / Data /
+    // RawRepresentable), emit a Codable-Data bridge: the actual @AppStorage
+    // slot stores a `Data` JSON blob; a computed property wraps it for
+    // type-safe read/write via JSONEncoder/Decoder. This closes G5's
+    // known typecheck caveat (`@AppStorage([Todo])` was rejected by
+    // `swiftc -typecheck`); now `[Todo]` round-trips cleanly via JSON.
+    //
+    // Native types (String, enums via RawRepresentable, etc.) continue
+    // to use the direct shape — no bridge overhead when not needed.
     if (d.storageKey !== undefined) {
-      return `@AppStorage(${JSON.stringify(d.storageKey)}) private var ${swiftIdent(d.name)}: ${type} = ${initial}`
+      if (isAppStorageNativeType(d.type)) {
+        return `@AppStorage(${JSON.stringify(d.storageKey)}) private var ${swiftIdent(d.name)}: ${type} = ${initial}`
+      }
+      // Bridge form. Two declarations on the SAME struct field name:
+      //   1. `<name>Data: Data` — the @AppStorage UserDefaults slot
+      //   2. `<name>: T` — computed property doing JSON round-trip
+      //
+      // Field-name collision risk: a user-defined property named
+      // `<name>Data` would clash. Documented limitation; Phase 3 could
+      // use a uglified slot name (`_pyreon_<name>_data`) if it happens
+      // in real-world apps.
+      const dataName = `${swiftIdent(d.name)}Data`
+      const propName = swiftIdent(d.name)
+      // `nonmutating set` is load-bearing — without it, swiftc rejects
+      // the computed-property set with "cannot assign to property: 'self'
+      // is immutable" because SwiftUI's View struct doesn't allow
+      // mutating methods. @AppStorage handles its own mutation
+      // internally (UserDefaults write), so the outer `self` stays
+      // immutable from Swift's perspective.
+      return [
+        `@AppStorage(${JSON.stringify(d.storageKey)}) private var ${dataName}: Data = Data()`,
+        `  private var ${propName}: ${type} {`,
+        `    get {`,
+        `      guard !${dataName}.isEmpty,`,
+        `            let decoded = try? JSONDecoder().decode(${type}.self, from: ${dataName})`,
+        `      else { return ${initial} }`,
+        `      return decoded`,
+        `    }`,
+        `    nonmutating set {`,
+        `      if let encoded = try? JSONEncoder().encode(newValue) {`,
+        `        ${dataName} = encoded`,
+        `      }`,
+        `    }`,
+        `  }`,
+      ].join('\n')
     }
     return `@State private var ${swiftIdent(d.name)}: ${type} = ${initial}`
   }
@@ -291,6 +331,60 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
  * surface (roadmap PR 5a). Internal callers should still go through
  * `emitSwift()` for the full component-level emit.
  */
+/**
+ * Predicate: is this type one that SwiftUI's `@AppStorage` property
+ * wrapper accepts natively? Per SwiftUI docs, native types are:
+ *   - String, Int, Double, Bool, URL, Data
+ *   - RawRepresentable types where RawValue is String or Int
+ *     (typically enums with raw-value backing — Pyreon's G6 enum
+ *     emit produces these via `: String` raw-value annotation)
+ *
+ * Non-native types (arrays of structs, nested objects, complex
+ * unions) need a Codable-Data bridge — Phase 2's @AppStorage bridge
+ * emits a `Data`-backed slot + computed-property accessor that
+ * round-trips via JSON.
+ *
+ * Returns `true` for native, `false` for "needs bridge".
+ *
+ * Note: `Optional<T>` where T is native (e.g. `String?`) is also
+ * supported by @AppStorage. The IR's `union` kind models this as
+ * `T | null` / `T | undefined`; native iff every non-null branch
+ * is native AND the union is exactly one non-null + one null.
+ * For Phase 2 simplicity, only the most common shape (single
+ * non-null branch + null) is treated as native; everything else
+ * routes through the bridge.
+ */
+function isAppStorageNativeType(t: TypeIR): boolean {
+  switch (t.kind) {
+    case 'string':
+    case 'number':
+    case 'boolean':
+      return true
+    case 'typeRef':
+      // Generic-free named typeRef: native iff it's a known enum
+      // (G6 emits `enum X: String` → RawRepresentable<String>). Other
+      // typeRefs (user structs, library types we can't resolve) are
+      // conservative non-native — they're routed through the bridge.
+      // `Array<T>` and `Promise<T>` are handled at the swiftType layer;
+      // here they're typeRefs but we treat them via the array case for
+      // Array (the parser canonicalizes `T[]` → `kind: 'array'`).
+      return t.args.length === 0 && _enumNames.has(t.name)
+    case 'union': {
+      // `T | null` / `T | undefined` → Optional<T>; native iff T is.
+      const nulls = t.branches.filter(
+        (b) => b.kind === 'null' || b.kind === 'undefined',
+      ).length
+      const others = t.branches.filter(
+        (b) => b.kind !== 'null' && b.kind !== 'undefined',
+      )
+      return nulls > 0 && others.length === 1 && isAppStorageNativeType(others[0]!)
+    }
+    default:
+      // array / object / function / null / undefined / unknown → non-native
+      return false
+  }
+}
+
 export function swiftType(t: TypeIR): string {
   switch (t.kind) {
     case 'number':
