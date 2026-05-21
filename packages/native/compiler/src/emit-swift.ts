@@ -37,6 +37,13 @@ let _enumNames: Set<string> = new Set()
 let _signalEnumTypes: Map<string, string> = new Map()
 /** Set when emitting a signal initial value that's an enum-typed signal. */
 let _activeEnumType: string | undefined
+/**
+ * Per-component: every signal name in scope. Used by G1 (TextField
+ * two-way binding) to know which `value={x}` attr identifiers match
+ * a real \`@State\` declaration that supports SwiftUI's binding-
+ * projection (\`$x\`) syntax.
+ */
+let _signalNames: Set<string> = new Set()
 
 export function emitSwift(components: ComponentIR[], enums: EnumIR[] = []): string {
   _enumNames = new Set(enums.map((e) => e.name))
@@ -74,10 +81,14 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Build the per-component signal-name → enum-type-name map for use
   // at `.set()` call sites later in the body.
   _signalEnumTypes = new Map()
+  // G1: track every signal name so TextField's pattern-detection can
+  // recognise binding-eligible identifiers.
+  _signalNames = new Set()
   for (const d of c.decls) {
     if (d.kind === 'signal' && d.type.kind === 'typeRef' && _enumNames.has(d.type.name)) {
       _signalEnumTypes.set(d.name, d.type.name)
     }
+    if (d.kind === 'signal') _signalNames.add(d.name)
   }
   const lines: string[] = []
   // `swiftIdent` backtick-escapes Swift-reserved keywords. Pyreon
@@ -101,6 +112,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   lines.push(`}`)
   _activePropsParamName = undefined
   _signalEnumTypes = new Map()
+  _signalNames = new Set()
   return lines.join('\n')
 }
 
@@ -400,7 +412,62 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Show') return emitSwiftShow(e, indent)
   if (tag === 'Text') return emitSwiftText(e, indent)
   if (tag === 'Button') return emitSwiftButton(e, indent)
+  if (tag === 'TextField') return emitSwiftTextField(e, indent)
   // Generic SwiftUI View by tag name.
+  return emitSwiftGeneric(e, indent)
+}
+
+/**
+ * Emit `<TextField value={signal} onInput={...}>` as a SwiftUI
+ * two-way-binding TextField. G1 from the TodoMVC walkthrough.
+ *
+ * Pyreon's one-way value+onInput idiom doesn't map directly to
+ * SwiftUI's `TextField(_, text: Binding)`. Pattern detection:
+ *
+ *   1. `value` attr present + value is a bare identifier matching a
+ *      `@State` signal in scope → emit `TextField("...", text: $signal)`
+ *      using Swift's binding-projection (`$`) syntax. The `onInput`
+ *      handler becomes redundant since SwiftUI's binding writes back
+ *      automatically — drop it.
+ *   2. Anything else (value is a literal / non-identifier expression /
+ *      no signal match) → fall through to the generic emit shape.
+ *
+ * Placeholder: takes from the `placeholder` attr if present, else `""`.
+ *
+ * Without G1 (#834 baseline emit): `TextField(value: draft, placeholder: "...")`
+ *   — syntactically valid Swift but binding is one-way (the typed text
+ *   doesn't propagate back to the signal). User-typed text would be
+ *   silently dropped on every change.
+ *
+ * With G1: `TextField("...", text: $draft)` — full SwiftUI two-way
+ *   binding. User-typed text writes back to the @State automatically.
+ */
+function emitSwiftTextField(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const valueAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'value',
+  )
+  const placeholderAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> =>
+      a.kind === 'attr' && a.name === 'placeholder',
+  )
+  // Pattern-match: value attr is a bare Identifier that names a
+  // known @State signal in scope. If yes → emit the binding.
+  if (
+    valueAttr &&
+    valueAttr.value.kind === 'identifier' &&
+    _signalNames.has(valueAttr.value.name)
+  ) {
+    const signalName = valueAttr.value.name
+    const placeholder =
+      placeholderAttr && placeholderAttr.value.kind === 'literal'
+        ? JSON.stringify(String(placeholderAttr.value.value))
+        : '""'
+    return `TextField(${placeholder}, text: $${swiftIdent(signalName)})`
+  }
+  // Fall through to generic emit when the pattern doesn't match.
   return emitSwiftGeneric(e, indent)
 }
 

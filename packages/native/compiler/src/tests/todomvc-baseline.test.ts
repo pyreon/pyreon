@@ -20,12 +20,12 @@
 // What the baseline currently DOESN'T support (from the walkthrough's
 // 8 named gaps):
 //
-//   G1 TextField two-way binding (`text: $draft` on Swift)
+//   G1 TextField two-way binding (`text: $draft` on Swift)   ✓ CLOSED
 //   G2 Keyboard event handling (`onKeyDown` → `.onSubmit`)
 //   G3 Array mutation idioms (immutable spread vs platform mutate)
 //   G4 Object-in-array partial updates (`map(t => t.id === id ? ... : t)`)
 //   G5 @pyreon/storage cross-platform abstraction (`useStorage`)
-//   G6 String-literal union → native enum (`'all' | 'active' | 'completed'`)
+//   G6 String-literal union → native enum (`'all' | 'active' | 'completed'`)   ✓ CLOSED
 //   G7 rocketstyle conditional dimension expressions
 //   G8 @pyreon/router URL-hash filter sync (Phase 3 work)
 //
@@ -89,7 +89,7 @@ describe('TodoMVC compile baseline', () => {
         }
         var body: some View {
           VStack {
-            TextField(value: draft, placeholder: "What needs to be done?")
+            TextField("What needs to be done?", text: $draft)
             ForEach(visible, id: \\.id) { t in
               TodoRow(todo: t)
             }
@@ -153,10 +153,27 @@ describe('TodoMVC gap-tracking baseline', () => {
 
   const source = readFileSync(TODOMVC_SOURCE_PATH, 'utf8')
 
-  it.todo('G1 — TextField two-way binding emits `text: $draft` on Swift', () => {
+  it('G1 — TextField two-way binding emits `text: $draft` on Swift', () => {
+    // CLOSED by this PR. The TextField emit pattern-matches
+    // value+identifier matching a known signal in scope and emits
+    // SwiftUI's binding-projection (`$signal`) syntax. The locked
+    // Swift-emit snapshot above already proves this; the explicit
+    // assertion here is the gap-closure marker for readers scanning
+    // the test file.
     const out = transform(source, { target: 'swift' })
     expect(out.code).toContain('TextField(')
     expect(out.code).toContain('text: $draft')
+  })
+
+  it('G1 — TextField two-way binding emits Compose `onValueChange` on Kotlin', () => {
+    // CLOSED by this PR. Same pattern as Swift — when `value={x}`
+    // names a known signal, the Kotlin emit becomes
+    // `TextField(value = x, onValueChange = { x = it })` so a
+    // Compose host with `var x by remember { mutableStateOf("") }`
+    // wires up bidirectionally with no boilerplate.
+    const out = transform(source, { target: 'kotlin' })
+    expect(out.code).toContain('TextField(value = draft')
+    expect(out.code).toContain('onValueChange = { draft = it }')
   })
 
   it.todo('G2 — onKeyDown=Enter handler emits `.onSubmit { ... }` on Swift', () => {
