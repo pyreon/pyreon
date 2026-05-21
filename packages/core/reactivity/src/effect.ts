@@ -9,6 +9,20 @@ export interface Effect {
   dispose(): void
 }
 
+export interface EffectOptions {
+  /**
+   * @internal — source location injected by `@pyreon/vite-plugin` at build
+   * time. When present, the runtime skips the `new Error().stack` capture
+   * in `_rdRegister` — saves ~2.2µs per effect creation when devtools is
+   * active. Plain user code should NOT set this; the field is opaque
+   * (no public type) so it's not part of the public API surface.
+   *
+   * Shape: `{ file: string; line: number; col: number }` matching
+   * `@pyreon/reactivity`'s `SourceLocation`.
+   */
+  __sourceLocation?: { file: string; line: number; col: number }
+}
+
 // ─── Effect-scoped snapshot capture (DI from `@pyreon/core`) ─────────────────
 //
 // Effects re-run reactively in response to signal changes. When that re-run
@@ -137,7 +151,10 @@ function cleanupLocalDeps(deps: Set<() => void>[], fn: () => void): void {
   }
 }
 
-export function effect(fn: () => (() => void) | void): Effect {
+export function effect(
+  fn: () => (() => void) | void,
+  options?: EffectOptions,
+): Effect {
   // Dev-mode warning for async effect callbacks (audit bug #1). The
   // tracking context is the synchronous frame around `fn()`'s top half;
   // anything after the first `await` runs detached, so signal reads on
@@ -259,7 +276,17 @@ export function effect(fn: () => (() => void) | void): Effect {
 
   if (process.env.NODE_ENV !== 'production')
     // skipFrames=1: skip the `effect()` / `renderEffect()` frame, capture the user's call site.
-    _rdRegister(run, 'effect', null, run, undefined, _captureCallerLocation(1))
+    // Prefer build-time-injected location over the ~2.2µs stack-capture
+    // fallback. @pyreon/vite-plugin's `injectSignalNames` rewrites
+    // `effect(() => …)` to `effect(() => …, { __sourceLocation: {…} })`.
+    _rdRegister(
+      run,
+      'effect',
+      null,
+      run,
+      undefined,
+      options?.__sourceLocation ?? _captureCallerLocation(1),
+    )
 
   run()
 

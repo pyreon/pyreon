@@ -983,38 +983,65 @@ function hasMultipleArgs(args: string): boolean {
 }
 
 /**
- * Inject `{ name: "varName", __sourceLocation: { file, line, col } }` into
- * `signal()` calls that don't already have an options argument. Only runs
- * in dev mode for debugging/devtools.
+ * Inject `{ name?, __sourceLocation: { file, line, col } }` into
+ * `signal()` / `computed()` / `effect()` calls that don't already have
+ * an options argument. Only runs in dev mode for debugging/devtools.
  *
- * `const count = signal(0)` →
- *   `const count = signal(0, { name: "count", __sourceLocation: { file: "app.tsx", line: 5, col: 14 } })`
+ * Three forms covered:
+ *
+ *   `const count = signal(0)` →
+ *     `const count = signal(0, { name: "count", __sourceLocation: {...} })`
+ *
+ *   `const doubled = computed(() => count() * 2)` →
+ *     `const doubled = computed(() => count() * 2, { name: "doubled", __sourceLocation: {...} })`
+ *
+ *   `effect(() => console.log(count()))` →
+ *     `effect(() => console.log(count()), { __sourceLocation: {...} })`
+ *     (no `name` — anonymous effects have no binding to derive from)
  *
  * Module-scope signals rewritten to __hmr_signal() are naturally skipped
  * because the regex matches `signal(` not `__hmr_signal(`.
  *
  * **LPIH integration**: `__sourceLocation` is consumed by
- * `@pyreon/reactivity`'s `signal()` to skip the `new Error().stack`
- * capture in `_rdRegister` — saves ~2.2µs per signal creation when
- * devtools is active. The injected literal is byte-for-byte the same
- * info the runtime would have parsed from the stack, so behavior is
- * identical except no stack-parse cost.
+ * `@pyreon/reactivity`'s `signal()` / `computed()` / `effect()` to skip
+ * the `new Error().stack` capture in `_rdRegister` — saves ~2.2µs per
+ * creation when devtools is active. The injected literal is byte-for-byte
+ * the same info the runtime would have parsed from the stack, so behavior
+ * is identical except no stack-parse cost.
+ *
+ * **Anonymous-effect detection**: `effect(` can also appear as a property
+ * access (`obj.effect(...)`), a longer identifier (`sideEffect(...)`), or
+ * a previously-injected call (`effect(fn, { ... })`). The unbound-effect
+ * pass guards against all three:
+ *   - preceded by NOT `[A-Za-z0-9_$.]` (so `.effect`/`sideEffect` skip)
+ *   - args do NOT already contain a 2nd arg (`hasMultipleArgs` check)
  *
  * @param code - source text
  * @param moduleId - the file path to embed in the injected `__sourceLocation`.
  *                   Vite passes the resolved module ID (absolute path).
  */
 function injectSignalNames(code: string, moduleId: string): string {
-  const re = /(?:const|let)\s+(\w+)\s*=\s*signal\(/gm
-  const matches: {
+  // Pass 1: bound forms — `const X = (signal|computed|effect)(…)`.
+  // Extract `X` as the debug name + the reactive primitive kind.
+  const reBound = /(?:const|let)\s+(\w+)\s*=\s*(signal|computed|effect)\(/gm
+  // Pass 2: unbound effect — `effect(() => …)` at statement position,
+  // not following a member-access (.) or identifier char ($_a-zA-Z0-9).
+  // Reactive primitives other than `effect` are rare without binding,
+  // so we skip the bare `signal(` / `computed(` form to stay conservative.
+  const reUnboundEffect = /(?<![\w$.])effect\(/gm
+
+  type Match = {
     start: number
     end: number
-    name: string
+    name: string | null
     args: string
     matchIdx: number
-  }[] = []
+  }
+  const matches: Match[] = []
+  // Track call positions covered by pass 1 so pass 2 can skip them.
+  const covered = new Set<number>()
 
-  let m: RegExpExecArray | null = re.exec(code)
+  let m: RegExpExecArray | null = reBound.exec(code)
   while (m !== null) {
     const argsStart = m.index + m[0].length
     const args = extractBalancedArgs(code, argsStart)
@@ -1026,24 +1053,53 @@ function injectSignalNames(code: string, moduleId: string): string {
         args,
         matchIdx: m.index,
       })
+      // Mark the `effect(`/`signal(`/`computed(` token start so the
+      // unbound-effect pass doesn't double-process it.
+      const tokStart = m.index + m[0].length - (m[2]?.length ?? 0) - 1
+      covered.add(tokStart)
     }
-    m = re.exec(code)
+    m = reBound.exec(code)
   }
-  re.lastIndex = 0
+  reBound.lastIndex = 0
+
+  m = reUnboundEffect.exec(code)
+  while (m !== null) {
+    if (!covered.has(m.index)) {
+      const argsStart = m.index + m[0].length
+      const args = extractBalancedArgs(code, argsStart)
+      if (args !== null && !hasMultipleArgs(args)) {
+        matches.push({
+          start: argsStart,
+          end: argsStart + args.length,
+          name: null,
+          args,
+          matchIdx: m.index,
+        })
+      }
+    }
+    m = reUnboundEffect.exec(code)
+  }
+  reUnboundEffect.lastIndex = 0
 
   if (matches.length === 0) return code
 
-  // Pre-compute line offsets ONCE — avoids O(N²) when many signals share
-  // a file. Each signal's line lookup becomes O(log N) via binary search.
+  // Sort by descending start so back-to-front rewriting doesn't shift
+  // later indices (each splice leaves earlier offsets unchanged).
+  matches.sort((a, b) => b.start - a.start)
+
+  // Pre-compute line offsets ONCE — avoids O(N²) when many calls share
+  // a file. Each lookup becomes O(log N) via binary search.
   const lineStarts = _computeLineStarts(code)
 
   let output = code
-  for (let i = matches.length - 1; i >= 0; i--) {
-    const { start, end, name, args, matchIdx } = matches[i] as (typeof matches)[number]
+  for (let i = 0; i < matches.length; i++) {
+    const { start, end, name, args, matchIdx } = matches[i] as Match
     const { line, col } = _offsetToLineCol(matchIdx, lineStarts)
     const locLiteral = `__sourceLocation: { file: ${JSON.stringify(moduleId)}, line: ${line}, col: ${col} }`
-    const nameLiteral = `name: ${JSON.stringify(name)}`
-    output = `${output.slice(0, start)}${args}, { ${nameLiteral}, ${locLiteral} }${output.slice(end)}`
+    const inner = name !== null
+      ? `name: ${JSON.stringify(name)}, ${locLiteral}`
+      : locLiteral
+    output = `${output.slice(0, start)}${args}, { ${inner} }${output.slice(end)}`
   }
   return output
 }

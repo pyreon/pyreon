@@ -190,3 +190,175 @@ export function App() {
     expect(loc?.line).toBe(3)
   })
 })
+
+describe('R8 — extension to computed() and effect() calls', () => {
+  it('injects { name, __sourceLocation } into bound computed() call', async () => {
+    const code = `import { signal, computed } from "@pyreon/reactivity"
+export function App() {
+  const s = signal(0)
+  const doubled = computed(() => s() * 2)
+  return doubled
+}
+`
+    const result = await ctx.transform(code, '/abs/app.tsx')
+    expect(result).toBeDefined()
+    expect(result!.code).toMatch(
+      /computed\(\(\) => s\(\) \* 2, \{ name: "doubled", __sourceLocation: \{ file: "\/abs\/app\.tsx", line: \d+, col: \d+ \} \}\)/,
+    )
+  })
+
+  it('injects { name, __sourceLocation } into bound effect() call', async () => {
+    const code = `import { signal, effect } from "@pyreon/reactivity"
+export function App() {
+  const s = signal(0)
+  const e = effect(() => { console.log(s()) })
+  return e
+}
+`
+    const result = await ctx.transform(code, '/abs/app.tsx')
+    expect(result).toBeDefined()
+    expect(result!.code).toMatch(
+      /effect\(\(\) => \{ console\.log\(s\(\)\) \}, \{ name: "e", __sourceLocation: \{ file: "\/abs\/app\.tsx", line: \d+, col: \d+ \} \}\)/,
+    )
+  })
+
+  it('injects { __sourceLocation } into unbound effect() call (no name)', async () => {
+    const code = `import { signal, effect } from "@pyreon/reactivity"
+export function App() {
+  const s = signal(0)
+  effect(() => { console.log(s()) })
+}
+`
+    const result = await ctx.transform(code, '/abs/app.tsx')
+    expect(result).toBeDefined()
+    // Unbound effect — `name:` MUST be absent.
+    expect(result!.code).toMatch(
+      /effect\(\(\) => \{ console\.log\(s\(\)\) \}, \{ __sourceLocation: \{ file: "\/abs\/app\.tsx", line: \d+, col: \d+ \} \}\)/,
+    )
+    // Targeted assertion — the unbound effect call must NOT have a name field
+    // (the bound `const s = signal(...)` line DOES have `name: "s"`, hence
+    // a global "no name:" check would false-fire).
+    expect(result!.code).not.toMatch(
+      /effect\(\(\) => \{ console\.log\(s\(\)\) \}, \{ name:/,
+    )
+  })
+
+  it('injects different lines for signal + computed + effect on different lines', async () => {
+    const code = `import { signal, computed, effect } from "@pyreon/reactivity"
+export function App() {
+  const s = signal(0)
+  const d = computed(() => s() * 2)
+  effect(() => { console.log(d()) })
+}
+`
+    const result = await ctx.transform(code, 'app.tsx')
+    const lines = [...result!.code.matchAll(/line: (\d+)/g)].map((m) => parseInt(m[1] ?? '0', 10))
+    expect(lines).toContain(3) // signal
+    expect(lines).toContain(4) // computed
+    expect(lines).toContain(5) // effect
+  })
+
+  it('does NOT double-inject when bound effect() also matches unbound pattern', async () => {
+    // Critical: `const e = effect(...)` MUST be processed by pass 1 only.
+    // If pass 2 also matches it, we'd emit `effect(fn, { ... }, { ... })`
+    // which becomes a 3-arg call — silently breaks runtime behavior.
+    const code = `import { effect } from "@pyreon/reactivity"
+export function App() {
+  const e = effect(() => {})
+  return e
+}
+`
+    const result = await ctx.transform(code, 'app.tsx')
+    // Exactly ONE `__sourceLocation` literal in the output.
+    const matches = result!.code.match(/__sourceLocation/g) ?? []
+    expect(matches).toHaveLength(1)
+    // The name MUST still appear (pass 1 ran), so pass 2 didn't take over.
+    expect(result!.code).toContain('name: "e"')
+  })
+
+  it('skips computed() that already has 2 args (custom equals)', async () => {
+    const code = `import { signal, computed } from "@pyreon/reactivity"
+export function App() {
+  const s = signal(0)
+  const d = computed(() => s(), { equals: Object.is })
+  return d
+}
+`
+    const result = await ctx.transform(code, 'app.tsx')
+    // computed() with existing options — skip. (The signal() above WILL
+    // inject; just don't touch the computed.)
+    expect(result!.code).not.toContain(
+      'computed(() => s(), { equals: Object.is }, {',
+    )
+  })
+
+  it('skips effect() that already has 2 args (existing options)', async () => {
+    const code = `import { effect } from "@pyreon/reactivity"
+export function App() {
+  effect(() => {}, { name: "preset" })
+}
+`
+    const result = await ctx.transform(code, 'app.tsx')
+    // No double-injection — there should still be exactly ONE options arg.
+    expect(result!.code).not.toMatch(/effect\(\(\) => \{\}, \{ name: "preset" \}, \{/)
+  })
+
+  it('does NOT match member-access .effect() — only bare effect calls', async () => {
+    const code = `export function App() {
+  const obj = { effect: () => {} }
+  obj.effect()
+  return obj
+}
+`
+    const result = await ctx.transform(code, 'app.tsx')
+    // \`obj.effect()\` must not be rewritten — pass 2's negative lookbehind
+    // forbids leading \`.\` to avoid touching method calls.
+    expect(result!.code).not.toContain('__sourceLocation')
+  })
+
+  it('does NOT match identifier-ending-in-effect calls (sideEffect, etc.)', async () => {
+    const code = `export function App() {
+  function sideEffect() {}
+  sideEffect()
+  return null
+}
+`
+    const result = await ctx.transform(code, 'app.tsx')
+    // \`sideEffect(\` ends in \`effect(\` but is preceded by an identifier char.
+    // Negative lookbehind \`(?<![\\w\$.])\` excludes it.
+    expect(result!.code).not.toContain('__sourceLocation')
+  })
+
+  it('handles computed() with custom-equals signature unbound at expression position', async () => {
+    // A `computed()` expression used as an arg — no binding. We choose NOT
+    // to inject location for unbound computed/signal (conservative: only
+    // unbound effect, which is the common anonymous-effect pattern).
+    const code = `import { computed } from "@pyreon/reactivity"
+export function App(deriver) {
+  deriver(computed(() => 1))
+}
+`
+    const result = await ctx.transform(code, 'app.tsx')
+    // No injection on unbound computed — that's a deliberate scope choice.
+    expect(result!.code).not.toContain('__sourceLocation')
+  })
+
+  it('injects for ALL three primitives in the same file with no conflicts', async () => {
+    const code = `import { signal, computed, effect } from "@pyreon/reactivity"
+export function App() {
+  const s = signal(0)
+  const d = computed(() => s() + 1)
+  const e = effect(() => { console.log(d()) })
+  effect(() => { console.log(s()) })
+  return [s, d, e]
+}
+`
+    const result = await ctx.transform(code, 'app.tsx')
+    // Each gets exactly one `__sourceLocation` injection — 4 total.
+    const matches = result!.code.match(/__sourceLocation/g) ?? []
+    expect(matches).toHaveLength(4)
+    // Bound forms carry `name:` — count: s, d, e = 3.
+    const names = result!.code.match(/name: "[sde]"/g) ?? []
+    expect(names).toHaveLength(3)
+  })
+})
