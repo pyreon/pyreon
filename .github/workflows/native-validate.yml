@@ -26,6 +26,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - 'packages/native/**'
+      - 'examples/native-counter-ios/**'
       - '.github/workflows/native-validate.yml'
   workflow_dispatch:
   schedule:
@@ -111,3 +112,33 @@ jobs:
         env:
           PYREON_REQUIRE_NATIVE_VALIDATE: '1'
         run: bun run --filter='@pyreon/native-compiler' test
+
+      - name: iOS counter end-to-end smoke
+        # End-to-end gate for the CLI build pipeline: walk src/, emit
+        # generated/, swiftc-parse the result. Catches regressions the
+        # fixture-snapshot tests miss — the CLI's directory walker,
+        # workspace-resolution path, source-map emission, and the
+        # output-file naming convention are all exercised here.
+        #
+        # We don't run the Xcode part (no Apple-hardware runners) —
+        # `swiftc -parse` on the emit is the meaningful CI signal.
+        # The `xcodegen generate` part is verified locally per PR.
+        run: |
+          set -eo pipefail
+          cd examples/native-counter-ios
+          # Reset any cached output so the build is exercising the
+          # CLI's create-from-scratch path, not just touching an
+          # existing file.
+          rm -f generated/*.swift
+          bash scripts/build.sh
+          # Assert the expected output file landed.
+          test -f generated/Counter.swift
+          # Parse-validate the emit.
+          swiftc -parse generated/Counter.swift
+          # Sanity-check the content carries the canonical @State line —
+          # catches an emit that silently produced empty / wrong-shape
+          # output. swiftc would have caught a malformed file but not
+          # "file exists, parses, but has zero @State declarations".
+          grep -q '@State private var count: Int = 0' generated/Counter.swift
+          grep -q 'Button("Increment")' generated/Counter.swift
+          echo "[ios-counter-smoke] ✓ Counter.tsx compiles to valid SwiftUI"
