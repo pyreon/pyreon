@@ -1,3 +1,0 @@
-module PyreonRuntimePackageTests {
-    header "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.build/include/PyreonRuntimePackageTests-Swift.h"
-}
