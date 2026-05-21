@@ -1,5 +1,179 @@
 # @pyreon/vite-plugin
 
+## 0.24.0
+
+### Minor Changes
+
+- [#786](https://github.com/pyreon/pyreon/pull/786) [`ab4d980`](https://github.com/pyreon/pyreon/commit/ab4d9806a677b2ccd28f417280e52d72be9b1bd9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - LPIH auto-bridge — zero-config Live Program Inlay Hints in dev (R1).
+
+  Closes the last queued recommendation from the LPIH foundation PR ([#769](https://github.com/pyreon/pyreon/issues/769)). With this PR, **Vite users get LPIH for free**: the plugin auto-injects a browser-side bridge that activates devtools + polls `getFireSummaries()` every 250ms, and registers a `POST /__pyreon_lpih__` dev-server middleware that atomically writes the cache file the LSP auto-discovers (R2, [#777](https://github.com/pyreon/pyreon/issues/777)).
+
+  End-to-end setup is now:
+
+  ```ts
+  // vite.config.ts
+  import pyreon from "@pyreon/vite-plugin";
+  export default { plugins: [pyreon()] }; // that's it
+  ```
+
+  ```bash
+  # In your editor: run the LSP, see ghost text.
+  pyreon-lint --lsp
+  ```
+
+  No `activateReactiveDevtools()` call, no `startLpihPolling()` call, no `PYREON_LPIH_CACHE` env var, no `.pyreon-lpih.json` config — the plugin wires all three layers automatically.
+
+  **New options surface:**
+
+  - `pyreon({ lpih: false })` — opt out (e.g. wiring `startLpihPolling()` manually from a non-browser runtime)
+  - `pyreon({ lpih: { intervalMs: 500 } })` — slower poll for low-CPU environments
+  - `pyreon({ lpih: { cachePath: '/abs/path.json' } })` — override the default `<projectRoot>/.pyreon-lpih.json`
+
+  **Architecture decision** (the "scope" question from the deferred report): the auto-bridge lives in `@pyreon/vite-plugin` because (a) the plugin is already the dev-injection point for HMR / signal names / source locations (R4), (b) it's the canonical dev-server for Pyreon apps, (c) it doesn't tie LPIH itself to Vite — non-Vite consumers retain the manual `@pyreon/reactivity/lpih` API. The plugin is a thin wrapper around the same primitives, not a re-implementation.
+
+  **Build-only**: production builds skip injection entirely (`transformIndexHtml` returns undefined in `command: 'build'`).
+
+  **Wire format**: browser POSTs `{ fires: [{ file, line, count, kind, lastFire, rate1s }] }` — byte-identical to the on-disk format `@pyreon/reactivity/lpih`'s `writeLpihCache` produces. The server-side `writeLpihCacheFile` re-validates shape (rejects bodies missing the `fires` array) before atomic-renaming to disk; a buggy or malicious client can't corrupt the file the LSP reads.
+
+  **Exposed surface** (`@internal`, for tests):
+
+  - `resolveLpihCachePath(projectRoot)` — returns `<projectRoot>/.pyreon-lpih.json`
+  - `writeLpihCacheFile(path, body)` — atomic-rename writer with shape validation
+  - `buildLpihClientScript(intervalMs)` — generates the `<script type="module">` body
+
+  **Bisect-verified-with-restore**: disabling both the `configureServer` LPIH gate AND the `transformIndexHtml` gate fails 7 of the 23 new R1 tests (registration + injection + interval + custom-path); restored → 23/23 (and 142/142 full vite-plugin suite). No `TEMP BISECT` remnants.
+
+  Test coverage (23 new specs in `lpih-auto-bridge.test.ts`):
+
+  - `resolveLpihCachePath` (2) — projectRoot → cache path resolution
+  - `writeLpihCacheFile` (5) — successful write, overwrite (atomic rename), malformed JSON rejection, shape-missing-fires rejection, no tmp leftovers
+  - `buildLpihClientScript` (6) — `<script type="module">` shape, interval embedding, imports, POST shape, beforeunload cleanup, payload shape
+  - `transformIndexHtml` (5) — injects in dev/`lpih:true`, NOT in `lpih:false`, NOT in build, respects custom interval, default 250ms
+  - `configureServer` (5) — middleware registered when `lpih:true`, NOT when `lpih:false`, rejects non-POST (405), writes valid POST to cache file, honours custom cache path
+
+  Companion test-isolation change: existing `dev-server.test.ts` fixture now passes `lpih: false` by default in `bootstrap()` because those tests cover SSR / watcher / debounce — LPIH adding a middleware would change their `middlewares.use` call count + first-element shape. LPIH-specific coverage lives in the new test file.
+
+  Docs updated at `docs/docs/lpih.md` — the Quick Start section is rewritten as "Vite users get it for free", with the manual `startLpihPolling()` recipe demoted to a "Manual setup (non-Vite consumers)" subsection.
+
+- [#785](https://github.com/pyreon/pyreon/pull/785) [`b8fb31c`](https://github.com/pyreon/pyreon/commit/b8fb31cf1a59578fc33f27d539695d2bc164b2f1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - LPIH: build-time `__sourceLocation` injection now covers `computed()` and `effect()` calls (R8 — extension of R4). Previously only `signal()` got the build-time literal; `computed()` and `effect()` still paid the runtime `new Error().stack` capture cost (~2.2 µs per creation when devtools is active).
+
+  Three forms covered by the extended `injectSignalNames`:
+
+  - `const x = signal(...)` → `signal(..., { name: "x", __sourceLocation: {...} })`
+  - `const d = computed(() => ...)` → `computed(..., { name: "d", __sourceLocation: {...} })`
+  - `effect(() => ...)` (unbound) → `effect(..., { __sourceLocation: {...} })` (no `name` — anonymous effects have no binding to derive from)
+
+  Unbound `signal()` / `computed()` are left untouched (rare anonymous patterns). The unbound-effect pass uses negative lookbehind `(?<![\w$.])` to skip member-access (`obj.effect()`) and identifier-suffix (`sideEffect()`) false-positives.
+
+  `@pyreon/reactivity` exposes the matching surface on the runtime side:
+
+  - `ComputedOptions<T>` gains an `@internal __sourceLocation` field; `computed()` threads it through to both internal paths (`computedLazy` / `computedWithEquals`), preferring it over `_captureCallerLocation(2)` in `_rdRegister`
+  - new `EffectOptions` interface with the same `@internal __sourceLocation` field; `effect(fn, options?)` accepts the second arg
+
+  Bisect-verified: narrowing the bound regex to `signal`-only AND disabling the unbound-effect pass fails 6 of the 11 new R8 tests with the expected error shapes (e.g. `expected to have a length of 4 but got 1` on the multi-primitive injection count); restored → 26/26 (15 R4 + 11 R8) pass. No `TEMP BISECT` remnants in source.
+
+  Full suites green: `@pyreon/reactivity` 377/377, `@pyreon/vite-plugin` 130/130.
+
+  Closes R8 from the LPIH foundation PR ([#769](https://github.com/pyreon/pyreon/issues/769)) followups queue.
+
+- [#781](https://github.com/pyreon/pyreon/pull/781) [`2abb672`](https://github.com/pyreon/pyreon/commit/2abb672d8a8bf7f4940af422bf8bf802aa129cdd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - LPIH: build-time source-location injection via `@pyreon/vite-plugin`. Eliminates the runtime `new Error().stack` capture cost (~2.2 µs per signal creation) by embedding the source location as a compile-time literal.
+
+  **Before** (foundation PR):
+
+  ```ts
+  // User source:
+  const count = signal(0);
+
+  // Runtime, when devtools active:
+  // 1. new Error() + parse stack → ~2.2µs cost per creation
+  // 2. Use parsed location for LPIH source-location capture
+  ```
+
+  **After** (this PR):
+
+  ```ts
+  // User source (unchanged):
+  const count = signal(0);
+
+  // Vite-transformed source (dev mode):
+  const count = signal(0, {
+    name: "count",
+    __sourceLocation: { file: "app.tsx", line: 5, col: 14 },
+  });
+
+  // Runtime, when devtools active:
+  // 1. Read options.__sourceLocation → ~0ns cost
+  // 2. Use injected location directly — stack capture skipped
+  ```
+
+  **`@pyreon/reactivity`**:
+
+  - `SignalOptions.__sourceLocation?: { file, line, col }` — new optional field (marked `@internal`, not part of the public API surface). When present, the runtime uses it directly and skips `_captureCallerLocation()` entirely.
+  - 2 new tests proving the injected option is preferred over stack capture + the fallback still works when the option is absent.
+
+  **`@pyreon/vite-plugin`**:
+
+  - Extended `injectSignalNames` to ALSO inject `__sourceLocation` alongside the existing `name` field. Same regex, same transform pass — additive change.
+  - New helpers `_computeLineStarts(code)` + `_offsetToLineCol(offset, starts)` — O(N) precompute + O(log N) per-signal binary search. Avoids O(N²) when many signals share a file.
+  - The injected `file` is Vite's resolved module ID (absolute path) — the same path the runtime would have parsed from `new Error().stack`, so byte-identical behavior except for cost.
+  - 15 new tests covering line/col math + injection at function-scope call sites + the 5 skip-cases (existing options, non-signal calls, multiline args, no-injection-for-doSomething, etc.).
+
+  **Known limitation**: module-scope signals (`export const x = signal(0)`) get rewritten to `__hmr_signal()` first by the existing HMR injection pass. The location injection runs after and naturally skips them (regex matches `signal(` not `__hmr_signal(`). Module-scope signals still pay the runtime stack-capture cost. Function-scope signals (the dominant pattern in real Pyreon apps — signals declared inside components) get the full benefit. Module-scope follow-up tracked.
+
+  **Tests** (+17 new across 2 packages, 481 total green):
+
+  - `@pyreon/reactivity`: 362 (+2 — injected-location-preferred + stack-fallback-when-absent)
+  - `@pyreon/vite-plugin`: 119 (+15 — line-starts utility, offset-to-line-col, 6 injection scenarios, existing-options skip, non-signal skip, multiline args)
+
+  **Performance**:
+
+  - Runtime cost (devtools active, function-scope signal): **0 ns** stack capture (was ~2.2 µs)
+  - Build-time cost: ~10 µs per signal call site (one regex match + one binary search + ~80 bytes of literal output) — invisible on real-world builds
+  - Bundle-budget impact: 0 (transform happens in dev-mode-only Vite plugin code path; no production bundle growth)
+
+  **Bisect-verified**: removing the `__sourceLocation` literal from the injection emission makes the line/col-correctness tests fail with "expected to include `__sourceLocation`"; the runtime-side `signal() prefers __sourceLocation over stack capture` test verifies the runtime fast-path is actually wired (file path comes from the injected option, not the test file).
+
+  This closes R4 from the [LPIH recommendations](https://github.com/pyreon/pyreon/blob/main/.claude/experiments/RECOMMENDATIONS.md). The 2.2 µs/creation overhead in the foundation PR's measurement is now eliminated for the majority of real-world signals.
+
+### Patch Changes
+
+- [#789](https://github.com/pyreon/pyreon/pull/789) [`67e1f37`](https://github.com/pyreon/pyreon/commit/67e1f371a20219481ee9564d2d7421ec2a0b5ddf) Thanks [@vitbokisch](https://github.com/vitbokisch)! - LPIH followups round audit — three real bugs found + fixed in lockstep:
+
+  **1. Activation race in R1 auto-bridge (high impact)** — the injected `<script type="module">` used `import('@pyreon/reactivity').then(activate)`. Since `<script type="module">` tags execute in document order with `defer` semantics, dynamic-import-then resolves AFTER the module body completes — and the script body completed IMMEDIATELY since the `.then()` only registered a callback. Result: the app's entry script ran NEXT (document order), created its module-scope signals via `signal(0)` / `computed(...)`, those calls hit `_rdRegister` with `_active = false` (line 311 of `reactive-devtools.ts`), returned undefined → signals INVISIBLE to LPIH. The most common signal shape (top-of-file `const count = signal(0)`) was never tracked.
+
+  Fix: top-level `await` on the dynamic import + `.catch(() => null)` for silent fallback when `@pyreon/reactivity` isn't in the dep graph. Top-level await delays module completion, so the LPIH script body doesn't finish until activation does — the next `<script type="module">` (the app entry) waits, signals get registered correctly.
+
+  **2. Tmp file leak on `fs.writeFile` failure (low-medium impact)** — both `writeLpihCacheFile` (vite-plugin) AND `_writeToPath` (foundation `@pyreon/reactivity/lpih.ts`) had:
+
+  ```ts
+  await fs.writeFile(tmp, ...)   // outside try — partial tmp leaks if this throws
+  try { await fs.rename(tmp, path) } catch { try { unlink(tmp) } catch {} }
+  ```
+
+  If `fs.writeFile` itself threw (disk full, EIO, EACCES, transient FS), the partial tmp file leaked on disk with a unique PID+seq name — accumulating forever. Fix: single try/catch covering both writeFile + rename; cleanup runs on either path's failure (ENOENT on the writeFile-failed path is swallowed, original error surfaces).
+
+  Bisect-verifying THIS specific bug portably is hard (requires reliable disk-full or EIO reproduction), so the fix is structural — locked in by reading the diff. The companion `'cleans up tmp file when rename fails (rename onto a directory)'` test locks the pre-existing rename-failure path.
+
+  **3. String-region false-positives in `injectSignalNames` (medium impact)** — the regexes `(?:const|let)\s+(\w+)\s*=\s*(signal|computed|effect)\(` (R4+R8 bound) and `(?<![\w$.])effect\(` (R8 unbound) matched anywhere in source text, including INSIDE string literals / template literals / comments. User code like:
+
+  ```ts
+  const docs = `effect(() => x)`;
+  throw new Error("effect() must be called inside a component");
+  // TODO: replace effect(() => log()) with watch()
+  ```
+
+  got `, { __sourceLocation: ... }` injected INTO the string/comment, corrupting runtime values and producing syntactically-broken docstrings.
+
+  Fix: new `_maskStringsAndComments(code)` pre-pass produces a same-length copy of `code` with strings/comments blanked to spaces (newlines preserved so line numbers don't shift). Regexes run against the masked version; args extraction reads from the original. Template-literal `${...}` interpolations are PRESERVED as code (their bodies can contain real `signal()` calls worth catching). Bisect-verified: disabling the masking pre-pass fails 5 of the new false-positive guard tests.
+
+  Test counts:
+
+  - vite-plugin: 154 → 173 (+19): 11 `_maskStringsAndComments` unit tests, 6 false-positive guards, 1 top-level-await structural test, 1 rename-failure tmp cleanup test
+  - reactivity: 377/377 unchanged (foundation tmp-leak fix doesn't add tests; bisect-verified structurally by reading the diff)
+
+- Updated dependencies [[`275eb20`](https://github.com/pyreon/pyreon/commit/275eb2038f32374e90c9fe0c3d55f35895f43450), [`47073eb`](https://github.com/pyreon/pyreon/commit/47073ebdd7552c63985f461a663ba98d93538606), [`572212f`](https://github.com/pyreon/pyreon/commit/572212f631907a18b98118f48dea3621dd5a95b1), [`f22902a`](https://github.com/pyreon/pyreon/commit/f22902a9a9c5f5b8a5192da086a6b4299291dd57), [`891ca43`](https://github.com/pyreon/pyreon/commit/891ca4300727119dafd66ceaacd7cb39e68f3b4e), [`d4ec777`](https://github.com/pyreon/pyreon/commit/d4ec777643446ed2c51dedb1e74fbd8dce70bdfd), [`572212f`](https://github.com/pyreon/pyreon/commit/572212f631907a18b98118f48dea3621dd5a95b1)]:
+  - @pyreon/compiler@0.24.0
+
 ## 0.23.0
 
 ### Patch Changes

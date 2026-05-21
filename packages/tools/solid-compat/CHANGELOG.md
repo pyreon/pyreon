@@ -1,5 +1,159 @@
 # @pyreon/solid-compat
 
+## 0.24.0
+
+### Patch Changes
+
+- [#778](https://github.com/pyreon/pyreon/pull/778) [`275eb20`](https://github.com/pyreon/pyreon/commit/275eb2038f32374e90c9fe0c3d55f35895f43450) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(compiler, solid-compat): close two real CodeQL alerts (polynomial-redos + prototype-pollution)
+
+  Closes the two CODE-level CodeQL alerts on the repo. The other four
+  open alerts (`Fuzzing`, `CII-Best-Practices`, `Maintained`,
+  `Code-Review`) are OpenSSF Scorecard metadata — repo-practice
+  recommendations, not code-fixable.
+
+  ## Alert [#65](https://github.com/pyreon/pyreon/issues/65) — `js/polynomial-redos` (severity: high)
+
+  **`packages/core/compiler/src/pyreon-intercept.ts:996`** — the
+  `hasPyreonPatterns` fast-path regex for the `onClick={undefined}`
+  detector had an unbounded `\w*` quantifier:
+
+  ```ts
+  /on[A-Z]\w*\s*=\s*\{\s*undefined\s*\}/.test(code);
+  ```
+
+  Polynomial-time on inputs like `onAAAA…` (long runs of `[A-Z]`):
+  per starting position the greedy `\w*` consumes O(N) chars before
+  the trailing `=` fails to match, giving O(N²) overall on N starting
+  positions.
+
+  **Fix**: cap the `\w*` to `\w{0,60}`. Real `on*` handler identifiers
+  are at most ~25 chars (`onPointerLeaveCapture`); 60 leaves headroom.
+  The cap keeps the regex linear regardless of input shape.
+
+  This file already uses bounded quantifiers (`{1,500}` / `{0,500}`)
+  on its OTHER regex sites with the same rationale documented inline
+  (lines 997-1008) — this fix brings the `on*` pattern in line with
+  the established convention.
+
+  ## Alert [#22](https://github.com/pyreon/pyreon/issues/22) — `js/prototype-polluting-assignment` (severity: medium)
+
+  **`packages/tools/solid-compat/src/index.ts:1040`** — `applyAtPath`
+  already guards against `__proto__` / `constructor` / `prototype`
+  keyed writes via a `DANGEROUS_KEYS.has(key)` Set lookup at line 1036,
+  BUT CodeQL's `js/prototype-polluting-assignment` taint-tracking
+  does NOT propagate dataflow through `Set.has` calls. The analyzer
+  needs explicit `===` checks against the literal key names to
+  recognise the guard.
+
+  **Fix**: inline the comparisons:
+
+  ```ts
+  if (
+    typeof key === "string" &&
+    (key === "__proto__" || key === "constructor" || key === "prototype")
+  ) {
+    return;
+  }
+  ```
+
+  Same set of dangerous keys; just a form CodeQL's taint-tracking can
+  follow. Behaviorally identical — both guards refuse the same three
+  keys before the bracket-notation assignment on line 1042.
+
+  ## Validation
+
+  - `bun run --filter='@pyreon/compiler' typecheck` — clean
+  - `bun run --filter='@pyreon/solid-compat' typecheck` — clean
+  - `bun run --filter='@pyreon/compiler' test pyreon-intercept` — 70/70 pass
+  - `bun run --filter='@pyreon/solid-compat' test` — 218/218 pass
+  - `bun run gen-docs --check` — clean
+  - `bun run check-doc-claims` — clean
+  - `bun run check-manifest-depth` — clean
+
+  CodeQL re-scan on merge will close both alerts automatically.
+
+  ## NOT in this PR
+
+  The other four open alerts (`Fuzzing` / `CII-Best-Practices` /
+  `Maintained` / `Code-Review`, all "no file associated") are OpenSSF
+  Scorecard metadata about repo practices — not code-fixable. They'd
+  need separate workflow / CI / policy changes if pursued.
+
+- [#788](https://github.com/pyreon/pyreon/pull/788) [`84cd28f`](https://github.com/pyreon/pyreon/commit/84cd28feba1899d70696e9a292bb078601558e8f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(runtime-dom, solid-compat): three findings from post-merge deep audit — double-call regression, prototype-pollution alert still open, defensive `Object.keys` for handler iteration
+
+  After the dynamic-collapse PR sequence merged ([#765](https://github.com/pyreon/pyreon/issues/765) / [#766](https://github.com/pyreon/pyreon/issues/766) / [#767](https://github.com/pyreon/pyreon/issues/767) / [#771](https://github.com/pyreon/pyreon/issues/771) / [#773](https://github.com/pyreon/pyreon/issues/773) / [#775](https://github.com/pyreon/pyreon/issues/775) / [#778](https://github.com/pyreon/pyreon/issues/778)), a careful re-read surfaced three real issues. All three are narrow, low-risk fixes shipping together as a deep-review follow-up.
+
+  ## Finding 1 (correctness) — `_rsCollapseDyn` / `_rsCollapseDynH` called `valueIndex()` TWICE per re-run
+
+  The runtime helpers routed the class binding through `_bindDirect`'s plain-callable fallback. That fallback calls the source function once and passes the result to the inner callback — but the inner callback IGNORED the passed value and called `valueIndex()` AGAIN to compute the index.
+
+  **Symptom**: side-effecting cond expressions fired twice per re-run. A user's
+  `<Button state={(modifyState(), cond) ? 'a' : 'b'}>` would invoke
+  `modifyState()` twice on every value/mode change.
+
+  **Fix**: replace the `_bindDirect` indirection with a direct `renderEffect` call. The callback now reads both accessors inside one renderEffect — same subscription contract (a change to either re-runs only this className assignment), but `valueIndex()` runs exactly once per re-run, matching the original source's implicit call-count semantics.
+
+  **Bisect-verified** by `valueIndex() is called EXACTLY ONCE per re-run` in `rs-collapse-dyn.browser.test.ts`: pre-fix the spec fails with `expected 2 to be 1` (double call); restored → 16/16 pass.
+
+  ## Finding 2 (security) — CodeQL alert [#22](https://github.com/pyreon/pyreon/issues/22) stayed open after [#778](https://github.com/pyreon/pyreon/issues/778)
+
+  PR [#778](https://github.com/pyreon/pyreon/issues/778) added explicit `key === '__proto__' || ...` checks expecting them to satisfy CodeQL's `js/prototype-polluting-assignment` taint-tracking. CodeQL re-scanned and the alert moved from line 1040 → 1051 (my added code shifted positions) but stayed **OPEN** — the analyzer still flagged the `obj[key] = value` write itself, regardless of the guard.
+
+  **Fix**: use `Object.defineProperty(target, key, { value, writable: true, enumerable: true, configurable: true })` for the assignment. That bypasses the prototype chain entirely — even if a setter has been installed on `Object.prototype` for `key`, the write installs an OWN data property on `target` without invoking it. Combined with the simplified inline guard (drop the redundant `typeof key === 'string' &&` outer check — literal-string `===` against a `string | number` key is already type-safe), the write is double-safe.
+
+  Semantics are identical to `obj[key] = value` for a plain data property; the only difference is that setter chains on the prototype are NOT triggered. All 218 `@pyreon/solid-compat` tests pass unchanged.
+
+  ## Finding 3 (defense-in-depth) — `for...in` on handlers leaks inherited enumerable properties
+
+  `_rsCollapseH` (PR [#681](https://github.com/pyreon/pyreon/issues/681)) and `_rsCollapseDynH` ([#773](https://github.com/pyreon/pyreon/issues/773)) both iterate the handlers object via `for (const key in handlers)`. `for...in` includes inherited enumerable properties, so a polluted `Object.prototype` could inject fake handlers.
+
+  **Fix**: use `Object.keys(handlers)` which returns OWN enumerable keys only. Zero-cost — same iteration shape, narrower membership.
+
+  The compiler emits clean object literals (`{ onClick: ..., onPointerEnter: ... }`) with no prototype-pollution surface in practice. This is pure defense-in-depth — the practical risk requires an attacker to first pollute `Object.prototype` globally, which is a much broader compromise than a leaked handler.
+
+  ## Bisect verification
+
+  | Fix                                                                                                        | Bisect                                                           | Outcome                                                             |
+  | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------- |
+  | [#1](https://github.com/pyreon/pyreon/issues/1) (double-call)                                              | Revert `renderEffect` → `_bindDirect(...) + valueIndex() inside` | New spec fails `expected 2 to be 1`; restored → 16/16               |
+  | [#2](https://github.com/pyreon/pyreon/issues/2) (CodeQL [#22](https://github.com/pyreon/pyreon/issues/22)) | CodeQL re-scan on merge will close (no local CodeQL runner)      | Documented + reasoned via `Object.defineProperty`                   |
+  | [#3](https://github.com/pyreon/pyreon/issues/3) (`for...in`)                                               | Behavioral equivalent for clean object literals; defense-only    | All 47 runtime-dom browser specs + 218 solid-compat specs unchanged |
+
+  ## Validation
+
+  - `bun run --filter='@pyreon/runtime-dom' typecheck` — clean
+  - `bun run --filter='@pyreon/solid-compat' typecheck` — clean
+  - `bun run --filter='@pyreon/runtime-dom' lint` — zero errors
+  - `bun run --filter='@pyreon/runtime-dom' test` — 681 + 1 skipped pass
+  - `bun run --filter='@pyreon/runtime-dom' test:browser` — **47/47** (15 dynamic-collapse + 1 new regression spec)
+  - `bun run --filter='@pyreon/solid-compat' test` — 218/218 pass
+  - `bun run gen-docs --check` — clean
+  - `bun run check-doc-claims` — clean
+  - `bun run check-manifest-depth` — clean
+  - `bun run check-bundle-budgets` — clean (runtime-dom + solid-compat unchanged)
+
+  ## Surfaces updated
+
+  - `packages/core/runtime-dom/src/template.ts` — `_rsCollapseDyn` + `_rsCollapseDynH` use `renderEffect` directly (no `_bindDirect` indirection); `_rsCollapseH` + `_rsCollapseDynH` use `Object.keys` (not `for...in`)
+  - `packages/core/runtime-dom/src/tests/rs-collapse-dyn.browser.test.ts` — new regression spec locking the 1:1 `valueIndex()`-call contract
+  - `packages/tools/solid-compat/src/index.ts` — `applyAtPath` uses `Object.defineProperty` for the bracket write + simplified guard
+  - `.changeset/post-merge-deep-review-fixes.md` — this changeset
+
+  ## What's NOT in this PR
+
+  A wider audit of the recent merges turned up other surfaces I considered but did NOT include:
+
+  - **Other unbounded regex quantifiers in `pyreon-intercept.ts`** (e.g. `\\bFor\\b[^=]*\\beach`) — measured polynomially worst-case (O(N²) on N "For" runs) but CodeQL didn't flag them, the input is dev source (not adversary-controlled), and fixing every theoretical site without a CodeQL signal would be excessive. Left alone.
+  - **Degenerate `state={cond ? 'a' : 'a'}` ternaries** — emit 4 identical classes. Sub-optimal but correct. The compiler could detect and bail / use `_rsCollapse` instead; not worth the additional detector complexity for a vanishingly rare input.
+  - **`await` / `yield` inside cond expressions** — the compiler would emit `() => (await cond) ? 0 : 1` in a non-async arrow → syntax error. Extreme edge case (who awaits in a JSX attribute?), no real-corpus instance. Worth catching in the detector eventually but not urgent.
+
+  All three are documented here for the next reviewer.
+
+- Updated dependencies [[`dfaefb8`](https://github.com/pyreon/pyreon/commit/dfaefb8e9e06eaff9039c001ad7731476b6b5732), [`c41aa1a`](https://github.com/pyreon/pyreon/commit/c41aa1ae90efe00d82c97f623a02ed17acb2427c), [`bc65b82`](https://github.com/pyreon/pyreon/commit/bc65b825505016e4433b50cd1276c9982ef10b8a), [`67e1f37`](https://github.com/pyreon/pyreon/commit/67e1f371a20219481ee9564d2d7421ec2a0b5ddf), [`b8fb31c`](https://github.com/pyreon/pyreon/commit/b8fb31cf1a59578fc33f27d539695d2bc164b2f1), [`f400e85`](https://github.com/pyreon/pyreon/commit/f400e85282a370276d5ae0266ba501c41dce4f3e), [`891ca43`](https://github.com/pyreon/pyreon/commit/891ca4300727119dafd66ceaacd7cb39e68f3b4e), [`d4ec777`](https://github.com/pyreon/pyreon/commit/d4ec777643446ed2c51dedb1e74fbd8dce70bdfd), [`2abb672`](https://github.com/pyreon/pyreon/commit/2abb672d8a8bf7f4940af422bf8bf802aa129cdd), [`84cd28f`](https://github.com/pyreon/pyreon/commit/84cd28feba1899d70696e9a292bb078601558e8f), [`49cc686`](https://github.com/pyreon/pyreon/commit/49cc6869c42e3d3a7ef9e6568f7aade0be23edc0), [`73a6949`](https://github.com/pyreon/pyreon/commit/73a694940a0121508dee84b8a88812753e26fb10)]:
+  - @pyreon/core@0.24.0
+  - @pyreon/runtime-dom@0.24.0
+  - @pyreon/reactivity@0.24.0
+
 ## 0.23.0
 
 ### Patch Changes

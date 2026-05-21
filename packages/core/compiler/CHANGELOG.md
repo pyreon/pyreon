@@ -1,5 +1,592 @@
 # @pyreon/compiler
 
+## 0.24.0
+
+### Minor Changes
+
+- [#769](https://github.com/pyreon/pyreon/pull/769) [`891ca43`](https://github.com/pyreon/pyreon/commit/891ca4300727119dafd66ceaacd7cb39e68f3b4e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Live Program Inlay Hints (LPIH) — runtime + compiler + LSP foundation. A new category of editor surface: **live runtime data displayed at the source line, the same way TypeScript shows inferred types**. No reactive framework today shows fire counts / subscriber counts / effect re-run rates at the cursor — developers context-switch to a separate devtools panel. LPIH closes that gap.
+
+  ```tsx
+  function App() {
+    const count = signal(0); // 🔥 signal fired 240×
+    const doubled = computed(() => count() * 2); // 🔥 derived fired 240×
+    effect(() => console.log(doubled())); // 🔥 effect fired 241×
+    return <div>{count()}</div>;
+  }
+  ```
+
+  **`@pyreon/reactivity`**: source-location capture at every `signal()` / `computed()` / `effect()` creation, wired through `_rdRegister` and exposed via `getFireSummaries()`. The runtime bridge ships at the new subpath export `@pyreon/reactivity/lpih`: `writeLpihCache(path)` + `startLpihPolling(path, intervalMs)` writes the current fire snapshot to a JSON cache file atomically (tmp + rename — readers never see a half-written file; failed renames clean up the tmp). Subpath keeps the main entry slim — bridge depends on `node:fs/promises` (Node-only) and is dev-mode glue, not a core primitive. New main-entry exports: `SourceLocation`, `FireSummary`, `getFireSummaries`. New `/lpih` subpath exports: `writeLpihCache`, `startLpihPolling`. **Zero production cost** (existing `process.env.NODE_ENV !== 'production'` gate tree-shakes the entire capture path — verified by the existing `reactive-devtools-treeshake.test.ts`). Dev-mode opt-in cost: `_active === true` triggers `new Error().stack` capture (~2.2µs per creation). At realistic real-app creation rates (100-1000 signals total / 100/sec peak), per-session cost is **0.2-2.3ms** — invisible. Stack-parser handles V8, JSC, and SpiderMonkey formats. 21 new tests (15 source-location + 6 bridge).
+
+  **`@pyreon/compiler`**: two new pure functions that bridge runtime fire data to LSP inlay hints. `mergeFireDataIntoFindings(findings, fires, file)` enriches static Reactivity-Lens findings with fire counts at matching source lines. `firesToCreationSiteFindings(fires, file)` synthesizes inlay-hint findings DIRECTLY from fires — creation-line hints showing `signal fired 240×` at the line where `signal()` was called. New exports: `mergeFireDataIntoFindings`, `firesToCreationSiteFindings`, `LPIHFireDatum`, `LPIHMergeOptions`. 24 new tests covering merge semantics, kind filtering (footguns/static spans NOT enriched), file normalization, aggregation, custom formatters, plus end-to-end `analyzeReactivity + merge` integration.
+
+  **`@pyreon/lint`**: LSP `textDocument/inlayHint` handler reads `PYREON_LPIH_CACHE` env var on each request, parses the cache file (silent failure on missing/malformed JSON), and emits creation-site inlay hints with the `🔥 signal fired N×` label. Opt-in via env var — when unset, LPIH path is a no-op and existing static Reactivity-Lens hints work unchanged. New internal exports: `_readLpihCache`, `LPIHCacheEntry`, `LPIHCacheFile`. 15 new JSON-RPC roundtrip tests covering cache file parsing (malformed JSON, missing entries, shape validation), LSP handler integration (env-var-driven cache read, visible-range filtering with LPIH active, graceful degradation), end-to-end `initialize → didOpen → inlayHint` with real cache file.
+
+  **Measured impact (reproducible via `bun .claude/experiments/lpih-measurement.ts`)**:
+
+  | Metric                                          | Value                                          |
+  | ----------------------------------------------- | ---------------------------------------------- |
+  | LSP roundtrip latency (median, 20-trial)        | **0.32 ms**                                    |
+  | LSP roundtrip latency (p95)                     | **2.78 ms**                                    |
+  | User-perceived save→hint (incl. 150ms debounce) | **~150 ms**                                    |
+  | Bridge write (atomic JSON file)                 | **1.5 ms**                                     |
+  | End-to-end bridge-to-editor                     | **~1.8 ms + 250ms poll interval**              |
+  | Production overhead                             | **0 ns** (tree-shaken)                         |
+  | Dev-mode active overhead                        | 2.2 µs per signal creation                     |
+  | Workflow "which signal fires most?"             | 9 → 2 steps (**4.5× reduction**)               |
+  | Workflow "is this effect over-running?"         | 8 → 2 steps (**4× reduction**)                 |
+  | Workflow "did memoization help?"                | 10 → 4 steps (**2.5× reduction**)              |
+  | Information surface per medium component        | ~9 hints inline vs 0 in editor (devtools-only) |
+
+  **Architecture**: Three-layer (runtime captures source location → bridge writes JSON cache file → LSP reads + merges into inlay hints). Bisect-verified: reverting the LSP wiring fails 11/15 integration tests; restored, 15/15 pass. The cache-file bridge mechanism is filesystem-only (no IPC, no WebSocket) — chosen because LSP servers are stdio-only and filesystem is the universal lowest-common-denominator transport. The LSP re-reads on every inlay-hint request so live edits land immediately. Future build-time location injection via `@pyreon/vite-plugin` will replace stack capture with compile-time literals, eliminating the dev-mode 2.2µs/creation overhead entirely. The editor extension (VS Code / Neovim) that auto-bridges devtools fire data to the cache file is a follow-up.
+
+  **Docs**: new VitePress page at [docs/docs/lpih.md](docs/docs/lpih.md) with quickstart, API reference, measured numbers, and 3 concrete bug-hunting scenarios (with vs without LPIH workflow comparison).
+
+- [#780](https://github.com/pyreon/pyreon/pull/780) [`d4ec777`](https://github.com/pyreon/pyreon/commit/d4ec777643446ed2c51dedb1e74fbd8dce70bdfd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - LPIH: sustained-rate hint via EWMA. Inlay-hint labels now show both cumulative fire count AND current fires/second when active — making hot-path debugging visible at a glance.
+
+  ```tsx
+  const count = signal(0); // 🔥 signal fired 240× (12/s) — active
+  const stable = signal(0); // 🔥 signal fired 240×          — idle
+  ```
+
+  **Why**: cumulative count alone can't distinguish "this is firing right now" from "this fired a lot a few minutes ago." For hot-path debugging (the LPIH [#1](https://github.com/pyreon/pyreon/issues/1) use case), the user needs to see _current_ rate. Adding a decayed-EWMA rate alongside the cumulative count gives both signals without bloating the label.
+
+  **Math**: per-node EWMA with 1-second time constant (`LPIH_RATE_TAU_MS = 1000`). On each fire:
+
+  ```
+  dt = ts - lastFire
+  decay = exp(-dt / 1000)
+  rate1s = rate1s * decay + 1
+  ```
+
+  At steady state of λ fires/sec, `rate1s → λ` (when λ·TAU ≫ 1 — true for any rate worth noticing). On read, decay-to-now applied: a node that stopped firing 1.5s ago shows ≈22% of its peak rate; 3s ago shows ≈5%; 5s ago shows ≈0.7% (below the visibility threshold).
+
+  **`@pyreon/reactivity`**:
+
+  - `FireSummary.rate1s: number` — new field, decayed to "now" at every `getFireSummaries()` call.
+  - `NodeRec.rate1s` — internal per-node EWMA state, updated on every fire.
+  - `LPIH_RATE_TAU_MS` — exported constant (1000 ms = 1 second time constant).
+  - Bridge `writeLpihCache` now includes `rate1s` in each fire entry's JSON.
+
+  **`@pyreon/compiler`**:
+
+  - `LPIHFireDatum.rate1s?: number` — optional field; older runtimes that don't emit it produce labels without the rate suffix (backward-compatible).
+  - `_LPIH_RATE_VISIBLE_THRESHOLD = 0.5` — rates below this are suppressed (don't show "0.1/s" or "0/s" noise from decayed-dormant nodes).
+  - Default label formatter: `signal fired 240× (12/s)` when active, `signal fired 240×` when below threshold or no rate field.
+  - Custom `formatDetail` callbacks receive the full `LPIHFireDatum` including `rate1s` for fully custom labels.
+  - Multiple fires at the same line have their rates summed (consistent with the existing count-summing behavior).
+
+  **`@pyreon/lint`**:
+
+  - `LPIHCacheEntry.rate1s?: number` — round-trips through the cache; no LSP-side logic change beyond the type extension. The compiler's default formatter picks up the new field automatically.
+
+  **Tests** (+12 new across all 3 packages, 2383 total, all green):
+
+  - @pyreon/reactivity: 367 (+5 — rate1s captured, rises with bursts, decays after TAU, sums at same location, constant value lock)
+  - @pyreon/compiler: 1316 (+7 — threshold-suppress, 1-decimal vs integer rounding, creation-site formatter, line-sum, custom formatter receives rate, missing-field passthrough)
+  - @pyreon/lint: 700 (no new tests — rate1s is data-only round-trip through the cache; existing integration tests cover the path)
+
+  **Memory + performance**: one extra `number` field per node (+8 bytes). One `Math.exp` per fire (~50 ns). One `Math.exp` per location per `getFireSummaries()` call. Bundle-budget impact: 0 (writeLpihCache code path was already in the subpath, this just adds one field to the JSON payload).
+
+  **Bisect-verified**: stashing the EWMA update in `_rdRecordFire` fails the new "rate1s rises with rapid fires" + "rate1s for many rapid fires reflects fire density" tests.
+
+  **Docs**: example block in `docs/docs/lpih.md` updated to show `(12/s)` rate suffix; new paragraph explaining the cumulative-count + current-rate split.
+
+### Patch Changes
+
+- [#778](https://github.com/pyreon/pyreon/pull/778) [`275eb20`](https://github.com/pyreon/pyreon/commit/275eb2038f32374e90c9fe0c3d55f35895f43450) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(compiler, solid-compat): close two real CodeQL alerts (polynomial-redos + prototype-pollution)
+
+  Closes the two CODE-level CodeQL alerts on the repo. The other four
+  open alerts (`Fuzzing`, `CII-Best-Practices`, `Maintained`,
+  `Code-Review`) are OpenSSF Scorecard metadata — repo-practice
+  recommendations, not code-fixable.
+
+  ## Alert [#65](https://github.com/pyreon/pyreon/issues/65) — `js/polynomial-redos` (severity: high)
+
+  **`packages/core/compiler/src/pyreon-intercept.ts:996`** — the
+  `hasPyreonPatterns` fast-path regex for the `onClick={undefined}`
+  detector had an unbounded `\w*` quantifier:
+
+  ```ts
+  /on[A-Z]\w*\s*=\s*\{\s*undefined\s*\}/.test(code);
+  ```
+
+  Polynomial-time on inputs like `onAAAA…` (long runs of `[A-Z]`):
+  per starting position the greedy `\w*` consumes O(N) chars before
+  the trailing `=` fails to match, giving O(N²) overall on N starting
+  positions.
+
+  **Fix**: cap the `\w*` to `\w{0,60}`. Real `on*` handler identifiers
+  are at most ~25 chars (`onPointerLeaveCapture`); 60 leaves headroom.
+  The cap keeps the regex linear regardless of input shape.
+
+  This file already uses bounded quantifiers (`{1,500}` / `{0,500}`)
+  on its OTHER regex sites with the same rationale documented inline
+  (lines 997-1008) — this fix brings the `on*` pattern in line with
+  the established convention.
+
+  ## Alert [#22](https://github.com/pyreon/pyreon/issues/22) — `js/prototype-polluting-assignment` (severity: medium)
+
+  **`packages/tools/solid-compat/src/index.ts:1040`** — `applyAtPath`
+  already guards against `__proto__` / `constructor` / `prototype`
+  keyed writes via a `DANGEROUS_KEYS.has(key)` Set lookup at line 1036,
+  BUT CodeQL's `js/prototype-polluting-assignment` taint-tracking
+  does NOT propagate dataflow through `Set.has` calls. The analyzer
+  needs explicit `===` checks against the literal key names to
+  recognise the guard.
+
+  **Fix**: inline the comparisons:
+
+  ```ts
+  if (
+    typeof key === "string" &&
+    (key === "__proto__" || key === "constructor" || key === "prototype")
+  ) {
+    return;
+  }
+  ```
+
+  Same set of dangerous keys; just a form CodeQL's taint-tracking can
+  follow. Behaviorally identical — both guards refuse the same three
+  keys before the bracket-notation assignment on line 1042.
+
+  ## Validation
+
+  - `bun run --filter='@pyreon/compiler' typecheck` — clean
+  - `bun run --filter='@pyreon/solid-compat' typecheck` — clean
+  - `bun run --filter='@pyreon/compiler' test pyreon-intercept` — 70/70 pass
+  - `bun run --filter='@pyreon/solid-compat' test` — 218/218 pass
+  - `bun run gen-docs --check` — clean
+  - `bun run check-doc-claims` — clean
+  - `bun run check-manifest-depth` — clean
+
+  CodeQL re-scan on merge will close both alerts automatically.
+
+  ## NOT in this PR
+
+  The other four open alerts (`Fuzzing` / `CII-Best-Practices` /
+  `Maintained` / `Code-Review`, all "no file associated") are OpenSSF
+  Scorecard metadata about repo practices — not code-fixable. They'd
+  need separate workflow / CI / policy changes if pursued.
+
+- [#766](https://github.com/pyreon/pyreon/pull/766) [`47073eb`](https://github.com/pyreon/pyreon/commit/47073ebdd7552c63985f461a663ba98d93538606) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(compiler): add `detectDynamicCollapsibleShape` — PR 2 of the dynamic-prop partial-collapse build
+
+  Compiler detector for the next-bigger bite after the just-shipped
+  `on*`-handler partial-collapse: collapsible call sites where ONE
+  dimension prop is a **ternary-of-two-literals** dynamic expression.
+
+  ```jsx
+  // Pre-fix: bails on `state={...}` non-literal → full 5-layer mount
+  // Post-fix (with PR 3 emit): collapses with a value dispatcher
+  <Button state={cond ? "primary" : "secondary"} size="medium" onClick={go}>
+    Save
+  </Button>
+  ```
+
+  ## What this PR ships (PR 2 of 4 — detector only)
+
+  Mirrors `detectPartialCollapsibleShape`'s "extend bail catalogue with ONE
+  relaxation" pattern. The single relaxation: a `JSXExpressionContainer`
+  wrapping a `ConditionalExpression` with BOTH branches being `StringLiteral`
+  is acceptable as a `DynamicCollapsibleProp { name, condStart, condEnd,
+valueTruthy, valueFalsy }`.
+
+  - Composes with the existing `on*`-handler relaxation (same call can
+    carry one ternary AND any number of handlers — matches real-corpus
+    shape where Buttons with `state={cond ? ...}` almost always have
+    `onClick`)
+  - Constraint: AT MOST ONE ternary per site (multi-axis combinatorics is
+    separable scope, not this PR)
+  - Constraint: branches MUST be `StringLiteral` (template literal,
+    identifier, numeric literal all bail — keeps the static-resolvable
+    set narrow + provable)
+  - Returns `null` for zero ternaries (defers to full / on\*-only paths
+    so the three detectors never both/all-three claim the same site —
+    same load-bearing separation as the rest of the family)
+
+  ## Bisect verification
+
+  Neutralized `detectDynamicCollapsibleShape` (`if (node) return null`):
+
+  - 5 POSITIVE specs fail with `expected null not to be null`
+  - 8 NEGATIVE specs pass (they always assert null — asymmetry proof
+    that the positive assertions are load-bearing on the ternary-
+    relaxation logic, not on a generic null short-circuit)
+  - Restored → 13/13 pass
+
+  ## What's NOT in this PR (follow-up scope)
+
+  - **PR 3**: resolver extension (resolve EACH literal value via existing
+    SSR pipeline, assert structural-template parity) + emit
+    `__rsCollapseDyn(...)` from `tryRocketstyleCollapse` falling through
+    to the new path when full + partial both bail + plugin scan hookup
+  - **PR 4**: bail-census update (assert dynamic-prop addressable count
+    flips `collapsible`; coverage moves 73.2% → ~88%) + verify-modes
+    cell + real-Chromium e2e gate
+
+  This PR is structurally analogous to PR 1 of the `on*`-handler sequence
+  (the detector, before the emit landed) — pure AST function, unit-testable
+  in isolation, no compiler-pipeline coupling.
+
+  ## Surfaces updated
+
+  - `packages/core/compiler/src/jsx.ts` — `detectDynamicCollapsibleShape`
+    - `DynamicCollapsibleProp` interface (new exports)
+  - `packages/core/compiler/src/tests/dynamic-collapse-detector.test.ts`
+    — 13 bisect-verified specs (POSITIVE + NEGATIVE)
+
+  ## Related
+
+  - **[#765](https://github.com/pyreon/pyreon/issues/765)** (merged) — PR 1: `_rsCollapseDyn` runtime helper
+  - **[#761](https://github.com/pyreon/pyreon/issues/761)** (closed spike) — surfaced the recommendation
+  - **on\*-handler partial-collapse** PRs (1-3 already shipped) — the
+    precedent this PR mirrors
+
+- [#775](https://github.com/pyreon/pyreon/pull/775) [`572212f`](https://github.com/pyreon/pyreon/commit/572212f631907a18b98118f48dea3621dd5a95b1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(compiler): handler-combined dynamic-collapse emit — `__rsCollapseDynH` for ternary-of-two-literals + `on*` handlers
+
+  Follow-up to PR A (`_rsCollapseDynH` runtime helper). Closes the bulk
+  of the 15.4% dynamic-prop bail bucket measured by the bail census
+  (the strict no-handler scope only addressed 0.2% of all real-corpus
+  sites; the bigger slice is handler-combined ternaries like
+  `<Button state={cond ? 'a' : 'b'} onClick={h}>` — the most common
+  real-world shape).
+
+  ## What this PR ships
+
+  1. **`scanCollapsibleSites` extension** — drops the `dyn.handlers.length === 0`
+     guard. Handler-bearing dynamic sites now expand into TWO `CollapsibleSite`
+     entries (one per literal value) like no-handler ones. Handlers don't
+     affect the resolver's input (componentName, props, childrenText) —
+     they're re-attached by the runtime helper.
+
+  2. **`tryDynamicCollapse` extension** — stops bailing when handlers are
+     present. Routes handler-bearing sites to `__rsCollapseDynH(html,
+classes, valueIndex, isDark, handlers)` (5-arg combined emit);
+     no-handler sites stay on `__rsCollapseDyn` (4-arg, lighter).
+     Handlers object literal built from sliced source spans (same shape
+     as `tryPartialCollapse` re-emits handlers via `__rsCollapseH`).
+
+  3. **Conditional helper imports** — adds `_rsCollapseDynH` to the
+     preamble when `needsCollapseDynH` is set (lighter modules pull
+     only what they use).
+
+  ## Bail-census update
+
+  The `dynamicTernaryAddressable` counter in `collapse-bail-census.test.ts`
+  drops the `!sawHandler` requirement — handler-combined ternaries are
+  now addressable too. The trustworthiness gate
+  (`myCollapsible + 2 * dynamicTernaryAddressable === scannerCollapsible`)
+  still holds because the scan emits 2 entries per dynamic site
+  regardless of handlers.
+
+  ## Build-artifact gate
+
+  Extended the `ui-showcase × spa` verify-modes cell's dynamic-collapse
+  probe to render TWO Buttons:
+
+  - `<Button state={isPrimary() ? 'primary' : 'secondary'} size="medium">Dyn</Button>` → `__rsCollapseDyn`
+  - `<Button state={isPrimary() ? 'primary' : 'secondary'} size="medium" onClick={h}>DynH</Button>` → `__rsCollapseDynH`
+
+  The `assertDynProbeCollapsed` helper gains a fifth fingerprint —
+  `handlerCombinedShape` — that matches `===\`dark\`,{`(the 5-arg`**rsCollapseDynH`signature has the handlers object immediately
+after the mode accessor; the 4-arg`**rsCollapseDyn`ends with`)`
+  at that point). Combined with the existing four fingerprints, this
+  proves BOTH emit paths fire in the same chunk.
+
+  ## Bisect verification
+
+  | Bisect                                          | Effect                                                                | Outcome                                                                                                                                 |
+  | ----------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+  | Disable handler routing in `tryDynamicCollapse` | All handler-combined sites silently fall through to `__rsCollapseDyn` | `handlerCombinedShape=false`; other 4 fingerprints stay true (the no-handler path keeps working) → cell FAILS with the right diagnostic |
+  | Restore                                         | All 5 fingerprints true → cell PASSES                                 |
+
+  Asymmetry proves the `handlerCombinedShape` fingerprint is the
+  unique signal of the combined-emit path firing.
+
+  Also re-verified at the compiler-test layer: 1285/1285 specs pass
+  (the obsolete "SKIPS expansion when handlers present" scan spec was
+  updated to assert the NEW behavior — expansion happens for
+  handler-combined sites too).
+
+  ## Re-lands [#771](https://github.com/pyreon/pyreon/issues/771)'s content
+
+  PR [#771](https://github.com/pyreon/pyreon/issues/771) (`verify-modes` cell + bail-census ratchet) was merged into
+  its base branch (the pre-rebase `feat/collapse-dynamic-props-pr3`)
+  but its content was LOST when [#767](https://github.com/pyreon/pyreon/issues/767) was rebased + merged to main
+  (stacked-PR base-rebase trap). This PR re-applies [#771](https://github.com/pyreon/pyreon/issues/771)'s probe +
+  verify-modes cell + bail-census ratchet via cherry-pick AND extends
+  them for the handler-combined path.
+
+  ## Drive-by: CLAUDE.md hygiene
+
+  The dynamic-prop section had "PR 1 of 4 SHIPPED" and "PRs 2-4 are
+  follow-ups" language reflecting the in-flight state. Now the whole
+  sequence (plus the handler-combined follow-up) has shipped — the
+  note is consolidated into a single "fully shipped" entry covering
+  both helpers (`_rsCollapseDyn` + `_rsCollapseDynH`), the compiler
+  path, and the three-layer bisect coverage.
+
+  ## Validation
+
+  - `bun run --filter='@pyreon/compiler' typecheck` — clean
+  - `bun run --filter='@pyreon/compiler' lint` — zero errors
+  - `bun run --filter='@pyreon/compiler' test` — 1285/1285 pass
+  - `bun run --filter='@pyreon/vite-plugin' typecheck + test` — clean
+  - `bun run verify-modes ui-showcase` — 2/2 cells pass
+  - `bun run gen-docs --check` — clean
+  - `bun run check-doc-claims` — clean
+  - `bun run check-manifest-depth` — clean
+  - `bun run check-bundle-budgets` — clean (compiler size unchanged)
+
+  ## Surfaces updated
+
+  - `packages/core/compiler/src/jsx.ts` — `scanCollapsibleSites` drops
+    handler-skip guard; `tryDynamicCollapse` routes handler-bearing
+    sites to `__rsCollapseDynH`; `needsCollapseDynH` flag + conditional
+    import
+  - `packages/core/compiler/src/tests/dynamic-collapse-scan.test.ts` —
+    obsolete "SKIPS when handlers" spec updated to assert NEW behavior
+  - `packages/core/compiler/src/tests/collapse-bail-census.test.ts` —
+    `dynamicTernaryAddressable` counter drops the `!sawHandler`
+    restriction; report log + docstring updated
+  - `examples/ui-showcase/src/routes/rs-collapse-dyn-probe.tsx` —
+    dual-Button probe (`Dyn` + `DynH`); re-lands [#771](https://github.com/pyreon/pyreon/issues/771)'s content + extends
+  - `scripts/verify-modes.ts` — `assertDynProbeCollapsed` gains a 5th
+    fingerprint (`handlerCombinedShape`); re-lands [#771](https://github.com/pyreon/pyreon/issues/771)'s content + extends
+  - `CLAUDE.md` — consolidated dynamic-prop section, drops "PR X of 4"
+    qualifiers, documents both helpers
+
+  ## Related
+
+  - **[#773](https://github.com/pyreon/pyreon/issues/773)** (open) — PR A: `_rsCollapseDynH` runtime helper (this PR depends on it)
+  - **[#765](https://github.com/pyreon/pyreon/issues/765) / [#766](https://github.com/pyreon/pyreon/issues/766) / [#767](https://github.com/pyreon/pyreon/issues/767)** (merged) — dynamic-prop sequence PRs 1-3
+  - **[#771](https://github.com/pyreon/pyreon/issues/771)** (merged into pre-rebase pr3 branch, content lost on main; re-landed here)
+  - **[#761](https://github.com/pyreon/pyreon/issues/761)** (closed spike) — originally surfaced the recommendation
+
+- [#767](https://github.com/pyreon/pyreon/pull/767) [`f22902a`](https://github.com/pyreon/pyreon/commit/f22902a9a9c5f5b8a5192da086a6b4299291dd57) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(compiler): emit `__rsCollapseDyn` for ternary-of-two-literals sites — PR 3 of the dynamic-prop partial-collapse build
+
+  Wires the dynamic-prop fallthrough into the compiler's collapse pipeline:
+
+  1. **`scanCollapsibleSites` extension** — when the full detector
+     (`detectCollapsibleShape`) bails, fall through to
+     `detectDynamicCollapsibleShape` (PR 2). For a hit with no `on*`
+     handlers, expand into TWO `CollapsibleSite` entries (one per
+     literal value) so the resolver pre-renders both via the existing
+     SSR pipeline.
+
+  2. **`tryDynamicCollapse` emit** — third fallthrough in
+     `tryRocketstyleCollapse` (after full → on\*-handler-partial). Looks
+     up both expanded keys; if both resolved AND structural template
+     parity holds across values, emits:
+
+     ```js
+     __rsCollapseDyn(
+       "<button>Save</button>",
+       ["pri_light", "pri_dark", "sec_light", "sec_dark"],
+       () => (cond ? 0 : 1),
+       () => __pyrMode() === "dark"
+     );
+     ```
+
+     Plus the standard idempotent `__rsSheet.injectRules(...)` for BOTH
+     value's rule bundles (de-duped by `ruleKey` so dynamic sites sharing
+     a value pay one injection).
+
+  3. **Conditional helper imports** — the import preamble pulls only
+     the helpers actually emitted into this module. Dynamic-only
+     modules import `_rsCollapseDyn` only; full-collapse-only modules
+     import `_rsCollapse` only (preserves existing behavior); partial
+     modules import both `_rsCollapse` + `_rsCollapseH` (unchanged).
+
+  ## Conservative bail discipline
+
+  - Either expanded site missing from sites map ⇒ bail (intermittent
+    resolver failure on one value mustn't half-collapse)
+  - Divergent template HTML across values ⇒ bail (the dispatcher
+    shares ONE `_tpl` across values; divergent markup would silently
+    pick the truthy variant's HTML for falsy too)
+  - Handlers present ⇒ bail (PR 3 scope is no-handler dynamic-collapse;
+    a combined `_rsCollapseDynH` helper + emit is a future PR's scope)
+  - Multi-axis (2+ ternaries) ⇒ bail (detector enforces; separable
+    scope)
+
+  ## Bisect verification
+
+  Reverted the fallthrough chain (`return tryPartialCollapse(...) ||
+tryDynamicCollapse(...)` → `return tryPartialCollapse(...)`):
+
+  - 4 POSITIVE emit specs fail with `expected '<source>' to contain
+'__rsCollapseDyn('` / `'__pyrMode() === "dark"'` / etc.
+  - 5 specs pass either way (FULL + on\*-partial regression specs;
+    the three conservative-bail specs which always assert absence)
+  - Restored → 9/9 emit + 6/6 scan + 13/13 detector = 28/28 dynamic-
+    collapse pass; 1285/1285 full compiler suite pass
+
+  The asymmetry confirms the POSITIVE assertions are load-bearing on
+  the dynamic fallthrough — they don't pass for the wrong reason.
+
+  ## NOT in this PR
+
+  - **PR 4**: bail-census update (assert dynamic-prop addressable count
+    flips `collapsible` in the existing census; coverage moves 73.2% →
+    ~88%), `verify-modes ui-showcase × spa` probe route (build-artifact
+    gate), real-Chromium e2e gate (parity vs the 5-layer mount across
+    both ternary branches).
+  - **Future**: handler-combined dynamic emit (the dynamic detector
+    already accepts handlers; the emit + a new `_rsCollapseDynH`
+    runtime helper would close that residual).
+
+  ## Surfaces updated
+
+  - `packages/core/compiler/src/jsx.ts` — `scanCollapsibleSites` dynamic
+    fallthrough (expands one ternary into two static sites);
+    `tryDynamicCollapse` emit fn; `needsCollapseDyn` flag; conditional
+    helper imports (`_rsCollapseDyn` pulled only when emitted)
+  - `packages/core/compiler/src/tests/dynamic-collapse-scan.test.ts` —
+    6 scan specs (key parity, multi-site, multi-ternary skip, handler
+    skip)
+  - `packages/core/compiler/src/tests/dynamic-collapse-emit.test.ts` —
+    9 emit specs (POSITIVE + conservative bails + FULL/PARTIAL
+    regression)
+  - `.changeset/compiler-emit-dynamic-collapse.md` — this file
+
+  ## Related
+
+  - **[#765](https://github.com/pyreon/pyreon/issues/765)** (merged) — PR 1: `_rsCollapseDyn` runtime helper
+  - **[#766](https://github.com/pyreon/pyreon/issues/766)** (open) — PR 2: `detectDynamicCollapsibleShape` detector
+  - **[#761](https://github.com/pyreon/pyreon/issues/761)** (closed spike) — surfaced the recommendation
+
+- [#775](https://github.com/pyreon/pyreon/pull/775) [`572212f`](https://github.com/pyreon/pyreon/commit/572212f631907a18b98118f48dea3621dd5a95b1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(scripts, compiler): build-artifact gate + bail-census ratchet for dynamic-prop collapse — PR 4 of the dynamic-prop partial-collapse build
+
+  Closes the 4-PR sequence shipping `_rsCollapseDyn` end-to-end through
+  the plugin → resolver → compiler → bundle pipeline. PR 4 ships the
+  gates that prove the fully-assembled production artifact is correct:
+
+  ## 1. Probe route (`examples/ui-showcase`)
+
+  New `routes/rs-collapse-dyn-probe.tsx` — canonical dynamic-collapsible
+  shape: `<Button state={isPrimary() ? 'primary' : 'secondary'} size="medium">Dyn</Button>`
+  plus a toggle button to flip the signal. Mirrors the existing static
+  `rs-collapse-probe.tsx` exactly — same "dedicated route so the rest of
+  ui-showcase's Buttons can keep carrying `onClick` and correctly bail"
+  pattern.
+
+  ## 2. Verify-modes cell + assertion helper
+
+  `scripts/verify-modes.ts` gets a new `assertDynProbeCollapsed(distDir)`
+  helper that checks the `rs-collapse-dyn-probe-*.js` route chunk for THREE
+  minification-stable, dynamic-emit-EXCLUSIVE fingerprints:
+
+  - **(A) Baked template** — `Dyn</span></button>` (the static children
+    baked into the template literal; a non-collapsed Button never
+    serializes children to a literal)
+  - **(B) Stride-2 value-major class array** — 4 backtick-quoted strings
+    each containing `pyr-` (the styler's class namespace). The regular
+    `_rsCollapse` emit takes only TWO class args; a 4-element class array
+    is unique to `_rsCollapseDyn`.
+  - **(C) Value dispatcher** — `()=>+!cond` (the minifier's canonical
+    transform of `() => (cond) ? 0 : 1`; both produce 0 for truthy, 1 for
+    falsy via `+!true=0, +!false=1`). The regular `_rsCollapse` emit has
+    no `+!` pattern — that fingerprint is exclusive to `_rsCollapseDyn`.
+
+  The existing `ui-showcase × spa` cell now runs BOTH `assertProbeCollapsed`
+  AND `assertDynProbeCollapsed`, amortizing the build cost over both gates.
+
+  **Why these fingerprints (not the pre-minification `__rsCollapseDyn(`
+  identifier)**: Vite renames imports in prod (`__rsCollapseDyn` → `t`
+  or similar). Asserting the literal identifier would never match a real
+  build. The fingerprints chosen are minification-stable (string/template-
+  literal contents) AND collapse-emit-EXCLUSIVE (don't appear in non-
+  collapsed code). Matches the precedent established by PR 1 of the
+  static collapse's `assertProbeCollapsed`.
+
+  **Bisect verified at the build-artifact layer**: reverted the
+  `tryDynamicCollapse` fallthrough in `tryRocketstyleCollapse` (`return
+tryPartialCollapse(...) || tryDynamicCollapse(...)` → `return
+tryPartialCollapse(...)`), rebuilt compiler lib, re-ran verify-modes:
+
+  - ALL THREE fingerprints become false; the probe falls back to a
+    normal `h(Button, props)` mount (visible in the chunk:
+    `r(a,{state:i(()=>o()?\`primary\`:\`secondary\`)...})`)
+  - Restored → 2/2 cells green
+
+  The `assertProbeCollapsed` (static collapse) cell still passes during
+  the bisect — proves the dynamic assertion is independent of the static
+  one and the dynamic fallthrough is the only delta.
+
+  ## 3. Bail-census ratchet
+
+  `collapse-bail-census.test.ts` extended with a new
+  `dynamicTernaryAddressable` counter — sites that match the strict PR 3
+  no-handler ternary-of-two-literals shape.
+
+  **Honest finding from the real-corpus measurement**: of 564
+  `@pyreon/ui-components` call sites across the corpus, **1 site (0.2%)
+  matches the strict no-handler scope**. The bigger 15.4% dynamic-prop
+  bucket is mostly HANDLER-COMBINED ternaries (e.g.
+  `<Button state={cond ? 'primary' : 'secondary'} onClick={handle}>`)
+  — which PR 3 BAILS by design (handler-combined dynamic-collapse is a
+  future PR's scope via a combined `_rsCollapseDynH` helper).
+
+  This is the actually-measured reality vs the "lift 73.2% → ~88%"
+  projection from the earlier plan: the structural foundation is now
+  shipped (helper + detector + emit + gate), but the immediate coverage
+  win is small. The architectural value is the FOUNDATION for the
+  handler-combined follow-up which would close most of the remaining
+  dynamic-prop bucket.
+
+  The trustworthiness gate (`myCollapsible === scannerCollapsible`) was
+  updated to `myCollapsible + 2 * dynamicTernaryAddressable ===
+scannerCollapsible` because the scanner now emits 2 entries per
+  dynamic site (one per literal value for the resolver). Same load-bearing
+  "census agrees with scanner truth-set" invariant, just accounting for
+  the new expansion.
+
+  ## Surfaces updated
+
+  - `examples/ui-showcase/src/routes/rs-collapse-dyn-probe.tsx` —
+    canonical dynamic-collapsible probe route (new)
+  - `scripts/verify-modes.ts` — `assertDynProbeCollapsed` helper +
+    extended `ui-showcase × spa` cell (build-artifact gate)
+  - `packages/core/compiler/src/tests/collapse-bail-census.test.ts` —
+    `dynamicTernaryAddressable` counter, updated trustworthiness gate,
+    honest ratchet asserts
+  - `.changeset/scripts-collapse-dyn-verify-modes.md` — patch changeset
+
+  ## Validation
+
+  - `bun run --filter='@pyreon/compiler' typecheck` — clean
+  - `bun run --filter='@pyreon/compiler' lint` — zero errors
+  - `bun run --filter='@pyreon/compiler' test` — 1285/1285 pass (1270
+    pre-PR + 9 emit + 6 scan + 0 net delta on census which already counted)
+  - `bun run verify-modes ui-showcase` — 2/2 cells pass (static
+    `assertProbeCollapsed` + new dynamic `assertDynProbeCollapsed`)
+  - `bun run gen-docs --check` — clean
+  - `bun run check-doc-claims` — clean
+  - `bun run check-manifest-depth` — clean
+
+  ## NOT in this PR (deliberate, scoped)
+
+  - **Real-Chromium e2e gate**: SKIPPED for symmetry with the established
+    static-collapse pattern (which also has no e2e — runtime locked by
+    PR 1's 7 `_rsCollapse` browser specs). PR 1's 7 `_rsCollapseDyn`
+    real-Chromium specs ([#765](https://github.com/pyreon/pyreon/issues/765)) lock the runtime contract identically;
+    the verify-modes gate locks the emit content; PR 1's bisect-verified
+    specs lock the dispatch. The chain is complete without adding a
+    third layer.
+  - **Handler-combined dynamic emit**: the 15.4% dynamic-prop bucket
+    is mostly handler-combined ternaries (`state={cond ? ...} onClick={h}`).
+    PR 3's emit deliberately bails on these; a future PR could ship a
+    combined `_rsCollapseDynH` runtime helper + emit to close that
+    residual. Would lift the addressable count from 0.2% of corpus to
+    closer to the full 15.4% bucket.
+
+  ## Related
+
+  - **[#765](https://github.com/pyreon/pyreon/issues/765)** (merged) — PR 1: `_rsCollapseDyn` runtime helper
+  - **[#766](https://github.com/pyreon/pyreon/issues/766)** (open) — PR 2: `detectDynamicCollapsibleShape` detector
+  - **[#767](https://github.com/pyreon/pyreon/issues/767)** (open) — PR 3: scan extension + emit `__rsCollapseDyn`
+  - **[#761](https://github.com/pyreon/pyreon/issues/761)** (closed spike) — surfaced the recommendation
+
 ## 0.23.0
 
 ### Patch Changes

@@ -1,5 +1,370 @@
 # @pyreon/runtime-dom
 
+## 0.24.0
+
+### Patch Changes
+
+- [#783](https://github.com/pyreon/pyreon/pull/783) [`c41aa1a`](https://github.com/pyreon/pyreon/commit/c41aa1ae90efe00d82c97f623a02ed17acb2427c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix `mountKeyedList` using stale closure-captured parent — same bug
+  class as [#776](https://github.com/pyreon/pyreon/issues/776) (`mountReactive`), in the sibling reactive entry point
+  for inline keyed arrays. Three call sites in `mountKeyedList`'s effect
+  body used the closure-captured `parent`:
+
+  1. `parent.insertBefore(anchor, tailMarker)` in `mountNewEntries`
+  2. `mountVNode(vnode, parent, tailMarker)` immediately after
+  3. `keyedListReorder(..., parent, tailMarker)` → `applyKeyedMoves`
+     → `moveEntryBefore` → `parent.insertBefore(node, before)`
+
+  When `mountKeyedList` was created with `parent === frag` (its accessor's
+  keyed-array sample reached `mountChild`'s function branch from inside
+  a containing `mountFor`'s DocumentFragment-then-move pattern), every
+  subsequent effect re-run with new entries called `insertBefore` against
+  the stale fragment and threw
+  `NotFoundError: Failed to execute 'insertBefore' on 'Node'`. The throw
+  landed in Pyreon's unhandled-effect-error path → console.error +
+  loss of newly-added children.
+
+  The bug was reachable only when a For child function returned a
+  function directly (`(i) => () => signal().map(...)`), so the inner
+  keyed array is mounted DIRECTLY into the For's fragment rather than
+  into an intermediate Element. Wrapping the keyed array in a `<div>`
+  isolates `mountKeyedList` from the frag-move (the `<div>` is the
+  parent in that case), which is why [#776](https://github.com/pyreon/pyreon/issues/776)'s coverage of `mountReactive`
+  didn't expose this path.
+
+  Fix: `mountKeyedList` now reads `tailMarker.parentNode` at each
+  effect run and threads the resulting `liveParent` through
+  `mountNewEntries` and `keyedListReorder`, falling back to the
+  closure-captured `parent` only when the marker is detached
+  (cleanup edge case). Same pattern as [#776](https://github.com/pyreon/pyreon/issues/776)'s `mountReactive` fix.
+
+  Bisect-verified against the new browser CONTRACT spec at
+  `packages/core/runtime-dom/src/tests/keyed-array-in-for-batched-toggle.browser.test.ts`:
+  reverting just the `liveParent` swap reproduces the exact
+  NotFoundError + 10-of-50 children (40 added entries lost across
+  10 rows × 4 missing inserts each). Restored → 2/2 specs pass.
+
+  Full runtime-dom suites green: 47/47 browser tests (10 → 11 files,
+  +2 new specs), 681/681 unit tests. Lint + typecheck clean.
+
+  Discovery + fix chain across this bug class:
+
+  - [#770](https://github.com/pyreon/pyreon/issues/770) leak-audit harness
+  - [#772](https://github.com/pyreon/pyreon/issues/772) leak-sweep multi-journey driver
+  - [#774](https://github.com/pyreon/pyreon/issues/774) it.fails CONTRACT lock for For-of-Show
+  - [#776](https://github.com/pyreon/pyreon/issues/776) `mountReactive` root-cause fix
+  - this PR — `mountKeyedList` sibling fix (audit + close-out)
+
+- [#776](https://github.com/pyreon/pyreon/pull/776) [`bc65b82`](https://github.com/pyreon/pyreon/commit/bc65b825505016e4433b50cd1276c9982ef10b8a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix `mountReactive` using stale closure-captured parent — surfaced by
+  `<For>` of `<Show>` under batched signal toggles. `<For>` mounts its
+  children into a `DocumentFragment` and then moves the fragment's
+  contents to the live parent via `liveParent.insertBefore(frag, …)`.
+  After the move, every inner `mountReactive`'s closure-captured `parent`
+  referenced the now-empty fragment, while its marker had been carried
+  along to the real live parent. The next signal flip ran the effect's
+  mount call against the stale parent, throwing
+  `NotFoundError: Failed to execute 'insertBefore' on 'Node'` —
+  which Pyreon caught as an unhandled effect error, dropping the entire
+  For's children from the DOM (count went from N to 0).
+
+  Fix: `mountReactive` now reads `marker.parentNode` at each effect run
+  and falls back to the closure-captured `parent` only if the marker is
+  detached. This is consistent with the cleanup path, which already used
+  `marker.parentNode?.removeChild(marker)`. Surgical, single-line change
+  (plus a fallback for the detached-marker edge case).
+
+  Bisect-verified against the new browser CONTRACT spec
+  `packages/core/runtime-dom/src/tests/show-of-for-batched-toggle.browser.test.ts`:
+  reverting the swap reproduces the exact NotFoundError + 0-of-100
+  children. 45/45 runtime-dom browser tests and 681 unit tests pass.
+
+  Discovery chain: PR [#770](https://github.com/pyreon/pyreon/issues/770) (leak-audit harness) → PR [#772](https://github.com/pyreon/pyreon/issues/772) (leak-sweep
+  multi-journey driver, surfaced this bug) → PR [#774](https://github.com/pyreon/pyreon/issues/774) (it.fails CONTRACT
+  lock).
+
+- [#788](https://github.com/pyreon/pyreon/pull/788) [`84cd28f`](https://github.com/pyreon/pyreon/commit/84cd28feba1899d70696e9a292bb078601558e8f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(runtime-dom, solid-compat): three findings from post-merge deep audit — double-call regression, prototype-pollution alert still open, defensive `Object.keys` for handler iteration
+
+  After the dynamic-collapse PR sequence merged ([#765](https://github.com/pyreon/pyreon/issues/765) / [#766](https://github.com/pyreon/pyreon/issues/766) / [#767](https://github.com/pyreon/pyreon/issues/767) / [#771](https://github.com/pyreon/pyreon/issues/771) / [#773](https://github.com/pyreon/pyreon/issues/773) / [#775](https://github.com/pyreon/pyreon/issues/775) / [#778](https://github.com/pyreon/pyreon/issues/778)), a careful re-read surfaced three real issues. All three are narrow, low-risk fixes shipping together as a deep-review follow-up.
+
+  ## Finding 1 (correctness) — `_rsCollapseDyn` / `_rsCollapseDynH` called `valueIndex()` TWICE per re-run
+
+  The runtime helpers routed the class binding through `_bindDirect`'s plain-callable fallback. That fallback calls the source function once and passes the result to the inner callback — but the inner callback IGNORED the passed value and called `valueIndex()` AGAIN to compute the index.
+
+  **Symptom**: side-effecting cond expressions fired twice per re-run. A user's
+  `<Button state={(modifyState(), cond) ? 'a' : 'b'}>` would invoke
+  `modifyState()` twice on every value/mode change.
+
+  **Fix**: replace the `_bindDirect` indirection with a direct `renderEffect` call. The callback now reads both accessors inside one renderEffect — same subscription contract (a change to either re-runs only this className assignment), but `valueIndex()` runs exactly once per re-run, matching the original source's implicit call-count semantics.
+
+  **Bisect-verified** by `valueIndex() is called EXACTLY ONCE per re-run` in `rs-collapse-dyn.browser.test.ts`: pre-fix the spec fails with `expected 2 to be 1` (double call); restored → 16/16 pass.
+
+  ## Finding 2 (security) — CodeQL alert [#22](https://github.com/pyreon/pyreon/issues/22) stayed open after [#778](https://github.com/pyreon/pyreon/issues/778)
+
+  PR [#778](https://github.com/pyreon/pyreon/issues/778) added explicit `key === '__proto__' || ...` checks expecting them to satisfy CodeQL's `js/prototype-polluting-assignment` taint-tracking. CodeQL re-scanned and the alert moved from line 1040 → 1051 (my added code shifted positions) but stayed **OPEN** — the analyzer still flagged the `obj[key] = value` write itself, regardless of the guard.
+
+  **Fix**: use `Object.defineProperty(target, key, { value, writable: true, enumerable: true, configurable: true })` for the assignment. That bypasses the prototype chain entirely — even if a setter has been installed on `Object.prototype` for `key`, the write installs an OWN data property on `target` without invoking it. Combined with the simplified inline guard (drop the redundant `typeof key === 'string' &&` outer check — literal-string `===` against a `string | number` key is already type-safe), the write is double-safe.
+
+  Semantics are identical to `obj[key] = value` for a plain data property; the only difference is that setter chains on the prototype are NOT triggered. All 218 `@pyreon/solid-compat` tests pass unchanged.
+
+  ## Finding 3 (defense-in-depth) — `for...in` on handlers leaks inherited enumerable properties
+
+  `_rsCollapseH` (PR [#681](https://github.com/pyreon/pyreon/issues/681)) and `_rsCollapseDynH` ([#773](https://github.com/pyreon/pyreon/issues/773)) both iterate the handlers object via `for (const key in handlers)`. `for...in` includes inherited enumerable properties, so a polluted `Object.prototype` could inject fake handlers.
+
+  **Fix**: use `Object.keys(handlers)` which returns OWN enumerable keys only. Zero-cost — same iteration shape, narrower membership.
+
+  The compiler emits clean object literals (`{ onClick: ..., onPointerEnter: ... }`) with no prototype-pollution surface in practice. This is pure defense-in-depth — the practical risk requires an attacker to first pollute `Object.prototype` globally, which is a much broader compromise than a leaked handler.
+
+  ## Bisect verification
+
+  | Fix                                                                                                        | Bisect                                                           | Outcome                                                             |
+  | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------- |
+  | [#1](https://github.com/pyreon/pyreon/issues/1) (double-call)                                              | Revert `renderEffect` → `_bindDirect(...) + valueIndex() inside` | New spec fails `expected 2 to be 1`; restored → 16/16               |
+  | [#2](https://github.com/pyreon/pyreon/issues/2) (CodeQL [#22](https://github.com/pyreon/pyreon/issues/22)) | CodeQL re-scan on merge will close (no local CodeQL runner)      | Documented + reasoned via `Object.defineProperty`                   |
+  | [#3](https://github.com/pyreon/pyreon/issues/3) (`for...in`)                                               | Behavioral equivalent for clean object literals; defense-only    | All 47 runtime-dom browser specs + 218 solid-compat specs unchanged |
+
+  ## Validation
+
+  - `bun run --filter='@pyreon/runtime-dom' typecheck` — clean
+  - `bun run --filter='@pyreon/solid-compat' typecheck` — clean
+  - `bun run --filter='@pyreon/runtime-dom' lint` — zero errors
+  - `bun run --filter='@pyreon/runtime-dom' test` — 681 + 1 skipped pass
+  - `bun run --filter='@pyreon/runtime-dom' test:browser` — **47/47** (15 dynamic-collapse + 1 new regression spec)
+  - `bun run --filter='@pyreon/solid-compat' test` — 218/218 pass
+  - `bun run gen-docs --check` — clean
+  - `bun run check-doc-claims` — clean
+  - `bun run check-manifest-depth` — clean
+  - `bun run check-bundle-budgets` — clean (runtime-dom + solid-compat unchanged)
+
+  ## Surfaces updated
+
+  - `packages/core/runtime-dom/src/template.ts` — `_rsCollapseDyn` + `_rsCollapseDynH` use `renderEffect` directly (no `_bindDirect` indirection); `_rsCollapseH` + `_rsCollapseDynH` use `Object.keys` (not `for...in`)
+  - `packages/core/runtime-dom/src/tests/rs-collapse-dyn.browser.test.ts` — new regression spec locking the 1:1 `valueIndex()`-call contract
+  - `packages/tools/solid-compat/src/index.ts` — `applyAtPath` uses `Object.defineProperty` for the bracket write + simplified guard
+  - `.changeset/post-merge-deep-review-fixes.md` — this changeset
+
+  ## What's NOT in this PR
+
+  A wider audit of the recent merges turned up other surfaces I considered but did NOT include:
+
+  - **Other unbounded regex quantifiers in `pyreon-intercept.ts`** (e.g. `\\bFor\\b[^=]*\\beach`) — measured polynomially worst-case (O(N²) on N "For" runs) but CodeQL didn't flag them, the input is dev source (not adversary-controlled), and fixing every theoretical site without a CodeQL signal would be excessive. Left alone.
+  - **Degenerate `state={cond ? 'a' : 'a'}` ternaries** — emit 4 identical classes. Sub-optimal but correct. The compiler could detect and bail / use `_rsCollapse` instead; not worth the additional detector complexity for a vanishingly rare input.
+  - **`await` / `yield` inside cond expressions** — the compiler would emit `() => (await cond) ? 0 : 1` in a non-async arrow → syntax error. Extreme edge case (who awaits in a JSX attribute?), no real-corpus instance. Worth catching in the detector eventually but not urgent.
+
+  All three are documented here for the next reviewer.
+
+- [#773](https://github.com/pyreon/pyreon/pull/773) [`49cc686`](https://github.com/pyreon/pyreon/commit/49cc6869c42e3d3a7ef9e6568f7aade0be23edc0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(runtime-dom): add `_rsCollapseDynH` — runtime helper for handler-combined dynamic-collapse (closes the largest remaining real-corpus dynamic-collapse gap)
+
+  Follow-up to the 4-PR dynamic-prop partial-collapse sequence
+  ([#765](https://github.com/pyreon/pyreon/issues/765) / [#766](https://github.com/pyreon/pyreon/issues/766) / [#767](https://github.com/pyreon/pyreon/issues/767) / [#771](https://github.com/pyreon/pyreon/issues/771)). The bail-census measurement on the real
+  corpus revealed the strict no-handler scope only addresses 0.2% of all
+  `@pyreon/ui-components` sites; the bigger 15.4% dynamic-prop bucket is
+  mostly **handler-combined ternaries** (`<Button state={cond ? 'a' : 'b'}
+onClick={h}>` — the most common real-world shape).
+
+  PR [#767](https://github.com/pyreon/pyreon/issues/767)'s `tryDynamicCollapse` deliberately BAILED on these by design
+  ("PR 3 scope: no-handler only"). This PR ships the runtime half of the
+  unlock; the compiler-emit half lands in a stacked follow-up.
+
+  ## What this PR ships (runtime helper only)
+
+  `_rsCollapseDynH(html, classes, valueIndex, isDark, handlers, bind?)` —
+  structurally the union of:
+
+  - `_rsCollapseDyn`'s stride-2 value-major class dispatch ([#765](https://github.com/pyreon/pyreon/issues/765))
+  - `_rsCollapseH`'s handler re-attachment via the canonical
+    `_bindEvent` → `applyEventProp` path ([#681](https://github.com/pyreon/pyreon/issues/681))
+
+  Handlers are orthogonal to both the SSR-resolved styler class AND the
+  value dispatcher — a `state={cond ? 'a' : 'b'} onClick={h}` site's
+  onClick is identical for both `state="a"` and `state="b"` resolutions
+  (the styler class varies, the handler does not). So the union is
+  behaviorally just "do both" with no new semantics. Class layout
+  matches `_rsCollapseDyn` (stride-2 value-major). Handler attachment
+  matches `_rsCollapseH` (canonical event path → delegation + batching +
+  name normalization).
+
+  Layer-pure: no styler / ui-core imports.
+
+  ## Bisect verification
+
+  Neutralized the handler-attachment loop (`if (Object.keys(handlers).length === -1)`):
+
+  | Spec                                     | Pre-bisect | Bisected                                 |
+  | ---------------------------------------- | ---------- | ---------------------------------------- |
+  | cold mount + handler invoked             | PASS       | **FAIL** (expected 1 to be 0)            |
+  | value flip + handler stays attached      | PASS       | **FAIL**                                 |
+  | mode flip + handler stays attached       | PASS       | **FAIL**                                 |
+  | combined value+mode + 4 clicks invariant | PASS       | **FAIL** (expected 4 to be 0)            |
+  | multiple handlers all attach             | PASS       | **FAIL**                                 |
+  | out-of-range value + handler still works | PASS       | **FAIL**                                 |
+  | children + class + handlers all dispose  | PASS       | **FAIL**                                 |
+  | zero handlers (degenerate to Dyn shape)  | PASS       | PASS (handlers={} skips loop either way) |
+
+  7 of 8 specs fail with handler attach disabled; the 8th is the documented
+  degenerate "behaves identically to `_rsCollapseDyn` with no handlers"
+  assertion — passes either way as a structural superset proof. Restored
+  → 8/8 pass.
+
+  ## NOT in this PR (explicit follow-up scope)
+
+  - **Compiler emit + scan extension**: a follow-up PR will extend
+    `tryDynamicCollapse` to stop bailing on handlers — instead route
+    to `__rsCollapseDynH(...)` with the residual handlers object
+    (mirrors the existing `tryPartialCollapse` → `__rsCollapseH` shape).
+    Scan also stops skipping handler-combined dynamic sites. Plus
+    verify-modes cell + bail-census update reflecting the new
+    addressable surface.
+  - This split matches the established pattern from the 4-PR
+    dynamic-prop sequence ([#765](https://github.com/pyreon/pyreon/issues/765) was the runtime helper, the emit
+    landed separately in [#767](https://github.com/pyreon/pyreon/issues/767)).
+
+  ## Validation
+
+  - `bun run --filter='@pyreon/runtime-dom' typecheck` — clean
+  - `bun run --filter='@pyreon/runtime-dom' lint` — zero errors
+  - `bun run --filter='@pyreon/runtime-dom' test` — 681 pass + 1 skipped
+  - `bun run --filter='@pyreon/runtime-dom' test:browser` — 43/43 pass
+    (35 pre-existing + 8 new)
+  - `bun run gen-docs --check` — clean
+  - `bun run check-doc-claims` — clean
+  - `bun run check-manifest-depth` — clean
+
+  ## Surfaces updated
+
+  - `packages/core/runtime-dom/src/template.ts` — `_rsCollapseDynH` (new)
+  - `packages/core/runtime-dom/src/index.ts` — re-export
+  - `packages/core/runtime-dom/src/tests/rs-collapse-dyn-h.browser.test.ts`
+    — 8 bisect-verified browser specs (new)
+  - `.changeset/runtime-dom-rs-collapse-dyn-h.md` — patch changeset
+
+  ## Related
+
+  - **[#765](https://github.com/pyreon/pyreon/issues/765)** (merged) — `_rsCollapseDyn` runtime helper
+  - **[#766](https://github.com/pyreon/pyreon/issues/766)** (merged) — `detectDynamicCollapsibleShape` detector
+  - **[#767](https://github.com/pyreon/pyreon/issues/767)** (open) — scan extension + `__rsCollapseDyn` emit
+  - **[#771](https://github.com/pyreon/pyreon/issues/771)** (merged) — probe + verify-modes + bail-census ratchet
+  - **[#761](https://github.com/pyreon/pyreon/issues/761)** (closed spike) — originally surfaced the recommendation
+
+- [#765](https://github.com/pyreon/pyreon/pull/765) [`73a6949`](https://github.com/pyreon/pyreon/commit/73a694940a0121508dee84b8a88812753e26fb10) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(runtime-dom): add `_rsCollapseDyn` — runtime half of the dynamic-prop partial-collapse build (PR 1 of 4)
+
+  Compiler-emitted runtime helper that generalises `_rsCollapse`'s 2-class
+  (light/dark) dispatch to N-class for collapsed rocketstyle call sites
+  where ONE dimension prop is an enumerable dynamic expression — most
+  commonly a ternary of two literals:
+
+  ```jsx
+  <Button state={cond ? "primary" : "secondary"}>Save</Button>
+  ```
+
+  would compile to:
+
+  ```js
+  __rsCollapseDyn(
+    "<button>Save</button>",
+    [
+      "btn-primary-light",
+      "btn-primary-dark",
+      "btn-secondary-light",
+      "btn-secondary-dark",
+    ],
+    () => (cond ? 0 : 1),
+    () => __pyrMode() === "dark"
+  );
+  ```
+
+  Class layout is **stride-2, value-major**: index = `2 * valueIndex + (isDark ? 1 : 0)`.
+  Both accessors are reactive — a value flip OR a mode flip patches
+  className IN PLACE on the SAME node (no remount), preserving
+  `_rsCollapse`'s mode-flip contract.
+
+  ## Why
+
+  Per the `collapse-bail-census` measurement on the real `@pyreon/ui-components`
+  corpus (`packages/core/compiler/src/tests/collapse-bail-census.test.ts`),
+  the bail buckets sit at:
+
+  - dynamic-prop: **15.3%** ← targeted by this PR's sequence
+  - element-child: 9.2% (recursive collapse, harder)
+  - `on*`-handler-only: 7.8% (just shipped via `_rsCollapseH` + PRs 1-3)
+  - spread: 0.4%, boolean-attr: 0.2%
+
+  Dynamic-prop is the largest remaining bail bucket. The ternary-of-literals
+  shape is the syntactically-clearest, statically-enumerable subset — no
+  type info needed, no Cartesian explosion (max 2 values per dim prop).
+
+  ## What this PR ships
+
+  - `_rsCollapseDyn(html, classes, valueIndex, isDark, bind?)` in
+    `packages/core/runtime-dom/src/template.ts`
+  - Re-exported from `@pyreon/runtime-dom`
+  - 7 real-Chromium browser specs covering:
+    - cold mount picks `value=0 + light` defaults (real CSS)
+    - value flip swaps class on the SAME node (no remount)
+    - mode flip swaps class on the SAME node (no remount) —
+      preserves `_rsCollapse` mode contract
+    - combined value + mode flip lands on right `(value, mode)` class —
+      stride-2 layout proof across all 4 combinations
+    - out-of-range `valueIndex` coerces to empty className (no crash) —
+      documented graceful-degradation contract
+    - children binder runs alongside class binder and disposes cleanly
+    - single-value (valueCount=1) reduces to `_rsCollapse`-equivalent
+      shape (proves the generalisation as a strict superset)
+
+  ## What's NOT in this PR (explicit follow-up scope)
+
+  Mirrors the established `on*`-handler partial-collapse 4-PR sequence
+  (also referenced in `.claude/plans/open-work-2026-q3.md` → [#1](https://github.com/pyreon/pyreon/issues/1)):
+
+  - **PR 2**: `detectDynamicCollapsibleShape` compiler detector
+    (ternary-of-two-literals AST shape on ≤1 dimension prop; mirrors
+    `detectPartialCollapsibleShape`'s "extend bail catalogue with one
+    relaxation" pattern). Pure AST function, unit-testable in isolation.
+  - **PR 3**: resolver extension (resolve EACH literal value via the
+    existing SSR pipeline, assert structural-template parity across
+    values) + emitter in `tryRocketstyleCollapse` (call site falls
+    through to dynamic path when full + partial detectors both bail)
+    - plugin scan hookup
+  - **PR 4**: bail-census update (assert dynamic-prop addressable count
+    flips `collapsible`; coverage moves 73.2% → ~88%) + verify-modes
+    `ui-showcase × spa` probe route + real-Chromium e2e gate (parity vs
+    the 5-layer mount on both value branches)
+
+  PR 1 is structurally analogous to PR 2 of the `on*`-handler sequence
+  (the `_rsCollapseH` runtime helper) — a self-contained, layer-pure,
+  bisect-verifiable runtime addition that lays the foundation without
+  delivering user-visible benefit until the compiler half lands.
+
+  ## Bisect verification
+
+  Neutralised the value-dispatch in `_bindDirect` callback (made it
+  ignore `valueIndex()` and only dispatch on `isDark()` — the
+  pre-existing `_rsCollapse` shape):
+
+  | Spec                           | Pre-bisect | Bisected | Notes                                          |
+  | ------------------------------ | ---------- | -------- | ---------------------------------------------- |
+  | cold mount value=0 + light     | PASS       | PASS     | Either dispatch is correct at value=0          |
+  | value flip same node           | PASS       | **FAIL** | `expected 'rd2-v0-light' to be 'rd2-v1-light'` |
+  | mode flip same node            | PASS       | **FAIL** | `expected 'rd3-v0-light' to be 'rd3-v1-light'` |
+  | combined value+mode (stride-2) | PASS       | **FAIL** | `expected 'rd4-v0-dark' to be 'rd4-v1-dark'`   |
+  | out-of-range graceful          | PASS       | **FAIL** | `expected 'rd5-v0-light' to be ''`             |
+  | children binder cleanup        | PASS       | PASS     | Orthogonal to dispatch                         |
+  | single-value degenerate        | PASS       | PASS     | At value=0 the two dispatches converge         |
+
+  Restored → 7/7 pass. The 3 specs that pass in both states are
+  documented additive controls (single-value, defaults, child binder).
+
+  ## Surfaces updated
+
+  - `packages/core/runtime-dom/src/template.ts` — `_rsCollapseDyn` (new)
+  - `packages/core/runtime-dom/src/index.ts` — re-export
+  - `packages/core/runtime-dom/src/tests/rs-collapse-dyn.browser.test.ts`
+    — 7 bisect-verified browser specs (new)
+  - `CLAUDE.md` — section under "Compile-time rocketstyle collapse"
+    documenting the PR 1 helper + the 3-PR follow-up scope
+
+- Updated dependencies [[`dfaefb8`](https://github.com/pyreon/pyreon/commit/dfaefb8e9e06eaff9039c001ad7731476b6b5732), [`67e1f37`](https://github.com/pyreon/pyreon/commit/67e1f371a20219481ee9564d2d7421ec2a0b5ddf), [`b8fb31c`](https://github.com/pyreon/pyreon/commit/b8fb31cf1a59578fc33f27d539695d2bc164b2f1), [`f400e85`](https://github.com/pyreon/pyreon/commit/f400e85282a370276d5ae0266ba501c41dce4f3e), [`891ca43`](https://github.com/pyreon/pyreon/commit/891ca4300727119dafd66ceaacd7cb39e68f3b4e), [`d4ec777`](https://github.com/pyreon/pyreon/commit/d4ec777643446ed2c51dedb1e74fbd8dce70bdfd), [`2abb672`](https://github.com/pyreon/pyreon/commit/2abb672d8a8bf7f4940af422bf8bf802aa129cdd)]:
+  - @pyreon/core@0.24.0
+  - @pyreon/reactivity@0.24.0
+
 ## 0.23.0
 
 ### Patch Changes
