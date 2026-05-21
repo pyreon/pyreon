@@ -82,8 +82,16 @@ jobs:
         # SDKMAN is the documented Kotlin install path and works
         # consistently on Linux. Add kotlinc to PATH for the rest of
         # the job via `$GITHUB_PATH`.
+        #
+        # NOTE on `set` flags: SDKMAN's `sdkman-init.sh` references
+        # `SDKMAN_CANDIDATES_API` (and other internals) without
+        # pre-initializing them, so `set -u` (-u in `-euo pipefail`)
+        # makes sourcing the script fail with `unbound variable`. The
+        # tradeoff: lose strict-unbound checking inside this step.
+        # Acceptable here because the step is small + every command's
+        # exit code is still checked via `-e`/`pipefail`.
         run: |
-          set -euo pipefail
+          set -eo pipefail
           curl -s https://get.sdkman.io | bash > /dev/null
           source "$HOME/.sdkman/bin/sdkman-init.sh"
           sdk install kotlin "${{ env.KOTLIN_VERSION }}"
