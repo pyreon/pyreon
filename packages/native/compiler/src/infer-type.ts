@@ -111,6 +111,33 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
     }
     case 'paren':
       return inferType(expr.inner, ctx)
+    case 'comparison':
+    case 'logical':
+      // Both `===` / `!==` / `<` / `>` and `&&` / `||` produce boolean.
+      // Pyreon source uses these in if-conditions + filter predicates;
+      // returning `boolean` here lets downstream inference flow.
+      return { kind: 'boolean' }
+    case 'unary':
+      // `!x` → boolean; `-x` / `+x` → number.
+      if (expr.op === '!') return { kind: 'boolean' }
+      return { kind: 'number' }
+    case 'ternary': {
+      // `cond ? a : b` — return the type of either branch (assuming
+      // both branches have the same type). If they differ, degrade
+      // to unknown.
+      const t = inferType(expr.then, ctx)
+      const o = inferType(expr.otherwise, ctx)
+      if (t.kind === o.kind) return t
+      return { kind: 'unknown' }
+    }
+    case 'update':
+      // `x++` / `x--` — operates on numbers in valid JS; result is
+      // number.
+      return { kind: 'number' }
+    case 'spread':
+      // Bare spread outside a context — degrade. The array case
+      // handles the common path.
+      return { kind: 'unknown' }
     case 'arrow':
     case 'jsx-element':
     case 'jsx-fragment':

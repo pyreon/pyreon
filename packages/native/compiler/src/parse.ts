@@ -13,6 +13,7 @@ import type {
   EnumIR,
   ExprIR,
   ParseResult,
+  StatementIR,
   TypeIR,
 } from './types'
 
@@ -168,11 +169,22 @@ function parseProps(
   }
 }
 
-/** Try to extract a signal/computed declaration from a `const x = …`. */
+/** Try to extract a signal / computed / function declaration from a `const x = …`. */
 function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const name = node.id?.name as string | undefined
   const init = node.init as AnyNode | undefined
   if (!name || !init) return null
+
+  // Arrow-function declaration — `const fn = (params) => { ... }` —
+  // becomes a `function` DeclIR. Parser-A from the TodoMVC walkthrough.
+  // The emitter renders these as `private func` (Swift) / `private fn`
+  // (Kotlin). The arrow's body can be a BlockStatement (multi-statement)
+  // OR a single expression (concise arrow); we normalize both to
+  // StatementIR[] so the emitter has one shape to handle.
+  if (init.type === 'ArrowFunctionExpression') {
+    return tryFunctionDecl(name, init, ctx)
+  }
+
   if (init.type !== 'CallExpression') return null
 
   const calleeName = init.callee?.name as string | undefined
@@ -193,10 +205,150 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       return null
     }
     const body = arg.body
+    // computed-with-BlockStatement-body (multi-statement) requires the
+    // same shape as a regular function-decl arrow. The emitter handles
+    // it: a single-return BlockStatement renders inline as a Swift
+    // computed property; anything more degrades to a getter with a
+    // body. Phase 1: route through parseStatement.
+    if (body.type === 'BlockStatement') {
+      // Multi-statement computed — extract a synthetic return.
+      const stmts = parseStatementBlock(body, ctx)
+      const last = stmts[stmts.length - 1]
+      if (last?.kind === 'return' && last.expr !== undefined) {
+        // Common case: single-return block. Emit as the existing
+        // computed shape — no shape change needed.
+        if (stmts.length === 1) return { kind: 'computed', name, expr: last.expr }
+      }
+      // Multi-statement computed body — warn + fall back to the last
+      // return's expression so emit doesn't silently drop. Real
+      // emission of multi-statement computed bodies is a deferred
+      // refinement.
+      const returnStmt = stmts.find((s) => s.kind === 'return') as
+        | Extract<StatementIR, { kind: 'return' }>
+        | undefined
+      if (returnStmt?.expr) {
+        ctx.warnings.push(
+          `Computed ${name}: multi-statement body collapsed to its return expression — pre-return statements silently dropped (Phase 1 emit limitation)`,
+        )
+        return { kind: 'computed', name, expr: returnStmt.expr }
+      }
+      return null
+    }
     const expr: ExprIR = parseExpr(body, ctx)
     return { kind: 'computed', name, expr }
   }
   return null
+}
+
+/**
+ * Parse `const fn = (params) => { body }` into a `function` DeclIR.
+ * Handles both arrow body forms:
+ *   - BlockStatement: multi-statement → StatementIR[] verbatim
+ *   - Expression body: wraps in `[{ kind: 'return', expr }]`
+ */
+function tryFunctionDecl(
+  name: string,
+  arrow: AnyNode,
+  ctx: ParseCtx,
+): DeclIR | null {
+  // Parse parameters with optional type annotations. TS params shape:
+  // `(id: T, id2: T2)` where each param is an Identifier with
+  // `typeAnnotation.typeAnnotation`.
+  const params: { name: string; type: TypeIR }[] = []
+  for (const p of (arrow.params as AnyNode[] | undefined) ?? []) {
+    if (p?.type !== 'Identifier') continue
+    const paramName = p.name as string
+    const annot = p.typeAnnotation?.typeAnnotation as AnyNode | undefined
+    const type: TypeIR = annot ? parseTypeAnnotation(annot, ctx) : { kind: 'unknown' }
+    params.push({ name: paramName, type })
+  }
+
+  // Return type annotation, if any. oxc carries it on `arrow.returnType.typeAnnotation`.
+  const returnTypeNode = arrow.returnType?.typeAnnotation as AnyNode | undefined
+  const returnType: TypeIR = returnTypeNode
+    ? parseTypeAnnotation(returnTypeNode, ctx)
+    : { kind: 'unknown' }
+
+  const body = arrow.body as AnyNode
+  let stmts: StatementIR[]
+  if (body.type === 'BlockStatement') {
+    stmts = parseStatementBlock(body, ctx)
+  } else {
+    // Concise arrow body (`const fn = () => expr`): wrap as
+    // `{ return expr }` for uniformity. The emitter pattern-matches
+    // this case to emit `private func fn() -> T { expr }` without
+    // the explicit `return` keyword on Swift.
+    stmts = [{ kind: 'return', expr: parseExpr(body, ctx) }]
+  }
+
+  return { kind: 'function', name, params, returnType, body: stmts }
+}
+
+/**
+ * Walk a BlockStatement's statements into a StatementIR[]. Handles
+ * the four TodoMVC-relevant kinds (let / if / return / expr); other
+ * statement types warn + drop.
+ */
+function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
+  const out: StatementIR[] = []
+  for (const stmt of (block.body as AnyNode[] | undefined) ?? []) {
+    const parsed = parseStatement(stmt, ctx)
+    if (parsed) out.push(parsed)
+  }
+  return out
+}
+
+function parseStatement(node: AnyNode, ctx: ParseCtx): StatementIR | null {
+  switch (node.type) {
+    case 'VariableDeclaration': {
+      // Only single-decl `const`/`let`/`var` for now — multi-declarator
+      // (`const a = 1, b = 2`) is rare in real Pyreon code; warn + drop.
+      const declarators = (node.declarations as AnyNode[] | undefined) ?? []
+      if (declarators.length !== 1) {
+        ctx.warnings.push(
+          `Unsupported statement: multi-declarator VariableDeclaration (${declarators.length} decls).`,
+        )
+        return null
+      }
+      const d = declarators[0]!
+      const declName = d.id?.name as string | undefined
+      if (!declName || !d.init) return null
+      return { kind: 'let', name: declName, expr: parseExpr(d.init, ctx) }
+    }
+    case 'IfStatement': {
+      const cond = parseExpr(node.test, ctx)
+      const consequent = node.consequent as AnyNode
+      const then =
+        consequent?.type === 'BlockStatement'
+          ? parseStatementBlock(consequent, ctx)
+          : ((): StatementIR[] => {
+              const s = parseStatement(consequent, ctx)
+              return s ? [s] : []
+            })()
+      const alt = node.alternate as AnyNode | undefined
+      let elseBody: StatementIR[] | undefined
+      if (alt) {
+        elseBody =
+          alt.type === 'BlockStatement'
+            ? parseStatementBlock(alt, ctx)
+            : ((): StatementIR[] => {
+                const s = parseStatement(alt, ctx)
+                return s ? [s] : []
+              })()
+      }
+      return elseBody ? { kind: 'if', cond, then, elseBody } : { kind: 'if', cond, then }
+    }
+    case 'ReturnStatement': {
+      const arg = node.argument as AnyNode | undefined
+      return arg ? { kind: 'return', expr: parseExpr(arg, ctx) } : { kind: 'return' }
+    }
+    case 'ExpressionStatement': {
+      return { kind: 'expr', expr: parseExpr(node.expression, ctx) }
+    }
+    default:
+      ctx.warnings.push(`Unsupported statement: ${node.type}.`)
+      return null
+  }
 }
 
 /** Extract the `T` from `signal<T>(…)`. oxc exposes generics as `typeArguments`. */
@@ -327,24 +479,113 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       return { kind: 'member', object, property }
     }
     case 'BinaryExpression': {
-      const op = node.operator as ExprIR & { kind: 'binary' } extends infer T
-        ? T extends { op: infer O }
-          ? O
-          : never
-        : never
-      // narrow to the supported ops
-      const known = ['+', '-', '*', '/', '%'] as const
-      if (!known.includes(node.operator)) {
-        ctx.warnings.push(`Unsupported binary operator: ${node.operator}.`)
+      // Arithmetic operators (existing) + comparison/equality operators
+      // (Parser-A slice). Pyreon source uses `===` / `!==` which evaluate
+      // the same as `==` / `!=` for the value types signals carry; the
+      // emitter coalesces to the native target's `==` / `!=`.
+      const arith = ['+', '-', '*', '/', '%'] as const
+      const compMap: Record<string, '==' | '!=' | '<' | '>' | '<=' | '>='> = {
+        '===': '==',
+        '!==': '!=',
+        '==': '==',
+        '!=': '!=',
+        '<': '<',
+        '>': '>',
+        '<=': '<=',
+        '>=': '>=',
       }
+      const op = node.operator as string
+      if ((arith as readonly string[]).includes(op)) {
+        return {
+          kind: 'binary',
+          op: op as (typeof arith)[number],
+          left: parseExpr(node.left, ctx),
+          right: parseExpr(node.right, ctx),
+        }
+      }
+      const compOp = compMap[op]
+      if (compOp) {
+        return {
+          kind: 'comparison',
+          op: compOp,
+          left: parseExpr(node.left, ctx),
+          right: parseExpr(node.right, ctx),
+        }
+      }
+      ctx.warnings.push(`Unsupported binary operator: ${op}.`)
       return {
         kind: 'binary',
-        op: (known.includes(node.operator) ? node.operator : '+') as (typeof known)[number],
+        op: '+',
         left: parseExpr(node.left, ctx),
         right: parseExpr(node.right, ctx),
-        // satisfy TS — op variable above is for narrowing reference
-        ...(op !== op ? {} : {}),
       }
+    }
+    case 'UnaryExpression': {
+      // Parser-B: `!t.done`, `-x`, `+x`. Both Swift and Kotlin accept
+      // these as prefix unary verbatim. Other unary operators (`typeof`,
+      // `void`, `delete`) don't have idiomatic native equivalents —
+      // warn + degrade. `++` / `--` are UpdateExpression, not Unary.
+      const known: ('!' | '-' | '+')[] = ['!', '-', '+']
+      const op = node.operator as string
+      if (!(known as readonly string[]).includes(op)) {
+        ctx.warnings.push(`Unsupported unary operator: ${op}.`)
+        return { kind: 'literal', value: '' }
+      }
+      return {
+        kind: 'unary',
+        op: op as '!' | '-' | '+',
+        argument: parseExpr(node.argument, ctx),
+      }
+    }
+    case 'LogicalExpression': {
+      // Parser-C: `a && b`, `a || b`. Short-circuit semantics map
+      // identically on Swift and Kotlin. `??` (nullish coalescing) is
+      // also a LogicalExpression in oxc — defer; it needs target-
+      // specific Optional handling.
+      const knownLogical: ('&&' | '||')[] = ['&&', '||']
+      const op = node.operator as string
+      if (!(knownLogical as readonly string[]).includes(op)) {
+        ctx.warnings.push(`Unsupported logical operator: ${op}.`)
+        return { kind: 'literal', value: '' }
+      }
+      return {
+        kind: 'logical',
+        op: op as '&&' | '||',
+        left: parseExpr(node.left, ctx),
+        right: parseExpr(node.right, ctx),
+      }
+    }
+    case 'SpreadElement': {
+      // Array spread: `[...todos(), newTodo]`. Inside an ArrayExpression's
+      // elements list, oxc emits SpreadElement entries. The emitter
+      // pattern-matches array elements containing a single spread + N
+      // literals to render as `target + [literals]` on Swift,
+      // `target + listOf(literals)` on Kotlin (immutable concat).
+      return { kind: 'spread', argument: parseExpr(node.argument, ctx) }
+    }
+    case 'ConditionalExpression': {
+      // `cond ? a : b` — ternary. TodoMVC's toggle uses this in the
+      // map callback: `t.id === id ? {...t, done: !t.done} : t`.
+      return {
+        kind: 'ternary',
+        cond: parseExpr(node.test, ctx),
+        then: parseExpr(node.consequent, ctx),
+        otherwise: parseExpr(node.alternate, ctx),
+      }
+    }
+    case 'UpdateExpression': {
+      // `nextId++` (post) or `++nextId` (pre). Used by TodoMVC's
+      // addTodo in the array-literal id assignment. JS post-increment
+      // returns the OLD value while side-effect-incrementing; the
+      // emit degrades to `x + 1` for the value (Swift / Kotlin
+      // `@State` / `var` don't support `++` in expression position),
+      // losing the side-effect.
+      const op = node.operator as '++' | '--'
+      if (op !== '++' && op !== '--') {
+        ctx.warnings.push(`Unsupported update operator: ${op}.`)
+        return { kind: 'literal', value: 0 }
+      }
+      return { kind: 'update', op, argument: parseExpr(node.argument, ctx) }
     }
     case 'ArrowFunctionExpression': {
       const params = (node.params as AnyNode[])
