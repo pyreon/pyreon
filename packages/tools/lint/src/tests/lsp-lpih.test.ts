@@ -19,7 +19,9 @@ import {
   _LPIH_CACHE_MAX_BYTES,
   _LPIH_DEFAULT_FILENAME,
   _LPIH_STALE_AFTER_MS,
+  _applyLpihPathMap,
   _findProjectRoot,
+  _parseLpihPathMap,
   _resetProjectRootCache,
   _resolveLpihCachePath,
   _handleMessage,
@@ -27,6 +29,7 @@ import {
   _resetOpenDocuments,
   _uriToFilePath,
   computeReactivityHints,
+  type LPIHPathMapEntry,
 } from '../lsp/index'
 
 let TMP_DIR: string
@@ -602,5 +605,192 @@ describe('LPIH path discovery — default <project-root>/.pyreon-lpih.json', () 
     expect(fireHint?.label).toContain('777×')
 
     await fs.unlink(overrideFile).catch(() => undefined)
+  })
+})
+
+describe('LPIH monorepo path-map — PYREON_LPIH_PATH_MAP env var', () => {
+  describe('_parseLpihPathMap', () => {
+    it('returns [] for undefined / empty', () => {
+      expect(_parseLpihPathMap(undefined)).toEqual([])
+      expect(_parseLpihPathMap('')).toEqual([])
+      expect(_parseLpihPathMap('  ')).toEqual([])
+    })
+
+    it('parses a single from=to pair', () => {
+      expect(_parseLpihPathMap('/host=/workspaces')).toEqual([
+        { from: '/host', to: '/workspaces' },
+      ])
+    })
+
+    it('parses multiple pairs separated by ;', () => {
+      // Sort puts longer `from` first: /build (6) > /host (5).
+      expect(_parseLpihPathMap('/host=/workspaces;/build=/dev')).toEqual([
+        { from: '/build', to: '/dev' },
+        { from: '/host', to: '/workspaces' },
+      ])
+    })
+
+    it('sorts by longest `from` first — longer prefix wins', () => {
+      // Without sort, /host would match /host/proj/X and rewrite to /A/proj/X
+      // instead of the more-specific /B/X — sort prevents that.
+      const map = _parseLpihPathMap('/host=/A;/host/proj=/B')
+      expect(map).toEqual([
+        { from: '/host/proj', to: '/B' },
+        { from: '/host', to: '/A' },
+      ])
+    })
+
+    it('silently drops malformed entries (no =)', () => {
+      expect(_parseLpihPathMap('no_equals;/valid=/ok;another_bad')).toEqual([
+        { from: '/valid', to: '/ok' },
+      ])
+    })
+
+    it('allows empty `to` (strip prefix)', () => {
+      expect(_parseLpihPathMap('/strip=')).toEqual([{ from: '/strip', to: '' }])
+    })
+
+    it('drops entries with empty `from`', () => {
+      // =/no/from would silently match every path — drop it.
+      expect(_parseLpihPathMap('=/no/from;/ok=/yes')).toEqual([
+        { from: '/ok', to: '/yes' },
+      ])
+    })
+
+    it('trims surrounding whitespace per pair', () => {
+      expect(_parseLpihPathMap('  /a=/b  ;  /c=/d  ')).toEqual([
+        { from: '/a', to: '/b' },
+        { from: '/c', to: '/d' },
+      ])
+    })
+  })
+
+  describe('_applyLpihPathMap', () => {
+    it('rewrites matching prefix', () => {
+      const map: readonly LPIHPathMapEntry[] = [{ from: '/host', to: '/workspaces' }]
+      expect(_applyLpihPathMap('/host/proj/src/x.ts', map)).toBe(
+        '/workspaces/proj/src/x.ts',
+      )
+    })
+
+    it('returns input unchanged when no rule matches', () => {
+      const map: readonly LPIHPathMapEntry[] = [{ from: '/host', to: '/workspaces' }]
+      expect(_applyLpihPathMap('/other/path.ts', map)).toBe('/other/path.ts')
+    })
+
+    it('returns input unchanged when map is empty', () => {
+      expect(_applyLpihPathMap('/any/path.ts', [])).toBe('/any/path.ts')
+    })
+
+    it('first-match-wins (= longest after parse sort)', () => {
+      // Order matters — the map is assumed sorted by parse step.
+      const map = _parseLpihPathMap('/host=/A;/host/proj=/B')
+      expect(_applyLpihPathMap('/host/proj/x.ts', map)).toBe('/B/x.ts')
+      expect(_applyLpihPathMap('/host/other/y.ts', map)).toBe('/A/other/y.ts')
+    })
+
+    it('handles empty `to` (strips prefix)', () => {
+      const map: readonly LPIHPathMapEntry[] = [{ from: '/strip', to: '' }]
+      expect(_applyLpihPathMap('/strip/keep.ts', map)).toBe('/keep.ts')
+    })
+
+    it('does not match when prefix is in the middle of the path', () => {
+      const map: readonly LPIHPathMapEntry[] = [{ from: '/host', to: '/X' }]
+      expect(_applyLpihPathMap('/other/host/y.ts', map)).toBe('/other/host/y.ts')
+    })
+  })
+
+  describe('_readLpihCache with path-map source override', () => {
+    it('rewrites file paths via PYREON_LPIH_PATH_MAP-style source', async () => {
+      writeFileSync(
+        CACHE_PATH,
+        JSON.stringify({
+          fires: [
+            { file: '/host/proj/src/x.ts', line: 5, count: 100, kind: 'signal' },
+            { file: '/host/proj/src/y.ts', line: 7, count: 50, kind: 'effect' },
+          ],
+        }),
+        'utf8',
+      )
+      const fires = await _readLpihCache(
+        CACHE_PATH,
+        undefined,
+        '/host/proj=/workspaces/proj',
+      )
+      expect(fires).toHaveLength(2)
+      expect(fires[0]?.file).toBe('/workspaces/proj/src/x.ts')
+      expect(fires[1]?.file).toBe('/workspaces/proj/src/y.ts')
+      // Non-file fields untouched.
+      expect(fires[0]?.line).toBe(5)
+      expect(fires[0]?.count).toBe(100)
+      expect(fires[0]?.kind).toBe('signal')
+    })
+
+    it('leaves paths unchanged when no rule matches', async () => {
+      writeFileSync(
+        CACHE_PATH,
+        JSON.stringify({
+          fires: [{ file: '/other/path.ts', line: 1, count: 1, kind: 'signal' }],
+        }),
+        'utf8',
+      )
+      const fires = await _readLpihCache(
+        CACHE_PATH,
+        undefined,
+        '/host=/workspaces',
+      )
+      expect(fires[0]?.file).toBe('/other/path.ts')
+    })
+
+    it('leaves paths unchanged when pathMapSource is empty/undefined', async () => {
+      writeFileSync(
+        CACHE_PATH,
+        JSON.stringify({
+          fires: [{ file: '/host/x.ts', line: 1, count: 1, kind: 'signal' }],
+        }),
+        'utf8',
+      )
+      // Explicit empty string → no map.
+      const firesEmpty = await _readLpihCache(CACHE_PATH, undefined, '')
+      expect(firesEmpty[0]?.file).toBe('/host/x.ts')
+    })
+
+    it('applies longest-prefix-wins across multiple rules', async () => {
+      writeFileSync(
+        CACHE_PATH,
+        JSON.stringify({
+          fires: [
+            { file: '/host/proj/a.ts', line: 1, count: 1, kind: 'signal' },
+            { file: '/host/other/b.ts', line: 1, count: 1, kind: 'signal' },
+          ],
+        }),
+        'utf8',
+      )
+      const fires = await _readLpihCache(
+        CACHE_PATH,
+        undefined,
+        '/host=/A;/host/proj=/B',
+      )
+      expect(fires[0]?.file).toBe('/B/a.ts')
+      expect(fires[1]?.file).toBe('/A/other/b.ts')
+    })
+
+    it('reads PYREON_LPIH_PATH_MAP from process.env by default', async () => {
+      writeFileSync(
+        CACHE_PATH,
+        JSON.stringify({
+          fires: [{ file: '/env/host/x.ts', line: 1, count: 1, kind: 'signal' }],
+        }),
+        'utf8',
+      )
+      process.env.PYREON_LPIH_PATH_MAP = '/env/host=/env/local'
+      try {
+        // Omit the 3rd arg — default reads process.env.
+        const fires = await _readLpihCache(CACHE_PATH)
+        expect(fires[0]?.file).toBe('/env/local/x.ts')
+      } finally {
+        delete process.env.PYREON_LPIH_PATH_MAP
+      }
+    })
   })
 })
