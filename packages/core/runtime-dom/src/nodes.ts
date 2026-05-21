@@ -302,15 +302,15 @@ export function mountKeyedList(
     }
   }
 
-  const mountNewEntries = (newList: VNode[]) => {
+  const mountNewEntries = (newList: VNode[], liveParent: Node) => {
     for (const vnode of newList) {
       const key = vnode.key
       if (key === null || key === undefined) continue
       if (cache.has(key)) continue
       const anchor = document.createComment('')
       _keyedAnchors.add(anchor)
-      parent.insertBefore(anchor, tailMarker)
-      const cleanup = mountVNode(vnode, parent, tailMarker)
+      liveParent.insertBefore(anchor, tailMarker)
+      const cleanup = mountVNode(vnode, liveParent, tailMarker)
       cache.set(key, { anchor, cleanup })
     }
   }
@@ -321,6 +321,17 @@ export function mountKeyedList(
     // Same untracking rationale as mountFor — see comment there. Child
     // mounts via mountVNode must not re-track on this effect's run.
     runUntracked(() => {
+      // Use the marker's LIVE parent (not the closure-captured `parent`).
+      // Same bug class fixed in #776 for mountReactive: when this
+      // mountKeyedList was created inside a DocumentFragment that mountFor
+      // later moved via `liveParent.insertBefore(frag, tailMarker)`, the
+      // captured `parent` becomes a stale reference to the now-empty
+      // fragment. The markers were moved with the fragment's contents
+      // and their `parentNode` reflects the current live parent.
+      // Fallback to the captured `parent` only when the marker is
+      // detached (cleanup edge case) preserves prior behavior.
+      const liveParent = tailMarker.parentNode ?? parent
+
       if (n === 0 && cache.size > 0) {
         for (const entry of cache.values()) {
           _emitCleanup()
@@ -335,10 +346,10 @@ export function mountKeyedList(
 
       const { newKeyOrder, newKeySet } = collectKeyOrder(newList)
       removeStaleEntries(newKeySet)
-      mountNewEntries(newList)
+      mountNewEntries(newList, liveParent)
 
       if (currentKeyOrder.length > 0 && n > 0) {
-        lis = keyedListReorder(lis, n, newKeyOrder, curPos, cache, parent, tailMarker)
+        lis = keyedListReorder(lis, n, newKeyOrder, curPos, cache, liveParent, tailMarker)
       }
 
       curPos.clear()
