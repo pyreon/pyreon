@@ -188,9 +188,15 @@ describe('startLpihPolling', () => {
     // open) — the bisect test is "test runs at all without timing out",
     // which is the load-bearing behavior.
     dispose()
-    // Verify no further writes happen after dispose.
+    // After dispose, an in-flight async write may still be completing.
+    // Wait long enough for that to settle BEFORE the stat1 baseline,
+    // otherwise stat1 captures a stale mtime and stat2 sees the late
+    // write, racing the assertion. Slower CI runners trip this without
+    // the buffer.
     const fs = await import('node:fs/promises')
+    await new Promise((r) => setTimeout(r, 100))
     const stat1 = await fs.stat(path)
+    // Verify no NEW writes happen post-dispose + post-flush.
     await new Promise((r) => setTimeout(r, 200))
     const stat2 = await fs.stat(path)
     expect(stat2.mtimeMs).toBe(stat1.mtimeMs)
