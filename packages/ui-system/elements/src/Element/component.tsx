@@ -7,12 +7,13 @@
  * skipping children or switching sub-tags accordingly.
  */
 
-import { onMount, splitProps } from '@pyreon/core'
-import type { VNodeChildAtom } from '@pyreon/core'
+import { h, onMount, splitProps } from '@pyreon/core'
+import type { ComponentFn, VNodeChildAtom } from '@pyreon/core'
 import { render } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
 import { Content, Wrapper } from '../helpers'
 import { internElementBundle } from '../helpers/internElementBundle'
+import { isPyreonComponent } from '../helpers/isPyreonComponent'
 import WrapperStyled from '../helpers/Wrapper/styled'
 import { isWebFixNeeded } from '../helpers/Wrapper/utils'
 import { IS_DEVELOPMENT } from '../utils'
@@ -109,18 +110,35 @@ const Component: PyreonElement = (props) => {
   // enclosing mountReactive effect, and the slot re-renders on signal change.
   // Static VNodes / strings / null pass through unchanged to `render()`.
   //
-  // Pre-fix: `render(() => <X/>)` treated the function as a COMPONENT and
-  // called `h(fn, {})` — the component body ran once at mount, future signal
-  // changes inside the body were never observed. Wrapping the JSX position in
-  // `{() => resolveSlot(...)}` plus unwrapping function values here is what
-  // makes `content={() => ...}` reactive (matches the
-  // `{() => show() ? <A/> : null}` pattern documented at
-  // runtime-dom/src/nodes.ts:90-93).
+  // **Component vs accessor discriminator** (regression fix for the
+  // 0.24.3 → 0.24.4 follow-up — see #839 for the original reactive-slot fix):
+  // `beforeContent={Header}` (component-reference shorthand) and
+  // `content={() => <X />}` (reactive accessor) are BOTH `typeof === 'function'`.
+  // PR #839 called both bare, which crashed component shorthands the moment a
+  // rocketstyle / attrs HOC ran `removeUndefinedProps(undefined)` on the
+  // un-supplied props (`TypeError: Cannot convert undefined or null to object`).
+  //
+  // Discriminator: framework components carry one of two markers attached by
+  // their factory:
+  //   - `IS_ROCKETSTYLE` — anything `rocketstyle()` produces
+  //   - `PYREON__COMPONENT` / `pkgName` — `@pyreon/elements` components
+  //     (Element, Text, List, Portal, Overlay, Util)
+  // Marked function → mount as `h(Component, null)` (no props, defaults
+  // fill in via the HOC pipeline). Unmarked function → reactive accessor,
+  // called bare so its return value (a VNode) renders. Bare-function
+  // components without HOC wrapping (e.g. `const MyComp = () => <div />`)
+  // also work via the accessor path — they're called with no args and
+  // their VNode return goes through `render()` correctly. The marker
+  // check ONLY rescues components that REQUIRE props to be defined.
+  //
   // Return type is the RESOLVED atom (VNodeChildAtom | VNodeChildAtom[]) —
   // never a nested accessor — so the enclosing `() => resolveSlot(...)` IS
   // a valid VNodeChildAccessor in the JSX child position.
   const resolveSlot = (value: unknown): VNodeChildAtom | VNodeChildAtom[] => {
     if (typeof value === 'function') {
+      if (isPyreonComponent(value)) {
+        return h(value as ComponentFn, null) as VNodeChildAtom
+      }
       return (value as () => VNodeChildAtom | VNodeChildAtom[])()
     }
     return render(value as Parameters<typeof render>[0]) as VNodeChildAtom | VNodeChildAtom[]
