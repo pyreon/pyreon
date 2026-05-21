@@ -104,7 +104,14 @@ export function parseRocketstyle(
 
 // ─── Internal helpers ────────────────────────────────────────────────
 
-type AnyNode = { type: string; [k: string]: unknown }
+// oxc-parser's typed AST is rich; matching the convention in `parse.ts`
+// we walk it loosely via `any` to keep the parser readable. The
+// alternative — pinning to `{ type: string; [k: string]: unknown }` —
+// makes the oxc `Program` type fail to assign here (TS2352), which is
+// noise for an internal-only IR walker. The tradeoff is intentional.
+//
+// oxlint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyNode = any
 
 function walkProgram(
   program: AnyNode,
