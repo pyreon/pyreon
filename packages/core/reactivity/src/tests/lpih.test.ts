@@ -13,7 +13,12 @@ import { join } from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { computed } from '../computed'
 import { effect } from '../effect'
-import { startLpihPolling, writeLpihCache } from '../lpih'
+import {
+  LPIH_DEFAULT_FILENAME,
+  getDefaultLpihCachePath,
+  startLpihPolling,
+  writeLpihCache,
+} from '../lpih'
 import {
   activateReactiveDevtools,
   deactivateReactiveDevtools,
@@ -212,5 +217,129 @@ describe('startLpihPolling', () => {
     const after = await fs.stat(path)
     expect(after.mtimeMs).toBe(before.mtimeMs) // mtime unchanged after dispose
     void s
+  })
+})
+
+describe('getDefaultLpihCachePath', () => {
+  it('returns <cwd>/.pyreon-lpih.json when process.cwd is available', () => {
+    const out = getDefaultLpihCachePath()
+    expect(out).toBeTruthy()
+    expect(out).toContain(LPIH_DEFAULT_FILENAME)
+    // Should be a real cwd-rooted path
+    expect(out?.startsWith('/') || /^[A-Za-z]:/.test(out ?? '')).toBe(true)
+  })
+
+  it('exposes the canonical filename constant', () => {
+    expect(LPIH_DEFAULT_FILENAME).toBe('.pyreon-lpih.json')
+  })
+
+  it('returns null when process.cwd is unavailable (web worker fallback)', () => {
+    // Temporarily shadow process.cwd to simulate browser/worker.
+    // Cast `process` since the package's narrow type omits .cwd.
+    const proc = process as unknown as { cwd?: (() => string) | undefined }
+    const realCwd = proc.cwd
+    try {
+      delete proc.cwd
+      const out = getDefaultLpihCachePath()
+      expect(out).toBeNull()
+    } finally {
+      proc.cwd = realCwd
+    }
+  })
+})
+
+describe('writeLpihCache / startLpihPolling — default path resolution', () => {
+  it('writeLpihCache() with no arg writes to <cwd>/.pyreon-lpih.json', async () => {
+    // Move cwd to TMP_DIR so the default-path write lands somewhere
+    // we control + can clean up.
+    const fs = await import('node:fs/promises')
+    const proc = process as unknown as {
+      cwd(): string
+      chdir(p: string): void
+    }
+    const originalCwd = proc.cwd()
+    proc.chdir(TMP_DIR)
+    activateReactiveDevtools()
+    const s = signal(0)
+    s.set(1)
+    try {
+      const count = await writeLpihCache()
+      expect(count).toBe(1)
+      // Verify the file landed at the cwd-relative default location.
+      const stat = await fs.stat(join(TMP_DIR, LPIH_DEFAULT_FILENAME))
+      expect(stat.isFile()).toBe(true)
+    } finally {
+      proc.chdir(originalCwd)
+      // Best-effort cleanup
+      try {
+        await fs.unlink(join(TMP_DIR, LPIH_DEFAULT_FILENAME))
+      } catch {
+        /* */
+      }
+    }
+    void s
+  })
+
+  it('writeLpihCache(explicitPath) still honors the explicit path', async () => {
+    const fs = await import('node:fs/promises')
+    activateReactiveDevtools()
+    const s = signal(0)
+    s.set(1)
+    const explicit = join(TMP_DIR, 'explicit-override.json')
+    const count = await writeLpihCache(explicit)
+    expect(count).toBe(1)
+    const stat = await fs.stat(explicit)
+    expect(stat.isFile()).toBe(true)
+    void s
+  })
+
+  it('startLpihPolling() with no arg uses the default path', async () => {
+    const fs = await import('node:fs/promises')
+    const proc = process as unknown as {
+      cwd(): string
+      chdir(p: string): void
+    }
+    const originalCwd = proc.cwd()
+    proc.chdir(TMP_DIR)
+    activateReactiveDevtools()
+    const s = signal(0)
+    s.set(1)
+    try {
+      const dispose = startLpihPolling(undefined, 50)
+      await new Promise((r) => setTimeout(r, 150))
+      dispose()
+      const stat = await fs.stat(join(TMP_DIR, LPIH_DEFAULT_FILENAME))
+      expect(stat.isFile()).toBe(true)
+    } finally {
+      proc.chdir(originalCwd)
+      try {
+        await fs.unlink(join(TMP_DIR, LPIH_DEFAULT_FILENAME))
+      } catch {
+        /* */
+      }
+    }
+    void s
+  })
+
+  it('startLpihPolling() throws synchronously when no default + no path', () => {
+    const proc = process as unknown as { cwd?: (() => string) | undefined }
+    const realCwd = proc.cwd
+    try {
+      delete proc.cwd
+      expect(() => startLpihPolling()).toThrow(/no path provided/)
+    } finally {
+      proc.cwd = realCwd
+    }
+  })
+
+  it('writeLpihCache() rejects when no default + no path', async () => {
+    const proc = process as unknown as { cwd?: (() => string) | undefined }
+    const realCwd = proc.cwd
+    try {
+      delete proc.cwd
+      await expect(writeLpihCache()).rejects.toThrow(/no path provided/)
+    } finally {
+      proc.cwd = realCwd
+    }
   })
 })

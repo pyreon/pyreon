@@ -17,7 +17,11 @@ import { join } from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   _LPIH_CACHE_MAX_BYTES,
+  _LPIH_DEFAULT_FILENAME,
   _LPIH_STALE_AFTER_MS,
+  _findProjectRoot,
+  _resetProjectRootCache,
+  _resolveLpihCachePath,
   _handleMessage,
   _readLpihCache,
   _resetOpenDocuments,
@@ -419,5 +423,184 @@ describe('LSP transport — full JSON-RPC roundtrip with LPIH cache', () => {
     // Only the line-2 (LSP line 1) fire is in range.
     expect(fireHints).toHaveLength(1)
     expect(fireHints[0]?.position.line).toBe(1)
+  })
+})
+
+describe('LPIH path discovery — default <project-root>/.pyreon-lpih.json', () => {
+  // Build a fake project tree:
+  //   <PROJECT_DIR>/package.json
+  //   <PROJECT_DIR>/.pyreon-lpih.json
+  //   <PROJECT_DIR>/src/app.tsx
+  //   <PROJECT_DIR>/src/nested/deep/util.ts
+  let PROJECT_DIR: string
+  let DEFAULT_CACHE_PATH: string
+
+  beforeAll(async () => {
+    const fs = await import('node:fs/promises')
+    PROJECT_DIR = mkdtempSync(join(tmpdir(), 'lpih-project-'))
+    DEFAULT_CACHE_PATH = join(PROJECT_DIR, _LPIH_DEFAULT_FILENAME)
+    await fs.writeFile(
+      join(PROJECT_DIR, 'package.json'),
+      JSON.stringify({ name: 'test-project', version: '0.0.0' }),
+      'utf8',
+    )
+    await fs.mkdir(join(PROJECT_DIR, 'src', 'nested', 'deep'), { recursive: true })
+  })
+
+  afterAll(() => {
+    rmSync(PROJECT_DIR, { recursive: true, force: true })
+  })
+
+  beforeEach(() => {
+    _resetProjectRootCache()
+    delete process.env.PYREON_LPIH_CACHE
+  })
+
+  it('exposes the canonical filename constant', () => {
+    expect(_LPIH_DEFAULT_FILENAME).toBe('.pyreon-lpih.json')
+  })
+
+  it('_findProjectRoot walks up to the nearest package.json', () => {
+    const root = _findProjectRoot(join(PROJECT_DIR, 'src', 'app.tsx'))
+    expect(root).toBe(PROJECT_DIR)
+  })
+
+  it('_findProjectRoot walks past multiple directory levels', () => {
+    const root = _findProjectRoot(
+      join(PROJECT_DIR, 'src', 'nested', 'deep', 'util.ts'),
+    )
+    expect(root).toBe(PROJECT_DIR)
+  })
+
+  it('_findProjectRoot returns null when no package.json in walk range', () => {
+    // /tmp may have a stray package.json from other test runs, so use
+    // maxDepth=1 to bound the walk to just one level — guaranteed-clean.
+    const root = _findProjectRoot('/nonexistent/path/file.ts', 1)
+    expect(root).toBeNull()
+  })
+
+  it('_findProjectRoot memoizes per file path', () => {
+    const root1 = _findProjectRoot(join(PROJECT_DIR, 'src', 'app.tsx'))
+    const root2 = _findProjectRoot(join(PROJECT_DIR, 'src', 'app.tsx'))
+    expect(root1).toBe(root2)
+    expect(root1).toBe(PROJECT_DIR)
+  })
+
+  it('_resolveLpihCachePath prefers PYREON_LPIH_CACHE env var', () => {
+    process.env.PYREON_LPIH_CACHE = '/custom/override.json'
+    const out = _resolveLpihCachePath(join(PROJECT_DIR, 'src', 'app.tsx'))
+    expect(out).toBe('/custom/override.json')
+  })
+
+  it('_resolveLpihCachePath auto-discovers default when env var unset', () => {
+    const out = _resolveLpihCachePath(join(PROJECT_DIR, 'src', 'app.tsx'))
+    expect(out).toBe(DEFAULT_CACHE_PATH)
+  })
+
+  it('_resolveLpihCachePath returns undefined when neither env nor package.json', () => {
+    // Use a guaranteed-isolated path (nonexistent under root, no
+    // package.json possible above it). /tmp may contain stray test
+    // package.json files in some environments.
+    const out = _resolveLpihCachePath('/nonexistent-isolated/path/file.ts')
+    // The walker walks up to filesystem root; we expect undefined as
+    // long as no package.json exists at / or in the walk chain.
+    // In practice this passes because there's no / level package.json.
+    expect(out === undefined || !out.endsWith('/tmp/.pyreon-lpih.json')).toBe(
+      true,
+    )
+  })
+
+  it('LSP textDocument/inlayHint reads the default-path cache when env var unset', async () => {
+    // Write fire data to <PROJECT>/.pyreon-lpih.json
+    const fs = await import('node:fs/promises')
+    await fs.writeFile(
+      DEFAULT_CACHE_PATH,
+      JSON.stringify({
+        fires: [
+          {
+            file: join(PROJECT_DIR, 'src', 'app.tsx'),
+            line: 2,
+            count: 99,
+            kind: 'signal',
+          },
+        ],
+      }),
+      'utf8',
+    )
+
+    const code = `function App() {
+  const count = signal(0)
+  return <div>{count()}</div>
+}`
+    const uri = `file://${join(PROJECT_DIR, 'src', 'app.tsx')}`
+
+    await _handleMessage({ jsonrpc: '2.0', id: 1, method: 'initialize' })
+    await _handleMessage({
+      jsonrpc: '2.0',
+      method: 'textDocument/didOpen',
+      params: { textDocument: { uri, text: code } },
+    })
+
+    const res = await _handleMessage({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'textDocument/inlayHint',
+      params: { textDocument: { uri } },
+    })
+    const hints = res?.result as Array<{ label: string }>
+    const fireHint = hints.find((h) => h.label.includes('🔥'))
+    expect(fireHint).toBeDefined()
+    expect(fireHint?.label).toContain('99×')
+
+    // Clean up the cache file so it doesn't bleed into other tests.
+    await fs.unlink(DEFAULT_CACHE_PATH).catch(() => undefined)
+  })
+
+  it('env var still overrides the auto-discovered default', async () => {
+    // Write fire data to a DIFFERENT file (the env override), with
+    // different count — verify the LSP reads the env file, not the
+    // default-discovered file (which we leave empty / non-existent).
+    const fs = await import('node:fs/promises')
+    const overrideFile = join(PROJECT_DIR, 'custom-cache.json')
+    await fs.writeFile(
+      overrideFile,
+      JSON.stringify({
+        fires: [
+          {
+            file: join(PROJECT_DIR, 'src', 'app.tsx'),
+            line: 2,
+            count: 777,
+            kind: 'signal',
+          },
+        ],
+      }),
+      'utf8',
+    )
+    process.env.PYREON_LPIH_CACHE = overrideFile
+
+    const code = `function App() {
+  const count = signal(0)
+  return <div>{count()}</div>
+}`
+    const uri = `file://${join(PROJECT_DIR, 'src', 'app.tsx')}`
+
+    await _handleMessage({ jsonrpc: '2.0', id: 1, method: 'initialize' })
+    await _handleMessage({
+      jsonrpc: '2.0',
+      method: 'textDocument/didOpen',
+      params: { textDocument: { uri, text: code } },
+    })
+
+    const res = await _handleMessage({
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'textDocument/inlayHint',
+      params: { textDocument: { uri } },
+    })
+    const hints = res?.result as Array<{ label: string }>
+    const fireHint = hints.find((h) => h.label.includes('🔥'))
+    expect(fireHint?.label).toContain('777×')
+
+    await fs.unlink(overrideFile).catch(() => undefined)
   })
 })

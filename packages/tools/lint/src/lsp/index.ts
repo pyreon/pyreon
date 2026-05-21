@@ -127,12 +127,19 @@ async function loadAnalyze(): Promise<typeof AnalyzeFn> {
 /**
  * Live Program Inlay Hints (LPIH) — optional runtime fire-count cache.
  *
- * When the LSP starts with `PYREON_LPIH_CACHE=/path/to/fires.json` set,
- * each `textDocument/inlayHint` request re-reads that file. The runtime
- * side (`@pyreon/reactivity`'s `getFireSummaries()`) is written to the
- * file by a bridge (devtools extension, dev server endpoint, or a test
- * harness). Each fire datum becomes a creation-site inlay hint at the
- * source line where `signal()` / `computed()` / `effect()` was called.
+ * **Discovery** (in priority order):
+ *   1. `PYREON_LPIH_CACHE` env var — explicit override
+ *   2. Walk up from the file being linted to the nearest `package.json`
+ *      and check for `<root>/.pyreon-lpih.json` (zero-config default —
+ *      matches what `@pyreon/reactivity/lpih`'s `startLpihPolling()`
+ *      writes when called with no path)
+ *
+ * Each `textDocument/inlayHint` request re-reads the discovered file.
+ * The runtime side (`@pyreon/reactivity`'s `getFireSummaries()`) is
+ * written to the file by a bridge (`startLpihPolling()` from
+ * `@pyreon/reactivity/lpih`, the devtools extension, or a test harness).
+ * Each fire datum becomes a creation-site inlay hint at the source line
+ * where `signal()` / `computed()` / `effect()` was called.
  *
  * Shape on disk:
  *   { fires: [{ file, line, count, kind?, lastFire? }, ...] }
@@ -166,6 +173,92 @@ export interface LPIHCacheEntry {
 /** @internal — readable shape of the LPIH cache file. */
 export interface LPIHCacheFile {
   fires: LPIHCacheEntry[]
+}
+
+/**
+ * Default cache filename — must match `@pyreon/reactivity/lpih`'s
+ * `LPIH_DEFAULT_FILENAME`. Decoupled (no import) to keep `@pyreon/lint`
+ * from taking a `@pyreon/reactivity` dependency — but a drift gate test
+ * locks them at the same value (see `lsp-lpih.test.ts`).
+ *
+ * @internal — exported for tests.
+ */
+export const _LPIH_DEFAULT_FILENAME = '.pyreon-lpih.json'
+
+/**
+ * Per-file → project-root memoization cache. Walking up the filesystem
+ * to find `package.json` is cheap (sync stat × max ~10 levels) but
+ * happens on every inlay-hint request, so caching by file path makes
+ * the typical "edit one file repeatedly" workflow allocation-free after
+ * the first hit. Bounded growth: one entry per open document, cleared
+ * by `_resetOpenDocuments()` along with the document map.
+ *
+ * @internal
+ */
+const _projectRootCache = new Map<string, string | null>()
+
+/** @internal — exported for tests. */
+export function _resetProjectRootCache(): void {
+  _projectRootCache.clear()
+}
+
+/**
+ * Walk up from `filePath` to find the nearest `package.json`. Returns
+ * the directory containing it (the project root), or null if no
+ * `package.json` is found within `maxDepth` levels.
+ *
+ * Cached per `filePath` for the lifetime of the LSP process. The cache
+ * stores nulls too — repeated misses don't re-walk.
+ *
+ * Sync `existsSync` is used deliberately: the walk is <10 stat calls
+ * in 99% of cases, comparable to a single `readFile` in cost, and
+ * async would force every consumer of `_resolveLpihCachePath` to
+ * also become async. The hint hot-path is already async (LSP message
+ * handler awaits `_readLpihCache`); adding another async hop here
+ * adds latency without changing the worst-case wall-clock.
+ *
+ * @internal — exported for tests.
+ */
+export function _findProjectRoot(filePath: string, maxDepth = 32): string | null {
+  if (_projectRootCache.has(filePath)) {
+    return _projectRootCache.get(filePath) ?? null
+  }
+  // Lazy-load fs synchronously — these are tiny native bindings,
+  // no perceptible cost.
+  // biome-ignore lint/correctness/noNodejsModules: LSP is Node-only
+  const fs = require('node:fs') as typeof import('node:fs')
+  // biome-ignore lint/correctness/noNodejsModules: LSP is Node-only
+  const path = require('node:path') as typeof import('node:path')
+  let dir = path.dirname(filePath)
+  for (let i = 0; i < maxDepth; i++) {
+    if (fs.existsSync(path.join(dir, 'package.json'))) {
+      _projectRootCache.set(filePath, dir)
+      return dir
+    }
+    const parent = path.dirname(dir)
+    if (parent === dir) break // reached filesystem root
+    dir = parent
+  }
+  _projectRootCache.set(filePath, null)
+  return null
+}
+
+/**
+ * Resolve the LPIH cache path for a given source file. Priority:
+ *   1. `PYREON_LPIH_CACHE` env var (explicit override)
+ *   2. `<project-root>/.pyreon-lpih.json` if `package.json` is found
+ *   3. undefined — LPIH path is inactive
+ *
+ * @internal — exported for tests.
+ */
+export function _resolveLpihCachePath(filePath: string): string | undefined {
+  const envPath = process.env.PYREON_LPIH_CACHE
+  if (envPath) return envPath
+  const root = _findProjectRoot(filePath)
+  if (!root) return undefined
+  // biome-ignore lint/correctness/noNodejsModules: LSP is Node-only
+  const path = require('node:path') as typeof import('node:path')
+  return path.join(root, _LPIH_DEFAULT_FILENAME)
 }
 
 /**
@@ -464,10 +557,12 @@ export function _handleMessage(
       return { jsonrpc: '2.0', id: msg.id, result: [] }
     }
     const filePath = _uriToFilePath(uri)
-    // LPIH cache file is configured via env var. Re-read on every request
-    // so live-edit + dev-server roundtrips reflect immediately. Read first,
-    // then compute hints once with the fires in hand — no double-pass.
-    const cachePath = process.env.PYREON_LPIH_CACHE
+    // LPIH cache file is configured via env var (explicit override) OR
+    // auto-discovered as <project-root>/.pyreon-lpih.json — matches
+    // what @pyreon/reactivity/lpih's startLpihPolling() writes by default.
+    // Re-read on every request so live-edit + dev-server roundtrips
+    // reflect immediately; the per-file project-root lookup is memoized.
+    const cachePath = _resolveLpihCachePath(filePath)
     return _readLpihCache(cachePath).then(async (fires) => {
       const { inlayHints } = await computeReactivityHints(
         filePath,
@@ -519,6 +614,7 @@ export function _handleMessage(
 /** Test-only: reset the open-document map between integration specs. */
 export function _resetOpenDocuments(): void {
   openDocuments.clear()
+  _projectRootCache.clear()
 }
 
 // ─── JSON-RPC transport (stdin/stdout) ─────────────────────────────────────
