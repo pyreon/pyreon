@@ -22,6 +22,8 @@ import type {
 let _enumNames: Set<string> = new Set()
 let _signalEnumTypes: Map<string, string> = new Map()
 let _activeEnumType: string | undefined
+/** G1: every signal name in scope — see emit-swift.ts for the rationale. */
+let _signalNames: Set<string> = new Set()
 
 export function emitKotlin(components: ComponentIR[], enums: EnumIR[] = []): string {
   _enumNames = new Set(enums.map((e) => e.name))
@@ -57,10 +59,12 @@ function emitKotlinComponent(c: ComponentIR): string {
   // is read BEFORE emitKotlinDecl runs so the decl emit can see the
   // enum context.
   _signalEnumTypes = new Map()
+  _signalNames = new Set()
   for (const d of c.decls) {
     if (d.kind === 'signal' && d.type.kind === 'typeRef' && _enumNames.has(d.type.name)) {
       _signalEnumTypes.set(d.name, d.type.name)
     }
+    if (d.kind === 'signal') _signalNames.add(d.name)
   }
   const ctx: KotlinCtx = { synthesizedDataClasses: [], componentName: c.name }
   // First pass: walk decls, synthesizing data classes for anonymous object
@@ -91,6 +95,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   lines.push(`  ${emitKotlinExpr(c.returnExpr, 2)}`)
   lines.push(`}`)
   _activePropsParamName = undefined
+  _signalNames = new Set()
   return lines.join('\n')
 }
 
@@ -402,6 +407,47 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Show') return emitKotlinShow(e, indent)
   if (tag === 'Text') return emitKotlinText(e, indent)
   if (tag === 'Button') return emitKotlinButton(e, indent)
+  if (tag === 'TextField') return emitKotlinTextField(e, indent)
+  return emitKotlinGeneric(e, indent)
+}
+
+/**
+ * Emit `<TextField value={signal} onInput={...}>` as a Compose
+ * `TextField(value, onValueChange)`. G1 from the TodoMVC walkthrough.
+ *
+ * Compose's idiom maps to Pyreon's directly: `value` + `onValueChange`
+ * is the structural equivalent of Pyreon's `value` + `onInput`. The
+ * pattern detection here is symmetric to the Swift emitter, but the
+ * emit shape is simpler — no binding-projection magic needed.
+ *
+ * Pattern: bare-identifier `value` attr matching a known signal in
+ * scope → emit `TextField(value = signal, onValueChange = { signal = it })`.
+ * Anything else → generic emit.
+ */
+function emitKotlinTextField(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const valueAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'value',
+  )
+  const placeholderAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> =>
+      a.kind === 'attr' && a.name === 'placeholder',
+  )
+  if (
+    valueAttr &&
+    valueAttr.value.kind === 'identifier' &&
+    _signalNames.has(valueAttr.value.name)
+  ) {
+    const sig = kotlinIdent(valueAttr.value.name)
+    // Placeholder maps to Compose's `placeholder = { Text(...) }` slot.
+    const placeholder =
+      placeholderAttr && placeholderAttr.value.kind === 'literal'
+        ? `, placeholder = { Text(${JSON.stringify(String(placeholderAttr.value.value))}) }`
+        : ''
+    return `TextField(value = ${sig}, onValueChange = { ${sig} = it }${placeholder})`
+  }
   return emitKotlinGeneric(e, indent)
 }
 
