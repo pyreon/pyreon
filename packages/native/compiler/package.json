@@ -16,7 +16,10 @@
   "scripts": {
     "lint": "oxlint .",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "coverage": "bun scripts/coverage-gate.ts",
+    "coverage:gate": "bun scripts/coverage-gate.ts --gate",
+    "coverage:swiftc": "bun scripts/coverage-gate.ts --swiftc-validate"
   },
   "dependencies": {
     "oxc-parser": "^0.129.0"
