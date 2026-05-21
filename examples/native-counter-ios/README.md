@@ -84,37 +84,55 @@ Output: `generated/Counter.swift` carrying the SwiftUI translation of `src/Count
 cat generated/Counter.swift
 ```
 
-## Open in Xcode (manual setup until PR 3a)
+## Open in Xcode (automated via xcodegen)
 
-1. Run `./scripts/build.sh` first to produce `generated/Counter.swift`.
+One-time prerequisite: install [xcodegen](https://github.com/yonaskolb/XcodeGen):
+
+```bash
+brew install xcodegen
+```
+
+Then from this directory:
+
+```bash
+./scripts/xcode-setup.sh   # compiles src/*.tsx + generates PyreonCounter.xcodeproj
+open PyreonCounter.xcodeproj
+```
+
+`PyreonCounter.xcodeproj` is generated deterministically from [`project.yml`](./project.yml) — gitignored, regenerated on demand. The project carries a pre-build script that re-runs `./scripts/build.sh` on every Xcode build, so edits to `src/Counter.tsx` are picked up automatically the next time you hit ⌘+B.
+
+### Why xcodegen vs. committing the .xcodeproj directly
+
+Apple's `.xcodeproj` is a directory of XML/plist files with full file paths baked in. Three issues:
+
+1. **Moving directories breaks references** — committed `.xcodeproj`s rot when the surrounding tree changes.
+2. **Different machines produce different orderings** in the binary `.pbxproj`, so diffs are noisy even when nothing meaningful changed.
+3. **No single source of truth** — the `.pbxproj` IS the authoritative file but it's not human-friendly to edit.
+
+xcodegen sidesteps all three: the YAML spec IS the source of truth; the `.xcodeproj` regenerates deterministically. Same convention used by [Vapor](https://github.com/vapor/vapor), [SwiftLint](https://github.com/realm/SwiftLint), and many other Apple-platform projects.
+
+### Manual setup (if you can't install xcodegen)
+
+If xcodegen isn't an option:
+
+1. Run `./scripts/build.sh` to produce `generated/Counter.swift`.
 2. Open Xcode → File → New → Project → iOS App.
 3. Save the new Xcode project at the parent directory level (NOT inside `examples/native-counter-ios/`).
 4. Delete the auto-generated `ContentView.swift` from Xcode's new project.
-5. Drag the following files into the Xcode project:
-   - `ios/App.swift`
-   - `ios/ContentView.swift`
-   - `ios/Info.plist`
-   - `generated/Counter.swift`
+5. Drag `ios/App.swift`, `ios/ContentView.swift`, `ios/Info.plist`, and `generated/Counter.swift` into the Xcode project.
 6. Build target → iPhone simulator → Run.
 
-This manual flow is the Phase 0 floor. PR 3a or PR 4 automates it via xcodegen.
+## What this example proves
 
-## Why no .xcodeproj in this PR
-
-Apple's `.xcodeproj` format is a directory of XML/binary files with file-path references that break if you move directories. Committing one verbatim works but is fragile. The alternatives (xcodegen, Tuist, hand-crafted `.pbxproj`) are all viable but each adds dependencies / tooling that deserve their own PR.
-
-For PR 3, the directory structure + source files + build script are the "useful subset" — the compile loop already works (just `./scripts/build.sh`); only the Xcode integration is manual. PR 3a follows up with the automated Xcode generation.
-
-## What this PR proves
-
-**Most of Phase 0 success criterion 2** (signal → @State round-trip with counter on iOS simulator):
+**Phase 0 success criterion 2** (signal → @State round-trip with counter on iOS simulator):
 
 - Pyreon TSX compiles cleanly via the CLI ✓
 - The generated Swift file passes `swiftc -parse` ✓
 - Output uses real SwiftUI primitives: `@State`, `VStack`, `Text(...)`, `Button(...) { ... }` — idiomatic SwiftUI ✓
 - Increment semantics: `count.set(count() + 1)` becomes `count = count + 1` (SwiftUI's `@State` IS the assignment target) ✓
 - Compile is automated (one command) ✓
-- **Final manual step**: open the manually-set-up Xcode project + tap the button on simulator. Documented below. PR 4a automates the Xcode setup.
+- Xcode project is automated (xcodegen + project.yml) ✓
+- **Final user step**: `open PyreonCounter.xcodeproj`, build, tap the button on simulator.
 
 ## Privacy
 

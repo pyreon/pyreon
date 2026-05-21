@@ -6,9 +6,10 @@
   "license": "MIT",
   "scripts": {
     "build": "./scripts/build.sh",
-    "lint": "echo '[native-counter-ios] no TS lint surface in PR 3; skipping'",
-    "test": "echo '[native-counter-ios] no test surface in PR 3; counter validation lands in PR 4'",
-    "typecheck": "echo '[native-counter-ios] no TS typecheck surface in PR 3'"
+    "xcode": "./scripts/xcode-setup.sh",
+    "lint": "echo '[native-counter-ios] no TS lint surface; skipping'",
+    "test": "echo '[native-counter-ios] no test surface; counter behaviour proven via @pyreon/native-compiler fixture snapshots'",
+    "typecheck": "echo '[native-counter-ios] no TS typecheck surface'"
   },
   "devDependencies": {
     "@pyreon/native-cli": "workspace:*"
