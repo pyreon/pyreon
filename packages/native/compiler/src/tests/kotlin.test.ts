@@ -128,7 +128,7 @@ describe('Pyreon → Kotlin emit', () => {
     expect(emit('09-props.tsx')).toMatchInlineSnapshot(`
       "@Composable
       fun Card(title: String, description: String) {
-        Text(text = "\${title}:\${description}")
+        Text(text = "\${title}: \${description}")
       }"
     `)
   })
