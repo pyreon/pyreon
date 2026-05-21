@@ -10,15 +10,13 @@ export const HASH_INIT = 2166136261
 
 const FNV_PRIME = 16777619
 
-/**
- * Feed a string segment into the running hash state.
+/** Feed a string segment into the running hash state.
  * Streaming: hashUpdate(hashUpdate(HASH_INIT, 'ab'), 'cd') === hash('abcd').
  */
 export const hashUpdate = (init: number, str: string): number => {
   let h = init
   for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i)
-    h = Math.imul(h, FNV_PRIME)
+    h = Math.imul(h ^ str.charCodeAt(i), FNV_PRIME)
   }
   return h
 }

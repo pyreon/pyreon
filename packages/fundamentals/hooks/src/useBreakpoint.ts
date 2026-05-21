@@ -26,7 +26,17 @@ function getActive(bps: [string, number][]): string {
  * Return the currently active breakpoint name as a reactive signal.
  */
 export function useBreakpoint(breakpoints: BreakpointMap = defaultBreakpoints): () => string {
-  const sorted = Object.entries(breakpoints).sort(([, a], [, b]) => a - b)
+  // Build the [name, min] tuples directly from a for-in scan instead of
+  // `Object.entries(...).sort(...)`. Skips the intermediate entries
+  // tuple-array allocation. Fires once per useBreakpoint call (per
+  // component mount that uses it). Ported from vitus-labs `4549648a`;
+  // measured upstream: +80.3% on 5-breakpoint input.
+  const sorted: [string, number][] = []
+  for (const name in breakpoints) {
+    const value = breakpoints[name]
+    if (typeof value === 'number') sorted.push([name, value])
+  }
+  sorted.sort(([, a], [, b]) => a - b)
   const active = signal(getActive(sorted))
 
   // Listener defined inside onMount so its `requestAnimationFrame` /

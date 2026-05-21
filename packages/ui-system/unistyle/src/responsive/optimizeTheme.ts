@@ -12,13 +12,18 @@ const shallowEqual = (
 ): boolean => {
   if (a === b) return true
   if (!a || !b) return false
-  const keysA = Object.keys(a)
-  const keysB = Object.keys(b)
-  if (keysA.length !== keysB.length) return false
-  for (const key of keysA) {
+  // for-in + counting avoids the two `Object.keys` array allocations the
+  // prior implementation paid on every breakpoint optimization step.
+  // Ported from vitus-labs `e573e6c4`; measured upstream: +4.0% on the
+  // EQUAL hot path (the common case in steady-state renders).
+  let aCount = 0
+  for (const key in a) {
+    aCount++
     if (a[key] !== b[key]) return false
   }
-  return true
+  let bCount = 0
+  for (const _ in b) bCount++
+  return aCount === bCount
 }
 
 /**

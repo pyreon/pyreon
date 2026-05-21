@@ -189,20 +189,23 @@ export type GetThemeByMode = (
   themes: Record<string, unknown>
 }>
 
-export const getThemeByMode: GetThemeByMode = (object, mode) =>
-  Object.keys(object).reduce(
-    (acc, key) => {
-      const value = object[key]
-
-      if (typeof value === 'object' && value !== null) {
-        acc[key] = getThemeByMode(value, mode)
-      } else if (isModeCallback(value)) {
-        acc[key] = value(mode)
-      } else {
-        acc[key] = value
-      }
-
-      return acc
-    },
-    {} as Record<string, any>,
-  )
+export const getThemeByMode: GetThemeByMode = (object, mode) => {
+  // Recursive theme walker — `for...in` avoids the per-node
+  // `Object.keys` array allocation that the prior reduce paid. Called
+  // from inside cached `LocalThemeManager` WeakMap tiers (one per
+  // theme/mode transition), so the win is smaller than per-render
+  // helpers but the pattern is consistent. Ported from vitus-labs
+  // `00fdadc2`.
+  const acc: Record<string, any> = {}
+  for (const key in object) {
+    const value = object[key]
+    if (typeof value === 'object' && value !== null) {
+      acc[key] = getThemeByMode(value, mode)
+    } else if (isModeCallback(value)) {
+      acc[key] = value(mode)
+    } else {
+      acc[key] = value
+    }
+  }
+  return acc
+}
