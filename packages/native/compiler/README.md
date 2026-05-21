@@ -18,6 +18,21 @@ const swiftSource = transform(pyreonJsxSource, { target: 'swift' })
 const kotlinSource = transform(pyreonJsxSource, { target: 'kotlin' })
 ```
 
+## Compile-validation harness
+
+Snapshot tests prove "the emit equals what it equalled last time." They do NOT prove "the emit is valid Swift / Kotlin." A compile-validation harness in [`src/validate.ts`](src/validate.ts) closes that gap by piping emitted source through the actual language compilers in parse-only mode.
+
+| Target | Tool | Mode |
+|---|---|---|
+| Swift | `swiftc -parse` | Parse-only, no semantic analysis. Catches syntax errors. Accepts unresolved type references (the SwiftUI stdlib isn't available at parse time — semantic analysis is the *compile* step's job, which lands in a follow-up CI Docker PR). |
+| Kotlin | TBD | Follow-up PR. `kotlinc` lacks a `-parse-only` flag; needs tree-sitter-kotlin OR a Compose stubs shim. |
+
+**Auto-enabled** when the tool is on PATH. Tests skip with an informative message when the tool is absent — typical local dev on macOS has `swiftc`; Linux dev machines and CI runners typically don't.
+
+Env vars:
+- `PYREON_SKIP_NATIVE_VALIDATE=1` — force-skip even when tools are available (e.g., to bypass during a quick test run).
+- `PYREON_REQUIRE_NATIVE_VALIDATE=1` — fail (instead of skip) when tools are absent. Set in CI environments where the toolchain SHOULD be installed.
+
 ## Coverage (this PR)
 
 7 fixtures, each compiling to both Swift + Kotlin:
