@@ -64,7 +64,7 @@ describe('TodoMVC compile baseline', () => {
         case all, active, completed
       }
 
-      struct Todo {
+      struct Todo: Codable {
         var id: Int
         var text: String
         var done: Bool
@@ -248,27 +248,30 @@ describe('TodoMVC gap-tracking baseline', () => {
     expect(out.code).toMatch(/var todos by rememberSaveable \{ mutableStateOf<List<Todo>>\(listOf\(\)\) \}/)
   })
 
-  it('Phase 2 — object-shape `type Todo = {...}` emits Swift `struct Todo` with `var` fields', () => {
+  it('Phase 2 — object-shape `type Todo = {...}` emits Swift `struct Todo: Codable` with `var` fields', () => {
     // FOUNDATIONAL Phase 2 step. Pre-PR, anonymous record types
     // referenced via typeRef (`[Todo]`) emitted as labelled tuples
     // `[(id: Int, text: String, done: Bool)]` — blocked Codable
     // conformance + @AppStorage type-safe round-trip. Now: real
-    // `struct Todo { var id: Int; var text: String; var done: Bool }`.
+    // `struct Todo: Codable { var id: Int; var text: String; var done: Bool }`.
     // `var` (not `let`) keeps the G4 IIFE-copy mutation idiom working.
+    // `: Codable` added in the follow-up Codable-conformance PR —
+    // unblocks JSON round-trip + the @AppStorage Codable-Data bridge.
     const out = transform(source, { target: 'swift' })
-    expect(out.code).toContain('struct Todo {')
+    expect(out.code).toContain('struct Todo: Codable {')
     expect(out.code).toContain('var id: Int')
     expect(out.code).toContain('var text: String')
     expect(out.code).toContain('var done: Bool')
   })
 
-  it('Phase 2 — object-shape `type Todo = {...}` emits Kotlin `data class Todo(...)`', () => {
+  it('Phase 2 — object-shape `type Todo = {...}` emits Kotlin `@Serializable data class Todo(...)`', () => {
     // Same as Swift but Kotlin idiomatic. `data class` gets `.copy()`
     // for free (already used by G4 #846's partial-update emit).
-    // FOUNDATIONAL toward kotlinx-serialization + Compose Saver round-
-    // trips on `List<Todo>`.
+    // `@Serializable` annotation (kotlinx-serialization) is the Kotlin
+    // parallel to Swift's `: Codable` — enables JSON round-trip + the
+    // Compose `Saver` glue for `rememberSaveable<List<Todo>>`.
     const out = transform(source, { target: 'kotlin' })
-    expect(out.code).toMatch(/data class Todo\(var id: Int, var text: String, var done: Boolean\)/)
+    expect(out.code).toMatch(/@Serializable\s*\ndata class Todo\(var id: Int, var text: String, var done: Boolean\)/)
   })
 
   it('Phase 2 — array-literal object whose fields match a known struct emits as struct initializer on Swift', () => {

@@ -60,17 +60,31 @@ function emitKotlinEnum(e: EnumIR): string {
 }
 
 /**
- * Emit a Kotlin `data class X(var a: T, var b: U)` from a StructIR.
- * `var` (not `val`) keeps fields mutable, mirroring the Swift `struct`
- * emit. Data classes get `.copy(...)` for free — already used by G4's
- * partial-update emit for the same struct. Foundational Phase 2 step
- * toward kotlinx-serialization conformance + Compose Saver round-trips.
+ * Emit a Kotlin `@Serializable data class X(var a: T, var b: U)` from
+ * a StructIR. `var` (not `val`) keeps fields mutable, mirroring the
+ * Swift `struct` emit. Data classes get `.copy(...)` for free —
+ * already used by G4's partial-update emit for the same struct.
+ *
+ * **kotlinx-serialization `@Serializable` annotation** is always
+ * emitted — the Kotlin parallel to Swift's Codable conformance.
+ * Requires the consumer's Compose project to include the
+ * `kotlinx-serialization` plugin + runtime dep. Foundational for:
+ *   - Compose `Saver` glue (next Phase 2 PR) — `rememberSaveable`
+ *     persistence of `List<Todo>` and other complex types
+ *   - DataStore / SharedPreferences serialization
+ *   - Cross-platform binding-package compatibility
+ *
+ * The annotation requires `import kotlinx.serialization.Serializable`
+ * at the file top, which this emit doesn't currently produce — Kotlin
+ * emit leaves imports to the consumer's project configuration (same
+ * convention as the Compose imports). Phase 2 may add an automatic
+ * import-emission step if real-app shape surfaces drift.
  */
 function emitKotlinStruct(s: StructIR): string {
   const params = s.fields
     .map((f) => `var ${kotlinIdent(f.name)}: ${kotlinType(f.type, undefined, f.name)}`)
     .join(', ')
-  return `data class ${kotlinIdent(s.name)}(${params})`
+  return `@Serializable\ndata class ${kotlinIdent(s.name)}(${params})`
 }
 
 interface KotlinCtx {
