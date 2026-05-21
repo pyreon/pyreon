@@ -24,7 +24,7 @@
 //   G2 Keyboard event handling (`onKeyDown` → `.onSubmit`)   ✓ CLOSED
 //   G3 Array mutation idioms (immutable spread vs platform mutate)
 //   G4 Object-in-array partial updates (`map(t => t.id === id ? ... : t)`)   ✓ CLOSED
-//   G5 @pyreon/storage cross-platform abstraction (`useStorage`)
+//   G5 @pyreon/storage cross-platform abstraction (`useStorage`)   ✓ CLOSED
 //   G6 String-literal union → native enum (`'all' | 'active' | 'completed'`)   ✓ CLOSED
 //   G7 rocketstyle conditional dimension expressions
 //   G8 @pyreon/router URL-hash filter sync (Phase 3 work)
@@ -65,6 +65,7 @@ describe('TodoMVC compile baseline', () => {
       }
 
       struct TodoApp: View {
+        @AppStorage("pyreon-todomvc:todos") private var todos: [Todo] = []
         @State private var filter: Filter = .all
         @State private var draft: String = ""
         private var visible: Any { xs }
@@ -220,9 +221,25 @@ describe('TodoMVC gap-tracking baseline', () => {
     expect(out.code).toMatch(/t\.copy\(done = !t\.done\)/)
   })
 
-  it.todo('G5 — useStorage<T>(key, default) emits @AppStorage on Swift', () => {
+  it('G5 — useStorage<T>(key, default) emits @AppStorage on Swift', () => {
+    // CLOSED by this PR. The parser now recognises
+    // `const x = useStorage<T>('key', default)` as a persistent signal
+    // (DeclIR.signal with `storageKey`). The Swift emit routes it to
+    // SwiftUI's `@AppStorage("key")` property wrapper. The locked
+    // Swift-emit snapshot above already proves this; the explicit
+    // assertion here is the gap-closure marker.
     const out = transform(source, { target: 'swift' })
-    expect(out.code).toContain('@AppStorage("pyreon-todomvc:todos")')
+    expect(out.code).toContain('@AppStorage("pyreon-todomvc:todos") private var todos: [Todo] = []')
+  })
+
+  it('G5 — useStorage<T>(key, default) emits `rememberSaveable` on Kotlin', () => {
+    // CLOSED by this PR. The Kotlin emit routes storage signals to
+    // Compose's `rememberSaveable` — same `by` delegate as `remember`
+    // so call sites work without parens. Note: `rememberSaveable`
+    // requires Parcelable/Serializable types for round-trip; complex
+    // types need a custom Saver — Phase 2.
+    const out = transform(source, { target: 'kotlin' })
+    expect(out.code).toMatch(/var todos by rememberSaveable \{ mutableStateOf<List<Todo>>\(listOf\(\)\) \}/)
   })
 
   it('G6 — string-literal union Filter type emits `enum Filter: String`', () => {
