@@ -133,6 +133,14 @@ export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): str
       if (t.args.length === 0) return t.name
       return `${t.name}<${t.args.map((a) => kotlinType(a, ctx, signalName)).join(', ')}>`
     }
+    case 'function': {
+      // Kotlin function types: `(P1, P2) -> R`. `unknown` return →
+      // `Unit` (Kotlin's void equivalent).
+      const paramTypes = t.params.map((p) => kotlinType(p.type, ctx, signalName)).join(', ')
+      const returnTypeName =
+        t.returnType.kind === 'unknown' ? 'Unit' : kotlinType(t.returnType, ctx, signalName)
+      return `(${paramTypes}) -> ${returnTypeName}`
+    }
     default:
       return 'Any'
   }

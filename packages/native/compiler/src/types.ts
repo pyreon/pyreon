@@ -75,6 +75,14 @@ export type TypeIR =
    * propagate.
    */
   | { kind: 'typeRef'; name: string; args: TypeIR[] }
+  /**
+   * Function type — `(a: number, b: string) => boolean`. Captures
+   * each parameter's name (when present in source) + type, and the
+   * return type. Names are kept in IR for debugging + future use;
+   * Swift / Kotlin function types are positional so the emitter
+   * drops the names at emit time.
+   */
+  | { kind: 'function'; params: { name?: string; type: TypeIR }[]; returnType: TypeIR }
   | { kind: 'unknown' }
 
 export type ExprIR =
