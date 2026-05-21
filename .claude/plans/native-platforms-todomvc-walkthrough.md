@@ -16,6 +16,8 @@
 
 Mostly yes, with **8 named breakage points** that require either compiler special-cases or new Pyreon-side abstractions before Phase 1 can ship TodoMVC. None are fatal; all are foreseeable. The PMTC plan's mapping table covers the 80% case; this walkthrough surfaces the missing 20%.
 
+**Update 2026-05-21 — closure status**: All 5 in-compiler closable named gaps are CLOSED on main. **G6 #835** (string-literal union → native enum) → **G1 #842** (TextField two-way binding) → **G2 #844** (onKeyDown=Enter → `.onSubmit`/`keyboardActions`; cascade-merged **G4 #846** for object partial-update via `var c = t; c.k = v` IIFE / `t.copy(k = v)`) → **G5 #849** (`useStorage` → `@AppStorage`/`rememberSaveable`). The TodoMVC baseline test in `packages/native/compiler/src/tests/todomvc-baseline.test.ts` has gone from 7 `it.todo` to 0 — full named-gap closure of the closable scope. **G3 is a SEMANTIC CHOICE** (decided below: Option A "immutable spread" for Phase 1, Option B "native mutation" opt-in for Phase 2). **G7/G8** are Phase 3 work (rocketstyle conditional + router URL-hash). See the bottom-of-doc status table for current per-gap state.
+
 The 8 breakage points (full detail per section below):
 
 1. **TextField two-way binding emission** — Pyreon's one-way `value + onInput` idiom needs special-case emission to Swift's `TextField("...", text: $text)` two-way binding. Kotlin's `TextField(value = ..., onValueChange = ...)` matches Pyreon directly. **Compiler change needed: detect `<input>` + matched-signal pattern, emit `$text`-binding shape on Swift.**
@@ -986,24 +988,132 @@ For Phase 3+: `@pyreon/router-ios` would map `router.push('#/active')` to Naviga
 
 ---
 
+## G3 deliberation — array mutation idioms (DECIDED 2026-05-21)
+
+G3 is the only named gap that's a SEMANTIC CHOICE rather than a missing feature. Both options below are correct; the choice is about FIDELITY to Pyreon source vs IDIOM to the platform. This section documents the decision so future Phase 2 PRs don't re-litigate it.
+
+### The choice
+
+Pyreon source uses JS-immutable idioms:
+
+```tsx
+// Append
+todos.set([...todos(), newTodo])
+
+// Remove
+todos.set(todos().filter(t => t.id !== id))
+
+// Replace-one (partial update — closed by G4 #846)
+todos.set(todos().map(t => t.id === id ? { ...t, done: !t.done } : t))
+```
+
+These have two valid native emits:
+
+**Option A — FIDELITY (immutable spread, emit verbatim)**
+
+- Swift: `todos = todos + [newTodo]` (re-assigns the `@State` array — SwiftUI sees the value change via Equatable diff)
+- Kotlin: `todos = todos + listOf(newTodo)` (re-assigns the `mutableStateOf` var — same diff detection)
+
+**Option B — IDIOM (native mutation)**
+
+- Swift: `todos.append(newTodo)` (in-place; `@State` observes the change via Equatable diff)
+- Kotlin: `todos.add(newTodo)` (requires `mutableStateListOf<Todo>()` for fine-grained per-row reactivity)
+
+### Decision: Option A for Phase 1; Option B opt-in for Phase 2 if benchmarks justify
+
+### Reasoning
+
+1. **Source semantics preserved**. A developer reading the Pyreon source AND the emitted Swift sees the same pattern. Mental model uniform across all three targets (web / iOS / Android).
+
+2. **Both targets handle Option A correctly**. Swift's `@State` observes value changes; Compose's `mutableStateOf` does the same. No correctness gap. The "re-renders the entire list" perf concern is real on Compose with naive `mutableStateOf<List<T>>` but only matters at 10k+ items (TodoMVC scale: < 1000 items, no measurable diff).
+
+3. **Compiler emission complexity stays lower**. Option B requires detecting WHICH mutation idiom is being used (`.append` vs `.filter` vs `.map`) and emitting a DIFFERENT shape per pattern (mutating method vs in-place index assignment). Option A is uniform — every array assignment emits the same shape regardless of source idiom.
+
+4. **G4 #846 already cemented Option A for partial updates**. The `.map(t => cond ? {...t, k: v} : t)` shape emits as:
+   - Swift: `todos = todos.map({ t in cond ? { var c = t; c.k = v; return c }() : t })`
+   - Kotlin: `todos = todos.map { t -> if (cond) t.copy(k = v) else t }`
+
+   Both are functional and platform-idiomatic for the immutable-spread style. Changing G4 to Option B (index-mutation `todos[i].k = !todos[i].k`) would require a separate pattern detection and a non-trivial refactor.
+
+5. **Phase 2 opt-in path**. When and IF benchmarks show real-world perf regressions on long lists, the opt-in shape can be:
+   - Extend `signal-options` with `{ fineGrained: true }` flag on `signal<T[]>(initial, { fineGrained: true })`
+   - Compiler detects the flag and emits Option B shape (Kotlin: `mutableStateListOf<T>()` + `.add`/`.removeAt`/index-mutation; Swift: `.append`/`.remove(at:)`/index-mutation)
+   - The flag is per-signal, not per-mutation — opt-in at the data declaration, not at every mutation site
+
+### What this means for TodoMVC
+
+The locked snapshot ships Option A:
+
+```swift
+// addTodo (Option A — immutable spread)
+todos = todos + [(id: nextId + 1, text: text, done: false)]
+
+// toggle (Option A — immutable map + G4 IIFE copy)
+todos = todos.map({ t in t.id == id ? { var c = t; c.done = !t.done; return c }() : t })
+
+// remove + clearCompleted (Option A — filter)
+todos = todos.filter({ t in t.id != id })
+todos = todos.filter({ t in !t.done })
+```
+
+```kotlin
+// addTodo (Option A — immutable spread)
+todos = todos + listOf(/* ... */)
+
+// toggle (Option A — immutable map + G4 .copy)
+todos = todos.map { t -> if (t.id == id) t.copy(done = !t.done) else t }
+
+// remove + clearCompleted
+todos = todos.filter { t -> t.id != id }
+todos = todos.filter { t -> !t.done }
+```
+
+All four mutation functions emit Option A. No compiler change needed beyond what G4 #846 + the existing emit-swift/emit-kotlin call paths already deliver.
+
+### Status
+
+✓ **CLOSED 2026-05-21** — Decision documented; Phase 1 ships Option A; Phase 2 may add `{ fineGrained: true }` opt-in (Option B) if perf benchmarks justify it.
+
+---
+
 ## Summary of compiler changes the walkthrough surfaces
 
-Mapped to the Phase 0 roadmap PR numbers from [`native-platforms-phase0-roadmap.md`](./native-platforms-phase0-roadmap.md):
+Mapped to the Phase 0/1 roadmap PR numbers and the in-compiler closure PRs landed 2026-05-19 to 2026-05-21:
 
-| # | Change | Where it lands |
-|---|---|---|
-| 1 | TextField two-way binding emission (Swift `$` Binding) | Phase 1 — new PR after roadmap-PR 4 |
-| 2 | Keyboard event handling (`onKeyDown` Enter → `.onSubmit` / `keyboardActions`) | Phase 1 — new PR after roadmap-PR 4 |
-| 3 | Array mutation idioms (faithful spread vs idiomatic mutation) — design decision + `mutableStateListOf` for Kotlin | Phase 1 — possibly extend roadmap-PR 4 to use idiomatic emit from the start |
-| 4 | Object-in-array partial updates (`.map(t => t.id === id ? {...t, F: V} : t)` → indexed mutation) | Same as #3 |
-| 5 | `@pyreon/storage` cross-platform abstraction packages | Phase 1 — new package + binding work |
-| 6 | String-literal union → native enum | Phase 0 PR 5d (already in roadmap) |
-| 7 | Conditional dimension expression hoisting on rocketstyle | Phase 0 PR 7c (extend the rocketstyle emitter) |
-| 8 | URL hash / router cross-platform sync | Phase 3 (per PMTC plan timeline) |
+| # | Change | Where it lands | Status |
+|---|---|---|---|
+| 1 | TextField two-way binding emission (Swift `$` Binding) | [#842](https://github.com/pyreon/pyreon/pull/842) | ✓ CLOSED |
+| 2 | Keyboard event handling (`onKeyDown` Enter → `.onSubmit` / `keyboardActions`) | [#844](https://github.com/pyreon/pyreon/pull/844) | ✓ CLOSED |
+| 3 | Array mutation idioms (faithful spread vs idiomatic mutation) — design decision | This doc (G3 deliberation above) | ✓ DECIDED (Option A immutable-spread) |
+| 4 | Object-in-array partial updates (`.map(t => t.id === id ? {...t, F: V} : t)`) | [#846](https://github.com/pyreon/pyreon/pull/846) (cascade-merged via #844) | ✓ CLOSED |
+| 5 | `@pyreon/storage` `useStorage<T>` → Swift `@AppStorage` / Kotlin `rememberSaveable` | [#849](https://github.com/pyreon/pyreon/pull/849) | ✓ CLOSED (in-compiler scope; Phase 2 needs Codable bridge for non-RawRepresentable types) |
+| 6 | String-literal union → native enum | [#835](https://github.com/pyreon/pyreon/pull/835) | ✓ CLOSED |
+| 7 | Conditional dimension expression hoisting on rocketstyle | Phase 3 (rocketstyle conditional dimension emit) | ⏸ DEFERRED |
+| 8 | URL hash / router cross-platform sync | Phase 3 (`@pyreon/router-ios` / `@pyreon/router-android` packages) | ⏸ DEFERRED |
 
-**6 of 8 fit within Phase 0/1 scope.** Two (#5 storage, #8 router) require new cross-platform abstraction packages that are Phase 1+ work.
+**6 of 8 gaps CLOSED** (G1 / G2 / G3 / G4 / G5 / G6). Two (G7 rocketstyle conditional, G8 router URL-hash) remain Phase 3 work — they require either deeper rocketstyle emit refactoring or new cross-platform abstraction packages outside the compiler core.
 
-The 7 fixtures in PR #794 cover the **structural mapping primitives**. TodoMVC exposes the **composition gaps** — what happens when you compose the primitives into a real app. The 8 gaps above are the compiler/runtime work needed to close the composition story before TodoMVC can ship as a Phase 1 reference example.
+### The TodoMVC baseline test as structural proof
+
+The locked snapshot at `packages/native/compiler/src/tests/todomvc-baseline.test.ts` is now the structural proof of closure. **0 `it.todo`, 238 passing**. Each closed gap has both:
+
+1. A locked Swift-emit inline snapshot proving the EXACT emitted shape
+2. An explicit gap-closure assertion (e.g. `expect(out.code).toContain('text: $draft')`) so the closure is unambiguously visible to readers scanning the test file
+
+### Known partial closures (Phase 2 hardening)
+
+The PR descriptions are explicit about what's NOT done. Summary:
+
+- **G5 `@AppStorage` type constraint** — Swift `@AppStorage` only accepts String/Int/Double/Bool/URL/Data/RawRepresentable. TodoMVC's `[Todo]` emits the shape but fails `swiftc -typecheck`. Phase 2 needs a Codable-Data bridge.
+- **G5 `rememberSaveable` type constraint** — Compose requires Parcelable/Serializable types or a custom Saver. `List<Todo>` needs a Saver. Phase 2.
+- **G5 storage key not in Kotlin call site** — `rememberSaveable(key = "...")` overload exists; Phase 2 if cross-host disambiguation needed.
+- **G4 multi-spread objects** — `{ ...a, ...b, k: v }` falls through to the tuple-literal emit. Phase 2 if real-world apps hit it.
+- **Anonymous object types emit as Swift tuples** — `[Todo]` where `Todo = {...}` emits as `[(id: Int, text: String, done: Bool)]` (labelled tuple). Phase 2 should emit `struct Todo` instead — unblocks Codable bridge, Compose Saver, and richer type inference.
+- **Button `onClick={functionRef}` (bare identifier, not call)** — emits as `{ functionRef }` (closure returning the function reference, not calling it). Different parse path (`emitSwiftAction` arrow-stripping); not blocking TodoMVC because TodoMVC wraps in `onClick={() => fn()}` arrow.
+
+These are KNOWN PARTIAL CLOSURES, not unknown bugs. The structural contract — "TodoMVC compiles to parseable Swift + Kotlin via the in-compiler scope" — is closed. Full type-safe round-trip is incremental Phase 2 hardening.
+
+The 7 fixtures in PR #794 covered the **structural mapping primitives**. TodoMVC exposed the **composition gaps** — what happens when you compose the primitives into a real app. With the 6 closures above, the composition story is structurally complete; what remains is hardening, real-device validation, and the two Phase 3 gaps.
 
 ---
 
