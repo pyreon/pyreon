@@ -20,12 +20,12 @@ const kotlinSource = transform(pyreonJsxSource, { target: 'kotlin' })
 
 ## Compile-validation harness
 
-Snapshot tests prove "the emit equals what it equalled last time." They do NOT prove "the emit is valid Swift / Kotlin." A compile-validation harness in [`src/validate.ts`](src/validate.ts) closes that gap by piping emitted source through the actual language compilers in parse-only mode.
+Snapshot tests prove "the emit equals what it equalled last time." They do NOT prove "the emit is valid Swift / Kotlin." A compile-validation harness in [`src/validate.ts`](src/validate.ts) closes that gap by piping emitted source through the actual language compilers.
 
 | Target | Tool | Mode |
 |---|---|---|
-| Swift | `swiftc -parse` | Parse-only, no semantic analysis. Catches syntax errors. Accepts unresolved type references (the SwiftUI stdlib isn't available at parse time — semantic analysis is the *compile* step's job, which lands in a follow-up CI Docker PR). |
-| Kotlin | TBD | Follow-up PR. `kotlinc` lacks a `-parse-only` flag; needs tree-sitter-kotlin OR a Compose stubs shim. |
+| Swift | `swiftc -parse` | Parse-only, no semantic analysis. Catches syntax errors. Accepts unresolved type references (the SwiftUI stdlib isn't available at parse time — semantic analysis is the *compile* step's job). |
+| Kotlin | `kotlinc` + Compose stubs | `kotlinc` has no parse-only flag, so this path uses a tiny Compose stubs file ([`src/kotlin-stubs.ts`](src/kotlin-stubs.ts)) to satisfy semantic analysis without depending on real Jetpack Compose (which would require Gradle + Android SDK). Stubs cover only the API surface our emitter touches (`@Composable`, `mutableStateOf`, `derivedStateOf`, `remember`, `Text`, `Button`, `LazyColumn`, `Column`, `items`). Real apps compile against actual Compose, not stubs. |
 
 **Auto-enabled** when the tool is on PATH. Tests skip with an informative message when the tool is absent — typical local dev on macOS has `swiftc`; Linux dev machines and CI runners typically don't.
 
