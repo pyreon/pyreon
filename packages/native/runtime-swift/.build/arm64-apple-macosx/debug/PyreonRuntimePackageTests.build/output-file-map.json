@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.build/primary.swiftdeps"
+  },
+  "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.derived/runner.swift": {
+    "dependencies": "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.build/runner.d",
+    "object": "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.build/runner.swift.o",
+    "swiftmodule": "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.build/runner~partial.swiftmodule",
+    "swift-dependencies": "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.build/runner.swiftdeps",
+    "diagnostics": "/Users/vitbokisch/dev/pyreon/pyreon-pmtc-rs/packages/native/runtime-swift/.build/arm64-apple-macosx/debug/PyreonRuntimePackageTests.build/runner.dia"
+  }
+}
