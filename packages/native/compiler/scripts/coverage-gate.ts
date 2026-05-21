@@ -203,10 +203,22 @@ const thresholdArg = args.find((a) => a.startsWith('--threshold='))
 //   - --gate: exits non-zero when `parsedClean / total < threshold`.
 //     Use in CI to enforce a non-regression floor.
 //
-// Threshold default starts at the current measured baseline minus 5%
-// headroom — concrete and informed by the report; bump as the
-// compiler grows. Override via --threshold=N.
-const DEFAULT_THRESHOLD = 65
+// Threshold is a RATCHET: set just below the current measured baseline
+// so any regression bites immediately. Bump as the compiler grows.
+// Override via --threshold=N.
+//
+// Measured baseline as of 2026-05-21 (525 .tsx files surveyed across
+// `examples/` + `packages/`): 73.0% parsedClean (transform succeeded +
+// emitted ZERO warnings). 70 = 3pp below baseline — catches drift
+// without flaking on the noise floor.
+//
+// Note: parsedClean is a CONSERVATIVE metric — only counts files with
+// EXACTLY ZERO warnings as "passing". The stricter "swiftc -parse
+// accepts the emitted output" metric (via `--swiftc-validate`)
+// measures at 94.3% on the same corpus. Both numbers grow together
+// as the compiler closes mapping gaps; this gate uses parsedClean
+// because it doesn't require swiftc on the runner.
+const DEFAULT_THRESHOLD = 70
 const threshold = thresholdArg ? Number(thresholdArg.slice('--threshold='.length)) : DEFAULT_THRESHOLD
 
 const { report, passed } = generateReport(threshold, includeSwiftc)
