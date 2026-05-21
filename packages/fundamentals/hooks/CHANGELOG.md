@@ -1,5 +1,15 @@
 # @pyreon/hooks
 
+## 0.24.3
+
+### Patch Changes
+
+- Updated dependencies [[`b5b87ab`](https://github.com/pyreon/pyreon/commit/b5b87abd2dcdf315260595b3f0b6d3908789c1fb)]:
+  - @pyreon/ui-core@0.24.3
+  - @pyreon/core@0.24.3
+  - @pyreon/reactivity@0.24.3
+  - @pyreon/styler@0.24.3
+
 ## 0.24.2
 
 ### Patch Changes
