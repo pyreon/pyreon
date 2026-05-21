@@ -8,6 +8,7 @@
  */
 
 import { onMount, splitProps } from '@pyreon/core'
+import type { VNodeChildAtom } from '@pyreon/core'
 import { render } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
 import { Content, Wrapper } from '../helpers'
@@ -101,6 +102,29 @@ const Component: PyreonElement = (props) => {
   // Getter — preserves reactivity of own.content (which may be _rp() wrapped).
   // Reading own.content via ?? at setup would capture the value once.
   const getChildren = () => own.children ?? own.content ?? own.label
+
+  // Resolve a slot value INSIDE a reactive accessor. If the consumer passed a
+  // function-returning-VNode (e.g. `content={() => <Icon name={signal()} />}`),
+  // unwrap it by calling — its body's signal reads are then tracked by the
+  // enclosing mountReactive effect, and the slot re-renders on signal change.
+  // Static VNodes / strings / null pass through unchanged to `render()`.
+  //
+  // Pre-fix: `render(() => <X/>)` treated the function as a COMPONENT and
+  // called `h(fn, {})` — the component body ran once at mount, future signal
+  // changes inside the body were never observed. Wrapping the JSX position in
+  // `{() => resolveSlot(...)}` plus unwrapping function values here is what
+  // makes `content={() => ...}` reactive (matches the
+  // `{() => show() ? <A/> : null}` pattern documented at
+  // runtime-dom/src/nodes.ts:90-93).
+  // Return type is the RESOLVED atom (VNodeChildAtom | VNodeChildAtom[]) —
+  // never a nested accessor — so the enclosing `() => resolveSlot(...)` IS
+  // a valid VNodeChildAccessor in the JSX child position.
+  const resolveSlot = (value: unknown): VNodeChildAtom | VNodeChildAtom[] => {
+    if (typeof value === 'function') {
+      return (value as () => VNodeChildAtom | VNodeChildAtom[])()
+    }
+    return render(value as Parameters<typeof render>[0]) as VNodeChildAtom | VNodeChildAtom[]
+  }
 
   const isInline = isInlineElement(own.tag)
   const SUB_TAG = isInline ? 'span' : undefined
@@ -201,7 +225,7 @@ const Component: PyreonElement = (props) => {
           extraStyles: own.css,
         })}
       >
-        {render(getChildren())}
+        {() => resolveSlot(getChildren())}
       </WrapperStyled>
     )
   }
@@ -209,7 +233,7 @@ const Component: PyreonElement = (props) => {
   if (isSimpleElement) {
     return (
       <Wrapper {...rest} {...WRAPPER_PROPS} isInline={isInline}>
-        {render(getChildren())}
+        {() => resolveSlot(getChildren())}
       </Wrapper>
     )
   }
@@ -228,7 +252,7 @@ const Component: PyreonElement = (props) => {
           equalCols={own.equalCols}
           gap={own.gap}
         >
-          {own.beforeContent}
+          {() => resolveSlot(own.beforeContent)}
         </Content>
       )}
 
@@ -242,7 +266,7 @@ const Component: PyreonElement = (props) => {
         alignY={contentAlignY}
         equalCols={own.equalCols}
       >
-        {getChildren()}
+        {() => resolveSlot(getChildren())}
       </Content>
 
       {own.afterContent && (
@@ -257,7 +281,7 @@ const Component: PyreonElement = (props) => {
           equalCols={own.equalCols}
           gap={own.gap}
         >
-          {own.afterContent}
+          {() => resolveSlot(own.afterContent)}
         </Content>
       )}
     </Wrapper>

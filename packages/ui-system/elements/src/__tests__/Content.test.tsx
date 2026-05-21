@@ -76,9 +76,17 @@ describe('Content component', () => {
     expect(result.props['data-pyr-element']).toBe('after')
   })
 
-  it('passes children through render()', () => {
+  it('passes children through render() when the slot accessor is invoked', () => {
+    // Content wraps its children in a reactive accessor `() => resolveSlot(...)`
+    // — render() is no longer called synchronously at component setup. The
+    // accessor is invoked by the runtime when the JSX child position mounts;
+    // here we invoke it directly to assert the wiring. The
+    // function-unwrap-then-render shape is what keeps `content={() => <X/>}`
+    // slot reactivity working (see Element-slot-reactivity.browser.test.tsx).
     const children = 'Some text'
-    Content({ children })
+    const result = asVNode(Content({ children }))
+    expect(typeof result.props.children).toBe('function')
+    ;(result.props.children as () => unknown)()
     expect(mocks.render).toHaveBeenCalledWith(children)
   })
 
