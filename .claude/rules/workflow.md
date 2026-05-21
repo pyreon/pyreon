@@ -12,6 +12,16 @@
 - "Alignment before implementation" — propose approach before coding complex changes
 - "One effort at a time" — focused batched progress, not scattered changes
 
+### Senior-engineer bar (applies to every task)
+
+The standing default a great senior engineer would apply — assume this is the bar unless the user explicitly relaxes it for a one-off:
+
+1. **Fundamentally correct over locally correct.** When picking a fix, ask whether the SHAPE of the solution is right at the architecture / API / contract level, not just whether it makes the current symptom go away. A patch that works today but recreates the bug class elsewhere is the wrong shape. Reach for the structural answer (right invariant, right abstraction, right trigger semantic) when one exists. PR #818's `paths-ignore` blacklist vs `paths: ['.changeset/**']` trigger-by-intent is the worked example — both fixed the symptom; only the second was fundamentally correct.
+2. **Verify the bug — don't just claim it.** Before fixing, REPRODUCE it (preferably as a regression test). After fixing, prove the fix held with bisect-verify-with-restore (see workflow.md "Bisect-verify regression tests"). "I changed the code and the symptom went away" is not proof — it can be confused with caching, parallel-run flake, or unrelated side effects.
+3. **Test end-to-end against the real shape.** Per `.claude/rules/test-environment-parity.md`: mock-vnode tests must have a parallel real-`h()` test; browser packages need real-Chromium smokes; framework-primitive changes need e2e against examples. The test environment must match the shape that ships to users.
+4. **Fix issues you find along the way.** While investigating a reported bug, you will encounter adjacent stale code, broken tests, or other small bugs. Fix them in the same PR (or surface them explicitly as separate PRs you immediately open). Do NOT silently leave them broken because they're "out of scope" — a senior engineer leaves the area cleaner than they found it. The exception is when a fix would balloon the PR's review surface — then open the followup PR immediately, don't add it to a TODO list that gets forgotten.
+5. **Disclose unknowns + caveats proactively.** When work is done, lead the summary with what's NOT in the PR + which assumptions you couldn't verify. Don't wait for the user to ask "is this complete?" (see feedback: dont-pretend-done).
+
 ## API Design Philosophy
 
 1. **Question the need** — Don't build what isn't needed
