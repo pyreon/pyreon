@@ -1,0 +1,7 @@
+generated/*
+!generated/.gitkeep
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+build/
+node_modules/
