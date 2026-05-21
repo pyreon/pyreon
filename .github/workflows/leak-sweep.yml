@@ -129,7 +129,15 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: leak-sweep-${{ inputs.app || 'perf-dashboard' }}-${{ steps.sha.outputs.sha }}
-          path: perf-results/leak-sweep-${{ steps.sha.outputs.sha }}-*.{json,md}
+          # Multi-line path is the documented canonical form for matching
+          # multiple files. The previous brace-expansion shorthand
+          # (`*.{json,md}`) is undocumented for upload-artifact: it relies
+          # on @actions/glob's internal Minimatch support, which works
+          # today but isn't part of the action's contract. The two-line
+          # list is explicitly supported across action versions.
+          path: |
+            perf-results/leak-sweep-${{ steps.sha.outputs.sha }}-*.json
+            perf-results/leak-sweep-${{ steps.sha.outputs.sha }}-*.md
           retention-days: 30
 
       - name: Post sweep summary as PR comment
