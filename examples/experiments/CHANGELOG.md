@@ -1,5 +1,17 @@
 # @pyreon/experiments
 
+## 0.1.10
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.24.1
+  - @pyreon/reactivity@0.24.1
+  - @pyreon/runtime-dom@0.24.1
+  - @pyreon/elements@0.24.1
+  - @pyreon/styler@0.24.1
+  - @pyreon/ui-core@0.24.1
+
 ## 0.1.9
 
 ### Patch Changes

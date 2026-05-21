@@ -1,5 +1,20 @@
 # @pyreon/example-perf-dashboard
 
+## 0.1.11
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.24.1
+  - @pyreon/reactivity@0.24.1
+  - @pyreon/runtime-dom@0.24.1
+  - @pyreon/form@0.24.1
+  - @pyreon/i18n@0.24.1
+  - @pyreon/query@0.24.1
+  - @pyreon/rx@0.24.1
+  - @pyreon/store@0.24.1
+  - @pyreon/styler@0.24.1
+
 ## 0.1.10
 
 ### Patch Changes
