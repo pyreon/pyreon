@@ -186,8 +186,11 @@ export function Counter() {
     expect(result).toBeDefined()
     // The signal inside the function body should NOT be rewritten to __hmr_signal
     expect(result!.code).not.toContain('__hmr_signal')
-    // But should get a debug name injected
-    expect(result!.code).toContain('signal(0, { name: "local" })')
+    // But should get a debug name + source location injected (the LPIH
+    // build-time injection, R4 follow-up — see lpih.md docs).
+    expect(result!.code).toMatch(
+      /signal\(0, \{ name: "local", __sourceLocation: \{ file: "\/src\/Counter\.tsx", line: \d+, col: \d+ \} \}\)/,
+    )
   })
 
   it('rewrites multiple module-scope signals', async () => {

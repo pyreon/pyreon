@@ -81,6 +81,32 @@ describe('LPIH — zero-cost when inactive', () => {
   })
 })
 
+describe('LPIH — __sourceLocation option (R4 build-time injection)', () => {
+  it('signal() prefers __sourceLocation over stack capture', () => {
+    activateReactiveDevtools()
+    // Simulate what @pyreon/vite-plugin's injectSignalNames emits:
+    const injected = { file: '/some/build/path.tsx', line: 99, col: 42 }
+    const s = signal(0, { name: 'test', __sourceLocation: injected })
+    const nodes = getReactiveGraph().nodes
+    expect(nodes).toHaveLength(1)
+    // The captured location is the INJECTED one, not the test file's location.
+    expect(nodes[0]?.loc?.file).toBe('/some/build/path.tsx')
+    expect(nodes[0]?.loc?.line).toBe(99)
+    expect(nodes[0]?.loc?.col).toBe(42)
+    void s
+  })
+
+  it('signal() falls back to stack capture when __sourceLocation is absent', () => {
+    activateReactiveDevtools()
+    const s = signal(0)
+    const nodes = getReactiveGraph().nodes
+    expect(nodes).toHaveLength(1)
+    // Stack capture → location is the test file.
+    expect(nodes[0]?.loc?.file).toContain('lpih-source-location.test.ts')
+    void s
+  })
+})
+
 describe('LPIH — source-location capture for signals', () => {
   it('captures the user call site for signal()', () => {
     activateReactiveDevtools()
