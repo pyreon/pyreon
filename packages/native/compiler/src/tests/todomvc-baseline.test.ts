@@ -21,7 +21,7 @@
 // 8 named gaps):
 //
 //   G1 TextField two-way binding (`text: $draft` on Swift)   ✓ CLOSED
-//   G2 Keyboard event handling (`onKeyDown` → `.onSubmit`)
+//   G2 Keyboard event handling (`onKeyDown` → `.onSubmit`)   ✓ CLOSED
 //   G3 Array mutation idioms (immutable spread vs platform mutate)
 //   G4 Object-in-array partial updates (`map(t => t.id === id ? ... : t)`)
 //   G5 @pyreon/storage cross-platform abstraction (`useStorage`)
@@ -90,6 +90,7 @@ describe('TodoMVC compile baseline', () => {
         var body: some View {
           VStack {
             TextField("What needs to be done?", text: $draft)
+              .onSubmit { addTodo() }
             ForEach(visible, id: \\.id) { t in
               TodoRow(todo: t)
             }
@@ -176,9 +177,24 @@ describe('TodoMVC gap-tracking baseline', () => {
     expect(out.code).toContain('onValueChange = { draft = it }')
   })
 
-  it.todo('G2 — onKeyDown=Enter handler emits `.onSubmit { ... }` on Swift', () => {
+  it('G2 — onKeyDown=Enter handler emits `.onSubmit { ... }` on Swift', () => {
+    // CLOSED by this PR. The TextField emit pattern-matches the
+    // canonical `(e) => e.key === 'Enter' && action()` shape on the
+    // `onKeyDown` event and appends a SwiftUI `.onSubmit { action() }`
+    // modifier. The locked Swift-emit snapshot above already proves
+    // this; the explicit assertion here is the gap-closure marker.
     const out = transform(source, { target: 'swift' })
-    expect(out.code).toMatch(/\.onSubmit\s*\{/)
+    expect(out.code).toMatch(/\.onSubmit\s*\{\s*addTodo\(\)\s*\}/)
+  })
+
+  it('G2 — onKeyDown=Enter handler emits Compose `keyboardActions` on Kotlin', () => {
+    // CLOSED by this PR. Same pattern as Swift — the Kotlin emit pairs
+    // `keyboardOptions(imeAction = ImeAction.Done)` so the soft keyboard
+    // shows "Done" + `keyboardActions(onDone = { action() })` so the
+    // submit fires the action.
+    const out = transform(source, { target: 'kotlin' })
+    expect(out.code).toContain('keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)')
+    expect(out.code).toMatch(/keyboardActions = KeyboardActions\(onDone = \{ addTodo\(\) \}\)/)
   })
 
   it.todo('G5 — useStorage<T>(key, default) emits @AppStorage on Swift', () => {

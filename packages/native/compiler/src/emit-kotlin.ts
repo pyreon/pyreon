@@ -24,6 +24,8 @@ let _signalEnumTypes: Map<string, string> = new Map()
 let _activeEnumType: string | undefined
 /** G1: every signal name in scope — see emit-swift.ts for the rationale. */
 let _signalNames: Set<string> = new Set()
+/** G2: every function decl name (Parser-A). Mirrors emit-swift's set. */
+let _functionNames: Set<string> = new Set()
 
 export function emitKotlin(components: ComponentIR[], enums: EnumIR[] = []): string {
   _enumNames = new Set(enums.map((e) => e.name))
@@ -60,11 +62,15 @@ function emitKotlinComponent(c: ComponentIR): string {
   // enum context.
   _signalEnumTypes = new Map()
   _signalNames = new Set()
+  _functionNames = new Set()
   for (const d of c.decls) {
     if (d.kind === 'signal' && d.type.kind === 'typeRef' && _enumNames.has(d.type.name)) {
       _signalEnumTypes.set(d.name, d.type.name)
     }
-    if (d.kind === 'signal') _signalNames.add(d.name)
+    // signal + computed both map to Kotlin `var`/`val`/`derivedStateOf`
+    // properties read without parens — same disambiguation as Swift.
+    if (d.kind === 'signal' || d.kind === 'computed') _signalNames.add(d.name)
+    if (d.kind === 'function') _functionNames.add(d.name)
   }
   const ctx: KotlinCtx = { synthesizedDataClasses: [], componentName: c.name }
   // First pass: walk decls, synthesizing data classes for anonymous object
@@ -96,6 +102,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   lines.push(`}`)
   _activePropsParamName = undefined
   _signalNames = new Set()
+  _functionNames = new Set()
   return lines.join('\n')
 }
 
@@ -321,8 +328,16 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         }
         return `${target} = ${value}`
       }
-      // Bare signal call `count()` → `count` (the delegated `by` makes it a plain read).
+      // Disambiguate signal/computed read vs function call for zero-
+      // arg identifier calls — same rationale as emit-swift.ts.
+      // Known function decl: keep parens (function call). Everything
+      // else (signal/computed/undeclared): bare emit so undeclared
+      // identifiers continue to round-trip via Kotlin's auto-read
+      // delegated `var by` shape.
       if (e.callee.kind === 'identifier' && e.args.length === 0) {
+        if (_functionNames.has(e.callee.name)) {
+          return `${kotlinIdent(e.callee.name)}()`
+        }
         return kotlinIdent(e.callee.name)
       }
       const callee = emitKotlinExpr(e.callee, indent)
@@ -446,9 +461,49 @@ function emitKotlinTextField(
       placeholderAttr && placeholderAttr.value.kind === 'literal'
         ? `, placeholder = { Text(${JSON.stringify(String(placeholderAttr.value.value))}) }`
         : ''
-    return `TextField(value = ${sig}, onValueChange = { ${sig} = it }${placeholder})`
+    // G2 — pattern-match onKeyDown={(e) => e.key === 'Enter' && action()}
+    // and pair Compose's `keyboardOptions` (so the IME shows "Done") with
+    // `keyboardActions = KeyboardActions(onDone = { action() })`.
+    const submit = extractEnterSubmitAction(e.attrs)
+    const keyboardArgs = submit
+      ? `, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { ${emitKotlinExpr(submit, indent + 2)} })`
+      : ''
+    return `TextField(value = ${sig}, onValueChange = { ${sig} = it }${keyboardArgs}${placeholder})`
   }
   return emitKotlinGeneric(e, indent)
+}
+
+/**
+ * G2 — pattern-match the canonical "submit on Enter" shape:
+ *
+ *   onKeyDown={(e) => e.key === 'Enter' && action()}
+ *
+ * Same shape as Swift's helper — see emit-swift.ts:extractEnterSubmitAction
+ * for the contract.
+ */
+function extractEnterSubmitAction(attrs: AttrIR[]): ExprIR | undefined {
+  const onKey = attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'keydown',
+  )
+  if (!onKey || onKey.handler.kind !== 'arrow') return undefined
+  const arrow = onKey.handler
+  if (arrow.params.length !== 1) return undefined
+  const paramName = arrow.params[0]!
+  const body = arrow.body
+  if (body.kind !== 'logical' || body.op !== '&&') return undefined
+  const left = body.left
+  if (left.kind !== 'comparison' || left.op !== '==') return undefined
+  if (
+    left.left.kind !== 'member' ||
+    left.left.object.kind !== 'identifier' ||
+    left.left.object.name !== paramName ||
+    left.left.property !== 'key'
+  ) {
+    return undefined
+  }
+  if (left.right.kind !== 'literal' || left.right.value !== 'Enter') return undefined
+  return body.right
 }
 
 function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {

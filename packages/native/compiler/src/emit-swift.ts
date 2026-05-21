@@ -41,9 +41,18 @@ let _activeEnumType: string | undefined
  * Per-component: every signal name in scope. Used by G1 (TextField
  * two-way binding) to know which `value={x}` attr identifiers match
  * a real \`@State\` declaration that supports SwiftUI's binding-
- * projection (\`$x\`) syntax.
+ * projection (\`$x\`) syntax. Also load-bearing at the call site:
+ * `signal()` (zero-arg call) emits as bare `signal` for signal reads.
  */
 let _signalNames: Set<string> = new Set()
+/**
+ * Per-component: every function decl name in scope (DeclIR.function —
+ * Parser-A). Disambiguates `addTodo()` (function call — keeps parens)
+ * from `count()` (signal read — drops parens). Without this set the
+ * call-emit can't tell the two shapes apart, since both arrive as
+ * `call(callee=identifier, args=[])` in the IR.
+ */
+let _functionNames: Set<string> = new Set()
 
 export function emitSwift(components: ComponentIR[], enums: EnumIR[] = []): string {
   _enumNames = new Set(enums.map((e) => e.name))
@@ -84,11 +93,20 @@ function emitSwiftComponent(c: ComponentIR): string {
   // G1: track every signal name so TextField's pattern-detection can
   // recognise binding-eligible identifiers.
   _signalNames = new Set()
+  // G2 (related correctness): track every function decl name so the
+  // call-emit keeps parens for `addTodo()` (function call) and drops
+  // them only for `count()` (signal read).
+  _functionNames = new Set()
   for (const d of c.decls) {
     if (d.kind === 'signal' && d.type.kind === 'typeRef' && _enumNames.has(d.type.name)) {
       _signalEnumTypes.set(d.name, d.type.name)
     }
-    if (d.kind === 'signal') _signalNames.add(d.name)
+    // Both signal AND computed map to Swift properties (read without
+    // parens). Track both under `_signalNames` so the call-emit drops
+    // parens for both. (Naming is a slight misnomer kept for continuity
+    // with G1; could rename to `_propertyNames` in a follow-up cleanup.)
+    if (d.kind === 'signal' || d.kind === 'computed') _signalNames.add(d.name)
+    if (d.kind === 'function') _functionNames.add(d.name)
   }
   const lines: string[] = []
   // `swiftIdent` backtick-escapes Swift-reserved keywords. Pyreon
@@ -113,6 +131,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   _activePropsParamName = undefined
   _signalEnumTypes = new Map()
   _signalNames = new Set()
+  _functionNames = new Set()
   return lines.join('\n')
 }
 
@@ -315,9 +334,25 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         }
         return `${target} = ${value}`
       }
-      // Bare signal call `count()` → `count` (Swift @State is read directly).
-      // We treat any zero-arg call to an Identifier as a signal/computed read.
+      // Disambiguate signal/computed read vs function call for zero-
+      // arg identifier calls. Both arrive as `call(ident, [])` in the
+      // IR — `_functionNames` (Parser-A function decls) distinguishes.
+      //
+      //   count()      → count       (signal/computed read — Swift @State /
+      //                                computed property accessed directly)
+      //   addTodo()    → addTodo()   (function call — parens preserved)
+      //
+      // Pre-G2 this branch unconditionally dropped parens for every
+      // zero-arg identifier call — a real bug for function decls, e.g.
+      // `Button { clearCompleted }` (closure returning the function
+      // reference, never calling it). Unknown identifiers (including
+      // dropped-from-parser shapes like `useStorage` returns that the
+      // type-mapper doesn't yet handle) keep the pre-G2 bare-emit so
+      // the snapshot doesn't expose lurking gaps prematurely.
       if (e.callee.kind === 'identifier' && e.args.length === 0) {
+        if (_functionNames.has(e.callee.name)) {
+          return `${swiftIdent(e.callee.name)}()`
+        }
         return swiftIdent(e.callee.name)
       }
       const callee = emitSwiftExpr(e.callee, indent)
@@ -465,10 +500,63 @@ function emitSwiftTextField(
       placeholderAttr && placeholderAttr.value.kind === 'literal'
         ? JSON.stringify(String(placeholderAttr.value.value))
         : '""'
-    return `TextField(${placeholder}, text: $${swiftIdent(signalName)})`
+    let out = `TextField(${placeholder}, text: $${swiftIdent(signalName)})`
+    // G2 — pattern-match onKeyDown={(e) => e.key === 'Enter' && action()}
+    // and append `.onSubmit { action() }`. Other onKeyDown shapes drop
+    // through silently (the parser already records the event for
+    // future emit; we just don't have a SwiftUI equivalent for them).
+    const submit = extractEnterSubmitAction(e.attrs)
+    if (submit) {
+      const pad = ' '.repeat(indent + 2)
+      out += `\n${pad}.onSubmit { ${emitSwiftExpr(submit, indent + 2)} }`
+    }
+    return out
   }
   // Fall through to generic emit when the pattern doesn't match.
   return emitSwiftGeneric(e, indent)
+}
+
+/**
+ * G2 — pattern-match the canonical "submit on Enter" shape:
+ *
+ *   onKeyDown={(e) => e.key === 'Enter' && action()}
+ *
+ * Returns the action expression on match (the right side of `&&`),
+ * otherwise undefined. Keeps the pattern STRICT — only fires on:
+ *   - `event.name === 'keydown'` (`onKeyDown`)
+ *   - handler is a single-param arrow
+ *   - body is `LogicalExpression(&&)` where left is `e.key === 'Enter'`
+ *     (using the same param name the arrow declared)
+ *
+ * Any non-matching shape (different key, &&-chains, ternaries, switch)
+ * silently falls through — SwiftUI's `.onSubmit` covers exactly this
+ * shape and nothing else. Future expansions (Escape → .onCancel) can
+ * extend this helper.
+ */
+function extractEnterSubmitAction(attrs: AttrIR[]): ExprIR | undefined {
+  const onKey = attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'keydown',
+  )
+  if (!onKey || onKey.handler.kind !== 'arrow') return undefined
+  const arrow = onKey.handler
+  if (arrow.params.length !== 1) return undefined
+  const paramName = arrow.params[0]!
+  const body = arrow.body
+  if (body.kind !== 'logical' || body.op !== '&&') return undefined
+  // left: `<paramName>.key === 'Enter'` (comparison with == after coalesce)
+  const left = body.left
+  if (left.kind !== 'comparison' || left.op !== '==') return undefined
+  if (
+    left.left.kind !== 'member' ||
+    left.left.object.kind !== 'identifier' ||
+    left.left.object.name !== paramName ||
+    left.left.property !== 'key'
+  ) {
+    return undefined
+  }
+  if (left.right.kind !== 'literal' || left.right.value !== 'Enter') return undefined
+  return body.right
 }
 
 function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
