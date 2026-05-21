@@ -1,5 +1,13 @@
 # @pyreon/connector-document
 
+## 0.24.5
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.24.5
+  - @pyreon/document@0.24.5
+
 ## 0.24.4
 
 ### Patch Changes
