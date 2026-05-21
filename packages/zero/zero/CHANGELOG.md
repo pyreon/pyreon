@@ -1,5 +1,20 @@
 # @pyreon/zero
 
+## 0.24.5
+
+### Patch Changes
+
+- Updated dependencies [[`172b366`](https://github.com/pyreon/pyreon/commit/172b3663095ac9888d59d719a545f4473d238e52)]:
+  - @pyreon/vite-plugin@0.24.5
+  - @pyreon/core@0.24.5
+  - @pyreon/head@0.24.5
+  - @pyreon/reactivity@0.24.5
+  - @pyreon/router@0.24.5
+  - @pyreon/runtime-dom@0.24.5
+  - @pyreon/runtime-server@0.24.5
+  - @pyreon/server@0.24.5
+  - @pyreon/meta@0.24.5
+
 ## 0.24.4
 
 ### Patch Changes
