@@ -1,0 +1,127 @@
+# XcodeGen project spec — turns this directory into an iOS Xcode
+# project without committing the .xcodeproj's brittle binary format.
+#
+# Usage:
+#   xcodegen generate   (run from this directory)
+#   open PyreonCounter.xcodeproj
+#
+# `xcodegen` is a community-standard tool that reads this YAML and
+# emits a deterministic .xcodeproj. Documented + brew-installable
+# (`brew install xcodegen`). Repo-side convention used by Vapor,
+# SwiftLint, lots of Apple/community Swift projects.
+#
+# Why xcodegen vs. committing the .xcodeproj directly:
+#
+#   1. Apple's .xcodeproj is a directory of XML/plist with full
+#      file paths baked in — moving directories breaks references.
+#   2. Multiple machines produce different .pbxproj orderings, so
+#      diffs are noisy even when nothing meaningful changed.
+#   3. The YAML spec IS the source of truth; the .xcodeproj
+#      regenerates deterministically from it.
+
+name: PyreonCounter
+
+# `options.bundleIdPrefix` becomes the prefix for the target bundle
+# identifier — `com.pyreon.PyreonCounter` for the iOS app target. Not
+# load-bearing for local builds; Apple's TestFlight pipeline cares.
+options:
+  bundleIdPrefix: com.pyreon
+  deploymentTarget:
+    iOS: '17.0'
+
+# Pre-build script — runs the Pyreon compile loop BEFORE Swift
+# compilation. Without this, you'd have to remember to run
+# `./scripts/build.sh` manually before every Xcode build. The script
+# is idempotent — re-running it just overwrites `generated/`.
+#
+# `runOnlyWhenInstalling: false` ensures this runs on every build,
+# not just install builds. `basedOnDependencyAnalysis: false` tells
+# Xcode to always run it regardless of input-file mtimes — needed
+# because the script's outputs depend on contents the project's
+# dependency analyzer can't fully model (the bun runtime + workspace
+# resolution).
+preBuildScripts:
+  - script: |
+      # Run from the project directory regardless of how Xcode invokes us.
+      cd "${SRCROOT}"
+      bash scripts/build.sh
+    name: '[Pyreon] Compile .tsx → generated/Counter.swift'
+    runOnlyWhenInstalling: false
+    basedOnDependencyAnalysis: false
+
+# The single iOS app target. SwiftUI-only — no AppDelegate, no
+# storyboards. Hosts the compiler-emitted Counter struct.
+targets:
+  PyreonCounter:
+    type: application
+    platform: iOS
+    deploymentTarget: '17.0'
+
+    # Sources: BOTH the hand-written iOS host code AND the
+    # compiler-emitted generated Swift. xcodegen resolves these to
+    # file references in the .pbxproj at generation time.
+    sources:
+      - path: ios
+        type: group
+      - path: generated
+        type: group
+        # `optional: true` — generated/ may not exist before the first
+        # build (it's gitignored). xcodegen tolerates the missing dir;
+        # the preBuildScript creates it.
+        optional: true
+
+    # Info.plist — xcodegen regenerates this from the properties below.
+    # Listing all properties EXPLICITLY rather than letting xcodegen merge
+    # against the hand-authored file, because xcodegen's default merge
+    # mode strips fields it doesn't know about (UIApplicationSceneManifest,
+    # LSRequiresIPhoneOS, etc.). The list below recreates the original
+    # Info.plist contents 1:1.
+    info:
+      path: ios/Info.plist
+      properties:
+        CFBundleDevelopmentRegion: en
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleInfoDictionaryVersion: '6.0'
+        CFBundleName: $(PRODUCT_NAME)
+        CFBundlePackageType: APPL
+        CFBundleShortVersionString: 0.0.1
+        CFBundleVersion: '1'
+        LSRequiresIPhoneOS: true
+        # iOS 13+ SceneDelegate manifest. SwiftUI-only apps still need
+        # this (the @main App protocol uses the Scene API internally).
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        # iOS 14+ launch screen. Empty dict = use default (instead of
+        # a deprecated LaunchScreen.storyboard).
+        UILaunchScreen: {}
+        # Old armv7 capability flag — pre-iOS-11 cruft but standard
+        # for Xcode-templated projects.
+        UIRequiredDeviceCapabilities:
+          - armv7
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+
+    settings:
+      base:
+        # PRODUCT_BUNDLE_IDENTIFIER becomes the app's unique ID on
+        # the simulator + Apple sign-in flows. Avoiding a wildcard
+        # so it matches conventions in the rest of the project.
+        PRODUCT_BUNDLE_IDENTIFIER: com.pyreon.PyreonCounter
+        # Disable bitcode (deprecated in Xcode 14+ but some older
+        # build settings inherit ENABLE_BITCODE=YES).
+        ENABLE_BITCODE: NO
+        # Swift 5 dialect — matches the runtime-swift package.
+        SWIFT_VERSION: '5.0'
+        # Code signing — `Automatic` lets Xcode pick a personal team
+        # for simulator builds without manual configuration. CI / real
+        # device builds override this.
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGNING_ALLOWED: YES
+        CODE_SIGNING_REQUIRED: YES
+
+      configs:
+        Debug:
+          SWIFT_OPTIMIZATION_LEVEL: -Onone
+        Release:
+          SWIFT_OPTIMIZATION_LEVEL: -O
