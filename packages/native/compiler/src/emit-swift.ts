@@ -15,12 +15,46 @@ import type {
   ChildIR,
   ComponentIR,
   DeclIR,
+  EnumIR,
   ExprIR,
   TypeIR,
 } from './types'
 
-export function emitSwift(components: ComponentIR[]): string {
-  return components.map(emitSwiftComponent).join('\n\n')
+// String-literal-union enums recognised by the parser. Built at the
+// emit() entry; threaded as module-state to per-expression emit code
+// that needs to know whether `"all"` should rewrite to `.all`:
+//
+//   - `@State private var filter: Filter = .all` — the signal decl's
+//     initial value when the declared type is a known enum.
+//   - `filter = .active` — the .set() call's argument when the
+//     target is a signal whose type is a known enum.
+//
+// Identical module-state pattern to `_activePropsParamName` below —
+// the emitter avoids ctx-threading at 22+ call sites.
+let _enumNames: Set<string> = new Set()
+/** Per-component: signal/computed name → enum-type-name when typed as one. */
+let _signalEnumTypes: Map<string, string> = new Map()
+/** Set when emitting a signal initial value that's an enum-typed signal. */
+let _activeEnumType: string | undefined
+
+export function emitSwift(components: ComponentIR[], enums: EnumIR[] = []): string {
+  _enumNames = new Set(enums.map((e) => e.name))
+  const parts: string[] = []
+  for (const e of enums) parts.push(emitSwiftEnum(e))
+  for (const c of components) parts.push(emitSwiftComponent(c))
+  _enumNames = new Set()
+  return parts.join('\n\n')
+}
+
+/**
+ * Emit a Swift `enum X: String { case a, b, c }`. The `: String` raw-
+ * value backing lets Swift convert between the string literal source
+ * and the enum case via init?(rawValue:) — useful for storage / URL
+ * round-trips later, no cost in the canonical match-on-enum usage.
+ */
+function emitSwiftEnum(e: EnumIR): string {
+  const cases = e.cases.join(', ')
+  return `enum ${e.name}: String {\n  case ${cases}\n}`
 }
 
 // Module-scoped state for the active component's props-param-name. Set at
@@ -36,6 +70,14 @@ let _activePropsParamName: string | undefined
 function emitSwiftComponent(c: ComponentIR): string {
   const inferCtx = buildInferenceCtx(c.decls)
   _activePropsParamName = c.propsParamName
+  // Build the per-component signal-name → enum-type-name map for use
+  // at `.set()` call sites later in the body.
+  _signalEnumTypes = new Map()
+  for (const d of c.decls) {
+    if (d.kind === 'signal' && d.type.kind === 'typeRef' && _enumNames.has(d.type.name)) {
+      _signalEnumTypes.set(d.name, d.type.name)
+    }
+  }
   const lines: string[] = []
   // `swiftIdent` backtick-escapes Swift-reserved keywords. Pyreon
   // user code commonly exports functions named `guard` (route guard
@@ -57,13 +99,21 @@ function emitSwiftComponent(c: ComponentIR): string {
   lines.push(`  }`)
   lines.push(`}`)
   _activePropsParamName = undefined
+  _signalEnumTypes = new Map()
   return lines.join('\n')
 }
 
 function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>): string {
   if (d.kind === 'signal') {
     const type = swiftType(d.type)
-    return `@State private var ${swiftIdent(d.name)}: ${type} = ${emitSwiftExpr(d.initial, 0)}`
+    // If the signal's declared type is a known enum, set the active-enum
+    // context so the initial-value emit knows to rewrite a string literal
+    // (`"all"`) as an enum case (`.all`).
+    const isEnumTyped = d.type.kind === 'typeRef' && _enumNames.has(d.type.name)
+    if (isEnumTyped) _activeEnumType = (d.type as { name: string }).name
+    const initial = emitSwiftExpr(d.initial, 0)
+    _activeEnumType = undefined
+    return `@State private var ${swiftIdent(d.name)}: ${type} = ${initial}`
   }
   // computed — infer the return type from the expression body so we
   // can emit a typed computed property. Falls back to `Any` for cases
@@ -156,7 +206,17 @@ function swiftUnionType(branches: TypeIR[]): string {
 function emitSwiftExpr(e: ExprIR, indent: number): string {
   switch (e.kind) {
     case 'literal':
-      if (typeof e.value === 'string') return JSON.stringify(e.value)
+      if (typeof e.value === 'string') {
+        // Rewrite string-literal → enum-case (`.all`) when in a known
+        // enum-typed context. Conservative: only when the literal is
+        // actually a valid case for the active enum. Falls back to
+        // the raw string so non-enum String literals (`placeholder:
+        // "..."`) emit unchanged.
+        if (_activeEnumType !== undefined) {
+          return `.${e.value}`
+        }
+        return JSON.stringify(e.value)
+      }
       return String(e.value)
     case 'identifier':
       return swiftIdent(e.name)
@@ -164,7 +224,24 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // Special case: `signal.set(x)` → `signal = x` (Swift @State is a var).
       if (e.callee.kind === 'member' && e.callee.property === 'set') {
         const target = emitSwiftExpr(e.callee.object, indent)
+        // Look up whether the target signal is enum-typed (e.g.
+        // `filter.set('active')` where `filter` is declared as
+        // `signal<Filter>('all')` with Filter in `_enumNames`). If so,
+        // emit the argument with the active-enum context set so a
+        // string literal arg rewrites to `.case`. Conservative — non-
+        // identifier callees stay as plain emit.
+        let prevEnumType: string | undefined
+        if (e.callee.object.kind === 'identifier') {
+          const enumType = _signalEnumTypes.get(e.callee.object.name)
+          if (enumType !== undefined) {
+            prevEnumType = _activeEnumType
+            _activeEnumType = enumType
+          }
+        }
         const value = e.args[0] ? emitSwiftExpr(e.args[0], indent) : '0'
+        if (prevEnumType !== undefined || _activeEnumType !== undefined) {
+          _activeEnumType = prevEnumType
+        }
         return `${target} = ${value}`
       }
       // Bare signal call `count()` → `count` (Swift @State is read directly).

@@ -13,6 +13,8 @@ export type { TargetLanguage, EmitOptions, TransformResult } from './types'
 export function transform(source: string, options: EmitOptions): TransformResult {
   const parsed = parsePyreon(source)
   const code =
-    options.target === 'swift' ? emitSwift(parsed.components) : emitKotlin(parsed.components)
+    options.target === 'swift'
+      ? emitSwift(parsed.components, parsed.enums)
+      : emitKotlin(parsed.components, parsed.enums)
   return { code, warnings: parsed.warnings }
 }

@@ -10,12 +10,30 @@ import type {
   ChildIR,
   ComponentIR,
   DeclIR,
+  EnumIR,
   ExprIR,
   TypeIR,
 } from './types'
 
-export function emitKotlin(components: ComponentIR[]): string {
-  return components.map(emitKotlinComponent).join('\n\n')
+// Mirror of emit-swift.ts's enum-state machinery. See that file's
+// `_enumNames` / `_signalEnumTypes` / `_activeEnumType` comment for
+// the structural rationale (avoiding ctx-threading at all call sites).
+let _enumNames: Set<string> = new Set()
+let _signalEnumTypes: Map<string, string> = new Map()
+let _activeEnumType: string | undefined
+
+export function emitKotlin(components: ComponentIR[], enums: EnumIR[] = []): string {
+  _enumNames = new Set(enums.map((e) => e.name))
+  const parts: string[] = []
+  for (const e of enums) parts.push(emitKotlinEnum(e))
+  for (const c of components) parts.push(emitKotlinComponent(c))
+  _enumNames = new Set()
+  return parts.join('\n\n')
+}
+
+/** Emit a Kotlin `enum class X { a, b, c }`. */
+function emitKotlinEnum(e: EnumIR): string {
+  return `enum class ${e.name} { ${e.cases.join(', ')} }`
 }
 
 interface KotlinCtx {
@@ -33,6 +51,16 @@ let _activePropsParamName: string | undefined
 
 function emitKotlinComponent(c: ComponentIR): string {
   _activePropsParamName = c.propsParamName
+  // Build the per-component signal-name → enum-type-name map for use
+  // at `.set()` call sites — mirrors Swift emit. Note: the type field
+  // is read BEFORE emitKotlinDecl runs so the decl emit can see the
+  // enum context.
+  _signalEnumTypes = new Map()
+  for (const d of c.decls) {
+    if (d.kind === 'signal' && d.type.kind === 'typeRef' && _enumNames.has(d.type.name)) {
+      _signalEnumTypes.set(d.name, d.type.name)
+    }
+  }
   const ctx: KotlinCtx = { synthesizedDataClasses: [], componentName: c.name }
   // First pass: walk decls, synthesizing data classes for anonymous object
   // types found in array-of-object signals. The decls themselves are
@@ -75,7 +103,13 @@ function emitKotlinDataClass(synth: {
 
 function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   if (d.kind === 'signal') {
+    // When the signal's declared type is a known enum, set the active-
+    // enum context so the initial-value emit rewrites a string literal
+    // (`"all"`) as an enum case (`Filter.all`).
+    const isEnumTyped = d.type.kind === 'typeRef' && _enumNames.has(d.type.name)
+    if (isEnumTyped) _activeEnumType = (d.type as { name: string }).name
     const initial = emitKotlinExpr(d.initial, 0)
+    _activeEnumType = undefined
     // For empty-array initials, Kotlin's `listOf()` returns `List<Nothing>`,
     // which can't be added to. Use the type annotation to emit an explicit
     // generic on `mutableStateOf<List<T>>(listOf())`. Non-array types use
@@ -186,7 +220,15 @@ function synthesizeDataClassName(componentName: string, signalName?: string): st
 function emitKotlinExpr(e: ExprIR, indent: number): string {
   switch (e.kind) {
     case 'literal':
-      if (typeof e.value === 'string') return JSON.stringify(e.value)
+      if (typeof e.value === 'string') {
+        // Rewrite string-literal → enum-case (`Filter.all`) when in a
+        // known enum-typed context. Kotlin requires the enum-name
+        // qualifier (vs Swift's `.case` type-inferred shorthand).
+        if (_activeEnumType !== undefined) {
+          return `${_activeEnumType}.${e.value}`
+        }
+        return JSON.stringify(e.value)
+      }
       if (typeof e.value === 'boolean') return e.value ? 'true' : 'false'
       return String(e.value)
     case 'identifier':
@@ -195,7 +237,21 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // `signal.set(x)` → `signal = x` (Kotlin's `by mutableStateOf` is a var).
       if (e.callee.kind === 'member' && e.callee.property === 'set') {
         const target = emitKotlinExpr(e.callee.object, indent)
+        // Enum-aware: when the target signal is enum-typed, set the
+        // active-enum context so a string-literal arg rewrites to a
+        // qualified enum case. Mirrors the Swift emit's pattern.
+        let prevEnumType: string | undefined
+        if (e.callee.object.kind === 'identifier') {
+          const enumType = _signalEnumTypes.get(e.callee.object.name)
+          if (enumType !== undefined) {
+            prevEnumType = _activeEnumType
+            _activeEnumType = enumType
+          }
+        }
         const value = e.args[0] ? emitKotlinExpr(e.args[0], indent) : '0'
+        if (prevEnumType !== undefined || _activeEnumType !== undefined) {
+          _activeEnumType = prevEnumType
+        }
         return `${target} = ${value}`
       }
       // Bare signal call `count()` → `count` (the delegated `by` makes it a plain read).

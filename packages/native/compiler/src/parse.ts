@@ -10,6 +10,7 @@ import type {
   ChildIR,
   ComponentIR,
   DeclIR,
+  EnumIR,
   ExprIR,
   ParseResult,
   TypeIR,
@@ -31,13 +32,69 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   const ctx: ParseCtx = { warnings: [], source }
   const ast = parseSync(filename, source, { sourceType: 'module', lang: 'tsx' })
   const components: ComponentIR[] = []
+  const enums: EnumIR[] = []
 
   for (const node of ast.program.body as AnyNode[]) {
     const comp = tryComponentFromTopLevel(node, ctx)
     if (comp) components.push(comp)
+    const en = tryEnumFromTypeAlias(node, ctx)
+    if (en) enums.push(en)
   }
 
-  return { components, warnings: ctx.warnings }
+  return { components, enums, warnings: ctx.warnings }
+}
+
+/**
+ * Extract a string-literal union type alias as a native enum. Source:
+ *
+ *   type Filter = 'all' | 'active' | 'completed'
+ *   export type Filter = ...
+ *
+ * Reads the oxc shape: `TSTypeAliasDeclaration` with body `TSUnionType`
+ * whose every branch is a `TSLiteralType` wrapping a string `Literal`.
+ *
+ * Returns null for:
+ *   - non-union type aliases (`type Foo = string`)
+ *   - non-string union members (`type Mixed = 1 | 'a'`)
+ *   - generic type-parameter aliases (`type Box<T> = ...`)
+ */
+function tryEnumFromTypeAlias(node: AnyNode, ctx: ParseCtx): EnumIR | null {
+  // Walk through `ExportNamedDeclaration` to the type alias.
+  let alias: AnyNode | null = null
+  if (
+    node.type === 'ExportNamedDeclaration' &&
+    node.declaration?.type === 'TSTypeAliasDeclaration'
+  ) {
+    alias = node.declaration
+  } else if (node.type === 'TSTypeAliasDeclaration') {
+    alias = node
+  }
+  if (!alias) return null
+  // Skip generic type parameters — `type Box<T> = T | null` isn't a
+  // closed enum.
+  if (alias.typeParameters?.params?.length > 0) return null
+  const name = alias.id?.name as string | undefined
+  if (!name) return null
+  const body = alias.typeAnnotation as AnyNode | undefined
+  if (!body || body.type !== 'TSUnionType') return null
+  const branches = body.types as AnyNode[] | undefined
+  if (!branches || branches.length === 0) return null
+  const cases: string[] = []
+  for (const branch of branches) {
+    if (branch.type !== 'TSLiteralType') return null
+    const lit = branch.literal as AnyNode | undefined
+    if (!lit || lit.type !== 'Literal') return null
+    const v = lit.value
+    if (typeof v !== 'string') return null
+    // Empty-string enum cases would be valid TS but invalid Swift /
+    // Kotlin identifiers — defensive bail.
+    if (v.length === 0) {
+      ctx.warnings.push(`Enum ${name}: skipped empty-string union branch.`)
+      return null
+    }
+    cases.push(v)
+  }
+  return { name, cases }
 }
 
 /** Extract a component from `export function NAME(...) { ... }`. */

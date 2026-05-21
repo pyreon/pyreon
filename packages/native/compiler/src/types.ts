@@ -110,8 +110,36 @@ export type ChildIR =
   /** Interpolation: `<Text>{count}</Text>`. */
   | { kind: 'expr'; expr: ExprIR }
 
+/**
+ * String-literal union type alias emitted as a native enum. Source:
+ *
+ *   type Filter = 'all' | 'active' | 'completed'
+ *
+ * Swift emit:
+ *
+ *   enum Filter: String { case all, active, completed }
+ *
+ * Kotlin emit:
+ *
+ *   enum class Filter { all, active, completed }
+ *
+ * Pyreon's signal-based reactivity is structurally aligned with both
+ * targets' enum primitives — using a native enum is strictly better
+ * than emitting raw String (typesafe; pattern-match-able) AND lets the
+ * compiler convert literal usages (`'all'` → `.all` on Swift) at the
+ * use site. Closes gap G6 from `native-platforms-todomvc-walkthrough.md`.
+ */
+export interface EnumIR {
+  /** Alias name from `type X = ...` declaration. */
+  name: string
+  /** Allowed values from the union branches (`'all'` → `'all'`). */
+  cases: string[]
+}
+
 export interface ParseResult {
   components: ComponentIR[]
+  /** String-literal-union type aliases lifted to native enums. */
+  enums: EnumIR[]
   /** Diagnostic messages produced during IR construction. */
   warnings: string[]
 }
