@@ -34,6 +34,26 @@ export type TypeIR =
   | { kind: 'boolean' }
   | { kind: 'array'; element: TypeIR }
   | { kind: 'object'; fields: { name: string; type: TypeIR }[] }
+  | { kind: 'null' }
+  | { kind: 'undefined' }
+  /**
+   * Union types — `string | number`, `Foo | null` (nullable), etc.
+   * The branches are flat (no nested unions); the type mapper handles
+   * the common nullable shapes (`T | null`, `T | undefined`) by
+   * emitting Swift/Kotlin Optional / nullable types; mixed-type unions
+   * (`string | number`) fall back to `Any` per target since neither
+   * Swift nor Kotlin has a structural union primitive.
+   */
+  | { kind: 'union'; branches: TypeIR[] }
+  /**
+   * Named type reference — `Foo`, `MyInterface`. The Phase 0 parser
+   * doesn't follow imports, so it can't resolve the referenced type.
+   * The reference is preserved by name and emitted verbatim per target
+   * (Swift / Kotlin both accept named type references resolved at
+   * their respective compile time). Generic args (e.g. `Array<T>`)
+   * propagate.
+   */
+  | { kind: 'typeRef'; name: string; args: TypeIR[] }
   | { kind: 'unknown' }
 
 export type ExprIR =

@@ -123,6 +123,19 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       return { kind: 'string' }
     case 'TSBooleanKeyword':
       return { kind: 'boolean' }
+    case 'TSNullKeyword':
+      return { kind: 'null' }
+    case 'TSUndefinedKeyword':
+      // `undefined` in TS — both Swift and Kotlin model this as the
+      // null-ish branch of an Optional / nullable type.
+      return { kind: 'undefined' }
+    case 'TSAnyKeyword':
+    case 'TSUnknownKeyword':
+    case 'TSVoidKeyword':
+    case 'TSNeverKeyword':
+      // Top/bottom types — degrade to `unknown` IR (emits as `Any` /
+      // `Any?` per target). Phase 1 may refine the void/never cases.
+      return { kind: 'unknown' }
     case 'TSArrayType':
       return { kind: 'array', element: parseTypeAnnotation(node.elementType, ctx) }
     case 'TSTypeLiteral': {
@@ -133,6 +146,47 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
           type: parseTypeAnnotation(m.typeAnnotation.typeAnnotation, ctx),
         }))
       return { kind: 'object', fields }
+    }
+    case 'TSUnionType': {
+      // Flat union — collapse nested unions and preserve branch order.
+      const branches: TypeIR[] = []
+      for (const t of node.types as AnyNode[]) {
+        const parsed = parseTypeAnnotation(t, ctx)
+        if (parsed.kind === 'union') branches.push(...parsed.branches)
+        else branches.push(parsed)
+      }
+      return { kind: 'union', branches }
+    }
+    case 'TSTypeReference': {
+      // `Foo`, `MyInterface`, `Array<T>`, `Promise<string>`, etc. The
+      // Phase 0 parser doesn't follow imports so we preserve the name
+      // verbatim + recursively-parsed generic args. Per-target emit
+      // decides how to render. Common stdlib references (e.g. `Array`)
+      // are handled by the emitter's typeRef case.
+      const nameNode = node.typeName as AnyNode
+      let name = '(unresolved-typeRef)'
+      if (nameNode?.type === 'Identifier') name = nameNode.name as string
+      else if (nameNode?.type === 'TSQualifiedName') {
+        // namespaced like `Foo.Bar` — keep as-is for now
+        name = `${nameNode.left?.name ?? ''}.${nameNode.right?.name ?? ''}`
+      }
+      const params = node.typeArguments?.params as AnyNode[] | undefined
+      const args = params ? params.map((p) => parseTypeAnnotation(p, ctx)) : []
+      return { kind: 'typeRef', name, args }
+    }
+    case 'TSLiteralType': {
+      // String / numeric / boolean literal types — `'a' | 'b' | 'c'`
+      // unions are common. Degrade the literal to its base type so the
+      // union collapse produces something usable per target.
+      //
+      // oxc emits the literal child as type 'Literal' with the value
+      // carrying the JS-level type. Walk the `value` field to discriminate.
+      const lit = node.literal as AnyNode | undefined
+      if (!lit) return { kind: 'unknown' }
+      if (typeof lit.value === 'string') return { kind: 'string' }
+      if (typeof lit.value === 'number') return { kind: 'number' }
+      if (typeof lit.value === 'boolean') return { kind: 'boolean' }
+      return { kind: 'unknown' }
     }
     default:
       ctx.warnings.push(`Unknown type annotation: ${node.type}.`)
