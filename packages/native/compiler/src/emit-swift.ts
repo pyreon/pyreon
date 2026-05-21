@@ -432,6 +432,31 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // would be ideal but the IR doesn't carry context.
       return emitSwiftExpr(e.argument, indent)
     case 'object': {
+      // G4 — partial-update form. When the object has EXACTLY ONE
+      // spread and that spread argument is a bare identifier (typical
+      // shape: `{ ...t, done: !t.done }` inside `.map(t => ...)`),
+      // emit Swift's immediately-invoked closure that copies the source
+      // and applies the overrides:
+      //
+      //   { ...t, done: !t.done }   →   { var c = t; c.done = !t.done; return c }()
+      //
+      // Works for BOTH struct sources (`struct Todo { var ... }`) and
+      // labelled tuple sources (`let t: (id: Int, text: String, done:
+      // Bool) = (...)`), which is what Pyreon currently emits for
+      // anonymous record types. Swift accepts `copy.field = value` on
+      // tuples with labelled fields, so the partial-update form is
+      // semantically equivalent to JS's object spread.
+      //
+      // Other shapes (multi-spread, non-identifier spread) fall through
+      // to the existing tuple-literal emit — those require richer
+      // type-context the Phase 1 inferer doesn't yet carry.
+      if (e.spreads && e.spreads.length === 1 && e.spreads[0]!.kind === 'identifier') {
+        const target = emitSwiftExpr(e.spreads[0]!, indent)
+        const overrides = e.fields
+          .map((f) => `c.${swiftIdent(f.name)} = ${emitSwiftExpr(f.value, indent)}`)
+          .join('; ')
+        return `{ var c = ${target}; ${overrides}; return c }()`
+      }
       const fields = e.fields.map((f) => `${f.name}: ${emitSwiftExpr(f.value, indent)}`).join(', ')
       return `(${fields})`
     }
