@@ -33,6 +33,7 @@ const directionToZero = (direction: Direction): string => {
   }
 }
 
+/* #__NO_SIDE_EFFECTS__ */
 export const createFade = ({
   direction,
   distance = 16,
@@ -63,6 +64,7 @@ export const createFade = ({
   }
 }
 
+/* #__NO_SIDE_EFFECTS__ */
 export const createSlide = ({
   direction = 'up',
   distance = 16,
@@ -83,6 +85,7 @@ export const createSlide = ({
   }
 }
 
+/* #__NO_SIDE_EFFECTS__ */
 export const createScale = ({
   from = 0.9,
   duration = 300,
@@ -98,6 +101,7 @@ export const createScale = ({
   leaveTransition: `all ${leaveDuration}ms ${leaveEasing}`,
 })
 
+/* #__NO_SIDE_EFFECTS__ */
 export const createRotate = ({
   degrees = 15,
   duration = 300,
@@ -113,6 +117,7 @@ export const createRotate = ({
   leaveTransition: `all ${leaveDuration}ms ${leaveEasing}`,
 })
 
+/* #__NO_SIDE_EFFECTS__ */
 export const createBlur = ({
   amount = 8,
   scale,

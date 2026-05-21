@@ -1,5 +1,21 @@
 import type { CSSProperties, Preset } from './types'
 
+// `#__NO_SIDE_EFFECTS__` annotation: tells the bundler that every call to
+// `s()` is pure (no observable side effects). Rolldown / Rollup / esbuild
+// all recognise this annotation and propagate it to every call site — a
+// single annotation on the factory replaces 122 inline `@__PURE__`
+// annotations on the call sites below.
+//
+// Without this, `sideEffects: false` in package.json is NOT enough:
+// bundlers conservatively treat top-level function calls
+// (`export const X = s(h, v)`) as side-effect-bearing and keep them in
+// the bundle even when the consumer imports only one preset. A consumer
+// importing just `blurInUp` used to ship all 122 preset factory results
+// (~13 KB raw / ~2 KB gzipped). With the annotation, the same consumer
+// ships only `blurInUp` (~300 bytes).
+//
+// See `.claude/notes/rolldown-pure-factory-calls.md` for the investigation.
+/* #__NO_SIDE_EFFECTS__ */
 const s = (
   hidden: CSSProperties,
   visible: CSSProperties,
