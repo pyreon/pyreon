@@ -1,0 +1,30 @@
+{
+  "name": "@pyreon/native-cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "PRIVATE / EXPERIMENTAL — CLI orchestration for the Pyreon Multi-Target Compiler. Wraps @pyreon/native-compiler in a directory-walking build command. See .claude/plans/native-platforms-phase0-roadmap.md PR 2.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "bin": {
+    "pyreon-native": "./src/cli.ts"
+  },
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "lint": "oxlint .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pyreon/native-compiler": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.4"
+  }
+}
