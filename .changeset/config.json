@@ -93,6 +93,10 @@
     "@pyreon/example-react-compat",
     "@pyreon/example-preact-compat",
     "@pyreon/example-vue-compat",
-    "@pyreon/example-solid-compat"
+    "@pyreon/example-solid-compat",
+    "@pyreon/example-svelte-compat",
+    "@pyreon/example-perf-dashboard",
+    "@pyreon/experiments",
+    "@pyreon/islands-showcase"
   ]
 }
