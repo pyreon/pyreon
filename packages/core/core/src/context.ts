@@ -46,11 +46,37 @@ export function createReactiveContext<T>(defaultValue: T): ReactiveContext<T> {
 
 // ─── Runtime context stack (managed by the renderer) ─────────────────────────
 
-// Default stack — used for CSR and single-threaded SSR.
-// On Node.js with concurrent requests, @pyreon/runtime-server replaces this with
-// an AsyncLocalStorage-backed provider via setContextStackProvider().
-const _defaultStack: Map<symbol, unknown>[] = []
-let _stackProvider: () => Map<symbol, unknown>[] = () => _defaultStack
+// Cross-module-instance shared state — see `lifecycle.ts:_state` JSDoc.
+// Both the default stack AND the provider override land on globalThis so
+// `provide()` on one `@pyreon/core` instance and `useContext()` on another
+// reach the SAME context frames. Without this, the provide/useContext
+// pairing silently misses when bundlers load `@pyreon/core` twice — much
+// more severe than the warning storm: descendants would just get default
+// context values with no error.
+//
+// On Node.js with concurrent requests, @pyreon/runtime-server replaces the
+// default provider with an AsyncLocalStorage-backed one via
+// setContextStackProvider() — that override now propagates to every
+// `@pyreon/core` instance automatically (the override is stored on the
+// shared state, not per-instance).
+interface ContextStackState {
+  defaultStack: Map<symbol, unknown>[]
+  provider: () => Map<symbol, unknown>[]
+}
+const _CTX_KEY = Symbol.for('pyreon-core/context-stack-state')
+const _gCtxHost = globalThis as Record<symbol, unknown>
+let _ctxState = _gCtxHost[_CTX_KEY] as ContextStackState | undefined
+if (!_ctxState) {
+  const defaultStack: Map<symbol, unknown>[] = []
+  _ctxState = {
+    defaultStack,
+    provider: () => defaultStack,
+  }
+  _gCtxHost[_CTX_KEY] = _ctxState
+}
+// Local stable reference so downstream functions don't need to repeatedly
+// narrow the typed-or-undefined union.
+const _ctx: ContextStackState = _ctxState
 
 /**
  * Override the context stack provider. Called by @pyreon/runtime-server to
@@ -58,11 +84,11 @@ let _stackProvider: () => Map<symbol, unknown>[] = () => _defaultStack
  * Has no effect in the browser (CSR always uses the default module-level stack).
  */
 export function setContextStackProvider(fn: () => Map<symbol, unknown>[]): void {
-  _stackProvider = fn
+  _ctx.provider = fn
 }
 
 function getStack(): Map<symbol, unknown>[] {
-  return _stackProvider()
+  return _ctx.provider()
 }
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this

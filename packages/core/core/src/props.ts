@@ -246,7 +246,18 @@ export function makeReactiveProps(
 
 // ─── Unique ID ───────────────────────────────────────────────────────────────
 
-let _idCounter = 0
+// Cross-module-instance shared counter — see `lifecycle.ts:_state` JSDoc.
+// `createUniqueId` calls from two different `@pyreon/core` instances must
+// not collide (would produce duplicate `pyreon-1` strings across the page).
+interface IdCounterState {
+  counter: number
+}
+const _ID_KEY = Symbol.for('pyreon-core/id-counter-state')
+const _gIdHost = globalThis as Record<symbol, unknown>
+const _idState: IdCounterState = (_gIdHost[_ID_KEY] as IdCounterState | undefined) ?? {
+  counter: 0,
+}
+if (!_gIdHost[_ID_KEY]) _gIdHost[_ID_KEY] = _idState
 
 /**
  * Generate a unique ID string for accessibility attributes (htmlFor, aria-describedby, etc.).
@@ -260,10 +271,10 @@ let _idCounter = 0
  * </>
  */
 export function createUniqueId(): string {
-  return `pyreon-${++_idCounter}`
+  return `pyreon-${++_idState.counter}`
 }
 
 /** Reset the ID counter (called by SSR per-request). */
 export function _resetIdCounter(): void {
-  _idCounter = 0
+  _idState.counter = 0
 }

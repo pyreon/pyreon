@@ -13,6 +13,7 @@
 
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { stripBunCondition, stripSrcFromFiles } from './strip-bun-condition'
 
 const PACKAGES_DIR = join(import.meta.dirname, '..', 'packages')
 const dryRun = process.argv.includes('--dry-run')
@@ -120,6 +121,7 @@ function resolveWorkspaceDeps(
   return resolved
 }
 
+
 const failed: string[] = []
 const published: string[] = []
 const skipped: string[] = []
@@ -166,6 +168,14 @@ for (const dir of packageDirs) {
 
   const resolved = {
     ...pkg,
+    // Strip the `bun` condition from `exports` AND `src` from `files`
+    // at publish time. See `stripBunCondition` JSDoc for the full
+    // rationale — eliminates the dual-resolution module-duplication
+    // bug class at the source. Stripping `src` from `files` makes the
+    // tarball lean (only `lib/` is reachable post-strip, so shipping
+    // `src/` is pure waste).
+    ...(pkg.exports ? { exports: stripBunCondition(pkg.exports) } : {}),
+    ...(pkg.files ? { files: stripSrcFromFiles(pkg.files) } : {}),
     dependencies: resolveWorkspaceDeps(pkg.dependencies, pkg.name, resolveErrors),
     peerDependencies: resolveWorkspaceDeps(pkg.peerDependencies, pkg.name, resolveErrors),
     devDependencies: resolveWorkspaceDeps(pkg.devDependencies, pkg.name, resolveErrors),
