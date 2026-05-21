@@ -196,6 +196,108 @@ describe('kotlinType — typeRef', () => {
   })
 })
 
+describe('swiftType — function types (roadmap PR 5b)', () => {
+  it('zero-arg → Void: () -> Void', () => {
+    expect(
+      swiftType({ kind: 'function', params: [], returnType: { kind: 'unknown' } }),
+    ).toBe('() -> Void')
+  })
+  it('one-arg number → Bool', () => {
+    expect(
+      swiftType({
+        kind: 'function',
+        params: [{ name: 'x', type: { kind: 'number' } }],
+        returnType: { kind: 'boolean' },
+      }),
+    ).toBe('(Int) -> Bool')
+  })
+  it('two-arg → String', () => {
+    expect(
+      swiftType({
+        kind: 'function',
+        params: [
+          { name: 'a', type: { kind: 'number' } },
+          { name: 'b', type: { kind: 'string' } },
+        ],
+        returnType: { kind: 'string' },
+      }),
+    ).toBe('(Int, String) -> String')
+  })
+  it('nullable-T arg', () => {
+    expect(
+      swiftType({
+        kind: 'function',
+        params: [
+          {
+            name: 'x',
+            type: { kind: 'union', branches: [{ kind: 'string' }, { kind: 'null' }] },
+          },
+        ],
+        returnType: { kind: 'unknown' },
+      }),
+    ).toBe('(String?) -> Void')
+  })
+})
+
+describe('kotlinType — function types (roadmap PR 5b)', () => {
+  it('zero-arg → Unit: () -> Unit', () => {
+    expect(
+      kotlinType({ kind: 'function', params: [], returnType: { kind: 'unknown' } }),
+    ).toBe('() -> Unit')
+  })
+  it('one-arg number → Boolean', () => {
+    expect(
+      kotlinType({
+        kind: 'function',
+        params: [{ name: 'x', type: { kind: 'number' } }],
+        returnType: { kind: 'boolean' },
+      }),
+    ).toBe('(Int) -> Boolean')
+  })
+  it('two-arg → String', () => {
+    expect(
+      kotlinType({
+        kind: 'function',
+        params: [
+          { name: 'a', type: { kind: 'number' } },
+          { name: 'b', type: { kind: 'string' } },
+        ],
+        returnType: { kind: 'string' },
+      }),
+    ).toBe('(Int, String) -> String')
+  })
+})
+
+describe('parseTypeAnnotation → function-type round-trip', () => {
+  it('parses TSFunctionType (no params, void return)', () => {
+    const t = parseSignalType('() => void')
+    expect(t).toEqual({
+      kind: 'function',
+      params: [],
+      returnType: { kind: 'unknown' },
+    })
+  })
+  it('parses TSFunctionType (one param, boolean return)', () => {
+    const t = parseSignalType('(x: number) => boolean')
+    expect(t).toEqual({
+      kind: 'function',
+      params: [{ name: 'x', type: { kind: 'number' } }],
+      returnType: { kind: 'boolean' },
+    })
+  })
+  it('parses TSFunctionType (two params, string return)', () => {
+    const t = parseSignalType('(a: number, b: string) => string')
+    expect(t).toEqual({
+      kind: 'function',
+      params: [
+        { name: 'a', type: { kind: 'number' } },
+        { name: 'b', type: { kind: 'string' } },
+      ],
+      returnType: { kind: 'string' },
+    })
+  })
+})
+
 describe('type mapper — unknown / void / never degrade to Any', () => {
   it('unknown → Any (Swift)', () => {
     expect(swiftType({ kind: 'unknown' })).toBe('Any')

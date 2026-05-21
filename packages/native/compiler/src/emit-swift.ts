@@ -112,6 +112,16 @@ export function swiftType(t: TypeIR): string {
       if (t.args.length === 0) return t.name
       return `${t.name}<${t.args.map(swiftType).join(', ')}>`
     }
+    case 'function': {
+      // Swift function types: `(P1, P2) -> R`. Parameter NAMES from
+      // the TS source are dropped — Swift function TYPES are positional
+      // (Swift FUNCTIONS support labels, but function types don't).
+      // `unknown` return (void / missing annotation) → `Void`.
+      const paramTypes = t.params.map((p) => swiftType(p.type)).join(', ')
+      const returnTypeName =
+        t.returnType.kind === 'unknown' ? 'Void' : swiftType(t.returnType)
+      return `(${paramTypes}) -> ${returnTypeName}`
+    }
     default:
       return 'Any'
   }
