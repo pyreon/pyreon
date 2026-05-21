@@ -1473,6 +1473,22 @@ bun run check-manifest-depth --json   # machine-readable
 
 It is a **ratchet, not a target** (same shape as `check-bundle-budgets` / audit-types `EXEMPT_FIELDS`): `LOCKED` records each migrated package's *achieved* `{ minEntries, minWithMistakes }` — counted via the authoritative `findManifests` loader (the same one `get_api` uses), never a source grep. The gate fails only if a locked package drops below its floor. Packages absent from `LOCKED` (i18n, charts, code, dnd, state-tree, validation, …) are the visible migration backlog — intentionally NOT gated, so the gate never flag-days CI on 15 packages at once. Migrating a package = enrich its manifest, then add it to `LOCKED` with the numbers that PR achieves; that addition is the deliberate "at standard now" signal, reviewed in the same PR. CI runs it as a required `Check Manifest Depth` job (~2s, `needs: install`).
 
+## Leak Sweep — nightly heap-growth regression gate
+
+`.github/workflows/leak-sweep.yml` drives `scripts/leak-sweep.ts` (#772) across the perf-dashboard journey catalog: ~43 journeys, 15 cycles each, two forced GCs between samples, least-squares regression over the resulting heap series. A non-trivial positive slope flags a journey as leaking. Same surface that surfaced the `<For>`-of-`<Show>` batched-toggle bug fixed in #776 (discovery chain: #770 leak-audit harness → #772 leak-sweep multi-journey driver → #774 it.fails CONTRACT lock → #776 root-cause fix).
+
+Triggers (mirrors `perf.yml` shape):
+
+- **`workflow_dispatch`** — manual run from any branch. Inputs: `app` (default `perf-dashboard`), `journeys` (comma-separated, empty = full sweep), `cycles`, `threshold`. Useful for reproducing a PR author's local leak claim in a clean VM or for re-running a subset against a specific branch.
+- **`pull_request`** — auto-runs ONLY when a PR carries the `leak-sweep` label. Skipped on unlabeled PRs since most don't touch the runtime primitives the sweep exercises. Posts a sticky comment with the markdown sweep output (updates in place on re-run, marker `<!-- pyreon-leak-sweep -->`). `concurrency.cancel-in-progress` cancels an in-flight run when a fresh push lands.
+- **`schedule`** — nightly cron at 04:11 UTC. Offset from `perf.yml`'s 03:17 so they don't contend for the same runner pool. Catches leaks introduced between PR labels — exactly how the For-of-Show bug was found.
+
+Advisory-only. Exit code 6 from leak-sweep (≥1 journey exceeded the 50,000 bytes/cycle slope threshold) currently fails the job + uploads the artifact + comments on the PR — but the job is NOT in branch protection's required-checks list. Promote to required once the baseline stabilizes across multiple nightly runs.
+
+**Dev mode is mandatory**: counter emits and the perf-harness install hook are both gated on `import.meta.env.DEV`, so a preview/prod build tree-shakes them and the page records zero heap movement (false-clean). Same constraint as `perf.yml`. The workflow hardcodes `--mode dev`; no opt-out.
+
+**Artifacts**: every run uploads `perf-results/leak-sweep-<sha>-<app>.{json,md}` with 30-day retention. The JSON shape (per-journey `slope`, `r2`, `cv`, plus aggregate verdict) is stable for downstream tooling — diff scripts, dashboards, future regression-comment automation.
+
 ## E2E — real-Chromium tests against example apps
 
 `bun run test:e2e` runs Playwright against `examples/playground` in real Chromium. Tests live in `e2e/` and exercise framework primitives via `window.__pyreon` (mount/unmount, signal-driven DOM updates, computed values, batching, conditional rendering, list reconciliation, router navigation). Companion to `verify-modes` (build artifacts) — together they cover both the static output AND the runtime behavior.

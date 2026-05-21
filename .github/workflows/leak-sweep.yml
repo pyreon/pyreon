@@ -1,0 +1,182 @@
+name: Leak Sweep
+
+# Heap-growth regression detection across the perf-dashboard journey catalog.
+#
+# Built on `scripts/leak-sweep.ts` (#772) which boots Chromium once and runs
+# each journey N cycles with two forced GCs between samples, then fits a
+# least-squares line over the heap-size series. A non-trivial positive slope
+# means a journey is retaining heap across nominally-equal cycles — the bug
+# class that ships as "looks fine on first load, gets slow after a few
+# minutes." Mirrors the perf workflow's shape (#641):
+#
+#   - workflow_dispatch: manual run, any branch. Useful for reproducing a
+#     PR author's local leak claim in a clean VM, OR for re-running the
+#     sweep against a specific journey list.
+#   - pull_request: auto-runs when a PR carries the `leak-sweep` label.
+#     Skipped otherwise — most PRs don't touch the runtime primitives
+#     this workflow exercises.
+#   - schedule: nightly drift check against main. Catches leaks introduced
+#     between PR labels — exactly how the For-of-Show bug surfaced (#770 →
+#     #772 → #774 CONTRACT → #776 fix).
+#
+# Advisory-only. Exit-code 6 from leak-sweep (some journey exceeded
+# threshold) currently surfaces as a job-fail annotation + artifact —
+# does NOT block merges. Promote to a required check once the baseline
+# stabilizes across multiple nightly runs.
+#
+# Why dev mode: counter emits and `globalThis.__pyreon_count__` are gated
+# on `import.meta.env.DEV`, so a preview (prod) build tree-shakes them.
+# Same constraint the perf workflow runs under.
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'Example app name'
+        required: false
+        default: 'perf-dashboard'
+      journeys:
+        description: 'Comma-separated journey names (empty = full sweep)'
+        required: false
+        default: ''
+      cycles:
+        description: 'Cycles per journey'
+        required: false
+        default: '15'
+      threshold:
+        description: 'Bytes-per-cycle slope threshold'
+        required: false
+        default: '50000'
+  pull_request:
+    types: [labeled, synchronize]
+  schedule:
+    # 04:11 UTC — offset from the perf workflow's 03:17 so they don't
+    # contend for the same runner pool, and from CodeQL's defaults.
+    - cron: '11 4 * * *'
+
+# Cancel in-flight runs for the same branch when a fresh push lands —
+# stale leak runs against an old commit are pure waste.
+concurrency:
+  group: leak-sweep-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  sweep:
+    # Only run on `leak-sweep`-labelled PRs — skip by default.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'leak-sweep')
+    name: Sweep ${{ inputs.app || 'perf-dashboard' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - name: Install deps
+        run: bun install --frozen-lockfile
+      - name: Cache Playwright browsers
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: playwright-chromium-${{ runner.os }}-
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Compute SHA
+        id: sha
+        run: echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Run sweep
+        id: sweep
+        # `--mode dev` is REQUIRED — counter emits and the perf-harness
+        # install gate are both `import.meta.env.DEV`-gated, so the
+        # preview/prod build tree-shakes them and the page would record
+        # zero heap movement (false-clean). Same reasoning as perf.yml.
+        #
+        # `continue-on-error: true` because we want the artifact uploaded
+        # even when the sweep flags a regression — failing the step here
+        # would skip the upload. We re-fail at the end of the job based
+        # on the captured exit code.
+        continue-on-error: true
+        run: |
+          set +e
+          app="${{ inputs.app || 'perf-dashboard' }}"
+          journeys="${{ inputs.journeys }}"
+          cycles="${{ inputs.cycles || '15' }}"
+          threshold="${{ inputs.threshold || '50000' }}"
+          jsonOut="perf-results/leak-sweep-${{ steps.sha.outputs.sha }}-${app}.json"
+          mkdir -p perf-results
+          args=(--app "$app" --cycles "$cycles" --threshold "$threshold" --mode dev --json "$jsonOut")
+          if [ -n "$journeys" ]; then
+            args+=(--journeys "$journeys")
+          fi
+          bun run perf:leak-sweep "${args[@]}" | tee perf-results/leak-sweep-${{ steps.sha.outputs.sha }}-${app}.md
+          code=${PIPESTATUS[0]}
+          {
+            echo "exit_code=$code"
+            echo "json_path=$jsonOut"
+            echo "md_path=perf-results/leak-sweep-${{ steps.sha.outputs.sha }}-${app}.md"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload sweep results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: leak-sweep-${{ inputs.app || 'perf-dashboard' }}-${{ steps.sha.outputs.sha }}
+          path: perf-results/leak-sweep-${{ steps.sha.outputs.sha }}-*.{json,md}
+          retention-days: 30
+
+      - name: Post sweep summary as PR comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const fs = require('node:fs')
+            const mdPath = '${{ steps.sweep.outputs.md_path }}'
+            let body = ''
+            try {
+              body = fs.readFileSync(mdPath, 'utf8')
+            } catch (err) {
+              body = `Leak sweep ran but no markdown output was produced (\`${mdPath}\` missing). Check the run logs.`
+            }
+            const exit = '${{ steps.sweep.outputs.exit_code }}'
+            const header = exit === '6'
+              ? '### 🟥 Leak sweep flagged at least one journey'
+              : exit === '0'
+                ? '### ✅ Leak sweep clean'
+                : `### ⚠️ Leak sweep exited ${exit} — see logs`
+            const marker = '<!-- pyreon-leak-sweep -->'
+            const fullBody = `${marker}\n${header}\n\n<details><summary>Sweep output</summary>\n\n\`\`\`\n${body.slice(0, 60000)}\n\`\`\`\n\n</details>\n\n_Advisory — does not block merge. Re-run via the \`leak-sweep\` label._`
+            const { owner, repo } = context.repo
+            const issue_number = context.issue.number
+            // Look for an existing leak-sweep comment to update in place.
+            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number, per_page: 100 })
+            const existing = comments.find((c) => c.body?.startsWith(marker))
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: fullBody })
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body: fullBody })
+            }
+
+      - name: Fail job if sweep flagged a regression
+        if: steps.sweep.outputs.exit_code != '0'
+        env:
+          SWEEP_EXIT_CODE: ${{ steps.sweep.outputs.exit_code }}
+        run: |
+          # Coerce to a numeric in [1, 255] — shellcheck SC2242 guard for
+          # the edge case where the step didn't write exit_code at all
+          # (e.g. setup-step failure before the sweep ran). Any non-numeric
+          # or out-of-range value collapses to a sentinel `1`.
+          code="${SWEEP_EXIT_CODE:-1}"
+          case "$code" in
+            ''|*[!0-9]*) code=1 ;;
+          esac
+          if [ "$code" -lt 1 ] || [ "$code" -gt 255 ]; then code=1; fi
+          echo "Leak sweep exited ${code} — see the uploaded artifact and PR comment."
+          exit "$code"
