@@ -54,7 +54,20 @@ export interface ErrorContext {
 
 export type ErrorHandler = (ctx: ErrorContext) => void
 
-let _handlers: ErrorHandler[] = []
+// Cross-module-instance shared state — see `lifecycle.ts:_state` JSDoc.
+// A registerErrorHandler() call on one `@pyreon/core` instance MUST be
+// visible to reportError() calls on every other instance — otherwise
+// Sentry/Datadog wiring on the user-side core misses errors emitted by
+// framework code on the runtime-server-side core.
+interface ErrorHandlersState {
+  handlers: ErrorHandler[]
+}
+const _ERR_KEY = Symbol.for('pyreon-core/error-handlers-state')
+const _gErrHost = globalThis as Record<symbol, unknown>
+const _errState: ErrorHandlersState = (_gErrHost[_ERR_KEY] as ErrorHandlersState | undefined) ?? {
+  handlers: [],
+}
+if (!_gErrHost[_ERR_KEY]) _gErrHost[_ERR_KEY] = _errState
 
 /**
  * Register a global error handler. Called whenever a component throws in any
@@ -67,10 +80,10 @@ let _handlers: ErrorHandler[] = []
  * disconnected — Sentry/Datadog wiring missed effect-thrown errors.
  */
 export function registerErrorHandler(handler: ErrorHandler): () => void {
-  _handlers.push(handler)
+  _errState.handlers.push(handler)
   _installReactivityBridge()
   return () => {
-    _handlers = _handlers.filter((h) => h !== handler)
+    _errState.handlers = _errState.handlers.filter((h) => h !== handler)
   }
 }
 
@@ -93,7 +106,7 @@ export function reportError(ctx: ErrorContext): void {
       // Trace capture is diagnostic — never let it swallow the real error.
     }
   }
-  for (const h of _handlers) {
+  for (const h of _errState.handlers) {
     try {
       h(ctx)
     } catch {

@@ -63,10 +63,22 @@ export function propagateError(err: unknown, hooks: LifecycleHooks): boolean {
 // `.claude/rules/anti-patterns.md` "Position-based pop for stack frames
 // that may be pushed by reactive boundaries".
 
-const _errorBoundaryStack: ((err: unknown) => boolean)[] = []
+// Cross-module-instance shared stack — see `lifecycle.ts:_state` JSDoc for
+// the full module-duplication rationale. ErrorBoundary push/pop must reach
+// the same array regardless of which `@pyreon/core` instance the
+// `pushErrorBoundary` and `dispatchToErrorBoundary` callers were resolved to.
+interface ErrorBoundaryState {
+  stack: ((err: unknown) => boolean)[]
+}
+const _EB_KEY = Symbol.for('pyreon-core/error-boundary-state')
+const _gEbHost = globalThis as Record<symbol, unknown>
+const _ebState: ErrorBoundaryState = (_gEbHost[_EB_KEY] as ErrorBoundaryState | undefined) ?? {
+  stack: [],
+}
+if (!_gEbHost[_EB_KEY]) _gEbHost[_EB_KEY] = _ebState
 
 export function pushErrorBoundary(handler: (err: unknown) => boolean): void {
-  _errorBoundaryStack.push(handler)
+  _ebState.stack.push(handler)
 }
 
 /**
@@ -81,11 +93,11 @@ export function popErrorBoundary(handler?: (err: unknown) => boolean): void {
     // pop-last behaviour. Internal `ErrorBoundary` setup always passes
     // its handler now; any external direct callers (tests, advanced
     // consumers) keep working with no-arg form.
-    _errorBoundaryStack.pop()
+    _ebState.stack.pop()
     return
   }
-  const idx = _errorBoundaryStack.lastIndexOf(handler)
-  if (idx !== -1) _errorBoundaryStack.splice(idx, 1)
+  const idx = _ebState.stack.lastIndexOf(handler)
+  if (idx !== -1) _ebState.stack.splice(idx, 1)
 }
 
 /**
@@ -93,6 +105,6 @@ export function popErrorBoundary(handler?: (err: unknown) => boolean): void {
  * Returns true if the boundary handled it, false if none was registered.
  */
 export function dispatchToErrorBoundary(err: unknown): boolean {
-  const handler = _errorBoundaryStack[_errorBoundaryStack.length - 1]
+  const handler = _ebState.stack[_ebState.stack.length - 1]
   return handler ? handler(err) : false
 }

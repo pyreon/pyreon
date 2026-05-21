@@ -6,14 +6,41 @@ const __DEV__ = process.env.NODE_ENV !== 'production'
 
 // The currently-executing component's hook storage, set by the renderer
 // before calling the component function, cleared immediately after.
-let _current: LifecycleHooks | null = null
+//
+// **Module-instance reconciliation via `Symbol.for`** — bundlers (Vite,
+// Webpack/Next.js, Rolldown, Parcel, Bun) can load the same `@pyreon/core`
+// package twice when different consumers resolve it via different paths
+// (e.g. Vite's `[bare]` resolver honors the `bun` condition → `src/`,
+// while `[package entry]` resolution ignores it → `lib/`). Each module
+// instance would otherwise have its own `let _current`, so
+// `setCurrentHooks` on instance A and `getCurrentHooks`/onMount/onUnmount
+// on instance B don't see each other.
+//
+// Hosting the state on `globalThis` under a `Symbol.for` key means both
+// module instances reach the SAME object — `setCurrentHooks` and
+// `onMount` always see one another regardless of how each module
+// reached `@pyreon/core`.
+//
+// Same pattern as `@pyreon/core/src/telemetry.ts:113`'s `_bridgeHost`
+// + the `Symbol.for('pyreon:native-compat')` marker used in
+// `compat-marker.ts`. Documented in CLAUDE.md as the canonical
+// cross-module-state convention.
+interface LifecycleState {
+  current: LifecycleHooks | null
+}
+const _LIFECYCLE_KEY = Symbol.for('pyreon-core/lifecycle-state')
+const _gHost = globalThis as Record<symbol, unknown>
+const _state: LifecycleState = (_gHost[_LIFECYCLE_KEY] as LifecycleState | undefined) ?? {
+  current: null,
+}
+if (!_gHost[_LIFECYCLE_KEY]) _gHost[_LIFECYCLE_KEY] = _state
 
 export function setCurrentHooks(hooks: LifecycleHooks | null) {
-  _current = hooks
+  _state.current = hooks
 }
 
 export function getCurrentHooks(): LifecycleHooks | null {
-  return _current
+  return _state.current
 }
 
 /**
@@ -79,7 +106,7 @@ function captureCallSite(): string {
 }
 
 function warnOutsideSetup(hookName: string): void {
-  if (__DEV__ && !_current) {
+  if (__DEV__ && !_state.current) {
     const callSite = captureCallSite()
     // Local name must NOT shadow the `location` browser global (poor
     // hygiene + trips SSR static analysis into a false positive).
@@ -102,9 +129,9 @@ function warnOutsideSetup(hookName: string): void {
  */
 export function onMount(fn: () => CleanupFn | void | undefined) {
   warnOutsideSetup('onMount')
-  if (_current) {
-    if (_current.mount === null) _current.mount = []
-    _current.mount.push(fn)
+  if (_state.current) {
+    if (_state.current.mount === null) _state.current.mount = []
+    _state.current.mount.push(fn)
   }
 }
 
@@ -113,9 +140,9 @@ export function onMount(fn: () => CleanupFn | void | undefined) {
  */
 export function onUnmount(fn: () => void) {
   warnOutsideSetup('onUnmount')
-  if (_current) {
-    if (_current.unmount === null) _current.unmount = []
-    _current.unmount.push(fn)
+  if (_state.current) {
+    if (_state.current.unmount === null) _state.current.unmount = []
+    _state.current.unmount.push(fn)
   }
 }
 
@@ -124,9 +151,9 @@ export function onUnmount(fn: () => void) {
  */
 export function onUpdate(fn: () => void) {
   warnOutsideSetup('onUpdate')
-  if (_current) {
-    if (_current.update === null) _current.update = []
-    _current.update.push(fn)
+  if (_state.current) {
+    if (_state.current.update === null) _state.current.update = []
+    _state.current.update.push(fn)
   }
 }
 
@@ -145,8 +172,8 @@ export function onUpdate(fn: () => void) {
  */
 export function onErrorCaptured(fn: (err: unknown) => boolean | undefined) {
   warnOutsideSetup('onErrorCaptured')
-  if (_current) {
-    if (_current.error === null) _current.error = []
-    _current.error.push(fn)
+  if (_state.current) {
+    if (_state.current.error === null) _state.current.error = []
+    _state.current.error.push(fn)
   }
 }
