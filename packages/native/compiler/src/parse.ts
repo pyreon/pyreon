@@ -174,6 +174,28 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       const args = params ? params.map((p) => parseTypeAnnotation(p, ctx)) : []
       return { kind: 'typeRef', name, args }
     }
+    case 'TSFunctionType': {
+      // `(a: T, b: U) => R` — capture each parameter's name + type,
+      // and the return type. Names are kept in IR for debug + future
+      // use; Swift / Kotlin function types are positional, so the
+      // emitter drops names at emit time.
+      const params = ((node.params as AnyNode[]) ?? []).map((p) => {
+        const annotation = p.typeAnnotation?.typeAnnotation as AnyNode | undefined
+        const type: TypeIR = annotation
+          ? parseTypeAnnotation(annotation, ctx)
+          : { kind: 'unknown' }
+        // Omit `name` when absent — `exactOptionalPropertyTypes` disallows
+        // `name: undefined` for an optional property.
+        const paramName: string | undefined =
+          p.type === 'Identifier' ? (p.name as string | undefined) : undefined
+        return paramName !== undefined ? { name: paramName, type } : { type }
+      })
+      const returnAnnotation = node.returnType?.typeAnnotation as AnyNode | undefined
+      const returnType: TypeIR = returnAnnotation
+        ? parseTypeAnnotation(returnAnnotation, ctx)
+        : { kind: 'unknown' }
+      return { kind: 'function', params, returnType }
+    }
     case 'TSLiteralType': {
       // String / numeric / boolean literal types — `'a' | 'b' | 'c'`
       // unions are common. Degrade the literal to its base type so the
