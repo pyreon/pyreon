@@ -1,5 +1,7 @@
 # @pyreon/compiler-linux-arm64-gnu
 
+## 0.24.1
+
 ## 0.24.0
 
 ## 0.23.0
