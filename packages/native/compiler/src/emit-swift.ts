@@ -9,6 +9,7 @@
 // computed properties. Phase 1 grows a real inference pass.
 
 import { buildInferenceCtx, inferType } from './infer-type'
+import { safeIdent } from './identifier-safety'
 import type {
   AttrIR,
   ChildIR,
@@ -305,7 +306,12 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
     .filter((a) => a.kind === 'attr')
     .map((a) => {
       const aa = a as Extract<AttrIR, { kind: 'attr' }>
-      return `${aa.name}: ${emitSwiftExpr(aa.value, indent)}`
+      // `safeIdent` converts kebab-case HTML attrs (`data-test`,
+      // `aria-label`) to camelCase. Swift rejects `-` in argument
+      // labels with `expected ',' separator`; was the #1 cause of
+      // swiftc-parse failures on the real-corpus coverage gate
+      // (19 of 30 invalid files, 2026-05-21 measurement).
+      return `${safeIdent(aa.name)}: ${emitSwiftExpr(aa.value, indent)}`
     })
     .join(', ')
   if (e.children.length === 0) {
