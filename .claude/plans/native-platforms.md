@@ -131,8 +131,18 @@ The reason PMTC isn't a hack: SwiftUI and Compose are themselves signal-based re
 | `useContext(ctx)` | `@Environment(ctx) var ctx` | `val v = ctx.current` |
 | `batch(() => { ... })` | implicit (SwiftUI batches in one render pass) | `Snapshot.withMutableSnapshot { ... }` |
 | `createStore(...)` | `@Observable class Store { ... }` | `class Store { val x = mutableStateOf(...) }` |
+| `signal<'a' \| 'b' \| 'c'>('a')` (string-literal union) | `@State private var x: X = .a` + `enum X: String { case a, b, c }` | `var x by remember { mutableStateOf(X.a) }` + `enum class X { a, b, c }` |
+| `<input value={s} onInput={e => s.set(e.target.value)}>` (two-way binding pattern) | `TextField("…", text: $s)` (compact Binding form via `$`) | `TextField(value = s, onValueChange = { s = it })` (already matches Pyreon shape) |
 
 These aren't translations the way "JSX → React" or "JSX → Vue templates" are translations. These are the same construct expressed in each framework's native vocabulary. Pyreon's reactive primitives are the lingua franca; SwiftUI / Compose / DOM are the dialects.
+
+### Two patterns added in the post-TodoMVC-walkthrough revision
+
+Both surfaced when the [TodoMVC walkthrough](./native-platforms-todomvc-walkthrough.md) (#799) composed the primitives into a real app rather than testing them in isolation. The original mapping table covered them implicitly (string-literal unions through "signal" + "type mapper", two-way bindings through "event handler" + "signal write"); naming them explicitly avoids per-case re-derivation in every Phase 0/1 compiler PR.
+
+- **String-literal unions** (e.g. `signal<'all' | 'active' | 'completed'>('all')`) compile to native enums. iOS / Android both gain exhaustive `switch` / `when` checks, IDE autocomplete on values, and zero-cost-of-typos at use sites. The web target keeps the existing string-comparison emit shape (no behavior change). Implementation lands in Phase 0 PR 5d (type-mapper unions — see [Phase 0 roadmap](./native-platforms-phase0-roadmap.md)).
+
+- **Two-way bindings on form inputs** require special-case compiler recognition because SwiftUI's `Binding` shape is conceptually different from Pyreon's signal+onInput pattern. The compiler detects the `<TextField value={signal} onInput={(e) => signal.set(e.target.value)}>` pattern (and its inverse-onInput variants) and emits `TextField("…", text: $signal)` on Swift. Kotlin's Compose `TextField(value=..., onValueChange=...)` already matches Pyreon's source shape, no special handling needed. Same pattern applies to `<Slider>`, `<Toggle>` (`Switch`), `<Picker>`, `<DatePicker>`. Implementation is a Phase 1 PR ("two-way binding emission" — named in the TodoMVC walkthrough's gap list).
 
 ---
 
