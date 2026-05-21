@@ -12,7 +12,11 @@
  */
 import { describe, expect, it } from 'vitest'
 import pyreonPlugin from '../index'
-import { _computeLineStarts, _offsetToLineCol } from '../index'
+import {
+  _computeLineStarts,
+  _maskStringsAndComments,
+  _offsetToLineCol,
+} from '../index'
 
 type ConfigHook = (
   userConfig: Record<string, unknown>,
@@ -360,5 +364,196 @@ export function App() {
     // Bound forms carry `name:` — count: s, d, e = 3.
     const names = result!.code.match(/name: "[sde]"/g) ?? []
     expect(names).toHaveLength(3)
+  })
+})
+
+describe('_maskStringsAndComments', () => {
+  it('preserves length so positions line up with original', () => {
+    const code = 'const x = "hello"; const y = 1'
+    expect(_maskStringsAndComments(code)).toHaveLength(code.length)
+  })
+
+  it('masks `"..."` string content', () => {
+    const code = 'const x = "effect(()=>1)"'
+    const masked = _maskStringsAndComments(code)
+    // Outside of string: unchanged
+    expect(masked.slice(0, 11)).toBe('const x =  ')
+    // Inside string (positions 11..24): all spaces
+    expect(masked.slice(11, 25)).toMatch(/^ +$/)
+  })
+
+  it("masks `'...'` string content", () => {
+    const code = "const x = 'signal(0)'"
+    const masked = _maskStringsAndComments(code)
+    expect(masked.includes('signal(0)')).toBe(false)
+  })
+
+  it('masks template-literal text content', () => {
+    const code = 'const x = `effect(() => 1)`'
+    const masked = _maskStringsAndComments(code)
+    expect(masked.includes('effect(')).toBe(false)
+  })
+
+  it('KEEPS template-literal `${...}` interpolations as code', () => {
+    // The CRITICAL contract — interpolation bodies can contain real
+    // reactive primitive calls that DO deserve injection.
+    const code = 'const x = `value: ${signal(0)}`'
+    const masked = _maskStringsAndComments(code)
+    expect(masked.includes('signal(0)')).toBe(true)
+  })
+
+  it('handles nested braces inside `${...}` correctly', () => {
+    const code = 'const x = `${{ a: signal(0) }}`'
+    const masked = _maskStringsAndComments(code)
+    // The `signal(0)` inside the object literal inside the interpolation
+    // must survive masking.
+    expect(masked.includes('signal(0)')).toBe(true)
+  })
+
+  it('masks `// ...` line comments to end of line', () => {
+    const code = 'const x = 1 // effect(() => 2)\nconst y = 3'
+    const masked = _maskStringsAndComments(code)
+    // The `effect(` mention in the comment is gone.
+    expect(masked.includes('effect(')).toBe(false)
+    // `const y = 3` after the newline survives.
+    expect(masked.includes('const y = 3')).toBe(true)
+  })
+
+  it('masks `/* ... */` block comments across newlines', () => {
+    const code = 'const x = 1 /* effect(\n  () => 2\n) */\nconst y = signal(0)'
+    const masked = _maskStringsAndComments(code)
+    expect(masked.includes('effect(')).toBe(false)
+    // Newlines INSIDE the block comment are preserved so line numbers
+    // don't shift.
+    expect(masked.split('\n')).toHaveLength(code.split('\n').length)
+    // Code AFTER the block comment survives.
+    expect(masked.includes('signal(0)')).toBe(true)
+  })
+
+  it('handles escape sequences in strings (`\\"` doesn\'t end the string)', () => {
+    const code = 'const x = "with \\"effect(\\" inside"'
+    const masked = _maskStringsAndComments(code)
+    expect(masked.includes('effect(')).toBe(false)
+  })
+
+  it('handles escape sequences in template literals (`\\`` doesn\'t end)', () => {
+    const code = 'const x = `with \\`effect(\\` inside`'
+    const masked = _maskStringsAndComments(code)
+    expect(masked.includes('effect(')).toBe(false)
+  })
+
+  it('does not touch code outside strings/comments', () => {
+    const code = 'const x = signal(0); const y = computed(() => 1); effect(() => 2)'
+    const masked = _maskStringsAndComments(code)
+    // Verbatim — no string/comment regions to mask.
+    expect(masked).toBe(code)
+  })
+
+  it('preserves newlines so injected line numbers stay correct', () => {
+    const code = 'line1\n"line2"\nline3'
+    const masked = _maskStringsAndComments(code)
+    expect(masked.split('\n')).toHaveLength(3)
+  })
+})
+
+describe('injectSignalNames — string-region false-positive prevention', () => {
+  it('does NOT inject into `effect(` inside a template literal (docstring)', async () => {
+    const code = `import { signal } from "@pyreon/reactivity"
+export function App() {
+  const docs = \`
+    Use effect() like this:
+      effect(() => console.log(state))
+  \`
+  return docs
+}
+`
+    const result = await ctx.transform(code, '/abs/app.tsx')
+    // The template literal's content must NOT be modified.
+    expect(result!.code).toContain('Use effect() like this:')
+    expect(result!.code).toContain('effect(() => console.log(state))')
+    // No __sourceLocation injection (the only `effect(` is inside the string).
+    expect(result!.code).not.toContain('__sourceLocation')
+  })
+
+  it('does NOT inject into `signal(` / `computed(` inside a template literal', async () => {
+    const code = `import { signal } from "@pyreon/reactivity"
+export function App() {
+  const docs = \`
+    Pattern: const count = signal(0)
+    Pattern: const doubled = computed(() => count() * 2)
+  \`
+  return docs
+}
+`
+    const result = await ctx.transform(code, '/abs/app.tsx')
+    expect(result!.code).toContain('const count = signal(0)')
+    expect(result!.code).toContain('const doubled = computed(() => count() * 2)')
+    // The template-literal content stays verbatim — no __sourceLocation.
+    expect(result!.code).not.toContain('__sourceLocation')
+  })
+
+  it('does NOT inject into `effect(` inside a "..." string', async () => {
+    // Common shape: throw new Error('effect() must be called inside ...')
+    const code = `import { signal } from "@pyreon/reactivity"
+export function App() {
+  throw new Error("effect() must be called inside a component")
+}
+`
+    const result = await ctx.transform(code, '/abs/app.tsx')
+    expect(result!.code).toContain('"effect() must be called inside a component"')
+    expect(result!.code).not.toContain('__sourceLocation')
+  })
+
+  it('does NOT inject into `effect(` inside a line comment', async () => {
+    const code = `import { signal, effect } from "@pyreon/reactivity"
+export function App() {
+  // TODO: replace effect(() => log()) with watch()
+  const x = signal(0)
+  return x
+}
+`
+    const result = await ctx.transform(code, '/abs/app.tsx')
+    // signal(0) gets injected; the comment-mention of effect(...) does not.
+    expect(result!.code).toContain('signal(0, { name: "x"')
+    // The comment line is verbatim.
+    expect(result!.code).toContain('// TODO: replace effect(() => log()) with watch()')
+    // Only ONE __sourceLocation — the signal call.
+    const matches = result!.code.match(/__sourceLocation/g) ?? []
+    expect(matches).toHaveLength(1)
+  })
+
+  it('STILL injects into real `effect(` calls outside strings — false-negative guard', async () => {
+    const code = `import { signal, effect } from "@pyreon/reactivity"
+export function App() {
+  const docs = \`effect(() => x)\`  // fake call in string — must NOT inject
+  const s = signal(0)              // real — MUST inject
+  effect(() => { console.log(s()) }) // real — MUST inject
+  return docs
+}
+`
+    const result = await ctx.transform(code, '/abs/app.tsx')
+    // The string's content survives.
+    expect(result!.code).toContain('`effect(() => x)`')
+    // Two real reactive calls → two __sourceLocation injections.
+    const matches = result!.code.match(/__sourceLocation/g) ?? []
+    expect(matches).toHaveLength(2)
+    // The signal is bound, has a name.
+    expect(result!.code).toContain('name: "s"')
+  })
+
+  it('handles real `signal()` call INSIDE template-literal `${...}` interpolation', async () => {
+    // Interpolation bodies are real code — `signal()` there should
+    // still be tracked.
+    const code = `import { signal } from "@pyreon/reactivity"
+export function App() {
+  const make = () => {
+    const s = signal(0)
+    return \`value: \${s()}\`
+  }
+  return make()
+}
+`
+    const result = await ctx.transform(code, '/abs/app.tsx')
+    expect(result!.code).toContain('signal(0, { name: "s"')
   })
 })
