@@ -4,7 +4,7 @@
 // `var x by remember { mutableStateOf(initial) }`, computeds to
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
-import { safeIdent } from './identifier-safety'
+import { kotlinIdent, safeIdent } from './identifier-safety'
 import type {
   AttrIR,
   ChildIR,
@@ -46,11 +46,16 @@ function emitKotlinComponent(c: ComponentIR): string {
   // Props become Composable function parameters. Compose canonical
   // pattern — parent code calls `Card(title = "...", body = "...")`,
   // params are immutable per call.
+  //
+  // `kotlinIdent` backtick-escapes Kotlin-reserved keywords. User code
+  // commonly accepts `class` as a prop name (React/HTML attr leakage)
+  // or names functions colliding with `fun` / `val` / etc. — Kotlin
+  // accepts ``\`class\`: String`` etc. as a normal identifier.
   const propsList = c.props
-    .map((p) => `${p.name}: ${kotlinType(p.type, ctx, p.name)}`)
+    .map((p) => `${kotlinIdent(p.name)}: ${kotlinType(p.type, ctx, p.name)}`)
     .join(', ')
   lines.push(`@Composable`)
-  lines.push(`fun ${c.name}(${propsList}) {`)
+  lines.push(`fun ${kotlinIdent(c.name)}(${propsList}) {`)
   for (const declText of declTexts) {
     lines.push(`  ${declText}`)
   }
@@ -76,12 +81,12 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     // generic on `mutableStateOf<List<T>>(listOf())`. Non-array types use
     // plain `mutableStateOf` and let Kotlin infer.
     if (d.type.kind === 'array' && d.initial.kind === 'array' && d.initial.elements.length === 0) {
-      return `var ${d.name} by remember { mutableStateOf<${kotlinType(d.type, ctx, d.name)}>(listOf()) }`
+      return `var ${kotlinIdent(d.name)} by remember { mutableStateOf<${kotlinType(d.type, ctx, d.name)}>(listOf()) }`
     }
-    return `var ${d.name} by remember { mutableStateOf(${initial}) }`
+    return `var ${kotlinIdent(d.name)} by remember { mutableStateOf(${initial}) }`
   }
   // computed → derivedStateOf, accessed via the `by` delegate.
-  return `val ${d.name} by remember { derivedStateOf { ${emitKotlinExpr(d.expr, 0)} } }`
+  return `val ${kotlinIdent(d.name)} by remember { derivedStateOf { ${emitKotlinExpr(d.expr, 0)} } }`
 }
 
 /**
@@ -185,7 +190,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       if (typeof e.value === 'boolean') return e.value ? 'true' : 'false'
       return String(e.value)
     case 'identifier':
-      return e.name
+      return kotlinIdent(e.name)
     case 'call': {
       // `signal.set(x)` → `signal = x` (Kotlin's `by mutableStateOf` is a var).
       if (e.callee.kind === 'member' && e.callee.property === 'set') {
@@ -195,7 +200,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       }
       // Bare signal call `count()` → `count` (the delegated `by` makes it a plain read).
       if (e.callee.kind === 'identifier' && e.args.length === 0) {
-        return e.callee.name
+        return kotlinIdent(e.callee.name)
       }
       const callee = emitKotlinExpr(e.callee, indent)
       const args = e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')
@@ -211,15 +216,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.object.kind === 'identifier' &&
         e.object.name === _activePropsParamName
       ) {
-        return e.property
+        return kotlinIdent(e.property)
       }
-      return `${emitKotlinExpr(e.object, indent)}.${e.property}`
+      return `${emitKotlinExpr(e.object, indent)}.${kotlinIdent(e.property)}`
     }
     case 'binary':
       return `${emitKotlinExpr(e.left, indent)} ${e.op} ${emitKotlinExpr(e.right, indent)}`
     case 'arrow':
       if (e.params.length === 0) return `{ ${emitKotlinExpr(e.body, indent)} }`
-      return `{ ${e.params.join(', ')} -> ${emitKotlinExpr(e.body, indent)} }`
+      return `{ ${e.params.map(kotlinIdent).join(', ')} -> ${emitKotlinExpr(e.body, indent)} }`
     case 'jsx-element':
       return emitKotlinJsx(e, indent)
     case 'jsx-fragment': {
@@ -333,17 +338,22 @@ function emitKotlinGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       // `aria-label`) to camelCase. Kotlin rejects `-` in named
       // arguments the same way Swift does. Mirrors the Swift emit
       // — see `safeIdent` for the structural rationale.
-      return `${safeIdent(aa.name)} = ${emitKotlinExpr(aa.value, indent)}`
+      // Also `kotlinIdent`-escape in case the kebab→camel conversion
+      // lands on a reserved keyword.
+      return `${kotlinIdent(safeIdent(aa.name))} = ${emitKotlinExpr(aa.value, indent)}`
     })
     .join(', ')
+  // `kotlinIdent`-escape the tag too — covers user-defined components
+  // whose name collides with a Kotlin keyword.
+  const tag = kotlinIdent(e.tag)
   if (e.children.length === 0) {
-    return attrPairs ? `${e.tag}(${attrPairs})` : `${e.tag}()`
+    return attrPairs ? `${tag}(${attrPairs})` : `${tag}()`
   }
   const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   if (attrPairs) {
-    return `${e.tag}(${attrPairs}) {\n${contentLines}\n${' '.repeat(indent)}}`
+    return `${tag}(${attrPairs}) {\n${contentLines}\n${' '.repeat(indent)}}`
   }
-  return `${e.tag} {\n${contentLines}\n${' '.repeat(indent)}}`
+  return `${tag} {\n${contentLines}\n${' '.repeat(indent)}}`
 }
 
 function emitKotlinChild(c: ChildIR, indent: number): string {
@@ -352,7 +362,7 @@ function emitKotlinChild(c: ChildIR, indent: number): string {
 }
 
 function emitKotlinSignalRead(e: ExprIR): string {
-  if (e.kind === 'identifier') return e.name
+  if (e.kind === 'identifier') return kotlinIdent(e.name)
   return emitKotlinExpr(e, 0)
 }
 

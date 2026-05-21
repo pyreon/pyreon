@@ -9,7 +9,7 @@
 // computed properties. Phase 1 grows a real inference pass.
 
 import { buildInferenceCtx, inferType } from './infer-type'
-import { safeIdent } from './identifier-safety'
+import { safeIdent, swiftIdent } from './identifier-safety'
 import type {
   AttrIR,
   ChildIR,
@@ -37,12 +37,17 @@ function emitSwiftComponent(c: ComponentIR): string {
   const inferCtx = buildInferenceCtx(c.decls)
   _activePropsParamName = c.propsParamName
   const lines: string[] = []
-  lines.push(`struct ${c.name}: View {`)
+  // `swiftIdent` backtick-escapes Swift-reserved keywords. Pyreon
+  // user code commonly exports functions named `guard` (route guard
+  // convention) and accepts `class` as a prop name (React/HTML attr);
+  // both crash swiftc as bare identifiers. Backticks let Swift treat
+  // the colliding name as a normal identifier (`struct \`guard\`: View`).
+  lines.push(`struct ${swiftIdent(c.name)}: View {`)
   // Props become `let X: T` stored properties on the SwiftUI View struct.
   // SwiftUI canonical pattern — parent code constructs `Card(title: ...)`,
   // props are immutable per instance.
   for (const p of c.props) {
-    lines.push(`  let ${p.name}: ${swiftType(p.type)}`)
+    lines.push(`  let ${swiftIdent(p.name)}: ${swiftType(p.type)}`)
   }
   for (const d of c.decls) {
     lines.push(`  ${emitSwiftDecl(d, inferCtx)}`)
@@ -58,7 +63,7 @@ function emitSwiftComponent(c: ComponentIR): string {
 function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>): string {
   if (d.kind === 'signal') {
     const type = swiftType(d.type)
-    return `@State private var ${d.name}: ${type} = ${emitSwiftExpr(d.initial, 0)}`
+    return `@State private var ${swiftIdent(d.name)}: ${type} = ${emitSwiftExpr(d.initial, 0)}`
   }
   // computed — infer the return type from the expression body so we
   // can emit a typed computed property. Falls back to `Any` for cases
@@ -66,7 +71,7 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
   // code via the fallback `swiftType` for `unknown`).
   const inferred = inferType(d.expr, inferCtx)
   const swiftReturnType = swiftType(inferred)
-  return `private var ${d.name}: ${swiftReturnType} { ${emitSwiftExpr(d.expr, 0)} }`
+  return `private var ${swiftIdent(d.name)}: ${swiftReturnType} { ${emitSwiftExpr(d.expr, 0)} }`
 }
 
 /**
@@ -154,7 +159,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       if (typeof e.value === 'string') return JSON.stringify(e.value)
       return String(e.value)
     case 'identifier':
-      return e.name
+      return swiftIdent(e.name)
     case 'call': {
       // Special case: `signal.set(x)` → `signal = x` (Swift @State is a var).
       if (e.callee.kind === 'member' && e.callee.property === 'set') {
@@ -165,7 +170,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // Bare signal call `count()` → `count` (Swift @State is read directly).
       // We treat any zero-arg call to an Identifier as a signal/computed read.
       if (e.callee.kind === 'identifier' && e.args.length === 0) {
-        return e.callee.name
+        return swiftIdent(e.callee.name)
       }
       const callee = emitSwiftExpr(e.callee, indent)
       const args = e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')
@@ -182,16 +187,16 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.object.kind === 'identifier' &&
         e.object.name === _activePropsParamName
       ) {
-        return e.property
+        return swiftIdent(e.property)
       }
-      return `${emitSwiftExpr(e.object, indent)}.${e.property}`
+      return `${emitSwiftExpr(e.object, indent)}.${swiftIdent(e.property)}`
     }
     case 'binary':
       return `${emitSwiftExpr(e.left, indent)} ${e.op} ${emitSwiftExpr(e.right, indent)}`
     case 'arrow':
       // Swift closure: `{ params in body }`.
       if (e.params.length === 0) return `{ ${emitSwiftExpr(e.body, indent)} }`
-      return `{ ${e.params.join(', ')} in ${emitSwiftExpr(e.body, indent)} }`
+      return `{ ${e.params.map(swiftIdent).join(', ')} in ${emitSwiftExpr(e.body, indent)} }`
     case 'jsx-element':
       return emitSwiftJsx(e, indent)
     case 'jsx-fragment': {
@@ -311,19 +316,25 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
       // labels with `expected ',' separator`; was the #1 cause of
       // swiftc-parse failures on the real-corpus coverage gate
       // (19 of 30 invalid files, 2026-05-21 measurement).
-      return `${safeIdent(aa.name)}: ${emitSwiftExpr(aa.value, indent)}`
+      // Also `swiftIdent`-escape the attr label in case the kebab→camel
+      // conversion lands on a reserved keyword (e.g. `for-class` →
+      // `forClass` — both halves are reserved when used as identifiers).
+      return `${swiftIdent(safeIdent(aa.name))}: ${emitSwiftExpr(aa.value, indent)}`
     })
     .join(', ')
+  // `swiftIdent`-escape the tag name — covers user-defined components
+  // whose name collides with a Swift keyword (e.g. `<class>...</class>`).
+  const tag = swiftIdent(e.tag)
   if (e.children.length === 0) {
-    return attrPairs ? `${e.tag}(${attrPairs})` : `${e.tag}()`
+    return attrPairs ? `${tag}(${attrPairs})` : `${tag}()`
   }
   const contentLines = e.children
     .map((c) => pad + emitSwiftChild(c, indent + 2))
     .join('\n')
   if (attrPairs) {
-    return `${e.tag}(${attrPairs}) {\n${contentLines}\n${' '.repeat(indent)}}`
+    return `${tag}(${attrPairs}) {\n${contentLines}\n${' '.repeat(indent)}}`
   }
-  return `${e.tag} {\n${contentLines}\n${' '.repeat(indent)}}`
+  return `${tag} {\n${contentLines}\n${' '.repeat(indent)}}`
 }
 
 function emitSwiftChild(c: ChildIR, indent: number): string {
@@ -337,8 +348,9 @@ function emitSwiftChild(c: ChildIR, indent: number): string {
 function emitSwiftSignalRead(e: ExprIR): string {
   // In Pyreon JSX, a bare identifier in a prop position like `when={visible}`
   // refers to the signal accessor. In Swift, the @State variable is read by
-  // name. So `visible` → `visible`.
-  if (e.kind === 'identifier') return e.name
+  // name. So `visible` → `visible`. Keyword-escape via `swiftIdent` —
+  // a user-defined signal named `class` should emit as `` `class` ``.
+  if (e.kind === 'identifier') return swiftIdent(e.name)
   return emitSwiftExpr(e, 0)
 }
 
