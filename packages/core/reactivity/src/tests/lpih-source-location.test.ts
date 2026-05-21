@@ -196,3 +196,56 @@ describe('LPIH — getFireSummaries()', () => {
     e.dispose()
   })
 })
+
+describe('LPIH — rate1s EWMA tracking', () => {
+  it('rate1s is 0 for a node that has not fired', () => {
+    activateReactiveDevtools()
+    const s = signal(0)
+    const summaries = getFireSummaries()
+    // Signal was created but never written → rate1s = 0
+    const summary = summaries.find((x) => x.kind === 'signal')
+    expect(summary?.rate1s).toBe(0)
+    void s
+  })
+
+  it('rate1s rises with rapid fires', () => {
+    activateReactiveDevtools()
+    const s = signal(0)
+    for (let i = 0; i < 10; i++) s.set(i + 1)
+    const summaries = getFireSummaries()
+    const summary = summaries.find((x) => x.kind === 'signal')
+    expect(summary?.rate1s).toBeGreaterThan(0)
+    void s
+  })
+
+  it('rate1s for many rapid fires reflects fire density (>1)', () => {
+    activateReactiveDevtools()
+    const s = signal(0)
+    // 100 fires in rapid succession — dt → 0, decay ≈ 1.0, so each fire
+    // adds ~+1 to rate1s. At read time the value is decayed by the small
+    // elapsed time → still well above the threshold.
+    for (let i = 0; i < 100; i++) s.set(i + 1)
+    const summaries = getFireSummaries()
+    const summary = summaries.find((x) => x.kind === 'signal')
+    expect(summary?.rate1s).toBeGreaterThan(10)
+    void s
+  })
+
+  it('rate1s decays to ≈0 after the time constant elapses', async () => {
+    activateReactiveDevtools()
+    const s = signal(0)
+    s.set(1)
+    const initial = getFireSummaries().find((x) => x.kind === 'signal')
+    expect(initial?.rate1s).toBeGreaterThan(0.5)
+    // 1.5s = 1.5× TAU → rate1s should drop to exp(-1.5) ≈ 0.22× initial.
+    await new Promise((r) => setTimeout(r, 1500))
+    const decayed = getFireSummaries().find((x) => x.kind === 'signal')
+    expect(decayed?.rate1s).toBeLessThan(0.5)
+    void s
+  })
+
+  it('exported LPIH_RATE_TAU_MS constant equals 1000 (1 second)', async () => {
+    const { LPIH_RATE_TAU_MS } = await import('../reactive-devtools')
+    expect(LPIH_RATE_TAU_MS).toBe(1000)
+  })
+})

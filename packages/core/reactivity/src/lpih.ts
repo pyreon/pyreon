@@ -119,6 +119,7 @@ async function _writeToPath(path: string): Promise<number> {
       count: s.count,
       kind: s.kind,
       lastFire: s.lastFire,
+      rate1s: s.rate1s,
     })),
   }
   const pid =

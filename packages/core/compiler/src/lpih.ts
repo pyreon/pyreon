@@ -57,6 +57,13 @@ export interface LPIHFireDatum {
   lastFire?: number | null | undefined
   /** Node kind that fired (signal / derived / effect). */
   kind?: 'signal' | 'derived' | 'effect' | undefined
+  /**
+   * Exponentially-decayed fire rate, fires/sec (1s time constant). 0
+   * when the node has been idle longer than several time constants.
+   * Used by the default formatter to add a "12/s" suffix when active.
+   * See `@pyreon/reactivity`'s `FireSummary.rate1s` for the math.
+   */
+  rate1s?: number | undefined
 }
 
 /** Options for `mergeFireDataIntoFindings`. */
@@ -76,9 +83,28 @@ export interface LPIHMergeOptions {
   formatDetail?: (detail: string, fire: LPIHFireDatum) => string
 }
 
+/**
+ * Threshold below which the rate suffix is omitted. A long-dormant node
+ * decays toward 0; showing "0/s" or "0.001/s" is noise. The 0.5 cutoff
+ * means "less than once every 2 seconds at steady state" — at that
+ * rate, the cumulative count is the more useful signal.
+ *
+ * @internal — exported for tests + tunability.
+ */
+export const _LPIH_RATE_VISIBLE_THRESHOLD = 0.5
+
+function _formatRate(rate1s: number): string {
+  if (rate1s < _LPIH_RATE_VISIBLE_THRESHOLD) return ''
+  // < 10/s: 1 decimal place. ≥ 10/s: rounded integer.
+  return rate1s < 10
+    ? ` (${rate1s.toFixed(1)}/s)`
+    : ` (${Math.round(rate1s)}/s)`
+}
+
 const DEFAULT_FORMAT = (detail: string, fire: LPIHFireDatum): string => {
   const kindLabel = fire.kind ? `${fire.kind} ` : ''
-  return `${detail} — ${kindLabel}fired ${fire.count}×`
+  const rate = typeof fire.rate1s === 'number' ? _formatRate(fire.rate1s) : ''
+  return `${detail} — ${kindLabel}fired ${fire.count}×${rate}`
 }
 
 /**
@@ -117,6 +143,9 @@ export function mergeFireDataIntoFindings(
     const existing = byLine.get(f.line)
     if (existing) {
       existing.count += f.count
+      if (typeof f.rate1s === 'number') {
+        existing.rate1s = (existing.rate1s ?? 0) + f.rate1s
+      }
       const incomingLast = f.lastFire ?? -Infinity
       const existingLast = existing.lastFire ?? -Infinity
       if (incomingLast > existingLast) {
@@ -198,6 +227,10 @@ export function firesToCreationSiteFindings(
     const existing = byLine.get(f.line)
     if (existing) {
       existing.count += f.count
+      // Sum rates at the same line (e.g. destructured signal pair).
+      if (typeof f.rate1s === 'number') {
+        existing.rate1s = (existing.rate1s ?? 0) + f.rate1s
+      }
       const incomingLast = f.lastFire ?? -Infinity
       const existingLast = existing.lastFire ?? -Infinity
       if (incomingLast > existingLast) {
@@ -211,7 +244,8 @@ export function firesToCreationSiteFindings(
 
   const format = options.formatDetail ?? ((_: string, fire: LPIHFireDatum) => {
     const kindLabel = fire.kind ?? 'node'
-    return `${kindLabel} fired ${fire.count}×`
+    const rate = typeof fire.rate1s === 'number' ? _formatRate(fire.rate1s) : ''
+    return `${kindLabel} fired ${fire.count}×${rate}`
   })
 
   // 'live-fire' is a new finding kind — synthetic, not produced by
