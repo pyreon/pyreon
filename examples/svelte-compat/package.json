@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-svelte-compat",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "private": true,
   "type": "module",
   "scripts": {

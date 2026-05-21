@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/rocketstyle",
-  "version": "0.24.1",
+  "version": "0.24.2",
   "description": "Multi-dimensional style composition for Pyreon components",
   "license": "MIT",
   "repository": {
