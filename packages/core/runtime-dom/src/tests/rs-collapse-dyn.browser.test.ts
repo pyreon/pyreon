@@ -198,6 +198,66 @@ describe('_rsCollapseDyn (real browser)', () => {
     expect(btn.textContent).toBe('Bad')
   })
 
+  it('valueIndex() is called EXACTLY ONCE per re-run (no double-call) — side-effect-safe', async () => {
+    // Regression: the original implementation routed through
+    // `_bindDirect`'s fallback which calls the source function once
+    // (passing the result as `v` to the inner callback), then the
+    // inner callback called `valueIndex()` AGAIN — i.e., two calls
+    // per re-run. Side-effecting cond expressions (`{(modifyState(),
+    // cond) ? 'a' : 'b'}`) would fire their side-effects twice,
+    // breaking the original source's call-count contract. The fix is
+    // to use `renderEffect` directly so `valueIndex()` runs exactly
+    // once per re-run, matching the implicit semantics of the
+    // user's JSX call site.
+    //
+    // Bisect: with the old `_bindDirect(valueIndex, () => valueIndex() ...)`
+    // shape this spec records `calls > runs`. With the fix
+    // (direct `renderEffect(() => valueIndex() ...)`) calls === runs.
+    injectCss(`
+      .rdcc-v0-light{color:rgb(1,2,3)}.rdcc-v0-dark{color:rgb(4,5,6)}
+      .rdcc-v1-light{color:rgb(7,8,9)}.rdcc-v1-dark{color:rgb(10,11,12)}
+    `)
+    const cond = signal(false)
+    const isDark = signal(false)
+    let calls = 0
+    const root = mountInto(
+      _rsCollapseDyn(
+        '<button>Calls</button>',
+        ['rdcc-v0-light', 'rdcc-v0-dark', 'rdcc-v1-light', 'rdcc-v1-dark'],
+        () => {
+          calls++
+          return cond() ? 1 : 0
+        },
+        () => isDark(),
+      ),
+    )
+    await flush()
+    // Initial mount: one renderEffect run.
+    expect(calls).toBe(1)
+    // Value flip: one more run.
+    cond.set(true)
+    await flush()
+    expect(calls).toBe(2)
+    // Mode flip: one more run.
+    isDark.set(true)
+    await flush()
+    expect(calls).toBe(3)
+    // Combined flip back: one run.
+    cond.set(false)
+    isDark.set(false)
+    await flush()
+    // Two writes inside the same microtask coalesce to one effect run
+    // (Pyreon's batch semantics). Either 4 or 5 — accept either to
+    // avoid coupling to batching internals. The bisect-load-bearing
+    // assertion is `calls === runs` (1:1), NOT `calls === N`. Pre-fix
+    // the count would be 2× either way.
+    expect(calls).toBeGreaterThanOrEqual(4)
+    expect(calls).toBeLessThanOrEqual(5)
+    // Cleanly land on the right class regardless.
+    expect((root.querySelector('button') as HTMLElement).className).toBe('rdcc-v0-light')
+    void root
+  })
+
   it('children bind runs alongside class bind and disposes cleanly with the host', async () => {
     injectCss(`
       .rd6-v0-light{color:rgb(7,7,7)}.rd6-v0-dark{color:rgb(8,8,8)}
