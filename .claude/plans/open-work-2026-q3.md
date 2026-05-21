@@ -19,6 +19,46 @@ So future work isn't picked twice. From the three superseded plans:
 
 ---
 
+## PMTC — Pyreon Multi-Target Compiler (strategic direction chosen, NOT YET staffed)
+
+**Status**: Strategic direction merged in [#764](https://github.com/pyreon/pyreon/pull/764) ([`native-platforms.md`](./native-platforms.md)). Compiler skeleton (PR 0) merged in [#794](https://github.com/pyreon/pyreon/pull/794). Companion planning docs + followups shipped as a 7-PR trilogy + followup cluster. **No Phase 1 staffing or timeline kickoff** — the plan reserves that decision separately, conditional on both technical AND market validation passing.
+
+### The plan trilogy
+
+| PR | Doc | Status |
+|---|---|---|
+| #795 | [`native-platforms-competitors.md`](./native-platforms-competitors.md) — PMTC vs 10 frameworks (CMP, Skip, RN+Expo, Flutter, Lynx, Capacitor, Tauri, NativeScript-Vue, Solid Native) | merged |
+| #797 | [`native-platforms-phase0-roadmap.md`](./native-platforms-phase0-roadmap.md) — Phase 0 (8 PRs mapped to 3 pass/fail criteria, 12-18w envelope) | merged |
+| #799 | [`native-platforms-todomvc-walkthrough.md`](./native-platforms-todomvc-walkthrough.md) — 8 compositional gaps surfaced; 6 of 8 fit Phase 0/1 | open |
+
+### Followups (post-trilogy review, all opened in one session)
+
+| PR | Doc | Why |
+|---|---|---|
+| #802 | [`native-platforms-platform-abstractions.md`](./native-platforms-platform-abstractions.md) — three-package split + `PYREON_NATIVE_BINDINGS` manifest + compiler resolution algorithm | Foundational for Phase 1 — `@pyreon/storage` / `@pyreon/camera` / `@pyreon/push` etc. all share this shape |
+| #803 | [`native-platforms.md`](./native-platforms.md) — adds string-literal unions + two-way bindings to the mapping table | Closes two patterns the TodoMVC walkthrough surfaced as missing |
+| #804 | [`native-platforms-phase1-roadmap.md`](./native-platforms-phase1-roadmap.md) — Phase 1 iOS MVP (3 parallel chains, 10-24w envelope, TodoMVC deliverable) | Same shape as Phase 0 roadmap but Phase 1; references P4 survey as a precondition |
+| #807 | [`native-platforms-user-survey.md`](./native-platforms-user-survey.md) — market validation design (20-30 respondents, 12 Qs, decision thresholds) | Competitor survey (#795) named this as the biggest open question PMTC doesn't answer |
+
+### Critical-path PMTC decision gates
+
+**Phase 1 staffing requires BOTH**:
+
+1. **Technical pass** — all three Phase 0 criteria (type mapper coverage ≥90% on `ui-components`, counter-app on iOS simulator with signal→@State round-trip, rocketstyle style fidelity <5% pixel diff)
+2. **Market pass** — user survey thresholds (≥70% Adopt + ≥50% Native-real + ≤20% Reject-OTA) per #807
+
+If technical passes but market fails → **do NOT staff Phase 1**. Reconsider scope per #795's recommendations (partial-PMTC mode via Compose Multiplatform target, OR accept mobile is out of Pyreon's scope).
+
+### What's actionable RIGHT NOW (in priority order)
+
+1. **Phase 0 PR 1** — Swift runtime SPM scaffold — first PR after #794, blocks PRs 2/3/4/7/8 per #797. ~3-5 days.
+2. **Phase 0 PR 5a** — TS→Swift type mapper primitives — optimal parallel starter for a second contributor. ~3-5 days.
+3. **User survey recruitment** — per #807, runs during Phase 0 months 1-3. No engineering blocked on this; can start whenever a non-engineering owner is available. $1700-2700 external cash cost.
+
+Everything else in the PMTC plan tree is downstream of these.
+
+---
+
 ## Open work, by priority
 
 Ordered "highest leverage first." Each item names what's needed, evidence of current state, and effort.
