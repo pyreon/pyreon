@@ -7,7 +7,7 @@
 // This file is the SOURCE — what `pyreon-native build` consumes. The
 // generated Swift / Kotlin lands in `generated/`.
 
-import { signal, computed, effect } from '@pyreon/reactivity'
+import { signal, computed } from '@pyreon/reactivity'
 // `@pyreon/storage` — cross-platform persistence (Phase 0+: still
 // uses localStorage on web; Phase 1+ adds @pyreon/storage-ios /
 // @pyreon/storage-android per the platform-abstractions spec).
