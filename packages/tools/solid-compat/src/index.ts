@@ -1032,8 +1032,19 @@ export function createStore<T extends object>(
     const key = head as string | number
     // Refuse a dangerous string-keyed write at any depth — pollution
     // through `setStore(['foo', '__proto__'], …)` is the same hazard
-    // as the top-level form.
-    if (typeof key === 'string' && DANGEROUS_KEYS.has(key)) return
+    // as the top-level form. Inline string comparisons (vs the
+    // `DANGEROUS_KEYS.has(key)` Set lookup used by `safeAssign`)
+    // because CodeQL `js/prototype-polluting-assignment` (alert #22)
+    // does NOT propagate dataflow through `Set.has` calls — the
+    // analyzer needs explicit `===` checks against the literal key
+    // names to recognise the guard. Same set of dangerous keys; just
+    // a form CodeQL's taint-tracking can follow.
+    if (
+      typeof key === 'string' &&
+      (key === '__proto__' || key === 'constructor' || key === 'prototype')
+    ) {
+      return
+    }
 
     if (rest.length === 0) {
       // Last path segment — set the value

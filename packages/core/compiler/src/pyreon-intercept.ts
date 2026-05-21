@@ -993,7 +993,15 @@ export function hasPyreonPatterns(code: string): boolean {
     /\.theme\s*\(\s*\{\s*\}\s*\)/.test(code) ||
     /\b(?:add|remove)EventListener\s*\(/.test(code) ||
     (/\bDate\.now\s*\(/.test(code) && /\bMath\.random\s*\(/.test(code)) ||
-    /on[A-Z]\w*\s*=\s*\{\s*undefined\s*\}/.test(code) ||
+    // Bounded `\w{0,60}` cap on the handler identifier — real `on*`
+    // names are at most ~25 chars (`onPointerLeaveCapture`); 60 leaves
+    // headroom. The unbounded `\w*` form was flagged by CodeQL
+    // `js/polynomial-redos` (alert #65) as polynomial-time on inputs
+    // like `onAAAA…` (long runs of `[A-Z]`): per starting position
+    // the greedy `\w*` consumes O(N) chars before the trailing `=`
+    // fails to match, giving O(N²) overall on N starting positions.
+    // The cap keeps the regex linear regardless of input shape.
+    /on[A-Z]\w{0,60}\s*=\s*\{\s*undefined\s*\}/.test(code) ||
     // Bounded `{0,500}` / `{1,500}` quantifiers — this is a pre-filter
     // scan before the precise AST walker, so losing detector recall on
     // a pathologically long single-line input is acceptable.
