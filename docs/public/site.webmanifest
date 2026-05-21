@@ -1,0 +1,18 @@
+{
+  "name": "Pyreon",
+  "short_name": "Pyreon",
+  "description": "Signal-based UI framework — fine-grained reactivity, no virtual DOM, streaming SSR.",
+  "start_url": "/pyreon/",
+  "scope": "/pyreon/",
+  "display": "standalone",
+  "background_color": "#0A0A0E",
+  "theme_color": "#0A0A0E",
+  "icons": [
+    {
+      "src": "/pyreon/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

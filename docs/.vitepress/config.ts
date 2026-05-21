@@ -56,33 +56,125 @@ export default defineConfig({
       },
     ],
     // Brand favicon — rounded ink tile + ember disc (assets/favicon.svg).
+    // SVG works in every modern browser. PNG raster fallback (16/32/180/
+    // 192/512) is a documented follow-up — needs a build-time sharp pass
+    // over the SVG. Webmanifest references the SVG `purpose: 'any'` so
+    // PWA installs work today without the PNGs.
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/pyreon/favicon.svg' }],
+    ['link', { rel: 'manifest', href: '/pyreon/site.webmanifest' }],
+    ['meta', { name: 'theme-color', content: '#0A0A0E' }],
+    ['meta', { name: 'application-name', content: 'Pyreon' }],
+    ['meta', { name: 'apple-mobile-web-app-title', content: 'Pyreon' }],
+    // Canonical description (mirror of `description` for crawlers that
+    // index `<meta name="description">` separately from VitePress's
+    // own `<meta name="description" content="...">`).
     [
       'meta',
       {
-        name: 'og:description',
+        name: 'description',
         content:
           'Signal-based UI framework — fine-grained reactivity, no virtual DOM, streaming SSR.',
       },
     ],
-    // OG / social card (brand handoff §6.3). Absolute URL — social
-    // scrapers don't resolve site-relative paths. Note: this is an SVG;
-    // most scrapers render it, but Twitter/Slack prefer raster — a
-    // build-time PNG rasterization is a documented follow-up.
+    // ── Open Graph (brand handoff §6.3 + social-kit design) ────────────
+    // Absolute URLs — social scrapers don't resolve site-relative paths.
+    // og.svg works in most modern scrapers; PNG rasterization remains a
+    // documented build-time follow-up (the social-kit design specifies
+    // 1200×630 native pixel exports).
     ['meta', { property: 'og:type', content: 'website' }],
+    ['meta', { property: 'og:site_name', content: 'Pyreon' }],
+    ['meta', { property: 'og:locale', content: 'en_US' }],
     ['meta', { property: 'og:title', content: 'Pyreon — the signal-based UI framework' }],
+    [
+      'meta',
+      {
+        property: 'og:description',
+        content:
+          'Signal-based UI framework — fine-grained reactivity, no virtual DOM, streaming SSR.',
+      },
+    ],
+    ['meta', { property: 'og:url', content: 'https://pyreon.github.io/pyreon/' }],
     [
       'meta',
       { property: 'og:image', content: 'https://pyreon.github.io/pyreon/og.svg' },
     ],
     ['meta', { property: 'og:image:width', content: '1200' }],
     ['meta', { property: 'og:image:height', content: '630' }],
+    [
+      'meta',
+      {
+        property: 'og:image:alt',
+        content:
+          'Pyreon — the signal-based UI framework. Ember-on-ink wordmark with the signal-network motif.',
+      },
+    ],
+    ['meta', { property: 'og:image:type', content: 'image/svg+xml' }],
+    // ── Twitter / X card ───────────────────────────────────────────────
+    // `summary_large_image` matches the 1200×630 OG aspect — the social-
+    // kit design recommends one canonical raster for both surfaces so
+    // Twitter doesn't crop the OG image awkwardly.
     ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
+    ['meta', { name: 'twitter:title', content: 'Pyreon — the signal-based UI framework' }],
+    [
+      'meta',
+      {
+        name: 'twitter:description',
+        content:
+          'Signal-based UI framework — fine-grained reactivity, no virtual DOM, streaming SSR.',
+      },
+    ],
     [
       'meta',
       { name: 'twitter:image', content: 'https://pyreon.github.io/pyreon/og.svg' },
     ],
+    [
+      'meta',
+      {
+        name: 'twitter:image:alt',
+        content:
+          'Pyreon — the signal-based UI framework. Ember-on-ink wordmark with the signal-network motif.',
+      },
+    ],
   ],
+
+  // Per-page meta overrides — when a markdown page declares
+  // `frontmatter.ogImage` / `ogTitle` / `ogDescription`, swap the head
+  // tags before VitePress renders the HTML. Mirrors the social-kit
+  // design's "article / blog" variant pattern — each post can ship its
+  // own OG image without duplicating the entire head block.
+  transformPageData(pageData) {
+    type FrontmatterOg = {
+      ogImage?: string
+      ogTitle?: string
+      ogDescription?: string
+      ogType?: string
+    }
+    const fm = pageData.frontmatter as FrontmatterOg
+    if (!fm.ogImage && !fm.ogTitle && !fm.ogDescription && !fm.ogType) {
+      return
+    }
+    const head = (pageData.frontmatter.head as Array<[string, Record<string, string>]>) ?? []
+    if (fm.ogTitle) {
+      head.push(['meta', { property: 'og:title', content: fm.ogTitle }])
+      head.push(['meta', { name: 'twitter:title', content: fm.ogTitle }])
+    }
+    if (fm.ogDescription) {
+      head.push(['meta', { property: 'og:description', content: fm.ogDescription }])
+      head.push(['meta', { name: 'twitter:description', content: fm.ogDescription }])
+    }
+    if (fm.ogImage) {
+      // Absolute URL required — social scrapers don't resolve site-relative paths.
+      const abs = fm.ogImage.startsWith('http')
+        ? fm.ogImage
+        : `https://pyreon.github.io/pyreon${fm.ogImage.startsWith('/') ? '' : '/'}${fm.ogImage}`
+      head.push(['meta', { property: 'og:image', content: abs }])
+      head.push(['meta', { name: 'twitter:image', content: abs }])
+    }
+    if (fm.ogType) {
+      head.push(['meta', { property: 'og:type', content: fm.ogType }])
+    }
+    pageData.frontmatter.head = head
+  },
 
   themeConfig: {
     // Primary ON mark — theme-aware: paper glyph on the dark nav, ink
