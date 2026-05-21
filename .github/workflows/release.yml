@@ -33,11 +33,17 @@ on:
     # The contract: a release is intentional. If you want code to ship,
     # write a changeset. If you don't want it to ship, don't. The trigger
     # mirrors the intent exactly — no path-blacklist approximation needed.
+    #
+    # NOTE: combine include + exclude into a SINGLE `paths:` list with `!`
+    # negation. Using `paths:` AND `paths-ignore:` at the same trigger is
+    # invalid YAML for GitHub Actions — the workflow fails to load with a
+    # generic "failure" status, ZERO jobs, and `name` falls back to the
+    # file path (which is exactly what happened to release.yml from
+    # b0a83905 → this fix). See PR #818 v1 for the original broken shape.
     paths:
       - '.changeset/**'
-    paths-ignore:
-      - '.changeset/README.md'      # changesets package's own README
-      - '.changeset/config.json'    # config edits don't ship; rare
+      - '!.changeset/README.md'     # changesets package's own README
+      - '!.changeset/config.json'   # config edits don't ship; rare
   workflow_dispatch:
 
 # Read-only default; per-job blocks below grant write only to the
