@@ -8,6 +8,7 @@
 // Type inference is deliberately naive — numeric assumption for
 // computed properties. Phase 1 grows a real inference pass.
 
+import { buildInferenceCtx, inferType } from './infer-type'
 import type {
   AttrIR,
   ChildIR,
@@ -21,27 +22,50 @@ export function emitSwift(components: ComponentIR[]): string {
   return components.map(emitSwiftComponent).join('\n\n')
 }
 
+// Module-scoped state for the active component's props-param-name. Set at
+// the start of each `emitSwiftComponent` and read by `emitSwiftExpr`'s
+// member case to rewrite `props.title` → `title`. Reset to undefined
+// after each component to avoid leaking state across emit calls.
+//
+// Threading this via an explicit ctx parameter would require touching 22
+// call sites in this file; a module-scoped variable keeps the emitter
+// readable. Safe because emit is synchronous within a single call.
+let _activePropsParamName: string | undefined
+
 function emitSwiftComponent(c: ComponentIR): string {
+  const inferCtx = buildInferenceCtx(c.decls)
+  _activePropsParamName = c.propsParamName
   const lines: string[] = []
   lines.push(`struct ${c.name}: View {`)
+  // Props become `let X: T` stored properties on the SwiftUI View struct.
+  // SwiftUI canonical pattern — parent code constructs `Card(title: ...)`,
+  // props are immutable per instance.
+  for (const p of c.props) {
+    lines.push(`  let ${p.name}: ${swiftType(p.type)}`)
+  }
   for (const d of c.decls) {
-    lines.push(`  ${emitSwiftDecl(d)}`)
+    lines.push(`  ${emitSwiftDecl(d, inferCtx)}`)
   }
   lines.push(`  var body: some View {`)
   lines.push(`    ${emitSwiftExpr(c.returnExpr, 4)}`)
   lines.push(`  }`)
   lines.push(`}`)
+  _activePropsParamName = undefined
   return lines.join('\n')
 }
 
-function emitSwiftDecl(d: DeclIR): string {
+function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>): string {
   if (d.kind === 'signal') {
     const type = swiftType(d.type)
     return `@State private var ${d.name}: ${type} = ${emitSwiftExpr(d.initial, 0)}`
   }
-  // computed — naive Int assumption for Phase 0 (covers the fixtures);
-  // future phases need real inference.
-  return `private var ${d.name}: Int { ${emitSwiftExpr(d.expr, 0)} }`
+  // computed — infer the return type from the expression body so we
+  // can emit a typed computed property. Falls back to `Any` for cases
+  // the inference can't resolve (the emit still produces compilable
+  // code via the fallback `swiftType` for `unknown`).
+  const inferred = inferType(d.expr, inferCtx)
+  const swiftReturnType = swiftType(inferred)
+  return `private var ${d.name}: ${swiftReturnType} { ${emitSwiftExpr(d.expr, 0)} }`
 }
 
 /**
@@ -136,8 +160,21 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       const args = e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')
       return `${callee}(${args})`
     }
-    case 'member':
+    case 'member': {
+      // Rewrite `<propsParamName>.X` → `X`. The active component's
+      // props-param binding is exposed as direct struct properties in
+      // Swift (`let title: String`), so the user-source-level
+      // `props.title` becomes a bare `title` reference at the
+      // SwiftUI View body.
+      if (
+        _activePropsParamName !== undefined &&
+        e.object.kind === 'identifier' &&
+        e.object.name === _activePropsParamName
+      ) {
+        return e.property
+      }
       return `${emitSwiftExpr(e.object, indent)}.${e.property}`
+    }
     case 'binary':
       return `${emitSwiftExpr(e.left, indent)} ${e.op} ${emitSwiftExpr(e.right, indent)}`
     case 'arrow':

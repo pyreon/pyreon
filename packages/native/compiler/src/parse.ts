@@ -55,6 +55,13 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   const body = fn.body?.body as AnyNode[] | undefined
   if (!body) return null
 
+  // Parse props from the first parameter when it carries an object type
+  // annotation. Other parameter shapes (no params, no type annotation,
+  // destructured params) are tolerated but produce no props — the body's
+  // member accesses on the param name still rewrite cleanly if the name
+  // is captured.
+  const { props, propsParamName } = parseProps(fn.params as AnyNode[] | undefined, ctx)
+
   const decls: DeclIR[] = []
   let returnExpr: ExprIR | null = null
 
@@ -74,7 +81,34 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
     return null
   }
 
-  return { name, decls, returnExpr }
+  return { name, props, propsParamName, decls, returnExpr }
+}
+
+/** Parse the function's first parameter as Pyreon props (object type or interface). */
+function parseProps(
+  params: AnyNode[] | undefined,
+  ctx: ParseCtx,
+): { props: import('./types').PropIR[]; propsParamName: string | undefined } {
+  if (!params || params.length === 0) return { props: [], propsParamName: undefined }
+  const firstParam = params[0]
+  // Identifier-with-annotation shape: `(props: { … })` — the annotation
+  // is on `firstParam.typeAnnotation.typeAnnotation`.
+  if (firstParam?.type !== 'Identifier') return { props: [], propsParamName: undefined }
+  const paramName = firstParam.name as string
+  const annotation = firstParam.typeAnnotation?.typeAnnotation as AnyNode | undefined
+  if (!annotation) return { props: [], propsParamName: paramName }
+
+  const objType = parseTypeAnnotation(annotation, ctx)
+  if (objType.kind !== 'object') {
+    // Non-object type — could be a named interface ref we can't resolve
+    // (Phase 0 doesn't follow imports). Track the binding name so member
+    // rewrites still work; props list stays empty.
+    return { props: [], propsParamName: paramName }
+  }
+  return {
+    props: objType.fields.map((f) => ({ name: f.name, type: f.type })),
+    propsParamName: paramName,
+  }
 }
 
 /** Try to extract a signal/computed declaration from a `const x = …`. */
