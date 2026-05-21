@@ -104,4 +104,54 @@ describe('PyreonUI — theme/mode inheritance + scope invariants', () => {
     // Outer's theme getter still returns the same enriched theme.
     expect(outerThemeGetter()).toBe(outerThemeBefore)
   })
+
+  // ─── Breakpoints optional — "one-size" app ───────────────────────────────────
+  // User requirement: breakpoints should not be required. An app that
+  // passes them gets responsive behavior; an app that omits them renders
+  // at a single size. The type already permits this (`breakpoints?:` in
+  // `PyreonTheme`) and unistyle's `makeItResponsive` already short-circuits
+  // when breakpoints are empty:
+  //
+  //   // packages/ui-system/unistyle/src/responsive/makeItResponsive.ts:123
+  //   if (isEmpty(breakpoints) || isEmpty(__PYREON__)) {
+  //     return css`${renderStyles(internalTheme)}`
+  //   }
+  //
+  // These two specs lock in that the WHOLE chain (PyreonUI →
+  // enrichTheme → ThemeContext consumer) works with a theme that has no
+  // `breakpoints` AND no `rootSize`. A regression in `enrichTheme` to a
+  // strict-required shape would surface here.
+
+  it('BREAKPOINTS OPTIONAL: theme with no breakpoints renders an enriched theme with empty media', () => {
+    // Minimal theme — just colors. No breakpoints, no rootSize. This is
+    // the "one-size app" shape.
+    const minimal = { colors: { primary: '#228be6' } }
+    PyreonUI({ theme: minimal, children: null })
+    const themeGetter = provideSpy.mock.calls[0]![1] as () => unknown
+    const enriched = themeGetter() as {
+      colors: unknown
+      __PYREON__: { sortedBreakpoints: unknown; media: unknown }
+    }
+
+    expect(enriched.colors).toEqual({ primary: '#228be6' })
+    // __PYREON__ exists but both fields are undefined — downstream
+    // `makeItResponsive` detects empty + falls back to plain CSS.
+    expect(enriched.__PYREON__).toBeDefined()
+    expect(enriched.__PYREON__.sortedBreakpoints).toBeUndefined()
+    expect(enriched.__PYREON__.media).toBeUndefined()
+  })
+
+  it('BREAKPOINTS OPTIONAL: nested PyreonUI inherits a no-breakpoints theme unchanged', () => {
+    const minimal = { colors: { primary: '#228be6' } }
+    PyreonUI({ theme: minimal, children: null }) // outer
+    const outerThemeGetter = provideSpy.mock.calls[0]![1] as () => unknown
+    const outerEnriched = outerThemeGetter()
+
+    provideSpy.mockClear()
+    PyreonUI({ inversed: true, children: null }) // inner — no theme prop
+    const innerThemeGetter = provideSpy.mock.calls[0]![1] as () => unknown
+
+    // Identity-preserved: same enriched theme reference, no re-enrichment.
+    expect(innerThemeGetter()).toBe(outerEnriched)
+  })
 })
