@@ -424,6 +424,13 @@
         "vite": "^8.0.0",
       },
     },
+    "examples/native-counter-ios": {
+      "name": "@pyreon/example-native-counter-ios",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@pyreon/native-cli": "workspace:*",
+      },
+    },
     "examples/perf-dashboard": {
       "name": "@pyreon/example-perf-dashboard",
       "version": "0.1.11",
@@ -2344,6 +2351,8 @@
     "@pyreon/elements": ["@pyreon/elements@workspace:packages/ui-system/elements"],
 
     "@pyreon/example-app-showcase": ["@pyreon/example-app-showcase@workspace:examples/app-showcase"],
+
+    "@pyreon/example-native-counter-ios": ["@pyreon/example-native-counter-ios@workspace:examples/native-counter-ios"],
 
     "@pyreon/example-perf-dashboard": ["@pyreon/example-perf-dashboard@workspace:examples/perf-dashboard"],
 

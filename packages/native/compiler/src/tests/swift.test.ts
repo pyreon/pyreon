@@ -135,7 +135,7 @@ describe('Pyreon → Swift emit', () => {
         let title: String
         let description: String
         var body: some View {
-          Text("\\(title):\\(description)")
+          Text("\\(title): \\(description)")
         }
       }"
     `)
