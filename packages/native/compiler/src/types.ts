@@ -248,10 +248,44 @@ export interface EnumIR {
   cases: string[]
 }
 
+/**
+ * Object-shape type alias emitted as a native struct / data class. Source:
+ *
+ *   type Todo = { id: number; text: string; done: boolean }
+ *
+ * Swift emit:
+ *
+ *   struct Todo { var id: Int; var text: String; var done: Bool }
+ *
+ * Kotlin emit:
+ *
+ *   data class Todo(var id: Int, var text: String, var done: Boolean)
+ *
+ * Closes the foundational Phase 2 gap surfaced by G5 #849's known
+ * caveats: anonymous record types currently emit as labelled tuples,
+ * blocking @AppStorage's Codable bridge (Swift) and rememberSaveable's
+ * Parcelable/Saver requirements (Kotlin). Real structs let downstream
+ * Phase 2 work add Codable conformance + Compose Savers.
+ *
+ * `var` fields (not `let` / `val`) so the G4 IIFE-copy pattern's tuple
+ * mutation idiom — `{ var c = t; c.done = !t.done; return c }()` —
+ * works structurally when `t` is upgraded from tuple to struct.
+ * Kotlin's `data class .copy(done = ...)` doesn't need this but the
+ * `var` default keeps the option open for direct field mutation.
+ */
+export interface StructIR {
+  /** Alias name from `type X = ...` declaration. */
+  name: string
+  /** Object-type fields. */
+  fields: { name: string; type: TypeIR }[]
+}
+
 export interface ParseResult {
   components: ComponentIR[]
   /** String-literal-union type aliases lifted to native enums. */
   enums: EnumIR[]
+  /** Object-shape type aliases lifted to native structs / data classes. */
+  structs: StructIR[]
   /** Diagnostic messages produced during IR construction. */
   warnings: string[]
 }

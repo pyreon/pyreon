@@ -18,6 +18,7 @@ import type {
   EnumIR,
   ExprIR,
   StatementIR,
+  StructIR,
   TypeIR,
 } from './types'
 
@@ -54,10 +55,15 @@ let _signalNames: Set<string> = new Set()
  */
 let _functionNames: Set<string> = new Set()
 
-export function emitSwift(components: ComponentIR[], enums: EnumIR[] = []): string {
+export function emitSwift(
+  components: ComponentIR[],
+  enums: EnumIR[] = [],
+  structs: StructIR[] = [],
+): string {
   _enumNames = new Set(enums.map((e) => e.name))
   const parts: string[] = []
   for (const e of enums) parts.push(emitSwiftEnum(e))
+  for (const s of structs) parts.push(emitSwiftStruct(s))
   for (const c of components) parts.push(emitSwiftComponent(c))
   _enumNames = new Set()
   return parts.join('\n\n')
@@ -72,6 +78,23 @@ export function emitSwift(components: ComponentIR[], enums: EnumIR[] = []): stri
 function emitSwiftEnum(e: EnumIR): string {
   const cases = e.cases.join(', ')
   return `enum ${e.name}: String {\n  case ${cases}\n}`
+}
+
+/**
+ * Emit a Swift `struct X { var a: T; var b: U; ... }` from a
+ * StructIR. `var` (not `let`) keeps the G4 IIFE-copy mutation idiom
+ * working — `{ var c = t; c.field = value; return c }()` mutates the
+ * field, which requires the field to be `var`. Foundational Phase 2
+ * step toward Codable conformance + @AppStorage type-safe round-trip.
+ */
+function emitSwiftStruct(s: StructIR): string {
+  const lines: string[] = []
+  lines.push(`struct ${swiftIdent(s.name)} {`)
+  for (const f of s.fields) {
+    lines.push(`  var ${swiftIdent(f.name)}: ${swiftType(f.type)}`)
+  }
+  lines.push(`}`)
+  return lines.join('\n')
 }
 
 // Module-scoped state for the active component's props-param-name. Set at

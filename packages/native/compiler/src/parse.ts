@@ -14,6 +14,7 @@ import type {
   ExprIR,
   ParseResult,
   StatementIR,
+  StructIR,
   TypeIR,
 } from './types'
 
@@ -34,15 +35,21 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   const ast = parseSync(filename, source, { sourceType: 'module', lang: 'tsx' })
   const components: ComponentIR[] = []
   const enums: EnumIR[] = []
+  const structs: StructIR[] = []
 
   for (const node of ast.program.body as AnyNode[]) {
     const comp = tryComponentFromTopLevel(node, ctx)
     if (comp) components.push(comp)
     const en = tryEnumFromTypeAlias(node, ctx)
     if (en) enums.push(en)
+    // G5 follow-up: try struct extraction for object-shape type aliases.
+    // Falls through silently when the alias is a union (already caught by
+    // tryEnumFromTypeAlias above) OR a non-object alias (`type Foo = string`).
+    const st = tryStructFromTypeAlias(node, ctx)
+    if (st) structs.push(st)
   }
 
-  return { components, enums, warnings: ctx.warnings }
+  return { components, enums, structs, warnings: ctx.warnings }
 }
 
 /**
@@ -96,6 +103,58 @@ function tryEnumFromTypeAlias(node: AnyNode, ctx: ParseCtx): EnumIR | null {
     cases.push(v)
   }
   return { name, cases }
+}
+
+/**
+ * Extract an object-shape type alias as a native struct / data class.
+ * Source:
+ *
+ *   type Todo = { id: number; text: string; done: boolean }
+ *   export type Todo = { ... }
+ *
+ * Reads the oxc shape: `TSTypeAliasDeclaration` with body `TSTypeLiteral`
+ * (anonymous object). Foundational Phase 2 work — closes the "anonymous
+ * record types emit as labelled tuples" gap from G5 #849's known caveats.
+ * Anonymous tuples block Codable bridges (Swift) and Compose Savers
+ * (Kotlin); real structs unblock both.
+ *
+ * Returns null for:
+ *   - non-object type aliases (`type Filter = 'all' | 'active'` —
+ *     caught by tryEnumFromTypeAlias upstream)
+ *   - non-object aliases (`type Foo = string`)
+ *   - generic type-parameter aliases (`type Box<T> = ...`) — Phase 3
+ *     work; structural emit of generic structs requires deeper inference
+ *   - empty object types (no fields — defensive bail; emit would be
+ *     `struct X { }` which is valid but useless)
+ */
+function tryStructFromTypeAlias(node: AnyNode, ctx: ParseCtx): StructIR | null {
+  // Walk through `ExportNamedDeclaration` to the type alias.
+  let alias: AnyNode | null = null
+  if (
+    node.type === 'ExportNamedDeclaration' &&
+    node.declaration?.type === 'TSTypeAliasDeclaration'
+  ) {
+    alias = node.declaration
+  } else if (node.type === 'TSTypeAliasDeclaration') {
+    alias = node
+  }
+  if (!alias) return null
+  // Skip generic type parameters — Phase 3 work.
+  if (alias.typeParameters?.params?.length > 0) return null
+  const name = alias.id?.name as string | undefined
+  if (!name) return null
+  const body = alias.typeAnnotation as AnyNode | undefined
+  if (!body || body.type !== 'TSTypeLiteral') return null
+  // Use the same parser as inline `TSTypeLiteral` annotations so the
+  // field-walking logic stays in one place. Reuses the optional-chain
+  // bails / index-signature skips already in parseTypeAnnotation.
+  const parsed = parseTypeAnnotation(body, ctx)
+  if (parsed.kind !== 'object') return null
+  if (parsed.fields.length === 0) {
+    ctx.warnings.push(`Struct ${name}: skipped — empty object type.`)
+    return null
+  }
+  return { name, fields: parsed.fields }
 }
 
 /** Extract a component from `export function NAME(...) { ... }`. */

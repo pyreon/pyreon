@@ -14,7 +14,7 @@ export function transform(source: string, options: EmitOptions): TransformResult
   const parsed = parsePyreon(source)
   const code =
     options.target === 'swift'
-      ? emitSwift(parsed.components, parsed.enums)
-      : emitKotlin(parsed.components, parsed.enums)
+      ? emitSwift(parsed.components, parsed.enums, parsed.structs)
+      : emitKotlin(parsed.components, parsed.enums, parsed.structs)
   return { code, warnings: parsed.warnings }
 }
