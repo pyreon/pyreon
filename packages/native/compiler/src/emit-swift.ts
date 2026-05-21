@@ -1,0 +1,260 @@
+// Pyreon IR → Swift / SwiftUI source.
+//
+// Per the chosen-direction plan, signals map to `@State`, computeds to
+// computed properties, JSX elements to SwiftUI Views, event handlers
+// to Swift closures.
+//
+// Phase 0 scope: enough to handle the seven starter fixtures cleanly.
+// Type inference is deliberately naive — numeric assumption for
+// computed properties. Phase 1 grows a real inference pass.
+
+import type {
+  AttrIR,
+  ChildIR,
+  ComponentIR,
+  DeclIR,
+  ExprIR,
+  TypeIR,
+} from './types'
+
+export function emitSwift(components: ComponentIR[]): string {
+  return components.map(emitSwiftComponent).join('\n\n')
+}
+
+function emitSwiftComponent(c: ComponentIR): string {
+  const lines: string[] = []
+  lines.push(`struct ${c.name}: View {`)
+  for (const d of c.decls) {
+    lines.push(`  ${emitSwiftDecl(d)}`)
+  }
+  lines.push(`  var body: some View {`)
+  lines.push(`    ${emitSwiftExpr(c.returnExpr, 4)}`)
+  lines.push(`  }`)
+  lines.push(`}`)
+  return lines.join('\n')
+}
+
+function emitSwiftDecl(d: DeclIR): string {
+  if (d.kind === 'signal') {
+    const type = swiftType(d.type)
+    return `@State private var ${d.name}: ${type} = ${emitSwiftExpr(d.initial, 0)}`
+  }
+  // computed — naive Int assumption for Phase 0 (covers the fixtures);
+  // future phases need real inference.
+  return `private var ${d.name}: Int { ${emitSwiftExpr(d.expr, 0)} }`
+}
+
+function swiftType(t: TypeIR): string {
+  switch (t.kind) {
+    case 'number':
+      return 'Int'
+    case 'string':
+      return 'String'
+    case 'boolean':
+      return 'Bool'
+    case 'array':
+      return `[${swiftType(t.element)}]`
+    case 'object': {
+      // Anonymous structs aren't expressible inline in Swift; emit a
+      // tuple-ish placeholder. Real impl emits a named struct + uses it.
+      const fields = t.fields.map((f) => `${f.name}: ${swiftType(f.type)}`).join(', ')
+      return `(${fields})`
+    }
+    default:
+      return 'Any'
+  }
+}
+
+function emitSwiftExpr(e: ExprIR, indent: number): string {
+  switch (e.kind) {
+    case 'literal':
+      if (typeof e.value === 'string') return JSON.stringify(e.value)
+      return String(e.value)
+    case 'identifier':
+      return e.name
+    case 'call': {
+      // Special case: `signal.set(x)` → `signal = x` (Swift @State is a var).
+      if (e.callee.kind === 'member' && e.callee.property === 'set') {
+        const target = emitSwiftExpr(e.callee.object, indent)
+        const value = e.args[0] ? emitSwiftExpr(e.args[0], indent) : '0'
+        return `${target} = ${value}`
+      }
+      // Bare signal call `count()` → `count` (Swift @State is read directly).
+      // We treat any zero-arg call to an Identifier as a signal/computed read.
+      if (e.callee.kind === 'identifier' && e.args.length === 0) {
+        return e.callee.name
+      }
+      const callee = emitSwiftExpr(e.callee, indent)
+      const args = e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')
+      return `${callee}(${args})`
+    }
+    case 'member':
+      return `${emitSwiftExpr(e.object, indent)}.${e.property}`
+    case 'binary':
+      return `${emitSwiftExpr(e.left, indent)} ${e.op} ${emitSwiftExpr(e.right, indent)}`
+    case 'arrow':
+      // Swift closure: `{ params in body }`.
+      if (e.params.length === 0) return `{ ${emitSwiftExpr(e.body, indent)} }`
+      return `{ ${e.params.join(', ')} in ${emitSwiftExpr(e.body, indent)} }`
+    case 'jsx-element':
+      return emitSwiftJsx(e, indent)
+    case 'jsx-fragment': {
+      const pad = ' '.repeat(indent + 2)
+      return `Group {\n${e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+    }
+    case 'array':
+      return `[${e.elements.map((el) => emitSwiftExpr(el, indent)).join(', ')}]`
+    case 'object': {
+      const fields = e.fields.map((f) => `${f.name}: ${emitSwiftExpr(f.value, indent)}`).join(', ')
+      return `(${fields})`
+    }
+    case 'paren':
+      return `(${emitSwiftExpr(e.inner, indent)})`
+  }
+}
+
+function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const tag = e.tag
+
+  if (tag === 'For') return emitSwiftFor(e, indent)
+  if (tag === 'Show') return emitSwiftShow(e, indent)
+  if (tag === 'Text') return emitSwiftText(e, indent)
+  if (tag === 'Button') return emitSwiftButton(e, indent)
+  // Generic SwiftUI View by tag name.
+  return emitSwiftGeneric(e, indent)
+}
+
+function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  // `<Text>Hello</Text>` → `Text("Hello")`
+  // `<Text>{count}</Text>` → `Text("\(count)")`
+  // mixed text + expr is built as an interpolated Swift string.
+  if (e.children.length === 0) return 'Text("")'
+  if (e.children.length === 1 && e.children[0]!.kind === 'text') {
+    return `Text(${JSON.stringify(e.children[0]!.value)})`
+  }
+  const parts: string[] = []
+  for (const c of e.children) {
+    if (c.kind === 'text') parts.push(escapeSwiftInterp(c.value))
+    else parts.push(`\\(${emitSwiftExpr(c.expr, indent)})`)
+  }
+  return `Text("${parts.join('')}")`
+}
+
+function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  // <Button onClick={() => …}>Label</Button>  →  Button("Label") { … }
+  const onClick = e.attrs.find((a) => a.kind === 'event' && a.name === 'click') as
+    | Extract<AttrIR, { kind: 'event' }>
+    | undefined
+  const labelText = extractStaticText(e.children)
+  const action = onClick ? emitSwiftAction(onClick.handler, indent) : '{}'
+  if (labelText !== null) {
+    return `Button(${JSON.stringify(labelText)}) ${action}`
+  }
+  // Complex content; emit Button { action } label: { content }.
+  const pad = ' '.repeat(indent + 2)
+  const contentLines = e.children
+    .map((c) => pad + emitSwiftChild(c, indent + 2))
+    .join('\n')
+  return `Button(action: ${action}) {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+function emitSwiftAction(handler: ExprIR, indent: number): string {
+  // Strip outer arrow if present — Button takes a closure body directly.
+  if (handler.kind === 'arrow') {
+    return `{ ${emitSwiftExpr(handler.body, indent)} }`
+  }
+  return `{ ${emitSwiftExpr(handler, indent)} }`
+}
+
+function emitSwiftFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  // <For each={items} by={(i) => i.id}>{(item) => <Text>{item.label}</Text>}</For>
+  // → ForEach(items, id: \.id) { item in ...body... }
+  const each = e.attrs.find((a) => a.kind === 'attr' && a.name === 'each') as
+    | Extract<AttrIR, { kind: 'attr' }>
+    | undefined
+  const by = e.attrs.find((a) => a.kind === 'attr' && a.name === 'by') as
+    | Extract<AttrIR, { kind: 'attr' }>
+    | undefined
+  const renderArrow = e.children.find(
+    (c) => c.kind === 'expr' && c.expr.kind === 'arrow',
+  ) as Extract<ChildIR, { kind: 'expr' }> | undefined
+
+  const items = each ? emitSwiftSignalRead(each.value) : 'items'
+  const idPath = by && by.value.kind === 'arrow'
+    ? extractMemberPath(by.value.body)
+    : 'id'
+
+  if (!renderArrow || renderArrow.expr.kind !== 'arrow') {
+    return `ForEach(${items}, id: \\.${idPath}) { _ in EmptyView() }`
+  }
+  const param = (renderArrow.expr as Extract<ExprIR, { kind: 'arrow' }>).params[0] ?? 'item'
+  const body = (renderArrow.expr as Extract<ExprIR, { kind: 'arrow' }>).body
+  const pad = ' '.repeat(indent + 2)
+  return `ForEach(${items}, id: \\.${idPath}) { ${param} in\n${pad}${emitSwiftExpr(body, indent + 2)}\n${' '.repeat(indent)}}`
+}
+
+function emitSwiftShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  // <Show when={visible}>{children}</Show> → if visible { ...children... }
+  const when = e.attrs.find((a) => a.kind === 'attr' && a.name === 'when') as
+    | Extract<AttrIR, { kind: 'attr' }>
+    | undefined
+  const cond = when ? emitSwiftSignalRead(when.value) : 'true'
+  const pad = ' '.repeat(indent + 2)
+  const body = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+  return `if ${cond} {\n${body}\n${' '.repeat(indent)}}`
+}
+
+function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const pad = ' '.repeat(indent + 2)
+  const attrPairs = e.attrs
+    .filter((a) => a.kind === 'attr')
+    .map((a) => {
+      const aa = a as Extract<AttrIR, { kind: 'attr' }>
+      return `${aa.name}: ${emitSwiftExpr(aa.value, indent)}`
+    })
+    .join(', ')
+  if (e.children.length === 0) {
+    return attrPairs ? `${e.tag}(${attrPairs})` : `${e.tag}()`
+  }
+  const contentLines = e.children
+    .map((c) => pad + emitSwiftChild(c, indent + 2))
+    .join('\n')
+  if (attrPairs) {
+    return `${e.tag}(${attrPairs}) {\n${contentLines}\n${' '.repeat(indent)}}`
+  }
+  return `${e.tag} {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+function emitSwiftChild(c: ChildIR, indent: number): string {
+  if (c.kind === 'text') return `Text(${JSON.stringify(c.value)})`
+  return emitSwiftExpr(c.expr, indent)
+}
+
+// Helpers --------------------------------------------------------------------
+
+/** Read a value that may be a bare signal reference or an arbitrary expr. */
+function emitSwiftSignalRead(e: ExprIR): string {
+  // In Pyreon JSX, a bare identifier in a prop position like `when={visible}`
+  // refers to the signal accessor. In Swift, the @State variable is read by
+  // name. So `visible` → `visible`.
+  if (e.kind === 'identifier') return e.name
+  return emitSwiftExpr(e, 0)
+}
+
+/** Extract a static text body if all children are JSXText / single text child. */
+function extractStaticText(children: ChildIR[]): string | null {
+  if (children.length === 0) return ''
+  if (children.length === 1 && children[0]!.kind === 'text') return children[0]!.value
+  return null
+}
+
+/** Walk an arrow body `(i) => i.id` → return the property name 'id'. */
+function extractMemberPath(expr: ExprIR): string {
+  if (expr.kind === 'member') return expr.property
+  return 'id'
+}
+
+function escapeSwiftInterp(s: string): string {
+  // Escape backslashes + double-quotes + the `\(` interpolation marker.
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\\\(/g, '\\\\(')
+}
