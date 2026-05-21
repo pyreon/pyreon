@@ -1027,15 +1027,23 @@ export async function writeLpihCacheFile(path: string, body: string): Promise<vo
   const fs = await import('node:fs/promises')
   const pid = typeof process !== 'undefined' && 'pid' in process ? process.pid : 0
   const tmp = `${path}.tmp.${pid}.${++_lpihSeq}`
-  await fs.writeFile(tmp, JSON.stringify(parsed), 'utf8')
+  // Single try/catch covering BOTH writeFile AND rename. The previous
+  // shape only guarded the rename — if `fs.writeFile` itself threw (disk
+  // full, EIO, EACCES, transient FS error), the partial tmp file leaked
+  // on disk with a unique PID+seq name (so no conflict, but it accumulated
+  // forever). Audit caught this in the LPIH followups round.
   try {
+    await fs.writeFile(tmp, JSON.stringify(parsed), 'utf8')
     await fs.rename(tmp, path)
   } catch (err) {
     // Best-effort cleanup; original error is more useful than unlink's.
+    // Covers BOTH the writeFile-failed (tmp may not exist) and the
+    // rename-failed (tmp exists, rename didn't move it) cases —
+    // `fs.unlink` of a non-existent file throws ENOENT, which we swallow.
     try {
       await fs.unlink(tmp)
     } catch {
-      /* swallow */
+      /* swallow — original error is the user-facing one */
     }
     throw err
   }
@@ -1059,14 +1067,25 @@ export function buildLpihClientScript(intervalMs: number): string {
   // when someone DOES go looking. `JSON.stringify` for `intervalMs` is
   // defense against `__proto__` / NaN / non-finite values reaching the
   // emitted JS as a literal.
+  // CRITICAL — top-level await on the dynamic import. `<script type="module">`
+  // tags execute in document order with `defer` semantics; the head-injected
+  // LPIH script's body MUST fully evaluate (including this await) BEFORE the
+  // body-injected app entry's module body runs. Otherwise activateReactiveDevtools()
+  // would land AFTER the app has already created its module-scope signals,
+  // and `_rdRegister` (gated on `if (!_active) return undefined`) would skip
+  // them entirely — making the most common signal shape (top-of-file `const x = signal(0)`)
+  // invisible to LPIH. With the `await`, the LPIH module doesn't complete
+  // until activation finishes; the app's entry waits its turn.
   return `<script type="module">
   // Pyreon LPIH auto-bridge — POSTs fire summaries to /__pyreon_lpih__
   // so the LSP (pyreon-lint --lsp) sees live fire data. Dev-only.
-  import('@pyreon/reactivity').then(({ activateReactiveDevtools, getFireSummaries }) => {
-    activateReactiveDevtools()
-    const interval = ${JSON.stringify(intervalMs)}
-    const post = () => {
-      const summaries = getFireSummaries()
+  const __px = await import('@pyreon/reactivity').catch(() => null)
+  if (__px) {
+    __px.activateReactiveDevtools()
+    const __pxGet = __px.getFireSummaries
+    const __pxInterval = ${JSON.stringify(intervalMs)}
+    const __pxPost = () => {
+      const summaries = __pxGet()
       const payload = JSON.stringify({
         fires: summaries.map((s) => ({
           file: s.loc.file,
@@ -1081,14 +1100,13 @@ export function buildLpihClientScript(intervalMs: number): string {
         // Dev-server might be restarting; swallow + retry next interval.
       })
     }
-    const id = setInterval(post, interval)
-    window.addEventListener('beforeunload', () => clearInterval(id))
-  }).catch((err) => {
-    // @pyreon/reactivity not in dep graph (e.g. consumer hasn't pulled
-    // it in yet). Stay silent — LPIH is opt-in via the runtime API too,
-    // and a console warning here would noise up apps that don't use it.
-    void err
-  })
+    const __pxId = setInterval(__pxPost, __pxInterval)
+    window.addEventListener('beforeunload', () => clearInterval(__pxId))
+  }
+  // If __px is null, @pyreon/reactivity isn't in the dep graph — stay silent,
+  // LPIH is opt-in via the runtime API too. The dynamic-import catch returns
+  // null instead of letting the rejection bubble so consumers without the
+  // package don't see a console error.
 </script>`
 }
 
@@ -1257,6 +1275,18 @@ function hasMultipleArgs(args: string): boolean {
  *                   Vite passes the resolved module ID (absolute path).
  */
 function injectSignalNames(code: string, moduleId: string): string {
+  // Pre-pass: mask string-literal, template-literal, and comment regions
+  // so the regexes below don't false-fire on `effect(` inside docstrings,
+  // help-text strings, JS-as-text test fixtures, or comments mentioning
+  // reactive primitives. The regex runs against the MASKED code (positions
+  // are preserved), so a match's index points at real code; args extraction
+  // pulls from the ORIGINAL code for accurate output.
+  //
+  // Without this, user code like `const docs = \`effect(() => x)\`` would
+  // get `, { __sourceLocation: ... }` injected INSIDE the template literal,
+  // corrupting the help-text content at runtime.
+  const masked = _maskStringsAndComments(code)
+
   // Pass 1: bound forms — `const X = (signal|computed|effect)(…)`.
   // Extract `X` as the debug name + the reactive primitive kind.
   const reBound = /(?:const|let)\s+(\w+)\s*=\s*(signal|computed|effect)\(/gm
@@ -1277,7 +1307,7 @@ function injectSignalNames(code: string, moduleId: string): string {
   // Track call positions covered by pass 1 so pass 2 can skip them.
   const covered = new Set<number>()
 
-  let m: RegExpExecArray | null = reBound.exec(code)
+  let m: RegExpExecArray | null = reBound.exec(masked)
   while (m !== null) {
     const argsStart = m.index + m[0].length
     const args = extractBalancedArgs(code, argsStart)
@@ -1294,11 +1324,11 @@ function injectSignalNames(code: string, moduleId: string): string {
       const tokStart = m.index + m[0].length - (m[2]?.length ?? 0) - 1
       covered.add(tokStart)
     }
-    m = reBound.exec(code)
+    m = reBound.exec(masked)
   }
   reBound.lastIndex = 0
 
-  m = reUnboundEffect.exec(code)
+  m = reUnboundEffect.exec(masked)
   while (m !== null) {
     if (!covered.has(m.index)) {
       const argsStart = m.index + m[0].length
@@ -1313,7 +1343,7 @@ function injectSignalNames(code: string, moduleId: string): string {
         })
       }
     }
-    m = reUnboundEffect.exec(code)
+    m = reUnboundEffect.exec(masked)
   }
   reUnboundEffect.lastIndex = 0
 
@@ -1338,6 +1368,141 @@ function injectSignalNames(code: string, moduleId: string): string {
     output = `${output.slice(0, start)}${args}, { ${inner} }${output.slice(end)}`
   }
   return output
+}
+
+/**
+ * Mask string-literal / template-literal / comment regions in `code` by
+ * replacing their content with spaces. Returns a SAME-LENGTH string so
+ * regex match positions in the masked version line up with the original.
+ *
+ * Used by `injectSignalNames` to skip false-positive matches against
+ * reactive-primitive names that appear inside strings or comments. Without
+ * masking, a user's `const docs = \`effect(() => x)\`` template literal
+ * would get `, { __sourceLocation: ... }` injected INSIDE the string,
+ * corrupting runtime values.
+ *
+ * Handles:
+ *   - `"..."` / `'...'` strings (escape-aware)
+ *   - `` `...` `` template literals; interpolations `${...}` are KEPT as
+ *     code (their content can contain real `signal()` calls worth catching)
+ *   - `// ...` line comments
+ *   - `/* ... *\/` block comments
+ *
+ * Regex literals (`/foo/g`) are NOT special-cased — they're rare and the
+ * downstream extractBalancedArgs handles unmatched parens by returning null.
+ *
+ * @internal — exported for tests.
+ */
+export function _maskStringsAndComments(code: string): string {
+  const out: string[] = []
+  let i = 0
+  const n = code.length
+  while (i < n) {
+    const c = code[i]
+    const c1 = code[i + 1]
+
+    // Line comment `// ...`
+    if (c === '/' && c1 === '/') {
+      while (i < n && code[i] !== '\n') {
+        out.push(' ')
+        i++
+      }
+      continue
+    }
+    // Block comment `/* ... */`
+    if (c === '/' && c1 === '*') {
+      out.push(' ', ' ')
+      i += 2
+      while (i < n) {
+        if (code[i] === '*' && code[i + 1] === '/') {
+          out.push(' ', ' ')
+          i += 2
+          break
+        }
+        // Preserve newlines so line numbers don't shift
+        out.push(code[i] === '\n' ? '\n' : ' ')
+        i++
+      }
+      continue
+    }
+    // String literal "..." or '...'
+    if (c === '"' || c === "'") {
+      const quote = c
+      out.push(' ')
+      i++
+      while (i < n && code[i] !== quote) {
+        // Escape sequence — skip the next char too (handles `\"`, `\\`, etc.)
+        if (code[i] === '\\' && i + 1 < n) {
+          // Preserve a newline (line-continuation `\<LF>`) as a newline.
+          out.push(' ', code[i + 1] === '\n' ? '\n' : ' ')
+          i += 2
+          continue
+        }
+        // Unterminated string (legacy parsers stop at newline) — break
+        if (code[i] === '\n') break
+        out.push(' ')
+        i++
+      }
+      if (i < n && code[i] === quote) {
+        out.push(' ')
+        i++
+      }
+      continue
+    }
+    // Template literal `...` — preserve `${...}` interpolations as code
+    if (c === '`') {
+      out.push(' ')
+      i++
+      while (i < n && code[i] !== '`') {
+        if (code[i] === '\\' && i + 1 < n) {
+          out.push(' ', code[i + 1] === '\n' ? '\n' : ' ')
+          i += 2
+          continue
+        }
+        // `${...}` — keep the interpolation body as code (with nested
+        // brace tracking so we find the matching `}`).
+        if (code[i] === '$' && code[i + 1] === '{') {
+          out.push(' ', ' ')
+          i += 2
+          let depth = 1
+          while (i < n && depth > 0) {
+            if (code[i] === '{') {
+              depth++
+              out.push(code[i] ?? ' ')
+              i++
+              continue
+            }
+            if (code[i] === '}') {
+              depth--
+              if (depth === 0) {
+                out.push(' ')
+                i++
+                break
+              }
+              out.push(code[i] ?? ' ')
+              i++
+              continue
+            }
+            // Inside `${}` — pass through as code (might contain `signal(` etc).
+            out.push(code[i] ?? ' ')
+            i++
+          }
+          continue
+        }
+        // Preserve newlines so line numbers don't shift.
+        out.push(code[i] === '\n' ? '\n' : ' ')
+        i++
+      }
+      if (i < n && code[i] === '`') {
+        out.push(' ')
+        i++
+      }
+      continue
+    }
+    out.push(c ?? '')
+    i++
+  }
+  return out.join('')
 }
 
 /**

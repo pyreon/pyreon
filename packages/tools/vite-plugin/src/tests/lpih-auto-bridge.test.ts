@@ -134,6 +134,25 @@ describe('writeLpihCacheFile', () => {
     const tmpFiles = files.filter((f) => f.includes('.tmp.'))
     expect(tmpFiles).toEqual([])
   })
+
+  it('cleans up tmp file when rename fails (rename onto a directory)', async () => {
+    // The pre-existing case the original try-around-rename ALREADY handled:
+    // writeFile succeeds (writes a tmp file in root/), rename onto a path
+    // that is a directory fails (EISDIR / EPERM), the catch unlinks tmp.
+    // This test locks in that branch — bisect-verified by the existing
+    // 'as-dir' rename-failure handling in writeLpihCacheFile.
+    const targetDir = join(root, 'as-dir')
+    const fs = await import('node:fs/promises')
+    await fs.mkdir(targetDir, { recursive: true })
+    await expect(
+      writeLpihCacheFile(targetDir, JSON.stringify({ fires: [] })),
+    ).rejects.toBeDefined()
+    const files = await fs.readdir(root)
+    const tmpFiles = files.filter(
+      (f) => f.startsWith('as-dir.tmp.') || f.includes('.tmp.'),
+    )
+    expect(tmpFiles).toEqual([])
+  })
 })
 
 describe('buildLpihClientScript', () => {
@@ -145,7 +164,7 @@ describe('buildLpihClientScript', () => {
 
   it('embeds the interval as a JSON literal', () => {
     const script = buildLpihClientScript(500)
-    expect(script).toContain('const interval = 500')
+    expect(script).toContain('const __pxInterval = 500')
   })
 
   it('imports activateReactiveDevtools + getFireSummaries from @pyreon/reactivity', () => {
@@ -153,6 +172,23 @@ describe('buildLpihClientScript', () => {
     expect(script).toContain("import('@pyreon/reactivity')")
     expect(script).toContain('activateReactiveDevtools')
     expect(script).toContain('getFireSummaries')
+  })
+
+  it('uses top-level await on the dynamic import — activation BEFORE app modules', () => {
+    // Critical for tracking module-scope signals. `<script type="module">`
+    // tags defer + run in document order; top-level await blocks subsequent
+    // modules. Dynamic import via `.then()` does NOT — the module body
+    // completes immediately, the app's entry runs, module-scope signals
+    // get created with `_active = false`, and `_rdRegister` skips them.
+    const script = buildLpihClientScript(250)
+    expect(script).toMatch(/await import\(['"]@pyreon\/reactivity['"]\)/)
+    // The catch path returns null (silent fallback for missing-dep apps).
+    expect(script).toMatch(/\.catch\(\(\) => null\)/)
+    // Activation MUST appear AFTER the await (synchronous after the import resolves).
+    const awaitIdx = script.indexOf('await import')
+    const activateIdx = script.indexOf('activateReactiveDevtools()')
+    expect(awaitIdx).toBeGreaterThan(0)
+    expect(activateIdx).toBeGreaterThan(awaitIdx)
   })
 
   it('POSTs to /__pyreon_lpih__ with JSON content-type', () => {
@@ -214,14 +250,14 @@ describe('LPIH transformIndexHtml — injection gating', () => {
     const plugin = bootstrap({ lpih: { intervalMs: 1000 } })
     const transform = plugin.transformIndexHtml as unknown as TransformIndexHtmlHook
     const out = transform('<html><head></head><body></body></html>')
-    expect(out).toContain('const interval = 1000')
+    expect(out).toContain('const __pxInterval = 1000')
   })
 
   it('uses default 250ms interval when lpih:true with no override', () => {
     const plugin = bootstrap({ lpih: true })
     const transform = plugin.transformIndexHtml as unknown as TransformIndexHtmlHook
     const out = transform('<html><head></head><body></body></html>')
-    expect(out).toContain('const interval = 250')
+    expect(out).toContain('const __pxInterval = 250')
   })
 })
 
