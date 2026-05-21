@@ -19,19 +19,19 @@ So future work isn't picked twice. From the three superseded plans:
 
 ---
 
-## PMTC — Pyreon Multi-Target Compiler (strategic direction chosen, NOT YET staffed)
+## PMTC — Pyreon Multi-Target Compiler (Phase 0 SHIPPED; Phase 1 staffing decision OPEN)
 
-**Status**: Strategic direction merged in [#764](https://github.com/pyreon/pyreon/pull/764) ([`native-platforms.md`](./native-platforms.md)). Compiler skeleton (PR 0) merged in [#794](https://github.com/pyreon/pyreon/pull/794). Companion planning docs + followups shipped as a 7-PR trilogy + followup cluster. **No Phase 1 staffing or timeline kickoff** — the plan reserves that decision separately, conditional on both technical AND market validation passing.
+**Status**: Strategic direction merged in [#764](https://github.com/pyreon/pyreon/pull/764) ([`native-platforms.md`](./native-platforms.md)). Compiler skeleton merged in [#794](https://github.com/pyreon/pyreon/pull/794). **Phase 0's 8 roadmap PRs all landed** ([#796](https://github.com/pyreon/pyreon/pull/796), [#798](https://github.com/pyreon/pyreon/pull/798), [#800](https://github.com/pyreon/pyreon/pull/800), [#801](https://github.com/pyreon/pyreon/pull/801), [#805](https://github.com/pyreon/pyreon/pull/805), [#808](https://github.com/pyreon/pyreon/pull/808), [#810](https://github.com/pyreon/pyreon/pull/810), [#811](https://github.com/pyreon/pyreon/pull/811), [#812](https://github.com/pyreon/pyreon/pull/812), [#814](https://github.com/pyreon/pyreon/pull/814), [#816](https://github.com/pyreon/pyreon/pull/816), [#817](https://github.com/pyreon/pyreon/pull/817), [#819](https://github.com/pyreon/pyreon/pull/819), [#820](https://github.com/pyreon/pyreon/pull/820), [#821](https://github.com/pyreon/pyreon/pull/821), [#823](https://github.com/pyreon/pyreon/pull/823)). Phase 1 staffing remains conditional on the market signal — survey ([#807](https://github.com/pyreon/pyreon/pull/807)) NOT YET run.
 
-### The plan trilogy
+### The plan trilogy (all merged)
 
 | PR | Doc | Status |
 |---|---|---|
 | #795 | [`native-platforms-competitors.md`](./native-platforms-competitors.md) — PMTC vs 10 frameworks (CMP, Skip, RN+Expo, Flutter, Lynx, Capacitor, Tauri, NativeScript-Vue, Solid Native) | merged |
 | #797 | [`native-platforms-phase0-roadmap.md`](./native-platforms-phase0-roadmap.md) — Phase 0 (8 PRs mapped to 3 pass/fail criteria, 12-18w envelope) | merged |
-| #799 | [`native-platforms-todomvc-walkthrough.md`](./native-platforms-todomvc-walkthrough.md) — 8 compositional gaps surfaced; 6 of 8 fit Phase 0/1 | open |
+| #799 | [`native-platforms-todomvc-walkthrough.md`](./native-platforms-todomvc-walkthrough.md) — 8 compositional gaps surfaced; 6 of 8 fit Phase 0/1 | merged |
 
-### Followups (post-trilogy review, all opened in one session)
+### Followups (post-trilogy review)
 
 | PR | Doc | Why |
 |---|---|---|
@@ -40,22 +40,58 @@ So future work isn't picked twice. From the three superseded plans:
 | #804 | [`native-platforms-phase1-roadmap.md`](./native-platforms-phase1-roadmap.md) — Phase 1 iOS MVP (3 parallel chains, 10-24w envelope, TodoMVC deliverable) | Same shape as Phase 0 roadmap but Phase 1; references P4 survey as a precondition |
 | #807 | [`native-platforms-user-survey.md`](./native-platforms-user-survey.md) — market validation design (20-30 respondents, 12 Qs, decision thresholds) | Competitor survey (#795) named this as the biggest open question PMTC doesn't answer |
 
+### Phase 0 deliverables — verified state on main
+
+Three packages + one example shipped:
+
+- **`@pyreon/native-compiler`** (private) — parser handles real Pyreon JSX (signal/computed/props/events/For/Show, 10 fixtures); per-target emitters for Swift (SwiftUI `@State`) + Kotlin (Compose `mutableStateOf`); style emitter (`ViewModifier` / `Modifier`); rocketstyle dimensions emitter (per-dim enums + parameterised modifier with switch-based property resolution); cross-target style-fidelity contract gate. 127 unit tests across 9 files. Validation harness via `swiftc -parse` + `kotlinc` w/ Compose stubs. Coverage gate at `scripts/coverage-gate.ts`.
+- **`@pyreon/native-cli`** (private) — `pyreon-native build --target=ios|android --source=./src --out=./generated` directory-walking compile pipeline.
+- **`@pyreon/native-runtime-swift`** (private) — SwiftPM scaffold, Darwin-gated build (Linux CI skips with structural reason). `PyreonStylable` protocol marker; `PyreonReactivity` / `PyreonTokens` placeholders.
+- **`examples/native-counter-ios`** — real working iOS counter. `src/Counter.tsx` (signal + VStack + Text + Button) → `scripts/build.sh` → `generated/Counter.swift` passes `swiftc -parse`. **Verified end-to-end as of 2026-05-21.**
+
+### Phase 0 success criteria — honest status
+
+| Criterion | Plan target | Actual state | Honest read |
+|---|---|---|---|
+| **1. Type mapper coverage** | ≥90% of existing Pyreon TSX compiles without manual annotations | **73.0% parsedClean** (no warnings) **but 94.3% swift-valid** (`swiftc -parse` accepts emitted output) on 525 real `.tsx` files. 100% don't throw; 27% emit ≥1 warning; only 5.7% produce invalid Swift. | **94.3% swift-valid is ABOVE the 90% goal** in the strict "compiler emit + native compiler accepts" reading. The 27% parsedClean gap is mostly "compiler emits warnings but produces valid Swift anyway" (123 of 142 warning-emitting files still swift-validate). The 30 swift-invalid files cluster into **2 fixable bug classes**: hyphenated HTML attrs (19 cases — `div(data-test=...)` — Swift doesn't accept `-` in arg names) + Swift-reserved keywords used as struct/function names (8 cases — `guard` / `class`). Both fixes are surgical; closing them would lift swift-valid from 94.3% → ~99.6%. |
+| **2. Signal → @State round-trip** | Counter on iOS simulator with button-driven `signal.set` | Compile loop verified end-to-end; emitted Swift passes `swiftc -parse`. **No `.xcodeproj`** yet (manual Xcode setup documented). Not yet simulator-button-tap verified. | **Structurally done; physically unproven.** xcodegen PR is the one remaining piece. |
+| **3. Style fidelity <5% pixel diff** | Rocketstyle Button on iOS visually identical to web | **Structural fidelity gate** ships (regex-extracts per-(dim, value, prop) resolution tables from both targets, asserts byte-equality). Pixel-diff infra deferred. | **Necessary but not sufficient.** Pixel-diff needs iOS Simulator + Android Emulator + macOS CI runner + baseline images — all Phase 1+ infrastructure work. |
+
 ### Critical-path PMTC decision gates
 
 **Phase 1 staffing requires BOTH**:
 
-1. **Technical pass** — all three Phase 0 criteria (type mapper coverage ≥90% on `ui-components`, counter-app on iOS simulator with signal→@State round-trip, rocketstyle style fidelity <5% pixel diff)
-2. **Market pass** — user survey thresholds (≥70% Adopt + ≥50% Native-real + ≤20% Reject-OTA) per #807
+1. **Technical pass** — all three Phase 0 criteria. Status: 1/3 fully proven (criterion 1 below target; criterion 3 structural only). Tier 1 close-out PRs would lift this to 2/3 full + 1/3 structural-only (pixel-diff infra is Phase 1+).
+2. **Market pass** — user survey thresholds (≥70% Adopt + ≥50% Native-real + ≤20% Reject-OTA) per #807. **Survey NOT YET run.**
 
 If technical passes but market fails → **do NOT staff Phase 1**. Reconsider scope per #795's recommendations (partial-PMTC mode via Compose Multiplatform target, OR accept mobile is out of Pyreon's scope).
 
-### What's actionable RIGHT NOW (in priority order)
+### What's actionable RIGHT NOW
 
-1. **Phase 0 PR 1** — Swift runtime SPM scaffold — first PR after #794, blocks PRs 2/3/4/7/8 per #797. ~3-5 days.
-2. **Phase 0 PR 5a** — TS→Swift type mapper primitives — optimal parallel starter for a second contributor. ~3-5 days.
-3. **User survey recruitment** — per #807, runs during Phase 0 months 1-3. No engineering blocked on this; can start whenever a non-engineering owner is available. $1700-2700 external cash cost.
+**Tier 1 — close the Phase 0 loop (low effort, high signal, all engineering)**:
 
-Everything else in the PMTC plan tree is downstream of these.
+1. **PR 4a — xcodegen automation** (~1-2 days). Add `project.yml` to `examples/native-counter-ios/`, scripts to invoke `xcodegen generate`, document `xcodegen + open Counter.xcodeproj` flow. **Unlocks criterion 2's tap-the-button validation.**
+2. **Coverage-gate `--swiftc-validate` analysis** (~half day). Run once over the 525 files; categorize the 27% warning-emitting bucket. Tells you whether 90% is reachable in N more PRs or fundamentally requires Phase 1-level work.
+3. **Compiler input parsers** — `styled()` → StyleIR (~1-2w), `rocketstyle()` chain → RocketstyleIR (~1-2w), `@pyreon/ui-theme` → ThemeIR (~1w). The three style emitters all work against hand-built IR today; this is the gap between "emitter ships" and "real consumer code flows through".
+
+**Tier 2 — Phase 1 engineering entry points (multi-week each, gated on market signal)**:
+
+1. **TodoMVC compile attempt + 8 compositional gap PRs** (~6-8 weeks per #799/#804). Two-way binding, keyboard events, array mutation, object updates, string-literal unions, storage abstraction, dimension hoisting, hash router.
+2. **`@pyreon/storage-ios` reference implementation** (~1-2w per #802). The first three-package-split abstraction. Validates the manifest-driven binding resolution architecture against real Swift.
+
+**Tier 3 — strategic decision blockers (user input required)**:
+
+1. **Run the user survey** ($1700-2700 external cost, weeks 1-3 of Phase 0 per #807). The market-pass gate. **We finished Phase 0 without it** — this is the biggest non-code decision blocker.
+2. **Decision: rocketstyle collapse (P0 below) vs PMTC Phase 1 — which wins this quarter?** Both are multi-week commitments. Not mutually exclusive but with one person sequential. The user survey informs this directly.
+
+### Remaining honest gaps
+
+- **Compiler input parsers are hand-built IR only** — `styled()` / `rocketstyle()` / `@pyreon/ui-theme` parsers don't exist yet. Style/rocketstyle/tokens emitters all work against hand-built IR for tests; no real consumer styling code flows through.
+- **No `.xcodeproj` generation** — criterion 2 can't be tap-the-button verified.
+- **No pixel-diff infrastructure** — criterion 3 can't be visually verified.
+- **2347 SwiftPM `.build/` artifacts** got committed in #810. Needs `git rm -r --cached packages/native/runtime-swift/.build` + add `.build/` to `.gitignore`. Trivial but cleans up `git status` noise.
+- **No CI smoke for the iOS counter build** — a regression in the CLI's directory walker or the parser would not block merges. Adding `bash examples/native-counter-ios/scripts/build.sh` + assert `swiftc -parse` to CI would catch it.
+- **User survey not started** — biggest non-engineering blocker.
 
 ---
 
