@@ -3,15 +3,10 @@ import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { describe, expect, it } from 'vitest'
 
-// CONTRACT — proven-but-unfixed bug surfaced by `scripts/leak-sweep.ts`
-// against the `domConditionalToggle-1000` journey. Using the project's
-// `it.fails()` pattern: the spec stays GREEN while the bug persists
-// (the assertion deliberately captures the broken behavior), and
-// auto-flags FAILURE when the real fix lands — the signal to flip
-// `it.fails(...)` → `it(...)` and verify the spec passes the correct
-// assertion.
+// CONTRACT — bug surfaced by `scripts/leak-sweep.ts` against the
+// `domConditionalToggle-1000` journey; now fixed.
 //
-// **Bug shape:**
+// **Bug shape (pre-fix):**
 //
 //   [pyreon] Unhandled effect error: NotFoundError: Failed to execute
 //   'insertBefore' on 'Node': The node before which the new node is
@@ -21,34 +16,28 @@ import { describe, expect, it } from 'vitest'
 //
 // Trigger: N `<Show when={signal[i]}>` components inside a `<For>`,
 // then batched signal writes flip every `signal[i]` false → true → false.
-// Under toggle pressure the inner mountReactive (created when Show's
-// `when` accessor returns the function child) receives an `anchor`
-// whose `parentNode` is a DIFFERENT HTMLDivElement than `parent` — the
-// anchor has been moved to another parent by a sibling effect's
-// cleanup in the same flush. The thrown NotFoundError lands in
-// Pyreon's "unhandled effect error" path → console.error + complete
-// loss of the For's children from the DOM (final count is 0, not N).
 //
-// **Investigation status (incomplete):**
-//   - Single `<Show>` (no For) handles toggles correctly — see the
-//     sanity test below. The bug requires the For wrapper.
-//   - A defensive guard `anchor.parentNode === parent` before
-//     insertBefore was tried; it prevents the THROW but children
-//     still vanish because the underlying state (anchor relationships
-//     across For + mountReactive layers) is corrupted by the
-//     stale-anchor sequence — guard is a band-aid, not a fix.
-//   - Root cause is somewhere in For-of-Show + batched-flush
-//     interaction. The For doesn't reconcile during a Show toggle
-//     (its `indices` array is stable), so something else is moving
-//     the anchor between parents mid-flush.
+// **Root cause:** `mountReactive` captured `parent` in its setup closure.
+// `mountFor` creates child DOM into a DocumentFragment, then moves the
+// fragment contents to the live parent via
+// `liveParent.insertBefore(frag, tailMarker)`. After the move, every
+// `mountReactive` (e.g. the one created when Show's `when` accessor
+// returned the function child) had a stale `parent` reference pointing
+// at the now-empty fragment, while its marker had been carried with the
+// fragment's contents to `liveParent`. On the next signal flip, the
+// effect re-ran and called `parent.insertBefore(node, marker)` against
+// the stale fragment, throwing NotFoundError because `marker` was no
+// longer a child of `parent`. The throw landed in Pyreon's
+// "unhandled effect error" path → console.error + loss of For's
+// children from the DOM (final count dropped to 0).
 //
-// **For future investigators:**
-//   1. Run `bun run perf:leak-sweep --app perf-dashboard --journeys domConditionalToggle-1000`
-//      → reproduces in ~700ms with full stack trace
-//   2. Trace how For's reconciler passes per-child anchors AND how
-//      Show's mountReactive interacts with the anchor across flushes
-//   3. When the fix lands, change `it.fails(...)` to `it(...)` and
-//      verify with `bun run test:browser`
+// **Fix:** `mountReactive` now reads `marker.parentNode` at each effect
+// run (with the closure-captured `parent` as a detached-marker
+// fallback). The marker is moved by the same `insertBefore(frag, ...)`
+// as the rest of the fragment contents, so its live `parentNode` is
+// always the correct live parent.
+//
+// Reproducer: `bun run perf:leak-sweep --app perf-dashboard --journeys domConditionalToggle-1000`
 
 describe('mountReactive: <Show> inside <For> under batched signal toggles', () => {
   it('single <Show> with function-child handles toggle cycles correctly (sanity, works today)', async () => {
@@ -77,8 +66,8 @@ describe('mountReactive: <Show> inside <For> under batched signal toggles', () =
     unmount()
   })
 
-  it.fails(
-    'CONTRACT: <For> + <Show> mass-toggle should not throw NotFoundError or lose children',
+  it(
+    'CONTRACT: <For> + <Show> mass-toggle does not throw NotFoundError or lose children',
     async () => {
       // 100 Show items inside a For. Each Show's `when` is its own signal.
       // The function child `{() => <div/>}` exercises the function-child
