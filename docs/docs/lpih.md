@@ -30,18 +30,27 @@ Three layers cooperate:
 
 Filesystem cache is the bridge because LSP servers are stdio-only — they can't easily IPC with a browser. The LSP re-reads on every inlay-hint request, so live edits land immediately.
 
-## Quick start (zero config)
+## Quick start (zero config — Vite users)
 
-### 1. Activate the runtime registry in your dev mode
+### 1. Use `@pyreon/vite-plugin`
+
+If your project already uses `@pyreon/vite-plugin` (the default scaffold), **LPIH is on by default** — the plugin auto-injects a browser-side bridge AND registers the dev-server `POST /__pyreon_lpih__` middleware that writes the cache file. **You don't need to call `activateReactiveDevtools()` or `startLpihPolling()` — the plugin does it for you.**
 
 ```ts
-import { activateReactiveDevtools } from '@pyreon/reactivity'
-import { startLpihPolling } from '@pyreon/reactivity/lpih'
+// vite.config.ts
+import { defineConfig } from 'vite'
+import pyreon from '@pyreon/vite-plugin'
 
-if (import.meta.env.DEV) {
-  activateReactiveDevtools()
-  startLpihPolling() // writes to <cwd>/.pyreon-lpih.json by default
-}
+export default defineConfig({
+  plugins: [pyreon()],     // LPIH on by default in dev (R1, #786)
+})
+```
+
+Opt out via `pyreon({ lpih: false })`. Override interval / cache path:
+
+```ts
+pyreon({ lpih: { intervalMs: 500 } })           // slower poll
+pyreon({ lpih: { cachePath: '/custom/x.json' } }) // non-default path
 ```
 
 ### 2. Run `pyreon-lint --lsp` in your editor
@@ -58,6 +67,20 @@ That's it — the LSP auto-discovers `<project-root>/.pyreon-lpih.json` by walki
 ### 4. Run your app
 
 On every signal write, the runtime bridge updates the cache file. The LSP picks it up on the next inlay-hint request (~150ms debounce). Ghost text appears at each creation line.
+
+### Manual setup (non-Vite consumers)
+
+If you're not using `@pyreon/vite-plugin` (e.g. Webpack, Rollup, or a custom dev server), wire it manually:
+
+```ts
+import { activateReactiveDevtools } from '@pyreon/reactivity'
+import { startLpihPolling } from '@pyreon/reactivity/lpih'
+
+if (import.meta.env.DEV) {
+  activateReactiveDevtools()
+  startLpihPolling() // writes to <cwd>/.pyreon-lpih.json by default
+}
+```
 
 ### Custom paths (if needed)
 
