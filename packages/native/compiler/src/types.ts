@@ -45,7 +45,18 @@ export interface PropIR {
 }
 
 export type DeclIR =
-  | { kind: 'signal'; name: string; type: TypeIR; initial: ExprIR }
+  /**
+   * Reactive signal declaration. The classic shape is `signal<T>(initial)`
+   * — emits as `@State` on Swift / `mutableStateOf` on Kotlin.
+   *
+   * G5 (TodoMVC walkthrough) adds `storageKey` for persistent signals
+   * declared via `useStorage<T>('key', default)`. When set, the Swift
+   * emit shifts to `@AppStorage("key")` (SwiftUI's persistent property
+   * wrapper) and the Kotlin emit shifts to `rememberSaveable` (Compose's
+   * state-preservation primitive). `storageKey` is `undefined` for
+   * regular signals — emit paths default to the non-storage shape.
+   */
+  | { kind: 'signal'; name: string; type: TypeIR; initial: ExprIR; storageKey?: string }
   | { kind: 'computed'; name: string; expr: ExprIR }
   /**
    * Local function declaration via `const fn = () => { ... }`

@@ -145,6 +145,17 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
     if (isEnumTyped) _activeEnumType = (d.type as { name: string }).name
     const initial = emitSwiftExpr(d.initial, 0)
     _activeEnumType = undefined
+    // G5 — persistent signal via `useStorage<T>('key', default)`. SwiftUI's
+    // `@AppStorage("key")` property wrapper writes through to UserDefaults
+    // and triggers re-renders on change (same reactive contract as @State).
+    // Note: @AppStorage's value-type constraint (String / Int / Double /
+    // Bool / URL / Data / RawRepresentable) is enforced by swiftc at
+    // typecheck — not by this emitter. Complex types (arrays of structs,
+    // nested objects) emit the @AppStorage shape but will fail typecheck
+    // downstream; Phase 2 will add a Codable-Data bridge for those cases.
+    if (d.storageKey !== undefined) {
+      return `@AppStorage(${JSON.stringify(d.storageKey)}) private var ${swiftIdent(d.name)}: ${type} = ${initial}`
+    }
     return `@State private var ${swiftIdent(d.name)}: ${type} = ${initial}`
   }
   if (d.kind === 'function') {

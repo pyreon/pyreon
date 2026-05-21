@@ -123,14 +123,30 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     if (isEnumTyped) _activeEnumType = (d.type as { name: string }).name
     const initial = emitKotlinExpr(d.initial, 0)
     _activeEnumType = undefined
-    // For empty-array initials, Kotlin's `listOf()` returns `List<Nothing>`,
-    // which can't be added to. Use the type annotation to emit an explicit
-    // generic on `mutableStateOf<List<T>>(listOf())`. Non-array types use
-    // plain `mutableStateOf` and let Kotlin infer.
+    // G5 — persistent signal via `useStorage<T>('key', default)`. Compose's
+    // `rememberSaveable` saves/restores state across configuration changes
+    // (rotation, dark-mode flip) and process death-restoration. Same
+    // `by` delegate as `remember` → bare reads / writes at use sites
+    // continue to work without parens.
+    //
+    // Note: `rememberSaveable` requires the value type to be
+    // `Parcelable` / `Serializable` (or carry a custom Saver). For
+    // complex types — e.g. `List<Todo>` — Kotlin's compile-time
+    // serialization plugin (or a custom `Saver`) is needed; Phase 2
+    // will wire one. For now the emit is structurally correct and
+    // compiles against Compose stubs; runtime persistence of complex
+    // types lands when the Saver bridge ships.
+    //
+    // Storage key is not currently emitted into the call site —
+    // `rememberSaveable(key = "...")` overload accepts a key for
+    // de-dup across recompositions but isn't required for basic
+    // persistence; included if Phase 2 needs cross-host disambiguation.
+    const isStorage = d.storageKey !== undefined
+    const wrapperFn = isStorage ? 'rememberSaveable' : 'remember'
     if (d.type.kind === 'array' && d.initial.kind === 'array' && d.initial.elements.length === 0) {
-      return `var ${kotlinIdent(d.name)} by remember { mutableStateOf<${kotlinType(d.type, ctx, d.name)}>(listOf()) }`
+      return `var ${kotlinIdent(d.name)} by ${wrapperFn} { mutableStateOf<${kotlinType(d.type, ctx, d.name)}>(listOf()) }`
     }
-    return `var ${kotlinIdent(d.name)} by remember { mutableStateOf(${initial}) }`
+    return `var ${kotlinIdent(d.name)} by ${wrapperFn} { mutableStateOf(${initial}) }`
   }
   if (d.kind === 'function') {
     return emitKotlinFunction(d, ctx)

@@ -196,6 +196,39 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       : { kind: 'literal', value: 0 }
     return { kind: 'signal', name, type, initial }
   }
+  // G5 — `useStorage<T>('key', default)` from `@pyreon/storage` is a
+  // PERSISTENT signal. Same shape as `signal()` plus a storage-key
+  // string. The emitter routes storage signals to platform-idiomatic
+  // persistence primitives:
+  //   Swift   →  @AppStorage("key") private var x: T = default
+  //   Kotlin  →  var x by rememberSaveable { mutableStateOf(default) }
+  // The `_signalNames` set in the emitters picks up storage signals
+  // automatically (since they're DeclIR.signal), so `todos()` correctly
+  // drops parens at call sites without a separate `_storageNames` set.
+  if (calleeName === 'useStorage') {
+    const type = parseGenericTypeArg(init, ctx)
+    const keyArg = init.arguments?.[0]
+    const initialArg = init.arguments?.[1]
+    // The storage key MUST be a string literal — anything else (template
+    // string, identifier, member access) can't be baked into the
+    // `@AppStorage(...)` string at compile time. Conservative — fall
+    // through to undeclared if the key isn't a static literal.
+    if (
+      !keyArg ||
+      (keyArg.type !== 'Literal' && keyArg.type !== 'StringLiteral') ||
+      typeof keyArg.value !== 'string'
+    ) {
+      ctx.warnings.push(
+        `Declaration ${name}: useStorage key argument must be a string literal; got ${keyArg?.type ?? 'nothing'}.`,
+      )
+      return null
+    }
+    const storageKey = keyArg.value
+    const initial: ExprIR = initialArg
+      ? parseExpr(initialArg, ctx)
+      : { kind: 'literal', value: 0 }
+    return { kind: 'signal', name, type, initial, storageKey }
+  }
   if (calleeName === 'computed') {
     const arg = init.arguments?.[0]
     if (!arg || arg.type !== 'ArrowFunctionExpression') {
