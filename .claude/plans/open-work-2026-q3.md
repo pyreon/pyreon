@@ -38,7 +38,7 @@ So future work isn't picked twice. From the three superseded plans:
 | #802 | [`native-platforms-platform-abstractions.md`](./native-platforms-platform-abstractions.md) — three-package split + `PYREON_NATIVE_BINDINGS` manifest + compiler resolution algorithm | Foundational for Phase 1 — `@pyreon/storage` / `@pyreon/camera` / `@pyreon/push` etc. all share this shape |
 | #803 | [`native-platforms.md`](./native-platforms.md) — adds string-literal unions + two-way bindings to the mapping table | Closes two patterns the TodoMVC walkthrough surfaced as missing |
 | #804 | [`native-platforms-phase1-roadmap.md`](./native-platforms-phase1-roadmap.md) — Phase 1 iOS MVP (3 parallel chains, 10-24w envelope, TodoMVC deliverable) | Same shape as Phase 0 roadmap but Phase 1; references P4 survey as a precondition |
-| #807 | [`native-platforms-user-survey.md`](./native-platforms-user-survey.md) — market validation design (20-30 respondents, 12 Qs, decision thresholds) | Competitor survey (#795) named this as the biggest open question PMTC doesn't answer |
+| #807 | [`native-platforms-user-survey.md`](./native-platforms-user-survey.md) — market validation design (20-30 respondents, 12 Qs, decision thresholds). **Operational materials shipped**: interview script + async form + recruitment templates + analysis spreadsheet schema in [`native-survey-materials/`](./native-survey-materials/) — anyone can pick this up + start outreach without redesigning anything. | Competitor survey (#795) named this as the biggest open question PMTC doesn't answer |
 
 ### Phase 0 deliverables — verified state on main
 
