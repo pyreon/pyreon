@@ -4,6 +4,7 @@ export { batch, nextTick } from './batch'
 export { Cell, cell } from './cell'
 export { type Computed, type ComputedOptions, computed } from './computed'
 export { createSelector } from './createSelector'
+export { defineCrossModuleState } from './cross-module-state'
 export { inspectSignal, onSignalUpdate, why } from './debug'
 export type {
   FireSummary,
