@@ -504,6 +504,28 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
         // Use "bun" condition for workspace resolution — source .ts/.tsx files
         // for HMR, fast refresh, and type-safe imports.
         resolve: { conditions: ['bun'] },
+        // Force every `@pyreon/*` package through Vite's transform pipeline
+        // for SSR. Without this, Vite externalizes some `@pyreon/*` packages
+        // (loads via Node's `import()`) while transforming others — producing
+        // TWO module instances of `@pyreon/core` (one at `lib/index.js`, one
+        // at `src/index.ts` via the `bun` condition). The two instances have
+        // SEPARATE `_current` lifecycle state, so `runWithHooks` sets
+        // `_current` on instance A while `provide()` reads `_current` from
+        // instance B → null → `provide() outside setup` warning storm.
+        //
+        // Real-app symptom (bokisch.com dev-404 SSR, 0.24.4): 17 spurious
+        // `[Pyreon] onUnmount() called outside component setup` warnings
+        // per unmatched URL hit, even though every `provide()` IS structurally
+        // inside a `runWithHooks` setup window. Fix is purely a Vite
+        // module-graph reconciliation; no runtime behavior change.
+        //
+        // The regex `/@pyreon\//` matches every framework package + every
+        // user-side `@pyreon/*` import. Internal `@pyreon/*` resolution
+        // chains (zero → runtime-server → core; user `_layout.tsx` →
+        // ui-core → core) all converge on the same module instance.
+        ssr: {
+          noExternal: [/@pyreon\//],
+        },
         optimizeDeps: {
           exclude: optimizeDepsExclude,
         },
