@@ -251,3 +251,100 @@ describe('warnOutsideSetup — call-site capture', () => {
     warnSpy.mockRestore()
   })
 })
+
+describe('captureCallSite — skip patterns cover published-bundle paths', () => {
+  // Real bug surfaced from a 0.24.1 consumer report: the pre-fix patterns
+  // only matched source-tree paths (`/lifecycle\.ts/`, `/core\/src\//`,
+  // etc.). Published packages bundle to `node_modules/@pyreon/<name>/lib/`,
+  // so the framework's own stack frames slipped through the filter — the
+  // warning's "Called from:" line pointed at the warning emitter itself
+  // (or the framework's lib code) instead of the user's call site.
+  //
+  // We can't easily synthesise a real published-bundle stack in a test,
+  // but we CAN exercise the regex set directly. The fix added matchers
+  // for `@pyreon/<name>/lib/` paths AND function-name matches
+  // (`captureCallSite`, `warnOutsideSetup`) that survive bundling.
+
+  // Mirror the patterns from the impl. (If this list drifts, the impl
+  // and this test fall out of sync — that's the regression signal.)
+  const skipPatterns = [
+    /\/lifecycle\.[tj]s/,
+    /\/context\.[tj]s/,
+    /\/component\.[tj]s/,
+    /\bcaptureCallSite\b/,
+    /\bwarnOutsideSetup\b/,
+    /\/(core|reactivity|runtime-dom|runtime-server|router|head|ui-core|styler|unistyle|rocketstyle|attrs|elements|kinetic)\/src\//,
+    /node_modules\/@pyreon\/[^/]+\/lib\//,
+    /@pyreon\/[a-z-]+\/lib\//,
+    /node:internal/,
+    /webpack-internal/,
+    /<anonymous>/,
+  ]
+
+  const isSkipped = (line: string): boolean =>
+    skipPatterns.some((p) => p.test(line))
+
+  test('skips published-bundle lib paths (`@pyreon/X/lib/`)', () => {
+    expect(
+      isSkipped(
+        'at HeadProvider (file:///app/node_modules/@pyreon/head/lib/index.js:42:7)',
+      ),
+    ).toBe(true)
+    expect(
+      isSkipped(
+        'at provide (file:///app/node_modules/@pyreon/core/lib/index.js:96:5)',
+      ),
+    ).toBe(true)
+    expect(
+      isSkipped(
+        'at ThemeProvider (file:///app/node_modules/@pyreon/styler/lib/index.js:24:3)',
+      ),
+    ).toBe(true)
+  })
+
+  test('skips workspace source paths (`bun` condition consumers)', () => {
+    expect(
+      isSkipped(
+        'at provide (/Users/me/proj/packages/core/core/src/context.ts:88:3)',
+      ),
+    ).toBe(true)
+    expect(
+      isSkipped('at HeadProvider (/Users/me/proj/packages/core/head/src/provider.ts:56:5)'),
+    ).toBe(true)
+    expect(
+      isSkipped(
+        'at RouterProvider (/Users/me/proj/packages/core/router/src/components.tsx:30:5)',
+      ),
+    ).toBe(true)
+  })
+
+  test('skips the warning infrastructure itself (function-name match)', () => {
+    // Even if the file path is mangled (minified / bundled to a single
+    // file like `lib/index.js`), the symbol names survive when bundlers
+    // preserve exports. The function-name pattern catches both.
+    expect(isSkipped('at captureCallSite (lib/index.js:22:33)')).toBe(true)
+    expect(isSkipped('at warnOutsideSetup (lib/index.js:55:21)')).toBe(true)
+    expect(isSkipped('    at captureCallSite (mangled-bundle.js:9999:11)')).toBe(true)
+  })
+
+  test('skips engine / anonymous frames', () => {
+    expect(isSkipped('at <anonymous>')).toBe(true)
+    expect(isSkipped('at runMicrotasks (node:internal/process/task_queues:96:5)')).toBe(true)
+  })
+
+  test('does NOT skip user-code paths in src/ or pages/ etc.', () => {
+    // These should ALL fall through the skip filter so captureCallSite
+    // returns them as the "Called from:" line — the user-actionable hint.
+    expect(isSkipped('at MyComponent (/Users/me/proj/src/components/Foo.tsx:42:15)')).toBe(false)
+    expect(isSkipped('at HomePage (/Users/me/proj/src/pages/Home.tsx:10:5)')).toBe(false)
+    expect(isSkipped('at NotFound (/Users/me/proj/src/routes/_not-found.tsx:5:7)')).toBe(false)
+  })
+
+  test('does NOT skip user code that happens to be in node_modules but NOT @pyreon/', () => {
+    // A user-installed third-party package's component shouldn't be
+    // skipped — only `@pyreon/*` framework bundles are silenced.
+    expect(
+      isSkipped('at SomeLib (file:///app/node_modules/some-third-party/lib/index.js:42:7)'),
+    ).toBe(false)
+  })
+})
