@@ -69,7 +69,12 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   return `val ${d.name} by remember { derivedStateOf { ${emitKotlinExpr(d.expr, 0)} } }`
 }
 
-function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): string {
+/**
+ * Exported for unit-testable coverage of the TS→Kotlin type mapper
+ * surface (roadmap PR 5a). Internal callers should still go through
+ * `emitKotlin()` for the full component-level emit.
+ */
+export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): string {
   switch (t.kind) {
     case 'number':
       return 'Int'
@@ -91,9 +96,54 @@ function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): string {
       if (!existing) ctx.synthesizedDataClasses.push({ name, fields })
       return name
     }
+    case 'null':
+    case 'undefined':
+      // Bare null/undefined outside a union — Kotlin has no first-class
+      // null type; degrade to `Any?`.
+      return 'Any?'
+    case 'union':
+      return kotlinUnionType(t.branches, ctx, signalName)
+    case 'typeRef': {
+      // `Foo` → `Foo`; `Array<T>` → `List<T>` (Kotlin's stdlib uses
+      // List/Set/Map for these). Other typeRefs pass through verbatim.
+      if (t.name === 'Array' && t.args.length === 1) {
+        return `List<${kotlinType(t.args[0]!, ctx, signalName)}>`
+      }
+      if (t.name === 'Promise' && t.args.length === 1) {
+        // Kotlin's coroutines model — Promise<T> ≈ suspend function
+        // returning T, OR Deferred<T> from kotlinx.coroutines. PR 5e
+        // (async) decides; for now emit `Deferred<T>` as the closest
+        // shape.
+        return `Deferred<${kotlinType(t.args[0]!, ctx, signalName)}>`
+      }
+      if (t.args.length === 0) return t.name
+      return `${t.name}<${t.args.map((a) => kotlinType(a, ctx, signalName)).join(', ')}>`
+    }
     default:
       return 'Any'
   }
+}
+
+/**
+ * Kotlin handles nullability via `T?`. Common-case mapping:
+ *   - `T | null` / `T | undefined` → `T?`
+ *   - Mixed-type union → `Any?` (Kotlin has no structural union; the
+ *     `Any?` floor is the safe Kotlin equivalent)
+ */
+function kotlinUnionType(
+  branches: TypeIR[],
+  ctx: KotlinCtx | undefined,
+  signalName: string | undefined,
+): string {
+  const nonNullBranches = branches.filter(
+    (b) => b.kind !== 'null' && b.kind !== 'undefined',
+  )
+  const hasNullish = branches.some((b) => b.kind === 'null' || b.kind === 'undefined')
+  if (nonNullBranches.length === 1 && hasNullish) {
+    return `${kotlinType(nonNullBranches[0]!, ctx, signalName)}?`
+  }
+  if (nonNullBranches.length === 0) return 'Any?'
+  return 'Any'
 }
 
 function synthesizeDataClassName(componentName: string, signalName?: string): string {

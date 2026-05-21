@@ -44,7 +44,12 @@ function emitSwiftDecl(d: DeclIR): string {
   return `private var ${d.name}: Int { ${emitSwiftExpr(d.expr, 0)} }`
 }
 
-function swiftType(t: TypeIR): string {
+/**
+ * Exported for unit-testable coverage of the TS→Swift type mapper
+ * surface (roadmap PR 5a). Internal callers should still go through
+ * `emitSwift()` for the full component-level emit.
+ */
+export function swiftType(t: TypeIR): string {
   switch (t.kind) {
     case 'number':
       return 'Int'
@@ -60,9 +65,52 @@ function swiftType(t: TypeIR): string {
       const fields = t.fields.map((f) => `${f.name}: ${swiftType(f.type)}`).join(', ')
       return `(${fields})`
     }
+    case 'null':
+      // Swift has no first-class `null` type — only Optional. A bare
+      // `null` shows up inside unions ({ kind: 'union' } handles that
+      // case). Bare `null` outside a union is a TS type-system edge
+      // case; degrade to `Any?`.
+      return 'Any?'
+    case 'undefined':
+      return 'Any?'
+    case 'union':
+      return swiftUnionType(t.branches)
+    case 'typeRef': {
+      // `Foo` → `Foo`; `Array<T>` → `[T]`; `Promise<T>` → emit a
+      // sentinel that compiles in Swift (the actual async lowering
+      // happens in PR 5e). Other typeRefs pass through verbatim.
+      if (t.name === 'Array' && t.args.length === 1) return `[${swiftType(t.args[0]!)}]`
+      if (t.name === 'Promise' && t.args.length === 1) {
+        // Promise<T> → Task<T, Error> on Swift. For Phase 0 we emit
+        // `Task<T, Error>` and document the limitation; PR 5e refines.
+        return `Task<${swiftType(t.args[0]!)}, Error>`
+      }
+      if (t.args.length === 0) return t.name
+      return `${t.name}<${t.args.map(swiftType).join(', ')}>`
+    }
     default:
       return 'Any'
   }
+}
+
+/**
+ * Swift's type system has no structural union. We model the common
+ * cases:
+ *   - `T | null` / `T | undefined` → `T?` (Optional)
+ *   - `T1 | T2` where both are non-null → `Any` with a doc-comment
+ *     hint to refine via an enum at the Pyreon source level
+ */
+function swiftUnionType(branches: TypeIR[]): string {
+  const nonNullBranches = branches.filter(
+    (b) => b.kind !== 'null' && b.kind !== 'undefined',
+  )
+  const hasNullish = branches.some((b) => b.kind === 'null' || b.kind === 'undefined')
+  if (nonNullBranches.length === 1 && hasNullish) {
+    return `${swiftType(nonNullBranches[0]!)}?`
+  }
+  if (nonNullBranches.length === 0) return 'Any?'
+  // Mixed-type union — Swift can't express it structurally; degrade.
+  return 'Any'
 }
 
 function emitSwiftExpr(e: ExprIR, indent: number): string {
