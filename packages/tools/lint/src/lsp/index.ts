@@ -290,6 +290,72 @@ export const _LPIH_CACHE_MAX_BYTES = 1024 * 1024
 export const _LPIH_STALE_AFTER_MS = 5 * 60 * 1000
 
 /**
+ * Single prefix-rewrite rule for `_applyLpihPathMap`. The `from` prefix
+ * is matched against the start of the file path; if it matches, the
+ * prefix is replaced with `to`.
+ *
+ * @internal — exported for tests.
+ */
+export interface LPIHPathMapEntry {
+  from: string
+  to: string
+}
+
+/**
+ * Parse `PYREON_LPIH_PATH_MAP` env-var format: `from1=to1;from2=to2`.
+ *
+ * Use case: in remote-dev environments (Codespaces, devcontainers,
+ * Docker dev), the runtime captures paths from one filesystem view
+ * (e.g. `/host/proj/...`) while the LSP serves files from another
+ * (e.g. `/workspaces/proj/...`). Without rewriting, fire-data paths
+ * never match the LSP source-file path and inlay hints stay invisible.
+ *
+ * Example:
+ *   PYREON_LPIH_PATH_MAP=/host/proj=/workspaces/proj
+ *
+ * Multiple mappings via `;`:
+ *   PYREON_LPIH_PATH_MAP=/host=/workspaces;/build=/dev
+ *
+ * Malformed entries (missing `=`) are silently dropped — env vars are
+ * a fragile transport, and a typo shouldn't break LPIH wholesale.
+ *
+ * @internal — exported for tests.
+ */
+export function _parseLpihPathMap(envValue: string | undefined): LPIHPathMapEntry[] {
+  if (!envValue) return []
+  const out: LPIHPathMapEntry[] = []
+  for (const pair of envValue.split(';')) {
+    const trimmed = pair.trim()
+    if (!trimmed) continue
+    const eqIdx = trimmed.indexOf('=')
+    if (eqIdx < 0) continue // malformed — drop silently
+    const from = trimmed.slice(0, eqIdx)
+    const to = trimmed.slice(eqIdx + 1)
+    // Allow empty `to` (strips prefix) but require non-empty `from`.
+    if (from.length === 0) continue
+    out.push({ from, to })
+  }
+  // Sort by longest `from` first — ensures `/host/proj` wins over
+  // `/host` when both are present (otherwise the shorter prefix would
+  // match first and produce wrong rewrites).
+  return out.sort((a, b) => b.from.length - a.from.length)
+}
+
+/**
+ * Apply path map to a single file string. Returns the rewritten path,
+ * or the input unchanged if no rule matched. First-match wins (which
+ * is the LONGEST match thanks to `_parseLpihPathMap`'s sort).
+ *
+ * @internal — exported for tests.
+ */
+export function _applyLpihPathMap(file: string, map: readonly LPIHPathMapEntry[]): string {
+  for (const { from, to } of map) {
+    if (file.startsWith(from)) return to + file.slice(from.length)
+  }
+  return file
+}
+
+/**
  * Read + parse the LPIH cache file. Returns [] on any error
  * (file missing, JSON malformed, shape unexpected, file too large).
  * Silent failure is the right call — the cache is opportunistic
@@ -302,12 +368,19 @@ export const _LPIH_STALE_AFTER_MS = 5 * 60 * 1000
  *    `_LPIH_STALE_AFTER_MS`) are filtered out so a dev-server-killed
  *    stale cache stops showing yesterday's counts.
  *
+ * Path remapping: when `PYREON_LPIH_PATH_MAP` is set, each entry's
+ * `file` field is rewritten via `_applyLpihPathMap`. Useful for
+ * remote-dev environments where runtime + editor see different
+ * filesystem roots (Codespaces, devcontainers, Docker dev).
+ *
  * @internal — exported for tests.
  */
 export async function _readLpihCache(
   path: string | undefined,
   /** Override "now" for deterministic stale-filter tests. */
   now: () => number = () => Date.now(),
+  /** Override path-map source for tests (default: PYREON_LPIH_PATH_MAP env). */
+  pathMapSource: string | undefined = process.env.PYREON_LPIH_PATH_MAP,
 ): Promise<LPIHCacheEntry[]> {
   if (!path) return []
   let handle: Awaited<ReturnType<typeof import('node:fs/promises').open>> | null = null
@@ -349,7 +422,11 @@ export async function _readLpihCache(
         typeof (f as LPIHCacheEntry).line === 'number' &&
         typeof (f as LPIHCacheEntry).count === 'number',
     )
-    return fires
+    // Apply optional path-map rewrites — runtime-captured paths may
+    // differ from LSP-served paths in remote-dev (Codespaces, etc).
+    const pathMap = _parseLpihPathMap(pathMapSource)
+    if (pathMap.length === 0) return fires
+    return fires.map((f) => ({ ...f, file: _applyLpihPathMap(f.file, pathMap) }))
   } catch {
     return []
   } finally {

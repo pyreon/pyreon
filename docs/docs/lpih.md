@@ -73,6 +73,26 @@ startLpihPolling('/custom/path/lpih.json', 250)
 
 The env var takes priority over the auto-discovered default.
 
+### Remote-dev / monorepo path remapping
+
+In Codespaces, devcontainers, Docker dev, or any setup where the **runtime** captures paths from one filesystem view (`/host/proj/src/x.ts`) while the **LSP** serves files from another (`/workspaces/proj/src/x.ts`), inlay hints stay invisible — fire-data file paths never match the LSP's source-file path.
+
+Set `PYREON_LPIH_PATH_MAP` to rewrite captured paths before they're matched:
+
+```bash
+PYREON_LPIH_PATH_MAP=/host/proj=/workspaces/proj pyreon-lint --lsp
+```
+
+Multiple mappings via `;` (longest `from` wins):
+
+```bash
+PYREON_LPIH_PATH_MAP=/host=/workspaces;/build=/dev pyreon-lint --lsp
+```
+
+Format: `from1=to1;from2=to2`. Malformed entries (no `=`) are silently dropped — env vars are a fragile transport, and a typo shouldn't break LPIH wholesale. Empty `to` is allowed (strips the prefix).
+
+The remapping happens inside `_readLpihCache` — only the LSP side knows about it. The runtime keeps capturing its native filesystem paths; nothing about your dev server's startup changes.
+
 ## What you measure
 
 Per-creation, LPIH captures and surfaces:
