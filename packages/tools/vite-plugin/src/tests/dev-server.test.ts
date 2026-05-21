@@ -54,7 +54,11 @@ afterEach(() => {
 })
 
 function bootstrap(opts?: PyreonPluginOptions) {
-  const plugin = pyreonPlugin(opts)
+  // Default `lpih: false` — these tests cover the SSR / watcher / debounce
+  // surface; LPIH auto-bridge adds its own middleware whose presence would
+  // change the `middlewares.use` call count + first-element shape. Tests
+  // that specifically exercise LPIH live in `lpih-auto-bridge.test.ts`.
+  const plugin = pyreonPlugin({ lpih: false, ...opts })
   ;(plugin.config as unknown as ConfigHook)({ root }, { command: 'serve' })
   return plugin
 }
