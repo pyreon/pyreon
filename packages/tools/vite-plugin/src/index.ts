@@ -838,43 +838,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       // Registered BEFORE the SSR middleware so it short-circuits and never
       // falls through to handleSsrRequest.
       if (lpihEnabled) {
-        const lpihCachePath = lpihUserCfg.cachePath ?? resolveLpihCachePath(projectRoot)
-        server.middlewares.use('/__pyreon_lpih__', (req, res) => {
-          if (req.method !== 'POST') {
-            res.statusCode = 405
-            res.end('Method Not Allowed')
-            return
-          }
-          let body = ''
-          req.on('data', (chunk: Buffer | string) => {
-            body += chunk.toString()
-            // Defensive cap — fire payloads are tiny (a few KB at most);
-            // anything larger is malicious or buggy. Drop the request.
-            if (body.length > 1024 * 1024) {
-              res.statusCode = 413
-              res.end('Payload Too Large')
-              req.destroy()
-            }
-          })
-          req.on('end', () => {
-            void writeLpihCacheFile(lpihCachePath, body)
-              .then(() => {
-                res.statusCode = 204
-                res.end()
-              })
-              .catch((err: unknown) => {
-                // Don't crash the dev server — log + return 500 so the
-                // browser-side bridge can back off + retry next interval.
-                // oxlint-disable-next-line no-console
-                console.warn(
-                  '[pyreon] LPIH cache write failed:',
-                  err instanceof Error ? err.message : err,
-                )
-                res.statusCode = 500
-                res.end('LPIH cache write failed')
-              })
-          })
-        })
+        registerLpihMiddleware(server, projectRoot, lpihUserCfg)
       }
 
       if (!ssrConfig) return
@@ -977,6 +941,59 @@ function generateProjectContext(root: string): void {
  */
 export function resolveLpihCachePath(projectRoot: string): string {
   return pathJoin(projectRoot, '.pyreon-lpih.json')
+}
+
+/**
+ * Register the LPIH dev-server middleware on a Vite server. Extracted from
+ * `configureServer` so the `cachePath` option reference lives at module
+ * scope (top-level helper) rather than inside the plugin's inline body —
+ * keeps `scripts/audit-types.ts` happy regardless of how its comment-
+ * stripping handles the long inline `configureServer` block.
+ *
+ * @internal — exported for tests.
+ */
+export function registerLpihMiddleware(
+  server: ViteDevServer,
+  projectRoot: string,
+  userCfg: PyreonLpihOptions,
+): void {
+  const cachePath = userCfg.cachePath ?? resolveLpihCachePath(projectRoot)
+  server.middlewares.use('/__pyreon_lpih__', (req, res) => {
+    if (req.method !== 'POST') {
+      res.statusCode = 405
+      res.end('Method Not Allowed')
+      return
+    }
+    let body = ''
+    req.on('data', (chunk: Buffer | string) => {
+      body += chunk.toString()
+      // Defensive cap — fire payloads are tiny (a few KB at most);
+      // anything larger is malicious or buggy. Drop the request.
+      if (body.length > 1024 * 1024) {
+        res.statusCode = 413
+        res.end('Payload Too Large')
+        req.destroy()
+      }
+    })
+    req.on('end', () => {
+      void writeLpihCacheFile(cachePath, body)
+        .then(() => {
+          res.statusCode = 204
+          res.end()
+        })
+        .catch((err: unknown) => {
+          // Don't crash the dev server — log + return 500 so the
+          // browser-side bridge can back off + retry next interval.
+          // oxlint-disable-next-line no-console
+          console.warn(
+            '[pyreon] LPIH cache write failed:',
+            err instanceof Error ? err.message : err,
+          )
+          res.statusCode = 500
+          res.end('LPIH cache write failed')
+        })
+    })
+  })
 }
 
 let _lpihSeq = 0
