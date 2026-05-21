@@ -3,8 +3,20 @@ import { nativeCompat, useContext } from '@pyreon/core'
 import { Provider as CoreProvider, context } from '@pyreon/ui-core'
 import { MODE_DEFAULT, THEME_MODES_INVERSED } from '../constants'
 
+// Both `rootSize` and `breakpoints` are OPTIONAL — the rest of the chain
+// handles their absence: `enrichTheme` defaults rootSize to 16,
+// `makeItResponsive` short-circuits to plain CSS when breakpoints are
+// empty, and `value()` defaults rootSize to 16 internally. Marking
+// either as required here over-constrained user themes downstream
+// (e.g. a minimal `{ colors: { primary: '#228be6' } }` theme passed
+// to the public Provider was a TS error even though it works at runtime).
+//
+// Shape matches `@pyreon/unistyle` `PyreonTheme` and the downstream
+// `@pyreon/ui-core` Provider's `Partial<...>`-wrapped theme — `?:` with
+// no explicit `| undefined` so the downstream Partial composition holds
+// under `exactOptionalPropertyTypes: true`.
 type Theme = {
-  rootSize: number
+  rootSize?: number
   breakpoints?: Record<string, number>
 } & Record<string, unknown>
 

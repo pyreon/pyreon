@@ -12,15 +12,41 @@ export type ThemeMode = 'light' | 'dark'
 export type ThemeModeInput = ThemeMode | 'system'
 
 export interface PyreonUIProps {
-  /** Theme object with breakpoints, rootSize, and custom keys. */
-  theme: PyreonTheme
+  /**
+   * Theme object with breakpoints, rootSize, and custom keys.
+   *
+   * Optional — when omitted, the theme is INHERITED from the nearest
+   * ancestor PyreonUI. This makes nested `<PyreonUI inversed>` work
+   * without re-passing the theme:
+   *
+   * ```tsx
+   * <PyreonUI theme={appTheme}>
+   *   <Header />
+   *   <PyreonUI inversed>  // inherits appTheme, just flips mode
+   *     <DarkSidebar />
+   *   </PyreonUI>
+   * </PyreonUI>
+   * ```
+   *
+   * At the OUTERMOST PyreonUI with no ancestor, the provided ThemeContext
+   * value falls back to the default `{}` (styled components see fields as
+   * undefined; no crash). Pass a real theme at the outermost PyreonUI to
+   * avoid that.
+   */
+  theme?: PyreonTheme | undefined
   /**
    * Color mode: "light", "dark", or "system" (follows OS preference).
    * Can be a signal or getter for reactive mode switching.
-   * @default "light"
+   *
+   * When omitted, mode is INHERITED from the nearest ancestor PyreonUI
+   * (or `'light'` at the root).
    */
   mode?: ThemeModeInput | (() => ThemeModeInput) | undefined
-  /** Flip mode for a nested section (e.g. dark sidebar in light app). */
+  /**
+   * Flip mode for a nested section (e.g. dark sidebar in light app).
+   * Scoped — only affects DESCENDANTS of this PyreonUI; ancestors and
+   * siblings see the original mode unchanged.
+   */
   inversed?: boolean | undefined
   children?: VNodeChild
 }
@@ -128,6 +154,14 @@ export function PyreonUI(props: PyreonUIProps): VNodeChild {
   // returns 'light'. This read is TRACKED inside the computed below, so when
   // the parent's mode changes, this child's computed re-evaluates.
   const parentModeAccessor = useContext(ModeContext)
+  // Same shape for theme — useContext(ThemeContext) is a reactive accessor.
+  // When `props.theme` is omitted, we provide the parent's theme through
+  // verbatim (already enriched at the level it was provided). Re-enriching
+  // would be idempotent but wasteful, AND would replace the parent's exact
+  // `__PYREON__` reference, which downstream identity-keyed caches (styler's
+  // class cache, rocketstyle's per-definition WeakMaps) rely on for hits.
+  // Pass-through preserves identity.
+  const parentThemeAccessor = useContext(ThemeContext)
   const resolveMode = (): ThemeMode => {
     const mode = props.mode
     let resolved: ThemeMode
@@ -146,7 +180,22 @@ export function PyreonUI(props: PyreonUIProps): VNodeChild {
 
   // Enrich theme — wrapped in computed so user-preference theme swaps
   // propagate. The enrichment itself is cheap (builds a __PYREON__ block).
-  const enrichedTheme = computed(() => enrichTheme(props.theme))
+  //
+  // When `props.theme` is omitted, return the parent's theme verbatim
+  // (already enriched). Without this, `enrichTheme(undefined)` would
+  // destructure undefined and throw — but the throw happens LAZILY (the
+  // computed is only read when a child consumes ThemeContext), so the
+  // failure mode is the cryptic dev-mode warning
+  // `[pyreon] Unhandled effect error: TypeError: Cannot destructure property
+  // 'breakpoints' of 'theme' as it is undefined`
+  // followed by every styled descendant rendering with an empty theme.
+  // That's what made the user's nested `<PyreonUI inversed>` "look like
+  // inversed wasn't working" — the whole subtree was broken.
+  const enrichedTheme = computed(() => {
+    const t = props.theme
+    if (t === undefined || t === null) return parentThemeAccessor()
+    return enrichTheme(t)
+  })
 
   // Provide to all three context layers:
 
