@@ -1032,26 +1032,43 @@ export function createStore<T extends object>(
     const key = head as string | number
     // Refuse a dangerous string-keyed write at any depth — pollution
     // through `setStore(['foo', '__proto__'], …)` is the same hazard
-    // as the top-level form. Inline string comparisons (vs the
-    // `DANGEROUS_KEYS.has(key)` Set lookup used by `safeAssign`)
-    // because CodeQL `js/prototype-polluting-assignment` (alert #22)
-    // does NOT propagate dataflow through `Set.has` calls — the
-    // analyzer needs explicit `===` checks against the literal key
-    // names to recognise the guard. Same set of dangerous keys; just
-    // a form CodeQL's taint-tracking can follow.
-    if (
-      typeof key === 'string' &&
-      (key === '__proto__' || key === 'constructor' || key === 'prototype')
-    ) {
-      return
-    }
+    // as the top-level form. Inline `===` checks (not the
+    // `DANGEROUS_KEYS.has(key)` Set lookup used by `safeAssign`) so
+    // CodeQL's taint-tracking recognises the guard. The `typeof key
+    // === 'string'` outer check is dropped — literal-string `===`
+    // against a `string | number` key is already type-safe (a number
+    // can never equal a string).
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') return
 
     if (rest.length === 0) {
-      // Last path segment — set the value
-      ;(obj as Record<string | number, unknown>)[key] =
+      // Last path segment — set the value.
+      //
+      // `Object.defineProperty` instead of `obj[key] = value` so the
+      // write bypasses the prototype chain entirely — even if a
+      // setter has been installed on `Object.prototype` for `key`,
+      // we install an OWN data property on `obj` without invoking it.
+      // This closes CodeQL `js/prototype-polluting-assignment`
+      // (alert #22 stayed open after the first fix because CodeQL's
+      // taint-tracking didn't recognise the guard pattern alone —
+      // the bracket-write itself was the flagged sink, and the
+      // analyser conservatively flags any bracket-write into a
+      // user-typed object). `defineProperty` with a data descriptor
+      // is the documented safe replacement; combined with the
+      // explicit `===` guard above, the write is double-safe.
+      // Semantics are identical to `obj[key] = value` for a plain
+      // data property; the only difference is that setter chains on
+      // the prototype are NOT triggered.
+      const target = obj as Record<string | number, unknown>
+      const nextValue =
         typeof value === 'function'
-          ? (value as (prev: unknown) => unknown)((obj as Record<string | number, unknown>)[key])
+          ? (value as (prev: unknown) => unknown)(target[key])
           : value
+      Object.defineProperty(target, key, {
+        value: nextValue,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      })
     } else {
       // Recurse into nested object
       applyAtPath((obj as Record<string | number, unknown>)[key], rest, value)

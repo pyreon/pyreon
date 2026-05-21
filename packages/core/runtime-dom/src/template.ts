@@ -280,7 +280,12 @@ export function _rsCollapseH(
       el.className = v ? darkClass : lightClass
     })
     const handlerDisposers: (() => void)[] = []
-    for (const key in handlers) {
+    // `Object.keys` (not `for...in`) so an attacker who pollutes
+    // `Object.prototype` can't inject a fake handler via inherited
+    // enumerable properties. Defense-in-depth — the compiler emits a
+    // clean object literal so this matters defensively, not in
+    // practice, but the cost is zero.
+    for (const key of Object.keys(handlers)) {
       const d = _bindEvent(el, key, handlers[key])
       if (d) handlerDisposers.push(d)
     }
@@ -353,17 +358,22 @@ export function _rsCollapseDyn(
   bind?: ((el: HTMLElement) => (() => void) | null) | null,
 ): NativeItem {
   return _tpl(html, (el) => {
-    // One renderEffect drives the className from both accessors. Wrap a
-    // dummy reactive source — `_bindDirect`'s plain-callable fallback
-    // wraps the inner callback in `renderEffect`, so reading both
-    // `valueIndex()` and `isDark()` inside the callback subscribes to
-    // BOTH live signals; a change to EITHER re-runs only this assignment.
-    // We pass `valueIndex as { _v?: unknown }` to satisfy the helper's
-    // signature (it short-circuits to the renderEffect path when `_v` is
-    // absent — same fallback `_rsCollapse` uses for the mode accessor).
-    const disposeClass = _bindDirect(valueIndex as unknown as { _v?: unknown }, () => {
-      const v = valueIndex()
-      const idx = (v << 1) | (isDark() ? 1 : 0)
+    // One `renderEffect` drives the className from both accessors;
+    // reading `valueIndex()` AND `isDark()` inside the callback
+    // subscribes to BOTH live signals via Pyreon's tracking — a change
+    // to EITHER re-runs only this className assignment, no remount.
+    //
+    // Direct `renderEffect` (vs the `_bindDirect` indirection used by
+    // `_rsCollapse`): the `_bindDirect` fallback path calls the source
+    // function ONCE per re-run and passes the result to the callback.
+    // We were ignoring that result and calling `valueIndex()` again
+    // inside — i.e., a double call per re-run. Side-effecting cond
+    // expressions (`{(modifyState(), cond) ? 'a' : 'b'}`) would fire
+    // their side-effects twice. Direct `renderEffect` calls
+    // `valueIndex()` exactly once per re-run, matching the original
+    // source's call-count contract.
+    const disposeClass = renderEffect(() => {
+      const idx = (valueIndex() << 1) | (isDark() ? 1 : 0)
       el.className = classes[idx] ?? ''
     })
     const disposeChildren = bind ? bind(el) : null
@@ -436,20 +446,26 @@ export function _rsCollapseDynH(
   bind?: ((el: HTMLElement) => (() => void) | null) | null,
 ): NativeItem {
   return _tpl(html, (el) => {
-    // Reactive class — identical to _rsCollapseDyn: one `_bindDirect`
-    // wraps the inner callback in a renderEffect, reading both
-    // `valueIndex()` and `isDark()` inside subscribes to BOTH signals;
-    // a change to EITHER re-runs only this className assignment.
-    const disposeClass = _bindDirect(valueIndex as unknown as { _v?: unknown }, () => {
-      const v = valueIndex()
-      const idx = (v << 1) | (isDark() ? 1 : 0)
+    // Reactive class — identical shape to `_rsCollapseDyn`: one
+    // `renderEffect` reads both accessors, subscribing to both signals;
+    // a change to EITHER re-runs only this className assignment, no
+    // remount. Direct `renderEffect` (not via `_bindDirect`) so
+    // `valueIndex()` runs exactly once per re-run — see the
+    // corresponding comment in `_rsCollapseDyn`.
+    const disposeClass = renderEffect(() => {
+      const idx = (valueIndex() << 1) | (isDark() ? 1 : 0)
       el.className = classes[idx] ?? ''
     })
-    // Handler attachment — identical to _rsCollapseH: routes through
-    // the canonical _bindEvent path so delegation / batching / name
+    // Handler attachment — identical to `_rsCollapseH`: routes through
+    // the canonical `_bindEvent` path so delegation / batching / name
     // normalization behave byte-identically to the 5-layer mount.
+    // `Object.keys` (not `for...in`) so an attacker who pollutes
+    // `Object.prototype` can't inject a fake handler via inherited
+    // enumerable properties — only OWN keys count. The compiler emits
+    // a clean object literal so this matters defensively, not in
+    // practice, but the cost is zero.
     const handlerDisposers: (() => void)[] = []
-    for (const key in handlers) {
+    for (const key of Object.keys(handlers)) {
       const d = _bindEvent(el, key, handlers[key])
       if (d) handlerDisposers.push(d)
     }
