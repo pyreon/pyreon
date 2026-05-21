@@ -137,7 +137,13 @@ describe('Element', () => {
       // Simple element fast path — passes children as a single value, not a
       // 3-slot array wrapping falsy beforeContent/afterContent. This avoids
       // 2 extra mountChild calls per Element in the common case.
-      expect(result.props.children).toBe('hello')
+      //
+      // Children are wrapped in a reactive accessor (`() => resolveSlot(...)`)
+      // so function-valued slot props (e.g. `content={() => <X />}`) stay
+      // reactive — see `Element-slot-reactivity.browser.test.tsx`. The
+      // accessor's RESOLVED value is the string `'hello'`.
+      expect(typeof result.props.children).toBe('function')
+      expect((result.props.children as () => unknown)()).toBe('hello')
     })
 
     it('passes block prop to Wrapper', () => {
@@ -606,8 +612,11 @@ describe('Element', () => {
     it('prefers children over content', () => {
       const result = asVNode(Element({ children: 'child', content: 'alt' }))
       // Simple-element fast path returns children directly. The fallback
-      // chain (children → content → label) is exercised inside getChildren().
-      expect(result.props.children).toBe('child')
+      // chain (children → content → label) is exercised inside getChildren(),
+      // which runs INSIDE the reactive accessor wrap — so invoking the
+      // accessor reveals the resolved value.
+      expect(typeof result.props.children).toBe('function')
+      expect((result.props.children as () => unknown)()).toBe('child')
     })
 
     it('falls back to content when no children', () => {
