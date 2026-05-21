@@ -17,10 +17,31 @@ export interface EmitOptions {
 export interface ComponentIR {
   /** Component name from `export function NAME(...)`. */
   name: string
+  /**
+   * Component props parsed from the function's first parameter when it
+   * carries an object type annotation. The parameter binding name (`props`,
+   * `p`, etc.) is captured separately so the emitter can rewrite member
+   * accesses like `props.title` → `title` on the target. Empty when the
+   * component takes no params or the param is untyped.
+   */
+  props: PropIR[]
+  /**
+   * The first-parameter binding name (`props`, `p`, etc.) used to recognise
+   * `<paramName>.field` member accesses inside the body and rewrite them to
+   * bare field references on the target. Undefined for prop-less components.
+   */
+  propsParamName: string | undefined
   /** Top-level declarations inside the component body. */
   decls: DeclIR[]
   /** The expression the component returns. */
   returnExpr: ExprIR
+}
+
+export interface PropIR {
+  /** Prop name (the field key in the JSX `<Comp x={...}>` site). */
+  name: string
+  /** Declared type from the TS annotation. */
+  type: TypeIR
 }
 
 export type DeclIR =

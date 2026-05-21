@@ -120,4 +120,16 @@ describe('Pyreon → Kotlin emit', () => {
       }"
     `)
   })
+
+  it('09 — component with props', () => {
+    // Pyreon `function Card(props: { title: string; description: string })`
+    // becomes a Composable function with `title: String, description: String`
+    // params. Member accesses `props.title` rewrite to bare `title`.
+    expect(emit('09-props.tsx')).toMatchInlineSnapshot(`
+      "@Composable
+      fun Card(title: String, description: String) {
+        Text(text = "\${title}:\${description}")
+      }"
+    `)
+  })
 })

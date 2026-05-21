@@ -125,4 +125,19 @@ describe('Pyreon → Swift emit', () => {
       }"
     `)
   })
+
+  it('09 — component with props', () => {
+    // Pyreon `function Card(props: { title: string; description: string })`
+    // becomes a SwiftUI struct with `let title: String` + `let description: String`.
+    // Member accesses `props.title` rewrite to bare `title` in the body.
+    expect(emit('09-props.tsx')).toMatchInlineSnapshot(`
+      "struct Card: View {
+        let title: String
+        let description: String
+        var body: some View {
+          Text("\\(title):\\(description)")
+        }
+      }"
+    `)
+  })
 })
