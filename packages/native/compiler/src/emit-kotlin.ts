@@ -13,6 +13,7 @@ import type {
   EnumIR,
   ExprIR,
   StatementIR,
+  StructIR,
   TypeIR,
 } from './types'
 
@@ -27,10 +28,15 @@ let _signalNames: Set<string> = new Set()
 /** G2: every function decl name (Parser-A). Mirrors emit-swift's set. */
 let _functionNames: Set<string> = new Set()
 
-export function emitKotlin(components: ComponentIR[], enums: EnumIR[] = []): string {
+export function emitKotlin(
+  components: ComponentIR[],
+  enums: EnumIR[] = [],
+  structs: StructIR[] = [],
+): string {
   _enumNames = new Set(enums.map((e) => e.name))
   const parts: string[] = []
   for (const e of enums) parts.push(emitKotlinEnum(e))
+  for (const s of structs) parts.push(emitKotlinStruct(s))
   for (const c of components) parts.push(emitKotlinComponent(c))
   _enumNames = new Set()
   return parts.join('\n\n')
@@ -39,6 +45,20 @@ export function emitKotlin(components: ComponentIR[], enums: EnumIR[] = []): str
 /** Emit a Kotlin `enum class X { a, b, c }`. */
 function emitKotlinEnum(e: EnumIR): string {
   return `enum class ${e.name} { ${e.cases.join(', ')} }`
+}
+
+/**
+ * Emit a Kotlin `data class X(var a: T, var b: U)` from a StructIR.
+ * `var` (not `val`) keeps fields mutable, mirroring the Swift `struct`
+ * emit. Data classes get `.copy(...)` for free — already used by G4's
+ * partial-update emit for the same struct. Foundational Phase 2 step
+ * toward kotlinx-serialization conformance + Compose Saver round-trips.
+ */
+function emitKotlinStruct(s: StructIR): string {
+  const params = s.fields
+    .map((f) => `var ${kotlinIdent(f.name)}: ${kotlinType(f.type, undefined, f.name)}`)
+    .join(', ')
+  return `data class ${kotlinIdent(s.name)}(${params})`
 }
 
 interface KotlinCtx {
