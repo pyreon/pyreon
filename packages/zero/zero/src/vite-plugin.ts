@@ -312,7 +312,14 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 					return next();
 				if (/\.\w+$/.test(pathname)) return next();
 
-				handle404(server, routesDir, pathname, res).then(
+				handle404(
+					server,
+					routesDir,
+					pathname,
+					res,
+					root,
+					req.originalUrl ?? pathname,
+				).then(
 					(handled) => {
 						if (!handled) next();
 					},
@@ -593,30 +600,47 @@ async function dispatchApiRoute(
 }
 
 /**
- * Static-page 404 fallback for apps WITHOUT `_404.tsx` in the routes tree.
+ * 404 handler for unmatched URLs in dev. Three behaviours:
  *
- * For `mode: 'ssr'` apps with `_404.tsx`, the SSR middleware's `renderSsr`
- * routes unmatched URLs through the router-driven path (PR L5 + M1.2) — that
- * produces a layout-wrapped 404 with HTTP status 404, never reaching here.
- * This function is the LEGACY fallback that fires only when:
- *   - The app is in `mode: 'spa'` / `mode: 'ssg'` (no dev SSR middleware), OR
- *   - The app has no reachable `notFoundComponent` in its routes tree (so the
- *     SSR middleware's `resolveRoute` returns matched: [] and falls through).
+ *   1. If the URL matches a real route pattern, return false (caller falls
+ *      through to the next middleware — Vite's SPA shell etc.).
+ *   2. Otherwise, try `renderSsr`. Even for `mode: 'ssg'` / `mode: 'spa'`
+ *      apps (no upstream SSR middleware registered) this works in dev: the
+ *      router's `findNotFoundFallback` (PR L5 / M1.2) walks the routes
+ *      tree, finds a `notFoundComponent` (`_404.tsx` / `_not-found.tsx`)
+ *      attached to the deepest matching parent layout, builds a synthetic
+ *      chain `[...layouts, syntheticLeaf]`, and renderSsr produces 404
+ *      HTML INSIDE the layout's chrome — matching what `dist/404.html`
+ *      ships at build time.
+ *   3. If renderSsr returns null (no `notFoundComponent` reachable from
+ *      any layout), fall back to a bare static HTML page so the user
+ *      gets SOMETHING.
+ *
+ * **Pre-fix this function ALWAYS emitted the bare static page in step 3**,
+ * ignoring any user-provided `_404.tsx` / `_not-found.tsx`. For
+ * `mode: 'ssr'` apps the upstream SSR middleware caught the 404 first
+ * (so a `_404.tsx` worked there), but for `mode: 'ssg'` / `mode: 'spa'`
+ * apps the SSR middleware never registered and unmatched URLs fell
+ * through here directly — dev showed the bare fallback while the
+ * SSG-built `dist/404.html` shipped the branded version. Production-
+ * vs-dev drift; no warning.
+ *
+ * For `mode: 'ssr'` apps the upstream SSR middleware is still the
+ * primary path (cheap when matched). renderSsr may be called twice on a
+ * truly-unmatched URL (once by the upstream middleware, once here as
+ * fallback). The duplicate cost is purely a no-op `resolveRoute` call
+ * returning `matched: []` again — no extra render work.
  *
  * Returns true if the 404 was handled (response sent), false if the path
  * actually matches a route (caller continues to next middleware).
- *
- * Pre-M1.2 a stale comment claimed `_404.tsx` "cannot be SSR-rendered because
- * the compiler emits _tpl() calls that require document". That was wrong — the
- * SSR runtime renders compiler-emitted components fine via `renderToString`
- * (no document needed). The static fallback exists for backward compat with
- * apps that don't ship `_404.tsx`, not because SSR-rendering it is impossible.
  */
 async function handle404(
 	server: import("vite").ViteDevServer,
 	_routesDir: string,
 	pathname: string,
 	res: import("http").ServerResponse,
+	root: string,
+	originalUrl: string,
 ): Promise<boolean> {
 	const mod = await server.ssrLoadModule(VIRTUAL_ROUTES_ID);
 	const routes = mod.routes as Array<{ path?: string; children?: unknown[] }>;
@@ -626,11 +650,32 @@ async function handle404(
 		return false; // Route matches — not a 404
 	}
 
-	// No route matched + no `_404.tsx` reachable — emit a minimal static page
-	// so the user gets SOMETHING. Apps that want branded 404s should add
-	// `_404.tsx` to their routes tree (canonical pattern); the SSR middleware
-	// then routes through the router-driven path with layout chrome instead
-	// of landing here.
+	// Try the router-driven path: renderSsr → resolveRoute →
+	// findNotFoundFallback. Returns layout-wrapped 404 HTML + status 404 if
+	// any reachable `notFoundComponent` matches; returns null only when no
+	// `_404.tsx` / `_not-found.tsx` exists anywhere in the routes tree.
+	//
+	// Try/catch protects against ssrLoadModule failures (e.g. the user's
+	// `app.ts` has a syntax error in dev): we'd rather serve the bare
+	// fallback than crash the 404 handler. The caller's error path catches
+	// `next(err)` if renderSsr rejects in a way we can't recover from.
+	try {
+		const result = await renderSsr(server, root, originalUrl, pathname);
+		if (result !== null) {
+			res.statusCode = result.status;
+			res.setHeader("Content-Type", "text/html; charset=utf-8");
+			res.setHeader("Content-Length", Buffer.byteLength(result.html));
+			res.end(result.html);
+			return true;
+		}
+	} catch {
+		// Fall through to bare HTML below.
+	}
+
+	// No `notFoundComponent` reachable + renderSsr returned null — emit a
+	// minimal static page so the user gets SOMETHING. Apps that want
+	// branded 404s should add `_404.tsx` (or `_not-found.tsx`) to their
+	// routes tree.
 	const html = await render404Page(undefined);
 
 	res.statusCode = 404;
