@@ -1,5 +1,96 @@
 # @pyreon/lint
 
+## 0.24.0
+
+### Minor Changes
+
+- [#777](https://github.com/pyreon/pyreon/pull/777) [`f400e85`](https://github.com/pyreon/pyreon/commit/f400e85282a370276d5ae0266ba501c41dce4f3e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - LPIH: zero-config cache path convention. `startLpihPolling()` and `writeLpihCache()` now default to `<cwd>/.pyreon-lpih.json` when called with no path; the LSP server auto-discovers the same file by walking up from the source file to the nearest `package.json`. No env var required for the common case.
+
+  ```ts
+  // Before (foundation PR):
+  import { startLpihPolling } from "@pyreon/reactivity/lpih";
+  startLpihPolling("/tmp/pyreon-lpih.json", 250);
+  // + set PYREON_LPIH_CACHE=/tmp/pyreon-lpih.json on the LSP
+
+  // Now (zero config):
+  import { startLpihPolling } from "@pyreon/reactivity/lpih";
+  startLpihPolling(); // writes to <cwd>/.pyreon-lpih.json
+  // LSP auto-discovers; no env var needed
+  ```
+
+  **`@pyreon/reactivity/lpih`**:
+
+  - `writeLpihCache(path?)` — `path` is now optional, defaults to `getDefaultLpihCachePath()` (which returns `<cwd>/.pyreon-lpih.json`)
+  - `startLpihPolling(path?, intervalMs?)` — same default; throws synchronously if no default can be resolved AND no path given (better than silently never writing)
+  - New export `getDefaultLpihCachePath(): string | null` — returns the resolved path or null in environments without `process.cwd()` (web workers, etc.)
+  - New export `LPIH_DEFAULT_FILENAME = '.pyreon-lpih.json'` — canonical filename constant
+
+  **`@pyreon/lint`** LSP:
+
+  - `_resolveLpihCachePath(filePath)` — new helper that resolves the cache path for a given source file. Priority: `PYREON_LPIH_CACHE` env (explicit override) → `<project-root>/.pyreon-lpih.json` discovered by walking up to nearest `package.json` (zero-config default) → `undefined` (LPIH inactive)
+  - `_findProjectRoot(filePath, maxDepth?)` — memoized walk-up helper. Caches results per-file for the LSP-process lifetime; cleared on `_resetOpenDocuments()`. Synchronous (one `existsSync` per level, typically <10 levels = negligible cost).
+  - `_LPIH_DEFAULT_FILENAME` — exported constant locked to `.pyreon-lpih.json` (matches `@pyreon/reactivity/lpih`'s `LPIH_DEFAULT_FILENAME` — a drift gate test in `lsp-lpih.test.ts` validates the agreement).
+
+  **Discovery priority** (matches across writer + reader):
+
+  1. `PYREON_LPIH_CACHE` env var on the LSP (explicit override) — unchanged
+  2. `<project-root>/.pyreon-lpih.json` (auto-discovered) — new default
+  3. No cache → LPIH inactive (degrades to static Reactivity-Lens hints only) — unchanged
+
+  **Multi-session safety**: each project gets its own cache file under its own `package.json` boundary. Two dev sessions in different projects can't collide silently (was a footgun with the previous shared `/tmp/pyreon-lpih.json` convention from the foundation docs).
+
+  **Tests**: +18 new tests across both packages (8 for the runtime default + 10 for LSP discovery), all green. Bisect-verified: removing the `_resolveLpihCachePath` wiring breaks the "auto-discover" LSP integration test.
+
+  **Docs**: `docs/docs/lpih.md` quickstart updated to the zero-config flow; `.gitignore` mention added; custom-path / env-override examples preserved at the bottom of the page.
+
+- [#769](https://github.com/pyreon/pyreon/pull/769) [`891ca43`](https://github.com/pyreon/pyreon/commit/891ca4300727119dafd66ceaacd7cb39e68f3b4e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Live Program Inlay Hints (LPIH) — runtime + compiler + LSP foundation. A new category of editor surface: **live runtime data displayed at the source line, the same way TypeScript shows inferred types**. No reactive framework today shows fire counts / subscriber counts / effect re-run rates at the cursor — developers context-switch to a separate devtools panel. LPIH closes that gap.
+
+  ```tsx
+  function App() {
+    const count = signal(0); // 🔥 signal fired 240×
+    const doubled = computed(() => count() * 2); // 🔥 derived fired 240×
+    effect(() => console.log(doubled())); // 🔥 effect fired 241×
+    return <div>{count()}</div>;
+  }
+  ```
+
+  **`@pyreon/reactivity`**: source-location capture at every `signal()` / `computed()` / `effect()` creation, wired through `_rdRegister` and exposed via `getFireSummaries()`. The runtime bridge ships at the new subpath export `@pyreon/reactivity/lpih`: `writeLpihCache(path)` + `startLpihPolling(path, intervalMs)` writes the current fire snapshot to a JSON cache file atomically (tmp + rename — readers never see a half-written file; failed renames clean up the tmp). Subpath keeps the main entry slim — bridge depends on `node:fs/promises` (Node-only) and is dev-mode glue, not a core primitive. New main-entry exports: `SourceLocation`, `FireSummary`, `getFireSummaries`. New `/lpih` subpath exports: `writeLpihCache`, `startLpihPolling`. **Zero production cost** (existing `process.env.NODE_ENV !== 'production'` gate tree-shakes the entire capture path — verified by the existing `reactive-devtools-treeshake.test.ts`). Dev-mode opt-in cost: `_active === true` triggers `new Error().stack` capture (~2.2µs per creation). At realistic real-app creation rates (100-1000 signals total / 100/sec peak), per-session cost is **0.2-2.3ms** — invisible. Stack-parser handles V8, JSC, and SpiderMonkey formats. 21 new tests (15 source-location + 6 bridge).
+
+  **`@pyreon/compiler`**: two new pure functions that bridge runtime fire data to LSP inlay hints. `mergeFireDataIntoFindings(findings, fires, file)` enriches static Reactivity-Lens findings with fire counts at matching source lines. `firesToCreationSiteFindings(fires, file)` synthesizes inlay-hint findings DIRECTLY from fires — creation-line hints showing `signal fired 240×` at the line where `signal()` was called. New exports: `mergeFireDataIntoFindings`, `firesToCreationSiteFindings`, `LPIHFireDatum`, `LPIHMergeOptions`. 24 new tests covering merge semantics, kind filtering (footguns/static spans NOT enriched), file normalization, aggregation, custom formatters, plus end-to-end `analyzeReactivity + merge` integration.
+
+  **`@pyreon/lint`**: LSP `textDocument/inlayHint` handler reads `PYREON_LPIH_CACHE` env var on each request, parses the cache file (silent failure on missing/malformed JSON), and emits creation-site inlay hints with the `🔥 signal fired N×` label. Opt-in via env var — when unset, LPIH path is a no-op and existing static Reactivity-Lens hints work unchanged. New internal exports: `_readLpihCache`, `LPIHCacheEntry`, `LPIHCacheFile`. 15 new JSON-RPC roundtrip tests covering cache file parsing (malformed JSON, missing entries, shape validation), LSP handler integration (env-var-driven cache read, visible-range filtering with LPIH active, graceful degradation), end-to-end `initialize → didOpen → inlayHint` with real cache file.
+
+  **Measured impact (reproducible via `bun .claude/experiments/lpih-measurement.ts`)**:
+
+  | Metric                                          | Value                                          |
+  | ----------------------------------------------- | ---------------------------------------------- |
+  | LSP roundtrip latency (median, 20-trial)        | **0.32 ms**                                    |
+  | LSP roundtrip latency (p95)                     | **2.78 ms**                                    |
+  | User-perceived save→hint (incl. 150ms debounce) | **~150 ms**                                    |
+  | Bridge write (atomic JSON file)                 | **1.5 ms**                                     |
+  | End-to-end bridge-to-editor                     | **~1.8 ms + 250ms poll interval**              |
+  | Production overhead                             | **0 ns** (tree-shaken)                         |
+  | Dev-mode active overhead                        | 2.2 µs per signal creation                     |
+  | Workflow "which signal fires most?"             | 9 → 2 steps (**4.5× reduction**)               |
+  | Workflow "is this effect over-running?"         | 8 → 2 steps (**4× reduction**)                 |
+  | Workflow "did memoization help?"                | 10 → 4 steps (**2.5× reduction**)              |
+  | Information surface per medium component        | ~9 hints inline vs 0 in editor (devtools-only) |
+
+  **Architecture**: Three-layer (runtime captures source location → bridge writes JSON cache file → LSP reads + merges into inlay hints). Bisect-verified: reverting the LSP wiring fails 11/15 integration tests; restored, 15/15 pass. The cache-file bridge mechanism is filesystem-only (no IPC, no WebSocket) — chosen because LSP servers are stdio-only and filesystem is the universal lowest-common-denominator transport. The LSP re-reads on every inlay-hint request so live edits land immediately. Future build-time location injection via `@pyreon/vite-plugin` will replace stack capture with compile-time literals, eliminating the dev-mode 2.2µs/creation overhead entirely. The editor extension (VS Code / Neovim) that auto-bridges devtools fire data to the cache file is a follow-up.
+
+  **Docs**: new VitePress page at [docs/docs/lpih.md](docs/docs/lpih.md) with quickstart, API reference, measured numbers, and 3 concrete bug-hunting scenarios (with vs without LPIH workflow comparison).
+
+- [#782](https://github.com/pyreon/pyreon/pull/782) [`cc536f0`](https://github.com/pyreon/pyreon/commit/cc536f071244c0a5f791da899e1bc52b20819f1b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - LPIH: `PYREON_LPIH_PATH_MAP` env var for remote-dev path remapping. In Codespaces, devcontainers, Docker dev, or any setup where the runtime captures paths from one filesystem view (e.g. `/host/proj/src/x.ts`) while the LSP serves files from another (`/workspaces/proj/src/x.ts`), inlay hints used to stay invisible — fire-data file paths never matched the LSP's source-file path.
+
+  Now: `PYREON_LPIH_PATH_MAP=/host/proj=/workspaces/proj pyreon-lint --lsp` rewrites captured paths inside `_readLpihCache` before matching. Multiple mappings via `;` (longest `from` wins; malformed entries silently dropped). The runtime side stays untouched — it keeps capturing its native filesystem paths.
+
+  Closes R7 from the LPIH foundation PR ([#769](https://github.com/pyreon/pyreon/issues/769)) recommendations queue. Bisect-verified: disabling the path-map rewrite in `_readLpihCache` fails 3 of the 53 LSP-LPIH specs (`rewrites file paths via PYREON_LPIH_PATH_MAP-style source`, `applies longest-prefix-wins across multiple rules`, `reads PYREON_LPIH_PATH_MAP from process.env by default`); restored → 53/53. Exposed surface: `_parseLpihPathMap`, `_applyLpihPathMap`, `LPIHPathMapEntry` (`@internal` underscore-prefixed for tests, not stable public API).
+
+### Patch Changes
+
+- Updated dependencies [[`275eb20`](https://github.com/pyreon/pyreon/commit/275eb2038f32374e90c9fe0c3d55f35895f43450), [`47073eb`](https://github.com/pyreon/pyreon/commit/47073ebdd7552c63985f461a663ba98d93538606), [`572212f`](https://github.com/pyreon/pyreon/commit/572212f631907a18b98118f48dea3621dd5a95b1), [`f22902a`](https://github.com/pyreon/pyreon/commit/f22902a9a9c5f5b8a5192da086a6b4299291dd57), [`891ca43`](https://github.com/pyreon/pyreon/commit/891ca4300727119dafd66ceaacd7cb39e68f3b4e), [`d4ec777`](https://github.com/pyreon/pyreon/commit/d4ec777643446ed2c51dedb1e74fbd8dce70bdfd), [`572212f`](https://github.com/pyreon/pyreon/commit/572212f631907a18b98118f48dea3621dd5a95b1)]:
+  - @pyreon/compiler@0.24.0
+
 ## 0.23.0
 
 ### Minor Changes

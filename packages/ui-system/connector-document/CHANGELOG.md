@@ -1,5 +1,13 @@
 # @pyreon/connector-document
 
+## 0.24.0
+
+### Patch Changes
+
+- Updated dependencies [[`dfaefb8`](https://github.com/pyreon/pyreon/commit/dfaefb8e9e06eaff9039c001ad7731476b6b5732)]:
+  - @pyreon/core@0.24.0
+  - @pyreon/document@0.24.0
+
 ## 0.23.0
 
 ### Patch Changes

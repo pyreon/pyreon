@@ -1,5 +1,251 @@
 # @pyreon/reactivity
 
+## 0.24.0
+
+### Minor Changes
+
+- [#785](https://github.com/pyreon/pyreon/pull/785) [`b8fb31c`](https://github.com/pyreon/pyreon/commit/b8fb31cf1a59578fc33f27d539695d2bc164b2f1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - LPIH: build-time `__sourceLocation` injection now covers `computed()` and `effect()` calls (R8 — extension of R4). Previously only `signal()` got the build-time literal; `computed()` and `effect()` still paid the runtime `new Error().stack` capture cost (~2.2 µs per creation when devtools is active).
+
+  Three forms covered by the extended `injectSignalNames`:
+
+  - `const x = signal(...)` → `signal(..., { name: "x", __sourceLocation: {...} })`
+  - `const d = computed(() => ...)` → `computed(..., { name: "d", __sourceLocation: {...} })`
+  - `effect(() => ...)` (unbound) → `effect(..., { __sourceLocation: {...} })` (no `name` — anonymous effects have no binding to derive from)
+
+  Unbound `signal()` / `computed()` are left untouched (rare anonymous patterns). The unbound-effect pass uses negative lookbehind `(?<![\w$.])` to skip member-access (`obj.effect()`) and identifier-suffix (`sideEffect()`) false-positives.
+
+  `@pyreon/reactivity` exposes the matching surface on the runtime side:
+
+  - `ComputedOptions<T>` gains an `@internal __sourceLocation` field; `computed()` threads it through to both internal paths (`computedLazy` / `computedWithEquals`), preferring it over `_captureCallerLocation(2)` in `_rdRegister`
+  - new `EffectOptions` interface with the same `@internal __sourceLocation` field; `effect(fn, options?)` accepts the second arg
+
+  Bisect-verified: narrowing the bound regex to `signal`-only AND disabling the unbound-effect pass fails 6 of the 11 new R8 tests with the expected error shapes (e.g. `expected to have a length of 4 but got 1` on the multi-primitive injection count); restored → 26/26 (15 R4 + 11 R8) pass. No `TEMP BISECT` remnants in source.
+
+  Full suites green: `@pyreon/reactivity` 377/377, `@pyreon/vite-plugin` 130/130.
+
+  Closes R8 from the LPIH foundation PR ([#769](https://github.com/pyreon/pyreon/issues/769)) followups queue.
+
+- [#777](https://github.com/pyreon/pyreon/pull/777) [`f400e85`](https://github.com/pyreon/pyreon/commit/f400e85282a370276d5ae0266ba501c41dce4f3e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - LPIH: zero-config cache path convention. `startLpihPolling()` and `writeLpihCache()` now default to `<cwd>/.pyreon-lpih.json` when called with no path; the LSP server auto-discovers the same file by walking up from the source file to the nearest `package.json`. No env var required for the common case.
+
+  ```ts
+  // Before (foundation PR):
+  import { startLpihPolling } from "@pyreon/reactivity/lpih";
+  startLpihPolling("/tmp/pyreon-lpih.json", 250);
+  // + set PYREON_LPIH_CACHE=/tmp/pyreon-lpih.json on the LSP
+
+  // Now (zero config):
+  import { startLpihPolling } from "@pyreon/reactivity/lpih";
+  startLpihPolling(); // writes to <cwd>/.pyreon-lpih.json
+  // LSP auto-discovers; no env var needed
+  ```
+
+  **`@pyreon/reactivity/lpih`**:
+
+  - `writeLpihCache(path?)` — `path` is now optional, defaults to `getDefaultLpihCachePath()` (which returns `<cwd>/.pyreon-lpih.json`)
+  - `startLpihPolling(path?, intervalMs?)` — same default; throws synchronously if no default can be resolved AND no path given (better than silently never writing)
+  - New export `getDefaultLpihCachePath(): string | null` — returns the resolved path or null in environments without `process.cwd()` (web workers, etc.)
+  - New export `LPIH_DEFAULT_FILENAME = '.pyreon-lpih.json'` — canonical filename constant
+
+  **`@pyreon/lint`** LSP:
+
+  - `_resolveLpihCachePath(filePath)` — new helper that resolves the cache path for a given source file. Priority: `PYREON_LPIH_CACHE` env (explicit override) → `<project-root>/.pyreon-lpih.json` discovered by walking up to nearest `package.json` (zero-config default) → `undefined` (LPIH inactive)
+  - `_findProjectRoot(filePath, maxDepth?)` — memoized walk-up helper. Caches results per-file for the LSP-process lifetime; cleared on `_resetOpenDocuments()`. Synchronous (one `existsSync` per level, typically <10 levels = negligible cost).
+  - `_LPIH_DEFAULT_FILENAME` — exported constant locked to `.pyreon-lpih.json` (matches `@pyreon/reactivity/lpih`'s `LPIH_DEFAULT_FILENAME` — a drift gate test in `lsp-lpih.test.ts` validates the agreement).
+
+  **Discovery priority** (matches across writer + reader):
+
+  1. `PYREON_LPIH_CACHE` env var on the LSP (explicit override) — unchanged
+  2. `<project-root>/.pyreon-lpih.json` (auto-discovered) — new default
+  3. No cache → LPIH inactive (degrades to static Reactivity-Lens hints only) — unchanged
+
+  **Multi-session safety**: each project gets its own cache file under its own `package.json` boundary. Two dev sessions in different projects can't collide silently (was a footgun with the previous shared `/tmp/pyreon-lpih.json` convention from the foundation docs).
+
+  **Tests**: +18 new tests across both packages (8 for the runtime default + 10 for LSP discovery), all green. Bisect-verified: removing the `_resolveLpihCachePath` wiring breaks the "auto-discover" LSP integration test.
+
+  **Docs**: `docs/docs/lpih.md` quickstart updated to the zero-config flow; `.gitignore` mention added; custom-path / env-override examples preserved at the bottom of the page.
+
+- [#769](https://github.com/pyreon/pyreon/pull/769) [`891ca43`](https://github.com/pyreon/pyreon/commit/891ca4300727119dafd66ceaacd7cb39e68f3b4e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Live Program Inlay Hints (LPIH) — runtime + compiler + LSP foundation. A new category of editor surface: **live runtime data displayed at the source line, the same way TypeScript shows inferred types**. No reactive framework today shows fire counts / subscriber counts / effect re-run rates at the cursor — developers context-switch to a separate devtools panel. LPIH closes that gap.
+
+  ```tsx
+  function App() {
+    const count = signal(0); // 🔥 signal fired 240×
+    const doubled = computed(() => count() * 2); // 🔥 derived fired 240×
+    effect(() => console.log(doubled())); // 🔥 effect fired 241×
+    return <div>{count()}</div>;
+  }
+  ```
+
+  **`@pyreon/reactivity`**: source-location capture at every `signal()` / `computed()` / `effect()` creation, wired through `_rdRegister` and exposed via `getFireSummaries()`. The runtime bridge ships at the new subpath export `@pyreon/reactivity/lpih`: `writeLpihCache(path)` + `startLpihPolling(path, intervalMs)` writes the current fire snapshot to a JSON cache file atomically (tmp + rename — readers never see a half-written file; failed renames clean up the tmp). Subpath keeps the main entry slim — bridge depends on `node:fs/promises` (Node-only) and is dev-mode glue, not a core primitive. New main-entry exports: `SourceLocation`, `FireSummary`, `getFireSummaries`. New `/lpih` subpath exports: `writeLpihCache`, `startLpihPolling`. **Zero production cost** (existing `process.env.NODE_ENV !== 'production'` gate tree-shakes the entire capture path — verified by the existing `reactive-devtools-treeshake.test.ts`). Dev-mode opt-in cost: `_active === true` triggers `new Error().stack` capture (~2.2µs per creation). At realistic real-app creation rates (100-1000 signals total / 100/sec peak), per-session cost is **0.2-2.3ms** — invisible. Stack-parser handles V8, JSC, and SpiderMonkey formats. 21 new tests (15 source-location + 6 bridge).
+
+  **`@pyreon/compiler`**: two new pure functions that bridge runtime fire data to LSP inlay hints. `mergeFireDataIntoFindings(findings, fires, file)` enriches static Reactivity-Lens findings with fire counts at matching source lines. `firesToCreationSiteFindings(fires, file)` synthesizes inlay-hint findings DIRECTLY from fires — creation-line hints showing `signal fired 240×` at the line where `signal()` was called. New exports: `mergeFireDataIntoFindings`, `firesToCreationSiteFindings`, `LPIHFireDatum`, `LPIHMergeOptions`. 24 new tests covering merge semantics, kind filtering (footguns/static spans NOT enriched), file normalization, aggregation, custom formatters, plus end-to-end `analyzeReactivity + merge` integration.
+
+  **`@pyreon/lint`**: LSP `textDocument/inlayHint` handler reads `PYREON_LPIH_CACHE` env var on each request, parses the cache file (silent failure on missing/malformed JSON), and emits creation-site inlay hints with the `🔥 signal fired N×` label. Opt-in via env var — when unset, LPIH path is a no-op and existing static Reactivity-Lens hints work unchanged. New internal exports: `_readLpihCache`, `LPIHCacheEntry`, `LPIHCacheFile`. 15 new JSON-RPC roundtrip tests covering cache file parsing (malformed JSON, missing entries, shape validation), LSP handler integration (env-var-driven cache read, visible-range filtering with LPIH active, graceful degradation), end-to-end `initialize → didOpen → inlayHint` with real cache file.
+
+  **Measured impact (reproducible via `bun .claude/experiments/lpih-measurement.ts`)**:
+
+  | Metric                                          | Value                                          |
+  | ----------------------------------------------- | ---------------------------------------------- |
+  | LSP roundtrip latency (median, 20-trial)        | **0.32 ms**                                    |
+  | LSP roundtrip latency (p95)                     | **2.78 ms**                                    |
+  | User-perceived save→hint (incl. 150ms debounce) | **~150 ms**                                    |
+  | Bridge write (atomic JSON file)                 | **1.5 ms**                                     |
+  | End-to-end bridge-to-editor                     | **~1.8 ms + 250ms poll interval**              |
+  | Production overhead                             | **0 ns** (tree-shaken)                         |
+  | Dev-mode active overhead                        | 2.2 µs per signal creation                     |
+  | Workflow "which signal fires most?"             | 9 → 2 steps (**4.5× reduction**)               |
+  | Workflow "is this effect over-running?"         | 8 → 2 steps (**4× reduction**)                 |
+  | Workflow "did memoization help?"                | 10 → 4 steps (**2.5× reduction**)              |
+  | Information surface per medium component        | ~9 hints inline vs 0 in editor (devtools-only) |
+
+  **Architecture**: Three-layer (runtime captures source location → bridge writes JSON cache file → LSP reads + merges into inlay hints). Bisect-verified: reverting the LSP wiring fails 11/15 integration tests; restored, 15/15 pass. The cache-file bridge mechanism is filesystem-only (no IPC, no WebSocket) — chosen because LSP servers are stdio-only and filesystem is the universal lowest-common-denominator transport. The LSP re-reads on every inlay-hint request so live edits land immediately. Future build-time location injection via `@pyreon/vite-plugin` will replace stack capture with compile-time literals, eliminating the dev-mode 2.2µs/creation overhead entirely. The editor extension (VS Code / Neovim) that auto-bridges devtools fire data to the cache file is a follow-up.
+
+  **Docs**: new VitePress page at [docs/docs/lpih.md](docs/docs/lpih.md) with quickstart, API reference, measured numbers, and 3 concrete bug-hunting scenarios (with vs without LPIH workflow comparison).
+
+- [#780](https://github.com/pyreon/pyreon/pull/780) [`d4ec777`](https://github.com/pyreon/pyreon/commit/d4ec777643446ed2c51dedb1e74fbd8dce70bdfd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - LPIH: sustained-rate hint via EWMA. Inlay-hint labels now show both cumulative fire count AND current fires/second when active — making hot-path debugging visible at a glance.
+
+  ```tsx
+  const count = signal(0); // 🔥 signal fired 240× (12/s) — active
+  const stable = signal(0); // 🔥 signal fired 240×          — idle
+  ```
+
+  **Why**: cumulative count alone can't distinguish "this is firing right now" from "this fired a lot a few minutes ago." For hot-path debugging (the LPIH [#1](https://github.com/pyreon/pyreon/issues/1) use case), the user needs to see _current_ rate. Adding a decayed-EWMA rate alongside the cumulative count gives both signals without bloating the label.
+
+  **Math**: per-node EWMA with 1-second time constant (`LPIH_RATE_TAU_MS = 1000`). On each fire:
+
+  ```
+  dt = ts - lastFire
+  decay = exp(-dt / 1000)
+  rate1s = rate1s * decay + 1
+  ```
+
+  At steady state of λ fires/sec, `rate1s → λ` (when λ·TAU ≫ 1 — true for any rate worth noticing). On read, decay-to-now applied: a node that stopped firing 1.5s ago shows ≈22% of its peak rate; 3s ago shows ≈5%; 5s ago shows ≈0.7% (below the visibility threshold).
+
+  **`@pyreon/reactivity`**:
+
+  - `FireSummary.rate1s: number` — new field, decayed to "now" at every `getFireSummaries()` call.
+  - `NodeRec.rate1s` — internal per-node EWMA state, updated on every fire.
+  - `LPIH_RATE_TAU_MS` — exported constant (1000 ms = 1 second time constant).
+  - Bridge `writeLpihCache` now includes `rate1s` in each fire entry's JSON.
+
+  **`@pyreon/compiler`**:
+
+  - `LPIHFireDatum.rate1s?: number` — optional field; older runtimes that don't emit it produce labels without the rate suffix (backward-compatible).
+  - `_LPIH_RATE_VISIBLE_THRESHOLD = 0.5` — rates below this are suppressed (don't show "0.1/s" or "0/s" noise from decayed-dormant nodes).
+  - Default label formatter: `signal fired 240× (12/s)` when active, `signal fired 240×` when below threshold or no rate field.
+  - Custom `formatDetail` callbacks receive the full `LPIHFireDatum` including `rate1s` for fully custom labels.
+  - Multiple fires at the same line have their rates summed (consistent with the existing count-summing behavior).
+
+  **`@pyreon/lint`**:
+
+  - `LPIHCacheEntry.rate1s?: number` — round-trips through the cache; no LSP-side logic change beyond the type extension. The compiler's default formatter picks up the new field automatically.
+
+  **Tests** (+12 new across all 3 packages, 2383 total, all green):
+
+  - @pyreon/reactivity: 367 (+5 — rate1s captured, rises with bursts, decays after TAU, sums at same location, constant value lock)
+  - @pyreon/compiler: 1316 (+7 — threshold-suppress, 1-decimal vs integer rounding, creation-site formatter, line-sum, custom formatter receives rate, missing-field passthrough)
+  - @pyreon/lint: 700 (no new tests — rate1s is data-only round-trip through the cache; existing integration tests cover the path)
+
+  **Memory + performance**: one extra `number` field per node (+8 bytes). One `Math.exp` per fire (~50 ns). One `Math.exp` per location per `getFireSummaries()` call. Bundle-budget impact: 0 (writeLpihCache code path was already in the subpath, this just adds one field to the JSON payload).
+
+  **Bisect-verified**: stashing the EWMA update in `_rdRecordFire` fails the new "rate1s rises with rapid fires" + "rate1s for many rapid fires reflects fire density" tests.
+
+  **Docs**: example block in `docs/docs/lpih.md` updated to show `(12/s)` rate suffix; new paragraph explaining the cumulative-count + current-rate split.
+
+- [#781](https://github.com/pyreon/pyreon/pull/781) [`2abb672`](https://github.com/pyreon/pyreon/commit/2abb672d8a8bf7f4940af422bf8bf802aa129cdd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - LPIH: build-time source-location injection via `@pyreon/vite-plugin`. Eliminates the runtime `new Error().stack` capture cost (~2.2 µs per signal creation) by embedding the source location as a compile-time literal.
+
+  **Before** (foundation PR):
+
+  ```ts
+  // User source:
+  const count = signal(0);
+
+  // Runtime, when devtools active:
+  // 1. new Error() + parse stack → ~2.2µs cost per creation
+  // 2. Use parsed location for LPIH source-location capture
+  ```
+
+  **After** (this PR):
+
+  ```ts
+  // User source (unchanged):
+  const count = signal(0);
+
+  // Vite-transformed source (dev mode):
+  const count = signal(0, {
+    name: "count",
+    __sourceLocation: { file: "app.tsx", line: 5, col: 14 },
+  });
+
+  // Runtime, when devtools active:
+  // 1. Read options.__sourceLocation → ~0ns cost
+  // 2. Use injected location directly — stack capture skipped
+  ```
+
+  **`@pyreon/reactivity`**:
+
+  - `SignalOptions.__sourceLocation?: { file, line, col }` — new optional field (marked `@internal`, not part of the public API surface). When present, the runtime uses it directly and skips `_captureCallerLocation()` entirely.
+  - 2 new tests proving the injected option is preferred over stack capture + the fallback still works when the option is absent.
+
+  **`@pyreon/vite-plugin`**:
+
+  - Extended `injectSignalNames` to ALSO inject `__sourceLocation` alongside the existing `name` field. Same regex, same transform pass — additive change.
+  - New helpers `_computeLineStarts(code)` + `_offsetToLineCol(offset, starts)` — O(N) precompute + O(log N) per-signal binary search. Avoids O(N²) when many signals share a file.
+  - The injected `file` is Vite's resolved module ID (absolute path) — the same path the runtime would have parsed from `new Error().stack`, so byte-identical behavior except for cost.
+  - 15 new tests covering line/col math + injection at function-scope call sites + the 5 skip-cases (existing options, non-signal calls, multiline args, no-injection-for-doSomething, etc.).
+
+  **Known limitation**: module-scope signals (`export const x = signal(0)`) get rewritten to `__hmr_signal()` first by the existing HMR injection pass. The location injection runs after and naturally skips them (regex matches `signal(` not `__hmr_signal(`). Module-scope signals still pay the runtime stack-capture cost. Function-scope signals (the dominant pattern in real Pyreon apps — signals declared inside components) get the full benefit. Module-scope follow-up tracked.
+
+  **Tests** (+17 new across 2 packages, 481 total green):
+
+  - `@pyreon/reactivity`: 362 (+2 — injected-location-preferred + stack-fallback-when-absent)
+  - `@pyreon/vite-plugin`: 119 (+15 — line-starts utility, offset-to-line-col, 6 injection scenarios, existing-options skip, non-signal skip, multiline args)
+
+  **Performance**:
+
+  - Runtime cost (devtools active, function-scope signal): **0 ns** stack capture (was ~2.2 µs)
+  - Build-time cost: ~10 µs per signal call site (one regex match + one binary search + ~80 bytes of literal output) — invisible on real-world builds
+  - Bundle-budget impact: 0 (transform happens in dev-mode-only Vite plugin code path; no production bundle growth)
+
+  **Bisect-verified**: removing the `__sourceLocation` literal from the injection emission makes the line/col-correctness tests fail with "expected to include `__sourceLocation`"; the runtime-side `signal() prefers __sourceLocation over stack capture` test verifies the runtime fast-path is actually wired (file path comes from the injected option, not the test file).
+
+  This closes R4 from the [LPIH recommendations](https://github.com/pyreon/pyreon/blob/main/.claude/experiments/RECOMMENDATIONS.md). The 2.2 µs/creation overhead in the foundation PR's measurement is now eliminated for the majority of real-world signals.
+
+### Patch Changes
+
+- [#789](https://github.com/pyreon/pyreon/pull/789) [`67e1f37`](https://github.com/pyreon/pyreon/commit/67e1f371a20219481ee9564d2d7421ec2a0b5ddf) Thanks [@vitbokisch](https://github.com/vitbokisch)! - LPIH followups round audit — three real bugs found + fixed in lockstep:
+
+  **1. Activation race in R1 auto-bridge (high impact)** — the injected `<script type="module">` used `import('@pyreon/reactivity').then(activate)`. Since `<script type="module">` tags execute in document order with `defer` semantics, dynamic-import-then resolves AFTER the module body completes — and the script body completed IMMEDIATELY since the `.then()` only registered a callback. Result: the app's entry script ran NEXT (document order), created its module-scope signals via `signal(0)` / `computed(...)`, those calls hit `_rdRegister` with `_active = false` (line 311 of `reactive-devtools.ts`), returned undefined → signals INVISIBLE to LPIH. The most common signal shape (top-of-file `const count = signal(0)`) was never tracked.
+
+  Fix: top-level `await` on the dynamic import + `.catch(() => null)` for silent fallback when `@pyreon/reactivity` isn't in the dep graph. Top-level await delays module completion, so the LPIH script body doesn't finish until activation does — the next `<script type="module">` (the app entry) waits, signals get registered correctly.
+
+  **2. Tmp file leak on `fs.writeFile` failure (low-medium impact)** — both `writeLpihCacheFile` (vite-plugin) AND `_writeToPath` (foundation `@pyreon/reactivity/lpih.ts`) had:
+
+  ```ts
+  await fs.writeFile(tmp, ...)   // outside try — partial tmp leaks if this throws
+  try { await fs.rename(tmp, path) } catch { try { unlink(tmp) } catch {} }
+  ```
+
+  If `fs.writeFile` itself threw (disk full, EIO, EACCES, transient FS), the partial tmp file leaked on disk with a unique PID+seq name — accumulating forever. Fix: single try/catch covering both writeFile + rename; cleanup runs on either path's failure (ENOENT on the writeFile-failed path is swallowed, original error surfaces).
+
+  Bisect-verifying THIS specific bug portably is hard (requires reliable disk-full or EIO reproduction), so the fix is structural — locked in by reading the diff. The companion `'cleans up tmp file when rename fails (rename onto a directory)'` test locks the pre-existing rename-failure path.
+
+  **3. String-region false-positives in `injectSignalNames` (medium impact)** — the regexes `(?:const|let)\s+(\w+)\s*=\s*(signal|computed|effect)\(` (R4+R8 bound) and `(?<![\w$.])effect\(` (R8 unbound) matched anywhere in source text, including INSIDE string literals / template literals / comments. User code like:
+
+  ```ts
+  const docs = `effect(() => x)`;
+  throw new Error("effect() must be called inside a component");
+  // TODO: replace effect(() => log()) with watch()
+  ```
+
+  got `, { __sourceLocation: ... }` injected INTO the string/comment, corrupting runtime values and producing syntactically-broken docstrings.
+
+  Fix: new `_maskStringsAndComments(code)` pre-pass produces a same-length copy of `code` with strings/comments blanked to spaces (newlines preserved so line numbers don't shift). Regexes run against the masked version; args extraction reads from the original. Template-literal `${...}` interpolations are PRESERVED as code (their bodies can contain real `signal()` calls worth catching). Bisect-verified: disabling the masking pre-pass fails 5 of the new false-positive guard tests.
+
+  Test counts:
+
+  - vite-plugin: 154 → 173 (+19): 11 `_maskStringsAndComments` unit tests, 6 false-positive guards, 1 top-level-await structural test, 1 rename-failure tmp cleanup test
+  - reactivity: 377/377 unchanged (foundation tmp-leak fix doesn't add tests; bisect-verified structurally by reading the diff)
+
 ## 0.23.0
 
 ## 0.22.0
