@@ -75,6 +75,61 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         const cmp = ctx.computeds.get(expr.callee.name)
         if (cmp) return cmp
       }
+      // Phase 2 follow-up — method calls on known-typed objects. Lets
+      // computed-property return types flow through common TS method
+      // chains like `arr.filter(...).length` (→ number) and
+      // `arr.some(p)` (→ boolean). Closes the
+      // "Any cannot conform to RandomAccessCollection" typecheck blocker
+      // by making `private var remaining: Int { ... }` instead of
+      // `private var remaining: Any { ... }`.
+      if (expr.callee.kind === 'member') {
+        const objType = inferType(expr.callee.object, ctx)
+        const method = expr.callee.property
+        if (objType.kind === 'array') {
+          switch (method) {
+            case 'filter':
+            case 'concat':
+            case 'slice':
+            case 'reverse':
+              return objType // Array<T> → Array<T>
+            case 'map':
+              // Element type is the arrow's return — typeflow doesn't
+              // walk into arrow bodies yet. Return Array<unknown>.
+              return { kind: 'array', element: { kind: 'unknown' } }
+            case 'some':
+            case 'every':
+            case 'includes':
+              return { kind: 'boolean' }
+            case 'find':
+              return objType.element
+            case 'indexOf':
+            case 'findIndex':
+              return { kind: 'number' }
+            case 'join':
+              return { kind: 'string' }
+          }
+        }
+        if (objType.kind === 'string') {
+          switch (method) {
+            case 'trim':
+            case 'toLowerCase':
+            case 'toUpperCase':
+            case 'substring':
+            case 'slice':
+            case 'replace':
+            case 'concat':
+              return { kind: 'string' }
+            case 'split':
+              return { kind: 'array', element: { kind: 'string' } }
+            case 'includes':
+            case 'startsWith':
+            case 'endsWith':
+              return { kind: 'boolean' }
+            case 'indexOf':
+              return { kind: 'number' }
+          }
+        }
+      }
       return { kind: 'unknown' }
     }
     case 'member': {

@@ -90,8 +90,8 @@ describe('TodoMVC compile baseline', () => {
         @State private var filter: Filter = .all
         @State private var draft: String = ""
         private var visible: Any { xs }
-        private var remaining: Any { todos.filter({ t in !t.done }).count }
-        private var hasCompleted: Any { todos.contains(where: { t in t.done }) }
+        private var remaining: Int { todos.filter({ t in !t.done }).count }
+        private var hasCompleted: Bool { todos.contains(where: { t in t.done }) }
         private func addTodo() {
           let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
           if text.count == 0 {
@@ -444,5 +444,23 @@ describe('TodoMVC gap-tracking baseline', () => {
     const kotlin = transform(constSource, { target: 'kotlin' })
     expect(kotlin.code).toContain('private val APP_VERSION = "1.0.0"')
     expect(kotlin.code).not.toContain('private var APP_VERSION')
+  })
+
+  it('Phase 2 — computed return-type inference via TS method chains (.length → Int, .some → Bool)', () => {
+    // Closes the "Any cannot conform to RandomAccessCollection"
+    // typecheck blocker. The inferType pass now walks common TS
+    // method calls on known-typed objects:
+    //   array.filter(p)  → array (same element type)
+    //   array.some(p)    → boolean
+    //   array.length     → number  (member access on array)
+    //   string.trim()    → string
+    // So `computed(() => todos.filter(p).length)` infers `number`
+    // and emits as `private var remaining: Int { ... }` (was: `Any`).
+    const out = transform(source, { target: 'swift' })
+    expect(out.code).toContain('private var remaining: Int {')
+    expect(out.code).toContain('private var hasCompleted: Bool {')
+    // Negative — would have been `: Any { ... }` pre-PR.
+    expect(out.code).not.toContain('private var remaining: Any')
+    expect(out.code).not.toContain('private var hasCompleted: Any')
   })
 })
