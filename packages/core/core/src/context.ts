@@ -5,7 +5,7 @@
  * The renderer maintains the context stack as it walks the VNode tree.
  */
 
-import { setSnapshotCapture } from '@pyreon/reactivity'
+import { defineCrossModuleState, setSnapshotCapture } from '@pyreon/reactivity'
 import { onUnmount } from './lifecycle'
 
 export interface Context<T> {
@@ -46,7 +46,7 @@ export function createReactiveContext<T>(defaultValue: T): ReactiveContext<T> {
 
 // ─── Runtime context stack (managed by the renderer) ─────────────────────────
 
-// Cross-module-instance shared state — see `lifecycle.ts:_state` JSDoc.
+// Cross-module-instance shared state — see `cross-module-state.ts` JSDoc.
 // Both the default stack AND the provider override land on globalThis so
 // `provide()` on one `@pyreon/core` instance and `useContext()` on another
 // reach the SAME context frames. Without this, the provide/useContext
@@ -63,20 +63,13 @@ interface ContextStackState {
   defaultStack: Map<symbol, unknown>[]
   provider: () => Map<symbol, unknown>[]
 }
-const _CTX_KEY = Symbol.for('pyreon-core/context-stack-state')
-const _gCtxHost = globalThis as Record<symbol, unknown>
-let _ctxState = _gCtxHost[_CTX_KEY] as ContextStackState | undefined
-if (!_ctxState) {
-  const defaultStack: Map<symbol, unknown>[] = []
-  _ctxState = {
-    defaultStack,
-    provider: () => defaultStack,
-  }
-  _gCtxHost[_CTX_KEY] = _ctxState
-}
-// Local stable reference so downstream functions don't need to repeatedly
-// narrow the typed-or-undefined union.
-const _ctx: ContextStackState = _ctxState
+const _ctx = defineCrossModuleState<ContextStackState>(
+  'pyreon-core/context-stack-state',
+  () => {
+    const defaultStack: Map<symbol, unknown>[] = []
+    return { defaultStack, provider: () => defaultStack }
+  },
+)
 
 /**
  * Override the context stack provider. Called by @pyreon/runtime-server to

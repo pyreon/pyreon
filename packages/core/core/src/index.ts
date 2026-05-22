@@ -2,6 +2,11 @@
 
 export { defineComponent, dispatchToErrorBoundary, propagateError, runWithHooks } from './component'
 export { isNativeCompat, NATIVE_COMPAT_MARKER, nativeCompat } from './compat-marker'
+// Re-exported from @pyreon/reactivity so existing imports from @pyreon/core
+// keep working AND every package below core in the dep chain can still reach
+// it directly via @pyreon/reactivity. See `cross-module-state.ts` in
+// @pyreon/reactivity for the full module-duplication rationale.
+export { defineCrossModuleState } from '@pyreon/reactivity'
 export { mapCompatDomProps, shallowEqualProps } from './compat-shared'
 export type { Context, ContextSnapshot, ReactiveContext } from './context'
 export {

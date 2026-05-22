@@ -16,7 +16,11 @@
  * })
  */
 
-import { getReactiveTrace, type ReactiveTraceEntry } from '@pyreon/reactivity'
+import {
+  defineCrossModuleState,
+  getReactiveTrace,
+  type ReactiveTraceEntry,
+} from '@pyreon/reactivity'
 
 // Bundler-agnostic dev gate (see pyreon/no-process-dev-gate).
 const __DEV__ = process.env.NODE_ENV !== 'production'
@@ -54,20 +58,15 @@ export interface ErrorContext {
 
 export type ErrorHandler = (ctx: ErrorContext) => void
 
-// Cross-module-instance shared state — see `lifecycle.ts:_state` JSDoc.
+// Cross-module-instance shared state — see `cross-module-state.ts` JSDoc.
 // A registerErrorHandler() call on one `@pyreon/core` instance MUST be
 // visible to reportError() calls on every other instance — otherwise
 // Sentry/Datadog wiring on the user-side core misses errors emitted by
 // framework code on the runtime-server-side core.
-interface ErrorHandlersState {
-  handlers: ErrorHandler[]
-}
-const _ERR_KEY = Symbol.for('pyreon-core/error-handlers-state')
-const _gErrHost = globalThis as Record<symbol, unknown>
-const _errState: ErrorHandlersState = (_gErrHost[_ERR_KEY] as ErrorHandlersState | undefined) ?? {
-  handlers: [],
-}
-if (!_gErrHost[_ERR_KEY]) _gErrHost[_ERR_KEY] = _errState
+const _errState = defineCrossModuleState<{ handlers: ErrorHandler[] }>(
+  'pyreon-core/error-handlers-state',
+  () => ({ handlers: [] }),
+)
 
 /**
  * Register a global error handler. Called whenever a component throws in any

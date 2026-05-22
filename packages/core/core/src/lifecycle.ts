@@ -1,39 +1,19 @@
+import { defineCrossModuleState } from '@pyreon/reactivity'
 import type { CleanupFn, LifecycleHooks } from './types'
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
 const __DEV__ = process.env.NODE_ENV !== 'production'
 
-// The currently-executing component's hook storage, set by the renderer
-// before calling the component function, cleared immediately after.
-//
-// **Module-instance reconciliation via `Symbol.for`** — bundlers (Vite,
-// Webpack/Next.js, Rolldown, Parcel, Bun) can load the same `@pyreon/core`
-// package twice when different consumers resolve it via different paths
-// (e.g. Vite's `[bare]` resolver honors the `bun` condition → `src/`,
-// while `[package entry]` resolution ignores it → `lib/`). Each module
-// instance would otherwise have its own `let _current`, so
-// `setCurrentHooks` on instance A and `getCurrentHooks`/onMount/onUnmount
-// on instance B don't see each other.
-//
-// Hosting the state on `globalThis` under a `Symbol.for` key means both
-// module instances reach the SAME object — `setCurrentHooks` and
-// `onMount` always see one another regardless of how each module
-// reached `@pyreon/core`.
-//
-// Same pattern as `@pyreon/core/src/telemetry.ts:113`'s `_bridgeHost`
-// + the `Symbol.for('pyreon:native-compat')` marker used in
-// `compat-marker.ts`. Documented in CLAUDE.md as the canonical
-// cross-module-state convention.
-interface LifecycleState {
-  current: LifecycleHooks | null
-}
-const _LIFECYCLE_KEY = Symbol.for('pyreon-core/lifecycle-state')
-const _gHost = globalThis as Record<symbol, unknown>
-const _state: LifecycleState = (_gHost[_LIFECYCLE_KEY] as LifecycleState | undefined) ?? {
-  current: null,
-}
-if (!_gHost[_LIFECYCLE_KEY]) _gHost[_LIFECYCLE_KEY] = _state
+// Currently-executing component's hook storage, hosted on globalThis via
+// `defineCrossModuleState` so duplicate `@pyreon/core` module instances
+// share state — see the helper's JSDoc for the full module-duplication
+// rationale (was 5× inlined Symbol.for blocks in PR #855; now consolidated
+// to one helper call per state var).
+const _state = defineCrossModuleState<{ current: LifecycleHooks | null }>(
+  'pyreon-core/lifecycle-state',
+  () => ({ current: null }),
+)
 
 export function setCurrentHooks(hooks: LifecycleHooks | null) {
   _state.current = hooks

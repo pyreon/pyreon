@@ -1,3 +1,4 @@
+import { defineCrossModuleState } from '@pyreon/reactivity'
 import { setCurrentHooks } from './lifecycle'
 import type { ComponentFn, LifecycleHooks, Props, VNodeChild } from './types'
 
@@ -63,19 +64,14 @@ export function propagateError(err: unknown, hooks: LifecycleHooks): boolean {
 // `.claude/rules/anti-patterns.md` "Position-based pop for stack frames
 // that may be pushed by reactive boundaries".
 
-// Cross-module-instance shared stack — see `lifecycle.ts:_state` JSDoc for
+// Cross-module-instance shared stack — see `cross-module-state.ts` JSDoc for
 // the full module-duplication rationale. ErrorBoundary push/pop must reach
 // the same array regardless of which `@pyreon/core` instance the
 // `pushErrorBoundary` and `dispatchToErrorBoundary` callers were resolved to.
-interface ErrorBoundaryState {
-  stack: ((err: unknown) => boolean)[]
-}
-const _EB_KEY = Symbol.for('pyreon-core/error-boundary-state')
-const _gEbHost = globalThis as Record<symbol, unknown>
-const _ebState: ErrorBoundaryState = (_gEbHost[_EB_KEY] as ErrorBoundaryState | undefined) ?? {
-  stack: [],
-}
-if (!_gEbHost[_EB_KEY]) _gEbHost[_EB_KEY] = _ebState
+const _ebState = defineCrossModuleState<{ stack: ((err: unknown) => boolean)[] }>(
+  'pyreon-core/error-boundary-state',
+  () => ({ stack: [] }),
+)
 
 export function pushErrorBoundary(handler: (err: unknown) => boolean): void {
   _ebState.stack.push(handler)

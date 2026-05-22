@@ -1,5 +1,7 @@
 // Prop utilities for component authoring.
 
+import { defineCrossModuleState } from '@pyreon/reactivity'
+
 /**
  * Split props into two groups: keys you want and the rest.
  * Unlike destructuring, this preserves reactivity (getters on the original object).
@@ -246,18 +248,13 @@ export function makeReactiveProps(
 
 // ─── Unique ID ───────────────────────────────────────────────────────────────
 
-// Cross-module-instance shared counter — see `lifecycle.ts:_state` JSDoc.
+// Cross-module-instance shared counter — see `cross-module-state.ts` JSDoc.
 // `createUniqueId` calls from two different `@pyreon/core` instances must
 // not collide (would produce duplicate `pyreon-1` strings across the page).
-interface IdCounterState {
-  counter: number
-}
-const _ID_KEY = Symbol.for('pyreon-core/id-counter-state')
-const _gIdHost = globalThis as Record<symbol, unknown>
-const _idState: IdCounterState = (_gIdHost[_ID_KEY] as IdCounterState | undefined) ?? {
-  counter: 0,
-}
-if (!_gIdHost[_ID_KEY]) _gIdHost[_ID_KEY] = _idState
+const _idState = defineCrossModuleState<{ counter: number }>(
+  'pyreon-core/id-counter-state',
+  () => ({ counter: 0 }),
+)
 
 /**
  * Generate a unique ID string for accessibility attributes (htmlFor, aria-describedby, etc.).
