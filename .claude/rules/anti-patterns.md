@@ -118,6 +118,80 @@
 - **DOM tests without happy-dom**: Packages with DOM need `environment: "happy-dom"` in vitest config
 - **Stale DOM references after re-render in compat-layer tests**: `@pyreon/react-compat`, `@pyreon/preact-compat`, etc. do **full DOM subtree replacement on every state change** — there's no VDOM diffing in the compat layer (Pyreon's native pattern is fine-grained reactivity, not whole-component re-renders). A test that captures a button reference BEFORE click and asserts on `.textContent` AFTER click sees the OLD text because the captured node is now detached. **Always re-query the DOM after a state change**: `container.querySelector('#x')!.click(); await flush(); expect(container.querySelector('#x')!.textContent).toBe(...)`. Phase A2's first react-compat smoke held a stale reference and looked like a re-render bug; was actually a test-pattern bug. Reference: `packages/tools/react-compat/src/react-compat-rerender.browser.test.tsx`.
 
+## Cross-Module-Instance State Mistakes
+
+A bundler can produce TWO module instances of the same package when consumers reach it via different resolution paths. Vite's `[bare]` resolver honors export conditions while `[package entry]` ignores them; sub-dep version mismatches; future bundler quirks. Each instance has its OWN `let _foo = ...` at module scope → producers and consumers land on DIFFERENT copies → silent data corruption.
+
+**Bug class fixed in [PR #855](https://github.com/pyreon/pyreon/pull/855)**: `@pyreon/core`'s `_current` lifecycle hook tracker was duplicated under Vite SSR dev → every `provide()` call produced `[Pyreon] onUnmount() called outside component setup` warnings because the `_current` set by one module-instance's `runWithHooks` was invisible to the other module-instance's `onUnmount`.
+
+**The framework-wide hardening** (PRs #858, #863, #865, #867, #869) extends the same Symbol.for-on-globalThis pattern to ~50 module-state surfaces across the codebase via the `defineCrossModuleState(key, init)` helper exported from `@pyreon/reactivity`.
+
+### When to use `defineCrossModuleState`
+
+Use it for **any module-level mutable state** in a `@pyreon/*` package that:
+- Carries cross-call contracts (a registry, a refcount, an active-handler pointer)
+- Would silently break if the producer and consumer ended up on different module instances
+- Is accessed from a public API surface (consumers can drive it via `setX()` / `useX()`)
+
+```ts
+// Before — vulnerable to dual-module-instance duplication
+let _activeRouter: RouterInstance | null = null
+export function setActiveRouter(r: RouterInstance | null) { _activeRouter = r }
+export function getActiveRouter() { return _activeRouter }
+
+// After — shared via Symbol.for on globalThis
+import { defineCrossModuleState } from '@pyreon/reactivity'
+const _state = defineCrossModuleState<{ active: RouterInstance | null }>(
+  'pyreon-router/active-router-state',
+  () => ({ active: null }),
+)
+export function setActiveRouter(r: RouterInstance | null) { _state.active = r }
+export function getActiveRouter() { return _state.active }
+```
+
+### When NOT to use it
+
+- **Truly per-instance caches**: e.g. styler's static-component cache keyed by `TemplateStringsArray` (different module instances will have different template arrays anyway, so duplicate caches just split the cache — inefficient but not incorrect). Skip the helper to avoid pretending sharing is meaningful.
+- **Per-call scratch space**: `let _seen = new Set()` cleared at the start of each call — module-scope is the WRONG place for it (use a function-local), but `defineCrossModuleState` doesn't fix the underlying smell.
+- **Constants and pure exports**: `export const REACTIVE_PROP = Symbol.for(...)` is a branded identity, not state — it can't be "duplicated wrong" because two `Symbol.for(...)` calls with the same key return the SAME symbol by language guarantee.
+
+### Key naming convention
+
+`'pyreon-<package>/<state-name>'`. Examples:
+- `'pyreon-core/lifecycle-state'`
+- `'pyreon-reactivity/tracking-state'`
+- `'pyreon-router/active-router-state'`
+- `'pyreon-runtime-dom/mount-state'`
+- `'pyreon-storage/cross-tab-state'`
+
+**Keys are stable contracts.** Two state vars with the same key collide on the same registry slot. Two packages with the same `<package>` prefix that don't actually share state are also a smell.
+
+### Test-isolation gotcha
+
+`vi.resetModules()` does NOT reset state hosted via `defineCrossModuleState` — the state lives on `globalThis`, which survives module reset. Tests that depend on a clean module-scope reset must also clear the globalThis-hosted state explicitly:
+
+```ts
+beforeEach(() => {
+  const host = globalThis as Record<symbol, unknown>
+  const state = host[Symbol.for('pyreon-hooks/scroll-lock-state')] as
+    { lockCount: number; savedOverflow: string } | undefined
+  if (state) { state.lockCount = 0; state.savedOverflow = '' }
+})
+```
+
+Reference: `packages/fundamentals/hooks/src/__tests__/useScrollLock.test.ts`.
+
+### Detection
+
+**No lint rule today** — detecting module-level mutable state that should be cross-instance-shared requires too much per-symbol semantic context (some module-level state is genuinely per-instance, some is shared-by-design, some is cache-like). Caught at audit time by code review.
+
+**Defensive contract** for new code: if you find yourself writing `let _foo = ...` or `const _foo = new Map()` at module scope in a `@pyreon/*` package, ask:
+1. Is this state read or written from a public API surface?
+2. Would a user expect their `setX(value)` call to affect everyone reading `getX()`?
+3. Would duplicate state silently break correctness (event listener pileup, refcount drift, registry orphans)?
+
+Three "yes" answers means the helper. Two or fewer means audit-time judgement.
+
 ## Memory Leak Classes (catalog)
 
 Seven classes seen in framework code. PR-by-PR history lives in commit messages + per-package CHANGELOGs — this catalog names the SHAPE + FIX so contributors recognize a pattern at code-review time before it ships.

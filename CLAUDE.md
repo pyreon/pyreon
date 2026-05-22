@@ -556,6 +556,35 @@ Root tsconfig has `"customConditions": ["bun"]`.
 2. **If you need to unblock `bun install` immediately** (e.g. about to install a new dep that's required for the bootstrap to succeed): `PYREON_BOOTSTRAP_SOFT=1 bun install`. This restores the pre-#435 swallow-on-postinstall behaviour for one run — the install completes, `lib/` stays partial, you must re-run `bun scripts/bootstrap.ts` to complete the build before your next example build / production deploy.
 3. **If `git push` isn't running validation**: your `core.hooksPath` is set to a real custom location (husky / lefthook). The bootstrap installer doesn't clobber it. Either chain Pyreon's hook into your existing pre-push, OR `git config --unset core.hooksPath` and re-run `bun scripts/install-git-hooks.ts`. **Note**: if `core.hooksPath` happened to be set to the default `<git-dir>/hooks` location (an older bootstrap may have done this explicitly), the installer now recognises that as "no real override" and replaces it with `.githooks/` — you don't need to do anything manually.
 
+### Cross-module-instance state (`defineCrossModuleState`)
+
+`@pyreon/reactivity` exports `defineCrossModuleState<T>(key, init)` — the canonical mechanism for any module-level mutable state in `@pyreon/*` that needs to survive being loaded twice in the same JS heap.
+
+**The problem it solves.** Bundlers can produce TWO module instances of the same package when consumers reach it via different resolution paths (Vite's `[bare]` resolver honors export conditions while `[package entry]` ignores them; sub-dep version mismatches; future bundler quirks). Each instance has its own `let _foo = ...` at module scope → producers and consumers land on DIFFERENT copies → silent data corruption. Real bug class fixed by #855: `@pyreon/core`'s `_current` lifecycle hook tracker was duplicated under Vite SSR dev → every `provide()` call produced `[Pyreon] onUnmount() called outside component setup` warnings.
+
+**The pattern.** Every at-risk state var lives on `globalThis` under a `Symbol.for` key: both module instances reach the SAME object via the global symbol registry.
+
+```ts
+// Replace:
+//   let _current: LifecycleHooks | null = null
+//   export function setCurrentHooks(hooks) { _current = hooks }
+//
+// With:
+import { defineCrossModuleState } from '@pyreon/reactivity'
+
+const _state = defineCrossModuleState<{ current: LifecycleHooks | null }>(
+  'pyreon-core/lifecycle-state',
+  () => ({ current: null }),
+)
+export function setCurrentHooks(hooks: LifecycleHooks | null) {
+  _state.current = hooks
+}
+```
+
+**Key naming convention.** `'pyreon-<package>/<state-name>'` — e.g. `'pyreon-router/active-router-state'`, `'pyreon-storage/cross-tab-state'`. Keys are stable contracts (callers own them verbatim); two state vars with the same key collide on the same registry slot.
+
+**~50 state surfaces** across 17 packages are migrated as of the 6-PR sweep (#858, #863, #865, #867, #869). Foot-gun rule + when-NOT-to-use cases documented in `.claude/rules/anti-patterns.md` → "Cross-Module-Instance State Mistakes".
+
 ### Signal implementation
 
 `signal<T>()` returns callable function with `.set()` and `.update()`.
