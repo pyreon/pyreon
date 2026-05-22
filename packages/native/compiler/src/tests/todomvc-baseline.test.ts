@@ -88,11 +88,11 @@ describe('TodoMVC compile baseline', () => {
         @State private var filter: Filter = .all
         @State private var draft: String = ""
         private var visible: Any { xs }
-        private var remaining: Any { todos.filter({ t in !t.done }).length }
-        private var hasCompleted: Any { todos.some({ t in t.done }) }
+        private var remaining: Any { todos.filter({ t in !t.done }).count }
+        private var hasCompleted: Any { todos.contains(where: { t in t.done }) }
         private func addTodo() {
-          let text = draft.trim()
-          if text.length == 0 {
+          let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+          if text.count == 0 {
             return
           }
           todos = todos + [Todo(id: nextId + 1, text: text, done: false)]
@@ -379,4 +379,38 @@ describe('TodoMVC gap-tracking baseline', () => {
       expect(out.code).toContain('private func clearCompleted()')
     },
   )
+
+  it('Phase 2 — Swift TS-method translation (.length / .trim() / .some)', () => {
+    // Phase 2 follow-up. The compiler rewrites TS methods that don't
+    // exist (or have different semantics) in Swift:
+    //   .length        → .count (universal on String + Array)
+    //   .trim()        → .trimmingCharacters(in: .whitespacesAndNewlines)
+    //   .some(p)       → .contains(where: p)
+    // Closes the bulk of TodoMVC's remaining typecheck blockers
+    // beyond the @AppStorage Codable-Data bridge (#859).
+    const out = transform(source, { target: 'swift' })
+    expect(out.code).toContain('trimmingCharacters(in: .whitespacesAndNewlines)')
+    expect(out.code).toContain('todos.contains(where: { t in t.done })')
+    expect(out.code).toContain('text.count == 0')
+    // No leftover TS-method names that would fail Swift typecheck.
+    expect(out.code).not.toContain('.length')
+    expect(out.code).not.toContain('.trim()')
+    expect(out.code).not.toContain('.some(')
+  })
+
+  it('Phase 2 — Kotlin TS-method translation (.length extension preamble + .some → .any)', () => {
+    // Kotlin parallel — different shape per language.
+    //   .length        → extension property emitted at file top
+    //                    (`private val <T> List<T>.length: Int get() = size`)
+    //                    Restores TS surface parity for both String
+    //                    (Kotlin String.length is native) AND List
+    //                    (the extension forwards to .size).
+    //   .some(p)       → .any(p)
+    //   .filter / .map / .forEach pass through unchanged
+    const out = transform(source, { target: 'kotlin' })
+    expect(out.code).toContain('private val <T> List<T>.length: Int get() = size')
+    expect(out.code).toContain('todos.any({ t -> t.done })')
+    // No leftover .some — would compile-error on List<Todo>.
+    expect(out.code).not.toContain('.some(')
+  })
 })

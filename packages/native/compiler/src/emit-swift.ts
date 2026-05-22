@@ -521,6 +521,59 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         }
         return swiftIdent(e.callee.name)
       }
+      // TS-method translation (Phase 2 follow-up). When the callee is a
+      // member expression naming a known TS method that doesn't exist
+      // (or differs semantically) in Swift, rewrite to the platform
+      // equivalent. Closes the bulk of TodoMVC's typecheck blockers
+      // beyond the @AppStorage bridge:
+      //
+      //   X.trim()    →  X.trimmingCharacters(in: .whitespacesAndNewlines)
+      //   X.some(p)   →  X.contains(where: p)
+      //   X.every(p)  →  X.allSatisfy(p)
+      //   X.find(p)   →  X.first(where: p)
+      //   X.includes(v) → X.contains(v)
+      //   X.indexOf(v)  → X.firstIndex(of: v)
+      //
+      // Each rewrite preserves the semantic intent. Methods with the
+      // same name AND semantics on both targets (`.filter`, `.map`,
+      // `.reduce`) pass through unchanged.
+      if (e.callee.kind === 'member') {
+        const obj = emitSwiftExpr(e.callee.object, indent)
+        const prop = e.callee.property
+        const argExprs = e.args.map((a) => emitSwiftExpr(a, indent))
+        switch (prop) {
+          case 'trim':
+            if (e.args.length === 0) {
+              return `${obj}.trimmingCharacters(in: .whitespacesAndNewlines)`
+            }
+            break
+          case 'some':
+            if (e.args.length === 1) {
+              return `${obj}.contains(where: ${argExprs[0]!})`
+            }
+            break
+          case 'every':
+            if (e.args.length === 1) {
+              return `${obj}.allSatisfy(${argExprs[0]!})`
+            }
+            break
+          case 'find':
+            if (e.args.length === 1) {
+              return `${obj}.first(where: ${argExprs[0]!})`
+            }
+            break
+          case 'includes':
+            if (e.args.length === 1) {
+              return `${obj}.contains(${argExprs[0]!})`
+            }
+            break
+          case 'indexOf':
+            if (e.args.length === 1) {
+              return `${obj}.firstIndex(of: ${argExprs[0]!})`
+            }
+            break
+        }
+      }
       const callee = emitSwiftExpr(e.callee, indent)
       const args = e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')
       return `${callee}(${args})`
@@ -537,6 +590,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.object.name === _activePropsParamName
       ) {
         return swiftIdent(e.property)
+      }
+      // TS-method translation (property side). `.length` doesn't exist
+      // on Swift String / Array — both use `.count` for the size
+      // property. Phase 2 follow-up. Closes TodoMVC's
+      // `todos.filter(...).length` and `text.length == 0` typecheck
+      // blockers.
+      if (e.property === 'length') {
+        return `${emitSwiftExpr(e.object, indent)}.count`
       }
       return `${emitSwiftExpr(e.object, indent)}.${swiftIdent(e.property)}`
     }
