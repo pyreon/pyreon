@@ -105,15 +105,29 @@ function emitSwiftEnum(e: EnumIR): string {
 }
 
 /**
- * Emit a Swift `struct X { var a: T; var b: U; ... }` from a
- * StructIR. `var` (not `let`) keeps the G4 IIFE-copy mutation idiom
+ * Emit a Swift `struct X: Codable { var a: T; var b: U; ... }` from
+ * a StructIR. `var` (not `let`) keeps the G4 IIFE-copy mutation idiom
  * working — `{ var c = t; c.field = value; return c }()` mutates the
- * field, which requires the field to be `var`. Foundational Phase 2
- * step toward Codable conformance + @AppStorage type-safe round-trip.
+ * field, which requires the field to be `var`.
+ *
+ * **Codable conformance** is always emitted. For primitive-field
+ * structs (Int / String / Bool / etc.) Swift auto-synthesizes
+ * `Encodable` + `Decodable`. For structs with non-Codable fields
+ * (function types, raw `Any`, etc.), `swiftc -typecheck` raises a
+ * clear error pointing at the offending field — the compiler can't
+ * know upfront which fields are Codable (named typeRefs could resolve
+ * to anything in the consumer's compile environment), so the emit
+ * delegates to swiftc. Phase 2 follow-up could add a field-type
+ * filter to selectively drop Codable conformance.
+ *
+ * Codable is foundational for:
+ *   - `@AppStorage` Codable-Data bridge (next Phase 2 PR)
+ *   - JSON encode/decode round-trip in user code
+ *   - Pyreon's storage / network adapter layers
  */
 function emitSwiftStruct(s: StructIR): string {
   const lines: string[] = []
-  lines.push(`struct ${swiftIdent(s.name)} {`)
+  lines.push(`struct ${swiftIdent(s.name)}: Codable {`)
   for (const f of s.fields) {
     lines.push(`  var ${swiftIdent(f.name)}: ${swiftType(f.type)}`)
   }
