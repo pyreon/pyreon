@@ -1,8 +1,13 @@
+import { defineCrossModuleState } from '@pyreon/reactivity'
 import type { DocNode, DocumentRenderer, OutputFormat, RenderOptions, RenderResult } from './types'
 
 // ─── Renderer Registry ──────────────────────────────────────────────────────
-
-const renderers = new Map<string, DocumentRenderer | (() => Promise<DocumentRenderer>)>()
+// Cross-module-instance shared so `registerRenderer('thermal', ...)` on one
+// instance is visible to `render(doc, 'thermal')` resolved against any
+// other instance.
+const renderers = defineCrossModuleState<{
+  map: Map<string, DocumentRenderer | (() => Promise<DocumentRenderer>)>
+}>('pyreon-document/renderers-state', () => ({ map: new Map() })).map
 
 /**
  * Register a custom renderer for a format.

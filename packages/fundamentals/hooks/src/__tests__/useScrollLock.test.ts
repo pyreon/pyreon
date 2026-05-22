@@ -13,6 +13,17 @@ describe('useScrollLock', () => {
   beforeEach(async () => {
     vi.resetModules()
     document.body.style.overflow = ''
+    // The scroll-lock state lives on globalThis via `defineCrossModuleState`
+    // (shared across duplicate `@pyreon/hooks` instances), so
+    // `vi.resetModules()` alone doesn't reset it. Clear the globalThis-hosted
+    // state explicitly between tests so each test starts from lockCount=0.
+    const STATE_KEY = Symbol.for('pyreon-hooks/scroll-lock-state')
+    const host = globalThis as Record<symbol, unknown>
+    const state = host[STATE_KEY] as { lockCount: number; savedOverflow: string } | undefined
+    if (state) {
+      state.lockCount = 0
+      state.savedOverflow = ''
+    }
   })
 
   afterEach(() => {

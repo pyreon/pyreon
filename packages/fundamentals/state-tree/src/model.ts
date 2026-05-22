@@ -1,13 +1,18 @@
 import type { Computed, Signal } from '@pyreon/reactivity'
+import { defineCrossModuleState } from '@pyreon/reactivity'
 import { createInstance, type ModelConfig } from './instance'
 import type { ModelInstance, Snapshot, StateShape } from './types'
 import { MODEL_BRAND } from './types'
 
 // ─── Hook registry ────────────────────────────────────────────────────────────
 
-// Module-level singleton registry for `asHook()` — isolated per package import.
-// Use `resetHook(id)` or `resetAllHooks()` to clear entries (useful for tests / HMR).
-const _hookRegistry = new Map<string, unknown>()
+// Cross-module-instance shared registry for `asHook()`. Without sharing,
+// `myModel.asHook('app')` from one `@pyreon/state-tree` instance would
+// allocate a separate singleton when called via another instance.
+const _hookRegistry = defineCrossModuleState<{ map: Map<string, unknown> }>(
+  'pyreon-state-tree/hook-registry-state',
+  () => ({ map: new Map() }),
+).map
 
 /** Destroy a hook singleton by id so next call re-creates the instance. */
 export function resetHook(id: string): void {

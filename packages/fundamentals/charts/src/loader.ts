@@ -6,6 +6,8 @@
  * on first use — zero ECharts bytes until a chart actually renders.
  */
 
+import { defineCrossModuleState } from '@pyreon/reactivity'
+
 /**
  * Loose option type for internal module analysis.
  * The strict EChartsOption type is used at the consumer-facing API level.
@@ -85,35 +87,51 @@ const RENDERERS: Record<string, ModuleLoader> = {
 }
 
 // ─── Core loading ───────────────────────────────────────────────────────────
-
-let coreModule: typeof import('echarts/core') | null = null
-let corePromise: Promise<typeof import('echarts/core')> | null = null
+//
+// Cross-module-instance shared so two `@pyreon/charts` instances don't each
+// open + cache their own ECharts core copy (~600KB wasted per duplicate
+// instance, plus separate module-registration sets).
+interface ChartsLoaderState {
+  coreModule: typeof import('echarts/core') | null
+  corePromise: Promise<typeof import('echarts/core')> | null
+  registered: Set<string>
+  inflight: Map<string, Promise<void>>
+}
+const _loaderState = defineCrossModuleState<ChartsLoaderState>(
+  'pyreon-charts/loader-state',
+  () => ({
+    coreModule: null,
+    corePromise: null,
+    registered: new Set(),
+    inflight: new Map(),
+  }),
+)
 
 /**
  * Lazily load echarts/core. Cached after first call.
  */
 export async function getCore(): Promise<typeof import('echarts/core')> {
-  if (coreModule) return coreModule
-  if (!corePromise) {
-    corePromise = import('echarts/core').then((m) => {
-      coreModule = m
+  if (_loaderState.coreModule) return _loaderState.coreModule
+  if (!_loaderState.corePromise) {
+    _loaderState.corePromise = import('echarts/core').then((m) => {
+      _loaderState.coreModule = m
       return m
     })
   }
-  return corePromise
+  return _loaderState.corePromise
 }
 
 /**
  * Get the cached core module (null if not yet loaded).
  */
 export function getCoreSync(): typeof import('echarts/core') | null {
-  return coreModule
+  return _loaderState.coreModule
 }
 
 // ─── Module registration ────────────────────────────────────────────────────
 
-const registered = new Set<string>()
-const inflight = new Map<string, Promise<void>>()
+const registered = _loaderState.registered
+const inflight = _loaderState.inflight
 
 async function loadAndRegister(
   core: typeof import('echarts/core'),
@@ -224,6 +242,6 @@ export function manualUse(...modules: unknown[]): void {
 export function _resetLoader(): void {
   registered.clear()
   inflight.clear()
-  coreModule = null
-  corePromise = null
+  _loaderState.coreModule = null
+  _loaderState.corePromise = null
 }

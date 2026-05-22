@@ -3,8 +3,20 @@
  * Import: `import { ... } from "@pyreon/i18n/devtools"`
  */
 
-const _activeInstances = new Map<string, WeakRef<object>>()
-const _listeners = new Set<() => void>()
+import { defineCrossModuleState } from '@pyreon/reactivity'
+
+// Cross-module-instance shared so registrations + listeners both apply
+// across duplicate `@pyreon/i18n` instances.
+interface I18nDevtoolsState {
+  activeInstances: Map<string, WeakRef<object>>
+  listeners: Set<() => void>
+}
+const _devtoolsState = defineCrossModuleState<I18nDevtoolsState>(
+  'pyreon-i18n/devtools-state',
+  () => ({ activeInstances: new Map(), listeners: new Set() }),
+)
+const _activeInstances = _devtoolsState.activeInstances
+const _listeners = _devtoolsState.listeners
 
 function _notify(): void {
   for (const listener of _listeners) listener()

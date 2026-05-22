@@ -1,6 +1,6 @@
 import type { VNodeChild } from '@pyreon/core'
 import { createReactiveContext, nativeCompat, provide, useContext } from '@pyreon/core'
-import { computed, signal } from '@pyreon/reactivity'
+import { computed, defineCrossModuleState, signal } from '@pyreon/reactivity'
 import { ThemeContext } from '@pyreon/styler'
 import type { PyreonTheme } from '@pyreon/unistyle'
 import { enrichTheme } from '@pyreon/unistyle'
@@ -55,11 +55,22 @@ export interface PyreonUIProps {
 
 const _isBrowser = typeof window !== 'undefined' && typeof matchMedia === 'function'
 
-/** Reactive signal tracking the OS dark mode preference. Lazy-initialized on first use. */
-let _systemMode: ReturnType<typeof signal<ThemeMode>> | undefined
+/** Reactive signal tracking the OS dark mode preference. Lazy-initialized on first use.
+ *  Cross-module-instance shared — without this, duplicate `@pyreon/ui-core`
+ *  instances each install their own matchMedia listener (handler pile-up)
+ *  AND each maintain a separate signal (consumers don't see the same value).
+ */
+interface PyreonUIState {
+  systemMode: ReturnType<typeof signal<ThemeMode>> | undefined
+  autoInitDone: boolean
+}
+const _state = defineCrossModuleState<PyreonUIState>(
+  'pyreon-ui-core/pyreon-ui-state',
+  () => ({ systemMode: undefined, autoInitDone: false }),
+)
 
 function getSystemMode(): ReturnType<typeof signal<ThemeMode>> {
-  if (_systemMode) return _systemMode
+  if (_state.systemMode) return _state.systemMode
 
   // Ternary (not `&&`) so the typeof-derived `_isBrowser` guard is
   // statically verifiable as protecting the `matchMedia` access — same
@@ -67,15 +78,15 @@ function getSystemMode(): ReturnType<typeof signal<ThemeMode>> {
   const prefersDark = _isBrowser
     ? matchMedia('(prefers-color-scheme: dark)').matches
     : false
-  _systemMode = signal<ThemeMode>(prefersDark ? 'dark' : 'light')
+  _state.systemMode = signal<ThemeMode>(prefersDark ? 'dark' : 'light')
 
   if (_isBrowser) {
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-      _systemMode?.set(e.matches ? 'dark' : 'light')
+      _state.systemMode?.set(e.matches ? 'dark' : 'light')
     })
   }
 
-  return _systemMode
+  return _state.systemMode
 }
 
 // ─── Mode context ───────────────────────────────────────────────────────────
@@ -98,12 +109,11 @@ export function useMode(): ThemeMode {
 }
 
 // ─── Auto-init ──────────────────────────────────────────────────────────────
-
-let _autoInitDone = false
+// `_state.autoInitDone` lives in the shared state object above.
 
 function autoInit(): void {
-  if (_autoInitDone) return
-  _autoInitDone = true
+  if (_state.autoInitDone) return
+  _state.autoInitDone = true
 }
 
 // ─── PyreonUI ───────────────────────────────────────────────────────────────

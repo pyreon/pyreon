@@ -1,7 +1,15 @@
 import { onUnmount } from '@pyreon/core'
+import { defineCrossModuleState } from '@pyreon/reactivity'
 
-let lockCount = 0
-let savedOverflow = ''
+// Cross-module-instance shared lock state. Without sharing, two duplicate
+// `@pyreon/hooks` instances each maintain a separate refcount and a
+// separate `savedOverflow` — the original `body.style.overflow` is then
+// restored prematurely when the FIRST instance's lockCount hits 0 while
+// the SECOND instance still has active locks (scroll unexpectedly unlocks).
+const _state = defineCrossModuleState<{ lockCount: number; savedOverflow: string }>(
+  'pyreon-hooks/scroll-lock-state',
+  () => ({ lockCount: 0, savedOverflow: '' }),
+)
 
 /**
  * Lock page scroll. Uses reference counting for concurrent locks.
@@ -17,20 +25,20 @@ export function useScrollLock(): { lock: () => void; unlock: () => void } {
     if (typeof document === 'undefined') return
     if (isLocked) return
     isLocked = true
-    if (lockCount === 0) {
-      savedOverflow = document.body.style.overflow
+    if (_state.lockCount === 0) {
+      _state.savedOverflow = document.body.style.overflow
       document.body.style.overflow = 'hidden'
     }
-    lockCount++
+    _state.lockCount++
   }
 
   const unlock = () => {
     if (typeof document === 'undefined') return
     if (!isLocked) return
     isLocked = false
-    lockCount--
-    if (lockCount === 0) {
-      document.body.style.overflow = savedOverflow
+    _state.lockCount--
+    if (_state.lockCount === 0) {
+      document.body.style.overflow = _state.savedOverflow
     }
   }
 

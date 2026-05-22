@@ -1,10 +1,15 @@
 import type { VNodeChild } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { defineCrossModuleState, signal } from '@pyreon/reactivity'
 import type { Toast, ToastOptions, ToastPromiseOptions, ToastType } from './types'
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
-let _idCounter = 0
+// Cross-module-instance shared so two duplicate `@pyreon/toast` instances
+// don't both start from id 0 (collisions on the rendered DOM keys).
+const _idCounterState = defineCrossModuleState<{ value: number }>(
+  'pyreon-toast/id-counter-state',
+  () => ({ value: 0 }),
+)
 const DEFAULT_DURATION = 4000
 
 /**
@@ -28,7 +33,7 @@ export const _toasts = signal<Toast[]>([])
 // ─── Internal helpers ────────────────────────────────────────────────────────
 
 function generateId(): string {
-  return `pyreon-toast-${++_idCounter}`
+  return `pyreon-toast-${++_idCounterState.value}`
 }
 
 function startTimer(t: Toast): void {
@@ -232,5 +237,5 @@ export function _reset(): void {
     if (t.timer !== undefined) clearTimeout(t.timer)
   }
   _toasts.set([])
-  _idCounter = 0
+  _idCounterState.value = 0
 }

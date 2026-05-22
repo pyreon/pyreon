@@ -7,7 +7,7 @@
  * is coordinated through the overlay context.
  */
 
-import { signal } from '@pyreon/reactivity'
+import { defineCrossModuleState, signal } from '@pyreon/reactivity'
 import { throttle } from '@pyreon/ui-core'
 import { value } from '@pyreon/unistyle'
 import { IS_DEVELOPMENT } from '../utils'
@@ -44,7 +44,14 @@ export type UseOverlayProps = Partial<{
 }>
 
 // Reference counter for nested modals sharing document.body overflow lock.
-let modalOverflowCount = 0
+// Cross-module-instance shared so two `@pyreon/elements` instances each
+// opening modals don't each maintain a separate refcount — the body
+// overflow would get restored prematurely while the other instance still
+// has open modals.
+const _modalOverflowState = defineCrossModuleState<{ count: number }>(
+  'pyreon-elements/modal-overflow-count-state',
+  () => ({ count: 0 }),
+)
 
 // Hoisted: closeOn values that count as "click-driven close". Inlined
 // previously, allocating a fresh 3-element array on each click-listener
@@ -395,8 +402,8 @@ const useOverlay = ({
     }
 
     if (shouldSetOverflow) {
-      modalOverflowCount++
-      if (modalOverflowCount === 1) document.body.style.overflow = 'hidden'
+      _modalOverflowState.count++
+      if (_modalOverflowState.count === 1) document.body.style.overflow = 'hidden'
     }
 
     window.addEventListener('resize', handleContentPosition)
@@ -405,8 +412,8 @@ const useOverlay = ({
       handleContentPosition.cancel()
       handleVisibility.cancel()
       if (shouldSetOverflow) {
-        modalOverflowCount--
-        if (modalOverflowCount === 0) document.body.style.overflow = ''
+        _modalOverflowState.count--
+        if (_modalOverflowState.count === 0) document.body.style.overflow = ''
       }
       window.removeEventListener('resize', handleContentPosition)
       window.removeEventListener('scroll', onScroll)

@@ -1,4 +1,5 @@
 import type { MiddlewareContext } from '@pyreon/server'
+import { defineCrossModuleState } from '@pyreon/reactivity'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -48,7 +49,15 @@ export interface Action<T = unknown> {
  * FinalizationRegistry-based purge is tracked as a follow-up; the
  * current cost is too small to justify the WeakRef/finalizer complexity.
  */
-const actionRegistry = new Map<string, RegisteredAction>()
+// Cross-module-instance shared so `defineAction(...)` from one `@pyreon/zero`
+// instance is visible to the dispatcher resolved through any other instance
+// during SSR (otherwise the action invocation fails with "action not found"
+// when the registry write and the dispatcher read happen on different
+// module-instance copies).
+const actionRegistry = defineCrossModuleState<{ map: Map<string, RegisteredAction> }>(
+  'pyreon-zero/action-registry-state',
+  () => ({ map: new Map() }),
+).map
 
 /**
  * Define a server action. Returns a callable function that:

@@ -1,22 +1,37 @@
 import type { Signal } from '@pyreon/reactivity'
-import { signal } from '@pyreon/reactivity'
+import { defineCrossModuleState, signal } from '@pyreon/reactivity'
 import { matchesCombo, parseShortcut } from './parse'
 import type { HotkeyEntry, HotkeyOptions } from './types'
 
 // ─── State ───────────────────────────────────────────────────────────────────
+//
+// Linear array on purpose (see notes below). All hotkeys state lives on a
+// single cross-module-instance shared object so duplicate `@pyreon/hotkeys`
+// instances share ONE global keydown listener + ONE entries list — without
+// this, two instances each install their own listener (handler pile-up,
+// dispatch fires twice) and maintain separate entries (a hotkey registered
+// via instance A is invisible to instance B's keydown handler).
 
-// Linear array on purpose. Per-keystroke dispatch (line 35) iterates entries
-// in registration order — O(n) where n = registered hotkeys. For real apps
-// (single-digit to low-tens) the cost is sub-microsecond and well under the
-// 16ms frame budget. Switching to a Map<comboKey, entries[]> would help only
-// past ~5,000 hotkeys, which is unrealistic. The array also preserves
-// registration order for the rare case where two hotkeys match the same
-// combo on different scopes — first-registered wins. Don't replace with a
-// Map without confirming a real app actually hits the perf wall.
-const entries: HotkeyEntry[] = []
-const activeScopes = signal<Set<string>>(new Set(['global']))
-let listenerAttached = false
-let keydownHandler: ((event: KeyboardEvent) => void) | null = null
+// Linear array on purpose. Per-keystroke dispatch iterates entries in
+// registration order — O(n) where n = registered hotkeys. For real apps
+// (single-digit to low-tens) the cost is sub-microsecond.
+interface HotkeysState {
+  entries: HotkeyEntry[]
+  activeScopes: Signal<Set<string>>
+  listenerAttached: boolean
+  keydownHandler: ((event: KeyboardEvent) => void) | null
+}
+const _state = defineCrossModuleState<HotkeysState>(
+  'pyreon-hotkeys/registry-state',
+  () => ({
+    entries: [],
+    activeScopes: signal<Set<string>>(new Set(['global'])),
+    listenerAttached: false,
+    keydownHandler: null,
+  }),
+)
+const entries = _state.entries
+const activeScopes = _state.activeScopes
 
 // ─── Input detection ─────────────────────────────────────────────────────────
 
@@ -33,11 +48,11 @@ function isInputFocused(event: KeyboardEvent): boolean {
 // ─── Global listener ─────────────────────────────────────────────────────────
 
 function attachListener(): void {
-  if (listenerAttached) return
+  if (_state.listenerAttached) return
   if (typeof window === 'undefined') return
-  listenerAttached = true
+  _state.listenerAttached = true
 
-  keydownHandler = (event) => {
+  _state.keydownHandler = (event) => {
     const scopes = activeScopes.peek()
 
     for (const entry of entries) {
@@ -64,15 +79,15 @@ function attachListener(): void {
     }
   }
 
-  window.addEventListener('keydown', keydownHandler)
+  window.addEventListener('keydown', _state.keydownHandler)
 }
 
 function detachListener(): void {
   if (typeof window === 'undefined') return
-  if (!listenerAttached || !keydownHandler) return
-  window.removeEventListener('keydown', keydownHandler)
-  listenerAttached = false
-  keydownHandler = null
+  if (!_state.listenerAttached || !_state.keydownHandler) return
+  window.removeEventListener('keydown', _state.keydownHandler)
+  _state.listenerAttached = false
+  _state.keydownHandler = null
 }
 
 // ─── Registration ────────────────────────────────────────────────────────────

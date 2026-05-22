@@ -6,13 +6,18 @@ import {
   type Edge,
   extractClosestEdge,
 } from '@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge'
-import { onCleanup, signal } from '@pyreon/reactivity'
+import { defineCrossModuleState, onCleanup, signal } from '@pyreon/reactivity'
 import type { DropEdge, UseSortableOptions, UseSortableResult } from './types'
 
 const SORT_KEY = '__pyreon_sortable_key'
 const SORT_ID = '__pyreon_sortable_id'
 
-let _sortableCounter = 0
+// Shared so two `@pyreon/dnd` instances don't both start counting from 0 →
+// sortable id collisions across lists in the same page.
+const _sortableCounterState = defineCrossModuleState<{ value: number }>(
+  'pyreon-dnd/sortable-counter-state',
+  () => ({ value: 0 }),
+)
 
 /**
  * Sortable list with signal-driven state, auto-scroll, and edge detection.
@@ -65,7 +70,7 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
     }
   }
 
-  const sortableId = `sortable-${++_sortableCounter}`
+  const sortableId = `sortable-${++_sortableCounterState.value}`
   const activeId = signal<string | number | null>(null)
   const overId = signal<string | number | null>(null)
   const overEdge = signal<DropEdge | null>(null)

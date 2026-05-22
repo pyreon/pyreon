@@ -5,6 +5,7 @@
  * Media queries (@media), @supports, and @container blocks nested inside
  * component CSS are automatically extracted into separate top-level rules.
  */
+import { defineCrossModuleState } from '@pyreon/reactivity'
 import { hash } from './hash'
 import { clearNormCache } from './resolve'
 
@@ -615,7 +616,14 @@ export const createSheet = (options?: StyleSheetOptions): StyleSheet => new Styl
 // subscription survives between calls; ports the vitus-labs pattern from
 // `connector-styler/sheet.ts:onClear`. Scoped to the singleton sheet —
 // per-instance sheets created via `createSheet()` don't fire the hook.
-const _sheetClearSubscribers = new Set<() => void>()
+// Cross-module-instance shared so `onSheetClear(cb)` registered through
+// one `@pyreon/styler` instance fires when ANY instance calls
+// `sheet.clearAll()` — without this, the cache-invalidation hook only
+// covers consumers that imported via the same module-instance pathway.
+const _sheetClearSubscribers = defineCrossModuleState<{ set: Set<() => void> }>(
+  'pyreon-styler/sheet-clear-subscribers-state',
+  () => ({ set: new Set() }),
+).set
 
 const fireSheetClearSubscribers = (): void => {
   for (const cb of _sheetClearSubscribers) cb()

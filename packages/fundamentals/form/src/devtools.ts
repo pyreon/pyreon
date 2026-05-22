@@ -3,8 +3,20 @@
  * Import: `import { ... } from "@pyreon/form/devtools"`
  */
 
-const _activeForms = new Map<string, WeakRef<object>>()
-const _listeners = new Set<() => void>()
+import { defineCrossModuleState } from '@pyreon/reactivity'
+
+// Cross-module-instance shared so registrations from one `@pyreon/form`
+// instance are visible to devtools listeners installed via any other instance.
+interface FormDevtoolsState {
+  activeForms: Map<string, WeakRef<object>>
+  listeners: Set<() => void>
+}
+const _devtoolsState = defineCrossModuleState<FormDevtoolsState>(
+  'pyreon-form/devtools-state',
+  () => ({ activeForms: new Map(), listeners: new Set() }),
+)
+const _activeForms = _devtoolsState.activeForms
+const _listeners = _devtoolsState.listeners
 
 function _notify(): void {
   for (const listener of _listeners) listener()

@@ -27,6 +27,7 @@ import {
   Suspense,
   setContextStackProvider,
 } from '@pyreon/core'
+import { defineCrossModuleState } from '@pyreon/reactivity'
 
 const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 
@@ -70,17 +71,34 @@ const _streamCtxAls = new AsyncLocalStorage<StreamCtx>()
 // Each renderToString call runs in its own ALS store (a fresh empty stack[]).
 // Concurrent requests never share context frames.
 
-const _contextAls = new AsyncLocalStorage<Map<symbol, unknown>[]>()
-const _fallbackStack: Map<symbol, unknown>[] = []
+// Cross-module-instance shared SSR isolation state. Without sharing, two
+// duplicate `@pyreon/runtime-server` instances would each maintain a
+// separate ALS + fallback stack + store-isolation flag — `setContextStackProvider`
+// resolved through one instance wouldn't affect the other's context resolver.
+interface RuntimeServerState {
+  contextAls: AsyncLocalStorage<Map<symbol, unknown>[]>
+  fallbackStack: Map<symbol, unknown>[]
+  storeAls: AsyncLocalStorage<Map<string, unknown>>
+  storeIsolationActive: boolean
+}
+const _ssrState = defineCrossModuleState<RuntimeServerState>(
+  'pyreon-runtime-server/ssr-state',
+  () => ({
+    contextAls: new AsyncLocalStorage<Map<symbol, unknown>[]>(),
+    fallbackStack: [],
+    storeAls: new AsyncLocalStorage<Map<string, unknown>>(),
+    storeIsolationActive: false,
+  }),
+)
+const _contextAls = _ssrState.contextAls
+const _fallbackStack = _ssrState.fallbackStack
+const _storeAls = _ssrState.storeAls
 
 setContextStackProvider(() => _contextAls.getStore() ?? _fallbackStack)
 
 // ─── Store isolation (optional) ───────────────────────────────────────────────
 // A second ALS isolates store registries between concurrent requests.
 // Activated only when the user calls configureStoreIsolation().
-
-const _storeAls = new AsyncLocalStorage<Map<string, unknown>>()
-let _storeIsolationActive = false
 
 /**
  * Wire up per-request store isolation.
@@ -94,12 +112,12 @@ export function configureStoreIsolation(
   setStoreRegistryProvider: (fn: () => Map<string, unknown>) => void,
 ): void {
   setStoreRegistryProvider(() => _storeAls.getStore() ?? new Map())
-  _storeIsolationActive = true
+  _ssrState.storeIsolationActive = true
 }
 
 /** Wrap a function call in a fresh store registry (no-op if isolation not configured). */
 function withStoreContext<T>(fn: () => T): T {
-  if (!_storeIsolationActive) return fn()
+  if (!_ssrState.storeIsolationActive) return fn()
   return _storeAls.run(new Map(), fn)
 }
 

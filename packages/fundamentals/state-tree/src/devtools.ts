@@ -3,11 +3,21 @@
  * Import: `import { ... } from "@pyreon/state-tree/devtools"`
  */
 
+import { defineCrossModuleState } from '@pyreon/reactivity'
 import { getSnapshot } from './snapshot'
 
-// Track active model instances (devtools-only, opt-in)
-const _activeModels = new Map<string, WeakRef<object>>()
-const _listeners = new Set<() => void>()
+// Cross-module-instance shared so model registrations + devtools listeners
+// both apply across duplicate `@pyreon/state-tree` instances.
+interface StateTreeDevtoolsState {
+  activeModels: Map<string, WeakRef<object>>
+  listeners: Set<() => void>
+}
+const _devtoolsState = defineCrossModuleState<StateTreeDevtoolsState>(
+  'pyreon-state-tree/devtools-state',
+  () => ({ activeModels: new Map(), listeners: new Set() }),
+)
+const _activeModels = _devtoolsState.activeModels
+const _listeners = _devtoolsState.listeners
 
 function _notify(): void {
   for (const listener of _listeners) listener()
