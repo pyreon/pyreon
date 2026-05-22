@@ -85,8 +85,12 @@ describe('Parser-A — const arrow function as DeclIR.function', () => {
     )
     expect(out.warnings).toEqual([])
     expect(out.code).toContain('private func addTodo()')
-    expect(out.code).toContain('let text = draft.trim()')
-    expect(out.code).toContain('if text.length == 0 {')
+    // Phase 2 TS-method translation: `.trim()` rewrites to Swift's
+    // canonical String trimming form, and `.length` rewrites to `.count`.
+    expect(out.code).toContain(
+      'let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)',
+    )
+    expect(out.code).toContain('if text.count == 0 {')
     expect(out.code).toContain('todos = todos + [nextId + 1]')
     expect(out.code).toContain('draft = ""')
   })

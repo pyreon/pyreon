@@ -46,6 +46,18 @@ export function emitKotlin(
     if (!_structFieldsToName.has(key)) _structFieldsToName.set(key, s.name)
   }
   const parts: string[] = []
+  // TS-method compat preamble (Phase 2 follow-up). Kotlin's String has
+  // `.length` but Collection<T> uses `.size` — so `array.length` (valid
+  // TS) is a compile error in Kotlin. The extension below adds `.length`
+  // as an extension property on `List<T>`, restoring TS surface parity.
+  // Always emitted — minimal cost, harmless when unused (Kotlin's dead-
+  // code-elimination handles unreferenced extensions).
+  //
+  // Other TS-method differences are rewritten at the call site (see
+  // emitKotlinExpr's `call` case): `.some(p)` → `.any(p)`, etc.
+  if (components.length > 0 || structs.length > 0) {
+    parts.push('// Pyreon TS-compat extensions\nprivate val <T> List<T>.length: Int get() = size')
+  }
   for (const e of enums) parts.push(emitKotlinEnum(e))
   for (const s of structs) parts.push(emitKotlinStruct(s))
   for (const c of components) parts.push(emitKotlinComponent(c))
@@ -457,6 +469,42 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           return `${kotlinIdent(e.callee.name)}()`
         }
         return kotlinIdent(e.callee.name)
+      }
+      // TS-method translation (Phase 2 follow-up). When the callee is a
+      // member expression naming a known TS method with a different
+      // Kotlin name, rewrite. Closes the remaining TS-method typecheck
+      // blockers beyond what the `length` extension preamble handles:
+      //
+      //   X.some(p)     →  X.any(p)
+      //   X.every(p)    →  X.all(p)
+      //   X.includes(v) →  X.contains(v)
+      //   X.indexOf(v)  →  X.indexOf(v)  (same name, passes through)
+      //   X.find(p)     →  X.find(p)     (same name + same lambda contract)
+      //   X.trim()      →  X.trim()      (same name + same contract)
+      //
+      // `.filter` / `.map` / `.reduce` / `.forEach` already match
+      // semantically and pass through unchanged.
+      if (e.callee.kind === 'member') {
+        const obj = emitKotlinExpr(e.callee.object, indent)
+        const prop = e.callee.property
+        const argExprs = e.args.map((a) => emitKotlinExpr(a, indent))
+        switch (prop) {
+          case 'some':
+            if (e.args.length === 1) {
+              return `${obj}.any(${argExprs[0]!})`
+            }
+            break
+          case 'every':
+            if (e.args.length === 1) {
+              return `${obj}.all(${argExprs[0]!})`
+            }
+            break
+          case 'includes':
+            if (e.args.length === 1) {
+              return `${obj}.contains(${argExprs[0]!})`
+            }
+            break
+        }
       }
       const callee = emitKotlinExpr(e.callee, indent)
       const args = e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')

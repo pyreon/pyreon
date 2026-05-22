@@ -25,7 +25,10 @@ function emit(name: string): string {
 describe('Pyreon → Kotlin emit', () => {
   it('01 — stateless component', () => {
     expect(emit('01-stateless.tsx')).toMatchInlineSnapshot(`
-      "@Composable
+      "// Pyreon TS-compat extensions
+      private val <T> List<T>.length: Int get() = size
+
+      @Composable
       fun Greeting() {
         Text(text = "Hello, world")
       }"
@@ -34,7 +37,10 @@ describe('Pyreon → Kotlin emit', () => {
 
   it('02 — single signal', () => {
     expect(emit('02-signal.tsx')).toMatchInlineSnapshot(`
-      "@Composable
+      "// Pyreon TS-compat extensions
+      private val <T> List<T>.length: Int get() = size
+
+      @Composable
       fun Counter() {
         var count by remember { mutableStateOf(0) }
         Text(text = "\${count}")
@@ -44,7 +50,10 @@ describe('Pyreon → Kotlin emit', () => {
 
   it('03 — computed value', () => {
     expect(emit('03-computed.tsx')).toMatchInlineSnapshot(`
-      "@Composable
+      "// Pyreon TS-compat extensions
+      private val <T> List<T>.length: Int get() = size
+
+      @Composable
       fun Doubled() {
         var count by remember { mutableStateOf(0) }
         val doubled by remember { derivedStateOf { count * 2 } }
@@ -55,7 +64,10 @@ describe('Pyreon → Kotlin emit', () => {
 
   it('04 — event handler', () => {
     expect(emit('04-event.tsx')).toMatchInlineSnapshot(`
-      "@Composable
+      "// Pyreon TS-compat extensions
+      private val <T> List<T>.length: Int get() = size
+
+      @Composable
       fun Increment() {
         var count by remember { mutableStateOf(0) }
         Button(onClick = { count = count + 1 }) {
@@ -67,7 +79,10 @@ describe('Pyreon → Kotlin emit', () => {
 
   it('05 — multi-signal + dependent computed', () => {
     expect(emit('05-multi-signal.tsx')).toMatchInlineSnapshot(`
-      "@Composable
+      "// Pyreon TS-compat extensions
+      private val <T> List<T>.length: Int get() = size
+
+      @Composable
       fun Sum() {
         var a by remember { mutableStateOf(1) }
         var b by remember { mutableStateOf(2) }
@@ -79,7 +94,10 @@ describe('Pyreon → Kotlin emit', () => {
 
   it('06 — <For> keyed list', () => {
     expect(emit('06-for.tsx')).toMatchInlineSnapshot(`
-      "data class TodoListItem(val id: Int, val label: String)
+      "// Pyreon TS-compat extensions
+      private val <T> List<T>.length: Int get() = size
+
+      data class TodoListItem(val id: Int, val label: String)
 
       @Composable
       fun TodoList() {
@@ -95,7 +113,10 @@ describe('Pyreon → Kotlin emit', () => {
 
   it('07 — <Show> conditional', () => {
     expect(emit('07-show.tsx')).toMatchInlineSnapshot(`
-      "@Composable
+      "// Pyreon TS-compat extensions
+      private val <T> List<T>.length: Int get() = size
+
+      @Composable
       fun Toggle() {
         var visible by remember { mutableStateOf(true) }
         if (visible) {
@@ -112,7 +133,10 @@ describe('Pyreon → Kotlin emit', () => {
     // still validates the cross-target story: same Pyreon source,
     // both targets produce idiomatic per-platform computed code.
     expect(emit('08-string-computed.tsx')).toMatchInlineSnapshot(`
-      "@Composable
+      "// Pyreon TS-compat extensions
+      private val <T> List<T>.length: Int get() = size
+
+      @Composable
       fun Greeting() {
         var name by remember { mutableStateOf("world") }
         val message by remember { derivedStateOf { "Hello, " + name } }
@@ -126,7 +150,10 @@ describe('Pyreon → Kotlin emit', () => {
     // becomes a Composable function with `title: String, description: String`
     // params. Member accesses `props.title` rewrite to bare `title`.
     expect(emit('09-props.tsx')).toMatchInlineSnapshot(`
-      "@Composable
+      "// Pyreon TS-compat extensions
+      private val <T> List<T>.length: Int get() = size
+
+      @Composable
       fun Card(title: String, description: String) {
         Text(text = "\${title}: \${description}")
       }"
@@ -140,7 +167,10 @@ describe('Pyreon → Kotlin emit', () => {
     // Compose's `Card(title = "Hello")` invocation wants. Contract
     // lock: future PRs shouldn't accidentally break this shape.
     expect(emit('10-multi-component.tsx')).toMatchInlineSnapshot(`
-      "@Composable
+      "// Pyreon TS-compat extensions
+      private val <T> List<T>.length: Int get() = size
+
+      @Composable
       fun Card(title: String) {
         Text(text = "\${title}")
       }
