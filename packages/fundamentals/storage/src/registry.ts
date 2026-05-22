@@ -1,3 +1,4 @@
+import { defineCrossModuleState } from '@pyreon/reactivity'
 import type { StorageSignal } from './types'
 
 // ─── Signal Registry ─────────────────────────────────────────────────────────
@@ -17,7 +18,14 @@ interface RegistryEntry<T = unknown> {
   refCount: number
 }
 
-const registry = new Map<string, RegistryEntry>()
+// Cross-module-instance shared registry. Two duplicate `@pyreon/storage`
+// instances each calling `useStorage('theme', ...)` would otherwise each
+// allocate a separate signal — the cross-tab sync would route through only
+// ONE of them, leaving the other instance's consumers desynced.
+const registry = defineCrossModuleState<{ map: Map<string, RegistryEntry> }>(
+  'pyreon-storage/registry-state',
+  () => ({ map: new Map() }),
+).map
 
 /**
  * Build a composite key from backend type + storage key to avoid

@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { defineCrossModuleState, signal } from '@pyreon/reactivity'
 import { getEntry, removeEntry, setEntry } from './registry'
 import type { IndexedDBOptions, StorageSignal } from './types'
 import { deserialize, isBrowser, serialize } from './utils'
@@ -7,8 +7,14 @@ import { wrapBaseSignal } from './wrap-base-signal'
 const __DEV__: boolean = process.env.NODE_ENV !== 'production'
 
 // ─── Database management ─────────────────────────────────────────────────────
-
-const dbCache = new Map<string, Promise<IDBDatabase>>()
+//
+// Cross-module-instance shared DB cache. `openDB('myApp', 'kv')` resolved
+// against two instances would otherwise each open + cache its own
+// `IDBDatabase` (handle leak + N concurrent connections per page).
+const dbCache = defineCrossModuleState<{ map: Map<string, Promise<IDBDatabase>> }>(
+  'pyreon-storage/indexed-db-cache-state',
+  () => ({ map: new Map() }),
+).map
 
 function openDB(dbName: string, storeName: string): Promise<IDBDatabase> {
   if (typeof indexedDB === 'undefined') {

@@ -3,9 +3,16 @@
  * Import: `import { ... } from "@pyreon/store/devtools"`
  */
 
+import { defineCrossModuleState } from '@pyreon/reactivity'
 import { getRegistry } from './registry'
 
-const _listeners = new Set<() => void>()
+// Cross-module-instance shared listener set so a devtools subscriber
+// registered through one `@pyreon/store` instance receives change events
+// emitted by `defineStore` / `resetStore` resolved through any instance.
+const _listeners = defineCrossModuleState<{ set: Set<() => void> }>(
+  'pyreon-store/devtools-listeners-state',
+  () => ({ set: new Set() }),
+).set
 
 /** @internal — called by defineStore/resetStore to notify devtools. */
 export function _notifyChange(): void {

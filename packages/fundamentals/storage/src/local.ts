@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { defineCrossModuleState, signal } from '@pyreon/reactivity'
 import { getEntry, releaseEntry, retainEntry, setEntry } from './registry'
 import type { StorageOptions, StorageSignal } from './types'
 import { deserialize, getWebStorage, isBrowser, serialize } from './utils'
@@ -11,8 +11,19 @@ import { wrapBaseSignal } from './wrap-base-signal'
 // listener was attached on first `useStorage` and NEVER removed, leaking a
 // window-level handler across the lifetime of the page even after all
 // signals disposed via `.remove()`.
-let activeCount = 0
-let storageHandler: ((e: StorageEvent) => void) | null = null
+//
+// Hosted on globalThis so duplicate `@pyreon/storage` instances share ONE
+// listener + ONE refcount — without this, two instances each install
+// their own `storage` event listener (handler pile-up) AND maintain
+// separate refcounts (listener detaches before all subscribers release).
+interface CrossTabState {
+  activeCount: number
+  storageHandler: ((e: StorageEvent) => void) | null
+}
+const _crossTabState = defineCrossModuleState<CrossTabState>(
+  'pyreon-storage/cross-tab-state',
+  () => ({ activeCount: 0, storageHandler: null }),
+)
 
 function onStorageEvent(e: StorageEvent): void {
   if (!e.key) return
@@ -27,10 +38,10 @@ function onStorageEvent(e: StorageEvent): void {
 
 function retainStorageListener(): void {
   if (!isBrowser()) return
-  activeCount++
-  if (storageHandler === null) {
-    storageHandler = onStorageEvent
-    window.addEventListener('storage', storageHandler)
+  _crossTabState.activeCount++
+  if (_crossTabState.storageHandler === null) {
+    _crossTabState.storageHandler = onStorageEvent
+    window.addEventListener('storage', _crossTabState.storageHandler)
   }
 }
 
@@ -39,11 +50,11 @@ function retainStorageListener(): void {
  * Used in test teardown to keep `_resetRegistry` and listener state in sync.
  */
 export function _resetStorageListener(): void {
-  if (storageHandler !== null && isBrowser()) {
-    window.removeEventListener('storage', storageHandler)
+  if (_crossTabState.storageHandler !== null && isBrowser()) {
+    window.removeEventListener('storage', _crossTabState.storageHandler)
   }
-  storageHandler = null
-  activeCount = 0
+  _crossTabState.storageHandler = null
+  _crossTabState.activeCount = 0
 }
 
 /**
@@ -52,11 +63,11 @@ export function _resetStorageListener(): void {
  */
 export function releaseStorageListener(): void {
   if (!isBrowser()) return
-  if (activeCount === 0) return
-  activeCount--
-  if (activeCount === 0 && storageHandler !== null) {
-    window.removeEventListener('storage', storageHandler)
-    storageHandler = null
+  if (_crossTabState.activeCount === 0) return
+  _crossTabState.activeCount--
+  if (_crossTabState.activeCount === 0 && _crossTabState.storageHandler !== null) {
+    window.removeEventListener('storage', _crossTabState.storageHandler)
+    _crossTabState.storageHandler = null
   }
 }
 

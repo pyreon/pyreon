@@ -1,12 +1,17 @@
-import { signal } from '@pyreon/reactivity'
+import { defineCrossModuleState, signal } from '@pyreon/reactivity'
 import { getEntry, removeEntry, setEntry } from './registry'
 import type { CookieOptions, StorageSignal } from './types'
 import { deserialize, isBrowser, serialize } from './utils'
 import { wrapBaseSignal } from './wrap-base-signal'
 
 // ─── Server-side cookie source ───────────────────────────────────────────────
-
-let serverCookieString = ''
+// Cross-module-instance shared SSR cookie source. `setCookieSource()` on
+// one instance must be visible to `useCookie()` on any other instance —
+// otherwise SSR-side cookie reads silently miss the request header.
+const _cookieSourceState = defineCrossModuleState<{ value: string }>(
+  'pyreon-storage/server-cookie-source-state',
+  () => ({ value: '' }),
+)
 
 /**
  * Set the cookie source string for SSR. Call this once per request
@@ -19,7 +24,7 @@ let serverCookieString = ''
  * ```
  */
 export function setCookieSource(cookieHeader: string): void {
-  serverCookieString = cookieHeader
+  _cookieSourceState.value = cookieHeader
 }
 
 // ─── Cookie parsing ──────────────────────────────────────────────────────────
@@ -41,7 +46,7 @@ function parseCookies(cookieString: string): Map<string, string> {
 
 function getCookieString(): string {
   if (isBrowser()) return document.cookie
-  return serverCookieString
+  return _cookieSourceState.value
 }
 
 function readCookie(key: string): string | null {

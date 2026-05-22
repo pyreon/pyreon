@@ -35,7 +35,7 @@ const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number)
 export type { Signal } from '@pyreon/reactivity'
 export { batch, computed, effect, signal } from '@pyreon/reactivity'
 
-import { batch } from '@pyreon/reactivity'
+import { batch, defineCrossModuleState } from '@pyreon/reactivity'
 
 export { setRegistryProvider as setStoreRegistryProvider } from './registry'
 
@@ -108,8 +108,15 @@ function isComputedLike(v: unknown): boolean {
 }
 
 // ─── Plugin system ───────────────────────────────────────────────────────────
-
-const _plugins: StorePlugin[] = []
+//
+// Cross-module-instance shared list. `addStorePlugin()` resolved against
+// one `@pyreon/store` instance must apply to stores created via any
+// instance — otherwise plugins (logger, persist, etc.) silently miss
+// stores defined elsewhere.
+const _plugins = defineCrossModuleState<{ list: StorePlugin[] }>(
+  'pyreon-store/plugins-state',
+  () => ({ list: [] }),
+).list
 
 /** Register a global store plugin. Plugins run when a store is first created. */
 export function addStorePlugin(plugin: StorePlugin): void {

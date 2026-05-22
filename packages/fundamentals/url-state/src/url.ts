@@ -1,3 +1,5 @@
+import { defineCrossModuleState } from '@pyreon/reactivity'
+
 const _isBrowser = typeof window !== 'undefined'
 
 /** Read a search param from the current URL. Returns `null` if not present. */
@@ -23,17 +25,24 @@ export interface UrlRouter {
   replace(path: string): void | Promise<void>
 }
 
-/** Module-level router reference. Set via `setUrlRouter()`. */
-let _router: UrlRouter | null = null
+/** Module-level router reference. Set via `setUrlRouter()`.
+ *  Cross-module-instance shared so `setUrlRouter(routerFromApp)` resolved
+ *  against one `@pyreon/url-state` instance is visible to `setParams()`
+ *  on any other instance.
+ */
+const _routerState = defineCrossModuleState<{ router: UrlRouter | null }>(
+  'pyreon-url-state/router-state',
+  () => ({ router: null }),
+)
 
 /** Register a router to use for URL updates instead of the raw history API. */
 export function setUrlRouter(router: UrlRouter | null): void {
-  _router = router
+  _routerState.router = router
 }
 
 /** @internal */
 export function getUrlRouter(): UrlRouter | null {
-  return _router
+  return _routerState.router
 }
 
 /** Write one or more search params to the URL without a full navigation. */
@@ -53,8 +62,8 @@ export function setParams(entries: Record<string, string | null>, replace: boole
   const search = params.toString()
   const url = search ? `${window.location.pathname}?${search}` : window.location.pathname
 
-  if (_router) {
-    _router.replace(url)
+  if (_routerState.router) {
+    _routerState.router.replace(url)
     return
   }
 
@@ -84,8 +93,8 @@ export function setParamRepeated(key: string, values: string[] | null, replace: 
   const search = params.toString()
   const url = search ? `${window.location.pathname}?${search}` : window.location.pathname
 
-  if (_router) {
-    _router.replace(url)
+  if (_routerState.router) {
+    _routerState.router.replace(url)
     return
   }
 
