@@ -18,17 +18,24 @@
 // that would require a real type checker. It covers the shapes the
 // emitter actually emits, which is a fixed-and-growing surface.
 
-import type { DeclIR, ExprIR, TypeIR } from './types'
+import type { DeclIR, ExprIR, StatementIR, TypeIR } from './types'
 
 export interface InferenceCtx {
   /** Signal name → declared type. Filled from the component's decls. */
   signals: Map<string, TypeIR>
   /** Computed name → already-inferred return type. */
   computeds: Map<string, TypeIR>
+  /**
+   * Local `let` bindings inside the currently-walked computed/function
+   * body (Phase 2 follow-up). Populated when inferring a multi-statement
+   * body so member-access infers transitively (e.g. `xs.filter(...)`
+   * where `let xs = todos()` was set above the return).
+   */
+  locals: Map<string, TypeIR>
 }
 
 export function buildInferenceCtx(decls: DeclIR[]): InferenceCtx {
-  const ctx: InferenceCtx = { signals: new Map(), computeds: new Map() }
+  const ctx: InferenceCtx = { signals: new Map(), computeds: new Map(), locals: new Map() }
   // Pass 1: collect signals. Their types come from `signal<T>(...)`
   // generics, which `parse.ts` already extracted.
   for (const d of decls) {
@@ -40,10 +47,66 @@ export function buildInferenceCtx(decls: DeclIR[]): InferenceCtx {
   // `doubled` is already in the map.
   for (const d of decls) {
     if (d.kind === 'computed') {
-      ctx.computeds.set(d.name, inferType(d.expr, ctx))
+      ctx.locals = new Map()
+      ctx.computeds.set(d.name, inferComputedReturnType(d, ctx))
     }
   }
   return ctx
+}
+
+/**
+ * Infer a computed's return type from its declaration. Handles both
+ * the legacy `expr` shape (single expression) and the Phase 2 `body`
+ * shape (multi-statement BlockStatement).
+ *
+ * For multi-statement bodies, walks the statement tree (including
+ * nested if/else branches), populating `ctx.locals` from `let`-
+ * bindings encountered above the first return. This makes member-
+ * access work for chains like:
+ *   const xs = todos()
+ *   if (filter() === 'active') return xs.filter(...)
+ * where `xs` needs to be known as `Array<Todo>` so `.filter(...)`
+ * infers `Array<Todo>` (then the function-level return type is
+ * also `Array<Todo>`).
+ */
+function inferComputedReturnType(
+  d: Extract<DeclIR, { kind: 'computed' }>,
+  ctx: InferenceCtx,
+): TypeIR {
+  if (d.expr !== undefined) return inferType(d.expr, ctx)
+  if (d.body !== undefined) {
+    const ret = findFirstReturnExpr(d.body, ctx)
+    if (ret) return inferType(ret, ctx)
+  }
+  return { kind: 'unknown' }
+}
+
+/**
+ * Walks statements (including nested if/else) for the first `return expr`.
+ * Side-effect: populates `ctx.locals` with `let`-binding types
+ * encountered along the way so subsequent inferType calls can resolve
+ * the local bindings.
+ */
+function findFirstReturnExpr(
+  stmts: StatementIR[],
+  ctx: InferenceCtx,
+): ExprIR | undefined {
+  for (const s of stmts) {
+    if (s.kind === 'let') {
+      ctx.locals.set(s.name, inferType(s.expr, ctx))
+      continue
+    }
+    if (s.kind === 'return' && s.expr !== undefined) return s.expr
+    if (s.kind === 'if') {
+      const t = findFirstReturnExpr(s.then, ctx)
+      if (t) return t
+      if (s.elseBody) {
+        const e = findFirstReturnExpr(s.elseBody, ctx)
+        if (e) return e
+      }
+    }
+  }
+  return undefined
 }
 
 export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
@@ -55,10 +118,13 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       return { kind: 'unknown' }
     }
     case 'identifier': {
-      // Bare identifier — could be a signal/computed (rare; usually a
-      // zero-arg call is the read) or a function-parameter binding
-      // like `(item) => ...` in a For child. We can't infer parameter
-      // types without dataflow into the For source; leave as unknown.
+      // Bare identifier — check locals (Phase 2 follow-up — `let`
+      // bindings inside multi-statement computed bodies), then
+      // signals/computeds. Falls through to unknown for function
+      // parameters (`(item) => ...` in a For child) which need
+      // dataflow into the For source we don't yet have.
+      const loc = ctx.locals.get(expr.name)
+      if (loc) return loc
       const sig = ctx.signals.get(expr.name)
       if (sig) return sig
       const cmp = ctx.computeds.get(expr.name)

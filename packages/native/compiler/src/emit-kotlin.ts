@@ -247,7 +247,18 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     return emitKotlinFunction(d, ctx)
   }
   // computed → derivedStateOf, accessed via the `by` delegate.
-  return `val ${kotlinIdent(d.name)} by remember { derivedStateOf { ${emitKotlinExpr(d.expr, 0)} } }`
+  // Phase 2 follow-up: multi-statement body emits as a block lambda
+  // with explicit statements + return. Single-expression form stays
+  // inline.
+  if (d.body !== undefined) {
+    const bodyLines = d.body.map((s) => `      ${emitKotlinStatement(s, 6, ctx)}`).join('\n')
+    return [
+      `val ${kotlinIdent(d.name)} by remember { derivedStateOf {`,
+      bodyLines,
+      `    } }`,
+    ].join('\n')
+  }
+  return `val ${kotlinIdent(d.name)} by remember { derivedStateOf { ${emitKotlinExpr(d.expr!, 0)} } }`
 }
 
 /**
