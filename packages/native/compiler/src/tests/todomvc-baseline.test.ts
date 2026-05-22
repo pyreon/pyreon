@@ -278,14 +278,38 @@ describe('TodoMVC gap-tracking baseline', () => {
     expect(out.code).not.toContain('JSONEncoder')
   })
 
-  it('G5 — useStorage<T>(key, default) emits `rememberSaveable` on Kotlin', () => {
-    // CLOSED by this PR. The Kotlin emit routes storage signals to
-    // Compose's `rememberSaveable` — same `by` delegate as `remember`
-    // so call sites work without parens. Note: `rememberSaveable`
-    // requires Parcelable/Serializable types for round-trip; complex
-    // types need a custom Saver — Phase 2.
+  it('G5 — useStorage<T>(key, default) emits `rememberSaveable` with kotlinx-Json Saver on Kotlin for non-native types', () => {
+    // CLOSED by G5 #849. Phase 2 follow-up: when the value type is
+    // NOT natively Saveable by Compose's `rememberSaveable` (primitives
+    // + known enums + their Optionals), the Kotlin emit produces a
+    // kotlinx-serialization JSON-backed `Saver<T, String>` passed via
+    // `rememberSaveable(saver = ...)`. Closes G5's known caveat
+    // ("`rememberSaveable<List<Todo>>` needs a custom Saver").
+    //
+    // TodoMVC's `List<Todo>` is non-native, so this test asserts the
+    // Saver shape. Native-typed storage signals continue to use the
+    // direct shape (no Saver overhead) — see the separate native-
+    // typed test below.
     const out = transform(source, { target: 'kotlin' })
-    expect(out.code).toMatch(/var todos by rememberSaveable \{ mutableStateOf<List<Todo>>\(listOf\(\)\) \}/)
+    expect(out.code).toContain('var todos by rememberSaveable(saver = Saver<List<Todo>, String>(')
+    expect(out.code).toContain('save = { Json.encodeToString(it) }')
+    expect(out.code).toContain('restore = { Json.decodeFromString<List<Todo>>(it) }')
+  })
+
+  it('Phase 2 — useStorage<string> on Kotlin uses direct rememberSaveable (no Saver)', () => {
+    // Confirms the predicate works — native-typed storage signals
+    // continue to emit the direct shape, no kotlinx-Json Saver overhead.
+    const minimalSource = `
+      import { useStorage } from '@pyreon/storage'
+      export function Settings() {
+        const username = useStorage<string>('user:name', 'guest')
+        return <Text>{username()}</Text>
+      }
+    `
+    const out = transform(minimalSource, { target: 'kotlin' })
+    expect(out.code).toContain('var username by rememberSaveable { mutableStateOf("guest") }')
+    expect(out.code).not.toContain('Json.encodeToString')
+    expect(out.code).not.toContain('Json.decodeFromString')
   })
 
   it('Phase 2 — object-shape `type Todo = {...}` emits Swift `struct Todo: Codable` with `var` fields', () => {
