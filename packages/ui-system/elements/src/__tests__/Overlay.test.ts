@@ -44,7 +44,22 @@ vi.mock('@pyreon/reactivity', () => {
   // from `@pyreon/reactivity` — without this stub the mock factory throws
   // "No 'setSnapshotCapture' export is defined on the '@pyreon/reactivity' mock."
   const setSnapshotCapture = () => {}
-  return { signal, setSnapshotCapture }
+  // `@pyreon/core`'s 5 module-state files (lifecycle / component / context /
+  // telemetry / props) call `defineCrossModuleState` at module load to host
+  // their state on `globalThis` under `Symbol.for` keys (the
+  // duplicate-module-instance hardening from #855). Forward to the real
+  // helper shape — first-call-creates, subsequent-finds-existing — so the
+  // mocked core modules behave identically to production.
+  const defineCrossModuleState = <T extends object>(key: string, init: () => T): T => {
+    const symKey = Symbol.for(key)
+    const host = globalThis as Record<symbol, unknown>
+    const existing = host[symKey] as T | undefined
+    if (existing) return existing
+    const state = init()
+    host[symKey] = state
+    return state
+  }
+  return { signal, setSnapshotCapture, defineCrossModuleState }
 })
 
 // onMount / onUnmount are no-ops outside a renderer

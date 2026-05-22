@@ -37,6 +37,19 @@ vi.mock('@pyreon/reactivity', () => ({
   // Without this, importing `@pyreon/core` throws "No 'setSnapshotCapture'
   // export is defined on the '@pyreon/reactivity' mock."
   setSnapshotCapture: () => {},
+  // `@pyreon/core`'s 5 module-state files call `defineCrossModuleState` at
+  // module load (the duplicate-module-instance hardening from #855).
+  // Forward to the real helper shape so the mocked core modules behave
+  // identically to production.
+  defineCrossModuleState: <T extends object>(key: string, init: () => T): T => {
+    const symKey = Symbol.for(key)
+    const host = globalThis as Record<symbol, unknown>
+    const existing = host[symKey] as T | undefined
+    if (existing) return existing
+    const state = init()
+    host[symKey] = state
+    return state
+  },
 }))
 
 import useStableValue from '../useStableValue'
