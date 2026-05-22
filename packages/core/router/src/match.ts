@@ -1,3 +1,4 @@
+import { defineCrossModuleState } from '@pyreon/reactivity'
 import type { ResolvedRoute, RouteComponent, RouteMeta, RouteRecord } from './types'
 
 // ─── Default chrome layout registration ──────────────────────────────────────
@@ -20,7 +21,14 @@ import type { ResolvedRoute, RouteComponent, RouteMeta, RouteRecord } from './ty
 // `findNotFoundFallback` returns `null` for the layout-less case — the
 // standalone-render path in the SSG plugin / runtime handler picks up
 // from there. So the fix degrades gracefully.
-let _defaultChromeLayout: RouteComponent | null = null
+// Hosted on globalThis — `_setDefaultChromeLayout` is called once at
+// module load from `./components.tsx`, and `findNotFoundFallback` must
+// read the SAME registered component regardless of which `@pyreon/router`
+// instance the setter / reader were resolved to.
+const _matchState = defineCrossModuleState<{ defaultChromeLayout: RouteComponent | null }>(
+  'pyreon-router/match-state',
+  () => ({ defaultChromeLayout: null }),
+)
 
 /**
  * Register the synthetic "default chrome" layout used when a page-level
@@ -31,7 +39,7 @@ let _defaultChromeLayout: RouteComponent | null = null
  * @internal
  */
 export function _setDefaultChromeLayout(component: RouteComponent): void {
-  _defaultChromeLayout = component
+  _matchState.defaultChromeLayout = component
 }
 
 // ─── Query string ─────────────────────────────────────────────────────────────
@@ -808,7 +816,7 @@ function findNotFoundFallback(routes: RouteRecord[], urlPath: string): RouteReco
   // from `@pyreon/router` that triggers components.tsx's side effects),
   // we fall back to returning null — the standalone-render path in the
   // SSG plugin / runtime handler picks up from there.
-  if (pageBest && _defaultChromeLayout) {
+  if (pageBest && _matchState.defaultChromeLayout) {
     const found: {
       record: RouteRecord
       depth: number
@@ -818,7 +826,7 @@ function findNotFoundFallback(routes: RouteRecord[], urlPath: string): RouteReco
 
     const syntheticChromeLayout: RouteRecord = {
       path: found.fullPath,
-      component: _defaultChromeLayout,
+      component: _matchState.defaultChromeLayout,
     }
     const syntheticLeaf: RouteRecord = {
       path: SYNTHETIC_NOT_FOUND_PATH,

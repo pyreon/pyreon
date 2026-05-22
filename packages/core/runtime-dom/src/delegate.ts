@@ -11,7 +11,7 @@
  * - Faster initial mount (~0.4-0.8ms savings on 1000-row benchmarks)
  */
 
-import { batch } from '@pyreon/reactivity'
+import { batch, defineCrossModuleState } from '@pyreon/reactivity'
 
 /**
  * Events that are delegated (common bubbling events).
@@ -52,8 +52,14 @@ export function delegatedPropName(eventName: string): string {
   return `__ev_${eventName}`
 }
 
-// Track which containers already have delegation installed
-const _delegated = new WeakSet<Element>()
+// Track which containers already have delegation installed.
+// Cross-module-instance shared via globalThis so two `@pyreon/runtime-dom`
+// instances mounting into the SAME container don't each install their own
+// duplicate delegated listener (event handler pile-up + double-fire).
+const _delegated = defineCrossModuleState<{ set: WeakSet<Element> }>(
+  'pyreon-runtime-dom/delegate-state',
+  () => ({ set: new WeakSet() }),
+).set
 
 /**
  * Install delegation listeners on a container element.

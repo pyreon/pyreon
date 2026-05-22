@@ -3,7 +3,7 @@ import { captureContextStack, restoreContextStack } from '@pyreon/core'
 
 type MountFn = (child: VNodeChild, parent: Node, anchor: Node | null) => Cleanup
 
-import { effect, runUntracked } from '@pyreon/reactivity'
+import { defineCrossModuleState, effect, runUntracked } from '@pyreon/reactivity'
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
@@ -153,7 +153,13 @@ interface KeyedEntry {
 
 // WeakSets to identify anchor nodes belonging to list entries.
 // Entries use their first DOM node as anchor (element for simple vnodes, comment fallback for empty).
-const _keyedAnchors = new WeakSet<Node>()
+// Hosted on globalThis so duplicate `@pyreon/runtime-dom` instances see the
+// SAME anchor identity — a node marked by one instance is correctly
+// recognized by another instance's keyed-list reconciler.
+const _keyedAnchors = defineCrossModuleState<{ set: WeakSet<Node> }>(
+  'pyreon-runtime-dom/keyed-anchors-state',
+  () => ({ set: new WeakSet() }),
+).set
 
 /** LIS-based reorder state — shared across keyed list instances, grown as needed */
 interface LisState {
@@ -380,7 +386,11 @@ export function mountKeyedList(
 const SMALL_K = 8
 
 // WeakSet to identify anchor nodes belonging to mountFor entries.
-const _forAnchors = new WeakSet<Node>()
+// Same cross-module-instance rationale as `_keyedAnchors` above.
+const _forAnchors = defineCrossModuleState<{ set: WeakSet<Node> }>(
+  'pyreon-runtime-dom/for-anchors-state',
+  () => ({ set: new WeakSet() }),
+).set
 
 // anchor is the first DOM node of the entry (element for normal vnodes, comment fallback for empty).
 // Using the element itself saves 1 createComment + 1 DOM node per entry.

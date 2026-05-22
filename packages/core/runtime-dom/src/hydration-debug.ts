@@ -34,18 +34,31 @@
  * })
  */
 
+import { defineCrossModuleState } from '@pyreon/reactivity'
+
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
 const __DEV__ = process.env.NODE_ENV !== 'production'
 
-let _enabled = __DEV__
+// Cross-module-instance shared toggle + handler list. `enableHydrationWarnings`
+// resolved against one `@pyreon/runtime-dom` instance must affect mismatch
+// emissions resolved through another instance; same for `onHydrationMismatch`
+// callbacks installed by user telemetry code.
+interface HydrationDebugState {
+  enabled: boolean
+  handlers: HydrationMismatchHandler[]
+}
+const _state = defineCrossModuleState<HydrationDebugState>(
+  'pyreon-runtime-dom/hydration-debug-state',
+  () => ({ enabled: __DEV__, handlers: [] }),
+)
 
 export function enableHydrationWarnings(): void {
-  _enabled = true
+  _state.enabled = true
 }
 
 export function disableHydrationWarnings(): void {
-  _enabled = false
+  _state.enabled = false
 }
 
 // ─── Telemetry callback ─────────────────────────────────────────────────────
@@ -67,8 +80,6 @@ export interface HydrationMismatchContext {
 
 export type HydrationMismatchHandler = (ctx: HydrationMismatchContext) => void
 
-let _handlers: HydrationMismatchHandler[] = []
-
 /**
  * Register a hydration mismatch handler. Called on every mismatch in BOTH
  * development and production, independent of the dev-mode warn toggle.
@@ -79,9 +90,9 @@ let _handlers: HydrationMismatchHandler[] = []
  * framework. Returns an unregister function.
  */
 export function onHydrationMismatch(handler: HydrationMismatchHandler): () => void {
-  _handlers.push(handler)
+  _state.handlers.push(handler)
   return () => {
-    _handlers = _handlers.filter((h) => h !== handler)
+    _state.handlers = _state.handlers.filter((h) => h !== handler)
   }
 }
 
@@ -98,8 +109,8 @@ export function warnHydrationMismatch(
   actual: unknown,
   path: string,
 ): void {
-  // Dev-mode console.warn — gated on _enabled (default __DEV__).
-  if (_enabled) {
+  // Dev-mode console.warn — gated on _state.enabled (default __DEV__).
+  if (_state.enabled) {
     // oxlint-disable-next-line no-console
     console.warn(
       `[Pyreon] Hydration mismatch (${type}): expected ${String(expected)}, got ${String(actual)} at ${path}`,
@@ -109,7 +120,7 @@ export function warnHydrationMismatch(
   // Telemetry callbacks — fire in BOTH dev and prod, independent of the
   // warn toggle. This is the production observability hook (Sentry,
   // Datadog, etc.) that pre-fix was missing entirely.
-  if (_handlers.length > 0) {
+  if (_state.handlers.length > 0) {
     const ctx: HydrationMismatchContext = {
       type,
       expected,
@@ -117,7 +128,7 @@ export function warnHydrationMismatch(
       path,
       timestamp: Date.now(),
     }
-    for (const h of _handlers) {
+    for (const h of _state.handlers) {
       try {
         h(ctx)
       } catch {

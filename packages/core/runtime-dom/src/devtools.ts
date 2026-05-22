@@ -19,6 +19,7 @@
 import {
   activateReactiveDevtools,
   deactivateReactiveDevtools,
+  defineCrossModuleState,
   getReactiveFires,
   getReactiveGraph,
   type ReactiveFire,
@@ -64,10 +65,39 @@ export interface PyreonReactiveDevtools {
 }
 
 // ─── Internal registry ────────────────────────────────────────────────────────
+//
+// Cross-module-instance shared devtools state. The browser-extension hook
+// `window.__PYREON_DEVTOOLS__` reads through these — without sharing, a
+// component registered by one `@pyreon/runtime-dom` instance would be
+// invisible to the extension if the hook was installed by another instance.
+interface DevtoolsState {
+  components: Map<string, DevtoolsComponentEntry>
+  mountListeners: ((entry: DevtoolsComponentEntry) => void)[]
+  unmountListeners: ((id: string) => void)[]
+  overlayActive: boolean
+  overlayEl: HTMLDivElement | null
+  tooltipEl: HTMLDivElement | null
+  currentHighlight: Element | null
+  installed: boolean
+}
 
-const _components = new Map<string, DevtoolsComponentEntry>()
-const _mountListeners: ((entry: DevtoolsComponentEntry) => void)[] = []
-const _unmountListeners: ((id: string) => void)[] = []
+const _devtoolsState = defineCrossModuleState<DevtoolsState>(
+  'pyreon-runtime-dom/devtools-state',
+  () => ({
+    components: new Map(),
+    mountListeners: [],
+    unmountListeners: [],
+    overlayActive: false,
+    overlayEl: null,
+    tooltipEl: null,
+    currentHighlight: null,
+    installed: false,
+  }),
+)
+
+const _components = _devtoolsState.components
+const _mountListeners = _devtoolsState.mountListeners
+const _unmountListeners = _devtoolsState.unmountListeners
 
 export function registerComponent(
   id: string,
@@ -96,11 +126,7 @@ export function unregisterComponent(id: string): void {
 }
 
 // ─── Component Inspector Overlay ─────────────────────────────────────────────
-
-let _overlayActive = false
-let _overlayEl: HTMLDivElement | null = null
-let _tooltipEl: HTMLDivElement | null = null
-let _currentHighlight: Element | null = null
+// State for overlay is in `_devtoolsState` above (shared across module instances).
 
 function findComponentForElement(el: Element): DevtoolsComponentEntry | null {
   // Walk up from the hovered element to find the nearest registered component
@@ -115,54 +141,54 @@ function findComponentForElement(el: Element): DevtoolsComponentEntry | null {
 }
 
 function createOverlayElements(): void {
-  if (_overlayEl) return
+  if (_devtoolsState.overlayEl) return
 
-  _overlayEl = document.createElement('div')
-  _overlayEl.id = '__pyreon-overlay'
-  _overlayEl.style.cssText =
+  _devtoolsState.overlayEl = document.createElement('div')
+  _devtoolsState.overlayEl.id = '__pyreon-overlay'
+  _devtoolsState.overlayEl.style.cssText =
     'position:fixed;pointer-events:none;border:2px solid #00b4d8;border-radius:3px;z-index:999999;display:none;transition:all 0.08s ease-out;'
 
-  _tooltipEl = document.createElement('div')
-  _tooltipEl.style.cssText =
+  _devtoolsState.tooltipEl = document.createElement('div')
+  _devtoolsState.tooltipEl.style.cssText =
     'position:fixed;pointer-events:none;background:#1a1a2e;color:#e0e0e0;font:12px/1.4 ui-monospace,monospace;padding:6px 10px;border-radius:4px;z-index:999999;display:none;box-shadow:0 2px 8px rgba(0,0,0,0.3);max-width:400px;white-space:pre-wrap;'
 
-  document.body.appendChild(_overlayEl)
-  document.body.appendChild(_tooltipEl)
+  document.body.appendChild(_devtoolsState.overlayEl)
+  document.body.appendChild(_devtoolsState.tooltipEl)
 }
 
 function positionOverlay(rect: DOMRect): void {
-  if (!_overlayEl) return
-  _overlayEl.style.display = 'block'
-  _overlayEl.style.top = `${rect.top}px`
-  _overlayEl.style.left = `${rect.left}px`
-  _overlayEl.style.width = `${rect.width}px`
-  _overlayEl.style.height = `${rect.height}px`
+  if (!_devtoolsState.overlayEl) return
+  _devtoolsState.overlayEl.style.display = 'block'
+  _devtoolsState.overlayEl.style.top = `${rect.top}px`
+  _devtoolsState.overlayEl.style.left = `${rect.left}px`
+  _devtoolsState.overlayEl.style.width = `${rect.width}px`
+  _devtoolsState.overlayEl.style.height = `${rect.height}px`
 }
 
 function positionTooltip(entry: DevtoolsComponentEntry, rect: DOMRect): void {
-  if (!_tooltipEl) return
+  if (!_devtoolsState.tooltipEl) return
   const childCount = entry.childIds.length
   let info = `<${entry.name}>`
   if (childCount > 0) info += `\n  ${childCount} child component${childCount === 1 ? '' : 's'}`
-  _tooltipEl.textContent = info
-  _tooltipEl.style.display = 'block'
-  _tooltipEl.style.top = `${rect.top - 30}px`
-  _tooltipEl.style.left = `${rect.left}px`
+  _devtoolsState.tooltipEl.textContent = info
+  _devtoolsState.tooltipEl.style.display = 'block'
+  _devtoolsState.tooltipEl.style.top = `${rect.top - 30}px`
+  _devtoolsState.tooltipEl.style.left = `${rect.left}px`
   if (rect.top < 35) {
-    _tooltipEl.style.top = `${rect.bottom + 4}px`
+    _devtoolsState.tooltipEl.style.top = `${rect.bottom + 4}px`
   }
 }
 
 function hideOverlayElements(): void {
-  if (_overlayEl) _overlayEl.style.display = 'none'
-  if (_tooltipEl) _tooltipEl.style.display = 'none'
-  _currentHighlight = null
+  if (_devtoolsState.overlayEl) _devtoolsState.overlayEl.style.display = 'none'
+  if (_devtoolsState.tooltipEl) _devtoolsState.tooltipEl.style.display = 'none'
+  _devtoolsState.currentHighlight = null
 }
 
 /** @internal — exported for testing only */
 export function onOverlayMouseMove(e: MouseEvent): void {
   const target = document.elementFromPoint(e.clientX, e.clientY)
-  if (!target || target === _overlayEl || target === _tooltipEl) return
+  if (!target || target === _devtoolsState.overlayEl || target === _devtoolsState.tooltipEl) return
 
   const entry = findComponentForElement(target)
   if (!entry?.el) {
@@ -170,8 +196,8 @@ export function onOverlayMouseMove(e: MouseEvent): void {
     return
   }
 
-  if (entry.el === _currentHighlight) return
-  _currentHighlight = entry.el
+  if (entry.el === _devtoolsState.currentHighlight) return
+  _devtoolsState.currentHighlight = entry.el
 
   const rect = entry.el.getBoundingClientRect()
   positionOverlay(rect)
@@ -207,8 +233,8 @@ function onOverlayKeydown(e: KeyboardEvent): void {
 }
 
 function enableOverlay(): void {
-  if (_overlayActive) return
-  _overlayActive = true
+  if (_devtoolsState.overlayActive) return
+  _devtoolsState.overlayActive = true
   createOverlayElements()
   document.addEventListener('mousemove', onOverlayMouseMove, true)
   document.addEventListener('click', onOverlayClick, true)
@@ -217,26 +243,26 @@ function enableOverlay(): void {
 }
 
 function disableOverlay(): void {
-  if (!_overlayActive) return
-  _overlayActive = false
+  if (!_devtoolsState.overlayActive) return
+  _devtoolsState.overlayActive = false
   document.removeEventListener('mousemove', onOverlayMouseMove, true)
   document.removeEventListener('click', onOverlayClick, true)
   document.removeEventListener('keydown', onOverlayKeydown, true)
   document.body.style.cursor = ''
-  if (_overlayEl) _overlayEl.style.display = 'none'
-  if (_tooltipEl) _tooltipEl.style.display = 'none'
-  _currentHighlight = null
+  if (_devtoolsState.overlayEl) _devtoolsState.overlayEl.style.display = 'none'
+  if (_devtoolsState.tooltipEl) _devtoolsState.tooltipEl.style.display = 'none'
+  _devtoolsState.currentHighlight = null
 }
 
 // ─── Installation ─────────────────────────────────────────────────────────────
+// `installed` is in `_devtoolsState` above (cross-module-instance shared).
 
-let _installed = false
 // Resolved once at module load — avoids per-call typeof branch in coverage
 const _hasWindow = typeof window !== 'undefined'
 
 export function installDevTools(): void {
-  if (!_hasWindow || _installed) return
-  _installed = true
+  if (!_hasWindow || _devtoolsState.installed) return
+  _devtoolsState.installed = true
 
   const devtools: PyreonDevtools = {
     version: '0.1.0',
@@ -294,7 +320,7 @@ export function installDevTools(): void {
   window.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.shiftKey && e.key === 'P') {
       e.preventDefault()
-      if (_overlayActive) disableOverlay()
+      if (_devtoolsState.overlayActive) disableOverlay()
       else enableOverlay()
     }
   })
@@ -311,7 +337,7 @@ export function installDevTools(): void {
     highlight: (id: string) => devtools.highlight(id),
     /** Toggle component inspector overlay */
     inspect: () => {
-      if (_overlayActive) disableOverlay()
+      if (_devtoolsState.overlayActive) disableOverlay()
       else enableOverlay()
     },
     /** Print component count */

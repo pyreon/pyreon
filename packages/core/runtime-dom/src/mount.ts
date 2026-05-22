@@ -18,7 +18,13 @@ import {
   reportError,
   runWithHooks,
 } from '@pyreon/core'
-import { effectScope, renderEffect, runUntracked, setCurrentScope } from '@pyreon/reactivity'
+import {
+  defineCrossModuleState,
+  effectScope,
+  renderEffect,
+  runUntracked,
+  setCurrentScope,
+} from '@pyreon/reactivity'
 import { registerComponent, unregisterComponent } from './devtools'
 import { mountFor, mountKeyedList, mountReactive } from './nodes'
 import { applyProps } from './props'
@@ -35,16 +41,30 @@ const noop: Cleanup = () => {
   /* noop */
 }
 
-// When > 0, we're mounting children inside an element — child cleanups can skip
-// DOM removal (parent element removal handles it). This avoids allocating a
-// removeChild closure for every nested element that has no reactive work.
-let _elementDepth = 0
-
-// Stack tracking which component is currently being mounted (depth-first order).
-// Used to infer parent/child relationships for DevTools.
-// Only allocated in dev — production mounts skip devtools entirely.
-let _mountingStack: string[] | undefined
-if (__DEV__) _mountingStack = []
+// Cross-module-instance mount state. `elementDepth` / `svgDepth` /
+// `mathmlDepth` track namespace + cleanup depth across the synchronous mount
+// frame; duplicate `@pyreon/runtime-dom` instances must share these so
+// nested mounts dispatched through different instances still see a
+// consistent depth value.
+interface MountState {
+  elementDepth: number
+  svgDepth: number
+  mathmlDepth: number
+  mountingStack: string[] | undefined
+}
+const _mountState = defineCrossModuleState<MountState>(
+  'pyreon-runtime-dom/mount-state',
+  () => ({
+    elementDepth: 0,
+    svgDepth: 0,
+    mathmlDepth: 0,
+    // Dev-only — production paths never touch this. We allocate the array
+    // unconditionally inside the dev branch in the init() so the first
+    // mount in __DEV__ doesn't pay an extra check; the `mountingStack`
+    // field is `undefined` in prod regardless of which instance reads it.
+    mountingStack: __DEV__ ? [] : undefined,
+  }),
+)
 
 /**
  * Mount a single child into `parent`, inserting before `anchor` (null = append).
@@ -63,12 +83,12 @@ export function mountChild(
   if (typeof child === 'function') {
     const sample = runUntracked(() => (child as () => VNodeChild | VNodeChild[])())
     if (isKeyedArray(sample)) {
-      const prevDepth = _elementDepth
-      _elementDepth = 0
+      const prevDepth = _mountState.elementDepth
+      _mountState.elementDepth = 0
       const cleanup = mountKeyedList(child as () => VNode[], parent, anchor, (v, p, a) =>
         mountChild(v, p, a),
       )
-      _elementDepth = prevDepth
+      _mountState.elementDepth = prevDepth
       return cleanup
     }
     // Text fast path: reactive string/number/boolean — update text.data in-place
@@ -80,17 +100,17 @@ export function mountChild(
         const next = v == null || v === false ? '' : String(v as string | number)
         if (next !== text.data) text.data = next
       })
-      if (_elementDepth > 0) return dispose
+      if (_mountState.elementDepth > 0) return dispose
       return () => {
         dispose()
         const p = text.parentNode
         if (p && (p as Element).isConnected !== false) p.removeChild(text)
       }
     }
-    const prevDepth = _elementDepth
-    _elementDepth = 0
+    const prevDepth = _mountState.elementDepth
+    _mountState.elementDepth = 0
     const cleanup = mountReactive(child as () => VNodeChild, parent, anchor, mountChild)
-    _elementDepth = prevDepth
+    _mountState.elementDepth = prevDepth
     return cleanup
   }
 
@@ -111,13 +131,13 @@ export function mountChild(
     const native = child as unknown as NativeItem
     parent.insertBefore(native.el, anchor)
     if (!native.cleanup) {
-      if (_elementDepth > 0) return noop
+      if (_mountState.elementDepth > 0) return noop
       return () => {
         const p = native.el.parentNode
         if (p && (p as Element).isConnected !== false) p.removeChild(native.el)
       }
     }
-    if (_elementDepth > 0) return native.cleanup
+    if (_mountState.elementDepth > 0) return native.cleanup
     return () => {
       native.cleanup?.()
       const p = native.el.parentNode
@@ -145,8 +165,8 @@ export function mountChild(
       typeof initialEach === 'function'
         ? (initialEach as () => unknown[])
         : (() => props.each as unknown as unknown[])
-    const prevDepth = _elementDepth
-    _elementDepth = 0
+    const prevDepth = _mountState.elementDepth
+    _mountState.elementDepth = 0
     const cleanup = mountFor(
       source as () => unknown[],
       props.by,
@@ -155,7 +175,7 @@ export function mountChild(
       anchor,
       mountChild,
     )
-    _elementDepth = prevDepth
+    _mountState.elementDepth = prevDepth
     return cleanup
   }
 
@@ -292,13 +312,13 @@ const MATHML_TAGS = new Set([
   'menclose',
 ])
 
-/** Track SVG context depth — children of <svg> inherit the SVG namespace. */
-let _svgDepth = 0
-let _mathmlDepth = 0
+/** Track SVG/MathML context depth — children of <svg> inherit the SVG namespace.
+ *  State lives in `_mountState` above (cross-module-instance shared).
+ */
 
 function createElementWithNS(tag: string): Element {
-  if (_svgDepth > 0 || SVG_TAGS.has(tag)) return document.createElementNS(SVG_NS, tag)
-  if (_mathmlDepth > 0 || MATHML_TAGS.has(tag)) return document.createElementNS(MATHML_NS, tag)
+  if (_mountState.svgDepth > 0 || SVG_TAGS.has(tag)) return document.createElementNS(SVG_NS, tag)
+  if (_mountState.mathmlDepth > 0 || MATHML_TAGS.has(tag)) return document.createElementNS(MATHML_NS, tag)
   return document.createElement(tag)
 }
 
@@ -307,8 +327,8 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
   const el = createElementWithNS(tag)
   const isSvg = tag === 'svg'
   const isMathml = tag === 'math'
-  if (isSvg) _svgDepth++
-  if (isMathml) _mathmlDepth++
+  if (isSvg) _mountState.svgDepth++
+  if (isMathml) _mountState.mathmlDepth++
 
   if (__DEV__ && (vnode.children?.length ?? 0) > 0 && VOID_ELEMENTS.has(vnode.type as string)) {
     console.warn(
@@ -322,11 +342,11 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
   const propCleanup: Cleanup | null = props !== EMPTY_PROPS ? applyProps(el, props) : null
 
   // Mount children inside element context — nested elements can skip DOM removal closures
-  _elementDepth++
+  _mountState.elementDepth++
   const childCleanup = mountChildren(vnode.children ?? [], el, null)
-  _elementDepth--
-  if (isSvg) _svgDepth--
-  if (isMathml) _mathmlDepth--
+  _mountState.elementDepth--
+  if (isSvg) _mountState.svgDepth--
+  if (isMathml) _mountState.mathmlDepth--
 
   parent.insertBefore(el, anchor)
 
@@ -338,14 +358,14 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
   }
 
   if (!propCleanup && childCleanup === noop && !ref) {
-    if (_elementDepth > 0) return noop
+    if (_mountState.elementDepth > 0) return noop
     return () => {
       const p = el.parentNode
       if (p && (p as Element).isConnected !== false) p.removeChild(el)
     }
   }
 
-  if (_elementDepth > 0) {
+  if (_mountState.elementDepth > 0) {
     if (!ref && !propCleanup) return childCleanup
     if (!ref && propCleanup)
       return () => {
@@ -397,8 +417,8 @@ function mountComponent(
   let devParentId: string | null | undefined
   if (__DEV__) {
     compId = `${componentName}-${Math.random().toString(36).slice(2, 9)}`
-    devParentId = _mountingStack![_mountingStack!.length - 1] ?? null
-    _mountingStack!.push(compId)
+    devParentId = _mountState.mountingStack![_mountState.mountingStack!.length - 1] ?? null
+    _mountState.mountingStack!.push(compId)
   }
 
   // Merge vnode.children into props.children if not already set
@@ -422,7 +442,7 @@ function mountComponent(
     hooks = result.hooks
     output = result.vnode
   } catch (err) {
-    if (__DEV__) _mountingStack!.pop()
+    if (__DEV__) _mountState.mountingStack!.pop()
     setCurrentScope(null)
     scope.stop()
     reportError({
@@ -475,7 +495,7 @@ function mountComponent(
   try {
     subtreeCleanup = output != null ? mountChild(output, parent, anchor) : noop
   } catch (err) {
-    if (__DEV__) _mountingStack!.pop()
+    if (__DEV__) _mountState.mountingStack!.pop()
     scope.stop()
     const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
     if (!handled) {
@@ -492,7 +512,7 @@ function mountComponent(
   }
 
   if (__DEV__) {
-    _mountingStack!.pop()
+    _mountState.mountingStack!.pop()
     const firstEl = parent instanceof Element ? parent.firstElementChild : null
     registerComponent(compId!, componentName, firstEl, devParentId!)
   }

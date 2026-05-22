@@ -1,5 +1,5 @@
 import { createContext, onUnmount, useContext } from '@pyreon/core'
-import { computed, signal } from '@pyreon/reactivity'
+import { computed, defineCrossModuleState, signal } from '@pyreon/reactivity'
 import { buildNameIndex, buildPath, resolveRoute, stringifyQuery } from './match'
 import { getRedirectInfo } from './redirect'
 import { ScrollManager } from './scroll'
@@ -41,21 +41,27 @@ export const RouterContext = createContext<RouterInstance | null>(null)
 
 // Module-level fallback — safe for CSR (single-threaded), not for concurrent SSR.
 // RouterProvider also sets this so legacy useRouter() calls outside the tree work.
-let _activeRouter: RouterInstance | null = null
+// Hosted on globalThis so duplicate `@pyreon/router` module instances share the
+// SAME active-router reference — without this, a `useRouter()` call resolved
+// against one instance would miss the router set by another instance.
+const _routerState = defineCrossModuleState<{ activeRouter: RouterInstance | null }>(
+  'pyreon-router/active-router-state',
+  () => ({ activeRouter: null }),
+)
 
 export function getActiveRouter(): RouterInstance | null {
-  return useContext(RouterContext) ?? _activeRouter
+  return useContext(RouterContext) ?? _routerState.activeRouter
 }
 
 export function setActiveRouter(router: RouterInstance | null): void {
   if (router) router._viewDepth = 0
-  _activeRouter = router
+  _routerState.activeRouter = router
 }
 
 // ─── Hooks ────────────────────────────────────────────────────────────────────
 
 export function useRouter(): Router {
-  const router = useContext(RouterContext) ?? _activeRouter
+  const router = useContext(RouterContext) ?? _routerState.activeRouter
   if (!router)
     throw new Error(
       '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
@@ -67,7 +73,7 @@ export function useRoute<TPath extends string = string>(): () => ResolvedRoute<
   import('./types').ExtractParams<TPath> & Record<string, string>,
   Record<string, string>
 > {
-  const router = useContext(RouterContext) ?? _activeRouter
+  const router = useContext(RouterContext) ?? _routerState.activeRouter
   if (!router)
     throw new Error(
       '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
@@ -86,7 +92,7 @@ export function useRoute<TPath extends string = string>(): () => ResolvedRoute<
  * })
  */
 export function onBeforeRouteLeave(guard: NavigationGuard): () => void {
-  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  const router = (useContext(RouterContext) ?? _routerState.activeRouter) as RouterInstance | null
   if (!router)
     throw new Error(
       '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
@@ -115,7 +121,7 @@ export function onBeforeRouteLeave(guard: NavigationGuard): () => void {
  * })
  */
 export function onBeforeRouteUpdate(guard: NavigationGuard): () => void {
-  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  const router = (useContext(RouterContext) ?? _routerState.activeRouter) as RouterInstance | null
   if (!router)
     throw new Error(
       '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
@@ -149,30 +155,39 @@ export function onBeforeRouteUpdate(guard: NavigationGuard): () => void {
 // Shared beforeunload handler — single listener for all active blockers.
 // Attached when the first blocker registers, detached when the last one is
 // removed. Avoids listener accumulation from multiple useBlocker() calls.
-let _beforeUnloadRefCount = 0
+//
+// Hosted on globalThis so duplicate `@pyreon/router` instances share ONE
+// refcount + ONE listener — without this, retain/release calls landing on
+// different instances would each register their own listener (event
+// listener pileup) AND each maintain a separate refcount (the listener
+// detaches before all blockers are released).
+const _beforeUnloadState = defineCrossModuleState<{ refCount: number }>(
+  'pyreon-router/before-unload-state',
+  () => ({ refCount: 0 }),
+)
 const _beforeUnloadHandler = (e: BeforeUnloadEvent) => {
   e.preventDefault()
 }
 
 function retainBeforeUnload(): void {
   if (!_isBrowser) return
-  if (_beforeUnloadRefCount === 0) {
+  if (_beforeUnloadState.refCount === 0) {
     window.addEventListener('beforeunload', _beforeUnloadHandler)
   }
-  _beforeUnloadRefCount++
+  _beforeUnloadState.refCount++
 }
 
 function releaseBeforeUnload(): void {
   if (!_isBrowser) return
-  _beforeUnloadRefCount--
-  if (_beforeUnloadRefCount <= 0) {
-    _beforeUnloadRefCount = 0
+  _beforeUnloadState.refCount--
+  if (_beforeUnloadState.refCount <= 0) {
+    _beforeUnloadState.refCount = 0
     window.removeEventListener('beforeunload', _beforeUnloadHandler)
   }
 }
 
 export function useBlocker(fn: BlockerFn): Blocker {
-  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  const router = (useContext(RouterContext) ?? _routerState.activeRouter) as RouterInstance | null
   if (!router)
     throw new Error(
       '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
@@ -220,7 +235,7 @@ export function useBlocker(fn: BlockerFn): Blocker {
  * ```
  */
 export function useIsActive(path: string, exact = false): () => boolean {
-  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  const router = (useContext(RouterContext) ?? _routerState.activeRouter) as RouterInstance | null
   if (!router)
     throw new Error(
       '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
@@ -394,7 +409,7 @@ function shallowEqual<T extends Record<string, unknown>>(a: T, b: T): boolean {
 }
 
 function _getRouter(): RouterInstance {
-  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  const router = (useContext(RouterContext) ?? _routerState.activeRouter) as RouterInstance | null
   if (!router)
     throw new Error(
       '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
@@ -1223,7 +1238,7 @@ export function createRouter<TNames extends string = string>(
       router._abortController?.abort()
       router._abortController = null
       // Clear global ref so stale router doesn't survive in SSR or re-creation
-      if (_activeRouter === router) _activeRouter = null
+      if (_routerState.activeRouter === router) _routerState.activeRouter = null
       if (__DEV__ && _isBrowser) {
         const g = globalThis as Record<string, unknown>
         if (g.__pyreon_hmr_swap__ === router._hmrSwap) {

@@ -1,7 +1,7 @@
 import type { ClassValue, Props } from '@pyreon/core'
 import { cx, normalizeStyleValue, toKebabCase } from '@pyreon/core'
 
-import { batch, renderEffect } from '@pyreon/reactivity'
+import { batch, defineCrossModuleState, renderEffect } from '@pyreon/reactivity'
 import { DELEGATED_EVENTS, delegatedPropName } from './delegate'
 
 type Cleanup = () => void
@@ -17,7 +17,19 @@ const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number)
 
 export type SanitizeFn = (html: string) => string
 
-let _customSanitizer: SanitizeFn | null = null
+// Cross-module-instance shared sanitizer + style-keys tracker. Without
+// sharing, a `setSanitizer(DOMPurify.sanitize)` call resolved against one
+// `@pyreon/runtime-dom` instance would be invisible to `innerHTML` writes
+// resolved through another instance — XSS risk if the second instance
+// falls back to its (uncustomized) sanitizer.
+interface PropsState {
+  customSanitizer: SanitizeFn | null
+  prevStyleKeys: WeakMap<HTMLElement, Set<string>>
+}
+const _propsState = defineCrossModuleState<PropsState>(
+  'pyreon-runtime-dom/props-state',
+  () => ({ customSanitizer: null, prevStyleKeys: new WeakMap() }),
+)
 
 /**
  * Set a custom HTML sanitizer used by `innerHTML` and `sanitizeHtml()`.
@@ -36,7 +48,7 @@ let _customSanitizer: SanitizeFn | null = null
  * setSanitizer(null)
  */
 export function setSanitizer(fn: SanitizeFn | null): void {
-  _customSanitizer = fn
+  _propsState.customSanitizer = fn
 }
 
 // Safe HTML tags allowed by the fallback sanitizer (block + inline, no scripts/embeds/forms)
@@ -160,7 +172,7 @@ function sanitizeNode(node: Node): void {
  */
 export function sanitizeHtml(html: string): string {
   // User-provided sanitizer takes priority (e.g. DOMPurify)
-  if (_customSanitizer) return _customSanitizer(html)
+  if (_propsState.customSanitizer) return _propsState.customSanitizer(html)
   // DOM-based allowlist sanitizer — DOMParser is available in all browser targets.
   // sanitizeHtml is only called for innerHTML (DOM-only), so SSR fallback is not needed.
   return fallbackSanitize(html)
@@ -367,24 +379,24 @@ const UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
 // so a reactive style going from `{ color, fontSize }` to `{ color }` removes
 // the stale `fontSize`. React/Vue/Solid all do this diff; previously Pyreon
 // only applied new keys, leaking the removed ones onto the DOM.
-const _prevStyleKeys: WeakMap<HTMLElement, Set<string>> = new WeakMap()
+// State lives in `_propsState.prevStyleKeys` above (cross-module-instance shared).
 
 /** Apply a style prop (string or object). */
 function applyStyleProp(el: HTMLElement, value: unknown): void {
   if (typeof value === 'string') {
     // cssText replaces everything — drop any tracked object-mode keys.
     el.style.cssText = value
-    _prevStyleKeys.delete(el)
+    _propsState.prevStyleKeys.delete(el)
     return
   }
 
-  const prev = _prevStyleKeys.get(el)
+  const prev = _propsState.prevStyleKeys.get(el)
 
   if (value == null) {
     // Explicit null/undefined: clear whatever object-mode keys we set.
     if (prev) {
       for (const propName of prev) el.style.removeProperty(propName)
-      _prevStyleKeys.delete(el)
+      _propsState.prevStyleKeys.delete(el)
     }
     return
   }
@@ -403,8 +415,8 @@ function applyStyleProp(el: HTMLElement, value: unknown): void {
         if (!next.has(propName)) el.style.removeProperty(propName)
       }
     }
-    if (next.size === 0) _prevStyleKeys.delete(el)
-    else _prevStyleKeys.set(el, next)
+    if (next.size === 0) _propsState.prevStyleKeys.delete(el)
+    else _propsState.prevStyleKeys.set(el, next)
   }
 }
 

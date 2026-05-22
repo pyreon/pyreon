@@ -9,14 +9,21 @@ import {
   provide,
   useContext,
 } from '@pyreon/core'
-import { computed, signal } from '@pyreon/reactivity'
+import { computed, defineCrossModuleState, signal } from '@pyreon/reactivity'
 import { LoaderDataContext, prefetchLoaderData } from './loader'
 import { _setDefaultChromeLayout } from './match'
 import { isLazy, RouterContext, setActiveRouter } from './router'
 import type { LazyComponent, ResolvedRoute, RouteRecord, Router, RouterInstance } from './types'
 
-// Track prefetched paths per router to avoid duplicate fetches
-const _prefetched = new WeakMap<RouterInstance, Set<string>>()
+// Track prefetched paths per router to avoid duplicate fetches.
+// Cross-module-instance shared so two `@pyreon/router` instances using the
+// SAME RouterInstance (via the cross-module-state shared `_routerState.activeRouter`)
+// don't each maintain a separate prefetch set — preventing duplicate fetches
+// when prefetch is triggered from code resolved against different instances.
+const _prefetched = defineCrossModuleState<{ map: WeakMap<RouterInstance, Set<string>> }>(
+  'pyreon-router/prefetched-state',
+  () => ({ map: new WeakMap() }),
+).map
 
 // ─── RouterProvider ───────────────────────────────────────────────────────────
 

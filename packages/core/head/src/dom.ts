@@ -1,9 +1,18 @@
+import { defineCrossModuleState } from '@pyreon/reactivity'
 import type { HeadContextValue } from './context'
 
 const ATTR = 'data-pyreon-head'
 
-/** Tracks managed elements by key — avoids querySelectorAll on every sync */
-const managedElements = new Map<string, Element>()
+/** Tracks managed elements by key — avoids querySelectorAll on every sync.
+ * Cross-module-instance shared so two `@pyreon/head` instances writing
+ * tags to the SAME document.head don't each keep separate trackers
+ * (would silently leak head tags: instance A writes a tag, instance B's
+ * sync sees it as "not mine" and re-creates a duplicate).
+ */
+const managedElements = defineCrossModuleState<{ map: Map<string, Element> }>(
+  'pyreon-head/managed-elements-state',
+  () => ({ map: new Map() }),
+).map
 
 /**
  * Sync the resolved head tags to the real DOM <head>.

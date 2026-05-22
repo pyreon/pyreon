@@ -1,5 +1,5 @@
 import type { NativeItem, VNodeChild } from '@pyreon/core'
-import { renderEffect } from '@pyreon/reactivity'
+import { defineCrossModuleState, renderEffect } from '@pyreon/reactivity'
 import { mountChild } from './mount'
 import { _bindEvent } from './props'
 
@@ -144,7 +144,15 @@ export function _bindDirect(
 // generous enough that no real codebase will hit the cap. Apps that
 // genuinely need a different cap can swap their own _tpl wrapper.
 const TPL_CACHE_MAX = 1024
-const _tplCache = new Map<string, HTMLTemplateElement>()
+// Cross-module-instance shared template cache. Two duplicate
+// `@pyreon/runtime-dom` instances each cloning the SAME html string would
+// otherwise each parse + cache a fresh <template> element (wasted work +
+// 2× memory). Shared via globalThis so the second instance hits the cache.
+const _tplCacheState = defineCrossModuleState<{ cache: Map<string, HTMLTemplateElement> }>(
+  'pyreon-runtime-dom/template-cache-state',
+  () => ({ cache: new Map() }),
+)
+const _tplCache = _tplCacheState.cache
 
 /**
  * Compiler-emitted template instantiation.
