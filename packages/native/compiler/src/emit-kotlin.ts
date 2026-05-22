@@ -175,22 +175,39 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     // `by` delegate as `remember` → bare reads / writes at use sites
     // continue to work without parens.
     //
-    // Note: `rememberSaveable` requires the value type to be
-    // `Parcelable` / `Serializable` (or carry a custom Saver). For
-    // complex types — e.g. `List<Todo>` — Kotlin's compile-time
-    // serialization plugin (or a custom `Saver`) is needed; Phase 2
-    // will wire one. For now the emit is structurally correct and
-    // compiles against Compose stubs; runtime persistence of complex
-    // types lands when the Saver bridge ships.
+    // Phase 2 follow-up — Compose Saver glue. When the type is NOT
+    // natively Saveable (Bundle-compatible primitives + enums), emit
+    // a kotlinx-serialization JSON-backed `Saver<T, String>` passed
+    // via `rememberSaveable(saver = ...)`. Closes G5's known caveat
+    // ("`rememberSaveable<List<Todo>>` needs a custom Saver"). The
+    // emit assumes the consumer's Compose project includes the
+    // `kotlinx-serialization-json` runtime dep (same kotlinx-
+    // serialization plugin that #857 already requires for the
+    // `@Serializable` data class annotation).
     //
-    // Storage key is not currently emitted into the call site —
-    // `rememberSaveable(key = "...")` overload accepts a key for
-    // de-dup across recompositions but isn't required for basic
-    // persistence; included if Phase 2 needs cross-host disambiguation.
+    // Native types continue to use the direct shape — no Saver
+    // overhead when not needed. Native iff `kind in {string,
+    // number, boolean}` OR a known enum (G6 emit produces enum
+    // class with Bundle-friendly String raw value).
     const isStorage = d.storageKey !== undefined
     const wrapperFn = isStorage ? 'rememberSaveable' : 'remember'
+    const needsSaver = isStorage && !isRememberSaveableNativeType(d.type)
+    const typeStr = kotlinType(d.type, ctx, d.name)
+    // The Saver inline expression. `Json.encodeToString` / `decodeFromString`
+    // require the value type to be `@Serializable` (which Phase 2 #857
+    // adds to every emitted data class) OR a stdlib type kotlinx-
+    // serialization handles natively.
+    const saverArg = needsSaver
+      ? `saver = Saver<${typeStr}, String>(save = { Json.encodeToString(it) }, restore = { Json.decodeFromString<${typeStr}>(it) })`
+      : ''
     if (d.type.kind === 'array' && d.initial.kind === 'array' && d.initial.elements.length === 0) {
-      return `var ${kotlinIdent(d.name)} by ${wrapperFn} { mutableStateOf<${kotlinType(d.type, ctx, d.name)}>(listOf()) }`
+      if (needsSaver) {
+        return `var ${kotlinIdent(d.name)} by rememberSaveable(${saverArg}) { mutableStateOf<${typeStr}>(listOf()) }`
+      }
+      return `var ${kotlinIdent(d.name)} by ${wrapperFn} { mutableStateOf<${typeStr}>(listOf()) }`
+    }
+    if (needsSaver) {
+      return `var ${kotlinIdent(d.name)} by rememberSaveable(${saverArg}) { mutableStateOf(${initial}) }`
     }
     return `var ${kotlinIdent(d.name)} by ${wrapperFn} { mutableStateOf(${initial}) }`
   }
@@ -264,6 +281,45 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
  * surface (roadmap PR 5a). Internal callers should still go through
  * `emitKotlin()` for the full component-level emit.
  */
+/**
+ * Predicate: is this type natively Saveable by Compose's
+ * `rememberSaveable` without a custom Saver? Native types are:
+ *   - primitives (Int, Long, Float, Double, Boolean, String, Char)
+ *   - known enums (G6 emit produces `enum class X` which is
+ *     bundleable via the enum's name/ordinal)
+ *   - Optional<T> where T is native (`T | null` / `T | undefined`)
+ *
+ * Non-native types (arrays of data classes, nested objects, mixed
+ * unions) need a custom Saver — Phase 2's Compose Saver glue emits
+ * a kotlinx-serialization JSON-backed `Saver<T, String>` for those.
+ *
+ * Mirror of emit-swift.ts's `isAppStorageNativeType`. The two
+ * predicates are structurally similar but reflect each platform's
+ * native-saveable type set (which differ slightly — Compose's
+ * Bundle accepts more types than @AppStorage's UserDefaults).
+ */
+function isRememberSaveableNativeType(t: TypeIR): boolean {
+  switch (t.kind) {
+    case 'string':
+    case 'number':
+    case 'boolean':
+      return true
+    case 'typeRef':
+      return t.args.length === 0 && _enumNames.has(t.name)
+    case 'union': {
+      const nulls = t.branches.filter(
+        (b) => b.kind === 'null' || b.kind === 'undefined',
+      ).length
+      const others = t.branches.filter(
+        (b) => b.kind !== 'null' && b.kind !== 'undefined',
+      )
+      return nulls > 0 && others.length === 1 && isRememberSaveableNativeType(others[0]!)
+    }
+    default:
+      return false
+  }
+}
+
 export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): string {
   switch (t.kind) {
     case 'number':
