@@ -25,6 +25,8 @@
  *     gate, so the whole module tree-shakes out of prod bundles.
  */
 
+import { defineCrossModuleState } from './cross-module-state'
+
 export interface ReactiveTraceEntry {
   /** Signal `label` (set via `signal(v, { name })` or the vite plugin's dev auto-naming). `undefined` for anonymous signals. */
   name: string | undefined
@@ -45,11 +47,17 @@ export interface ReactiveTraceEntry {
 const CAP = 50
 
 // Lazily allocated — apps that never write a signal in dev (rare) pay
-// nothing until the first write. `_count` is the monotonic total write
-// count; `_count % CAP` is the next slot. Reading reconstructs
+// nothing until the first write. `count` is the monotonic total write
+// count; `count % CAP` is the next slot. Reading reconstructs
 // chronological order from the wrapped buffer.
-let _buf: (ReactiveTraceEntry | undefined)[] | null = null
-let _count = 0
+//
+// Hosted on globalThis so two `@pyreon/reactivity` instances share ONE
+// buffer — a `reportError` on instance A attaches the trace recorded by
+// instance B's signal writes.
+const _state = defineCrossModuleState<{
+  buf: (ReactiveTraceEntry | undefined)[] | null
+  count: number
+}>('pyreon-reactivity/reactive-trace-state', () => ({ buf: null, count: 0 }))
 
 /** Max characters of a value preview before truncation. Keeps the buffer + serialized report small. */
 const PREVIEW_MAX = 80
@@ -97,8 +105,8 @@ function preview(v: unknown): string {
  * @internal
  */
 export function _recordSignalWrite(name: string | undefined, prev: unknown, next: unknown): void {
-  if (_buf === null) _buf = new Array(CAP)
-  _buf[_count % CAP] = {
+  if (_state.buf === null) _state.buf = new Array(CAP)
+  _state.buf[_state.count % CAP] = {
     name,
     prev: preview(prev),
     next: preview(next),
@@ -107,7 +115,7 @@ export function _recordSignalWrite(name: string | undefined, prev: unknown, next
         ? performance.now()
         : Date.now(),
   }
-  _count++
+  _state.count++
 }
 
 /**
@@ -120,16 +128,16 @@ export function _recordSignalWrite(name: string | undefined, prev: unknown, next
  * to the error context.
  */
 export function getReactiveTrace(): ReactiveTraceEntry[] {
-  if (_buf === null || _count === 0) return []
-  if (_count <= CAP) {
-    // Buffer not yet wrapped — entries 0.._count-1 are in order.
-    return _buf.slice(0, _count) as ReactiveTraceEntry[]
+  if (_state.buf === null || _state.count === 0) return []
+  if (_state.count <= CAP) {
+    // Buffer not yet wrapped — entries 0.._state.count-1 are in order.
+    return _state.buf.slice(0, _state.count) as ReactiveTraceEntry[]
   }
-  // Wrapped: oldest entry is at `_count % CAP`, walk forward CAP slots.
-  const start = _count % CAP
+  // Wrapped: oldest entry is at `_state.count % CAP`, walk forward CAP slots.
+  const start = _state.count % CAP
   const out: ReactiveTraceEntry[] = []
   for (let i = 0; i < CAP; i++) {
-    const e = _buf[(start + i) % CAP]
+    const e = _state.buf[(start + i) % CAP]
     if (e) out.push(e)
   }
   return out
@@ -137,6 +145,6 @@ export function getReactiveTrace(): ReactiveTraceEntry[] {
 
 /** Clears the buffer. For test isolation; not part of the app-facing API. */
 export function clearReactiveTrace(): void {
-  _buf = null
-  _count = 0
+  _state.buf = null
+  _state.count = 0
 }

@@ -1,28 +1,55 @@
-// Global subscriber tracking context
+// Global subscriber tracking context.
+//
+// Hosted on `globalThis` via `defineCrossModuleState` so that ALL state in
+// this module is shared across duplicate `@pyreon/reactivity` instances —
+// the foundational bug class fixed for `@pyreon/core` in #855, here applied
+// to the reactivity layer where the consequences are far worse: an effect
+// running under one instance reading a signal from another instance would
+// silently fail to subscribe (instance A sets its own `activeEffect`,
+// instance B's `trackSubscriber` reads instance B's `activeEffect` which
+// is null → subscription dropped → reactivity broken globally).
+//
+// All five state fields (`activeEffect` / `effectDeps` / `depsCollector` /
+// `skipDepsCollection` / `prevEffect`) MUST live on the SAME shared object
+// — splitting them across separate `defineCrossModuleState` calls would
+// re-introduce the cross-instance fragmentation we're trying to close.
 
 import { enqueuePendingNotification, isBatching } from './batch'
+import { defineCrossModuleState } from './cross-module-state'
 
-let activeEffect: (() => void) | null = null
+interface TrackingState {
+  activeEffect: (() => void) | null
+  // Tracks which subscriber sets each effect is registered in, so we can
+  // clean them up before a re-run (dynamic dependency tracking).
+  effectDeps: WeakMap<() => void, Set<Set<() => void>>>
+  // Fast deps collector for renderEffect — avoids WeakMap overhead entirely.
+  // When set, trackSubscriber pushes subscriber sets here instead of effectDeps.
+  depsCollector: Set<() => void>[] | null
+  // Skip deps collection mode — for re-evaluating computeds/effects with static deps.
+  // When true, trackSubscriber only does Set.add (no-op if already subscribed) and skips
+  // the depsCollector.push / WeakMap work entirely.
+  skipDepsCollection: boolean
+  // Stack for inlined tracking in renderEffect — avoids withTracking function call overhead.
+  prevEffect: (() => void) | null
+}
 
-// Tracks which subscriber sets each effect is registered in, so we can
-// clean them up before a re-run (dynamic dependency tracking).
-const effectDeps = new WeakMap<() => void, Set<Set<() => void>>>()
-
-// Fast deps collector for renderEffect — avoids WeakMap overhead entirely.
-// When set, trackSubscriber pushes subscriber sets here instead of effectDeps.
-let _depsCollector: Set<() => void>[] | null = null
-
-// Skip deps collection mode — for re-evaluating computeds/effects with static deps.
-// When true, trackSubscriber only does Set.add (no-op if already subscribed) and skips
-// the _depsCollector.push / WeakMap work entirely.
-let _skipDepsCollection = false
+const _state = defineCrossModuleState<TrackingState>(
+  'pyreon-reactivity/tracking-state',
+  () => ({
+    activeEffect: null,
+    effectDeps: new WeakMap(),
+    depsCollector: null,
+    skipDepsCollection: false,
+    prevEffect: null,
+  }),
+)
 
 export function setDepsCollector(collector: Set<() => void>[] | null): void {
-  _depsCollector = collector
+  _state.depsCollector = collector
 }
 
 export function setSkipDepsCollection(skip: boolean): void {
-  _skipDepsCollection = skip
+  _state.skipDepsCollection = skip
 }
 
 /**
@@ -41,21 +68,22 @@ export interface SubscriberHost {
  * effects never allocate a Set.
  */
 export function trackSubscriber(host: SubscriberHost) {
-  if (activeEffect) {
+  const eff = _state.activeEffect
+  if (eff) {
     if (!host._s) host._s = new Set()
-    host._s.add(activeEffect)
+    host._s.add(eff)
     // Skip collection mode: we're already subscribed (Set.add is no-op),
     // just need activeEffect set for nested computed reads to work.
-    if (_skipDepsCollection) return
-    if (_depsCollector) {
+    if (_state.skipDepsCollection) return
+    if (_state.depsCollector) {
       // Fast path: renderEffect stores deps inline, no WeakMap
-      _depsCollector.push(host._s)
+      _state.depsCollector.push(host._s)
     } else {
       // Record this dep so we can remove it on cleanup
-      let deps = effectDeps.get(activeEffect)
+      let deps = _state.effectDeps.get(eff)
       if (!deps) {
         deps = new Set()
-        effectDeps.set(activeEffect, deps)
+        _state.effectDeps.set(eff, deps)
       }
       deps.add(host._s)
     }
@@ -67,7 +95,7 @@ export function trackSubscriber(host: SubscriberHost) {
  * then clear its dep record. Call this before each re-run and on dispose.
  */
 export function cleanupEffect(fn: () => void): void {
-  const deps = effectDeps.get(fn)
+  const deps = _state.effectDeps.get(fn)
   if (deps) {
     for (const sub of deps) sub.delete(fn)
     deps.clear()
@@ -105,35 +133,32 @@ export function notifySubscribers(subscribers: Set<() => void>) {
 }
 
 export function withTracking<T>(fn: () => void, compute: () => T): T {
-  const prev = activeEffect
-  activeEffect = fn
+  const prev = _state.activeEffect
+  _state.activeEffect = fn
   try {
     return compute()
   } finally {
-    activeEffect = prev
+    _state.activeEffect = prev
   }
 }
 
-// Stack for inlined tracking in renderEffect — avoids withTracking function call overhead.
-let _prevEffect: (() => void) | null = null
-
 export function _setActiveEffect(fn: () => void): void {
-  _prevEffect = activeEffect
-  activeEffect = fn
+  _state.prevEffect = _state.activeEffect
+  _state.activeEffect = fn
 }
 
 export function _restoreActiveEffect(): void {
-  activeEffect = _prevEffect
-  _prevEffect = null
+  _state.activeEffect = _state.prevEffect
+  _state.prevEffect = null
 }
 
 /** Read signals without subscribing. Alias: `untrack`. */
 export function runUntracked<T>(fn: () => T): T {
-  const prev = activeEffect
-  activeEffect = null
+  const prev = _state.activeEffect
+  _state.activeEffect = null
   try {
     return fn()
   } finally {
-    activeEffect = prev
+    _state.activeEffect = prev
   }
 }

@@ -8,6 +8,7 @@
  * when unused.
  */
 
+import { defineCrossModuleState } from './cross-module-state'
 import type { Signal, SignalDebugInfo } from './signal'
 
 // ─── Signal update tracing ───────────────────────────────────────────────────
@@ -29,7 +30,20 @@ interface SignalUpdateEvent {
 
 type SignalUpdateListener = (event: SignalUpdateEvent) => void
 
-let _traceListeners: SignalUpdateListener[] | null = null
+interface DebugState {
+  traceListeners: SignalUpdateListener[] | null
+  whyActive: boolean
+  whyLog: { name: string | undefined; prev: unknown; next: unknown }[]
+}
+
+// Cross-module-instance shared debug state — listeners registered against
+// one `@pyreon/reactivity` instance must fire for signal writes resolved
+// against any other instance.
+const _state = defineCrossModuleState<DebugState>('pyreon-reactivity/debug-state', () => ({
+  traceListeners: null,
+  whyActive: false,
+  whyLog: [],
+}))
 
 /**
  * Register a listener that fires on every signal write.
@@ -41,18 +55,18 @@ let _traceListeners: SignalUpdateListener[] | null = null
  * })
  */
 export function onSignalUpdate(listener: SignalUpdateListener): () => void {
-  if (!_traceListeners) _traceListeners = []
-  _traceListeners.push(listener)
+  if (!_state.traceListeners) _state.traceListeners = []
+  _state.traceListeners.push(listener)
   return () => {
-    if (!_traceListeners) return
-    _traceListeners = _traceListeners.filter((l) => l !== listener)
-    if (_traceListeners.length === 0) _traceListeners = null
+    if (!_state.traceListeners) return
+    _state.traceListeners = _state.traceListeners.filter((l) => l !== listener)
+    if (_state.traceListeners.length === 0) _state.traceListeners = null
   }
 }
 
 /** @internal — called from signal.set() when tracing is active */
 export function _notifyTraceListeners(sig: Signal<unknown>, prev: unknown, next: unknown): void {
-  if (!_traceListeners) return
+  if (!_state.traceListeners) return
   const event: SignalUpdateEvent = {
     signal: sig,
     name: sig.label,
@@ -61,18 +75,15 @@ export function _notifyTraceListeners(sig: Signal<unknown>, prev: unknown, next:
     stack: new Error().stack ?? '',
     timestamp: performance.now(),
   }
-  for (const l of _traceListeners) l(event)
+  for (const l of _state.traceListeners) l(event)
 }
 
 /** Check if any trace listeners are active (fast path for signal.set) */
 export function isTracing(): boolean {
-  return _traceListeners !== null
+  return _state.traceListeners !== null
 }
 
 // ─── why() — trace which signal caused a re-run ──────────────────────────────
-
-let _whyActive = false
-let _whyLog: { name: string | undefined; prev: unknown; next: unknown }[] = []
 
 /**
  * Trace the next signal update. Logs which signals fire and what changed.
@@ -84,9 +95,9 @@ let _whyLog: { name: string | undefined; prev: unknown; next: unknown }[] = []
  * // Console: [pyreon:why] "count": 3 → 5 (2 subscribers)
  */
 export function why(): void {
-  if (_whyActive) return
-  _whyActive = true
-  _whyLog = []
+  if (_state.whyActive) return
+  _state.whyActive = true
+  _state.whyLog = []
 
   const dispose = onSignalUpdate((e) => {
     const _subCount = (e.signal as unknown as { _s: Set<unknown> | null })._s?.size ?? 0
@@ -95,17 +106,17 @@ export function why(): void {
     console.log(
       `[pyreon:why] ${_name}: ${JSON.stringify(e.prev)} → ${JSON.stringify(e.next)} (${_subCount} subscriber${_subCount === 1 ? '' : 's'})`,
     )
-    _whyLog.push({ name: e.name, prev: e.prev, next: e.next })
+    _state.whyLog.push({ name: e.name, prev: e.prev, next: e.next })
   })
 
   // Auto-dispose after the current microtask (captures the synchronous batch)
   queueMicrotask(() => {
     dispose()
-    if (_whyLog.length === 0) {
+    if (_state.whyLog.length === 0) {
       console.log('[pyreon:why] No signal updates detected')
     }
-    _whyActive = false
-    _whyLog = []
+    _state.whyActive = false
+    _state.whyLog = []
   })
 }
 

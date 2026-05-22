@@ -6,7 +6,7 @@
  * surfaces. Design constraints (mirroring `reactive-trace.ts`):
  *
  *   - **Zero cost until attached.** Every instrumentation entry point
- *     early-returns on `!_active`. The registry is empty and no work
+ *     early-returns on `!_state.active`. The registry is empty and no work
  *     happens until a devtools client calls `activateReactiveDevtools()`.
  *     The single call site per creation/track sits inside the existing
  *     `process.env.NODE_ENV !== 'production'` gate (tree-shaken in prod)
@@ -25,6 +25,8 @@
  * they get a stable synthetic label (`derived#12` / `effect#7`).
  */
 
+import { defineCrossModuleState } from './cross-module-state'
+
 export type ReactiveNodeKind = 'signal' | 'derived' | 'effect'
 
 /**
@@ -32,7 +34,7 @@ export type ReactiveNodeKind = 'signal' | 'derived' | 'effect'
  * time from the user's call stack. Powers "Live Program Inlay Hints" — the
  * editor surfaces fire counts at the source line where the node was created.
  *
- * Captured ONLY when devtools is active (`_active === true`). Stack parsing
+ * Captured ONLY when devtools is active (`_state.active === true`). Stack parsing
  * is best-effort across V8 / JSC / SpiderMonkey; returns undefined when the
  * stack format isn't recognized (older runtimes, minified prod, web workers
  * without source maps). Dev gate is the existing `process.env.NODE_ENV` at
@@ -148,32 +150,53 @@ interface NodeRec {
   rate1s: number
 }
 
-let _active = false
-let _nextId = 1
-// id → record. Records are pruned by the FinalizationRegistry the moment
-// the underlying node is GC'd, so this Map never retains a dead node.
-const _byId = new Map<number, NodeRec>()
-// Subscriber-callback identity → node id. Lets `getReactiveGraph()`
-// resolve `_s` Set membership (anonymous `recompute`/`run` closures)
-// back to graph nodes for edge extraction. A WeakMap so a disposed
-// effect's closure doesn't keep its id mapping alive.
-const _subId = new WeakMap<object, number>()
+// Bounded fire ring buffer cap (Effects timeline). Same shape/rationale as
+// reactive-trace.ts — fixed cap, primitives only, never grows.
+const FIRE_CAP = 512
+
+// All devtools-bridge state lives on a single cross-module-instance shared
+// object so a devtools client attached against one `@pyreon/reactivity`
+// instance sees registrations / fires emitted by every other instance.
+//
+// `byId` (Map) + `subId` (WeakMap) + the FinalizationRegistry MUST live on
+// the SAME state object — the finalizer's callback closes over the state
+// reference (not the local Map) so pruning routes to the SAME map every
+// instance reads from. Same WeakRef/FinalizationRegistry baseline as the
+// rest of the framework — no env guards.
+interface RdState {
+  active: boolean
+  nextId: number
+  byId: Map<number, NodeRec>
+  subId: WeakMap<object, number>
+  finalizer: FinalizationRegistry<number>
+  fireBuf: ReactiveFire[] | null
+  fireCount: number
+}
+
+const _state = defineCrossModuleState<RdState>(
+  'pyreon-reactivity/reactive-devtools-state',
+  () => {
+    const partial: Omit<RdState, 'finalizer'> = {
+      active: false,
+      nextId: 1,
+      byId: new Map(),
+      subId: new WeakMap(),
+      fireBuf: null,
+      fireCount: 0,
+    }
+    // Finalizer closes over the byId we just allocated so pruning ALWAYS
+    // routes to the same Map every duplicate module instance reads from.
+    const finalizer = new FinalizationRegistry<number>((id) => {
+      partial.byId.delete(id)
+    })
+    return { ...partial, finalizer }
+  },
+)
 
 /** @internal — finalizer callback; prunes the record when a node is GC'd. */
 export function _rdPrune(id: number): void {
-  _byId.delete(id)
+  _state.byId.delete(id)
 }
-
-// FinalizationRegistry is baseline since Node 14.6 / all modern browsers
-// / Bun — the same universal-availability assumption the codebase already
-// makes for WeakRef. No env guard (avoids an uncoverable dead branch).
-const _finalizer = new FinalizationRegistry<number>(_rdPrune)
-
-// Bounded fire ring buffer (Effects timeline). Same shape/rationale as
-// reactive-trace.ts — fixed cap, primitives only, never grows.
-const FIRE_CAP = 512
-let _fireBuf: ReactiveFire[] | null = null
-let _fireCount = 0
 
 const PREVIEW_MAX = 60
 
@@ -207,7 +230,7 @@ function preview(v: unknown): string {
 
 /** Activate the bridge. Idempotent. Called when a devtools client attaches. */
 export function activateReactiveDevtools(): void {
-  _active = true
+  _state.active = true
 }
 
 /**
@@ -215,14 +238,14 @@ export function activateReactiveDevtools(): void {
  * disconnects so a closed panel leaves zero residue.
  */
 export function deactivateReactiveDevtools(): void {
-  _active = false
-  _byId.clear()
-  _fireBuf = null
-  _fireCount = 0
+  _state.active = false
+  _state.byId.clear()
+  _state.fireBuf = null
+  _state.fireCount = 0
 }
 
 export function isReactiveDevtoolsActive(): boolean {
-  return _active
+  return _state.active
 }
 
 // ── Instrumentation entry points (called from the hot paths, but only
@@ -246,7 +269,7 @@ export function isReactiveDevtoolsActive(): boolean {
  * @internal
  */
 export function _captureCallerLocation(skipFrames: number): SourceLocation | undefined {
-  if (!_active) return undefined
+  if (!_state.active) return undefined
   const err = new Error()
   const raw = err.stack
   if (!raw) return undefined
@@ -308,9 +331,9 @@ export function _rdRegister(
   label: string | undefined,
   loc?: SourceLocation,
 ): number | undefined {
-  if (!_active) return undefined
-  const id = _nextId++
-  _byId.set(id, {
+  if (!_state.active) return undefined
+  const id = _state.nextId++
+  _state.byId.set(id, {
     id,
     kind,
     name: label ?? `${kind === 'signal' ? 'signal' : kind}#${id}`,
@@ -321,8 +344,8 @@ export function _rdRegister(
     loc,
     rate1s: 0,
   })
-  if (sub) _subId.set(sub, id)
-  _finalizer.register(node, id)
+  if (sub) _state.subId.set(sub, id)
+  _state.finalizer.register(node, id)
   // Stash the id on the node so fire events correlate in O(1). Every node
   // we register is a framework-created function/closure (signal/computed
   // `read`, effect `run`) — always extensible, so defineProperty cannot
@@ -343,10 +366,10 @@ export function _rdRegister(
  * @internal
  */
 export function _rdRecordFire(node: object): void {
-  if (!_active) return
+  if (!_state.active) return
   const id = (node as { __pxRdId?: number }).__pxRdId
   if (id === undefined) return
-  const rec = _byId.get(id)
+  const rec = _state.byId.get(id)
   const ts =
     typeof performance !== 'undefined' && typeof performance.now === 'function'
       ? performance.now()
@@ -369,9 +392,9 @@ export function _rdRecordFire(node: object): void {
     }
     rec.lastFire = ts
   }
-  if (_fireBuf === null) _fireBuf = new Array<ReactiveFire>(FIRE_CAP)
-  _fireBuf[_fireCount % FIRE_CAP] = { id, ts }
-  _fireCount++
+  if (_state.fireBuf === null) _state.fireBuf = new Array<ReactiveFire>(FIRE_CAP)
+  _state.fireBuf[_state.fireCount % FIRE_CAP] = { id, ts }
+  _state.fireCount++
 }
 
 // ── Snapshot API (consumed by the devtools hook) ─────────────────────────
@@ -379,7 +402,7 @@ export function _rdRecordFire(node: object): void {
 function resolveSubId(sub: () => void): number | undefined {
   const direct = (sub as { __pxRdId?: number }).__pxRdId
   if (direct !== undefined) return direct
-  return _subId.get(sub)
+  return _state.subId.get(sub)
 }
 
 /**
@@ -390,7 +413,7 @@ function resolveSubId(sub: () => void): number | undefined {
 export function getReactiveGraph(): ReactiveGraph {
   const nodes: ReactiveNode[] = []
   const edges: ReactiveEdge[] = []
-  for (const rec of _byId.values()) {
+  for (const rec of _state.byId.values()) {
     const node = rec.ref.deref()
     if (!node) continue
     const host = rec.hostRef?.deref() ?? null
@@ -442,7 +465,7 @@ export function getFireSummaries(): FireSummary[] {
     typeof performance !== 'undefined' && typeof performance.now === 'function'
       ? performance.now()
       : Date.now()
-  for (const rec of _byId.values()) {
+  for (const rec of _state.byId.values()) {
     if (!rec.loc) continue
     if (!rec.ref.deref()) continue
     const k = `${rec.loc.file}:${rec.loc.line}:${rec.loc.col}`
@@ -481,12 +504,12 @@ export function getFireSummaries(): FireSummary[] {
 
 /** Bounded recent-fire timeline (oldest → newest). Fresh copy. */
 export function getReactiveFires(): ReactiveFire[] {
-  if (_fireBuf === null || _fireCount === 0) return []
-  if (_fireCount <= FIRE_CAP) return _fireBuf.slice(0, _fireCount)
-  const start = _fireCount % FIRE_CAP
+  if (_state.fireBuf === null || _state.fireCount === 0) return []
+  if (_state.fireCount <= FIRE_CAP) return _state.fireBuf.slice(0, _state.fireCount)
+  const start = _state.fireCount % FIRE_CAP
   const out: ReactiveFire[] = []
   for (let i = 0; i < FIRE_CAP; i++) {
-    const e = _fireBuf[(start + i) % FIRE_CAP]
+    const e = _state.fireBuf[(start + i) % FIRE_CAP]
     if (e) out.push(e)
   }
   return out

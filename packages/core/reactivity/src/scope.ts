@@ -1,6 +1,17 @@
 // EffectScope — auto-tracks effects created during a component's setup
 // and disposes them all at once when the component unmounts.
 
+import { defineCrossModuleState } from './cross-module-state'
+
+// Cross-module-instance shared current-scope tracker. An `effect()` created
+// under one `@pyreon/reactivity` instance must register itself with the
+// scope set by `runInScope` on any instance — otherwise its disposal escapes
+// the component lifecycle.
+const _state = defineCrossModuleState<{ currentScope: EffectScope | null }>(
+  'pyreon-reactivity/scope-state',
+  () => ({ currentScope: null }),
+)
+
 export class EffectScope {
   private _effects: { dispose(): void }[] | null = null
   private _active = true
@@ -21,12 +32,12 @@ export class EffectScope {
    * component's scope rather than leaking as global effects.
    */
   runInScope<T>(fn: () => T): T {
-    const prev = _currentScope
-    _currentScope = this
+    const prev = _state.currentScope
+    _state.currentScope = this
     try {
       return fn()
     } finally {
-      _currentScope = prev
+      _state.currentScope = prev
     }
   }
 
@@ -75,14 +86,12 @@ export class EffectScope {
   }
 }
 
-let _currentScope: EffectScope | null = null
-
 export function getCurrentScope(): EffectScope | null {
-  return _currentScope
+  return _state.currentScope
 }
 
 export function setCurrentScope(scope: EffectScope | null): void {
-  _currentScope = scope
+  _state.currentScope = scope
 }
 
 /** Create a new EffectScope. */
@@ -108,7 +117,7 @@ export function effectScope(): EffectScope {
  * })
  */
 export function onScopeDispose(fn: () => void): void {
-  const scope = _currentScope
+  const scope = _state.currentScope
   if (!scope) {
     if (process.env.NODE_ENV !== 'production') {
       // oxlint-disable-next-line no-console

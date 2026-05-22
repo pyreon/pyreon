@@ -1,3 +1,4 @@
+import { defineCrossModuleState } from './cross-module-state'
 import { _captureCallerLocation, _rdRecordFire, _rdRegister } from './reactive-devtools'
 import { getCurrentScope } from './scope'
 import { _restoreActiveEffect, _setActiveEffect, setDepsCollector, withTracking } from './tracking'
@@ -45,7 +46,23 @@ export interface ReactiveSnapshotCapture {
   restore: <T>(snap: unknown, fn: () => T) => T
 }
 
-let _snapshotCapture: ReactiveSnapshotCapture | null = null
+// All of effect.ts's module-level mutable state lives on a single
+// cross-module-instance-shared object so effects created under one
+// `@pyreon/reactivity` instance use the SAME snapshot-capture / cleanup /
+// inner-effect / error-handler state as another instance.
+interface EffectState {
+  snapshotCapture: ReactiveSnapshotCapture | null
+  cleanupCollector: (() => void)[] | null
+  innerEffectCollector: Effect[] | null
+  userErrorHandler: ((err: unknown) => void) | undefined
+}
+
+const _state = defineCrossModuleState<EffectState>('pyreon-reactivity/effect-state', () => ({
+  snapshotCapture: null,
+  cleanupCollector: null,
+  innerEffectCollector: null,
+  userErrorHandler: undefined,
+}))
 
 /**
  * Register a capture/restore pair so reactivity-layer effects (`_bind`,
@@ -55,13 +72,8 @@ let _snapshotCapture: ReactiveSnapshotCapture | null = null
  * replaces the previously registered hook.
  */
 export function setSnapshotCapture(hook: ReactiveSnapshotCapture | null): void {
-  _snapshotCapture = hook
+  _state.snapshotCapture = hook
 }
-
-// ─── onCleanup ───────────────────────────────────────────────────────────────
-// Thread-local collector for cleanup functions registered via onCleanup()
-// during effect execution. Pushed/popped around the user callback in effect().
-let _cleanupCollector: (() => void)[] | null = null
 
 /**
  * Register a cleanup function inside an effect. The cleanup runs:
@@ -81,16 +93,10 @@ let _cleanupCollector: (() => void)[] | null = null
  * })
  */
 export function onCleanup(fn: () => void): void {
-  if (_cleanupCollector) {
-    _cleanupCollector.push(fn)
+  if (_state.cleanupCollector) {
+    _state.cleanupCollector.push(fn)
   }
 }
-
-// Thread-local collector for nested effects — captures effect() calls made
-// inside another effect's fn() body so the parent can dispose them on
-// re-run / disposal. Without this, inner effects leak across outer
-// lifecycle boundaries (caught by cleanup-nested.test.ts).
-let _innerEffectCollector: Effect[] | null = null
 
 // Global error handler — called for unhandled errors thrown inside effects.
 // Defaults to console.error so silent failures are never swallowed.
@@ -125,11 +131,9 @@ function _defaultErrorHandler(err: unknown): void {
   console.error('[pyreon] Unhandled effect error:', err)
 }
 
-let _userErrorHandler: ((err: unknown) => void) | undefined
-
 export const _errorHandler: (err: unknown) => void = (err) => {
   // 1. User-set or default direct handler.
-  ;(_userErrorHandler ?? _defaultErrorHandler)(err)
+  ;(_state.userErrorHandler ?? _defaultErrorHandler)(err)
   // 2. Global telemetry bridge (installed by @pyreon/core's
   //    registerErrorHandler). Forwards effect errors into reportError so
   //    Sentry/Datadog wiring captures them alongside component errors.
@@ -137,7 +141,7 @@ export const _errorHandler: (err: unknown) => void = (err) => {
 }
 
 export function setErrorHandler(fn: (err: unknown) => void): void {
-  _userErrorHandler = fn
+  _state.userErrorHandler = fn
 }
 
 /** Remove an effect from all dependency subscriber sets (local deps array). */
@@ -183,7 +187,7 @@ export function effect(
   // even when the global context stack has been destructively truncated by
   // mountReactive's restoreContextStack cleanup. See `_bind` for the full
   // rationale.
-  const snapshot = _snapshotCapture ? _snapshotCapture.capture() : null
+  const snapshot = _state.snapshotCapture ? _state.snapshotCapture.capture() : null
   let disposed = false
   let isFirstRun = true
   let cleanup: (() => void) | undefined
@@ -238,34 +242,34 @@ export function effect(
     // Start a new inner-effect collection window. Effects created during
     // fn() will push themselves into this array and be disposed on the
     // next re-run or on dispose.
-    const outerCollector = _innerEffectCollector
+    const outerCollector = _state.innerEffectCollector
     const myInners: Effect[] = []
-    _innerEffectCollector = myInners
+    _state.innerEffectCollector = myInners
     try {
       cleanupLocalDeps(deps, run)
       setDepsCollector(deps)
       // Collect onCleanup() registrations during execution
       const collected: (() => void)[] = []
-      _cleanupCollector = collected
+      _state.cleanupCollector = collected
       // First run executes inside the synchronous mount where the context
       // stack is still intact — call fn directly to avoid pushing the
       // captured snapshot a redundant second time. Subsequent re-runs
       // happen AFTER mountReactive's cleanup has truncated the stack, so
       // they need the snapshot restored to find provider frames.
       const fnToRun =
-        isFirstRun || snapshot === null || _snapshotCapture === null
+        isFirstRun || snapshot === null || _state.snapshotCapture === null
           ? fn
-          : () => (_snapshotCapture as ReactiveSnapshotCapture).restore(snapshot, fn)
+          : () => (_state.snapshotCapture as ReactiveSnapshotCapture).restore(snapshot, fn)
       cleanup = withTracking(run, fnToRun) || undefined
-      _cleanupCollector = null
+      _state.cleanupCollector = null
       if (collected.length > 0) cleanups = collected
       setDepsCollector(null)
     } catch (err) {
-      _cleanupCollector = null
+      _state.cleanupCollector = null
       setDepsCollector(null)
       _errorHandler(err)
     } finally {
-      _innerEffectCollector = outerCollector
+      _state.innerEffectCollector = outerCollector
     }
     if (myInners.length > 0) innerEffects = myInners
     // Notify scope after each reactive re-run (not the initial synchronous run)
@@ -300,8 +304,8 @@ export function effect(
 
   // If we're inside another effect's run, register with it so the outer
   // disposes this inner automatically.
-  if (_innerEffectCollector !== null) {
-    _innerEffectCollector.push(e)
+  if (_state.innerEffectCollector !== null) {
+    _state.innerEffectCollector.push(e)
   } else {
     // Otherwise auto-register with the active EffectScope (if any)
     getCurrentScope()?.add(e)
@@ -345,12 +349,12 @@ export function _bind(fn: () => void): () => void {
   // chain that was active when the binding was first set up — even if the
   // global context stack has been destructively truncated by mountReactive's
   // restoreContextStack cleanup in the meantime.
-  const snapshot = _snapshotCapture ? _snapshotCapture.capture() : null
+  const snapshot = _state.snapshotCapture ? _state.snapshotCapture.capture() : null
 
   const run = () => {
     if (disposed) return
-    if (snapshot !== null && _snapshotCapture) {
-      _snapshotCapture.restore(snapshot, fn)
+    if (snapshot !== null && _state.snapshotCapture) {
+      _state.snapshotCapture.restore(snapshot, fn)
     } else {
       fn()
     }
@@ -416,11 +420,11 @@ export function renderEffect(fn: () => void): () => void {
   // Same rationale as `_bind`: capture the external context snapshot at
   // SETUP and restore it on signal-driven re-runs so provider lookups stay
   // correct even after `mountReactive`'s cleanup truncates the global stack.
-  const snapshot = _snapshotCapture ? _snapshotCapture.capture() : null
+  const snapshot = _state.snapshotCapture ? _state.snapshotCapture.capture() : null
 
   const trackedFn =
-    snapshot !== null && _snapshotCapture
-      ? () => (_snapshotCapture as ReactiveSnapshotCapture).restore(snapshot, fn)
+    snapshot !== null && _state.snapshotCapture
+      ? () => (_state.snapshotCapture as ReactiveSnapshotCapture).restore(snapshot, fn)
       : fn
 
   const run = () => {

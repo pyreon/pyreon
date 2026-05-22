@@ -30,9 +30,17 @@
  * `{ fires: [] }` — cheap, correct.
  */
 
+import { defineCrossModuleState } from './cross-module-state'
 import { getFireSummaries } from './reactive-devtools'
 
-let _seq = 0
+// Cross-module-instance shared atomic-write sequence counter. Two duplicate
+// `@pyreon/reactivity` instances each writing tmp file names `tmp.<pid>.<seq>`
+// would collide on `seq` without this. Shared via globalThis so every
+// `seq++` walks the SAME counter regardless of which instance is writing.
+const _state = defineCrossModuleState<{ seq: number }>(
+  'pyreon-reactivity/lpih-state',
+  () => ({ seq: 0 }),
+)
 
 /**
  * Canonical filename for the LPIH cache file. Co-located with the
@@ -126,7 +134,7 @@ async function _writeToPath(path: string): Promise<number> {
     typeof process !== 'undefined' && 'pid' in process
       ? (process as { pid?: number }).pid ?? 0
       : 0
-  const tmp = `${path}.tmp.${pid}.${++_seq}`
+  const tmp = `${path}.tmp.${pid}.${++_state.seq}`
   const fs = await import('node:fs/promises')
   // Single try/catch covering BOTH writeFile AND rename. The previous
   // shape only guarded the rename — if `fs.writeFile` itself threw (disk
