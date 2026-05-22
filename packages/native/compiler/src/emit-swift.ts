@@ -17,6 +17,7 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
+  ModuleDeclIR,
   StatementIR,
   StructIR,
   TypeIR,
@@ -74,6 +75,7 @@ export function emitSwift(
   components: ComponentIR[],
   enums: EnumIR[] = [],
   structs: StructIR[] = [],
+  moduleDecls: ModuleDeclIR[] = [],
 ): string {
   _enumNames = new Set(enums.map((e) => e.name))
   // Build the struct-fields key map for object-expression detection.
@@ -87,6 +89,7 @@ export function emitSwift(
   const parts: string[] = []
   for (const e of enums) parts.push(emitSwiftEnum(e))
   for (const s of structs) parts.push(emitSwiftStruct(s))
+  for (const md of moduleDecls) parts.push(emitSwiftModuleDecl(md))
   for (const c of components) parts.push(emitSwiftComponent(c))
   _enumNames = new Set()
   _structFieldsToName = new Map()
@@ -133,6 +136,28 @@ function emitSwiftStruct(s: StructIR): string {
   }
   lines.push(`}`)
   return lines.join('\n')
+}
+
+/**
+ * Emit a module-level mutable / immutable binding at file scope.
+ *
+ *   source: let nextId = 1     →  private var nextId: Int = 1
+ *   source: const APP = '1.0'  →  private let APP: String = "1.0"
+ *
+ * `private` (at top level = file-private in Swift) keeps the binding
+ * scoped to the emitted file — matches the TS source's module-level
+ * privacy. Type annotation is inferred from the initial when source
+ * omits it (TypeIR `unknown` → Swift type inferred from `= value`).
+ */
+function emitSwiftModuleDecl(md: ModuleDeclIR): string {
+  const kw = md.mutable ? 'var' : 'let'
+  const initial = emitSwiftExpr(md.initial, 0)
+  if (md.type.kind === 'unknown') {
+    // Omit explicit type annotation when source didn't carry one.
+    // Swift infers from `= initial`.
+    return `private ${kw} ${swiftIdent(md.name)} = ${initial}`
+  }
+  return `private ${kw} ${swiftIdent(md.name)}: ${swiftType(md.type)} = ${initial}`
 }
 
 // Module-scoped state for the active component's props-param-name. Set at
