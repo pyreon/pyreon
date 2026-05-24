@@ -2,10 +2,11 @@
   "name": "@pyreon/example-native-todomvc-ios",
   "version": "0.0.0",
   "private": true,
-  "description": "PRIVATE / EXPERIMENTAL — PMTC TodoMVC reference. Baseline for the 8 compositional gaps named in native-platforms-todomvc-walkthrough.md (#799). Source compiles partially; gap-closure PRs each address one named gap.",
+  "description": "PRIVATE / EXPERIMENTAL — PMTC TodoMVC reference. Post-Phase-2 gap-closure: emit typechecks-clean to Swift (5 named gaps + 7 hardening PRs landed). Open in Xcode via ./scripts/xcode-setup.sh.",
   "license": "MIT",
   "scripts": {
     "build": "./scripts/build.sh",
+    "xcode": "./scripts/xcode-setup.sh",
     "lint": "echo '[native-todomvc-ios] no TS lint surface; skipping'",
     "test": "echo '[native-todomvc-ios] no test surface; partial-compile baseline tracked in compile-baseline.test.ts under @pyreon/native-compiler'",
     "typecheck": "echo '[native-todomvc-ios] no TS typecheck surface'"

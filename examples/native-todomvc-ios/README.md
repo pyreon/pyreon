@@ -1,16 +1,27 @@
 # native-todomvc-ios — PMTC TodoMVC reference
 
-> **PRIVATE / EXPERIMENTAL.** Baseline for the 8 compositional gaps from [`native-platforms-todomvc-walkthrough.md`](../../.claude/plans/native-platforms-todomvc-walkthrough.md). Source compiles partially today; gap-closure PRs each address one named gap.
+> **PRIVATE / EXPERIMENTAL.** Reference compile target for the PMTC TodoMVC arc — the canonical "non-trivial but not contrived" Pyreon app. As of post-Phase-2 closure, **the emitted Swift typechecks-clean** (0 errors via `swiftc -typecheck`). 5 named gaps closed + 7 Phase-2 hardening PRs landed; G7 / G8 deferred to Phase 3.
+
+## Open in Xcode (one command)
+
+```bash
+./scripts/xcode-setup.sh       # compiles src/*.tsx → generated/, then runs xcodegen
+open PyreonTodoMVC.xcodeproj   # ⌘+R to run on Simulator
+```
+
+Requires `xcodegen` (`brew install xcodegen`) and Xcode 15+ targeting iOS 17+.
+
+Inside Xcode, the project's `preBuildScript` re-runs the compile loop on every build — source edits in `src/TodoApp.tsx` are picked up the next time you hit ⌘+B.
 
 ## What this exists for
 
 TodoMVC is the canonical "non-trivial but not contrived" app — every UI framework uses it as a baseline. For PMTC it's the structural test of whether the full compiler stack handles real-app shape, surfacing every spot where the chosen mapping breaks down.
 
-This example is the SOURCE (`src/TodoApp.tsx`) that `pyreon-native build` consumes. The current partial emit lands in `generated/` (gitignored, produced on `./scripts/build.sh`).
+This example is the SOURCE (`src/TodoApp.tsx`) that `pyreon-native build` consumes. The emit lands in `generated/` (gitignored, produced on `./scripts/build.sh` OR automatically on every Xcode build via the `project.yml` preBuildScript).
 
 ## Current state
 
-The compiler currently emits a **partial** Swift translation. Working:
+The compiler emits a **typecheck-clean** Swift translation. Working:
 
 - Component structure (`struct TodoApp: View`)
 - Signal declarations (`@State private var filter`, `draft`)
