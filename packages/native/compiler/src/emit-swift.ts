@@ -291,9 +291,31 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
   // can emit a typed computed property. Falls back to `Any` for cases
   // the inference can't resolve (the emit still produces compilable
   // code via the fallback `swiftType` for `unknown`).
-  const inferred = inferType(d.expr, inferCtx)
+  //
+  // Phase 2 follow-up: when the IR carries `body` (multi-statement
+  // BlockStatement form), emit a multi-statement Swift getter
+  // preserving `let` bindings, `if` early-returns, and the final
+  // return. Closes the TodoMVC `visible: Any { xs }` typecheck
+  // blocker where the parser used to silently drop pre-return
+  // statements.
+  if (d.body !== undefined) {
+    // Use the pre-computed type from buildInferenceCtx's Pass 2
+    // (which populates `locals` from the body's `let` bindings before
+    // walking to the first return). Falls back to `unknown` (→ `Any`)
+    // if the computed wasn't pre-inferred for some reason — defensive.
+    const inferred = inferCtx.computeds.get(d.name) ?? { kind: 'unknown' as const }
+    const swiftReturnType = swiftType(inferred)
+    const bodyLines = d.body.map((s) => `    ${emitSwiftStatement(s, 4)}`).join('\n')
+    return [
+      `private var ${swiftIdent(d.name)}: ${swiftReturnType} {`,
+      bodyLines,
+      `  }`,
+    ].join('\n')
+  }
+  // Legacy single-expression shape — same pre-computed lookup.
+  const inferred = inferCtx.computeds.get(d.name) ?? inferType(d.expr!, inferCtx)
   const swiftReturnType = swiftType(inferred)
-  return `private var ${swiftIdent(d.name)}: ${swiftReturnType} { ${emitSwiftExpr(d.expr, 0)} }`
+  return `private var ${swiftIdent(d.name)}: ${swiftReturnType} { ${emitSwiftExpr(d.expr!, 0)} }`
 }
 
 /**
@@ -628,10 +650,40 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
     }
     case 'binary':
       return `${emitSwiftExpr(e.left, indent)} ${e.op} ${emitSwiftExpr(e.right, indent)}`
-    case 'comparison':
+    case 'comparison': {
       // Pyreon `===` / `!==` already coalesced to `==` / `!=` at parse;
       // Swift takes them verbatim.
-      return `${emitSwiftExpr(e.left, indent)} ${e.op} ${emitSwiftExpr(e.right, indent)}`
+      //
+      // Phase 2 follow-up: enum-aware comparison. When the LHS is a
+      // known enum-typed signal read (`filter()` where `filter: Filter`),
+      // wrap the RHS emit with `_activeEnumType` so a string literal
+      // rewrites to a qualified case (`"active"` → `.active`). Mirrors
+      // the existing `.set()` enum-aware emit (search `_activeEnumType`
+      // in this file for the structural reference).
+      //
+      // Detection: LHS is `call(callee=identifier, args=[])` where the
+      // identifier is in `_signalEnumTypes`. That's the canonical
+      // signal-read shape for an enum-typed signal (`filter()`).
+      const left = e.left
+      let prevEnumType: string | undefined
+      if (
+        left.kind === 'call' &&
+        left.callee.kind === 'identifier' &&
+        left.args.length === 0
+      ) {
+        const enumType = _signalEnumTypes.get(left.callee.name)
+        if (enumType !== undefined) {
+          prevEnumType = _activeEnumType
+          _activeEnumType = enumType
+        }
+      }
+      const leftStr = emitSwiftExpr(e.left, indent)
+      const rightStr = emitSwiftExpr(e.right, indent)
+      if (prevEnumType !== undefined || _activeEnumType !== undefined) {
+        _activeEnumType = prevEnumType
+      }
+      return `${leftStr} ${e.op} ${rightStr}`
+    }
     case 'unary':
       // Parser-B: prefix unary. Swift accepts `!x`, `-x`, `+x` verbatim.
       return `${e.op}${emitSwiftExpr(e.argument, indent)}`

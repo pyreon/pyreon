@@ -376,28 +376,23 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     // computed property; anything more degrades to a getter with a
     // body. Phase 1: route through parseStatement.
     if (body.type === 'BlockStatement') {
-      // Multi-statement computed — extract a synthetic return.
       const stmts = parseStatementBlock(body, ctx)
-      const last = stmts[stmts.length - 1]
-      if (last?.kind === 'return' && last.expr !== undefined) {
-        // Common case: single-return block. Emit as the existing
-        // computed shape — no shape change needed.
-        if (stmts.length === 1) return { kind: 'computed', name, expr: last.expr }
+      // Single-statement block that's a return → keep the legacy
+      // single-expression shape so emit stays compact:
+      //   computed(() => { return x })  →  computed.expr = x
+      // Both shapes type-check identically; the legacy form keeps the
+      // existing snapshots stable for the common-case 1-return body.
+      if (stmts.length === 1 && stmts[0]?.kind === 'return' && stmts[0].expr !== undefined) {
+        return { kind: 'computed', name, expr: stmts[0].expr }
       }
-      // Multi-statement computed body — warn + fall back to the last
-      // return's expression so emit doesn't silently drop. Real
-      // emission of multi-statement computed bodies is a deferred
-      // refinement.
-      const returnStmt = stmts.find((s) => s.kind === 'return') as
-        | Extract<StatementIR, { kind: 'return' }>
-        | undefined
-      if (returnStmt?.expr) {
-        ctx.warnings.push(
-          `Computed ${name}: multi-statement body collapsed to its return expression — pre-return statements silently dropped (Phase 1 emit limitation)`,
-        )
-        return { kind: 'computed', name, expr: returnStmt.expr }
-      }
-      return null
+      // Multi-statement body — populate `body` with the full statement
+      // sequence. The emit pass renders this as a Swift multi-statement
+      // getter / Kotlin multi-statement `derivedStateOf` lambda body,
+      // preserving any pre-return `let` bindings, `if` early-returns,
+      // etc. Phase 2 follow-up closing the TodoMVC `visible: Any { xs }`
+      // typecheck blocker — pre-PR the parser silently dropped
+      // pre-return statements and emitted a synthetic expression.
+      return { kind: 'computed', name, body: stmts }
     }
     const expr: ExprIR = parseExpr(body, ctx)
     return { kind: 'computed', name, expr }
