@@ -42,7 +42,9 @@ describe('Parser-A — const arrow function as DeclIR.function', () => {
       { target: 'swift' },
     )
     expect(out.warnings).toEqual([])
-    expect(out.code).toContain('private func double(n: Int) { n * 2 }')
+    // Phase 2 JSX-attr forwarding PR adds `_` external label to function
+    // params so call sites match JS-style unnamed-arg shape.
+    expect(out.code).toContain('private func double(_ n: Int) { n * 2 }')
   })
 
   it('parses if-with-early-return in multi-statement body', () => {
