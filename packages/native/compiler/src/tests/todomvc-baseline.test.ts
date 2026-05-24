@@ -497,6 +497,33 @@ describe('TodoMVC gap-tracking baseline', () => {
     expect(out.code).not.toContain('filter == "completed"')
   })
 
+  it('K3 — Kotlin emit maps SwiftUI VStack/HStack to Compose Column/Row', () => {
+    // CLOSED by this PR. The canonical TodoMVC source uses SwiftUI-
+    // flavored layout names (`<VStack>`, `<HStack>`) which Swift's
+    // emit accepts verbatim (SwiftUI provides those types). Compose
+    // doesn't — `VStack`/`HStack` are unresolved references; the
+    // Compose equivalents are `Column`/`Row` (and `Box` for ZStack).
+    //
+    // The fix is a small mapping table applied in `emitKotlinGeneric`
+    // BEFORE `kotlinIdent`. Mapping is intentionally tactical for the
+    // multiplatform demo phase; long-term PMTC will define a canonical
+    // layout DSL and translate the OTHER direction for iOS too.
+    //
+    // The Swift snapshot above keeps emitting VStack/HStack — that's
+    // correct, SwiftUI's primitive names.
+    const out = transform(source, { target: 'kotlin' })
+    // Column wraps the whole component body (top-level layout).
+    expect(out.code).toMatch(/Column \{[\s\S]+TextField/)
+    // Row wraps the filter button bar AND the TodoRow's inner layout.
+    const rowMatches = out.code.match(/Row \{/g) ?? []
+    expect(rowMatches.length).toBeGreaterThanOrEqual(2)
+    // Negative assertions — the SwiftUI names must NOT leak through.
+    expect(out.code).not.toContain('VStack {')
+    expect(out.code).not.toContain('HStack {')
+    expect(out.code).not.toContain('VStack(')
+    expect(out.code).not.toContain('HStack(')
+  })
+
   it('Phase 2 — computed return-type inference via TS method chains (.length → Int, .some → Bool)', () => {
     // Closes the "Any cannot conform to RandomAccessCollection"
     // typecheck blocker. The inferType pass now walks common TS

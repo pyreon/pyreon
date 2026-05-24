@@ -873,6 +873,40 @@ function emitKotlinShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   return `if (${cond}) {\n${body}\n${' '.repeat(indent)}}`
 }
 
+/**
+ * K3: map SwiftUI-flavored layout container names that the canonical
+ * TodoMVC source uses (`VStack`, `HStack`, `ZStack`) to their
+ * Jetpack Compose equivalents (`Column`, `Row`, `Box`). Without this
+ * the emit ships `VStack { … }` literally — kotlinc rejects with
+ *   error: unresolved reference 'VStack'.
+ *
+ * The mapping deliberately runs ONLY on generic-element emit, AFTER
+ * the dispatcher in `emitKotlinJsx` has carved out the
+ * framework-recognized tags (`Text`, `Button`, `TextField`, `For`,
+ * `Show`). Those tags use universal naming and would map to themselves
+ * anyway; carving them out first keeps the mapping table small.
+ *
+ * Strategic note: the long-term PMTC story is to define a CANONICAL
+ * layout DSL (probably `Column`/`Row`/`Box` since they map most
+ * cleanly onto Compose AND swiftc accepts them as user-defined names)
+ * and have the iOS emit translate the other direction. This table is
+ * a tactical fix that closes the K3 typecheck error TODAY; the DSL
+ * decision is tracked in `.claude/plans/native-platforms-phase1-roadmap.md`.
+ *
+ * Single source of truth: user-defined Composables that happen to be
+ * named `VStack`/`HStack`/`ZStack` will collide with this rewrite.
+ * Acceptable cost for the multi-target demo phase — apps can rename.
+ */
+const SWIFTUI_TO_COMPOSE_LAYOUT_NAMES: Record<string, string> = {
+  VStack: 'Column',
+  HStack: 'Row',
+  ZStack: 'Box',
+}
+
+function mapJsxTagToCompose(tag: string): string {
+  return SWIFTUI_TO_COMPOSE_LAYOUT_NAMES[tag] ?? tag
+}
+
 function emitKotlinGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const pad = ' '.repeat(indent + 2)
   const isUserComponent = _componentNames.has(e.tag)
@@ -896,8 +930,11 @@ function emitKotlinGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   }
   const attrPairs = argParts.join(', ')
   // `kotlinIdent`-escape the tag too — covers user-defined components
-  // whose name collides with a Kotlin keyword.
-  const tag = kotlinIdent(e.tag)
+  // whose name collides with a Kotlin keyword. K3: map SwiftUI-flavored
+  // layout names (VStack/HStack/ZStack) to Compose equivalents
+  // (Column/Row/Box) first — user-defined components named the same
+  // will collide (documented trade-off).
+  const tag = kotlinIdent(mapJsxTagToCompose(e.tag))
   if (e.children.length === 0) {
     return attrPairs ? `${tag}(${attrPairs})` : `${tag}()`
   }
