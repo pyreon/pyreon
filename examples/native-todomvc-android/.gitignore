@@ -1,0 +1,9 @@
+app/src/main/kotlin/com/pyreon/generated/*
+!app/src/main/kotlin/com/pyreon/generated/.gitkeep
+.gradle/
+build/
+local.properties
+gradle/
+gradlew
+gradlew.bat
+node_modules/

@@ -3,7 +3,7 @@
 // directly with a mocked argv. Output goes via console.error /
 // console.log; tests capture both.
 
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
@@ -88,6 +88,26 @@ describe('@pyreon/native-cli main()', () => {
     expect(
       main(['build', '--target=kotlin', `--source=${COMPILER_FIXTURES}`, `--out=${tempOut}`]),
     ).toBe(0)
+  })
+
+  it('--kotlin-package=<fqn> prepends a `package` declaration to every emitted .kt file', () => {
+    // CLI parity with the programmatic API. Required for Android hosts
+    // that import the emitted Composable by FQN.
+    const code = main([
+      'build',
+      '--target=android',
+      `--source=${COMPILER_FIXTURES}`,
+      `--out=${tempOut}`,
+      '--kotlin-package=com.example.gen',
+    ])
+    expect(code).toBe(0)
+    const written = readdirSync(tempOut).filter((f) => f.endsWith('.kt'))
+    expect(written.length).toBeGreaterThanOrEqual(7)
+    for (const file of written) {
+      const content = readFileSync(join(tempOut, file), 'utf8')
+      const firstLine = content.split('\n')[0] ?? ''
+      expect(firstLine).toBe('package com.example.gen')
+    }
   })
 
   it('returns 2 when source directory does not exist', () => {

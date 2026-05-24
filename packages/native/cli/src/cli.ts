@@ -18,6 +18,7 @@ interface ParsedArgs {
   target?: TargetLanguage
   source?: string
   out?: string
+  kotlinPackage?: string
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -46,6 +47,7 @@ function parseArgs(argv: string[]): ParsedArgs {
       // Unknown targets are flagged in main() so usage prints once.
     } else if (key === 'source') out.source = value
     else if (key === 'out') out.out = value
+    else if (key === 'kotlin-package') out.kotlinPackage = value
   }
   return out
 }
@@ -61,9 +63,13 @@ Targets:
   android    emit Kotlin / Jetpack Compose
 
 Options:
-  --target=ios|android  Required.
-  --source=<dir>        Directory of .tsx files. Required.
-  --out=<dir>           Output directory for emitted .swift / .kt. Required.
+  --target=ios|android   Required.
+  --source=<dir>         Directory of .tsx files. Required.
+  --out=<dir>            Output directory for emitted .swift / .kt. Required.
+  --kotlin-package=<fqn> Kotlin package name prepended to emitted .kt files
+                         (e.g. "com.pyreon.generated"). Required when the emit
+                         is consumed by an Android host that imports it by FQN.
+                         Ignored for the Swift target.
 
 This is an internal experimental CLI for the Pyreon Multi-Target
 Compiler (PMTC). See packages/native/cli/README.md for status.`)
@@ -96,6 +102,7 @@ export function main(argv: string[]): number {
       target: parsed.target,
       source: parsed.source,
       out: parsed.out,
+      ...(parsed.kotlinPackage ? { kotlinPackage: parsed.kotlinPackage } : {}),
     })
     console.log(
       `[pyreon-native] compiled ${result.filesCompiled} file(s) → ${parsed.out}`,
