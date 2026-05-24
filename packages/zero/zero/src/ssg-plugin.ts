@@ -25,6 +25,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { withSilent } from '@pyreon/reactivity'
 import type { Plugin } from 'vite'
 import { resolveAdapter } from './adapters'
 import { resolveConfig } from './config'
@@ -1056,13 +1057,11 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // `dist/client/.zero-ssg-server/entry-server.mjs`, which the outer
       // process imports here alongside its own workspace copy. Same code,
       // two paths → the singleton sentinel from `@pyreon/reactivity`
-      // would throw and abort the build. Opt out for the duration of the
-      // load; restore in `finally` so the env var doesn't leak.
-      //
-      // Same pattern as `rocketstyle-collapse.ts`'s nested-SSR resolver.
-      const procEnv = process.env as unknown as Record<string, string | undefined>
-      const prevSingleInstance = procEnv.PYREON_SINGLE_INSTANCE
-      procEnv.PYREON_SINGLE_INSTANCE = 'silent'
+      // would throw and abort the build. `withSilent` from
+      // `@pyreon/reactivity` scopes the opt-out via a refcount on the
+      // sentinel state — race-safe under concurrency (the prior
+      // env-var dance leaked `silent` permanently when N opt-out scopes
+      // overlapped — see `withSilent` JSDoc for the full rationale).
       type HandlerMod = {
         // PR B — return shape is a discriminated union: regular paths
         // produce HTML, redirect-throwing loaders produce a redirect
@@ -1092,18 +1091,9 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           locale?: string | null,
         ) => Promise<{ appHtml: string; head: string; loaderScript: string } | null>
       }
-      let handlerMod: HandlerMod
-      try {
-        handlerMod = (await import(
-          /* @vite-ignore */ pathToFileURL(handlerPath).href
-        )) as HandlerMod
-      } finally {
-        if (prevSingleInstance === undefined) {
-          delete procEnv.PYREON_SINGLE_INSTANCE
-        } else {
-          procEnv.PYREON_SINGLE_INSTANCE = prevSingleInstance
-        }
-      }
+      const handlerMod = (await withSilent(
+        () => import(/* @vite-ignore */ pathToFileURL(handlerPath).href),
+      )) as HandlerMod
       const renderPath = handlerMod.default
       const registry = handlerMod.__getStaticPathsRegistry
 

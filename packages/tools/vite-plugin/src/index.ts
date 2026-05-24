@@ -412,6 +412,25 @@ function scanPyreonDepsTransitive(root: string): string[] {
   return []
 }
 
+/**
+ * Truthy env-var parser. Accepts `1` / `true` / `yes` / `on`
+ * (case-insensitive). Returns `false` for `undefined`, empty string,
+ * `0`, `false`, `no`, `off`, or any unrecognized value.
+ *
+ * Exported via `_internal` for unit-testability — the previous strict
+ * `=== '1'` shape caught a user reporting `PYREON_DISABLE_DEDUPE=true`
+ * silently not working. Env-var hatches are usually reached for under
+ * stress; rejecting alternatives is exactly the wrong moment to be strict.
+ *
+ * @internal
+ */
+export function _isTruthyEnv(v: string | undefined): boolean {
+  if (v === undefined) return false
+  const lower = v.toLowerCase()
+  return lower === '1' || lower === 'true' || lower === 'yes' || lower === 'on'
+}
+const isTruthyEnv = _isTruthyEnv
+
 export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
   const ssrConfig = options?.ssr
   const compat = options?.compat
@@ -546,13 +565,17 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       // package.json). scanPyreonDepsTransitive() walks node_modules to
       // capture the full set.
       //
-      // Escape hatch: PYREON_DISABLE_DEDUPE=1 turns the injection off — rare
+      // Escape hatch: PYREON_DISABLE_DEDUPE turns the injection off — rare
       // (browser extensions / micro-frontends that legitimately dual-load).
+      // Accept any truthy string: `1`, `true`, `yes`, `on` (case-insensitive).
+      // Users reach for env-var escape hatches under stress; rejecting `true`
+      // because it isn't literal `'1'` is exactly the wrong moment to be
+      // strict.
       const procEnv =
         typeof process !== 'undefined' && process.env
           ? (process.env as unknown as Record<string, string | undefined>)
           : undefined
-      const dedupeDisabled = procEnv?.PYREON_DISABLE_DEDUPE === '1'
+      const dedupeDisabled = isTruthyEnv(procEnv?.PYREON_DISABLE_DEDUPE)
       const dedupeList = dedupeDisabled ? [] : scanPyreonDepsTransitive(projectRoot)
 
       // Always set OXC's JSX importSource to `@pyreon/core`. In compat mode,
