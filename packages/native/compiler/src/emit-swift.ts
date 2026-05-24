@@ -183,6 +183,15 @@ function emitSwiftComponent(c: ComponentIR): string {
   // call-emit keeps parens for `addTodo()` (function call) and drops
   // them only for `count()` (signal read).
   _functionNames = new Set()
+  // Phase 2 follow-up: also track props whose type is a function
+  // (`onToggle: () -> Void`). Inside the component body, references
+  // to these props are CALL SITES that need explicit `()` —
+  // `Button { onRemove }` should be `Button { onRemove() }`.
+  // Closes the TodoMVC TodoRow `Button("Remove") { onRemove }`
+  // typecheck-or-no-op trap.
+  for (const p of c.props) {
+    if (p.type.kind === 'function') _functionNames.add(p.name)
+  }
   for (const d of c.decls) {
     if (d.kind === 'signal' && d.type.kind === 'typeRef' && _enumNames.has(d.type.name)) {
       _signalEnumTypes.set(d.name, d.type.name)
@@ -949,7 +958,48 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
   if (handler.kind === 'arrow') {
     return `{ ${emitSwiftExpr(handler.body, indent)} }`
   }
+  // Resolve the handler to a function-typed identifier if it is one,
+  // accounting for the two common shapes in JSX handler position:
+  //
+  //   <Button onClick={onRemove}>      → bare identifier
+  //   <Button onClick={props.onRemove}> → member access (props.X — the
+  //                                       props-param is rewritten away
+  //                                       at emit time, so the effective
+  //                                       handler is `onRemove`)
+  //
+  // When the resolved name is in `_functionNames` (component-level
+  // function decl OR function-typed prop), emit as a CALL inside the
+  // trailing closure: `{ name() }`. Without this, Swift evaluates
+  // `{ onRemove }` as a closure that RETURNS the function reference,
+  // never calling it — the Button click becomes a silent no-op.
+  // Closes the TodoMVC `Button("Remove") { onRemove }` trap.
+  const resolved = resolveFunctionHandler(handler)
+  if (resolved !== undefined) {
+    return `{ ${swiftIdent(resolved)}() }`
+  }
   return `{ ${emitSwiftExpr(handler, indent)} }`
+}
+
+/**
+ * Resolve a handler expression to a function-typed identifier name,
+ * if it is one. Handles bare identifiers AND props-member accesses
+ * (`props.onRemove` where `props` is the active component's first
+ * parameter binding name).
+ */
+function resolveFunctionHandler(handler: ExprIR): string | undefined {
+  if (handler.kind === 'identifier' && _functionNames.has(handler.name)) {
+    return handler.name
+  }
+  if (
+    handler.kind === 'member' &&
+    _activePropsParamName !== undefined &&
+    handler.object.kind === 'identifier' &&
+    handler.object.name === _activePropsParamName &&
+    _functionNames.has(handler.property)
+  ) {
+    return handler.property
+  }
+  return undefined
 }
 
 function emitSwiftFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
