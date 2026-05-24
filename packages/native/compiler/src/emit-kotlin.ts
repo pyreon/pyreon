@@ -650,11 +650,20 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // an if-expression. Same value semantics.
       return `if (${emitKotlinExpr(e.cond, indent)}) ${emitKotlinExpr(e.then, indent)} else ${emitKotlinExpr(e.otherwise, indent)}`
     case 'update':
-      // Same value-semantic degrade as Swift — emit `x + 1` / `x - 1`,
-      // side-effect lost.
-      return e.op === '++'
-        ? `${emitKotlinExpr(e.argument, indent)} + 1`
-        : `${emitKotlinExpr(e.argument, indent)} - 1`
+      // `x++` / `x--` post-increment/decrement in expression position.
+      // Returns the OLD value and mutates the variable (JS semantics).
+      //
+      // Kotlin natively supports `++` / `--` as both statements AND
+      // expressions on `var` bindings — same semantics as JS post-
+      // increment. Emit verbatim.
+      //
+      // Pre-fix shape was `x + 1` / `x - 1` — DOUBLY broken:
+      //   1. Returns the NEW value (x+1) instead of the OLD value (x) —
+      //      off-by-one. TodoMVC's `id: nextId++` got id=2 on first
+      //      call (should be id=1).
+      //   2. Drops the side-effect entirely — `nextId` never
+      //      incremented. Every new Todo got id=2 forever.
+      return `${emitKotlinExpr(e.argument, indent)}${e.op}`
     case 'arrow':
       if (e.params.length === 0) return `{ ${emitKotlinExpr(e.body, indent)} }`
       return `{ ${e.params.map(kotlinIdent).join(', ')} -> ${emitKotlinExpr(e.body, indent)} }`

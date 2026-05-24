@@ -728,16 +728,36 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
     case 'ternary':
       // Swift ternary syntax is identical to JS.
       return `${emitSwiftExpr(e.cond, indent)} ? ${emitSwiftExpr(e.then, indent)} : ${emitSwiftExpr(e.otherwise, indent)}`
-    case 'update':
-      // `x++` / `x--` post-increment in expression position. Swift
-      // doesn't support `++` / `--` as expressions — emit the VALUE
-      // (`x + 1` / `x - 1`) and document the side-effect loss in the
-      // IR comment. For `nextId++` inside an array literal, this is
-      // the correct VALUE semantics; the increment side-effect is
-      // missing but the array element is correct.
-      return e.op === '++'
-        ? `${emitSwiftExpr(e.argument, indent)} + 1`
-        : `${emitSwiftExpr(e.argument, indent)} - 1`
+    case 'update': {
+      // `x++` / `x--` post-increment/decrement in expression position.
+      // Returns the OLD value and mutates the variable (JS semantics).
+      //
+      // Swift removed `++`/`--` operators in Swift 3 — they're not
+      // available even as statements, let alone expressions. The
+      // canonical Swift workaround is an IIFE (immediately-invoked
+      // closure expression) that captures the old value, mutates the
+      // var, then returns the captured value. The closure captures
+      // module-scoped vars by reference automatically.
+      //
+      // Pre-fix shape was `x + 1` / `x - 1` — DOUBLY broken:
+      //   1. Returns the NEW value (x+1) instead of the OLD value (x) —
+      //      off-by-one. TodoMVC's `id: nextId++` got id=2 on first
+      //      call (should be id=1).
+      //   2. Drops the side-effect entirely — `nextId` never
+      //      incremented. Every new Todo got id=2 forever, causing
+      //      duplicate-ID bugs.
+      //
+      // Fixed shape: IIFE that returns the OLD value AND increments:
+      //   { () -> Int in let v = x; x += 1; return v }()
+      //
+      // The `() -> Int` type annotation is omitted when the result
+      // type is inferable from the expression context (which is
+      // usually the case in struct-init args). Swift's closure-return
+      // inference covers it without annotation.
+      const arg = emitSwiftExpr(e.argument, indent)
+      const step = e.op === '++' ? '+= 1' : '-= 1'
+      return `{ let __v = ${arg}; ${arg} ${step}; return __v }()`
+    }
     case 'arrow':
       // Swift closure: `{ params in body }`.
       if (e.params.length === 0) return `{ ${emitSwiftExpr(e.body, indent)} }`

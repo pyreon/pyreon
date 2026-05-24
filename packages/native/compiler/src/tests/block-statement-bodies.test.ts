@@ -93,7 +93,10 @@ describe('Parser-A — const arrow function as DeclIR.function', () => {
       'let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)',
     )
     expect(out.code).toContain('if text.count == 0 {')
-    expect(out.code).toContain('todos = todos + [nextId + 1]')
+    // Phase 2.5: nextId++ emits an IIFE that preserves post-increment
+    // semantics (old value AND side-effect). Pre-fix shape was
+    // `nextId + 1` — wrong VALUE + dropped side-effect.
+    expect(out.code).toContain('todos = todos + [{ let __v = nextId; nextId += 1; return __v }()]')
     expect(out.code).toContain('draft = ""')
   })
 
@@ -234,7 +237,16 @@ describe('Bonus — comparison operators (`===` / `!==`)', () => {
 })
 
 describe('Bonus — UpdateExpression (`x++` post-increment)', () => {
-  it('emits `x + 1` value (side-effect lost) for post-increment', () => {
+  it('emits IIFE preserving JS post-increment semantics on Swift (old value + side-effect)', () => {
+    // Phase 2.5: Swift removed `++`/`--` operators in Swift 3 (not
+    // available as expressions OR statements). The canonical Swift
+    // workaround is an IIFE that captures the old value, mutates the
+    // var, then returns the captured value.
+    //
+    // Pre-fix shape was `n + 1` — doubly broken: returned the NEW
+    // value instead of OLD, AND dropped the side-effect. Real-world
+    // hit: TodoMVC's `id: nextId++` got `id=2` on every call,
+    // causing duplicate-ID bugs.
     const out = transform(
       `
       export function App() {
@@ -245,7 +257,31 @@ describe('Bonus — UpdateExpression (`x++` post-increment)', () => {
       { target: 'swift' },
     )
     expect(out.warnings).toEqual([])
-    expect(out.code).toContain('n + 1')
+    // The IIFE captures the old value, mutates, returns. Order
+    // matters: `__v` must be read BEFORE `n += 1`.
+    expect(out.code).toContain('{ let __v = n; n += 1; return __v }()')
+    expect(out.code).not.toContain('n + 1')
+  })
+
+  it('emits native `x++` on Kotlin (Kotlin natively supports post-increment as expression)', () => {
+    // Phase 2.5: Kotlin's `++` IS an expression on var bindings —
+    // returns the old value and increments. Same semantics as JS,
+    // emit verbatim.
+    //
+    // Pre-fix shape was `n + 1` — same double-bug as Swift. Kotlin
+    // didn't NEED the IIFE workaround; it just needed to emit `n++`.
+    const out = transform(
+      `
+      export function App() {
+        const id = (n: number) => n++
+        return <Text>x</Text>
+      }
+    `,
+      { target: 'kotlin' },
+    )
+    expect(out.warnings).toEqual([])
+    expect(out.code).toContain('n++')
+    expect(out.code).not.toMatch(/\bn \+ 1\b/)
   })
 })
 
