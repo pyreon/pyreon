@@ -93,7 +93,7 @@ describe('TodoMVC compile baseline', () => {
           if text.count == 0 {
             return
           }
-          todos = todos + [Todo(id: nextId + 1, text: text, done: false)]
+          todos = todos + [Todo(id: { let __v = nextId; nextId += 1; return __v }(), text: text, done: false)]
           draft = ""
         }
         private func toggle(_ id: Int) {
