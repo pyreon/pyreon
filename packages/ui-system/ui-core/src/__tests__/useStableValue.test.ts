@@ -50,6 +50,9 @@ vi.mock('@pyreon/reactivity', () => ({
     host[symKey] = state
     return state
   },
+  // No-op stub — the real sentinel throws on duplicate-load detection;
+  // mocked tests just satisfy the import.
+  registerSingleton: () => {},
 }))
 
 import useStableValue from '../useStableValue'

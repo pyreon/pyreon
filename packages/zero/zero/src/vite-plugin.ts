@@ -60,6 +60,40 @@ import { ssgPlugin } from "./ssg-plugin";
 import type { ZeroConfig } from "./types";
 
 const VIRTUAL_ROUTES_ID = "virtual:zero/routes";
+
+/**
+ * `ssrLoadModule` wrapper that opts out of the `@pyreon/reactivity`
+ * singleton sentinel for the duration of the load.
+ *
+ * Zero's dev SSR pipeline legitimately dual-loads `@pyreon/*` packages —
+ * the outer Vite plugin process holds one set of module instances (from
+ * its own `import` chain), and `ssrLoadModule` evaluates a SECOND set
+ * through Vite's SSR module graph for the user's app code. Same package
+ * code, two distinct module records — the sentinel would throw and crash
+ * the dev server (or SSG build).
+ *
+ * Same opt-out pattern as `rocketstyle-collapse.ts`'s nested-SSR resolver
+ * and `ssg-plugin.ts`'s built-handler import. Documented in
+ * `.claude/rules/anti-patterns.md` "Sentinel opt-out for legitimate
+ * dual-load".
+ *
+ * Scoped + restored — never leaves the env var set across the load
+ * boundary so unintended duplicates outside this window still throw.
+ */
+async function ssrLoadModuleQuiet(
+	server: ViteDevServer,
+	specifier: string,
+): Promise<Record<string, unknown>> {
+	const procEnv = process.env as unknown as Record<string, string | undefined>;
+	const prev = procEnv.PYREON_SINGLE_INSTANCE;
+	procEnv.PYREON_SINGLE_INSTANCE = "silent";
+	try {
+		return await server.ssrLoadModule(specifier);
+	} finally {
+		if (prev === undefined) delete procEnv.PYREON_SINGLE_INSTANCE;
+		else procEnv.PYREON_SINGLE_INSTANCE = prev;
+	}
+}
 const RESOLVED_VIRTUAL_ROUTES_ID = `\0${VIRTUAL_ROUTES_ID}`;
 
 const VIRTUAL_MIDDLEWARE_ID = "virtual:zero/route-middleware";
@@ -517,7 +551,7 @@ async function dispatchApiRoute(
 ): Promise<boolean> {
 	let apiRoutes: ApiRouteEntry[];
 	try {
-		const mod = await server.ssrLoadModule(VIRTUAL_API_ROUTES_ID);
+		const mod = await ssrLoadModuleQuiet(server, VIRTUAL_API_ROUTES_ID);
 		apiRoutes = (mod.apiRoutes ?? []) as ApiRouteEntry[];
 	} catch {
 		return false;
@@ -642,7 +676,7 @@ async function handle404(
 	root: string,
 	originalUrl: string,
 ): Promise<boolean> {
-	const mod = await server.ssrLoadModule(VIRTUAL_ROUTES_ID);
+	const mod = await ssrLoadModuleQuiet(server, VIRTUAL_ROUTES_ID);
 	const routes = mod.routes as Array<{ path?: string; children?: unknown[] }>;
 	const patterns = flattenRoutePatterns(routes);
 
@@ -704,7 +738,7 @@ async function renderSsr(
 	pathname: string,
 	req?: Request,
 ): Promise<{ html: string; status: number } | null> {
-	const routesMod = await server.ssrLoadModule(VIRTUAL_ROUTES_ID);
+	const routesMod = await ssrLoadModuleQuiet(server, VIRTUAL_ROUTES_ID);
 	const routes = routesMod.routes as Array<{
 		path?: string;
 		children?: unknown[];
@@ -723,19 +757,19 @@ async function renderSsr(
 	// zero's own `node_modules` — same path → same Vite module → same instance.
 	const [core, _headPkg, headSsr, routerPkg, runtimeServer] = await Promise.all(
 		[
-			server.ssrLoadModule("@pyreon/core") as Promise<
+			ssrLoadModuleQuiet(server, "@pyreon/core") as Promise<
 				typeof import("@pyreon/core")
 			>,
-			server.ssrLoadModule("@pyreon/head") as Promise<
+			ssrLoadModuleQuiet(server, "@pyreon/head") as Promise<
 				typeof import("@pyreon/head")
 			>,
-			server.ssrLoadModule("@pyreon/head/ssr") as Promise<
+			ssrLoadModuleQuiet(server, "@pyreon/head/ssr") as Promise<
 				typeof import("@pyreon/head/ssr")
 			>,
-			server.ssrLoadModule("@pyreon/router") as Promise<
+			ssrLoadModuleQuiet(server, "@pyreon/router") as Promise<
 				typeof import("@pyreon/router")
 			>,
-			server.ssrLoadModule("@pyreon/runtime-server") as Promise<
+			ssrLoadModuleQuiet(server, "@pyreon/runtime-server") as Promise<
 				typeof import("@pyreon/runtime-server")
 			>,
 		],
@@ -764,9 +798,10 @@ async function renderSsr(
 	// HeadContext, etc.) match between provider and consumer. A direct Node
 	// `import("./app")` would resolve those packages via Node's module graph,
 	// producing duplicate context registries that never connect.
-	const appMod = (await server.ssrLoadModule(
+	const appMod = (await ssrLoadModuleQuiet(
+		server,
 		"@pyreon/zero/server",
-	)) as typeof import("./server")
+	)) as unknown as typeof import("./server")
 	const { App, router: routerInst } = appMod.createApp({
 		routes: routes as import("@pyreon/router").RouteRecord[],
 		routerMode: "history",

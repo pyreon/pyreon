@@ -41,6 +41,14 @@
  * router.push({ name: "user", params: { id: "42" } })
  */
 
+import { registerSingleton } from '@pyreon/reactivity'
+
+// Singleton sentinel — fail-loud detection of duplicate @pyreon/router
+// instances in the same heap. See @pyreon/reactivity/singleton-sentinel for
+// full rationale. Hardcoded version is acceptable here — it's a diagnostic
+// aid, not a load-bearing identity check.
+registerSingleton('@pyreon/router', '0.24.6', import.meta.url)
+
 export type { RouterLinkProps, RouterProviderProps, RouterViewProps } from './components'
 // Components
 export { RouterLink, RouterProvider, RouterView } from './components'

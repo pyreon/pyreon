@@ -1050,7 +1050,20 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // warning on every consumer's dev server boot ("The above dynamic
       // import cannot be analyzed by Vite"), which looks alarming but is
       // expected here. Suppress per Vite's own recommendation.
-      const handlerMod = (await import(/* @vite-ignore */ pathToFileURL(handlerPath).href)) as {
+      //
+      // SSG is a legitimate dual-load scenario — the nested SSR build
+      // emits its own bundled copy of `@pyreon/*` packages at
+      // `dist/client/.zero-ssg-server/entry-server.mjs`, which the outer
+      // process imports here alongside its own workspace copy. Same code,
+      // two paths → the singleton sentinel from `@pyreon/reactivity`
+      // would throw and abort the build. Opt out for the duration of the
+      // load; restore in `finally` so the env var doesn't leak.
+      //
+      // Same pattern as `rocketstyle-collapse.ts`'s nested-SSR resolver.
+      const procEnv = process.env as unknown as Record<string, string | undefined>
+      const prevSingleInstance = procEnv.PYREON_SINGLE_INSTANCE
+      procEnv.PYREON_SINGLE_INSTANCE = 'silent'
+      type HandlerMod = {
         // PR B — return shape is a discriminated union: regular paths
         // produce HTML, redirect-throwing loaders produce a redirect
         // descriptor for the manifest writer.
@@ -1078,6 +1091,18 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         __renderNotFound?: (
           locale?: string | null,
         ) => Promise<{ appHtml: string; head: string; loaderScript: string } | null>
+      }
+      let handlerMod: HandlerMod
+      try {
+        handlerMod = (await import(
+          /* @vite-ignore */ pathToFileURL(handlerPath).href
+        )) as HandlerMod
+      } finally {
+        if (prevSingleInstance === undefined) {
+          delete procEnv.PYREON_SINGLE_INSTANCE
+        } else {
+          procEnv.PYREON_SINGLE_INSTANCE = prevSingleInstance
+        }
       }
       const renderPath = handlerMod.default
       const registry = handlerMod.__getStaticPathsRegistry

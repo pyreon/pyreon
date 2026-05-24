@@ -1,10 +1,20 @@
 // @pyreon/reactivity — signals-based reactive primitives
 
+import { registerSingleton } from './singleton-sentinel'
+
+// Singleton sentinel — fail-loud detection of duplicate @pyreon/reactivity
+// instances in the same heap. See singleton-sentinel.ts for full rationale.
+// Hardcoded version is acceptable here — it's a diagnostic aid, not a
+// load-bearing identity check (the marker identity is the package name +
+// normalized location).
+registerSingleton('@pyreon/reactivity', '0.24.6', import.meta.url)
+
 export { batch, nextTick } from './batch'
 export { Cell, cell } from './cell'
 export { type Computed, type ComputedOptions, computed } from './computed'
 export { createSelector } from './createSelector'
 export { defineCrossModuleState } from './cross-module-state'
+export { _resetSentinel, registerSingleton } from './singleton-sentinel'
 export { inspectSignal, onSignalUpdate, why } from './debug'
 export type {
   FireSummary,

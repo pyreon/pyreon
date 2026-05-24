@@ -1,3 +1,11 @@
+import { registerSingleton } from '@pyreon/reactivity'
+
+// Singleton sentinel — fail-loud detection of duplicate @pyreon/rocketstyle
+// instances in the same heap. See @pyreon/reactivity/singleton-sentinel for
+// full rationale. Hardcoded version is acceptable here — it's a diagnostic
+// aid, not a load-bearing identity check.
+registerSingleton('@pyreon/rocketstyle', '0.24.6', import.meta.url)
+
 import type { TProvider } from './context/context'
 import Provider, { context } from './context/context'
 import type { Rocketstyle } from './init'

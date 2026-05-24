@@ -59,7 +59,11 @@ vi.mock('@pyreon/reactivity', () => {
     host[symKey] = state
     return state
   }
-  return { signal, setSnapshotCapture, defineCrossModuleState }
+  // Mock the singleton sentinel as a no-op. The real one throws on
+  // duplicate-load; tests don't need detection and we only care about
+  // satisfying the import.
+  const registerSingleton = () => {}
+  return { signal, setSnapshotCapture, defineCrossModuleState, registerSingleton }
 })
 
 // onMount / onUnmount are no-ops outside a renderer
