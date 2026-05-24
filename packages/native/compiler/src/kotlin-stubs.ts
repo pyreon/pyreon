@@ -11,11 +11,24 @@
 // kotlinc accepts the emitted source as well-typed. Real apps compile
 // against the actual Compose dependencies.
 //
-// Symbols covered (from the fixtures' grep): `@Composable`, `Text`,
-// `Button`, `LazyColumn`, `Column`, `mutableStateOf`, `derivedStateOf`,
-// `remember`, `items`. The `by`-delegate protocol on `MutableState` and
-// `State` is included so `var x by remember { mutableStateOf(...) }`
-// works at the typechecker level.
+// Symbols covered (from the fixtures' grep + TodoMVC emit): `@Composable`,
+// `Text`, `Button`, `LazyColumn`, `Column`, `Row`, `Box`,
+// `mutableStateOf`, `derivedStateOf`, `remember`, `rememberSaveable`,
+// `items`, `Saver`, `TextField`, `Checkbox`, `KeyboardOptions`,
+// `KeyboardActions`, `ImeAction`, `@Serializable`, `Json` (kotlinx-
+// serialization), `forEach` (List).
+//
+// The `by`-delegate protocol on `MutableState` and `State` is included
+// so `var x by remember { mutableStateOf(...) }` works at the
+// typechecker level.
+//
+// K4 extension: added stubs needed to validate the TodoMVC emit
+// end-to-end (was previously just the 7 starter fixtures' surface).
+// New stubs cover the Compose-Material widget set TodoMVC uses
+// (`TextField`, `Checkbox`), the saveable-state machinery
+// (`rememberSaveable`, `Saver`), the keyboard-options DSL
+// (`KeyboardOptions`/`KeyboardActions`/`ImeAction`), and the
+// kotlinx-serialization surface (`@Serializable`, `Json` singleton).
 //
 // ## Stub-shape design notes
 //
@@ -101,5 +114,108 @@ fun LazyColumn(content: LazyListScope.() -> Unit) {
 @Composable
 fun Column(content: @Composable () -> Unit) {
   content()
+}
+
+// --- K4: layout containers used by TodoMVC after the K3 SwiftUI→Compose mapping ---
+
+@Composable
+fun Row(content: @Composable () -> Unit) {
+  content()
+}
+
+@Composable
+fun Box(content: @Composable () -> Unit) {
+  content()
+}
+
+// --- K4: Saveable state machinery (rememberSaveable + Saver) ---
+//
+// Real Compose ships rememberSaveable as a Composable that persists
+// state through configuration changes (rotation, etc.) via the
+// SavedStateRegistry. The stub here mimics the API surface — saver
+// argument optional, init lambda required — without any real
+// persistence behavior. Type-checker only.
+
+class Saver<Original, Saveable : Any>(
+  val save: (Original) -> Saveable?,
+  val restore: (Saveable) -> Original?,
+)
+
+// rememberSaveable's type-parameter T is the SAVED (inner) type. The
+// init lambda returns MutableState<T>, and rememberSaveable returns
+// MutableState<T> — so the same getValue/setValue extensions on State<T>
+// drive the "by" delegation as for the plain remember(mutableStateOf)
+// pattern. Mirrors the real androidx.compose.runtime.saveable signature.
+
+@Composable
+fun <T : Any> rememberSaveable(
+  saver: Saver<T, out Any>? = null,
+  init: () -> MutableState<T>,
+): MutableState<T> = init()
+
+// --- K4: TextField + keyboard DSL (Compose Material variant) ---
+//
+// Compose Material's TextField has many overloads. The stub captures
+// the four args TodoMVC's emit uses (value, onValueChange, placeholder
+// slot, keyboardOptions, keyboardActions). All non-required args have
+// defaults so missing-arg call sites are still well-typed.
+
+class KeyboardOptions(val imeAction: ImeAction = ImeAction.Default)
+
+class KeyboardActions(val onDone: (() -> Unit)? = null)
+
+class ImeAction private constructor(val id: Int) {
+  companion object {
+    val Default = ImeAction(0)
+    val Done = ImeAction(1)
+    val Go = ImeAction(2)
+    val Search = ImeAction(3)
+    val Send = ImeAction(4)
+    val Next = ImeAction(5)
+    val Previous = ImeAction(6)
+  }
+}
+
+@Composable
+fun TextField(
+  value: String,
+  onValueChange: (String) -> Unit,
+  placeholder: (@Composable () -> Unit)? = null,
+  keyboardOptions: KeyboardOptions = KeyboardOptions(),
+  keyboardActions: KeyboardActions = KeyboardActions(),
+) {
+  // Type-check-only stub. Real Compose Material renders an outlined
+  // text input bound to the value/onValueChange pair.
+}
+
+// --- K4: Checkbox (Compose Material) ---
+
+@Composable
+fun Checkbox(
+  checked: Boolean,
+  onCheckedChange: ((Boolean) -> Unit)? = null,
+) {
+  // Type-check-only stub.
+}
+
+// --- K4: kotlinx-serialization stubs (@Serializable + Json singleton) ---
+//
+// Real kotlinx-serialization uses a compiler plugin to generate
+// per-class serializers at build time. The stub here just declares
+// the annotation + a Json singleton whose generic encode/decode
+// functions are reachable to kotlinc. No real (de)serialization;
+// stub callers receive a default-constructed value on decode.
+
+@Target(AnnotationTarget.CLASS, AnnotationTarget.PROPERTY, AnnotationTarget.TYPE)
+@Retention(AnnotationRetention.RUNTIME)
+annotation class Serializable
+
+object Json {
+  inline fun <reified T> encodeToString(value: T): String = value.toString()
+  // Stub returns a default-constructed value via unchecked cast; the
+  // real implementation roundtrips through the @Serializable plugin.
+  // For TYPE-CHECK validation only — never invoke at runtime.
+  @Suppress("UNCHECKED_CAST")
+  inline fun <reified T> decodeFromString(value: String): T = (null as Any?) as T
 }
 `
