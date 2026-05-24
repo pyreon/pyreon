@@ -177,3 +177,63 @@ describe.skipIf(skipCondition)('K4 — extended Compose stubs typecheck against 
     expect(result.ok).toBe(true)
   })
 })
+
+// ----------------------------------------------------------------------------
+// K-FINAL — end-to-end TodoMVC emit validation
+//
+// Closes the Phase 2 Kotlin arc. Now that K1 (#879, enum equality), K2
+// (#881, derivedStateOf labeled returns), K3 (#880, VStack/HStack →
+// Column/Row), and K4 (#882, extended Compose stubs) have all landed
+// on main, the real `transform()` output for TodoMVC.tsx should be
+// typecheck-clean against the kotlinc + K4-stubs gate.
+//
+// This test replaces the hand-written `TODOMVC_SHAPE_FIXTURE` above
+// with the actual TodoMVC source compiled via `transform()`. If any
+// of K1/K2/K3 regresses, this test will fail loudly with the
+// specific kotlinc error pointing at the regression.
+//
+// Parallels `validate-swift.test.ts`'s TodoMVC gate. After both
+// platforms have this gate, the PMTC multi-target compile contract
+// is CI-validated end-to-end on both targets — the same source
+// produces typecheck-clean SwiftUI AND typecheck-clean Compose
+// simultaneously.
+// ----------------------------------------------------------------------------
+
+// TodoMVC fixture path is identical to the one todomvc-baseline.test.ts uses.
+// Importing/sharing would add cross-test coupling for no benefit; the path
+// itself is the load-bearing piece and stable across tests.
+const TODOMVC_SOURCE_PATH = (() => {
+  const here = dirname(fileURLToPath(import.meta.url))
+  return resolve(
+    here,
+    '..', '..', '..', '..', '..',
+    'examples', 'native-todomvc-ios', 'src', 'TodoApp.tsx',
+  )
+})()
+
+describe.skipIf(skipCondition)('K-FINAL — real TodoMVC emit typechecks via kotlinc + K4 stubs', () => {
+  it('transform()-emitted Kotlin for examples/native-todomvc-ios/src/TodoApp.tsx is typecheck-clean', () => {
+    const source = readFileSync(TODOMVC_SOURCE_PATH, 'utf8')
+    const out = transform(source, { target: 'kotlin' })
+
+    // Sanity: emit must contain the shape K1+K2+K3 produce. If these
+    // fail, the regression is in the Kotlin emit not the stubs — the
+    // structural anchors point straight at the right K* fix.
+    expect(out.code).toContain('if (filter == Filter.active)') // K1
+    expect(out.code).toContain('return@derivedStateOf xs') // K2
+    expect(out.code).toMatch(/Column \{[\s\S]+TextField/) // K3
+    expect(out.code).toContain('@Serializable') // foundational @Serializable annotation
+
+    // End-to-end: pass the full emit through kotlinc with the K4 stubs.
+    // 0 errors = the full Phase 2 Kotlin arc is intact AND the stub
+    // surface covers everything the emit references.
+    const result = validateKotlin(out.code)
+    if (!result.ok) {
+      throw new Error(
+        `K-FINAL: TodoMVC Kotlin emit failed kotlinc validation:\n${result.error}\n\n` +
+          `--- emit ---\n${out.code}\n--- end ---`,
+      )
+    }
+    expect(result.ok).toBe(true)
+  })
+})
