@@ -567,11 +567,47 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
     }
     case 'binary':
       return `${emitKotlinExpr(e.left, indent)} ${e.op} ${emitKotlinExpr(e.right, indent)}`
-    case 'comparison':
+    case 'comparison': {
       // Pyreon `===` / `!==` already coalesced to `==` / `!=` at parse;
       // Kotlin's `==` is structural-equality (matches what Pyreon source
       // expects). `!=` is the negation.
-      return `${emitKotlinExpr(e.left, indent)} ${e.op} ${emitKotlinExpr(e.right, indent)}`
+      //
+      // K1: enum-aware comparison. When the LHS is a known enum-typed
+      // signal read (`filter()` where `filter: Filter`), wrap the RHS
+      // emit with `_activeEnumType` so a string literal rewrites to a
+      // qualified case (`"active"` → `Filter.active`). Mirrors the
+      // existing `.set()` enum-aware emit and the iOS comparison branch
+      // (search `_activeEnumType` in emit-swift.ts for the structural
+      // reference).
+      //
+      // Without this rewrite, kotlinc rejects the emit with
+      //   "operator '==' cannot be applied to 'Filter' and 'String'"
+      // because Kotlin's `==` is type-checked (unlike JS's `===`,
+      // which the source uses freely across the enum/string boundary).
+      //
+      // Detection: LHS is `call(callee=identifier, args=[])` where the
+      // identifier is in `_signalEnumTypes`. That's the canonical
+      // signal-read shape for an enum-typed signal (`filter()`).
+      const left = e.left
+      let prevEnumType: string | undefined
+      if (
+        left.kind === 'call' &&
+        left.callee.kind === 'identifier' &&
+        left.args.length === 0
+      ) {
+        const enumType = _signalEnumTypes.get(left.callee.name)
+        if (enumType !== undefined) {
+          prevEnumType = _activeEnumType
+          _activeEnumType = enumType
+        }
+      }
+      const leftStr = emitKotlinExpr(e.left, indent)
+      const rightStr = emitKotlinExpr(e.right, indent)
+      if (prevEnumType !== undefined || _activeEnumType !== undefined) {
+        _activeEnumType = prevEnumType
+      }
+      return `${leftStr} ${e.op} ${rightStr}`
+    }
     case 'unary':
       // Parser-B: prefix unary. Kotlin accepts `!x`, `-x`, `+x` verbatim.
       return `${e.op}${emitKotlinExpr(e.argument, indent)}`
