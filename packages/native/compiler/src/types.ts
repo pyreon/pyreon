@@ -280,12 +280,50 @@ export interface StructIR {
   fields: { name: string; type: TypeIR }[]
 }
 
+/**
+ * Module-level mutable binding emitted at file scope on the target.
+ * Source:
+ *
+ *   let nextId = 1
+ *   const APP_VERSION = '1.0.0'
+ *
+ * Swift emit:
+ *
+ *   private var nextId: Int = 1
+ *   private let APP_VERSION: String = "1.0.0"
+ *
+ * Kotlin emit:
+ *
+ *   private var nextId: Int = 1
+ *   private val APP_VERSION: String = "1.0.0"
+ *
+ * Phase 2 follow-up closing the "TodoMVC's `nextId` undefined in Swift
+ * scope" gap surfaced by the post-Phase-2-trilogy typecheck. The TS
+ * source's `let` declares a mutable binding; `const` declares immutable.
+ * Pyreon convention preserves the mutability through to the target —
+ * `let` → `var`/`var`, `const` → `let`/`val`.
+ *
+ * Type field: explicit annotation when source carries one, otherwise
+ * `unknown` (target falls back to type-inference at compile time).
+ */
+export interface ModuleDeclIR {
+  name: string
+  /** `var` (TS `let`) or `let` (TS `const`). Preserves source mutability. */
+  mutable: boolean
+  /** Type annotation; `unknown` when source omits it. */
+  type: TypeIR
+  /** Initial-value expression. */
+  initial: ExprIR
+}
+
 export interface ParseResult {
   components: ComponentIR[]
   /** String-literal-union type aliases lifted to native enums. */
   enums: EnumIR[]
   /** Object-shape type aliases lifted to native structs / data classes. */
   structs: StructIR[]
+  /** Module-level mutable / immutable bindings emitted at file scope. */
+  moduleDecls: ModuleDeclIR[]
   /** Diagnostic messages produced during IR construction. */
   warnings: string[]
 }

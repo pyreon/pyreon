@@ -12,6 +12,7 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
+  ModuleDeclIR,
   StatementIR,
   StructIR,
   TypeIR,
@@ -37,6 +38,7 @@ export function emitKotlin(
   components: ComponentIR[],
   enums: EnumIR[] = [],
   structs: StructIR[] = [],
+  moduleDecls: ModuleDeclIR[] = [],
 ): string {
   _enumNames = new Set(enums.map((e) => e.name))
   // Build the struct-fields key map — mirror of emit-swift's logic.
@@ -60,6 +62,7 @@ export function emitKotlin(
   }
   for (const e of enums) parts.push(emitKotlinEnum(e))
   for (const s of structs) parts.push(emitKotlinStruct(s))
+  for (const md of moduleDecls) parts.push(emitKotlinModuleDecl(md))
   for (const c of components) parts.push(emitKotlinComponent(c))
   _enumNames = new Set()
   _structFieldsToName = new Map()
@@ -97,6 +100,23 @@ function emitKotlinStruct(s: StructIR): string {
     .map((f) => `var ${kotlinIdent(f.name)}: ${kotlinType(f.type, undefined, f.name)}`)
     .join(', ')
   return `@Serializable\ndata class ${kotlinIdent(s.name)}(${params})`
+}
+
+/**
+ * Emit a module-level mutable / immutable binding at file scope.
+ * Mirror of emit-swift's `emitSwiftModuleDecl` — same TS-mutability
+ * preservation, different syntax.
+ *
+ *   source: let nextId = 1     →  private var nextId: Int = 1
+ *   source: const APP = '1.0'  →  private val APP: String = "1.0"
+ */
+function emitKotlinModuleDecl(md: ModuleDeclIR): string {
+  const kw = md.mutable ? 'var' : 'val'
+  const initial = emitKotlinExpr(md.initial, 0)
+  if (md.type.kind === 'unknown') {
+    return `private ${kw} ${kotlinIdent(md.name)} = ${initial}`
+  }
+  return `private ${kw} ${kotlinIdent(md.name)}: ${kotlinType(md.type)} = ${initial}`
 }
 
 interface KotlinCtx {

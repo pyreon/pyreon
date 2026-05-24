@@ -70,6 +70,8 @@ describe('TodoMVC compile baseline', () => {
         var done: Bool
       }
 
+      private var nextId = 1
+
       struct TodoApp: View {
         @AppStorage("pyreon-todomvc:todos") private var todosData: Data = Data()
         private var todos: [Todo] {
@@ -412,5 +414,35 @@ describe('TodoMVC gap-tracking baseline', () => {
     expect(out.code).toContain('todos.any({ t -> t.done })')
     // No leftover .some — would compile-error on List<Todo>.
     expect(out.code).not.toContain('.some(')
+  })
+
+  it('Phase 2 — module-level `let nextId = 1` emits as Swift `private var nextId = 1`', () => {
+    // Closes the TodoMVC `nextId undefined` typecheck blocker.
+    // Module-level mutable bindings (TS `let`) emit as Swift `private var`
+    // at file scope, preserving the source's module-level privacy.
+    // The locked Swift-emit snapshot above already proves this; the
+    // explicit assertion here is the gap-closure marker.
+    const out = transform(source, { target: 'swift' })
+    expect(out.code).toContain('private var nextId = 1')
+  })
+
+  it('Phase 2 — module-level `let nextId = 1` emits as Kotlin `private var nextId = 1`', () => {
+    // Kotlin parallel. TS `let` → Kotlin `var`; TS `const` → Kotlin `val`.
+    const out = transform(source, { target: 'kotlin' })
+    expect(out.code).toContain('private var nextId = 1')
+  })
+
+  it('Phase 2 — module-level `const` mutability is preserved (immutable emit `let`/`val`)', () => {
+    // Verifies the mutability flow: TS `const` should emit immutable
+    // bindings on both targets (`let` on Swift, `val` on Kotlin),
+    // NOT the mutable forms.
+    const constSource = `const APP_VERSION = '1.0.0'\nexport function App() { return <Text>x</Text> }`
+    const swift = transform(constSource, { target: 'swift' })
+    expect(swift.code).toContain('private let APP_VERSION = "1.0.0"')
+    expect(swift.code).not.toContain('private var APP_VERSION')
+
+    const kotlin = transform(constSource, { target: 'kotlin' })
+    expect(kotlin.code).toContain('private val APP_VERSION = "1.0.0"')
+    expect(kotlin.code).not.toContain('private var APP_VERSION')
   })
 })

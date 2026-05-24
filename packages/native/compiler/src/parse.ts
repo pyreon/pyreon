@@ -12,6 +12,7 @@ import type {
   DeclIR,
   EnumIR,
   ExprIR,
+  ModuleDeclIR,
   ParseResult,
   StatementIR,
   StructIR,
@@ -36,6 +37,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   const components: ComponentIR[] = []
   const enums: EnumIR[] = []
   const structs: StructIR[] = []
+  const moduleDecls: ModuleDeclIR[] = []
 
   for (const node of ast.program.body as AnyNode[]) {
     const comp = tryComponentFromTopLevel(node, ctx)
@@ -47,9 +49,80 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     // tryEnumFromTypeAlias above) OR a non-object alias (`type Foo = string`).
     const st = tryStructFromTypeAlias(node, ctx)
     if (st) structs.push(st)
+    // Phase 2 follow-up: module-level mutable / immutable bindings.
+    // `let nextId = 1`, `const APP_VERSION = '1.0.0'` etc. Closes the
+    // TodoMVC `nextId undefined` typecheck blocker by emitting these
+    // at file scope on the target.
+    const mds = tryModuleDeclsFromTopLevel(node, ctx)
+    if (mds) moduleDecls.push(...mds)
   }
 
-  return { components, enums, structs, warnings: ctx.warnings }
+  return { components, enums, structs, moduleDecls, warnings: ctx.warnings }
+}
+
+/**
+ * Extract module-level `let X = expr` / `const X = expr` bindings.
+ * Phase 2 follow-up — closes the TodoMVC `nextId undefined` typecheck
+ * blocker. TS source's `let` is mutable; `const` is immutable. The
+ * mutability flows through to the target emit (`var`/`let` on Swift,
+ * `var`/`val` on Kotlin).
+ *
+ * Skips:
+ *   - declarators inside function bodies (already handled by
+ *     tryDeclFromVarDeclarator)
+ *   - declarators whose init is a CallExpression to `signal` / `computed`
+ *     / `useStorage` (those are component-scope reactive decls, not
+ *     module-level bindings — caught by tryComponentFromTopLevel)
+ *   - destructured patterns (`const { a, b } = obj`) — Phase 3
+ *   - non-init declarators (`let x` without value) — defensive bail
+ */
+function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[] | null {
+  // Walk through `ExportNamedDeclaration` → `VariableDeclaration`.
+  let varDecl: AnyNode | null = null
+  if (
+    node.type === 'ExportNamedDeclaration' &&
+    node.declaration?.type === 'VariableDeclaration'
+  ) {
+    varDecl = node.declaration
+  } else if (node.type === 'VariableDeclaration') {
+    varDecl = node
+  }
+  if (!varDecl) return null
+
+  const isConst = varDecl.kind === 'const'
+  const declarators = varDecl.declarations as AnyNode[]
+  const out: ModuleDeclIR[] = []
+  for (const declarator of declarators) {
+    const name = declarator.id?.name as string | undefined
+    if (!name) continue // destructured — skip silently
+    const init = declarator.init as AnyNode | undefined
+    if (!init) continue // bare `let x` — skip
+    // Skip declarators whose init is a `signal()` / `computed()` /
+    // `useStorage()` call — those belong inside a component, not at
+    // module scope. They shouldn't show up here (the parser walks
+    // function bodies separately), but defensive bail catches any
+    // shape where a user accidentally writes `const x = signal(0)` at
+    // module scope (which would be a runtime bug in Pyreon anyway).
+    if (init.type === 'CallExpression') {
+      const calleeName = init.callee?.name as string | undefined
+      if (
+        calleeName === 'signal' ||
+        calleeName === 'computed' ||
+        calleeName === 'useStorage'
+      ) {
+        ctx.warnings.push(
+          `Module-level binding ${name} initializes via ${calleeName}() — these belong inside a component. Skipped.`,
+        )
+        continue
+      }
+    }
+    // Type annotation when present; otherwise unknown.
+    const annotation = declarator.id?.typeAnnotation?.typeAnnotation as AnyNode | undefined
+    const type: TypeIR = annotation ? parseTypeAnnotation(annotation, ctx) : { kind: 'unknown' }
+    const initialExpr = parseExpr(init, ctx)
+    out.push({ name, mutable: !isConst, type, initial: initialExpr })
+  }
+  return out.length > 0 ? out : null
 }
 
 /**
