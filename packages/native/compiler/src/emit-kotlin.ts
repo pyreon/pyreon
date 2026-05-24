@@ -27,6 +27,8 @@ let _enumNames: Set<string> = new Set()
  * `_structFieldsToName`. See that file for the structural rationale.
  */
 let _structFieldsToName: Map<string, string> = new Map()
+/** Mirror of emit-swift's `_componentNames`. See that file for rationale. */
+let _componentNames: Set<string> = new Set()
 let _signalEnumTypes: Map<string, string> = new Map()
 let _activeEnumType: string | undefined
 /** G1: every signal name in scope — see emit-swift.ts for the rationale. */
@@ -47,6 +49,8 @@ export function emitKotlin(
     const key = s.fields.map((f) => f.name).sort().join(',')
     if (!_structFieldsToName.has(key)) _structFieldsToName.set(key, s.name)
   }
+  // Build the user-component name set — mirror of emit-swift's logic.
+  _componentNames = new Set(components.map((c) => c.name))
   const parts: string[] = []
   // TS-method compat preamble (Phase 2 follow-up). Kotlin's String has
   // `.length` but Collection<T> uses `.size` — so `array.length` (valid
@@ -66,6 +70,7 @@ export function emitKotlin(
   for (const c of components) parts.push(emitKotlinComponent(c))
   _enumNames = new Set()
   _structFieldsToName = new Map()
+  _componentNames = new Set()
   return parts.join('\n\n')
 }
 
@@ -834,19 +839,26 @@ function emitKotlinShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
 
 function emitKotlinGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const pad = ' '.repeat(indent + 2)
-  const attrPairs = e.attrs
-    .filter((a) => a.kind === 'attr')
-    .map((a) => {
-      const aa = a as Extract<AttrIR, { kind: 'attr' }>
+  const isUserComponent = _componentNames.has(e.tag)
+  // Phase 2 follow-up: include event handlers as constructor args for
+  // user-defined Composables. Mirror of emit-swift.ts:emitSwiftGeneric.
+  const argParts: string[] = []
+  for (const a of e.attrs) {
+    if (a.kind === 'attr') {
       // `safeIdent` converts kebab-case HTML attrs (`data-test`,
       // `aria-label`) to camelCase. Kotlin rejects `-` in named
-      // arguments the same way Swift does. Mirrors the Swift emit
-      // — see `safeIdent` for the structural rationale.
-      // Also `kotlinIdent`-escape in case the kebab→camel conversion
-      // lands on a reserved keyword.
-      return `${kotlinIdent(safeIdent(aa.name))} = ${emitKotlinExpr(aa.value, indent)}`
-    })
-    .join(', ')
+      // arguments the same way Swift does.
+      argParts.push(
+        `${kotlinIdent(safeIdent(a.name))} = ${emitKotlinExpr(a.value, indent)}`,
+      )
+    } else if (a.kind === 'event' && isUserComponent) {
+      const propName = `on${a.name[0]!.toUpperCase()}${a.name.slice(1)}`
+      argParts.push(
+        `${kotlinIdent(propName)} = ${emitKotlinAction(a.handler, indent)}`,
+      )
+    }
+  }
+  const attrPairs = argParts.join(', ')
   // `kotlinIdent`-escape the tag too — covers user-defined components
   // whose name collides with a Kotlin keyword.
   const tag = kotlinIdent(e.tag)

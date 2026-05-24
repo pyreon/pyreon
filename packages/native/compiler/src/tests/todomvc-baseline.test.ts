@@ -109,10 +109,10 @@ describe('TodoMVC compile baseline', () => {
           todos = todos + [Todo(id: nextId + 1, text: text, done: false)]
           draft = ""
         }
-        private func toggle(id: Int) {
+        private func toggle(_ id: Int) {
           todos = todos.map({ t in t.id == id ? { var c = t; c.done = !t.done; return c }() : t })
         }
-        private func remove(id: Int) {
+        private func remove(_ id: Int) {
           todos = todos.filter({ t in t.id != id })
         }
         private func clearCompleted() {
@@ -123,7 +123,7 @@ describe('TodoMVC compile baseline', () => {
             TextField("What needs to be done?", text: $draft)
               .onSubmit { addTodo() }
             ForEach(visible, id: \\.id) { t in
-              TodoRow(todo: t)
+              TodoRow(todo: t, onToggle: { toggle(t.id) }, onRemove: { remove(t.id) })
             }
             HStack {
               Text("\\(remaining) remaining")
@@ -496,6 +496,28 @@ describe('TodoMVC gap-tracking baseline', () => {
     // Negative — would have been `: Any { ... }` pre-PR.
     expect(out.code).not.toContain('private var remaining: Any')
     expect(out.code).not.toContain('private var hasCompleted: Any')
+  })
+
+  it('Phase 2 — user-defined component JSX forwards event handlers as constructor args (Swift)', () => {
+    // Closes the TodoMVC `TodoRow(todo: t)` missing-args typecheck
+    // blocker. Pre-PR, the generic JSX emit filtered out event handlers,
+    // so `<TodoRow todo={t} onToggle={...} onRemove={...} />` lost the
+    // event props on the way to the Swift constructor.
+    //
+    // Post-PR: when the tag matches a user-defined ComponentIR name,
+    // event handlers are included as constructor closure args:
+    //   TodoRow(todo: t, onToggle: { toggle(t.id) }, onRemove: { remove(t.id) })
+    //
+    // Note: SwiftUI primitives (HStack/VStack) still drop events — they
+    // don't accept onClick: parameters, so including events there would
+    // produce a typecheck error.
+    const out = transform(source, { target: 'swift' })
+    expect(out.code).toContain('TodoRow(todo: t, onToggle: { toggle(t.id) }, onRemove: { remove(t.id) })')
+  })
+
+  it('Phase 2 — user-defined component JSX forwards event handlers as constructor args (Kotlin)', () => {
+    const out = transform(source, { target: 'kotlin' })
+    expect(out.code).toContain('TodoRow(todo = t, onToggle = { toggle(t.id) }, onRemove = { remove(t.id) })')
   })
 
   it('Phase 2 — function-typed prop / decl handlers call inside trailing closures', () => {
