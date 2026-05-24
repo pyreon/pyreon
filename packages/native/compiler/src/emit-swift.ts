@@ -833,8 +833,46 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Text') return emitSwiftText(e, indent)
   if (tag === 'Button') return emitSwiftButton(e, indent)
   if (tag === 'TextField') return emitSwiftTextField(e, indent)
+  if (tag === 'Checkbox') return emitSwiftCheckbox(e, indent)
   // Generic SwiftUI View by tag name.
   return emitSwiftGeneric(e, indent)
+}
+
+/**
+ * Emit Pyreon's `<Checkbox checked={x}>` as a SwiftUI `Image` with
+ * the conditional system symbol. SwiftUI doesn't ship a non-
+ * interactive Checkbox primitive; the closest typecheck-clean
+ * read-only display is:
+ *
+ *   Image(systemName: x ? "checkmark.square.fill" : "square")
+ *
+ * For the interactive case (`onChange` handler), Phase 3 could
+ * extend this to emit a Toggle with a `Binding<Bool>`, but that
+ * requires the checked expression to BE a binding — currently the
+ * source passes a plain bool (`todo.done`), which doesn't fit a
+ * Binding without wrapping. The read-only Image is the structural
+ * closure for the current TodoMVC shape; `onChange` is silently
+ * dropped (matches the existing generic-primitive event-drop
+ * convention).
+ *
+ * Closes the TodoMVC `Checkbox not in scope` typecheck blocker —
+ * the LAST remaining typecheck error after #871/#872.
+ */
+function emitSwiftCheckbox(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const checked = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> =>
+      a.kind === 'attr' && a.name === 'checked',
+  )
+  if (!checked) {
+    // No `checked` attr — degrade to an empty square. Conservative;
+    // unlikely shape in real Pyreon source.
+    return `Image(systemName: "square")`
+  }
+  const checkedExpr = emitSwiftExpr(checked.value, indent)
+  return `Image(systemName: ${checkedExpr} ? "checkmark.square.fill" : "square")`
 }
 
 /**

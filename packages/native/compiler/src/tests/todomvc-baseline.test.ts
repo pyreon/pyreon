@@ -144,7 +144,7 @@ describe('TodoMVC compile baseline', () => {
         let onRemove: () -> Void
         var body: some View {
           HStack {
-            Checkbox(checked: todo.done)
+            Image(systemName: todo.done ? "checkmark.square.fill" : "square")
             Text("\\(todo.text)")
             Button("Remove") { onRemove() }
           }
@@ -518,6 +518,21 @@ describe('TodoMVC gap-tracking baseline', () => {
   it('Phase 2 — user-defined component JSX forwards event handlers as constructor args (Kotlin)', () => {
     const out = transform(source, { target: 'kotlin' })
     expect(out.code).toContain('TodoRow(todo = t, onToggle = { toggle(t.id) }, onRemove = { remove(t.id) })')
+  })
+
+  it('Phase 2 — <Checkbox checked={x}> emits SwiftUI `Image(systemName: ...)` (last typecheck blocker)', () => {
+    // Closes the LAST remaining typecheck error in the TodoMVC Swift
+    // emit. Pyreon's `<Checkbox>` is a source-side convention; SwiftUI
+    // doesn't ship a non-interactive Checkbox primitive. The closest
+    // typecheck-clean read-only display is `Image(systemName: ...)`
+    // with a conditional system symbol.
+    //
+    // After this PR, `swiftc -typecheck` on the actual TodoMVC emit
+    // returns ZERO errors — the symbolic "TodoMVC compiles cleanly to
+    // Swift" milestone for the in-compiler scope.
+    const out = transform(source, { target: 'swift' })
+    expect(out.code).toContain('Image(systemName: todo.done ? "checkmark.square.fill" : "square")')
+    expect(out.code).not.toContain('Checkbox(')
   })
 
   it('Phase 2 — function-typed prop / decl handlers call inside trailing closures', () => {
