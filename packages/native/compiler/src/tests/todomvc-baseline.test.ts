@@ -480,6 +480,23 @@ describe('TodoMVC gap-tracking baseline', () => {
     expect(out.code).not.toContain('filter == "completed"')
   })
 
+  it('K1 — Kotlin comparison against enum-typed signal rewrites string literal to qualified case', () => {
+    // CLOSED by this PR. Kotlin parallel of the Swift enum-comparison
+    // rewrite. Kotlin's `==` is type-checked (unlike JS's `===`), so
+    // `if (filter == "active")` is rejected by kotlinc:
+    //   "operator '==' cannot be applied to 'Filter' and 'String'"
+    // The fix mirrors the Swift `_signalEnumTypes` plumbing — detect
+    // an enum-typed signal-read LHS, set `_activeEnumType` before
+    // emitting the RHS so the literal `"active"` rewrites to the
+    // qualified case `Filter.active`. Kotlin requires the enum-name
+    // prefix (Swift's `.active` inference doesn't apply).
+    const out = transform(source, { target: 'kotlin' })
+    expect(out.code).toContain('if (filter == Filter.active)')
+    expect(out.code).toContain('if (filter == Filter.completed)')
+    expect(out.code).not.toContain('filter == "active"')
+    expect(out.code).not.toContain('filter == "completed"')
+  })
+
   it('Phase 2 — computed return-type inference via TS method chains (.length → Int, .some → Bool)', () => {
     // Closes the "Any cannot conform to RandomAccessCollection"
     // typecheck blocker. The inferType pass now walks common TS
