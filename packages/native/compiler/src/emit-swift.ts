@@ -36,6 +36,21 @@ import type {
 // the emitter avoids ctx-threading at 22+ call sites.
 let _enumNames: Set<string> = new Set()
 /**
+ * Component names emitted in this transform. Used by the generic
+ * JSX emit to distinguish user-defined components (`<TodoRow>`,
+ * `<MyCard>`) from SwiftUI primitives (`<HStack>`, `<VStack>`).
+ *
+ * For user-defined components, the emit passes ALL attrs INCLUDING
+ * event handlers (`onToggle={...}`) as constructor arguments —
+ * SwiftUI Views are struct-initialized with all props at construction
+ * time. For SwiftUI primitives, events stay dropped since they don't
+ * accept event-handler args (HStack has no `onClick:` parameter).
+ *
+ * Closes the TodoMVC `TodoRow(todo: t)` missing-args typecheck blocker
+ * (the `onToggle`/`onRemove` event handlers were silently dropped).
+ */
+let _componentNames: Set<string> = new Set()
+/**
  * Struct name → sorted-field-names key. Phase 2 follow-up to the
  * struct-emit PR. Used by the object-expression emit to detect when
  * an anonymous object literal (`{ id: ..., text: ..., done: false }`)
@@ -86,6 +101,9 @@ export function emitSwift(
     const key = s.fields.map((f) => f.name).sort().join(',')
     if (!_structFieldsToName.has(key)) _structFieldsToName.set(key, s.name)
   }
+  // Build the user-component name set so emitSwiftGeneric can include
+  // event handlers as constructor args for user-defined components.
+  _componentNames = new Set(components.map((c) => c.name))
   const parts: string[] = []
   for (const e of enums) parts.push(emitSwiftEnum(e))
   for (const s of structs) parts.push(emitSwiftStruct(s))
@@ -93,6 +111,7 @@ export function emitSwift(
   for (const c of components) parts.push(emitSwiftComponent(c))
   _enumNames = new Set()
   _structFieldsToName = new Map()
+  _componentNames = new Set()
   return parts.join('\n\n')
 }
 
@@ -341,8 +360,14 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
 function emitSwiftFunction(
   d: Extract<DeclIR, { kind: 'function' }>,
 ): string {
+  // Use `_` (no external label) so call sites match the JS-style
+  // unnamed-arg shape `toggle(t.id)` instead of requiring Swift's
+  // labeled-call shape `toggle(id: t.id)`. The TS source doesn't
+  // carry argument labels at call sites — Pyreon's compile path
+  // preserves the call-site shape verbatim, so the function decl
+  // must also opt out of Swift's default external labeling.
   const params = d.params
-    .map((p) => `${swiftIdent(p.name)}: ${swiftType(p.type)}`)
+    .map((p) => `_ ${swiftIdent(p.name)}: ${swiftType(p.type)}`)
     .join(', ')
   // Render return-type clause. If the type is `unknown`, omit the
   // arrow entirely (= Swift function returning Void).
@@ -808,8 +833,46 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Text') return emitSwiftText(e, indent)
   if (tag === 'Button') return emitSwiftButton(e, indent)
   if (tag === 'TextField') return emitSwiftTextField(e, indent)
+  if (tag === 'Checkbox') return emitSwiftCheckbox(e, indent)
   // Generic SwiftUI View by tag name.
   return emitSwiftGeneric(e, indent)
+}
+
+/**
+ * Emit Pyreon's `<Checkbox checked={x}>` as a SwiftUI `Image` with
+ * the conditional system symbol. SwiftUI doesn't ship a non-
+ * interactive Checkbox primitive; the closest typecheck-clean
+ * read-only display is:
+ *
+ *   Image(systemName: x ? "checkmark.square.fill" : "square")
+ *
+ * For the interactive case (`onChange` handler), Phase 3 could
+ * extend this to emit a Toggle with a `Binding<Bool>`, but that
+ * requires the checked expression to BE a binding — currently the
+ * source passes a plain bool (`todo.done`), which doesn't fit a
+ * Binding without wrapping. The read-only Image is the structural
+ * closure for the current TodoMVC shape; `onChange` is silently
+ * dropped (matches the existing generic-primitive event-drop
+ * convention).
+ *
+ * Closes the TodoMVC `Checkbox not in scope` typecheck blocker —
+ * the LAST remaining typecheck error after #871/#872.
+ */
+function emitSwiftCheckbox(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const checked = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> =>
+      a.kind === 'attr' && a.name === 'checked',
+  )
+  if (!checked) {
+    // No `checked` attr — degrade to an empty square. Conservative;
+    // unlikely shape in real Pyreon source.
+    return `Image(systemName: "square")`
+  }
+  const checkedExpr = emitSwiftExpr(checked.value, indent)
+  return `Image(systemName: ${checkedExpr} ? "checkmark.square.fill" : "square")`
 }
 
 /**
@@ -1042,10 +1105,15 @@ function emitSwiftShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
 
 function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const pad = ' '.repeat(indent + 2)
-  const attrPairs = e.attrs
-    .filter((a) => a.kind === 'attr')
-    .map((a) => {
-      const aa = a as Extract<AttrIR, { kind: 'attr' }>
+  const isUserComponent = _componentNames.has(e.tag)
+  // For user-defined components, include event handlers as constructor
+  // args (Phase 2 — closes TodoMVC's `TodoRow(todo: t)` missing-args
+  // typecheck blocker; `onToggle`/`onRemove` are now forwarded as
+  // closure-valued props). For SwiftUI primitives, events stay
+  // dropped — HStack / VStack don't accept onClick: parameters.
+  const argParts: string[] = []
+  for (const a of e.attrs) {
+    if (a.kind === 'attr') {
       // `safeIdent` converts kebab-case HTML attrs (`data-test`,
       // `aria-label`) to camelCase. Swift rejects `-` in argument
       // labels with `expected ',' separator`; was the #1 cause of
@@ -1054,9 +1122,19 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
       // Also `swiftIdent`-escape the attr label in case the kebab→camel
       // conversion lands on a reserved keyword (e.g. `for-class` →
       // `forClass` — both halves are reserved when used as identifiers).
-      return `${swiftIdent(safeIdent(aa.name))}: ${emitSwiftExpr(aa.value, indent)}`
-    })
-    .join(', ')
+      argParts.push(
+        `${swiftIdent(safeIdent(a.name))}: ${emitSwiftExpr(a.value, indent)}`,
+      )
+    } else if (a.kind === 'event' && isUserComponent) {
+      // User component prop named `on<Cap>` — the parser stripped the
+      // `on` prefix and lowercased: `onToggle` → `event { name: 'toggle' }`.
+      // Recover the camelCase prop name by re-adding the `on` prefix +
+      // upper-casing the first letter.
+      const propName = `on${a.name[0]!.toUpperCase()}${a.name.slice(1)}`
+      argParts.push(`${swiftIdent(propName)}: ${emitSwiftAction(a.handler, indent)}`)
+    }
+  }
+  const attrPairs = argParts.join(', ')
   // `swiftIdent`-escape the tag name — covers user-defined components
   // whose name collides with a Swift keyword (e.g. `<class>...</class>`).
   const tag = swiftIdent(e.tag)
