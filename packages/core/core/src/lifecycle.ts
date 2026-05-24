@@ -1,26 +1,24 @@
-import { defineCrossModuleState } from '@pyreon/reactivity'
 import type { CleanupFn, LifecycleHooks } from './types'
 
-// Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
-// uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
+// Dev-mode gate: bundler-agnostic. Every modern bundler auto-replaces
+// `process.env.NODE_ENV` at consumer build time and tree-shakes the
+// dev branch in production.
 const __DEV__ = process.env.NODE_ENV !== 'production'
 
-// Currently-executing component's hook storage, hosted on globalThis via
-// `defineCrossModuleState` so duplicate `@pyreon/core` module instances
-// share state — see the helper's JSDoc for the full module-duplication
-// rationale (was 5× inlined Symbol.for blocks in PR #855; now consolidated
-// to one helper call per state var).
-const _state = defineCrossModuleState<{ current: LifecycleHooks | null }>(
-  'pyreon-core/lifecycle-state',
-  () => ({ current: null }),
-)
+// Currently-executing component's hook storage. Plain module-scope state
+// — the duplicate-instance bug class is now prevented at the bundler
+// layer (`@pyreon/vite-plugin` injects `resolve.dedupe`) and detected at
+// the runtime layer (every package calls `registerSingleton` at module
+// load). See `.claude/plans/jaunty-herding-kazoo.md` for the full
+// defense-in-depth architecture.
+let _current: LifecycleHooks | null = null
 
 export function setCurrentHooks(hooks: LifecycleHooks | null) {
-  _state.current = hooks
+  _current = hooks
 }
 
 export function getCurrentHooks(): LifecycleHooks | null {
-  return _state.current
+  return _current
 }
 
 /**
@@ -86,7 +84,7 @@ function captureCallSite(): string {
 }
 
 function warnOutsideSetup(hookName: string): void {
-  if (__DEV__ && !_state.current) {
+  if (__DEV__ && !_current) {
     const callSite = captureCallSite()
     // Local name must NOT shadow the `location` browser global (poor
     // hygiene + trips SSR static analysis into a false positive).
@@ -109,9 +107,9 @@ function warnOutsideSetup(hookName: string): void {
  */
 export function onMount(fn: () => CleanupFn | void | undefined) {
   warnOutsideSetup('onMount')
-  if (_state.current) {
-    if (_state.current.mount === null) _state.current.mount = []
-    _state.current.mount.push(fn)
+  if (_current) {
+    if (_current.mount === null) _current.mount = []
+    _current.mount.push(fn)
   }
 }
 
@@ -120,9 +118,9 @@ export function onMount(fn: () => CleanupFn | void | undefined) {
  */
 export function onUnmount(fn: () => void) {
   warnOutsideSetup('onUnmount')
-  if (_state.current) {
-    if (_state.current.unmount === null) _state.current.unmount = []
-    _state.current.unmount.push(fn)
+  if (_current) {
+    if (_current.unmount === null) _current.unmount = []
+    _current.unmount.push(fn)
   }
 }
 
@@ -131,9 +129,9 @@ export function onUnmount(fn: () => void) {
  */
 export function onUpdate(fn: () => void) {
   warnOutsideSetup('onUpdate')
-  if (_state.current) {
-    if (_state.current.update === null) _state.current.update = []
-    _state.current.update.push(fn)
+  if (_current) {
+    if (_current.update === null) _current.update = []
+    _current.update.push(fn)
   }
 }
 
@@ -152,8 +150,8 @@ export function onUpdate(fn: () => void) {
  */
 export function onErrorCaptured(fn: (err: unknown) => boolean | undefined) {
   warnOutsideSetup('onErrorCaptured')
-  if (_state.current) {
-    if (_state.current.error === null) _state.current.error = []
-    _state.current.error.push(fn)
+  if (_current) {
+    if (_current.error === null) _current.error = []
+    _current.error.push(fn)
   }
 }
