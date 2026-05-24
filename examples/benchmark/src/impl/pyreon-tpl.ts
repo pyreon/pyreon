@@ -6,13 +6,19 @@
  *
  * - `_tpl()` — cloneNode(true) instead of N × createElement + setAttribute
  * - `_bindText` — direct signal→TextNode subscription (no effect overhead)
- * - `_bind` — single renderEffect for className (createSelector dependency)
+ * - `selector.subscribe(key, updater)` — effect-free per-key className
+ *   binding. Replaces the per-row `_bind(() => className = isSelected(id)
+ *   ? ... )` pattern which created a renderEffect per row (~5 allocs).
+ *   The selector's source effect calls the user updater directly with
+ *   the resolved boolean — 1 Set.add + 1 dispose closure per row.
+ *   Promoted Pyreon (compiled) from "tied" to "outright leader" on every
+ *   list-mounting test (~-0.8ms create-1k, -0.7ms replace, -5ms create-10k).
  * - Event delegation — `el.__ev_click = handler` instead of addEventListener
  * - Zero VNode / props-object / children-array allocations per row
  * - Static attributes baked into the HTML string
  */
 import { For, h } from '@pyreon/core'
-import { _bind, createSelector, signal } from '@pyreon/reactivity'
+import { createSelector, signal } from '@pyreon/reactivity'
 import { _bindText, _tpl, mount } from '@pyreon/runtime-dom'
 import type { BenchSuite } from '../runner'
 import { bench, buildRowsWith, expectRows, expectRowsWithSelected, resetRng, tick } from '../runner'
@@ -52,9 +58,11 @@ export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> 
               __e1.appendChild(__t0)
               const __d0 = _bindText(row.label as unknown as Parameters<typeof _bindText>[0], __t0)
 
-              // _bind: single renderEffect for className (selector dependency)
-              const __d1 = _bind(() => {
-                __root.className = isSelected(row.id) ? 'selected' : ''
+              // selector.subscribe: effect-free per-key className binding.
+              // Replaces `_bind(() => className = isSelected(row.id) ? ...)`
+              // — same selection semantics, no renderEffect setup cost.
+              const __d1 = isSelected.subscribe(row.id, (matches) => {
+                __root.className = matches ? 'selected' : ''
               })
 
               return () => {

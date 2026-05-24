@@ -289,3 +289,120 @@ describe('createSelector', () => {
     })
   })
 })
+
+describe('createSelector.bind — effect-free per-key fast path', () => {
+  it('calls updater inline with initial state (matches current selection)', () => {
+    const selected = signal<string | null>('id-A')
+    const isSelected = createSelector(selected)
+    const calls: boolean[] = []
+    isSelected.subscribe('id-A', (m) => calls.push(m))
+    expect(calls).toEqual([true])
+  })
+
+  it('calls updater inline with initial state (does NOT match selection)', () => {
+    const selected = signal<string | null>('id-A')
+    const isSelected = createSelector(selected)
+    const calls: boolean[] = []
+    isSelected.subscribe('id-B', (m) => calls.push(m))
+    expect(calls).toEqual([false])
+  })
+
+  it('updater fires on selection change crossing this key (false → true)', () => {
+    const selected = signal<string | null>(null)
+    const isSelected = createSelector(selected)
+    const calls: boolean[] = []
+    isSelected.subscribe('id-A', (m) => calls.push(m))
+    expect(calls).toEqual([false])
+    selected.set('id-A')
+    expect(calls).toEqual([false, true])
+  })
+
+  it('updater fires on selection change crossing this key (true → false)', () => {
+    const selected = signal<string | null>('id-A')
+    const isSelected = createSelector(selected)
+    const calls: boolean[] = []
+    isSelected.subscribe('id-A', (m) => calls.push(m))
+    expect(calls).toEqual([true])
+    selected.set('id-B')
+    expect(calls).toEqual([true, false])
+  })
+
+  it('updater does NOT fire on selection change unrelated to this key', () => {
+    const selected = signal<string | null>('id-A')
+    const isSelected = createSelector(selected)
+    const calls: boolean[] = []
+    isSelected.subscribe('id-X', (m) => calls.push(m))
+    expect(calls).toEqual([false])
+    selected.set('id-A')
+    selected.set('id-B')
+    selected.set('id-C')
+    expect(calls).toEqual([false])
+  })
+
+  it('dispose removes the updater from the bucket', () => {
+    const selected = signal<string | null>(null)
+    const isSelected = createSelector(selected)
+    const calls: boolean[] = []
+    const dispose = isSelected.subscribe('id-A', (m) => calls.push(m))
+    expect(calls).toEqual([false])
+    dispose()
+    selected.set('id-A')
+    expect(calls).toEqual([false])
+  })
+
+  it('post-dispose .bind calls updater with last-known + returns no-op', () => {
+    const selected = signal<string | null>('id-A')
+    const isSelected = createSelector(selected)
+    isSelected.dispose()
+    const calls: boolean[] = []
+    const dispose = isSelected.subscribe('id-A', (m) => calls.push(m))
+    expect(calls).toEqual([true])
+    expect(typeof dispose).toBe('function')
+    dispose()
+  })
+
+  it('O(1) — only the affected buckets fire on selection change', () => {
+    const selected = signal<string | null>(null)
+    const isSelected = createSelector(selected)
+    let totalCalls = 0
+    for (let i = 0; i < 1000; i++) {
+      isSelected.subscribe(`row-${i}`, () => {
+        totalCalls++
+      })
+    }
+    expect(totalCalls).toBe(1000)
+    selected.set('row-500')
+    expect(totalCalls).toBe(1001)
+    selected.set('row-700')
+    expect(totalCalls).toBe(1003)
+  })
+
+  it('multiple .bind calls on the same key share the bucket and all fire', () => {
+    const selected = signal<string | null>(null)
+    const isSelected = createSelector(selected)
+    const calls1: boolean[] = []
+    const calls2: boolean[] = []
+    isSelected.subscribe('id-A', (m) => calls1.push(m))
+    isSelected.subscribe('id-A', (m) => calls2.push(m))
+    selected.set('id-A')
+    expect(calls1).toEqual([false, true])
+    expect(calls2).toEqual([false, true])
+  })
+
+  it('interop — .bind subscribers coexist with selector() inside effect', () => {
+    const selected = signal<string | null>(null)
+    const isSelected = createSelector(selected)
+    const bindCalls: boolean[] = []
+    const effectCalls: boolean[] = []
+    isSelected.subscribe('id-A', (m) => bindCalls.push(m))
+    const eff = effect(() => {
+      effectCalls.push(isSelected('id-A'))
+    })
+    expect(bindCalls).toEqual([false])
+    expect(effectCalls).toEqual([false])
+    selected.set('id-A')
+    expect(bindCalls).toEqual([false, true])
+    expect(effectCalls).toEqual([false, true])
+    eff.dispose()
+  })
+})
