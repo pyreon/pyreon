@@ -129,6 +129,19 @@ interface KotlinCtx {
   synthesizedDataClasses: { name: string; fields: { name: string; type: TypeIR }[] }[]
   /** Component name, used to derive synthesized data class names. */
   componentName: string
+  /**
+   * K2: when emitting a multi-statement body inside a Kotlin lambda
+   * passed to a higher-order call (`derivedStateOf { … }`,
+   * `remember { … }`, etc.), bare `return` is prohibited — it would
+   * try to return from the enclosing function, not the lambda. Kotlin's
+   * labeled-return syntax `return@<label> X` solves it; the label is
+   * conventionally the receiver function's name.
+   *
+   * When non-null, `emitKotlinStatement`'s `return` case emits
+   * `return@<label> expr` instead of `return expr`. Propagates
+   * through nested `if`/`else` blocks via the ctx pass-through.
+   */
+  lambdaLabel?: string
 }
 
 // Module-scoped state for the active component's props-param-name —
@@ -260,8 +273,20 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // Phase 2 follow-up: multi-statement body emits as a block lambda
   // with explicit statements + return. Single-expression form stays
   // inline.
+  //
+  // K2: the multi-statement body's `return X` statements must use
+  // Kotlin's labeled-return form (`return@derivedStateOf X`) because
+  // bare `return` inside a lambda passed to a higher-order function
+  // tries to return from the enclosing function — kotlinc rejects with
+  //   error: 'return' is prohibited here
+  // Setting `lambdaLabel` on the per-body ctx threads the label through
+  // nested `if`/`else` branches via `emitKotlinStatement`'s recursive
+  // ctx-pass.
   if (d.body !== undefined) {
-    const bodyLines = d.body.map((s) => `      ${emitKotlinStatement(s, 6, ctx)}`).join('\n')
+    const bodyCtx: KotlinCtx = { ...ctx, lambdaLabel: 'derivedStateOf' }
+    const bodyLines = d.body
+      .map((s) => `      ${emitKotlinStatement(s, 6, bodyCtx)}`)
+      .join('\n')
     return [
       `val ${kotlinIdent(d.name)} by remember { derivedStateOf {`,
       bodyLines,
@@ -309,8 +334,13 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
   switch (s.kind) {
     case 'let':
       return `val ${kotlinIdent(s.name)} = ${emitKotlinExpr(s.expr, indent)}`
-    case 'return':
-      return s.expr ? `return ${emitKotlinExpr(s.expr, indent)}` : 'return'
+    case 'return': {
+      // K2: emit `return@<label> expr` inside labeled lambda contexts
+      // (e.g. multi-statement `derivedStateOf { … }` bodies) so kotlinc
+      // doesn't reject with "'return' is prohibited here".
+      const keyword = ctx.lambdaLabel ? `return@${ctx.lambdaLabel}` : 'return'
+      return s.expr ? `${keyword} ${emitKotlinExpr(s.expr, indent)}` : keyword
+    }
     case 'expr':
       return emitKotlinExpr(s.expr, indent)
     case 'if': {
