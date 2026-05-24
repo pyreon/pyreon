@@ -170,6 +170,55 @@ packages:
       new Set(['0.24.6', '0.23.0']),
     )
   })
+
+  it('strips pnpm peer-suffix — same version with different peers is NOT a dup', () => {
+    // Regression: pnpm v9+ writes `/@pyreon/core@1.0.0(react@19.0.0):`
+    // to differentiate same-version installs that resolved against
+    // different peer deps. The two entries are NOT a real duplicate
+    // (same code, same version, just peer metadata). The parser must
+    // strip the `(...)` suffix to avoid false-positive `multiple-versions`
+    // findings.
+    const lock = `
+packages:
+  /@pyreon/core@0.24.6:
+    resolution: {integrity: ...}
+  /@pyreon/core@0.24.6(react@19.0.0):
+    resolution: {integrity: ...}
+  /@pyreon/core@0.24.6(react@18.2.0):
+    resolution: {integrity: ...}
+`
+    // All three rows are the same version `0.24.6` (just different peer
+    // contexts) — must count as ONE version, not three.
+    expect(_parsePnpmLock(lock).get('@pyreon/core')?.versions).toEqual(
+      new Set(['0.24.6']),
+    )
+  })
+
+  it('peer-suffix DOES NOT mask a genuine version dup', () => {
+    // Even with peer suffixes present, a genuine multi-version install
+    // must still be detected.
+    const lock = `
+packages:
+  /@pyreon/core@0.24.6(react@19.0.0):
+    resolution: {integrity: ...}
+  /@pyreon/core@0.23.0(react@19.0.0):
+    resolution: {integrity: ...}
+`
+    expect(_parsePnpmLock(lock).get('@pyreon/core')?.versions).toEqual(
+      new Set(['0.24.6', '0.23.0']),
+    )
+  })
+
+  it('preserves build-metadata versions (no `(` to strip)', () => {
+    const lock = `
+packages:
+  /@pyreon/core@0.24.6-beta.1+build.42:
+    resolution: {integrity: ...}
+`
+    expect(_parsePnpmLock(lock).get('@pyreon/core')?.versions).toEqual(
+      new Set(['0.24.6-beta.1+build.42']),
+    )
+  })
 })
 
 describe('_detectDuplicates', () => {

@@ -21,6 +21,7 @@
  * normal rocketstyle mount). Correct-but-slow is acceptable; wrong
  * output is not.
  */
+import { withSilent } from '@pyreon/reactivity'
 import type { InlineConfig, ViteDevServer } from 'vite'
 
 // Inline FNV-1a (same algorithm as @pyreon/styler/hash) — avoids pulling
@@ -137,7 +138,13 @@ export async function createCollapseResolver(projectRoot: string): Promise<Colla
     logLevel: 'silent',
     optimizeDeps: { noDiscovery: true, include: [] },
   }
-  let server: ViteDevServer | null = await createServer(inline)
+  // `createServer` evaluates the consumer's vite.config + plugin chain,
+  // which may itself load `@pyreon/*` packages via the `node` condition
+  // (different path than the outer process's `bun`-conditioned `src/`).
+  // That's a legitimate dual-load — scope the opt-out across the entire
+  // server lifecycle since every `load(spec)` below also touches the
+  // dual graph.
+  let server: ViteDevServer | null = await withSilent(() => createServer(inline))
 
   // Resolved-bundle cache — identical input must hit the same result
   // without a second double-render (deterministic by construction).
@@ -146,17 +153,13 @@ export async function createCollapseResolver(projectRoot: string): Promise<Colla
   async function load(spec: string): Promise<Record<string, unknown>> {
     // The nested Vite SSR server loads its own copy of @pyreon/* packages for
     // the SSR snapshot. This is a legitimate dual-load — the outer process has
-    // its own @pyreon/* graph; the nested server has its own. Opt out of the
-    // singleton sentinel's throw for the duration of the load. Restored
-    // synchronously in the finally so the env var doesn't leak into other code.
-    const prevEnv = process.env.PYREON_SINGLE_INSTANCE
-    process.env.PYREON_SINGLE_INSTANCE = 'silent'
-    try {
-      return (await server!.ssrLoadModule(spec)) as Record<string, unknown>
-    } finally {
-      if (prevEnv === undefined) delete process.env.PYREON_SINGLE_INSTANCE
-      else process.env.PYREON_SINGLE_INSTANCE = prevEnv
-    }
+    // its own @pyreon/* graph; the nested server has its own. `withSilent`
+    // from @pyreon/reactivity scopes the sentinel opt-out via a refcount
+    // (race-safe under concurrency; the prior env-var dance leaked `silent`
+    // permanently when N opt-out scopes overlapped — see withSilent JSDoc).
+    return withSilent(
+      () => server!.ssrLoadModule(spec) as Promise<Record<string, unknown>>,
+    )
   }
 
   return {

@@ -59,11 +59,14 @@ import { render404Page } from "./not-found";
 import { ssgPlugin } from "./ssg-plugin";
 import type { ZeroConfig } from "./types";
 
+import { withSilent } from "@pyreon/reactivity";
+
 const VIRTUAL_ROUTES_ID = "virtual:zero/routes";
 
 /**
  * `ssrLoadModule` wrapper that opts out of the `@pyreon/reactivity`
- * singleton sentinel for the duration of the load.
+ * singleton sentinel for the duration of the load via a refcount-based
+ * scope (`withSilent` from `@pyreon/reactivity`).
  *
  * Zero's dev SSR pipeline legitimately dual-loads `@pyreon/*` packages —
  * the outer Vite plugin process holds one set of module instances (from
@@ -72,27 +75,25 @@ const VIRTUAL_ROUTES_ID = "virtual:zero/routes";
  * code, two distinct module records — the sentinel would throw and crash
  * the dev server (or SSG build).
  *
- * Same opt-out pattern as `rocketstyle-collapse.ts`'s nested-SSR resolver
- * and `ssg-plugin.ts`'s built-handler import. Documented in
+ * **Why `withSilent` and NOT `process.env.PYREON_SINGLE_INSTANCE='silent'`
+ * + capture/restore**: the prior env-var dance was race-prone under
+ * concurrent `Promise.all` of N loads. Two scopes A + B running in
+ * parallel: A captures `prev=undefined`, sets `'silent'`; B captures
+ * `prev='silent'` (post-A); A's `finally` deletes env; B's `finally`
+ * restores `'silent'` — leaking the silence past both scopes
+ * permanently. The refcount is order-independent. See
  * `.claude/rules/anti-patterns.md` "Sentinel opt-out for legitimate
- * dual-load".
+ * dual-load" and the bisect-verified test in
+ * `packages/core/reactivity/src/tests/singleton-sentinel.test.ts`.
  *
- * Scoped + restored — never leaves the env var set across the load
- * boundary so unintended duplicates outside this window still throw.
+ * Same opt-out pattern as `rocketstyle-collapse.ts`'s nested-SSR resolver
+ * and `ssg-plugin.ts`'s built-handler import.
  */
 async function ssrLoadModuleQuiet(
 	server: ViteDevServer,
 	specifier: string,
 ): Promise<Record<string, unknown>> {
-	const procEnv = process.env as unknown as Record<string, string | undefined>;
-	const prev = procEnv.PYREON_SINGLE_INSTANCE;
-	procEnv.PYREON_SINGLE_INSTANCE = "silent";
-	try {
-		return await server.ssrLoadModule(specifier);
-	} finally {
-		if (prev === undefined) delete procEnv.PYREON_SINGLE_INSTANCE;
-		else procEnv.PYREON_SINGLE_INSTANCE = prev;
-	}
+	return withSilent(() => server.ssrLoadModule(specifier));
 }
 const RESOLVED_VIRTUAL_ROUTES_ID = `\0${VIRTUAL_ROUTES_ID}`;
 

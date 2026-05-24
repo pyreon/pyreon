@@ -153,6 +153,36 @@ describe('PR B — transitive @pyreon/* dedupe', () => {
       // Escape hatch fires — dedupe NOT injected.
       expect(resolve.dedupe).toBeUndefined()
     })
+
+    // Regression: previously only literal '1' triggered the escape hatch.
+    // Users hitting the env var under stress would reach for `true` / `yes`
+    // / `on` first; rejecting those silently is the worst-of-both-worlds
+    // (escape hatch present but doesn't fire). Truthy parsing now accepts
+    // all four forms case-insensitively.
+    for (const value of ['true', 'TRUE', 'yes', 'on', 'True']) {
+      it(`omits resolve.dedupe under PYREON_DISABLE_DEDUPE=${value} (truthy)`, () => {
+        process.env.PYREON_DISABLE_DEDUPE = value
+        writePackageJson(fixtureRoot, {})
+        seedNodeModules(fixtureRoot, ['zero', 'core', 'reactivity'])
+
+        const config = invokeConfigHook(fixtureRoot)
+        const resolve = config.resolve as { dedupe?: string[] }
+        expect(resolve.dedupe).toBeUndefined()
+      })
+    }
+
+    // Negative cases — falsy / unrecognized values still inject dedupe.
+    for (const value of ['0', 'false', 'no', 'off', '', 'maybe']) {
+      it(`KEEPS resolve.dedupe under PYREON_DISABLE_DEDUPE=${value || '<empty>'} (falsy)`, () => {
+        process.env.PYREON_DISABLE_DEDUPE = value
+        writePackageJson(fixtureRoot, {})
+        seedNodeModules(fixtureRoot, ['zero', 'core', 'reactivity'])
+
+        const config = invokeConfigHook(fixtureRoot)
+        const resolve = config.resolve as { dedupe?: string[] }
+        expect(resolve.dedupe).toContain('@pyreon/zero')
+      })
+    }
   })
 
   describe('regression — bug class the dedupe prevents', () => {

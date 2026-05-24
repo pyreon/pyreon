@@ -23,7 +23,12 @@
  * 30+/30+ pass.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { _resetSentinel, registerSingleton } from '../singleton-sentinel'
+import {
+  _resetSentinel,
+  registerSingleton,
+  withSilent,
+  withSilentSync,
+} from '../singleton-sentinel'
 
 // Cast through `unknown` — reactivity's env type only declares NODE_ENV;
 // PYREON_SINGLE_INSTANCE is a runtime-only override used by the sentinel.
@@ -289,5 +294,155 @@ describe('Singleton sentinel — cross-package isolation', () => {
         'file:///workspace/router/lib/index.js',
       )
     }).not.toThrow()
+  })
+})
+
+describe('withSilent — refcount opt-out (race-safe replacement for env-var dance)', () => {
+  it('suppresses the throw INSIDE the scope; restores detection after', async () => {
+    registerSingleton(
+      '@pyreon/reactivity',
+      '0.24.6',
+      'file:///workspace/reactivity/lib/index.js',
+    )
+    await withSilent(async () => {
+      // Inside the scope: silent, no throw on dual-load.
+      expect(() => {
+        registerSingleton(
+          '@pyreon/reactivity',
+          '0.24.6',
+          'file:///tmp/inside-scope/reactivity/lib/index.js',
+        )
+      }).not.toThrow()
+    })
+    // Outside the scope: throw mode restored.
+    expect(() => {
+      registerSingleton(
+        '@pyreon/reactivity',
+        '0.24.6',
+        'file:///tmp/outside-scope/reactivity/lib/index.js',
+      )
+    }).toThrow(/Multiple instances of @pyreon\/reactivity detected/)
+  })
+
+  it('CONCURRENT Promise.all of 5 scopes — no leak, detection restored after all settle', async () => {
+    // The race-safety regression test. Under the prior env-var dance,
+    // 5 concurrent scopes leaked PYREON_SINGLE_INSTANCE='silent'
+    // permanently. Under the refcount, depth returns to 0 after all
+    // 5 settle regardless of ordering.
+    registerSingleton(
+      '@pyreon/reactivity',
+      '0.24.6',
+      'file:///workspace/reactivity/lib/index.js',
+    )
+    await Promise.all(
+      Array.from({ length: 5 }, (_, i) =>
+        withSilent(async () => {
+          await new Promise((r) => setTimeout(r, i + 1))
+          expect(() => {
+            registerSingleton(
+              '@pyreon/reactivity',
+              '0.24.6',
+              `file:///tmp/concurrent-${i}/reactivity/lib/index.js`,
+            )
+          }).not.toThrow()
+        }),
+      ),
+    )
+    // After all 5 settle — detection MUST be back.
+    expect(() => {
+      registerSingleton(
+        '@pyreon/reactivity',
+        '0.24.6',
+        'file:///tmp/after-all-scopes/reactivity/lib/index.js',
+      )
+    }).toThrow(/Multiple instances of @pyreon\/reactivity detected/)
+  })
+
+  it('nested scopes count correctly (push/pop, depth > 0 throughout)', async () => {
+    registerSingleton(
+      '@pyreon/reactivity',
+      '0.24.6',
+      'file:///workspace/reactivity/lib/index.js',
+    )
+    await withSilent(async () => {
+      await withSilent(async () => {
+        await withSilent(async () => {
+          expect(() => {
+            registerSingleton(
+              '@pyreon/reactivity',
+              '0.24.6',
+              'file:///tmp/inner/reactivity/lib/index.js',
+            )
+          }).not.toThrow()
+        })
+        expect(() => {
+          registerSingleton(
+            '@pyreon/reactivity',
+            '0.24.6',
+            'file:///tmp/middle/reactivity/lib/index.js',
+          )
+        }).not.toThrow()
+      })
+      expect(() => {
+        registerSingleton(
+          '@pyreon/reactivity',
+          '0.24.6',
+          'file:///tmp/outer-still/reactivity/lib/index.js',
+        )
+      }).not.toThrow()
+    })
+    expect(() => {
+      registerSingleton(
+        '@pyreon/reactivity',
+        '0.24.6',
+        'file:///tmp/after-nested/reactivity/lib/index.js',
+      )
+    }).toThrow()
+  })
+
+  it('decrement on throw — finally restores depth even if fn throws', async () => {
+    registerSingleton(
+      '@pyreon/reactivity',
+      '0.24.6',
+      'file:///workspace/reactivity/lib/index.js',
+    )
+    await expect(
+      withSilent(async () => {
+        throw new Error('boom')
+      }),
+    ).rejects.toThrow('boom')
+    expect(() => {
+      registerSingleton(
+        '@pyreon/reactivity',
+        '0.24.6',
+        'file:///tmp/after-throw/reactivity/lib/index.js',
+      )
+    }).toThrow()
+  })
+
+  it('withSilentSync — same semantics, sync', () => {
+    registerSingleton(
+      '@pyreon/reactivity',
+      '0.24.6',
+      'file:///workspace/reactivity/lib/index.js',
+    )
+    const result = withSilentSync(() => {
+      expect(() => {
+        registerSingleton(
+          '@pyreon/reactivity',
+          '0.24.6',
+          'file:///tmp/sync-inside/reactivity/lib/index.js',
+        )
+      }).not.toThrow()
+      return 42
+    })
+    expect(result).toBe(42)
+    expect(() => {
+      registerSingleton(
+        '@pyreon/reactivity',
+        '0.24.6',
+        'file:///tmp/sync-after/reactivity/lib/index.js',
+      )
+    }).toThrow()
   })
 })

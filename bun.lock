@@ -1375,6 +1375,7 @@
       "version": "0.24.6",
       "dependencies": {
         "@pyreon/compiler": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
       },
       "devDependencies": {
         "vite": "^8.0.0",

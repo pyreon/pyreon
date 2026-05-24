@@ -56,6 +56,22 @@ interface SingletonMarker {
 
 interface SentinelState {
   markers: Map<string, SingletonMarker>
+  /**
+   * Refcount of active "silent opt-out" scopes (see `withSilent`). When > 0,
+   * `getDetectionMode()` returns `'silent'` regardless of the env var.
+   *
+   * The refcount replaces the prior env-var dance pattern that wrapped
+   * `process.env.PYREON_SINGLE_INSTANCE` set/restore around the legitimate
+   * dual-load scope (rocketstyle-collapse, zero SSG, zero dev SSR's
+   * `ssrLoadModuleQuiet`). That pattern was race-prone: under concurrent
+   * `Promise.all` of N opt-out scopes, the second scope captured `prev=silent`
+   * (set by the first), and its `finally` restored to `silent` — leaking the
+   * silence past both scopes. A refcount is order-independent: every
+   * `push` matches exactly one `pop`, intermediate state during overlapping
+   * scopes is always "silent", and final state after all scopes settle is
+   * always 0 (= not silent).
+   */
+  silentDepth: number
 }
 
 const SENTINEL_KEY = Symbol.for('pyreon/singleton-sentinel-state')
@@ -63,8 +79,14 @@ const SENTINEL_KEY = Symbol.for('pyreon/singleton-sentinel-state')
 function getSentinelState(): SentinelState {
   const host = globalThis as Record<symbol, unknown>
   const existing = host[SENTINEL_KEY] as SentinelState | undefined
-  if (existing) return existing
-  const state: SentinelState = { markers: new Map() }
+  if (existing) {
+    // Earlier versions of the sentinel had no `silentDepth` field. Defensive
+    // backfill so a mixed-version graph (e.g. one of the packages bundled an
+    // older sentinel via a stale lockfile entry) doesn't NaN-arithmetic.
+    if (typeof existing.silentDepth !== 'number') existing.silentDepth = 0
+    return existing
+  }
+  const state: SentinelState = { markers: new Map(), silentDepth: 0 }
   host[SENTINEL_KEY] = state
   return state
 }
@@ -72,6 +94,10 @@ function getSentinelState(): SentinelState {
 type DetectionMode = 'throw' | 'warn' | 'silent'
 
 function getDetectionMode(): DetectionMode {
+  // Refcount opt-out wins (used by zero's ssrLoadModuleQuiet,
+  // ssg-plugin.ts, and vite-plugin's rocketstyle-collapse to scope
+  // legitimate dual-load windows without env-var mutation).
+  if (getSentinelState().silentDepth > 0) return 'silent'
   // Cast through unknown — @pyreon/reactivity's env type only declares NODE_ENV;
   // PYREON_SINGLE_INSTANCE is a runtime-only override.
   const env =
@@ -158,7 +184,13 @@ export function registerSingleton(pkg: string, version: string, location: string
   if (mode === 'silent') return
   const message = formatError(pkg, existing, marker)
   if (mode === 'warn') {
+    // Intentionally NOT __DEV__-guarded. `PYREON_SINGLE_INSTANCE=warn` is the
+    // explicit user opt-in to keep getting the diagnostic in production
+    // (typically during a migration where they need their app to load + visibly
+    // know reactivity is broken). Tree-shaking this away would defeat the
+    // whole point of the `warn` escape hatch.
     // oxlint-disable-next-line no-console
+    // pyreon-lint-disable-next-line pyreon/dev-guard-warnings
     console.error(message)
     return
   }
@@ -175,4 +207,72 @@ export function registerSingleton(pkg: string, version: string, location: string
 export function _resetSentinel(): void {
   const host = globalThis as Record<symbol, unknown>
   delete host[SENTINEL_KEY]
+}
+
+/**
+ * Scope-style opt-out from sentinel detection — for legitimate dual-load
+ * scenarios where two genuinely-different module locations of the same
+ * `@pyreon/*` package must coexist briefly without throwing.
+ *
+ * Replaces the prior env-var dance (`process.env.PYREON_SINGLE_INSTANCE =
+ * 'silent'` / capture+restore) which was race-prone under concurrent
+ * execution. Use ONLY for documented dual-load patterns:
+ *
+ *   - `@pyreon/zero` SSG (`await import(.../entry-server.mjs)` — built bundle
+ *     reships framework copies alongside the outer process's workspace copy)
+ *   - `@pyreon/zero` dev SSR (`ssrLoadModule` — outer plugin chain + Vite SSR
+ *     module graph see different module identities for the same source)
+ *   - `@pyreon/vite-plugin` `rocketstyle-collapse` (nested Vite SSR resolver
+ *     spinning a child server bound to the consumer's vite.config)
+ *
+ * Refcount-based: every `withSilent` push matches exactly one pop. Concurrent
+ * scopes overlap correctly — depth > 0 throughout the union of all active
+ * scopes, returns to 0 when all settle. Order-independent (unlike env-var
+ * mutation which is race-prone under `Promise.all`).
+ *
+ * @example
+ * import { withSilent } from '@pyreon/reactivity'
+ * await withSilent(async () => {
+ *   return await server.ssrLoadModule(specifier)
+ * })
+ *
+ * @example
+ * // Multi-call concurrent shape — works correctly under refcount,
+ * // would leak `silent` permanently under the env-var dance.
+ * await Promise.all([
+ *   withSilent(() => loadA()),
+ *   withSilent(() => loadB()),
+ *   withSilent(() => loadC()),
+ * ])
+ */
+export async function withSilent<T>(fn: () => Promise<T> | T): Promise<T> {
+  const state = getSentinelState()
+  state.silentDepth += 1
+  try {
+    return await fn()
+  } finally {
+    state.silentDepth -= 1
+    if (state.silentDepth < 0) state.silentDepth = 0 // defensive: never go negative
+  }
+}
+
+/**
+ * Synchronous variant of `withSilent` for code paths that can't `await` (e.g.
+ * module-load-time registration inside a custom test harness). Prefer
+ * `withSilent` whenever the work is async.
+ *
+ * @example
+ * withSilentSync(() => {
+ *   registerSingleton('@pyreon/X', '1.0.0', someLocation)
+ * })
+ */
+export function withSilentSync<T>(fn: () => T): T {
+  const state = getSentinelState()
+  state.silentDepth += 1
+  try {
+    return fn()
+  } finally {
+    state.silentDepth -= 1
+    if (state.silentDepth < 0) state.silentDepth = 0
+  }
 }

@@ -132,11 +132,22 @@ export const _parsePnpmLock = (raw: string): Map<string, ResolvedPackage> => {
   const out = new Map<string, ResolvedPackage>()
   // Match both pnpm-lock v6 (`'/@pyreon/core@1.0.0':`) and v9+
   // (`/@pyreon/core@1.0.0:`) forms.
+  //
+  // pnpm v9+ appends a peer-suffix like `(react@19.0.0)` to differentiate
+  // installs that share the same version but resolved against different
+  // peer deps — e.g. `/@pyreon/core@1.0.0(react@19.0.0):`. The same
+  // version with different peer suffixes is NOT a real duplicate (it's
+  // the same code, just metadata for pnpm's peer-dep resolution). We
+  // strip the `(...)` suffix before counting to avoid false-positive
+  // `check-dedup/multiple-versions` findings.
   const re = /^\s*'?\/?(@pyreon\/[a-z0-9-]+)@([^':]+)'?:\s*$/gm
   let m: RegExpExecArray | null
   while ((m = re.exec(raw)) !== null) {
     const name = m[1]!
-    const version = m[2]!
+    // Strip pnpm peer-suffix `(react@19.0.0)` so `1.0.0` and
+    // `1.0.0(react@19.0.0)` count as the SAME version. Build metadata
+    // `1.0.0+build.123` does NOT contain `(`, so it survives unchanged.
+    const version = m[2]!.replace(/\(.*$/, '')
     let entry = out.get(name)
     if (!entry) {
       entry = { name, versions: new Set() }
