@@ -174,6 +174,20 @@ export interface PyreonPluginOptions {
    * @example pyreon({ collapse: { components: ['Button', 'Badge'] } })
    */
   collapse?: boolean | PyreonCollapseOptions
+
+  /**
+   * (Phase 1ζ prototype) First-seen normalization for `@pyreon/*` imports.
+   * In `resolveId`, tracks the first resolved path for every `@pyreon/<pkg>`
+   * specifier and returns that same path for any subsequent import. Stronger
+   * than `resolve.dedupe` because it works at the resolver level for ALL
+   * imports (including transitive ones with different importers).
+   *
+   * Default `false` until Phase 3 of the cross-module-state cleanup decides
+   * which prevention mechanism wins. See `.claude/plans/jaunty-herding-kazoo.md`.
+   *
+   * @experimental
+   */
+  normalizePyreon?: boolean
 }
 
 export interface PyreonCollapseOptions {
@@ -376,6 +390,14 @@ function scanPyreonDeps(root: string): string[] {
 export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
   const ssrConfig = options?.ssr
   const compat = options?.compat
+  // Phase 1ζ prototype: opt-in resolveId normalization. See plan
+  // .claude/plans/jaunty-herding-kazoo.md. Default false until Phase 3.
+  const normalizePyreon = options?.normalizePyreon === true
+  // Cache of `@pyreon/<pkg>` specifier → first-resolved path. Per-plugin-
+  // instance: rebuilt fresh when the plugin reloads. Cleared on closeBundle
+  // via plugin lifecycle (no leak across builds).
+  const pyreonResolveCache = new Map<string, string>()
+  const PYREON_PKG_RE = /^@pyreon\//
   // Default islands support to enabled — the prescan is cheap and the virtual
   // module is harmless if the user has no `island()` calls. Opt out only if
   // you have a specific reason.
@@ -652,6 +674,26 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
     async resolveId(id, importer) {
       if (id === HMR_RUNTIME_IMPORT) return HMR_RUNTIME_ID
       if (id === ISLANDS_REGISTRY_IMPORT) return ISLANDS_REGISTRY_ID
+
+      // ── Phase 1ζ prototype: first-seen normalization for @pyreon/* packages
+      // Tracks the FIRST resolved path for every `@pyreon/<pkg>` specifier
+      // and returns that same path for any subsequent import of the same
+      // specifier — even if the importer would have caused Vite to resolve
+      // a different file (sub-dep version mismatch, workspace+published mix).
+      //
+      // Stronger than `resolve.dedupe` (α) because it works at the
+      // resolver level for ALL imports, not just bare specifiers.
+      //
+      // Opt-in for the prototype phase via `pyreon({ normalizePyreon: true })`.
+      if (normalizePyreon && PYREON_PKG_RE.test(id) && !id.includes('virtual:')) {
+        const cached = pyreonResolveCache.get(id)
+        if (cached !== undefined) return cached
+        const resolved = await this.resolve(id, importer, { skipSelf: true })
+        if (resolved?.id) {
+          pyreonResolveCache.set(id, resolved.id)
+          return resolved.id
+        }
+      }
 
       // `@pyreon/core/jsx-runtime` resolves to the compat package only for
       // user code — never for `@pyreon/*` framework files (zero, router,
