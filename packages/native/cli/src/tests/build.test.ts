@@ -83,6 +83,61 @@ describe('@pyreon/native-cli build', () => {
     }
   })
 
+  it('build with kotlinPackage prepends a `package` declaration to every .kt file', () => {
+    // Real Android consumers import the emitted Composable by FQN
+    // (e.g. `import com.pyreon.generated.TodoApp`), which requires a
+    // matching `package` declaration in the emitted file. Without the
+    // option the emit lives in Kotlin's anonymous root package — fine
+    // for single-file `kotlinc` validation but unusable from a
+    // multi-file host.
+    const result = build({
+      source: COMPILER_FIXTURES,
+      out: tempOut,
+      target: 'kotlin',
+      kotlinPackage: 'com.pyreon.generated',
+    })
+    expect(result.filesCompiled).toBeGreaterThanOrEqual(7)
+
+    for (const output of result.outputs) {
+      const written = readFileSync(output.output, 'utf8')
+      const firstLine = written.split('\n')[0] ?? ''
+      expect(firstLine).toBe('package com.pyreon.generated')
+      // Source-map header comes AFTER the package declaration so the
+      // Kotlin parser sees the package as the file's first token.
+      expect(written).toContain('// pyreon-source: ')
+    }
+  })
+
+  it('build with kotlinPackage on swift target is silently ignored (no-op)', () => {
+    // Belt-and-suspenders: passing the option to a Swift build must
+    // not affect the emit. Swift has no `package` statement.
+    const result = build({
+      source: COMPILER_FIXTURES,
+      out: tempOut,
+      target: 'swift',
+      kotlinPackage: 'com.pyreon.generated',
+    })
+    for (const output of result.outputs) {
+      const written = readFileSync(output.output, 'utf8')
+      expect(written).not.toContain('package com.pyreon.generated')
+    }
+  })
+
+  it('build without kotlinPackage emits Kotlin in the anonymous package (back-compat)', () => {
+    // Pre-extension behavior preserved when the option is unset.
+    const result = build({
+      source: COMPILER_FIXTURES,
+      out: tempOut,
+      target: 'kotlin',
+    })
+    for (const output of result.outputs) {
+      const written = readFileSync(output.output, 'utf8')
+      const firstLine = written.split('\n')[0] ?? ''
+      expect(firstLine.startsWith('package ')).toBe(false)
+      expect(firstLine.startsWith('// pyreon-source: ')).toBe(true)
+    }
+  })
+
   it('build output matches direct transform() result (modulo source-map header)', () => {
     const result = build({
       source: COMPILER_FIXTURES,

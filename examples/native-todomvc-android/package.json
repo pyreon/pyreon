@@ -1,0 +1,16 @@
+{
+  "name": "@pyreon/example-native-todomvc-android",
+  "version": "0.0.0",
+  "private": true,
+  "description": "PRIVATE / EXPERIMENTAL — PMTC TodoMVC reference for Android / Jetpack Compose. Compiles the SAME .tsx source as native-todomvc-ios into Kotlin/Compose. Open in Android Studio after a `gradle build`.",
+  "license": "MIT",
+  "scripts": {
+    "build": "./scripts/build.sh",
+    "lint": "echo '[native-todomvc-android] no TS lint surface; skipping'",
+    "test": "echo '[native-todomvc-android] no test surface; partial-compile baseline tracked in todomvc-baseline.test.ts under @pyreon/native-compiler'",
+    "typecheck": "echo '[native-todomvc-android] no TS typecheck surface'"
+  },
+  "devDependencies": {
+    "@pyreon/native-cli": "workspace:*"
+  }
+}

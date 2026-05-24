@@ -29,6 +29,17 @@ export interface BuildOptions {
   out: string
   /** Which native language to emit. */
   target: TargetLanguage
+  /**
+   * Kotlin package name prepended to each emitted `.kt` file's first
+   * line. Ignored for the Swift target. Required when the emitted code
+   * is consumed from a Kotlin host that imports it by fully-qualified
+   * name (e.g. an Android Compose `MainActivity` doing
+   * `import com.pyreon.generated.TodoApp`). Without this option the
+   * emit lives in Kotlin's anonymous root package, which is fine for
+   * single-file `kotlinc` validation but doesn't work in real Android
+   * apps where the JVM module loader needs FQNs.
+   */
+  kotlinPackage?: string
 }
 
 export interface BuildResult {
@@ -106,7 +117,11 @@ export function build(options: BuildOptions): BuildResult {
     // with the platform's separator so Windows builds aren't broken.
     const outPath = join(outAbs, relPath.replace(/\.tsx$/, ext)).split('/').join(sep)
     mkdirSync(dirname(outPath), { recursive: true })
-    const finalCode = sourceMapHeader(options.target, input) + result.code
+    const packageHeader =
+      options.target === 'kotlin' && options.kotlinPackage
+        ? `package ${options.kotlinPackage}\n\n`
+        : ''
+    const finalCode = packageHeader + sourceMapHeader(options.target, input) + result.code
     writeFileSync(outPath, finalCode, 'utf8')
     outputs.push({ source: input, output: outPath, code: finalCode })
   }
