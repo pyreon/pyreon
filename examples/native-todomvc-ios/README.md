@@ -2,7 +2,7 @@
 
 > **PRIVATE / EXPERIMENTAL.** Reference compile target for the PMTC TodoMVC arc — the canonical "non-trivial but not contrived" Pyreon app. As of post-Phase-2 closure, **the emitted Swift typechecks-clean** (0 errors via `swiftc -typecheck`). 5 named gaps closed + 7 Phase-2 hardening PRs landed; G7 / G8 deferred to Phase 3.
 >
-> **Multiplatform note:** the canonical TodoMVC source lives here at [`src/TodoApp.tsx`](src/TodoApp.tsx). The Android sibling [`native-todomvc-android`](../native-todomvc-android/) **reads from this same file** — proving the PMTC contract that one Pyreon source compiles to both SwiftUI AND Compose. Android emit currently has known typecheck gaps tracked as K1-K4 follow-ups in that example's README.
+> **Multiplatform note:** the canonical TodoMVC source lives here at [`src/TodoApp.tsx`](src/TodoApp.tsx). The Android sibling [`native-todomvc-android`](../native-todomvc-android/) **reads from this same file** — proving the PMTC contract that one Pyreon source compiles to both SwiftUI AND Compose. **Both emits are now typecheck-clean** against their respective compiler-stub harnesses (Swift: `swiftc -typecheck` via `validate-swift.test.ts`; Kotlin: `kotlinc + K4 stubs` via `validate-kotlin.test.ts` K-FINAL gate). Phase 2 closed on both platforms.
 
 ## Open in Xcode (one command)
 
