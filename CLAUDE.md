@@ -236,6 +236,31 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - `<Icon>` + `createIcon` — renders a FULL loaded SVG (4th member of the Image/Link/Script family). Does NOT synthesize an `<svg>` around `<path>` children — you load a complete svg and Icon makes it container-sizable + theme-aware. Two source props: `as` (imported `./x.svg?component` → rendered DIRECTLY, no host wrapper, svg attrs forward — recommended) or `svg` (imported `./x.svg?raw` markup string → inlined via ONE unavoidable `<span>` host). Container-fill defaults (`fill="currentColor"`, `display:block;width:100%;height:100%`) spread-overridable; no fixed size (consumer wrapper sizes it). Two layers (`createIcon(source)` per-glyph factory + `Icon` one-off); intentionally NO `useIcon` hook. Exports: `Icon`, `createIcon`, `IconProps` (extends `SvgAttributes`), `SvgComponent`. Reference: `packages/zero/zero/src/icon.tsx`; tests `src/tests/icon.test.ts` (real-`h()` happy-dom: component + raw-string + createIcon).
 - `iconsPlugin` + `createNamedIcon` — folder → strictly-typed icon set. `iconsPlugin({ dir | sets, out?, mode? })` (from `@pyreon/zero/server`) scans `*.svg` (kebab name from filename), writes a gitignored generated `icons.gen.tsx` that calls `createNamedIcon(REGISTRY)` so `keyof typeof REGISTRY` IS the typed `name` surface (autocomplete + go-to-definition, zero per-app wiring; regenerates on add/unlink in dev, idempotent write). **Named multi-set form** `iconsPlugin({ sets: { ui: { dir }, brand: { dir, mode } } })` (XOR with `dir`, throws if both/neither) emits one file with a strictly-typed component PER set under NAMESPACED names so they never clash — `ui` → `<UiIcon>` + `type UiIconName`, `brand` → `<BrandIcon>` + `type BrandIconName`; per-set binding prefixes (`ui_check` / `brand_check`) keep two sets sharing a glyph filename collision-free; `mode` is per-set. Writes a REAL file (not a virtual module) because the published `@pyreon/zero` can't `import` a plugin virtual module — same Rolldown import-ordering constraint as islands' `hydrateIslandsAuto(registry)`. Two render modes (colorful-vs-system split): `mode: 'inline'` (default — system icons; `?raw` markup inlined via `Icon`, `currentColor`-themeable, recolorable via CSS `color`) and `mode: 'image'` (colorful / brand icons; svg emitted as a static asset, rendered `<img>`, NO mutation, original colors preserved). `createNamedIcon<R>(registry, { mode? })` is the runtime half (typed by `keyof R`). Exports: `iconsPlugin`, `iconNameFromFile`, `scanIconDir`, `generateIconSetSource`, `IconsPluginConfig` (server entry); `createNamedIcon`, `IconMode`, `NamedIconProps` (client entry). Reference: `packages/zero/zero/src/icons-plugin.ts` + `icon.tsx:createNamedIcon`; tests `src/tests/icons-plugin.test.ts` (pure scanner/generator) + `icon.test.ts` (createNamedIcon real-`h()`, both modes). **NOT YET: named multi-sets (per-set typed `<UiIcon>`/`<BrandIcon>` — no `IconName` clash) + monorepo package-sourced sets + copy-to-public — explicit follow-up.**
 
+## PMTC Multi-Target Architecture
+
+The Pyreon Multi-Target Compiler (PMTC) emits typecheck-clean SwiftUI + Compose from one `.tsx` source — the compile-time contract is **100% done** as of Phase 2 closure (#888 K-FINAL). The shared-code story above the compiler now lives in a **four-layer model**:
+
+```text
+Layer 4: <NativeIOS> / <NativeAndroid> / <Web> escape hatches (per-platform, opt-in)
+Layer 3b: @pyreon/elements (web-only rich primitives, rocketstyle/styler-coupled)
+Layer 3a: @pyreon/primitives (NEW — canonical multi-platform primitives)
+Layer 2: useStorage / useRouter / useFetch / usePermissions (ServiceBackend pattern)
+Layer 1: Custom hooks (useDebounce, useToggle, ...) — pure-logic, 100% shared
+Layer 0: signal() / computed() / effect() — runs identically; PMTC maps to @State / mutableStateOf
+```
+
+**Canonical multi-platform primitives** (Layer 3a, `@pyreon/primitives` — Phase A in progress): 16 semantic primitives designed for cross-platform from scratch. `<Stack>` (NOT `<View>` or `<VStack>`), `<Inline>`, `<Press>`, `<Field>`, etc. Compiles to: DOM (web) / SwiftUI primitives (iOS) / Compose primitives (Android). One canonical name per concept (`onPress` everywhere, not `onClick` vs `action:`). Tokens-first styling (`padding={4}` / `gap="md"`). No responsive props or animations in v1 — apps that need responsive web use `@pyreon/elements` directly.
+
+**Critical architectural split**: `@pyreon/elements` stays web-only-rich (rocketstyle/styler-coupled); `@pyreon/primitives` is the NEW multi-platform-minimal layer. Different architectural tiers. No naming collision because imports are explicit.
+
+**Per-platform import resolution**: `import { Stack } from '@pyreon/primitives'` runs the real implementation on web (renders DOM); on iOS/Android the PMTC compiler INTERCEPTS the JSX and emits native code BEFORE the runtime is reached — the import is type-anchor-only on native targets.
+
+**Existing Layer-2 pattern**: `@pyreon/storage`'s `StorageBackend` interface + `createStorage(backend)` factory is the blueprint every Layer-2 service follows. `@pyreon/native-runtime-{swift,kotlin}` ship `@PyreonAppStorage` (Swift property wrapper) + `rememberPyreonStorage` (Compose Composable) — same API parity, different runtime impl. Compiler emits `useStorage<T>` calls as these runtime helpers via Phase 2.5 (#891) — collapsed 14-line inline Codable bridge to one-line property-wrapper call.
+
+**Implementation roadmap** (10 PRs across 5 phases): Phase A (foundation — primitives package + 6-primitive web runtime), Phase B (PMTC emit for iOS + Android — extend `canonical-primitives.ts` mapping table), Phase C (`@pyreon/native-router-{swift,kotlin}` runtimes), Phase D (web target for PMTC + cross-platform example dir), Phase E (TodoMVC migration to canonical vocab — `<VStack>` → `<Stack>`, etc.). Full spec: `.claude/plans/multiplatform-architecture.md`. End-user docs: `docs/docs/multiplatform.md`.
+
+**Migration is additive** — existing `<VStack>` / `<HStack>` / `<TextField>` in PMTC source continue to work via current per-target emit. New canonical vocab ships alongside. Deprecation warnings on SwiftUI-flavored tags land AFTER Phase E migration is proven on TodoMVC. Removal in a major-version bump LATER.
+
 ## Fundamentals — Key Technical Details
 
 ### @pyreon/store
@@ -967,7 +992,7 @@ One source of truth per package — `packages/<category>/<pkg>/src/manifest.ts` 
 
 ## Docs Website
 
-VitePress documentation site at `docs/` — part of the monorepo workspace. 82 doc pages covering all packages. Interactive `<Playground>` component embeds live code editors with sandboxed preview on 10+ pages (reactivity, core, runtime-dom, store, rx, form, machine, hooks, permissions, i18n, toast, storage, url-state). Code runs via ESM CDN imports in a sandboxed iframe with dark mode support.
+VitePress documentation site at `docs/` — part of the monorepo workspace. 83 doc pages covering all packages. Interactive `<Playground>` component embeds live code editors with sandboxed preview on 10+ pages (reactivity, core, runtime-dom, store, rx, form, machine, hooks, permissions, i18n, toast, storage, url-state). Code runs via ESM CDN imports in a sandboxed iframe with dark mode support.
 
 ```bash
 cd docs && bun run dev       # local dev server
