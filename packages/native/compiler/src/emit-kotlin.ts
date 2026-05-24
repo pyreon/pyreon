@@ -4,6 +4,13 @@
 // `var x by remember { mutableStateOf(initial) }`, computeds to
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
+import {
+  isCanonicalPrimitive,
+  resolveAlign,
+  resolveColor,
+  resolveRadius,
+  resolveSpace,
+} from './canonical-primitives'
 import { kotlinIdent, safeIdent } from './identifier-safety'
 import type {
   AttrIR,
@@ -755,6 +762,16 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Text') return emitKotlinText(e, indent)
   if (tag === 'Button') return emitKotlinButton(e, indent)
   if (tag === 'TextField') return emitKotlinTextField(e, indent)
+  // Phase B — canonical multi-platform primitives (@pyreon/primitives).
+  // Mirror of emit-swift.ts's Phase B dispatcher entries. Per-primitive
+  // emit functions consult the shared canonical-primitives.ts helpers
+  // (token resolution, name maps) so iOS + Android stay in lockstep.
+  if (tag === 'Stack') return emitKotlinStack(e, indent, /*defaultDirection*/ 'column')
+  if (tag === 'Inline') return emitKotlinStack(e, indent, /*defaultDirection*/ 'row')
+  if (tag === 'Press') return emitKotlinPress(e, indent)
+  if (tag === 'Field') return emitKotlinField(e, indent)
+  // 10 other canonical primitives fall through to generic emit until
+  // real apps demand each (see emit-swift.ts comment).
   return emitKotlinGeneric(e, indent)
 }
 
@@ -852,11 +869,16 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
 }
 
 function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
-  const onClick = e.attrs.find((a) => a.kind === 'event' && a.name === 'click') as
-    | Extract<AttrIR, { kind: 'event' }>
-    | undefined
+  // Phase B: accept canonical `onPress` AND legacy `onClick` event names
+  // — same Compose Button shape (`onClick = ...`) either way. The
+  // canonical name lets multi-platform PMTC source align across iOS +
+  // Android (Phase E migrates TodoMVC source from onClick to onPress).
+  const handler = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && (a.name === 'click' || a.name === 'press'),
+  )
   const labelText = extractStaticText(e.children)
-  const action = onClick ? emitKotlinAction(onClick.handler, indent) : '{}'
+  const action = handler ? emitKotlinAction(handler.handler, indent) : '{}'
   const pad = ' '.repeat(indent + 2)
   if (labelText !== null) {
     return `Button(onClick = ${action}) {\n${pad}Text(${JSON.stringify(labelText)})\n${' '.repeat(indent)}}`
@@ -962,6 +984,226 @@ const SWIFTUI_TO_COMPOSE_LAYOUT_NAMES: Record<string, string> = {
 function mapJsxTagToCompose(tag: string): string {
   return SWIFTUI_TO_COMPOSE_LAYOUT_NAMES[tag] ?? tag
 }
+
+// ============================================================================
+// Phase B — canonical multi-platform primitive emit functions.
+//
+// Each function reads canonical Pyreon props (per `@pyreon/primitives`)
+// and emits the idiomatic Compose shape. Token resolution
+// (padding/gap/color/etc.) routes through the shared
+// `canonical-primitives.ts` helpers so iOS + Android stay in lockstep.
+// ============================================================================
+
+/**
+ * Read a static attribute as a literal, ignoring spreads + dynamic exprs.
+ * Returns undefined when absent or not a static literal.
+ */
+function readStaticAttrKotlin(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  name: string,
+): string | number | boolean | undefined {
+  for (const a of e.attrs) {
+    if (a.kind === 'attr' && a.name === name) {
+      if (a.value.kind === 'literal') return a.value.value as string | number | boolean
+    }
+  }
+  return undefined
+}
+
+/**
+ * Build the Compose `Modifier` chain for the canonical layout-prop
+ * subset. Returns a string ready to pass as the `modifier =` constructor
+ * arg, OR empty string when no relevant props are present.
+ *
+ * Compose uses `Modifier` chains; Swift uses trailing modifiers — the
+ * key per-target difference. Both consume the same canonical input
+ * via the shared `resolveSpace`/`resolveColor`/`resolveRadius` helpers.
+ */
+function emitKotlinLayoutModifier(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+): string {
+  const parts: string[] = []
+  const padding = readStaticAttrKotlin(e, 'padding')
+  if (typeof padding === 'number' || typeof padding === 'string') {
+    parts.push(`.padding(${resolveSpace(padding)}.dp)`)
+  }
+  const paddingX = readStaticAttrKotlin(e, 'paddingX')
+  if (typeof paddingX === 'number' || typeof paddingX === 'string') {
+    parts.push(`.padding(horizontal = ${resolveSpace(paddingX)}.dp)`)
+  }
+  const paddingY = readStaticAttrKotlin(e, 'paddingY')
+  if (typeof paddingY === 'number' || typeof paddingY === 'string') {
+    parts.push(`.padding(vertical = ${resolveSpace(paddingY)}.dp)`)
+  }
+  const background = readStaticAttrKotlin(e, 'background')
+  if (typeof background === 'string') {
+    parts.push(`.background(${resolveColor(background, 'kotlin')})`)
+  }
+  const radius = readStaticAttrKotlin(e, 'radius')
+  if (typeof radius === 'string') {
+    parts.push(`.clip(androidx.compose.foundation.shape.RoundedCornerShape(${resolveRadius(radius)}.dp))`)
+  }
+  if (parts.length === 0) return ''
+  return `Modifier${parts.join('')}`
+}
+
+/**
+ * Emit `<Stack>` / `<Inline>` as Compose `Column` / `Row`.
+ *
+ * - `direction="row"` switches Column → Row on Stack
+ * - `gap={N}` → `verticalArrangement = Arrangement.spacedBy(N.dp)` on
+ *   Column / `horizontalArrangement = ...` on Row
+ * - `align="..."` → `horizontalAlignment = Alignment.X` on Column /
+ *   `verticalAlignment = Alignment.Y` on Row
+ * - `padding`/`background`/`radius` → `modifier = Modifier...` chain
+ *
+ * `justify` is intentionally NOT mapped here — Compose's
+ * `verticalArrangement` / `horizontalArrangement` already covers most
+ * justify-style placement (and `gap` consumes the verticalArrangement
+ * slot). Deferred to a future arc; v1 silently no-ops `justify` on
+ * Kotlin to match Swift's deferral.
+ */
+function emitKotlinStack(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+  defaultDirection: 'column' | 'row',
+): string {
+  const direction = readStaticAttrKotlin(e, 'direction')
+  const isRow = direction === 'row' || (direction === undefined && defaultDirection === 'row')
+  const composable = isRow ? 'Row' : 'Column'
+
+  const initArgs: string[] = []
+  // gap → arrangement
+  const gap = readStaticAttrKotlin(e, 'gap')
+  if (typeof gap === 'number' || typeof gap === 'string') {
+    const arrangementSlot = isRow ? 'horizontalArrangement' : 'verticalArrangement'
+    initArgs.push(`${arrangementSlot} = Arrangement.spacedBy(${resolveSpace(gap)}.dp)`)
+  }
+  // align → cross-axis alignment
+  const align = readStaticAttrKotlin(e, 'align')
+  if (typeof align === 'string') {
+    const alignSlot = isRow ? 'verticalAlignment' : 'horizontalAlignment'
+    initArgs.push(
+      `${alignSlot} = ${resolveAlign(align, 'kotlin', isRow ? 'vertical' : 'horizontal')}`,
+    )
+  }
+  // Modifier chain
+  const modifier = emitKotlinLayoutModifier(e)
+  if (modifier !== '') {
+    initArgs.push(`modifier = ${modifier}`)
+  }
+  const initSignature = initArgs.length > 0 ? `(${initArgs.join(', ')})` : ''
+
+  const pad = ' '.repeat(indent + 2)
+  if (e.children.length === 0) {
+    return `${composable}${initSignature} {}`
+  }
+  const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+  return `${composable}${initSignature} {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * Emit `<Press onPress={fn}>{anything}</Press>` as a clickable Box.
+ *
+ * Idiomatic Compose for the "make this clickable but don't add chrome"
+ * pattern is `Box(modifier = Modifier.clickable(onClick = fn)) { ... }`.
+ *
+ * Accepts both canonical `onPress` and legacy `onClick` to ease
+ * migration from existing PMTC source.
+ *
+ * `onLongPress` not yet wired — defer to a future arc.
+ */
+function emitKotlinPress(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const handler = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && (a.name === 'press' || a.name === 'click'),
+  )
+  const action = handler ? emitKotlinAction(handler.handler, indent) : '{}'
+
+  // Combine .clickable() with the layout modifier chain.
+  const layoutModifier = emitKotlinLayoutModifier(e)
+  const clickable = `.clickable(onClick = ${action})`
+  const modifier =
+    layoutModifier !== '' ? `${layoutModifier}${clickable}` : `Modifier${clickable}`
+
+  const pad = ' '.repeat(indent + 2)
+  if (e.children.length === 0) {
+    return `Box(modifier = ${modifier}) {}`
+  }
+  const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+  return `Box(modifier = ${modifier}) {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * Emit `<Field value={signal} onChangeText={fn} kind?>` as Compose
+ * `TextField(value = signal, onValueChange = { ... })`.
+ *
+ * Mirrors the legacy `<TextField>` emit shape but uses canonical
+ * `onChangeText` instead of `onInput`. `kind` selects KeyboardOptions
+ * (Compose has no separate SecureField — uses
+ * `visualTransformation = PasswordVisualTransformation()` instead).
+ *
+ * `value` MUST name a signal in scope (canonical contract); otherwise
+ * falls through to generic emit to preserve current behaviour.
+ */
+function emitKotlinField(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const valueAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'value',
+  )
+  const onChangeText = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'changetext',
+  )
+  if (
+    !valueAttr ||
+    valueAttr.value.kind !== 'identifier' ||
+    !_signalNames.has(valueAttr.value.name) ||
+    !onChangeText
+  ) {
+    return emitKotlinGeneric(e, indent)
+  }
+  const sig = kotlinIdent(valueAttr.value.name)
+  const onChange = emitKotlinAction(onChangeText.handler, indent + 2)
+
+  const args: string[] = [`value = ${sig}`, `onValueChange = ${onChange}`]
+
+  const placeholderAttr = readStaticAttrKotlin(e, 'placeholder')
+  if (typeof placeholderAttr === 'string') {
+    args.push(
+      `placeholder = { Text(${JSON.stringify(placeholderAttr)}) }`,
+    )
+  }
+  const kind = readStaticAttrKotlin(e, 'kind')
+  if (kind === 'password') {
+    args.push('visualTransformation = PasswordVisualTransformation()')
+  }
+  const onSubmit = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'submit',
+  )
+  if (onSubmit) {
+    args.push('keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)')
+    args.push(
+      `keyboardActions = KeyboardActions(onDone = ${emitKotlinAction(onSubmit.handler, indent + 2)})`,
+    )
+  }
+  const disabled = readStaticAttrKotlin(e, 'disabled')
+  if (disabled === true) {
+    args.push('enabled = false')
+  }
+  return `TextField(${args.join(', ')})`
+}
+
+// `isCanonicalPrimitive` is imported but referenced only via the
+// dispatcher's `if (tag === 'Stack')` chain in `emitKotlinJsx` — see
+// the matching comment in emit-swift.ts.
+void isCanonicalPrimitive
 
 function emitKotlinGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const pad = ' '.repeat(indent + 2)

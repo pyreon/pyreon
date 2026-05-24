@@ -8,6 +8,13 @@
 // Type inference is deliberately naive — numeric assumption for
 // computed properties. Phase 1 grows a real inference pass.
 
+import {
+  isCanonicalPrimitive,
+  resolveAlign,
+  resolveColor,
+  resolveRadius,
+  resolveSpace,
+} from './canonical-primitives'
 import { buildInferenceCtx, inferType } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
 import type {
@@ -837,6 +844,20 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Button') return emitSwiftButton(e, indent)
   if (tag === 'TextField') return emitSwiftTextField(e, indent)
   if (tag === 'Checkbox') return emitSwiftCheckbox(e, indent)
+  // Phase B — canonical multi-platform primitives (@pyreon/primitives).
+  // Per the architectural plan (#893), these route through dedicated
+  // emit functions BEFORE the generic-tag fallthrough so each maps to
+  // its idiomatic SwiftUI shape (props → modifier chains; canonical
+  // `onPress` → `action:`; tokens → resolved CGFloats).
+  if (tag === 'Stack') return emitSwiftStack(e, indent, /*defaultDirection*/ 'column')
+  if (tag === 'Inline') return emitSwiftStack(e, indent, /*defaultDirection*/ 'row')
+  if (tag === 'Press') return emitSwiftPress(e, indent)
+  if (tag === 'Field') return emitSwiftField(e, indent)
+  // 10 other canonical primitives (Layer, Scroll, Spacer, Heading,
+  // Image, Icon, Link, Toggle, Modal) DON'T have dedicated emit
+  // functions yet — they fall through to generic emit, which produces
+  // the LITERAL tag name in output (not typecheck-clean against the
+  // real platform). Ship as real apps demand each.
   // Generic SwiftUI View by tag name.
   return emitSwiftGeneric(e, indent)
 }
@@ -1003,11 +1024,16 @@ function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
 
 function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   // <Button onClick={() => …}>Label</Button>  →  Button("Label") { … }
-  const onClick = e.attrs.find((a) => a.kind === 'event' && a.name === 'click') as
-    | Extract<AttrIR, { kind: 'event' }>
-    | undefined
+  // Phase B: also accept the canonical `onPress` event name (per
+  // `@pyreon/primitives`). Either prop name resolves to the same
+  // SwiftUI Button shape — `onPress` is the cross-platform canonical
+  // (Phase E migrates TodoMVC source from onClick to onPress).
+  const handler = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && (a.name === 'click' || a.name === 'press'),
+  )
   const labelText = extractStaticText(e.children)
-  const action = onClick ? emitSwiftAction(onClick.handler, indent) : '{}'
+  const action = handler ? emitSwiftAction(handler.handler, indent) : '{}'
   if (labelText !== null) {
     return `Button(${JSON.stringify(labelText)}) ${action}`
   }
@@ -1105,6 +1131,223 @@ function emitSwiftShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   const body = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
   return `if ${cond} {\n${body}\n${' '.repeat(indent)}}`
 }
+
+// ============================================================================
+// Phase B — canonical multi-platform primitive emit functions.
+//
+// Each function reads canonical Pyreon props (per `@pyreon/primitives`)
+// and emits the idiomatic SwiftUI shape for the target. Token
+// resolution (padding/gap/color/etc.) routes through the shared
+// `canonical-primitives.ts` helpers so iOS + Android stay in lockstep.
+// ============================================================================
+
+/**
+ * Extract a static-attr value as a known type, ignoring spreads.
+ * Returns undefined when the prop isn't present or isn't a static literal.
+ */
+function readStaticAttr(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  name: string,
+): string | number | boolean | undefined {
+  for (const a of e.attrs) {
+    if (a.kind === 'attr' && a.name === name) {
+      if (a.value.kind === 'literal') return a.value.value as string | number | boolean
+    }
+  }
+  return undefined
+}
+
+/**
+ * Build the SwiftUI modifier-chain tail for the canonical layout-prop
+ * subset. Returns a string that begins with `.` (modifier-call) and is
+ * appended after the View constructor.
+ *
+ * Empty result when no relevant props are present — the View renders
+ * without any trailing modifier.
+ *
+ * Scope: padding/paddingX/paddingY/margin (alias to padding outside
+ * a parent layout)/background/radius.
+ */
+function emitSwiftLayoutModifiers(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+): string {
+  const parts: string[] = []
+  const padding = readStaticAttr(e, 'padding')
+  if (typeof padding === 'number' || typeof padding === 'string') {
+    parts.push(`.padding(${resolveSpace(padding)})`)
+  }
+  const paddingX = readStaticAttr(e, 'paddingX')
+  if (typeof paddingX === 'number' || typeof paddingX === 'string') {
+    parts.push(`.padding(.horizontal, ${resolveSpace(paddingX)})`)
+  }
+  const paddingY = readStaticAttr(e, 'paddingY')
+  if (typeof paddingY === 'number' || typeof paddingY === 'string') {
+    parts.push(`.padding(.vertical, ${resolveSpace(paddingY)})`)
+  }
+  const background = readStaticAttr(e, 'background')
+  if (typeof background === 'string') {
+    parts.push(`.background(${resolveColor(background, 'swift')})`)
+  }
+  const radius = readStaticAttr(e, 'radius')
+  if (typeof radius === 'string') {
+    parts.push(`.cornerRadius(${resolveRadius(radius)})`)
+  }
+  return parts.join('')
+}
+
+/**
+ * Emit `<Stack>` / `<Inline>` as `VStack` / `HStack`.
+ *
+ * - `direction="row"` overrides VStack → HStack on Stack
+ * - `gap={N}` → `spacing: <px>` constructor arg (VStack/HStack accept
+ *   spacing as the canonical inter-child gap)
+ * - `align="..."` → `alignment: .<axis>` constructor arg
+ * - `padding`/`background`/`radius` → modifier chain via
+ *   emitSwiftLayoutModifiers
+ *
+ * `justify` is intentionally NOT mapped to a VStack/HStack init arg —
+ * SwiftUI doesn't have a single-arg equivalent (you typically insert
+ * Spacer() children for distribution). Deferred to a future arc; v1
+ * accepts the prop at the type level but produces no modifier on
+ * Swift (silent no-op for now; non-blocking).
+ */
+function emitSwiftStack(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+  defaultDirection: 'column' | 'row',
+): string {
+  const direction = readStaticAttr(e, 'direction')
+  const isRow = direction === 'row' || (direction === undefined && defaultDirection === 'row')
+  const viewName = isRow ? 'HStack' : 'VStack'
+
+  const initArgs: string[] = []
+  const align = readStaticAttr(e, 'align')
+  if (typeof align === 'string') {
+    initArgs.push(
+      `alignment: ${resolveAlign(align, 'swift', isRow ? 'vertical' : 'horizontal')}`,
+    )
+  }
+  const gap = readStaticAttr(e, 'gap')
+  if (typeof gap === 'number' || typeof gap === 'string') {
+    initArgs.push(`spacing: ${resolveSpace(gap)}`)
+  }
+  const initSignature = initArgs.length > 0 ? `(${initArgs.join(', ')})` : ''
+  const modifiers = emitSwiftLayoutModifiers(e)
+
+  const pad = ' '.repeat(indent + 2)
+  if (e.children.length === 0) {
+    return `${viewName}${initSignature} {}${modifiers}`
+  }
+  const contentLines = e.children
+    .map((c) => pad + emitSwiftChild(c, indent + 2))
+    .join('\n')
+  return `${viewName}${initSignature} {\n${contentLines}\n${' '.repeat(indent)}}${modifiers}`
+}
+
+/**
+ * Emit `<Press onPress={fn}>{anything}</Press>` as a chrome-less
+ * SwiftUI `Button { content } action: { handler }`.
+ *
+ * Idiomatic SwiftUI for the "make this clickable but don't add
+ * button styling" pattern is `Button { content } action: ...`
+ * combined with `.buttonStyle(.plain)` so the system button chrome
+ * doesn't override the content's existing styling.
+ *
+ * `onPress` is the canonical Pyreon event name (mapped to `action:`
+ * here per the per-platform-event-name table in the plan).
+ *
+ * `onLongPress` not yet wired — defer to a future arc when a real
+ * primitive consumer demands it; today it's silently dropped (the
+ * type-level surface still accepts it).
+ */
+function emitSwiftPress(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  // Recognize both `onPress` (canonical) and the legacy `onClick`
+  // shape so PMTC source migrating from the SwiftUI-flavored vocab
+  // (where <Button> takes onClick) compiles without rewrites.
+  const onPress = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && (a.name === 'press' || a.name === 'click'),
+  )
+  const action = onPress ? emitSwiftAction(onPress.handler, indent) : '{}'
+
+  const pad = ' '.repeat(indent + 2)
+  const contentLines = e.children
+    .map((c) => pad + emitSwiftChild(c, indent + 2))
+    .join('\n')
+  const modifiers = emitSwiftLayoutModifiers(e)
+  // `.buttonStyle(.plain)` strips system chrome; matches the canonical
+  // "Press = un-styled clickable wrapper" contract.
+  return `Button {\n${contentLines}\n${' '.repeat(indent)}} action: ${action}.buttonStyle(.plain)${modifiers}`
+}
+
+/**
+ * Emit `<Field value={signal} onChangeText={fn} kind?>` as
+ * `TextField("...", text: $signal)` (or `SecureField` for
+ * `kind="password"`).
+ *
+ * - `value` MUST be a known signal in scope — emits as `$signal` per
+ *   the SwiftUI binding-projection contract (same shape G1 #841 used
+ *   for legacy <TextField>).
+ * - `placeholder` → first positional arg of TextField/SecureField
+ * - `kind="password"` → SecureField; other kinds → TextField (Swift
+ *   has no built-in numeric/email keyboard distinction at the type
+ *   level — that's a `.keyboardType(.emailAddress)` modifier; deferred
+ *   to a future arc).
+ * - `disabled` → `.disabled(true)` modifier.
+ * - `onSubmit` → `.onSubmit { handler() }` modifier (Phase 2 G2 shape).
+ */
+function emitSwiftField(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const valueAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'value',
+  )
+  const placeholderAttr = readStaticAttr(e, 'placeholder')
+  const placeholder = typeof placeholderAttr === 'string' ? placeholderAttr : ''
+
+  const kind = readStaticAttr(e, 'kind')
+  const viewName = kind === 'password' ? 'SecureField' : 'TextField'
+
+  // `value` MUST name a signal in scope (canonical contract). If it
+  // doesn't, we fall through to the generic emit to preserve current
+  // behaviour and avoid silently producing broken Swift.
+  if (
+    !valueAttr ||
+    valueAttr.value.kind !== 'identifier' ||
+    !_signalNames.has(valueAttr.value.name)
+  ) {
+    return emitSwiftGeneric(e, indent)
+  }
+  const sig = swiftIdent(valueAttr.value.name)
+
+  let result = `${viewName}(${JSON.stringify(placeholder)}, text: $${sig})`
+
+  // onSubmit modifier (Pyreon canonical event for keyboard "done").
+  const onSubmit = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'submit',
+  )
+  if (onSubmit) {
+    result += `\n${' '.repeat(indent + 2)}.onSubmit ${emitSwiftAction(onSubmit.handler, indent + 2)}`
+  }
+  const disabled = readStaticAttr(e, 'disabled')
+  if (disabled === true) {
+    result += `\n${' '.repeat(indent + 2)}.disabled(true)`
+  }
+  result += emitSwiftLayoutModifiers(e)
+  return result
+}
+
+// `isCanonicalPrimitive` is imported but referenced only via the
+// dispatcher's `if (tag === 'Stack')` chain in `emitSwiftJsx` — the
+// set-based predicate would gate the dispatcher entries more cleanly
+// once all 16 primitives have emit functions; today the explicit-tag
+// chain mirrors the existing `For`/`Show`/`Text`/`Button` style.
+void isCanonicalPrimitive
 
 function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const pad = ' '.repeat(indent + 2)
