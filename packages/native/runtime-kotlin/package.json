@@ -1,0 +1,13 @@
+{
+  "name": "@pyreon/native-runtime-kotlin",
+  "version": "0.0.0",
+  "private": true,
+  "description": "PRIVATE / EXPERIMENTAL — Kotlin runtime that compiler-emitted Compose code links against on Android. Parallel to @pyreon/native-runtime-swift. Phase 0+ scaffold; first real module is PyreonStorage (Compose + DataStore-backed persistent state).",
+  "license": "MIT",
+  "scripts": {
+    "build": "if command -v kotlinc >/dev/null 2>&1; then bun scripts/verify-kotlin.ts; else echo '[native-runtime-kotlin] kotlinc not on PATH; skipping build (Android stack required)'; fi",
+    "test": "if command -v kotlinc >/dev/null 2>&1; then bun scripts/verify-kotlin.ts; else echo '[native-runtime-kotlin] kotlinc not on PATH; skipping test (Android stack required)'; fi",
+    "lint": "echo '[native-runtime-kotlin] Kotlin lint (detekt/ktlint) not yet integrated; skipping lint'",
+    "typecheck": "if [ \"$CI\" = \"true\" ]; then echo '[native-runtime-kotlin] skipping typecheck in CI — kotlinc cold-start + parallel-load timeouts; covered by @pyreon/native-compiler K-FINAL gate (#888) which validates the same K4 stub surface end-to-end'; elif command -v kotlinc >/dev/null 2>&1; then bun scripts/verify-kotlin.ts --typecheck-only; else echo '[native-runtime-kotlin] kotlinc not on PATH; skipping typecheck'; fi"
+  }
+}
