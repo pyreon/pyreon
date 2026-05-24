@@ -70,6 +70,21 @@ import { createServer } from '@pyreon/zero'
 
 A handful of features live on their own focused subpaths (so a client bundle that imports `corsMiddleware` doesn't pull in unrelated server code) — see [Subpath Exports](#subpath-exports).
 
+## Single-instance contract
+
+Pyreon's `@pyreon/*` packages MUST resolve to exactly one copy per heap. Multiple instances of the same package (Vite resolver divergence, sub-dep version mismatch, workspace+npm mix) break the framework's contracts silently — `runWithHooks` sets `_current` on instance A, `onMount` reads `_current` from instance B, warning storms ensue. Pyreon ships **two layers** to enforce this:
+
+1. **Bundler prevention (default-on).** `@pyreon/vite-plugin` injects `resolve.dedupe: <all @pyreon/* + transitive>` automatically — walks `node_modules/@pyreon` for the full set (direct AND transitive deps a direct dep pulled in). Zero config; works for every Vite-driven app. Override with `PYREON_DISABLE_DEDUPE=1` only if you have a specific need to allow duplicate resolution (rare).
+2. **Runtime detection (default-on).** Every `@pyreon/*` package with module-level state calls `registerSingleton(...)` at module load. If two distinct module instances of the same package register, the second registration throws an actionable `Error` naming both file paths + three concrete fixes. Demote to a warning with `PYREON_SINGLE_INSTANCE=warn`; disable entirely with `PYREON_SINGLE_INSTANCE=silent` (browser extensions, micro-frontends, nested SSR test harnesses).
+
+For non-Vite bundlers, you need the equivalent configuration manually:
+
+- **Webpack / Next.js**: `resolve.alias` every `@pyreon/<name>` to a single absolute path, OR use `module.rules.resolve.symlinks: false` if your bundler resolves through a unified workspace.
+- **Rollup**: `@rollup/plugin-node-resolve` + `dedupe: ['@pyreon/<name>', ...]`.
+- **esbuild**: no native dedupe; use a plugin or symlinks.
+
+`pyreon doctor --check-dedup` audits any consumer's lockfile (`bun.lock` / `package-lock.json` / `pnpm-lock.yaml`) for `@pyreon/*` packages with more than one resolved version — surfaces duplicates BEFORE runtime detection fires.
+
 ## Configuration
 
 Zero is configured as a set of Vite plugins in your `vite.config.ts`. The default export of `@pyreon/zero/server` is the Zero Vite plugin:

@@ -373,6 +373,45 @@ function scanPyreonDeps(root: string): string[] {
   }
 }
 
+/**
+ * Walk up from `root` looking for the nearest `node_modules/@pyreon`
+ * directory, then return every subdirectory name as `@pyreon/<name>`.
+ *
+ * This is the TRANSITIVE @pyreon/* dependency list — direct + every
+ * indirect dep that any direct dep pulled in. Required for `resolve.dedupe`
+ * because the original `scanPyreonDeps()` reads `package.json` only and
+ * misses anything a direct dep transitively requires (a user with only
+ * `@pyreon/zero` declared transitively pulls @pyreon/core, @pyreon/router,
+ * @pyreon/runtime-dom, etc. — none of which appear in their package.json).
+ *
+ * Bun / npm / pnpm all create `node_modules/@pyreon/<name>` entries for
+ * every resolved version, so a filesystem walk gives the exact set the
+ * bundler will see. Returns an empty array if no `node_modules/@pyreon`
+ * directory is reachable (fresh project before `bun install`, etc.) —
+ * dedupe then has nothing to do, which is the correct degradation.
+ */
+function scanPyreonDepsTransitive(root: string): string[] {
+  let dir = root
+  for (let i = 0; i < 10; i++) {
+    const candidate = pathJoin(dir, 'node_modules', '@pyreon')
+    if (existsSync(candidate)) {
+      try {
+        const entries = readdirSync(candidate, { withFileTypes: true })
+        return entries
+          .filter((e) => e.isDirectory() || e.isSymbolicLink())
+          .map((e) => `@pyreon/${e.name}`)
+          .sort()
+      } catch {
+        return []
+      }
+    }
+    const parent = dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  return []
+}
+
 export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
   const ssrConfig = options?.ssr
   const compat = options?.compat
@@ -492,6 +531,30 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
         new Set([...compatExclude, ...pyreonExclude]),
       )
 
+      // Transitive @pyreon/* dedupe — default-on. Eliminates the dual-load
+      // bug class at the bundler layer by forcing every @pyreon/* import to
+      // resolve to ONE copy regardless of how the import chain looks (direct
+      // vs transitive, hoisted vs nested). The singleton sentinel
+      // (@pyreon/reactivity:registerSingleton, default-on per PR A) is the
+      // detection layer for any case this misses. Together they form the
+      // defense-in-depth — bundler PREVENTS, sentinel DETECTS.
+      //
+      // scanPyreonDeps() reads the consumer's direct package.json only and
+      // therefore misses anything a direct dep transitively pulls in (a user
+      // with only @pyreon/zero declared transitively pulls @pyreon/core,
+      // @pyreon/router, @pyreon/runtime-dom — none of which appear in their
+      // package.json). scanPyreonDepsTransitive() walks node_modules to
+      // capture the full set.
+      //
+      // Escape hatch: PYREON_DISABLE_DEDUPE=1 turns the injection off — rare
+      // (browser extensions / micro-frontends that legitimately dual-load).
+      const procEnv =
+        typeof process !== 'undefined' && process.env
+          ? (process.env as unknown as Record<string, string | undefined>)
+          : undefined
+      const dedupeDisabled = procEnv?.PYREON_DISABLE_DEDUPE === '1'
+      const dedupeList = dedupeDisabled ? [] : scanPyreonDepsTransitive(projectRoot)
+
       // Always set OXC's JSX importSource to `@pyreon/core`. In compat mode,
       // we redirect `@pyreon/core/jsx-runtime` imports to the compat package
       // VIA `resolveId` — but ONLY for user code, never for `@pyreon/*`
@@ -502,8 +565,12 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
 
       return {
         // Use "bun" condition for workspace resolution — source .ts/.tsx files
-        // for HMR, fast refresh, and type-safe imports.
-        resolve: { conditions: ['bun'] },
+        // for HMR, fast refresh, and type-safe imports. `dedupe` forces every
+        // @pyreon/* import to resolve to ONE copy across the module graph.
+        resolve: {
+          conditions: ['bun'],
+          ...(dedupeList.length > 0 ? { dedupe: dedupeList } : {}),
+        },
         // Force every `@pyreon/*` package through Vite's transform pipeline
         // for SSR. Without this, Vite externalizes some `@pyreon/*` packages
         // (loads via Node's `import()`) while transforming others — producing
