@@ -1,0 +1,22 @@
+{
+  "name": "@pyreon/dual-instance-reproducer",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Workspace-internal reproducer for the dual-module-instance bug class. Asserts the framework contract holds when a @pyreon/* package is loaded twice in the same JS heap. NOT published.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "scripts": {
+    "lint": "oxlint .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/core": "workspace:^",
+    "@types/node": "^20",
+    "typescript": "^5",
+    "vitest": "^4"
+  }
+}

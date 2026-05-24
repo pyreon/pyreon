@@ -144,7 +144,19 @@ export async function createCollapseResolver(projectRoot: string): Promise<Colla
   const cache = new Map<string, ResolvedCollapse | null>()
 
   async function load(spec: string): Promise<Record<string, unknown>> {
-    return (await server!.ssrLoadModule(spec)) as Record<string, unknown>
+    // The nested Vite SSR server loads its own copy of @pyreon/* packages
+    // for the SSR snapshot. This is a legitimate dual-load — the outer
+    // process has its own @pyreon/* graph; the nested server has its own.
+    // Opt out of the singleton sentinel's throw for the duration of the
+    // load call. Restored synchronously after.
+    const prevEnv = process.env.PYREON_SINGLE_INSTANCE
+    process.env.PYREON_SINGLE_INSTANCE = 'silent'
+    try {
+      return (await server!.ssrLoadModule(spec)) as Record<string, unknown>
+    } finally {
+      if (prevEnv === undefined) delete process.env.PYREON_SINGLE_INSTANCE
+      else process.env.PYREON_SINGLE_INSTANCE = prevEnv
+    }
   }
 
   return {

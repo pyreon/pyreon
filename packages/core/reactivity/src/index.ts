@@ -1,10 +1,19 @@
 // @pyreon/reactivity — signals-based reactive primitives
 
+import { registerSingleton } from './singleton-sentinel'
+
+// Singleton sentinel — fail-loud if two instances of @pyreon/reactivity
+// are loaded in the same heap. See singleton-sentinel.ts for full rationale.
+// Hardcoded version string is acceptable here; the package.json is the
+// source of truth, this is a diagnostic aid only.
+registerSingleton('@pyreon/reactivity', '0.21.3', import.meta.url)
+
 export { batch, nextTick } from './batch'
 export { Cell, cell } from './cell'
 export { type Computed, type ComputedOptions, computed } from './computed'
 export { createSelector } from './createSelector'
 export { defineCrossModuleState } from './cross-module-state'
+export { _resetSentinel, registerSingleton } from './singleton-sentinel'
 export { inspectSignal, onSignalUpdate, why } from './debug'
 export type {
   FireSummary,

@@ -174,6 +174,19 @@ export interface PyreonPluginOptions {
    * @example pyreon({ collapse: { components: ['Button', 'Badge'] } })
    */
   collapse?: boolean | PyreonCollapseOptions
+
+  /**
+   * (Phase 1α prototype) Inject `resolve.dedupe` for `@pyreon/*` packages
+   * to prevent dual-module-instance bug class at the bundler level.
+   *
+   * Default `false` until Phase 3 of the cross-module-state cleanup
+   * decides whether this is the right architectural direction.
+   *
+   * See `.claude/plans/jaunty-herding-kazoo.md` for the full plan.
+   *
+   * @experimental
+   */
+  dedupePyreon?: boolean
 }
 
 export interface PyreonCollapseOptions {
@@ -376,6 +389,9 @@ function scanPyreonDeps(root: string): string[] {
 export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
   const ssrConfig = options?.ssr
   const compat = options?.compat
+  // Phase 1α prototype: opt-in dedup of @pyreon/* packages. See plan
+  // .claude/plans/jaunty-herding-kazoo.md. Default false until Phase 3.
+  const dedupePyreon = options?.dedupePyreon === true
   // Default islands support to enabled — the prescan is cheap and the virtual
   // module is harmless if the user has no `island()` calls. Opt out only if
   // you have a specific reason.
@@ -503,7 +519,26 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       return {
         // Use "bun" condition for workspace resolution — source .ts/.tsx files
         // for HMR, fast refresh, and type-safe imports.
-        resolve: { conditions: ['bun'] },
+        //
+        // `dedupe: pyreonExclude` is Candidate α of the cross-module-state
+        // cleanup (see .claude/plans/jaunty-herding-kazoo.md). Forces Vite
+        // to resolve every `@pyreon/*` import to ONE canonical path even
+        // when sub-deps pin different versions or the resolver paths
+        // diverge — preventing dual-module-instance loading at the
+        // bundler level rather than tolerating it at runtime.
+        //
+        // Combined with the singleton sentinel in `@pyreon/reactivity`,
+        // dedup is the prevention layer and the sentinel is the fail-loud
+        // backstop for cases the dedup misses.
+        //
+        // **Opt-in for the prototype phase.** Interacts with nested
+        // Vite-SSR setups (the rocketstyle-collapse resolver, etc.) in
+        // ways that need careful debugging before default-on is safe.
+        // Phase 3 decision determines whether this becomes default.
+        resolve: {
+          conditions: ['bun'],
+          ...(dedupePyreon ? { dedupe: pyreonExclude } : {}),
+        },
         // Force every `@pyreon/*` package through Vite's transform pipeline
         // for SSR. Without this, Vite externalizes some `@pyreon/*` packages
         // (loads via Node's `import()`) while transforming others — producing
