@@ -47,4 +47,8 @@ export {
   runSsgAuditGate,
   type SsgAuditGateOptions,
 } from './ssg-audit'
+export {
+  runCheckDedupGate,
+  type CheckDedupGateOptions,
+} from './check-dedup'
 export { runLintGate, type LintGateOptions } from './lint'

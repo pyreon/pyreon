@@ -26,6 +26,7 @@ import {
   runAuditTestsGate,
   runAuditTypesGate,
   runBundleBudgetsGate,
+  runCheckDedupGate,
   runDistributionGate,
   runDocClaimsGate,
   runIslandsAuditGate,
@@ -46,6 +47,7 @@ export type GateName =
   | 'audit-tests'
   | 'islands-audit'
   | 'ssg-audit'
+  | 'check-dedup'
   | 'audit-leak-classes'
   | 'audit-types'
   | 'bundle-budgets'
@@ -60,6 +62,7 @@ const FAST_GATES: GateName[] = [
   'islands-audit',
   'ssg-audit',
   'audit-tests',
+  'check-dedup',
   'audit-leak-classes',
 ]
 
@@ -100,6 +103,7 @@ const ALL_GATE_CATEGORIES: Record<GateName, GateResult['category']> = {
   'audit-tests': 'testing',
   'islands-audit': 'architecture',
   'ssg-audit': 'architecture',
+  'check-dedup': 'architecture',
   'audit-leak-classes': 'architecture',
   'audit-types': 'architecture',
   'bundle-budgets': 'performance',
@@ -172,6 +176,8 @@ const runGate = async (
       return runIslandsAuditGate({ cwd: opts.cwd })
     case 'ssg-audit':
       return runSsgAuditGate({ cwd: opts.cwd })
+    case 'check-dedup':
+      return runCheckDedupGate({ cwd: opts.cwd })
     case 'audit-leak-classes':
       return runAuditLeakClassesGate({ cwd: opts.cwd })
     case 'audit-types':
