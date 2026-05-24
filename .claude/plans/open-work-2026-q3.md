@@ -19,9 +19,9 @@ So future work isn't picked twice. From the three superseded plans:
 
 ---
 
-## PMTC — Pyreon Multi-Target Compiler (Phase 0 SHIPPED; TodoMVC named-gap closure SHIPPED 2026-05-21; Phase 1 staffing decision OPEN)
+## PMTC — Pyreon Multi-Target Compiler (Phase 0 SHIPPED; TodoMVC typecheck-clean SHIPPED 2026-05-24; Phase 1 staffing decision OPEN)
 
-**Status**: Strategic direction merged in [#764](https://github.com/pyreon/pyreon/pull/764) ([`native-platforms.md`](./native-platforms.md)). Compiler skeleton merged in [#794](https://github.com/pyreon/pyreon/pull/794). **Phase 0's 8 roadmap PRs all landed** ([#796](https://github.com/pyreon/pyreon/pull/796), [#798](https://github.com/pyreon/pyreon/pull/798), [#800](https://github.com/pyreon/pyreon/pull/800), [#801](https://github.com/pyreon/pyreon/pull/801), [#805](https://github.com/pyreon/pyreon/pull/805), [#808](https://github.com/pyreon/pyreon/pull/808), [#810](https://github.com/pyreon/pyreon/pull/810), [#811](https://github.com/pyreon/pyreon/pull/811), [#812](https://github.com/pyreon/pyreon/pull/812), [#814](https://github.com/pyreon/pyreon/pull/814), [#816](https://github.com/pyreon/pyreon/pull/816), [#817](https://github.com/pyreon/pyreon/pull/817), [#819](https://github.com/pyreon/pyreon/pull/819), [#820](https://github.com/pyreon/pyreon/pull/820), [#821](https://github.com/pyreon/pyreon/pull/821), [#823](https://github.com/pyreon/pyreon/pull/823)). **TodoMVC named-gap closure landed 2026-05-19 to 2026-05-21**: G6 [#835](https://github.com/pyreon/pyreon/pull/835) → G1 [#842](https://github.com/pyreon/pyreon/pull/842) → G2 [#844](https://github.com/pyreon/pyreon/pull/844) (carrying G4 [#846](https://github.com/pyreon/pyreon/pull/846)) → G5 [#849](https://github.com/pyreon/pyreon/pull/849). Plus Phase 1 input parsers: ThemeIR [#831](https://github.com/pyreon/pyreon/pull/831), StyleIR [#832](https://github.com/pyreon/pyreon/pull/832), RocketstyleIR [#833](https://github.com/pyreon/pyreon/pull/833). Plus swift-valid bug-class fixes: #829 (hyphenated attrs) + #830 (Swift-reserved keywords) lifted swift-valid from 94.3% → 99.0%. Plus TodoMVC baseline [#834](https://github.com/pyreon/pyreon/pull/834) + Parser-A/B/C [#840](https://github.com/pyreon/pyreon/pull/840). Phase 1 staffing remains conditional on the market signal — survey ([#807](https://github.com/pyreon/pyreon/pull/807)) NOT YET run.
+**Status**: Strategic direction merged in [#764](https://github.com/pyreon/pyreon/pull/764) ([`native-platforms.md`](./native-platforms.md)). Compiler skeleton merged in [#794](https://github.com/pyreon/pyreon/pull/794). **Phase 0's 8 roadmap PRs all landed** ([#796](https://github.com/pyreon/pyreon/pull/796), [#798](https://github.com/pyreon/pyreon/pull/798), [#800](https://github.com/pyreon/pyreon/pull/800), [#801](https://github.com/pyreon/pyreon/pull/801), [#805](https://github.com/pyreon/pyreon/pull/805), [#808](https://github.com/pyreon/pyreon/pull/808), [#810](https://github.com/pyreon/pyreon/pull/810), [#811](https://github.com/pyreon/pyreon/pull/811), [#812](https://github.com/pyreon/pyreon/pull/812), [#814](https://github.com/pyreon/pyreon/pull/814), [#816](https://github.com/pyreon/pyreon/pull/816), [#817](https://github.com/pyreon/pyreon/pull/817), [#819](https://github.com/pyreon/pyreon/pull/819), [#820](https://github.com/pyreon/pyreon/pull/820), [#821](https://github.com/pyreon/pyreon/pull/821), [#823](https://github.com/pyreon/pyreon/pull/823)). **TodoMVC named-gap closure landed 2026-05-19 to 2026-05-21**: G6 [#835](https://github.com/pyreon/pyreon/pull/835) → G1 [#842](https://github.com/pyreon/pyreon/pull/842) → G2 [#844](https://github.com/pyreon/pyreon/pull/844) (carrying G4 [#846](https://github.com/pyreon/pyreon/pull/846)) → G5 [#849](https://github.com/pyreon/pyreon/pull/849). Plus Phase 1 input parsers: ThemeIR [#831](https://github.com/pyreon/pyreon/pull/831), StyleIR [#832](https://github.com/pyreon/pyreon/pull/832), RocketstyleIR [#833](https://github.com/pyreon/pyreon/pull/833). Plus swift-valid bug-class fixes: #829 (hyphenated attrs) + #830 (Swift-reserved keywords) lifted swift-valid from 94.3% → 99.0%. Plus TodoMVC baseline [#834](https://github.com/pyreon/pyreon/pull/834) + Parser-A/B/C [#840](https://github.com/pyreon/pyreon/pull/840). **Phase 2 typecheck-clean closure landed 2026-05-22 to 2026-05-24**: storage trilogy [#853](https://github.com/pyreon/pyreon/pull/853)/[#854](https://github.com/pyreon/pyreon/pull/854)/[#857](https://github.com/pyreon/pyreon/pull/857)/[#859](https://github.com/pyreon/pyreon/pull/859)/[#860](https://github.com/pyreon/pyreon/pull/860) (Codable + @AppStorage bridge + Compose Saver), then [#861](https://github.com/pyreon/pyreon/pull/861) (TS-method translation), [#864](https://github.com/pyreon/pyreon/pull/864) (module-level decls), [#866](https://github.com/pyreon/pyreon/pull/866) (computed type inference; carries [#868](https://github.com/pyreon/pyreon/pull/868) multi-stmt body + enum comparison), [#871](https://github.com/pyreon/pyreon/pull/871) (function-typed prop call), [#872](https://github.com/pyreon/pyreon/pull/872) (JSX attr forwarding + unnamed args; carries [#874](https://github.com/pyreon/pyreon/pull/874) Checkbox primitive). Result: **`swiftc -typecheck` on the emitted TodoMVC Swift returns 0 errors.** Visibility: [#875](https://github.com/pyreon/pyreon/pull/875) ships an xcodegen scaffold for `examples/native-todomvc-ios/` so the milestone is reproducibly openable in Xcode. Phase 1 staffing remains conditional on the market signal — survey ([#807](https://github.com/pyreon/pyreon/pull/807)) NOT YET run.
 
 ### The plan trilogy (all merged)
 
@@ -68,43 +68,54 @@ If technical passes but market fails → **do NOT staff Phase 1**. Reconsider sc
 
 ### What's actionable RIGHT NOW
 
-**Tier 1 — Phase 0 close-out (mostly shipped 2026-05)**:
+**Tier 1 — Phase 0 close-out (shipped 2026-05)**:
 
 1. ✓ **DONE** — Coverage-gate `--swiftc-validate` analysis. Ran #828, found 2 bug classes; closed via #829 (hyphenated attrs) + #830 (Swift keywords) — swift-valid 94.3% → **99.0%**.
 2. ✓ **DONE** — Compiler input parsers. ThemeIR #831, StyleIR #832, RocketstyleIR #833. Style emitters now have real input pipelines from `@pyreon/ui-theme` / `styled()` / `rocketstyle()` chains.
 3. ✓ **DONE** — TodoMVC named-gap closure (5 closable gaps + G3 deliberation). G6 #835, G1 #842, G2 #844, G4 #846 (cascade), G5 #849. TodoMVC baseline #834 → 238 passing, 0 `it.todo`.
-4. ⏸ **STILL OPEN** — PR 4a xcodegen automation (~1-2 days). `project.yml` to `examples/native-counter-ios/`, scripts to invoke `xcodegen generate`, document `xcodegen + open Counter.xcodeproj` flow. **Unlocks criterion 2's tap-the-button validation.**
+4. ✓ **DONE** — PR 4a xcodegen automation. `examples/native-counter-ios/project.yml` + `scripts/xcode-setup.sh` shipped earlier; `native-todomvc-ios` parallel shipped (#875). Both: `./scripts/xcode-setup.sh && open <Project>.xcodeproj` works end-to-end.
 
-**Tier 1.5 — Phase 2 hardening (low-effort, follows from G5's known caveats)**:
+**Tier 1.5 — Phase 2 hardening (SHIPPED 2026-05-22 to 2026-05-24)**:
 
-1. **Struct emit for named type aliases** (~1-2w). `type Todo = { id: number; ... }` currently parses as `typeRef('Todo')` but neither emitter generates `struct Todo { ... }` (Swift) or `data class Todo(...)` (Kotlin). Currently anonymous record types emit as labelled tuples — `[(id: Int, text: String, done: Bool)]` — which works for `swiftc -parse` but blocks Codable bridges, Compose Savers, and richer type-context-driven emit. **FOUNDATIONAL UNBLOCK** for Tier 1.5 items 2-3 below.
-2. **Swift Codable-Data bridge for `@AppStorage`** (~1w, depends on #1). Closes G5's `[Todo]` typecheck gap — emit a `Data`-backed `@AppStorage` + computed wrapper with `JSONEncoder`/`JSONDecoder`. Lifts TodoMVC from `swiftc -parse` PARSE_OK to `swiftc -typecheck` clean.
-3. **Compose `Saver` for `rememberSaveable<List<Todo>>`** (~1w, depends on #1). Closes G5's Kotlin parallel. Either generate a custom `Saver` per data class, or use kotlinx.serialization with the right Compose extension.
-4. **`@pyreon/storage-ios` reference implementation** (~1-2w per #802). The first three-package-split abstraction validating the manifest-driven binding resolution against real Swift code. G5 #849 unblocked this — the compiler now recognises `useStorage` and routes to platform primitives, so a real binding-package can wire into the same shape.
+The full Phase 2 trilogy + follow-ups landed. **TodoMVC emit went from `swiftc -parse` PARSE_OK to `swiftc -typecheck` clean (0 errors).** Story closed via 11 PRs across two weeks:
+
+1. ✓ **#853** — Struct emit for named type aliases (`type Todo = {...}` → `struct Todo` / `data class Todo`).
+2. ✓ **#854** — Array-literal → struct initializer (when fields match a known struct).
+3. ✓ **#857** — Codable + @Serializable conformance on emitted structs.
+4. ✓ **#859** — Swift `@AppStorage` Codable-Data bridge (G5 typecheck-gap closure).
+5. ✓ **#860** — Kotlin Compose `Saver` via kotlinx-Json (G5 Kotlin parallel).
+6. ✓ **#861** — TS-method translation (`.length`/`.trim()`/`.some()`/`.every()`/`.find()`/etc.).
+7. ✓ **#864** — Module-level `let`/`const` bindings emit at file scope.
+8. ✓ **#866** — Computed-property type inference via TS method chains.
+9. ✓ **#868** — Multi-statement computed bodies (closure of `visible: Any { xs }`) + enum-aware comparison.
+10. ✓ **#871** — Function-typed prop/decl handlers call inside trailing closures.
+11. ✓ **#872** — JSX event-handler forwarding to user components + unnamed function-arg labels.
+12. ✓ **#874** — `<Checkbox>` → SwiftUI `Image(systemName:)` — LAST typecheck blocker.
+13. ✓ **#875** — TodoMVC iOS xcodegen scaffold — `./scripts/xcode-setup.sh && open PyreonTodoMVC.xcodeproj`.
+
+**`@pyreon/storage-ios` reference implementation** (~1-2w per #802) — not yet started. The first three-package-split abstraction validating the manifest-driven binding resolution against real Swift code. G5 #849 unblocked this — the compiler now recognises `useStorage` and routes to platform primitives, so a real binding-package can wire into the same shape.
 
 **Tier 2 — Phase 1 engineering entry points (multi-week each, gated on market signal)**:
 
 1. ~~TodoMVC compile attempt + 8 compositional gap PRs~~ — **DONE** (5/5 closable named gaps closed; G3 deliberation closed; G7/G8 Phase 3).
-2. **Real iOS Xcode build + Simulator run validation** — needs Apple-hardware CI runner. xcodegen (Tier 1 #4) is the prerequisite. Multi-week external-dep blocker.
-3. **Real Android Compose build pipeline** — `./gradlew assembleDebug` against emitted Kotlin. Less hardware-locked than iOS but still multi-week.
-4. **G7 — rocketstyle conditional dimension expression hoisting** (Phase 3 per walkthrough). `<TodoItem state={todo.done ? 'completed' : 'active'}>` needs to hoist the conditional out of `body` into the `.modifier(...)` call site. Compiler refactoring; ~1-2w.
-5. **G8 — `@pyreon/router-ios` / `@pyreon/router-android`** (Phase 3). URL-hash-style routing primitive for non-web platforms. Multi-week package work.
+2. ~~TodoMVC emit typechecks-clean~~ — **DONE** (Phase 2 trilogy + follow-ups; `swiftc -typecheck` returns 0 errors on the emitted Swift).
+3. **Real iOS Xcode build + Simulator run validation** — needs Apple-hardware CI runner. xcodegen scaffold (Tier 1 #4) is shipped; remaining: `xcodebuild -project PyreonTodoMVC.xcodeproj -destination 'generic/platform=iOS Simulator' build` + Simulator UI assertions. Multi-week external-dep blocker.
+4. **Real Android Compose build pipeline** — `./gradlew assembleDebug` against emitted Kotlin. Less hardware-locked than iOS but still multi-week.
+5. **G7 — rocketstyle conditional dimension expression hoisting** (Phase 3 per walkthrough). `<TodoItem state={todo.done ? 'completed' : 'active'}>` needs to hoist the conditional out of `body` into the `.modifier(...)` call site. Compiler refactoring; ~1-2w.
+6. **G8 — `@pyreon/router-ios` / `@pyreon/router-android`** (Phase 3). URL-hash-style routing primitive for non-web platforms. Multi-week package work.
 
 **Tier 3 — strategic decision blockers (user input required)**:
 
-1. **Run the user survey** ($1700-2700 external cost, weeks 1-3 of Phase 0 per #807). The market-pass gate. **We finished Phase 0 + named-gap closure without it** — this is the biggest non-code decision blocker.
+1. **Run the user survey** ($1700-2700 external cost, weeks 1-3 of Phase 0 per #807). The market-pass gate. **We finished Phase 0 + named-gap closure + Phase 2 typecheck-clean closure without it** — this is the biggest non-code decision blocker.
 2. **Decision: rocketstyle collapse (P0 below) vs PMTC Phase 1 — which wins this quarter?** Both are multi-week commitments. Not mutually exclusive but with one person sequential. The user survey informs this directly.
 
 ### Remaining honest gaps
 
-- **No `.xcodeproj` generation** — criterion 2 (`@State` round-trip on iOS simulator) can't be tap-the-button verified. xcodegen PR is the blocker.
 - **No pixel-diff infrastructure** — criterion 3 can't be visually verified.
-- **Anonymous object types emit as Swift labelled tuples**, not real structs — blocks Codable bridge, Compose Saver, and richer typecheck. See Tier 1.5 #1.
-- **G5's known partial closures**: `@AppStorage` type constraint (Swift), `rememberSaveable` type constraint (Kotlin), storage key not threaded to Kotlin call site. See Tier 1.5 #2-3.
 - **G4 multi-spread objects** `{...a, ...b, k: v}` fall through to tuple-literal emit. Phase 2 hardening.
-- **Button `onClick={functionRef}` bare-identifier closure bug** — `{ clearCompleted }` emits without parens (closure that doesn't call the function). Different parse path (`emitSwiftAction` arrow-stripping). Not blocking TodoMVC because TodoMVC wraps in `onClick={() => fn()}`.
-- **2347 SwiftPM `.build/` artifacts** still committed from #810. Needs `git rm -r --cached packages/native/runtime-swift/.build` + add `.build/` to `.gitignore`.
-- **No CI smoke for the iOS counter build** — a regression in the CLI's directory walker or the parser would not block merges. Adding `bash examples/native-counter-ios/scripts/build.sh` + assert `swiftc -parse` to CI would catch it.
+- **No CI smoke for the iOS counter build** — a regression in the CLI's directory walker or the parser would not block merges. Adding `bash examples/native-counter-ios/scripts/build.sh` + assert `swiftc -parse` to CI would catch it. (`bash examples/native-todomvc-ios/scripts/build.sh` + `swiftc -typecheck` would close the parallel for TodoMVC.)
+- **No actual iOS Simulator run validation** of the TodoMVC scaffold — `xcodegen generate` produces a real `.xcodeproj`, but `xcodebuild -destination 'generic/platform=iOS Simulator' build` needs Apple-hardware CI to run. The structural pipeline is closed; the runtime validation is gated on Tier 2 #3.
+- **Interactive `<Checkbox>` / Toggle binding** — current emit is read-only `Image(systemName:)`. Phase 3 if real apps need writable checkbox state with `onChange`.
 - **User survey not started** — biggest non-engineering blocker.
 
 ---
