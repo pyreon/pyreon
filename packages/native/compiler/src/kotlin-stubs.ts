@@ -198,6 +198,24 @@ fun Checkbox(
   // Type-check-only stub.
 }
 
+// --- Phase 2.5: @pyreon/native-runtime-kotlin's rememberPyreonStorage ---
+//
+// The compiler emit now calls rememberPyreonStorage<T>(key, default)
+// for non-native useStorage<T> types — collapses the previous 4-line
+// Saver inline boilerplate to one line at the call site. The full
+// implementation lives in @pyreon/native-runtime-kotlin (PR #887);
+// here we stub just enough surface for kotlinc to typecheck the emit.
+//
+// Real apps depend on @pyreon/native-runtime-kotlin to get the real
+// implementation (with InMemoryBackend / DataStoreBackend pluggable
+// storage backends + kotlinx-serialization JSON round-trip).
+
+@Composable
+fun <T : Any> rememberPyreonStorage(
+  key: String,
+  initial: T,
+): MutableState<T> = mutableStateOf(initial)
+
 // --- K4: kotlinx-serialization stubs (@Serializable + Json singleton) ---
 //
 // Real kotlinx-serialization uses a compiler plugin to generate
