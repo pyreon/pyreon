@@ -43,4 +43,185 @@ final class PyreonRuntimeTests: XCTestCase {
         }
         XCTAssertEqual(CustomStylable.pyreonSource, "Button.primary.medium")
     }
+
+    // MARK: - PyreonStorage tests
+
+    private struct TestTodo: Codable, Equatable {
+        var id: Int
+        var text: String
+        var done: Bool
+    }
+
+    private func freshStore() -> UserDefaults {
+        // Each test gets an isolated UserDefaults suite so concurrent
+        // tests don't share state. The suite name is a UUID — the
+        // standard UserDefaults pattern for test isolation.
+        let suiteName = "pyreon-test-\(UUID().uuidString)"
+        let store = UserDefaults(suiteName: suiteName)!
+        // Ensure clean slate.
+        store.removePersistentDomain(forName: suiteName)
+        return store
+    }
+
+    /// `PyreonStorage.decodeOrDefault` returns the default when given
+    /// empty data — the empty-sentinel contract `@PyreonAppStorage` uses.
+    func testPyreonStorageDecodeEmptyReturnsDefault() throws {
+        let result: [TestTodo] = PyreonStorage.decodeOrDefault(
+            Data(),
+            default: [TestTodo(id: 1, text: "default", done: false)]
+        )
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result[0].text, "default")
+    }
+
+    /// `decodeOrDefault` falls back to the default on corrupt data
+    /// (not valid JSON) instead of throwing. Mirrors the web
+    /// `@pyreon/storage` fallback behaviour for corrupted localStorage.
+    func testPyreonStorageDecodeCorruptDataReturnsDefault() throws {
+        let result: [TestTodo] = PyreonStorage.decodeOrDefault(
+            Data("not valid json".utf8),
+            default: []
+        )
+        XCTAssertEqual(result, [])
+    }
+
+    /// `decodeOrDefault` correctly round-trips a valid Codable payload.
+    func testPyreonStorageDecodeValidDataReturnsDecoded() throws {
+        let original = [
+            TestTodo(id: 1, text: "first", done: false),
+            TestTodo(id: 2, text: "second", done: true),
+        ]
+        let encoded = try JSONEncoder().encode(original)
+        let result: [TestTodo] = PyreonStorage.decodeOrDefault(
+            encoded,
+            default: []
+        )
+        XCTAssertEqual(result, original)
+    }
+
+    /// `read` + `write` round-trip through a real UserDefaults suite.
+    func testPyreonStorageReadWriteRoundTrip() throws {
+        let store = freshStore()
+        let key = "todos"
+        let payload = [TestTodo(id: 1, text: "test", done: false)]
+
+        // Read before write returns nil.
+        let beforeWrite: [TestTodo]? = try PyreonStorage.read(
+            [TestTodo].self, key: key, store: store
+        )
+        XCTAssertNil(beforeWrite)
+
+        // Write + read returns the payload.
+        try PyreonStorage.write(payload, key: key, store: store)
+        let afterWrite: [TestTodo]? = try PyreonStorage.read(
+            [TestTodo].self, key: key, store: store
+        )
+        XCTAssertEqual(afterWrite, payload)
+    }
+
+    /// `read` throws on stored-but-corrupt data — distinct from the
+    /// silent fallback `decodeOrDefault` provides. Apps that want
+    /// explicit error visibility use `read`.
+    func testPyreonStorageReadThrowsOnCorruptData() throws {
+        let store = freshStore()
+        let key = "corrupt"
+        store.set(Data("not valid json".utf8), forKey: key)
+
+        XCTAssertThrowsError(
+            try PyreonStorage.read([TestTodo].self, key: key, store: store)
+        )
+    }
+
+    /// `read` returns nil when the stored Data is empty (the
+    /// PyreonAppStorage empty-sentinel shape) — does NOT throw.
+    func testPyreonStorageReadEmptyDataReturnsNil() throws {
+        let store = freshStore()
+        let key = "empty"
+        store.set(Data(), forKey: key)
+
+        let result: [TestTodo]? = try PyreonStorage.read(
+            [TestTodo].self, key: key, store: store
+        )
+        XCTAssertNil(result)
+    }
+
+    /// `remove` clears the value at `key` — subsequent `read` returns nil.
+    func testPyreonStorageRemoveClearsKey() throws {
+        let store = freshStore()
+        let key = "todos"
+        try PyreonStorage.write(
+            [TestTodo(id: 1, text: "first", done: false)],
+            key: key, store: store
+        )
+
+        PyreonStorage.remove(key: key, store: store)
+
+        let afterRemove: [TestTodo]? = try PyreonStorage.read(
+            [TestTodo].self, key: key, store: store
+        )
+        XCTAssertNil(afterRemove)
+    }
+
+    /// `@PyreonAppStorage` property wrapper round-trips Codable values
+    /// through the @AppStorage Data slot — equivalent to using the
+    /// inline Data-bridge pattern the compiler currently emits, but
+    /// with one-line ergonomics.
+    ///
+    /// We test the wrapper's getter / setter directly rather than
+    /// through a SwiftUI View body because property-wrapper observation
+    /// only fires inside a View context. The getter/setter contract is
+    /// the load-bearing piece — once that's right, SwiftUI's chain
+    /// handles the rest the same way it does for stock @AppStorage.
+    func testPyreonAppStorageRoundTrip() throws {
+        let store = freshStore()
+        let key = "todos"
+
+        // Initial read returns the default (empty array).
+        let initial = PyreonAppStorage<[TestTodo]>(
+            wrappedValue: [], key, store: store
+        )
+        XCTAssertEqual(initial.wrappedValue, [])
+
+        // Write a value through the property wrapper.
+        initial.wrappedValue = [
+            TestTodo(id: 1, text: "first", done: false),
+            TestTodo(id: 2, text: "second", done: true),
+        ]
+
+        // A freshly-constructed wrapper at the same key reads the
+        // persisted value — confirms the write actually hit the store,
+        // not just the in-memory @AppStorage cache.
+        let restored = PyreonAppStorage<[TestTodo]>(
+            wrappedValue: [], key, store: store
+        )
+        XCTAssertEqual(restored.wrappedValue.count, 2)
+        XCTAssertEqual(restored.wrappedValue[0].text, "first")
+        XCTAssertEqual(restored.wrappedValue[1].done, true)
+    }
+
+    /// Default value is returned when no key exists yet (cold start).
+    func testPyreonAppStorageDefaultOnColdStart() throws {
+        let store = freshStore()
+        let defaultTodos = [TestTodo(id: 99, text: "default", done: false)]
+        let storage = PyreonAppStorage<[TestTodo]>(
+            wrappedValue: defaultTodos, "cold-start", store: store
+        )
+        XCTAssertEqual(storage.wrappedValue, defaultTodos)
+    }
+
+    /// Default value is returned when the stored Data is corrupt —
+    /// the silent-fallback contract the property wrapper documents.
+    func testPyreonAppStorageDefaultOnCorruptData() throws {
+        let store = freshStore()
+        let key = "corrupted"
+        // Manually plant a corrupt Data value (something a previous
+        // schema version might have written that the current types
+        // can't decode).
+        store.set(Data("not valid".utf8), forKey: key)
+
+        let storage = PyreonAppStorage<[TestTodo]>(
+            wrappedValue: [], key, store: store
+        )
+        XCTAssertEqual(storage.wrappedValue, [])
+    }
 }
