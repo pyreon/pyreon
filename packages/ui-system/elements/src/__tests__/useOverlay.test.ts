@@ -53,7 +53,9 @@ vi.mock('@pyreon/reactivity', () => {
     host[symKey] = state
     return state
   }
-  return { signal, setSnapshotCapture, defineCrossModuleState }
+  // No-op stub — real sentinel throws on duplicate-load detection.
+  const registerSingleton = () => {}
+  return { signal, setSnapshotCapture, defineCrossModuleState, registerSingleton }
 })
 
 vi.mock('@pyreon/core', async (importOriginal) => {

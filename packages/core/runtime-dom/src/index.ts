@@ -1,5 +1,13 @@
 // @pyreon/runtime-dom — surgical signal-to-DOM renderer (no virtual DOM)
 
+import { registerSingleton } from '@pyreon/reactivity'
+
+// Singleton sentinel — fail-loud detection of duplicate @pyreon/runtime-dom
+// instances in the same heap. See @pyreon/reactivity/singleton-sentinel for
+// full rationale. Hardcoded version is acceptable here — it's a diagnostic
+// aid, not a load-bearing identity check.
+registerSingleton('@pyreon/runtime-dom', '0.24.6', import.meta.url)
+
 export { DELEGATED_EVENTS, delegatedPropName, setupDelegation } from './delegate'
 export type { DevtoolsComponentEntry, PyreonDevtools } from './devtools'
 export { hydrateRoot } from './hydrate'

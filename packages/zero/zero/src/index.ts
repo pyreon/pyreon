@@ -11,6 +11,14 @@
  *   import { validateEnv } from "@pyreon/zero/env"
  */
 
+import { registerSingleton } from '@pyreon/reactivity'
+
+// Singleton sentinel — fail-loud detection of duplicate @pyreon/zero
+// instances in the same heap. See @pyreon/reactivity/singleton-sentinel for
+// full rationale. Hardcoded version is acceptable here — it's a diagnostic
+// aid, not a load-bearing identity check.
+registerSingleton('@pyreon/zero', '0.24.6', import.meta.url)
+
 // ─── Components (browser-safe) ──────────────────────────────────────────────
 
 export type { IconMode, IconProps, NamedIconProps, SvgComponent } from "./icon";
