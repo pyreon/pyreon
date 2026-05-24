@@ -277,38 +277,21 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
       if (isAppStorageNativeType(d.type)) {
         return `@AppStorage(${JSON.stringify(d.storageKey)}) private var ${swiftIdent(d.name)}: ${type} = ${initial}`
       }
-      // Bridge form. Two declarations on the SAME struct field name:
-      //   1. `<name>Data: Data` — the @AppStorage UserDefaults slot
-      //   2. `<name>: T` — computed property doing JSON round-trip
+      // Phase 2.5: non-native types use @PyreonAppStorage from
+      // @pyreon/native-runtime-swift (PR #885) — collapses the previous
+      // 14-line @AppStorage(Data) + Codable bridge to one line. Same
+      // UserDefaults backing, same Binding<T> projection via `$name`,
+      // same silent-fallback failure semantics.
       //
-      // Field-name collision risk: a user-defined property named
-      // `<name>Data` would clash. Documented limitation; Phase 3 could
-      // use a uglified slot name (`_pyreon_<name>_data`) if it happens
-      // in real-world apps.
-      const dataName = `${swiftIdent(d.name)}Data`
-      const propName = swiftIdent(d.name)
-      // `nonmutating set` is load-bearing — without it, swiftc rejects
-      // the computed-property set with "cannot assign to property: 'self'
-      // is immutable" because SwiftUI's View struct doesn't allow
-      // mutating methods. @AppStorage handles its own mutation
-      // internally (UserDefaults write), so the outer `self` stays
-      // immutable from Swift's perspective.
-      return [
-        `@AppStorage(${JSON.stringify(d.storageKey)}) private var ${dataName}: Data = Data()`,
-        `  private var ${propName}: ${type} {`,
-        `    get {`,
-        `      guard !${dataName}.isEmpty,`,
-        `            let decoded = try? JSONDecoder().decode(${type}.self, from: ${dataName})`,
-        `      else { return ${initial} }`,
-        `      return decoded`,
-        `    }`,
-        `    nonmutating set {`,
-        `      if let encoded = try? JSONEncoder().encode(newValue) {`,
-        `        ${dataName} = encoded`,
-        `      }`,
-        `    }`,
-        `  }`,
-      ].join('\n')
+      // Consumer apps must `import PyreonRuntime` for the wrapper to
+      // resolve. The compiler doesn't auto-emit imports — same
+      // convention as @AppStorage (which requires `import SwiftUI`).
+      //
+      // Pre-2.5 (still in git history): a hand-rolled bridge with a
+      // `@AppStorage` Data slot + computed property doing JSON
+      // round-trip via JSONEncoder/Decoder. Identical behaviour at
+      // runtime; just dramatically more emit code.
+      return `@PyreonAppStorage(${JSON.stringify(d.storageKey)}) private var ${swiftIdent(d.name)}: ${type} = ${initial}`
     }
     return `@State private var ${swiftIdent(d.name)}: ${type} = ${initial}`
   }

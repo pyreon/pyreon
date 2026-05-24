@@ -73,20 +73,7 @@ describe('TodoMVC compile baseline', () => {
       private var nextId = 1
 
       struct TodoApp: View {
-        @AppStorage("pyreon-todomvc:todos") private var todosData: Data = Data()
-        private var todos: [Todo] {
-          get {
-            guard !todosData.isEmpty,
-                  let decoded = try? JSONDecoder().decode([Todo].self, from: todosData)
-            else { return [] }
-            return decoded
-          }
-          nonmutating set {
-            if let encoded = try? JSONEncoder().encode(newValue) {
-              todosData = encoded
-            }
-          }
-        }
+        @PyreonAppStorage("pyreon-todomvc:todos") private var todos: [Todo] = []
         @State private var filter: Filter = .all
         @State private var draft: String = ""
         private var visible: [Todo] {
@@ -247,24 +234,35 @@ describe('TodoMVC gap-tracking baseline', () => {
     expect(out.code).toMatch(/t\.copy\(done = !t\.done\)/)
   })
 
-  it('G5 — useStorage<T>(key, default) emits @AppStorage Codable-Data bridge on Swift for non-native types', () => {
-    // CLOSED by G5 #849. Phase 2 follow-up: when the value type is
-    // NOT one of @AppStorage's native types (String / Int / Double /
-    // Bool / URL / Data / RawRepresentable), the Swift emit produces
-    // a Codable-Data bridge — a `Data`-backed `@AppStorage` slot + a
-    // computed property doing JSON round-trip. Closes G5's known
-    // typecheck caveat (`@AppStorage([Todo])` was rejected by
-    // `swiftc -typecheck`); now `[Todo]` round-trips cleanly.
+  it('G5 — useStorage<T>(key, default) emits @PyreonAppStorage one-liner on Swift for non-native types (Phase 2.5)', () => {
+    // CLOSED by G5 #849, simplified by Phase 2.5. When the value type
+    // is NOT one of @AppStorage's native types (String / Int / Double /
+    // Bool / URL / Data / RawRepresentable), the Swift emit calls
+    // @PyreonAppStorage from @pyreon/native-runtime-swift (PR #885) —
+    // a single line that wraps the previous 14-line Codable-Data
+    // bridge into a property wrapper. Same UserDefaults backing, same
+    // Binding<T> projection via `$todos`, same silent-fallback
+    // failure semantics.
     //
-    // TodoMVC's `Todo[]` is non-native, so this test asserts the
-    // bridge shape. Native-typed storage signals (e.g. `useStorage<string>`)
+    // Pre-2.5 (history): inline @AppStorage(Data) slot + computed
+    // property doing JSON round-trip via JSONEncoder/JSONDecoder.
+    // Identical runtime behavior; just dramatically simpler emit.
+    //
+    // Consumer apps need `import PyreonRuntime` for the wrapper to
+    // resolve (compiler doesn't auto-emit imports — same convention
+    // as @AppStorage which requires `import SwiftUI`).
+    //
+    // Native-typed storage signals (e.g. `useStorage<string>`)
     // continue to use the direct `@AppStorage` shape — see the
     // separate native-typed test below.
     const out = transform(source, { target: 'swift' })
-    expect(out.code).toContain('@AppStorage("pyreon-todomvc:todos") private var todosData: Data = Data()')
-    expect(out.code).toContain('private var todos: [Todo] {')
-    expect(out.code).toContain('JSONDecoder().decode([Todo].self, from: todosData)')
-    expect(out.code).toContain('JSONEncoder().encode(newValue)')
+    expect(out.code).toContain('@PyreonAppStorage("pyreon-todomvc:todos") private var todos: [Todo] = []')
+    // Negative: the old 14-line Data-bridge boilerplate must NOT
+    // appear anywhere in the emit.
+    expect(out.code).not.toContain('todosData: Data')
+    expect(out.code).not.toContain('JSONDecoder')
+    expect(out.code).not.toContain('JSONEncoder')
+    expect(out.code).not.toContain('nonmutating set')
   })
 
   it('Phase 2 — useStorage<string> on Swift uses direct @AppStorage shape (no Codable bridge)', () => {
@@ -285,22 +283,37 @@ describe('TodoMVC gap-tracking baseline', () => {
     expect(out.code).not.toContain('JSONEncoder')
   })
 
-  it('G5 — useStorage<T>(key, default) emits `rememberSaveable` with kotlinx-Json Saver on Kotlin for non-native types', () => {
-    // CLOSED by G5 #849. Phase 2 follow-up: when the value type is
-    // NOT natively Saveable by Compose's `rememberSaveable` (primitives
-    // + known enums + their Optionals), the Kotlin emit produces a
-    // kotlinx-serialization JSON-backed `Saver<T, String>` passed via
-    // `rememberSaveable(saver = ...)`. Closes G5's known caveat
-    // ("`rememberSaveable<List<Todo>>` needs a custom Saver").
+  it('G5 — useStorage<T>(key, default) emits `rememberPyreonStorage` one-liner on Kotlin for non-native types (Phase 2.5)', () => {
+    // CLOSED by G5 #849, simplified by Phase 2.5. When the value type
+    // is NOT natively Saveable by Compose's `rememberSaveable`
+    // (primitives + known enums + their Optionals), the Kotlin emit
+    // calls `rememberPyreonStorage<T>` from @pyreon/native-runtime-kotlin
+    // (PR #887) — a single line that wraps the previous 4-line
+    // `Saver<T, String>` inline boilerplate into a Composable with
+    // pluggable backend (InMemoryBackend default, DataStoreBackend
+    // for real cross-launch persistence).
     //
-    // TodoMVC's `List<Todo>` is non-native, so this test asserts the
-    // Saver shape. Native-typed storage signals continue to use the
-    // direct shape (no Saver overhead) — see the separate native-
-    // typed test below.
+    // Pre-2.5 (history): inline `rememberSaveable(saver = Saver<T,
+    // String>(save, restore))` with `Json.encodeToString` /
+    // `decodeFromString` round-trip. Identical Compose-state
+    // behavior at runtime; just dramatically simpler emit AND now
+    // backed by real cross-launch persistence (when DataStoreBackend
+    // is wired) instead of `rememberSaveable`'s config-change-only
+    // semantics.
+    //
+    // Consumer apps need `import com.pyreon.runtime.rememberPyreonStorage`
+    // for the symbol to resolve (compiler doesn't auto-emit imports —
+    // same convention as iOS).
+    //
+    // Native-typed storage signals continue to use the direct
+    // `rememberSaveable { mutableStateOf(...) }` shape — see the
+    // separate native-typed test below.
     const out = transform(source, { target: 'kotlin' })
-    expect(out.code).toContain('var todos by rememberSaveable(saver = Saver<List<Todo>, String>(')
-    expect(out.code).toContain('save = { Json.encodeToString(it) }')
-    expect(out.code).toContain('restore = { Json.decodeFromString<List<Todo>>(it) }')
+    expect(out.code).toContain('var todos by rememberPyreonStorage<List<Todo>>("pyreon-todomvc:todos", listOf())')
+    // Negative: the old Saver-inline boilerplate must NOT appear.
+    expect(out.code).not.toContain('Saver<List<Todo>')
+    expect(out.code).not.toContain('Json.encodeToString')
+    expect(out.code).not.toContain('Json.decodeFromString')
   })
 
   it('Phase 2 — useStorage<string> on Kotlin uses direct rememberSaveable (no Saver)', () => {
