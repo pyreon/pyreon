@@ -5,7 +5,7 @@
  * The renderer maintains the context stack as it walks the VNode tree.
  */
 
-import { defineCrossModuleState, setSnapshotCapture } from '@pyreon/reactivity'
+import { setSnapshotCapture } from '@pyreon/reactivity'
 import { onUnmount } from './lifecycle'
 
 export interface Context<T> {
@@ -46,30 +46,18 @@ export function createReactiveContext<T>(defaultValue: T): ReactiveContext<T> {
 
 // ─── Runtime context stack (managed by the renderer) ─────────────────────────
 
-// Cross-module-instance shared state — see `cross-module-state.ts` JSDoc.
-// Both the default stack AND the provider override land on globalThis so
-// `provide()` on one `@pyreon/core` instance and `useContext()` on another
-// reach the SAME context frames. Without this, the provide/useContext
-// pairing silently misses when bundlers load `@pyreon/core` twice — much
-// more severe than the warning storm: descendants would just get default
-// context values with no error.
+// Plain module-scope state. The duplicate-instance bug class is now
+// prevented at the bundler layer (`@pyreon/vite-plugin` injects
+// `resolve.dedupe`) and detected at the runtime layer (every package
+// calls `registerSingleton` at module load) — see
+// `.claude/plans/jaunty-herding-kazoo.md`.
 //
-// On Node.js with concurrent requests, @pyreon/runtime-server replaces the
-// default provider with an AsyncLocalStorage-backed one via
-// setContextStackProvider() — that override now propagates to every
-// `@pyreon/core` instance automatically (the override is stored on the
-// shared state, not per-instance).
-interface ContextStackState {
-  defaultStack: Map<symbol, unknown>[]
-  provider: () => Map<symbol, unknown>[]
-}
-const _ctx = defineCrossModuleState<ContextStackState>(
-  'pyreon-core/context-stack-state',
-  () => {
-    const defaultStack: Map<symbol, unknown>[] = []
-    return { defaultStack, provider: () => defaultStack }
-  },
-)
+// On Node.js with concurrent requests, @pyreon/runtime-server replaces
+// the default provider with an AsyncLocalStorage-backed one via
+// setContextStackProvider() — restoring per-request isolation that the
+// globalThis-backed shape was incompatible with.
+const _contextStack: Map<symbol, unknown>[] = []
+let _contextProvider: () => Map<symbol, unknown>[] = () => _contextStack
 
 /**
  * Override the context stack provider. Called by @pyreon/runtime-server to
@@ -77,11 +65,11 @@ const _ctx = defineCrossModuleState<ContextStackState>(
  * Has no effect in the browser (CSR always uses the default module-level stack).
  */
 export function setContextStackProvider(fn: () => Map<symbol, unknown>[]): void {
-  _ctx.provider = fn
+  _contextProvider = fn
 }
 
 function getStack(): Map<symbol, unknown>[] {
-  return _ctx.provider()
+  return _contextProvider()
 }
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this

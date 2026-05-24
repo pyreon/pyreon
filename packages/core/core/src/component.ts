@@ -1,4 +1,3 @@
-import { defineCrossModuleState } from '@pyreon/reactivity'
 import { setCurrentHooks } from './lifecycle'
 import type { ComponentFn, LifecycleHooks, Props, VNodeChild } from './types'
 
@@ -64,17 +63,16 @@ export function propagateError(err: unknown, hooks: LifecycleHooks): boolean {
 // `.claude/rules/anti-patterns.md` "Position-based pop for stack frames
 // that may be pushed by reactive boundaries".
 
-// Cross-module-instance shared stack — see `cross-module-state.ts` JSDoc for
-// the full module-duplication rationale. ErrorBoundary push/pop must reach
-// the same array regardless of which `@pyreon/core` instance the
-// `pushErrorBoundary` and `dispatchToErrorBoundary` callers were resolved to.
-const _ebState = defineCrossModuleState<{ stack: ((err: unknown) => boolean)[] }>(
-  'pyreon-core/error-boundary-state',
-  () => ({ stack: [] }),
-)
+// Plain module-scope stack. The duplicate-instance bug class is now
+// prevented at the bundler layer (`@pyreon/vite-plugin` injects
+// `resolve.dedupe`) and detected at the runtime layer (every package
+// calls `registerSingleton` at module load). See
+// `.claude/plans/jaunty-herding-kazoo.md` for the full defense-in-depth
+// architecture.
+const _ebStack: ((err: unknown) => boolean)[] = []
 
 export function pushErrorBoundary(handler: (err: unknown) => boolean): void {
-  _ebState.stack.push(handler)
+  _ebStack.push(handler)
 }
 
 /**
@@ -89,11 +87,11 @@ export function popErrorBoundary(handler?: (err: unknown) => boolean): void {
     // pop-last behaviour. Internal `ErrorBoundary` setup always passes
     // its handler now; any external direct callers (tests, advanced
     // consumers) keep working with no-arg form.
-    _ebState.stack.pop()
+    _ebStack.pop()
     return
   }
-  const idx = _ebState.stack.lastIndexOf(handler)
-  if (idx !== -1) _ebState.stack.splice(idx, 1)
+  const idx = _ebStack.lastIndexOf(handler)
+  if (idx !== -1) _ebStack.splice(idx, 1)
 }
 
 /**
@@ -101,6 +99,6 @@ export function popErrorBoundary(handler?: (err: unknown) => boolean): void {
  * Returns true if the boundary handled it, false if none was registered.
  */
 export function dispatchToErrorBoundary(err: unknown): boolean {
-  const handler = _ebState.stack[_ebState.stack.length - 1]
+  const handler = _ebStack[_ebStack.length - 1]
   return handler ? handler(err) : false
 }

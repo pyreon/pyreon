@@ -16,11 +16,7 @@
  * })
  */
 
-import {
-  defineCrossModuleState,
-  getReactiveTrace,
-  type ReactiveTraceEntry,
-} from '@pyreon/reactivity'
+import { getReactiveTrace, type ReactiveTraceEntry } from '@pyreon/reactivity'
 
 // Bundler-agnostic dev gate (see pyreon/no-process-dev-gate).
 const __DEV__ = process.env.NODE_ENV !== 'production'
@@ -58,15 +54,12 @@ export interface ErrorContext {
 
 export type ErrorHandler = (ctx: ErrorContext) => void
 
-// Cross-module-instance shared state — see `cross-module-state.ts` JSDoc.
-// A registerErrorHandler() call on one `@pyreon/core` instance MUST be
-// visible to reportError() calls on every other instance — otherwise
-// Sentry/Datadog wiring on the user-side core misses errors emitted by
-// framework code on the runtime-server-side core.
-const _errState = defineCrossModuleState<{ handlers: ErrorHandler[] }>(
-  'pyreon-core/error-handlers-state',
-  () => ({ handlers: [] }),
-)
+// Plain module-scope state. The duplicate-instance bug class is now
+// prevented at the bundler layer (`@pyreon/vite-plugin` injects
+// `resolve.dedupe`) and detected at the runtime layer (every package
+// calls `registerSingleton` at module load) — see
+// `.claude/plans/jaunty-herding-kazoo.md`.
+let _errorHandlers: ErrorHandler[] = []
 
 /**
  * Register a global error handler. Called whenever a component throws in any
@@ -79,10 +72,10 @@ const _errState = defineCrossModuleState<{ handlers: ErrorHandler[] }>(
  * disconnected — Sentry/Datadog wiring missed effect-thrown errors.
  */
 export function registerErrorHandler(handler: ErrorHandler): () => void {
-  _errState.handlers.push(handler)
+  _errorHandlers.push(handler)
   _installReactivityBridge()
   return () => {
-    _errState.handlers = _errState.handlers.filter((h) => h !== handler)
+    _errorHandlers = _errorHandlers.filter((h) => h !== handler)
   }
 }
 
@@ -105,7 +98,7 @@ export function reportError(ctx: ErrorContext): void {
       // Trace capture is diagnostic — never let it swallow the real error.
     }
   }
-  for (const h of _errState.handlers) {
+  for (const h of _errorHandlers) {
     try {
       h(ctx)
     } catch {
