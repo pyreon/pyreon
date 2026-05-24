@@ -57,7 +57,17 @@ export type DeclIR =
    * regular signals — emit paths default to the non-storage shape.
    */
   | { kind: 'signal'; name: string; type: TypeIR; initial: ExprIR; storageKey?: string }
-  | { kind: 'computed'; name: string; expr: ExprIR }
+  /**
+   * Computed value via `computed(() => expr)` or `computed(() => { ... })`.
+   * The legacy single-expression form populates `expr`. Multi-statement
+   * BlockStatement bodies populate `body` with the full statement
+   * sequence — emit produces a multi-statement getter
+   * (`private var X: T { let x = ...; if cond { return X } ; return Y }`).
+   *
+   * Exactly one of `expr` / `body` is populated. Phase 2 follow-up
+   * closing the TodoMVC `visible: Any { xs }` typecheck blocker.
+   */
+  | { kind: 'computed'; name: string; expr?: ExprIR; body?: StatementIR[] }
   /**
    * Local function declaration via `const fn = () => { ... }`
    * (Parser-A from `native-platforms-todomvc-walkthrough.md`). Emits

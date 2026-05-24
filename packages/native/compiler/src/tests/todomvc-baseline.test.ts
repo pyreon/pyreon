@@ -89,9 +89,18 @@ describe('TodoMVC compile baseline', () => {
         }
         @State private var filter: Filter = .all
         @State private var draft: String = ""
-        private var visible: Any { xs }
-        private var remaining: Any { todos.filter({ t in !t.done }).count }
-        private var hasCompleted: Any { todos.contains(where: { t in t.done }) }
+        private var visible: [Todo] {
+          let xs = todos
+          if filter == .active {
+            return xs.filter({ t in !t.done })
+          }
+          if filter == .completed {
+            return xs.filter({ t in t.done })
+          }
+          return xs
+        }
+        private var remaining: Int { todos.filter({ t in !t.done }).count }
+        private var hasCompleted: Bool { todos.contains(where: { t in t.done }) }
         private func addTodo() {
           let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
           if text.count == 0 {
@@ -149,11 +158,7 @@ describe('TodoMVC compile baseline', () => {
     // Sorted + deduped for stable snapshot. Each warning corresponds
     // to a parser-side gap. As gap-closure PRs land, this list shrinks.
     const unique = Array.from(new Set(out.warnings)).sort()
-    expect(unique).toMatchInlineSnapshot(`
-      [
-        "Computed visible: multi-statement body collapsed to its return expression — pre-return statements silently dropped (Phase 1 emit limitation)",
-      ]
-    `)
+    expect(unique).toMatchInlineSnapshot(`[]`)
   })
 
   it('Kotlin emit — current partial output', () => {
@@ -444,5 +449,52 @@ describe('TodoMVC gap-tracking baseline', () => {
     const kotlin = transform(constSource, { target: 'kotlin' })
     expect(kotlin.code).toContain('private val APP_VERSION = "1.0.0"')
     expect(kotlin.code).not.toContain('private var APP_VERSION')
+  })
+
+  it('Phase 2 — multi-statement computed body preserves pre-return statements', () => {
+    // Closes the TodoMVC `visible: Any { xs }` typecheck blocker.
+    // Pre-PR: parser collapsed multi-statement computed bodies to the
+    // last return's expression — `xs` (an in-body `let` declaration)
+    // ended up as an unresolved identifier in emit output.
+    // Post-PR: emit produces a multi-statement Swift computed-property
+    // getter with the `let` binding intact + the `if` early-returns +
+    // the final return. swiftc-typecheck-clean against the inferred
+    // return type ([Todo]).
+    const out = transform(source, { target: 'swift' })
+    expect(out.code).toContain('private var visible: [Todo] {')
+    expect(out.code).toContain('let xs = todos')
+    expect(out.code).toMatch(/if filter == \.active \{[\s\S]+return xs\.filter/)
+    expect(out.code).toContain('return xs')
+  })
+
+  it('Phase 2 — comparison against enum-typed signal rewrites string literal to .case', () => {
+    // Related Phase 2 follow-up surfaced by the multi-statement work:
+    // `if (filter() === 'active')` previously emitted as
+    // `if filter == "active"` — Filter is an enum, swiftc rejects.
+    // Now: `if filter == .active`. Mirrors the existing .set()-arg
+    // enum-rewrite for assignment.
+    const out = transform(source, { target: 'swift' })
+    expect(out.code).toContain('if filter == .active {')
+    expect(out.code).toContain('if filter == .completed {')
+    expect(out.code).not.toContain('filter == "active"')
+    expect(out.code).not.toContain('filter == "completed"')
+  })
+
+  it('Phase 2 — computed return-type inference via TS method chains (.length → Int, .some → Bool)', () => {
+    // Closes the "Any cannot conform to RandomAccessCollection"
+    // typecheck blocker. The inferType pass now walks common TS
+    // method calls on known-typed objects:
+    //   array.filter(p)  → array (same element type)
+    //   array.some(p)    → boolean
+    //   array.length     → number  (member access on array)
+    //   string.trim()    → string
+    // So `computed(() => todos.filter(p).length)` infers `number`
+    // and emits as `private var remaining: Int { ... }` (was: `Any`).
+    const out = transform(source, { target: 'swift' })
+    expect(out.code).toContain('private var remaining: Int {')
+    expect(out.code).toContain('private var hasCompleted: Bool {')
+    // Negative — would have been `: Any { ... }` pre-PR.
+    expect(out.code).not.toContain('private var remaining: Any')
+    expect(out.code).not.toContain('private var hasCompleted: Any')
   })
 })
