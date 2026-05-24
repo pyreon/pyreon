@@ -524,6 +524,34 @@ describe('TodoMVC gap-tracking baseline', () => {
     expect(out.code).not.toContain('HStack(')
   })
 
+  it('K2 — Kotlin multi-statement `derivedStateOf` body uses labeled returns', () => {
+    // CLOSED by this PR. Bare `return` inside a Kotlin lambda passed
+    // to a higher-order function (`derivedStateOf { … }`) tries to
+    // return from the ENCLOSING function — kotlinc rejects with:
+    //   error: 'return' is prohibited here
+    //
+    // Kotlin's labeled-return syntax `return@<label> expr` solves it.
+    // The label is conventionally the receiver function's name. For
+    // computed bodies the label is `derivedStateOf`.
+    //
+    // The fix threads a `lambdaLabel` field through `KotlinCtx` so
+    // nested `if`/`else` branches inside the body also emit labeled
+    // returns. Single-expression computed bodies (Kotlin's
+    // expression-is-value lambda) are unchanged — they never emit a
+    // `return` statement at all.
+    //
+    // Swift emit has no analog; Swift's closures allow bare `return`
+    // to return from the closure unambiguously.
+    const out = transform(source, { target: 'kotlin' })
+    expect(out.code).toContain('return@derivedStateOf xs.filter({ t -> !t.done })')
+    expect(out.code).toContain('return@derivedStateOf xs.filter({ t -> t.done })')
+    expect(out.code).toContain('return@derivedStateOf xs')
+    // Negative: bare `return` must NOT appear inside the derivedStateOf
+    // body. (Function-decl bodies like `addTodo` legitimately use bare
+    // `return` — those are real Kotlin functions, not lambdas.)
+    expect(out.code).not.toMatch(/derivedStateOf \{[\s\S]*?\n\s*return [^@]/)
+  })
+
   it('Phase 2 — computed return-type inference via TS method chains (.length → Int, .some → Bool)', () => {
     // Closes the "Any cannot conform to RandomAccessCollection"
     // typecheck blocker. The inferType pass now walks common TS
