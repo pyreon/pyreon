@@ -131,7 +131,7 @@ describe('TodoMVC compile baseline', () => {
               Button("Active") { filter = .active }
               Button("Completed") { filter = .completed }
               if hasCompleted {
-                Button("Clear completed") { clearCompleted }
+                Button("Clear completed") { clearCompleted() }
               }
             }
           }
@@ -146,7 +146,7 @@ describe('TodoMVC compile baseline', () => {
           HStack {
             Checkbox(checked: todo.done)
             Text("\\(todo.text)")
-            Button("Remove") { onRemove }
+            Button("Remove") { onRemove() }
           }
         }
       }"
@@ -496,5 +496,27 @@ describe('TodoMVC gap-tracking baseline', () => {
     // Negative — would have been `: Any { ... }` pre-PR.
     expect(out.code).not.toContain('private var remaining: Any')
     expect(out.code).not.toContain('private var hasCompleted: Any')
+  })
+
+  it('Phase 2 — function-typed prop / decl handlers call inside trailing closures', () => {
+    // Closes the "Button { onRemove } is a no-op" trap. When a
+    // `Button onClick={onRemove}` handler is a bare identifier whose
+    // name is a function-typed prop OR a function decl, the emit
+    // produces `{ onRemove() }` instead of `{ onRemove }`.
+    //
+    // Without this, swiftc accepts the closure but at runtime nothing
+    // happens — the trailing closure evaluates `onRemove` as a function
+    // REFERENCE and discards it. TodoMVC's "Clear completed" Button
+    // (using `clearCompleted` — function decl) AND TodoRow's "Remove"
+    // Button (using `onRemove` — function-typed struct prop) both
+    // need the call form.
+    const out = transform(source, { target: 'swift' })
+    expect(out.code).toContain('Button("Clear completed") { clearCompleted() }')
+    expect(out.code).toContain('Button("Remove") { onRemove() }')
+    // Negative — no leftover bare-identifier-as-closure-result shapes
+    // for known function names. (Other identifiers like signal reads
+    // legitimately stay bare — that path is unchanged.)
+    expect(out.code).not.toContain('{ clearCompleted }')
+    expect(out.code).not.toContain('{ onRemove }')
   })
 })

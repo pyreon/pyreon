@@ -141,6 +141,11 @@ function emitKotlinComponent(c: ComponentIR): string {
   _signalEnumTypes = new Map()
   _signalNames = new Set()
   _functionNames = new Set()
+  // Phase 2 follow-up — track function-typed props so handler emit
+  // calls them inside closures. Mirrors emit-swift.ts.
+  for (const p of c.props) {
+    if (p.type.kind === 'function') _functionNames.add(p.name)
+  }
   for (const d of c.decls) {
     if (d.kind === 'signal' && d.type.kind === 'typeRef' && _enumNames.has(d.type.name)) {
       _signalEnumTypes.set(d.name, d.type.name)
@@ -766,6 +771,21 @@ function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
 function emitKotlinAction(handler: ExprIR, indent: number): string {
   if (handler.kind === 'arrow') {
     return `{ ${emitKotlinExpr(handler.body, indent)} }`
+  }
+  // Resolve to a function-typed identifier (bare OR props-member),
+  // mirroring emit-swift.ts:resolveFunctionHandler. Closes the
+  // `Button { onRemove }` no-op trap for both handler shapes.
+  if (handler.kind === 'identifier' && _functionNames.has(handler.name)) {
+    return `{ ${kotlinIdent(handler.name)}() }`
+  }
+  if (
+    handler.kind === 'member' &&
+    _activePropsParamName !== undefined &&
+    handler.object.kind === 'identifier' &&
+    handler.object.name === _activePropsParamName &&
+    _functionNames.has(handler.property)
+  ) {
+    return `{ ${kotlinIdent(handler.property)}() }`
   }
   return `{ ${emitKotlinExpr(handler, indent)} }`
 }
