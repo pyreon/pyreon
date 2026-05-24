@@ -967,7 +967,7 @@ One source of truth per package — `packages/<category>/<pkg>/src/manifest.ts` 
 
 ## Docs Website
 
-VitePress documentation site at `docs/` — part of the monorepo workspace. 82 doc pages covering all packages. Interactive `<Playground>` component embeds live code editors with sandboxed preview on 10+ pages (reactivity, core, runtime-dom, store, rx, form, machine, hooks, permissions, i18n, toast, storage, url-state). Code runs via ESM CDN imports in a sandboxed iframe with dark mode support.
+VitePress documentation site at `docs/` — part of the monorepo workspace. 83 doc pages covering all packages. Interactive `<Playground>` component embeds live code editors with sandboxed preview on 10+ pages (reactivity, core, runtime-dom, store, rx, form, machine, hooks, permissions, i18n, toast, storage, url-state). Code runs via ESM CDN imports in a sandboxed iframe with dark mode support.
 
 ```bash
 cd docs && bun run dev       # local dev server
@@ -1036,6 +1036,23 @@ The 8-PR sweep across #725-#741 surfaced 5 distinct memory-leak classes with rea
 - **I** (orphaned `Promise.race + setTimeout`) — #734 ISR / #735 ssg-plugin
 
 Two preventative lint rules ship in the `recommended` preset for the classes with high static-analysis precision: `pyreon/init-fn-needs-idempotency` (Class D) and `pyreon/promise-race-needs-cleartimeout` (Class I). The other classes are caught at audit time by the leak-hunt subagent prompt.
+
+## Cross-Module-Instance State (the duplicate-load bug class)
+
+Module-level state in `@pyreon/*` packages is permitted as plain `let _foo = …` because **dual-instance loading is prevented at the bundler layer AND caught loud at runtime**. Defense-in-depth across four layers — independent so failure of any one is caught by the next:
+
+| Layer | Mechanism | Status |
+| --- | --- | --- |
+| **1 — PREVENTION** (default-on) | `@pyreon/vite-plugin` injects `resolve.dedupe: <all @pyreon/* + transitive>` — walks `node_modules/@pyreon` for the full set. Escape hatch: `PYREON_DISABLE_DEDUPE=1`. | Layer enforced by `@pyreon/vite-plugin` (PR #884) |
+| **2 — DETECTION** (default-on) | Every `@pyreon/*` package with module-level state calls `registerSingleton('@pyreon/<name>', <version>, import.meta.url)` at module load. HMR-aware (path-normalized). Default throws; `PYREON_SINGLE_INSTANCE={warn,silent}` opts out. | 24 packages register (PR #883) |
+| **3 — STATIC ANALYSIS** (CI gate) | `pyreon doctor --check-dedup` walks `bun.lock` / `package-lock.json` / `pnpm-lock.yaml` for any `@pyreon/*` with >1 resolved version. | Default-on gate (PR #889) |
+| **4 — ESCAPE HATCHES** (documented) | `PYREON_SINGLE_INSTANCE=silent` for legitimate dual-load (browser extensions, micro-frontends, nested SSR via `rocketstyle-collapse`). `defineCrossModuleState` helper from `@pyreon/reactivity` is the opt-in for HMR state survival (NOT the framework contract). | Exported + documented |
+
+For non-Vite bundlers, the consumer is responsible — `docs/docs/zero.md` "Single-instance contract" section documents Webpack `resolve.alias`, Rollup `dedupe`, esbuild. Layer 2 catches violations at runtime regardless of bundler.
+
+**Test coverage**: `packages/core/reactivity/src/tests/singleton-sentinel.test.ts` (57 specs) exercises the contract directly via synthetic `file://` URLs — default-mode throw + actionable error message, HMR re-eval allowance, `PYREON_SINGLE_INSTANCE=warn/silent` escape hatches, per-package coverage across all 24 packages, cross-package isolation, and a silent-mode demo that proves the sentinel is the load-bearing piece (opt out → the bug class returns).
+
+Migration guide for end-users on the v0.x cutover: `docs/docs/migration.md`.
 
 ## Common Issues & Fixes
 
