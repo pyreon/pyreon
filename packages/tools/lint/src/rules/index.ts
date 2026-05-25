@@ -11,6 +11,7 @@ import { noDeepImport } from './architecture/no-deep-import'
 import { noErrorWithoutPrefix } from './architecture/no-error-without-prefix'
 import { noProcessDevGate } from './architecture/no-process-dev-gate'
 import { requireBrowserSmokeTest } from './architecture/require-browser-smoke-test'
+import { vitestConfigUsesShared } from './architecture/vitest-config-uses-shared'
 import { noSignalInFormInitialValues } from './form/no-signal-in-form-initial-values'
 import { noSubmitWithoutValidation } from './form/no-submit-without-validation'
 // Form
@@ -156,6 +157,7 @@ export const allRules: Rule[] = [
   noErrorWithoutPrefix,
   noProcessDevGate,
   requireBrowserSmokeTest,
+  vitestConfigUsesShared,
   // Store (3)
   noStoreOutsideProvider,
   noMutateStoreState,
@@ -259,6 +261,7 @@ export {
   noPropsDestructure,
   noSignalCallWrite,
   requireBrowserSmokeTest,
+  vitestConfigUsesShared,
   // Hooks
   noRawAddEventListener,
   noRawLocalStorage,
