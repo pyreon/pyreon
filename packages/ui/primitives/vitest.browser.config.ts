@@ -1,5 +1,5 @@
 import { playwright } from '@vitest/browser-playwright'
-import { defineBrowserConfig } from '../../../vitest.browser'
+import { defineBrowserConfig } from '@pyreon/vitest-config'
 
 // Per-package override: ui-primitives source is `.tsx` with the
 // `@pyreon/core` JSX runtime. Vite's default JSX transform doesn't

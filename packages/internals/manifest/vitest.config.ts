@@ -1,14 +1,4 @@
-import { mergeConfig } from 'vite'
-import { defineConfig } from 'vitest/config'
-import { sharedConfig } from '../../../vitest.shared'
+import { defineNodeConfig } from '@pyreon/vitest-config'
 
-export default mergeConfig(
-  sharedConfig,
-  defineConfig({
-    test: {
-      globals: true,
-      // Universal package — pure types + one trivial helper. No DOM env needed.
-      environment: 'node',
-    },
-  }),
-)
+// Pure types + trivial helper. No DOM env needed.
+export default defineNodeConfig({ category: 'internals' })

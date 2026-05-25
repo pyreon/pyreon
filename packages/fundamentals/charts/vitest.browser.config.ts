@@ -1,5 +1,5 @@
 import { playwright } from '@vitest/browser-playwright'
-import { defineBrowserConfig, tslibBrowserAlias } from '../../../vitest.browser'
+import { defineBrowserConfig, tslibBrowserAlias } from '@pyreon/vitest-config'
 
 // Why the tslib alias is required:
 //   ECharts imports `__extends` (and other TypeScript helpers) from

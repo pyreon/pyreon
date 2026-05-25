@@ -3,11 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
-// Importing across packages by path: the helper lives at the repo root
-// in `vitest.browser.ts`, alongside `vitest.shared.ts`. The relative
-// path is stable because both files have shipped together since the
-// browser-test infrastructure landed.
-import { resolveTslibEsmEntry, tslibBrowserAlias } from '../../../../../vitest.browser'
+import { resolveTslibEsmEntry, tslibBrowserAlias } from '../browser.ts'
 
 // Tests for the `tslibBrowserAlias()` / `resolveTslibEsmEntry()` shared
 // helpers used by `vitest.browser.config.ts` files in packages whose
@@ -150,7 +146,7 @@ describe('@pyreon/charts vitest.browser.config integration', () => {
     // Asserts the import + the use site. Two separate matches so a
     // partial removal (import without use, or use without import)
     // surfaces clearly.
-    expect(source).toMatch(/import\s*\{[^}]*tslibBrowserAlias[^}]*\}\s*from\s*['"][^'"]+vitest\.browser['"]/)
+    expect(source).toMatch(/import\s*\{[^}]*tslibBrowserAlias[^}]*\}\s*from\s*['"]@pyreon\/vitest-config['"]/)
     expect(source).toMatch(/tslibBrowserAlias\s*\(\s*import\.meta\.url\s*\)/)
   })
 })
