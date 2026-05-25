@@ -114,8 +114,6 @@ describe('isPyreonComponent', () => {
       // `export default () => …` infers `name === "default"`. Lowercase
       // first letter → accessor path. Users wanting component semantics
       // should use a named binding before exporting.
-      const fn = { name: 'default', length: 0 } as any
-      // Synthesize a function with name "default" via a closure.
       const realFn = (() => null) as any
       Object.defineProperty(realFn, 'name', { value: 'default' })
       expect(isPyreonComponent(realFn)).toBe(false)
