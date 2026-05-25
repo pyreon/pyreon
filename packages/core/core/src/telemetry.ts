@@ -19,8 +19,6 @@
 import { getReactiveTrace, type ReactiveTraceEntry } from '@pyreon/reactivity'
 
 // Bundler-agnostic dev gate (see pyreon/no-process-dev-gate).
-const __DEV__ = process.env.NODE_ENV !== 'production'
-
 export type { ReactiveTraceEntry }
 
 export interface ErrorContext {
@@ -90,7 +88,7 @@ export function reportError(ctx: ErrorContext): void {
   // gate lets the `getReactiveTrace` call (and the buffer behind it)
   // tree-shake out of production. A throwing/empty trace must never
   // block error reporting, so it's best-effort.
-  if (__DEV__ && ctx.reactiveTrace === undefined) {
+  if (process.env.NODE_ENV !== 'production' && ctx.reactiveTrace === undefined) {
     try {
       const trace = getReactiveTrace()
       if (trace.length > 0) ctx.reactiveTrace = trace

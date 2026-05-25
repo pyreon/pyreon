@@ -5,8 +5,6 @@ import { createRef } from './ref'
 import type { ComponentFn, Props, VNode, VNodeChild, VNodeChildAccessor } from './types'
 
 // Dev-mode gate (bundler-agnostic, see pyreon/no-process-dev-gate).
-const __DEV__ = process.env.NODE_ENV !== 'production'
-
 /**
  * Module shape `<Defer>` accepts from `chunk()`. Mirrors `lazy()`'s
  * contract — either an ES module with `default` export, OR a raw
@@ -181,7 +179,7 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
           typeof mod === 'function'
             ? mod
             : (mod as { default: ComponentFn<P> }).default
-        if (__DEV__ && typeof Comp !== 'function') {
+        if (process.env.NODE_ENV !== 'production' && typeof Comp !== 'function') {
           // oxlint-disable-next-line no-console
           console.warn(
             '[Pyreon] <Defer> chunk() resolved without a default-exported component. Make sure your module exports default.',
@@ -192,7 +190,7 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
       })
       .catch((err) => {
         const wrapped = err instanceof Error ? err : new Error(String(err))
-        if (__DEV__) {
+        if (process.env.NODE_ENV !== 'production') {
           // oxlint-disable-next-line no-console
           console.error('[Pyreon] <Defer> chunk() rejected:', wrapped)
         }

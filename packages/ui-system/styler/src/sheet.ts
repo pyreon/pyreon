@@ -16,8 +16,6 @@ const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number)
 // `process.env.NODE_ENV !== 'production'` form was dead code in real Vite
 // browser bundles (Vite does not polyfill `process`), so insertRule failures
 // were silently swallowed in production — masking malformed CSS bugs.
-const __DEV__ = process.env.NODE_ENV !== 'production'
-
 const PREFIX = 'pyr'
 const ATTR = 'data-pyreon-styler'
 const DEFAULT_MAX_CACHE_SIZE = 10000
@@ -339,7 +337,7 @@ export class StyleSheet {
           const at = this.sheet.insertRule(rule, this.sheet.cssRules.length)
           this.trackDomRule(className, this.sheet.cssRules[at])
         } catch (_e) {
-          if (__DEV__) {
+          if (process.env.NODE_ENV !== 'production') {
             // oxlint-disable-next-line no-console
             console.warn('[styler] Failed to insert CSS rule:', rule, _e)
           }
@@ -368,7 +366,7 @@ export class StyleSheet {
         const at = this.sheet.insertRule(rule, this.sheet.cssRules.length)
         this.trackDomRule(name, this.sheet.cssRules[at])
       } catch (_e) {
-        if (__DEV__) {
+        if (process.env.NODE_ENV !== 'production') {
           // oxlint-disable-next-line no-console
           console.warn('[styler] Failed to insert @keyframes rule:', rule, _e)
         }
@@ -423,7 +421,7 @@ export class StyleSheet {
           const at = this.sheet.insertRule(rule, this.sheet.cssRules.length)
           this.trackDomRule(key, this.sheet.cssRules[at])
         } catch (_e) {
-          if (__DEV__) {
+          if (process.env.NODE_ENV !== 'production') {
             // oxlint-disable-next-line no-console
             console.warn('[styler] Failed to insert global CSS rule:', rule, _e)
           }
@@ -488,7 +486,7 @@ export class StyleSheet {
       try {
         this.sheet.insertRule(rule, this.sheet.cssRules.length)
       } catch (_e) {
-        if (__DEV__) {
+        if (process.env.NODE_ENV !== 'production') {
           // oxlint-disable-next-line no-console
           console.warn('[styler] injectRules: failed to insert collapsed rule:', rule, _e)
         }

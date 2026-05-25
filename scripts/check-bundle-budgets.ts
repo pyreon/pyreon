@@ -282,6 +282,16 @@ async function measurePackage(pkg: PackageInfo): Promise<BundleResult> {
         // doesn't need a hardcoded allowlist that drifts.
         ...pkg.externals,
       ],
+      // Measure the PRODUCTION-stripped size — what consumers actually
+      // ship after their bundler (Vite/Webpack/esbuild/etc.) applies
+      // its own `define: NODE_ENV=production`. Without this, the
+      // measurement INCLUDES every `if (process.env.NODE_ENV !==
+      // 'production') console.warn(...)` string from the lib/ output,
+      // overstating the real consumer bundle by 5-20% per package and
+      // forcing budget bumps for dev-only diagnostic growth that never
+      // reaches end users. Matches the convention Vue/React/Preact use
+      // for their published-size baselines.
+      define: { 'process.env.NODE_ENV': '"production"' },
     })
     if (!result.success) {
       return {

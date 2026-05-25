@@ -8,8 +8,6 @@ type Cleanup = () => void
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
-const __DEV__ = process.env.NODE_ENV !== 'production'
-
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
@@ -224,7 +222,7 @@ export function applyProps(el: Element, props: Props): Cleanup | null {
  * Bind an event handler (onClick → "click") with batching + delegation support.
  */
 function applyEventProp(el: Element, key: string, value: unknown): Cleanup | null {
-  if (__DEV__) _countSink.__pyreon_count__?.('runtime.applyEvent')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.applyEvent')
   if (typeof value !== 'function') {
     // `undefined` and `null` are legitimate — conditional handler pattern:
     //   <button onClick={condition ? handler : undefined}>
@@ -232,7 +230,7 @@ function applyEventProp(el: Element, key: string, value: unknown): Cleanup | nul
     // actually-wrong types (strings, numbers, objects) that indicate
     // a real bug in the caller (e.g. `onClick={someSignal()}` where
     // the signal returns a value instead of a handler function).
-    if (__DEV__ && value != null) {
+    if (process.env.NODE_ENV !== 'production' && value != null) {
       console.warn(
         `[Pyreon] Event handler "${key}" received a non-function value (${typeof value}). ` +
           `Expected a function. Did you mean ${key}={() => ...}?`,
@@ -295,7 +293,7 @@ export function _bindEvent(el: Element, key: string, handler: unknown): Cleanup 
  * dispatch) eliminates the entire bug class.
  */
 function applyStaticProp(el: Element, key: string, value: unknown): void {
-  if (__DEV__ && typeof value === 'function') {
+  if (process.env.NODE_ENV !== 'production' && typeof value === 'function') {
     // Defensive: function values must be unwrapped via `renderEffect`
     // before reaching here. If we see one, a NEW special-case branch
     // somewhere upstream skipped the reactive-wrapping dance — exactly
@@ -337,7 +335,7 @@ function applyStaticProp(el: Element, key: string, value: unknown): void {
 //   applyProp - applyEvent = static / reactive attr density
 // Don't subtract them and treat as disjoint.
 export function applyProp(el: Element, key: string, value: unknown): Cleanup | null {
-  if (__DEV__) _countSink.__pyreon_count__?.('runtime.applyProp')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.applyProp')
   // Event listener: onClick → "click"
   if (EVENT_RE.test(key)) return applyEventProp(el, key, value)
 
@@ -416,7 +414,7 @@ function applyClassProp(el: Element, value: unknown): void {
 function setStaticProp(el: Element, key: string, value: unknown): void {
   // Block javascript:/data: URI injection in URL-bearing attributes.
   if (URL_ATTRS.has(key) && typeof value === 'string' && UNSAFE_URL_RE.test(value)) {
-    if (__DEV__) {
+    if (process.env.NODE_ENV !== 'production') {
       console.warn(`[Pyreon] Blocked unsafe URL in "${key}" attribute: ${value}`)
     }
     return

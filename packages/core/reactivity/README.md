@@ -149,6 +149,16 @@ const isSelected = createSelector(() => selected())
 
 `createSelector(source)` returns a function that, when called with a key, only notifies subscribers when the key transitions in or out of the selected state. O(1) instead of N effect runs on selection change.
 
+For the canonical `<For>` + `createSelector` className/text-content shape, `Selector<T>` also exposes a direct `.subscribe(key, updater)` API that skips the full `renderEffect` setup — per-row alloc drops from ~5 to ~2:
+
+```ts
+const dispose = isSelected.subscribe(row.id, (matches) => {
+  rowEl.className = matches ? 'selected' : ''
+})
+```
+
+The `@pyreon/compiler` auto-promotes the natural JSX shape `class={() => isSelected(row.id) ? 'on' : 'off'}` to this fast path — you don't need to call `.subscribe` directly. See the compiler docs for the bail catalog.
+
 ## Cell — minimal alternative to signal
 
 ```ts

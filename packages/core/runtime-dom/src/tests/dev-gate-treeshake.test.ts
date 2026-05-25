@@ -148,30 +148,23 @@ describe('runtime-dom dev-warning gate (Vite production bundle)', () => {
   }
 })
 
-// ─── Non-Vite consumer runtime correctness ─────────────────────────────────
+// ─── Non-Vite consumer correctness (bare-gate pattern, post-#900) ────────────
 //
-// What the CLAUDE.md doc claims for non-Vite consumers (webpack,
-// bunchee, raw esbuild bundles): the dev-warning STRINGS may stay in
-// the bundle as data, but the warnings themselves don't fire because
-// the `import.meta.env?.DEV === true` gate evaluates to `false` when
-// `import.meta.env.DEV` is undefined at runtime.
+// Pyreon's source uses the bundler-agnostic bare gate
+// `process.env.NODE_ENV !== 'production'` — see `pyreon/no-process-dev-gate`
+// lint rule for enforcement. Under esbuild's `platform: 'browser'` defaults
+// (no explicit `define`), esbuild auto-replaces `process.env.NODE_ENV` with
+// `"development"` so the gate folds to `true` AND the minifier
+// dead-code-eliminates the warn body even without consumer config.
 //
-// This block bundles `nodes.ts` with raw esbuild (no `define` for
-// import.meta.env, simulating a less-aware bundler), then asserts:
-//
-//   1. The dev-warning strings DO survive (proving we picked a real
-//      bundle to test, not Vite-equivalent behavior).
-//   2. The strings are still gated — they appear next to a check
-//      involving `import.meta.env` rather than being unconditional.
-//
-// (2) is what makes the runtime claim true: at runtime `import.meta.env`
-// is `undefined` in non-Vite-aware environments, so `?.DEV` returns
-// `undefined`, `=== true` returns `false`, and the warn never fires.
-// If a future refactor unconditionally calls console.warn (no gate),
-// this assertion catches that the runtime contract regressed.
+// Test claim: a raw esbuild bundle for the browser platform strips the
+// dev-warning bodies entirely. Pre-#900 (with `__DEV__` alias) this
+// happened only when consumers explicitly set `define: NODE_ENV=production`.
+// After #900, esbuild's defaults handle it for non-Vite consumers too —
+// strictly better, no runtime gate even needed.
 
-describe('non-Vite consumer runtime correctness', () => {
-  it('raw esbuild bundle: warning strings remain in bundle (proves we test the non-Vite path)', async () => {
+describe('non-Vite consumer correctness (bare-gate pattern)', () => {
+  it('raw esbuild bundle (browser platform): dev-warn bodies are stripped by esbuild defaults', async () => {
     const { build } = await import('esbuild')
     const result = await build({
       entryPoints: [path.join(SRC, 'nodes.ts')],
@@ -181,76 +174,15 @@ describe('non-Vite consumer runtime correctness', () => {
       format: 'esm',
       platform: 'browser',
       external: ['@pyreon/core', '@pyreon/reactivity', '@pyreon/runtime-server'],
-      // Intentionally no `define` — simulates a non-Vite-aware bundler.
+      // Intentionally no `define` — simulates a non-Vite consumer.
+      // esbuild's browser platform defaults `process.env.NODE_ENV` to
+      // `"development"`, so the bare gate folds to `true` and the
+      // minifier eliminates the warn body as dead branch under
+      // dead-code analysis.
     })
     const code = result.outputFiles[0]?.text ?? ''
-    expect(code).toContain('Duplicate key')
-  }, 5000)
-
-  it('raw esbuild bundle: dev gate evaluates to false at runtime when import.meta.env is undefined', async () => {
-    // The real claim is RUNTIME — even when warning strings are in the
-    // bundle, the gate stops `console.warn` from firing. This test
-    // EXECUTES the bundled module with `import.meta.env` undefined
-    // (the non-Vite case) and verifies `console.warn` is never called.
-    //
-    // Bundle a synthetic harness that exposes the gated callsite as a
-    // standalone exported function, replacing the cross-package
-    // imports so we don't need a full Pyreon runtime to execute. The
-    // harness mirrors the EXACT gate pattern used in nodes.ts.
-    const { build } = await import('esbuild')
-    const harness = `
-      // Same module-scope const pattern used in real Pyreon source.
-      // @ts-ignore — \`import.meta.env\` is provided by Vite at build time
-      const __DEV__ = import.meta.env?.DEV === true
-      export function maybeWarn(seen: Set<string>, key: string): void {
-        // Mirrors nodes.ts: a chained \`__DEV__ && cond && warn\` form
-        // (Pattern B from the C-2 probe).
-        if (seen.has(key)) {
-          if (__DEV__) {
-            console.warn(\`[Pyreon] Duplicate key "\${String(key)}" in <For> list.\`)
-          }
-        }
-        seen.add(key)
-      }
-    `
-    const result = await build({
-      stdin: { contents: harness, loader: 'ts', resolveDir: SRC },
-      bundle: true,
-      write: false,
-      minify: true,
-      format: 'esm',
-      platform: 'browser',
-      // No `define` — same as a non-Vite consumer.
-    })
-    const code = result.outputFiles[0]?.text ?? ''
-
-    // The string MUST be in the bundle (proves this is the non-Vite path).
-    expect(code).toContain('Duplicate key')
-
-    // Now actually execute the bundled module with `import.meta.env`
-    // resembling the non-Vite environment (undefined). Use a data:
-    // import to load the bundled ESM module. Bun supports this.
-    const dataUrl = `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`
-    const mod = (await import(/* @vite-ignore */ dataUrl)) as {
-      maybeWarn: (s: Set<string>, k: string) => void
-    }
-
-    // Spy on console.warn — the real runtime check.
-    const calls: unknown[][] = []
-    const original = console.warn
-    console.warn = (...args: unknown[]) => {
-      calls.push(args)
-    }
-    try {
-      const seen = new Set<string>()
-      mod.maybeWarn(seen, 'foo')
-      mod.maybeWarn(seen, 'foo') // second call → seen.has('foo') is true → would warn if gate broken
-    } finally {
-      console.warn = original
-    }
-
-    // The runtime contract: warning string is in the bundle (data),
-    // but the gate stops it from firing.
-    expect(calls).toEqual([])
+    // Bodies stripped (esbuild's default replacement + minifier).
+    expect(code).not.toContain('Duplicate key')
+    expect(code).not.toContain('console.warn')
   }, 5000)
 })

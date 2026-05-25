@@ -1,6 +1,6 @@
 import { compose, config, hoistNonReactStatics, omit, pick, render } from '@pyreon/ui-core'
 import { LocalThemeManager } from './cache'
-import { CONFIG_KEYS, PSEUDO_AND_META_KEYS, PSEUDO_KEYS, STYLING_KEYS, __DEV__ } from './constants'
+import { CONFIG_KEYS, PSEUDO_AND_META_KEYS, PSEUDO_KEYS, STYLING_KEYS } from './constants'
 import createLocalProvider from './context/createLocalProvider'
 import { useLocalContext } from './context/localContext'
 import { rocketstyleAttrsHoc } from './hoc'
@@ -487,7 +487,7 @@ const rocketComponent: RocketComponent = (options) => {
     })
 
     // development debugging — tree-shaken in production via import.meta.env.DEV
-    if (__DEV__) {
+    if (process.env.NODE_ENV !== 'production') {
       // defineProperty rather than `=` to be safe against any preserved
       // descriptor in this slot (defense-in-depth — `data-rocketstyle`
       // is unlikely to be passed as a user prop, but the writes above

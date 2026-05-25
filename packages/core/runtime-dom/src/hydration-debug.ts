@@ -36,9 +36,7 @@
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
-const __DEV__ = process.env.NODE_ENV !== 'production'
-
-let _enabled = __DEV__
+let _enabled = process.env.NODE_ENV !== 'production'
 
 export function enableHydrationWarnings(): void {
   _enabled = true

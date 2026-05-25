@@ -1138,10 +1138,59 @@ function toggleSelect(id: number) {
 }
 ```
 
+### `selector.subscribe(value, updater)` — effect-free fast path
+
+For the canonical `<For>` + `createSelector` selection-bound pattern (className / textContent toggling per row), `Selector<T>` exposes a direct subscription that skips the `renderEffect` machinery entirely:
+
+```ts
+const isSelected = createSelector(() => selectedId())
+
+// In each row's template:
+const dispose = isSelected.subscribe(row.id, (matches) => {
+  rowEl.className = matches ? 'selected' : ''
+})
+// dispose() unsubscribes when the row unmounts
+```
+
+Equivalent to `effect(() => updater(isSelected(row.id)))` but:
+
+- **~2 allocations per row** (one `Set.add` + one dispose closure) vs **~5** with `effect(...)` (`deps[]` + `run` closure + `dispose` closure + scope wrapper + `trackedFn` closure)
+- **No `renderEffect` setup** — the selector's source effect stores the updater directly in a per-key bound bucket and calls it with the resolved boolean on selection change
+- **Direct call per fire** with pre-resolved boolean instead of `withTracking` + selector lookup + `Object.is` + ternary
+
+The `@pyreon/compiler` auto-promotes the canonical JSX shapes to `.subscribe` — you don't need to call it directly:
+
+```tsx
+// Author writes the natural shape:
+<For each={rows} by={(r) => r.id}>
+  {(row) => (
+    <tr class={() => isSelected(row.id) ? 'selected' : ''}>
+      <td>{() => isSelected(row.id) ? '✓' : ''}</td>
+      ...
+    </tr>
+  )}
+</For>
+
+// Compiler emits the effect-free path automatically. See docs/compiler.md
+// "Auto-promoted Fast Paths" for the bail catalog.
+```
+
+Signature:
+
+```ts
+interface Selector<T> {
+  (value: T): boolean
+  subscribe(value: T, updater: (matches: boolean) => void): () => void
+  dispose(): void
+}
+```
+
+The updater fires synchronously with the initial state at subscription time, then once per selection change crossing this key. Post-`dispose()`, subsequent `.subscribe()` calls invoke the updater with the last-known state and return a no-op cleanup.
+
 ### createSelector Signature
 
 ```ts
-function createSelector<T>(source: () => T): (value: T) => boolean
+function createSelector<T>(source: () => T): Selector<T>
 ```
 
 ## EffectScope

@@ -45,6 +45,20 @@ const App = () => <div>{_$h0}</div>
 
 Element trees with ≥1 DOM tag emit `_tpl()` + `_bind()` instead of nested `h()` calls — cloneNode for the static skeleton, per-text-node `_bind()` for surgical updates. Zero VNode allocations on the static parts.
 
+### Auto-promoted fast paths
+
+Three canonical reactive shapes auto-promote to effect-free runtime calls (~5 → ~2 allocations per binding, no `renderEffect` setup):
+
+| Source                                                          | Default emit                                  | Auto-promoted to                                              |
+| --------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------- |
+| `<tr class={() => sel(k) ? 'a' : 'b'}>` ¹                       | `_bind(() => el.className = sel(k) ? 'a' : 'b')` | `sel.subscribe(k, m => el.className = m ? 'a' : 'b')` |
+| `<td>{() => sel(k) ? 'X' : ''}</td>` ¹                          | `_bind(() => t.data = sel(k) ? 'X' : '')`     | `sel.subscribe(k, m => t.data = m ? 'X' : '')`                |
+| `<span>{count().toFixed(2)}</span>` ²                           | `_bind(() => t.data = count().toFixed(2))`    | `_bindDirect(count, v => t.data = v.toFixed(2))`              |
+
+¹ `sel` must be declared as `const sel = createSelector(...)` at module scope; key and branches must be non-reactive. ² Method must be in the pure-primitive safelist (Number / String / Boolean prototype: `toFixed`, `toUpperCase`, `slice`, `padStart`, etc. — 28 methods); args must be non-reactive.
+
+Conservative bail catalog — uncertain shapes fall back to `_bind(...)` unchanged. See [docs/docs/compiler.md](../../../docs/docs/compiler.md) for the full detection logic.
+
 ## Reactive transform — Quick start
 
 ```ts

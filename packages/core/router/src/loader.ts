@@ -3,7 +3,6 @@ import { createContext, useContext } from '@pyreon/core'
 import type { RouterInstance } from './types'
 
 // Dev-mode gate + counter sink. See packages/internals/perf-harness for contract.
-const __DEV__ = process.env.NODE_ENV !== 'production'
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 /**
@@ -48,7 +47,7 @@ export async function prefetchLoaderData(
   path: string,
   request?: Request,
 ): Promise<void> {
-  if (__DEV__) _countSink.__pyreon_count__?.('router.prefetch')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('router.prefetch')
   const route = router._resolve(path)
   // Use a local AbortController — prefetch is best-effort and must NOT
   // clobber `router._abortController`, which belongs to the active

@@ -55,8 +55,6 @@ import { mountChild } from './mount'
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
-const __DEV__ = process.env.NODE_ENV !== 'production'
-
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
@@ -69,12 +67,12 @@ const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number)
  * const unmount = mount(h("div", null, "Hello Pyreon"), document.getElementById("app")!)
  */
 export function mount(root: VNodeChild, container: Element): () => void {
-  if (__DEV__ && container == null) {
+  if (process.env.NODE_ENV !== 'production' && container == null) {
     throw new Error(
       '[pyreon] mount() called with a null/undefined container. Make sure the element exists in the DOM, e.g. document.getElementById("app")',
     )
   }
-  if (__DEV__) {
+  if (process.env.NODE_ENV !== 'production') {
     _countSink.__pyreon_count__?.('runtime.mount')
     installDevTools()
   }
@@ -82,7 +80,7 @@ export function mount(root: VNodeChild, container: Element): () => void {
   container.innerHTML = ''
   const unmount = mountChild(root, container, null)
   return () => {
-    if (__DEV__) _countSink.__pyreon_count__?.('runtime.unmount')
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.unmount')
     unmount()
   }
 }
