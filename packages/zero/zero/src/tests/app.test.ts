@@ -3,6 +3,7 @@ import { h } from '@pyreon/core'
 import type { RouteRecord } from '@pyreon/router'
 import { RouterView } from '@pyreon/router'
 import { renderToString } from '@pyreon/runtime-server'
+import { accessInternal } from '@pyreon/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from '../app'
 
@@ -113,14 +114,14 @@ describe('createApp — base option (PR E)', () => {
     const routes: RouteRecord[] = [{ path: '/', component: Page }]
     const { router } = createApp({ routes, base: '/blog/', url: '/' })
 
-    const internalBase = (router as unknown as { _base?: string })._base
+    const internalBase = accessInternal<{ _base?: string }>(router)._base
     expect(internalBase).toBe('/blog')
   })
 
   it('passes through nested base correctly', () => {
     const routes: RouteRecord[] = [{ path: '/', component: Page }]
     const { router } = createApp({ routes, base: '/foo/bar/', url: '/' })
-    const internalBase = (router as unknown as { _base?: string })._base
+    const internalBase = accessInternal<{ _base?: string }>(router)._base
     expect(internalBase).toBe('/foo/bar')
   })
 
@@ -130,7 +131,7 @@ describe('createApp — base option (PR E)', () => {
     // Verifies the conditional spread doesn't accidentally always pass.
     const routes: RouteRecord[] = [{ path: '/', component: Page }]
     const { router } = createApp({ routes, base: '/', url: '/' })
-    const internalBase = (router as unknown as { _base?: string })._base
+    const internalBase = accessInternal<{ _base?: string }>(router)._base
     // Router stores empty string when no base — that's the no-prefix sentinel.
     expect(internalBase).toBe('')
   })
@@ -138,7 +139,7 @@ describe('createApp — base option (PR E)', () => {
   it('omits the option when base is undefined', () => {
     const routes: RouteRecord[] = [{ path: '/', component: Page }]
     const { router } = createApp({ routes, url: '/' })
-    const internalBase = (router as unknown as { _base?: string })._base
+    const internalBase = accessInternal<{ _base?: string }>(router)._base
     expect(internalBase).toBe('')
   })
 })

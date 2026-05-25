@@ -1,16 +1,17 @@
-import { createVitestConfig } from '@vitus-labs/tools-vitest'
-import { defineConfig, mergeConfig } from 'vitest/config'
-import { sharedConfig } from '../../../vitest.shared'
+import { defineNodeConfig } from '@pyreon/vitest-config'
 
-export default mergeConfig(
-  createVitestConfig({ environment: 'happy-dom' }),
-  mergeConfig(sharedConfig, defineConfig({
+export default defineNodeConfig({
+  category: 'ui',
+  environment: 'happy-dom',
+  overrides: {
+    // oxc transformer JSX config — these UI packages use Pyreon's JSX
+    // import source rather than React's default.
+    // @ts-expect-error vitest's UserConfig type doesn't know about oxc plugin opts
     oxc: {
       jsx: {
         runtime: 'automatic',
         importSource: '@pyreon/core',
       },
     },
-  })),
-)
-
+  },
+})

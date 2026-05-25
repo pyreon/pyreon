@@ -1,12 +1,11 @@
-import { defineConfig, mergeConfig } from 'vitest/config'
-import { nodeExcludeBrowserTests, sharedConfig } from '../../vitest.shared'
+import { defineNodeConfig } from '@pyreon/vitest-config'
 
-export default mergeConfig(
-  mergeConfig(sharedConfig, nodeExcludeBrowserTests),
-  defineConfig({
+export default defineNodeConfig({
+  excludeBrowserTests: true,
+  overrides: {
     test: {
       globals: true,
       include: ['**/*.test.ts'],
     },
-  }),
-)
+  },
+})

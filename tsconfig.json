@@ -7,7 +7,18 @@
     "isolatedModules": true,
     "customConditions": ["bun"],
     "jsx": "preserve",
-    "jsxImportSource": "@pyreon/core"
+    "jsxImportSource": "@pyreon/core",
+    // Permits `.ts` extensions in relative imports. Required for
+    // `@pyreon/vitest-config`'s source files, which use explicit
+    // `.ts` extensions so its `vitest.config.ts` callers can resolve
+    // them via Vite's config loader (Node ESM strict mode requires
+    // extensions for relative imports — see the package's
+    // `tsconfig.json` for the full rationale). All other packages can
+    // keep using extensionless imports — this flag only PERMITS the
+    // `.ts` form, it never requires it. Pairs with `moduleResolution:
+    // Bundler` (inherited from `@vitus-labs/tools-typescript/lib`) +
+    // each package's `noEmit: true`.
+    "allowImportingTsExtensions": true
   },
   "exclude": ["node_modules", "**/lib/**", "**/dist/**"]
 }

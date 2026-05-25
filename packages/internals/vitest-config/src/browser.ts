@@ -2,7 +2,8 @@ import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { mergeConfig } from 'vite'
-import { sharedConfig } from './vitest.shared'
+import type { ViteUserConfig as VitestUserConfig } from 'vitest/config'
+import { sharedConfig } from './internals.ts'
 
 // Shared base for per-package browser test suites. Each package supplies the
 // playwright provider in its own `vitest.browser.config.ts` so vite's static
@@ -13,9 +14,7 @@ import { sharedConfig } from './vitest.shared'
 // IntersectionObserver timing, computed styles, Vite's `import.meta.env`
 // in browser context. See .claude/rules/test-environment-parity.md.
 
-export interface BrowserProviderFactory {
-  (): unknown
-}
+export type BrowserProviderFactory = () => unknown
 
 /**
  * Resolve a path to `tslib.es6.js` — the flat-ESM tslib file that works
@@ -65,7 +64,7 @@ export function resolveTslibEsmEntry(fromDir: string): string | null {
  *
  * Usage in a per-package `vitest.browser.config.ts`:
  *
- *   import { defineBrowserConfig, tslibBrowserAlias } from '../../../vitest.browser'
+ *   import { defineBrowserConfig, tslibBrowserAlias } from '@pyreon/vitest-config'
  *   export default defineBrowserConfig(playwright(), {
  *     resolve: { alias: { ...tslibBrowserAlias(import.meta.url) } },
  *   })
@@ -76,7 +75,18 @@ export function tslibBrowserAlias(importMetaUrl: string): Record<string, string>
   return esm ? { tslib: esm } : {}
 }
 
-export const defineBrowserConfig = (provider: BrowserProviderFactory, overrides?: unknown) => {
+/**
+ * Define a browser-test vitest config. Wraps the playwright provider in
+ * the shared base (aliases + bun condition + CI retry + timeout) plus
+ * the browser-runner config.
+ *
+ * `overrides` is applied LAST via `mergeConfig` — same semantics as
+ * `defineNodeConfig`.
+ */
+export function defineBrowserConfig(
+  provider: BrowserProviderFactory,
+  overrides?: VitestUserConfig,
+): VitestUserConfig {
   const base = mergeConfig(sharedConfig, {
     test: {
       globals: true,

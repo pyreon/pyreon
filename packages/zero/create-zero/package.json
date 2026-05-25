@@ -32,5 +32,8 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.2.0"
+  },
+  "devDependencies": {
+    "@pyreon/vitest-config": "workspace:*"
   }
 }

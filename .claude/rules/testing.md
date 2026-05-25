@@ -3,7 +3,7 @@
 ## Test Runner
 
 - Use `bun run test` to run all package tests (runs `bun run --filter='./packages/*' test`)
-- Each package has its own `vitest.config.ts` that MUST merge `sharedConfig` from root `vitest.shared.ts` as the inner base of its `mergeConfig` chain — this is what supplies `testTimeout: 20_000` + the CI `retry: 2`. A config that omits it silently runs on vitest's 5000ms default with no retry, which is the systemic cause of `Test`-job flakes under CI's 60-process parallel load (a cold `await import()` of a heavy dep exceeds 5s under contention). Pattern: `mergeConfig(sharedConfig, createVitestConfig({ ... }))`. Reference: `packages/fundamentals/dnd/vitest.config.ts`.
+- Each package's `vitest.config.ts` MUST use `defineNodeConfig` from `@pyreon/vitest-config`. Browser configs MUST use `defineBrowserConfig`. Both helpers enforce the canonical merge order by construction — `testTimeout: 20_000` + CI `retry: 2` + bun condition + per-category coverage defaults all flow through one canonical merge. Hand-rolled `mergeConfig` chains are forbidden (enforced by lint rule `pyreon/vitest-config-uses-shared`). Pre-migration history (PRs #914-#922): 87 configs mixed three merge-order patterns; 9 silently ran on vitest's 5s default timeout because `sharedConfig` ended up on the wrong side of `mergeConfig`. Canonical shape: `defineNodeConfig({ category: 'core' | 'fundamentals' | 'ui' | 'tools' | 'zero' | 'internals', environment: 'happy-dom' })` — see [`packages/internals/vitest-config/README.md`](../../packages/internals/vitest-config/README.md) for the full surface.
 - Vitest globals enabled — no need to import `describe`, `it`, `expect`, `vi`
 
 ## DOM Testing

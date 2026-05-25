@@ -62,6 +62,7 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/vitest-config": "workspace:*",
     "arktype": "^2.2.0",
     "valibot": "^1.2.0",
     "zod": "^4.3.6"

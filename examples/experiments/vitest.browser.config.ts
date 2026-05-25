@@ -3,7 +3,7 @@ import pyreon from '@pyreon/vite-plugin'
 import {
   defineBrowserConfig,
   type BrowserProviderFactory,
-} from '../../vitest.browser'
+} from '@pyreon/vitest-config'
 
 // E2 imports `@pyreon/ui-components` which transitively pulls JSX `.tsx`
 // files (e.g. `@pyreon/ui-primitives/TabsBase.tsx`). Vite's default JSX

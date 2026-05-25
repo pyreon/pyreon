@@ -25,6 +25,7 @@
     "@pyreon/native-compiler": "workspace:*"
   },
   "devDependencies": {
+    "@pyreon/vitest-config": "workspace:*",
     "vitest": "^4.1.4"
   }
 }
