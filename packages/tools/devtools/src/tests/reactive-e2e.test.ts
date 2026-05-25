@@ -17,6 +17,7 @@
  */
 import { h } from '@pyreon/core'
 import {
+  __resetReactiveDevtoolsForTesting,
   computed,
   type ReactiveFire as FwFire,
   type ReactiveGraph as FwGraph,
@@ -25,7 +26,7 @@ import {
   signal,
 } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { bucketFires, layoutGraph } from '../reactive-view'
 import type {
   ReactiveFire as ExtFire,
@@ -61,9 +62,16 @@ interface ReactiveHook {
 
 let dispose: (() => void) | null = null
 
+beforeEach(() => {
+  // Full reset BEFORE every test so cross-test signal registry carryover
+  // (always-on in __DEV__ per the post-#900 contract) can't pollute.
+  __resetReactiveDevtoolsForTesting()
+})
+
 afterEach(() => {
-  // Always drop registry state so tests don't bleed into each other.
-  window.__PYREON_DEVTOOLS__?.reactive?.deactivate()
+  // Mirror — also reset after, in case the test's own activate() left
+  // _active true.
+  __resetReactiveDevtoolsForTesting()
   dispose?.()
   dispose = null
   document.body.innerHTML = ''
@@ -89,13 +97,51 @@ function reactiveHook(): ReactiveHook {
 }
 
 describe('reactive devtools — real-app end-to-end', () => {
-  it('is opt-in: nothing is tracked until activate()', () => {
+  it('output is gated: getGraph/getFires return empty until activate()', () => {
     const r = reactiveHook()
-    // NOT activated yet — creating reactive nodes registers nothing.
+    // Registry is always-on in __DEV__ — `$idle` IS recorded internally
+    // — but until a devtools client calls activate(), the OUTPUT methods
+    // return empty so non-attached consumers see nothing.
     const s = signal(1, { name: '$idle' })
     s.set(2)
     expect(r.getGraph().nodes).toHaveLength(0)
     expect(r.getFires()).toHaveLength(0)
+  })
+
+  it('REGRESSION: signals created BEFORE activate() appear after activate()', () => {
+    // The bug this contract change fixes: a user opens the devtools
+    // panel AFTER the app has mounted. Pre-fix `_rdRegister`
+    // early-returned on `!_active`, so the late attach saw an empty
+    // graph and the panel showed "174 components but 0 reactive nodes".
+    // With always-on registration the graph populates the moment the
+    // client attaches.
+    const r = reactiveHook()
+    // Build a real graph BEFORE activate — same shape as a real app
+    // that has mounted ~hundreds of signals before the user opens the
+    // panel.
+    const a = signal(1, { name: '$pre_a' })
+    const b = signal(2, { name: '$pre_b' })
+    const sum = computed(() => a() + b())
+    let seen = 0
+    effect(() => {
+      seen = sum()
+    })
+    expect(seen).toBe(3)
+    a.set(5)
+    expect(seen).toBe(7)
+
+    // Devtools client attaches LATE.
+    r.activate()
+
+    const g = r.getGraph()
+    expect(g.nodes.find((n) => n.name === '$pre_a')).toBeDefined()
+    expect(g.nodes.find((n) => n.name === '$pre_b')).toBeDefined()
+    expect(g.nodes.some((n) => n.kind === 'derived')).toBe(true)
+    expect(g.nodes.some((n) => n.kind === 'effect')).toBe(true)
+    // signal $pre_a, $pre_b, derived (sum), effect = 4 nodes minimum.
+    expect(g.nodes.length).toBeGreaterThanOrEqual(4)
+    // signal → derived → effect chain visible in edges.
+    expect(g.edges.length).toBeGreaterThanOrEqual(3)
   })
 
   it('tracks a real signal→derived→effect graph + fires, then the extension lays it out', () => {
@@ -167,7 +213,12 @@ describe('reactive devtools — real-app end-to-end', () => {
     expect(b.max).toBeGreaterThanOrEqual(1)
   })
 
-  it('deactivate() drops all retained registry state', () => {
+  it('deactivate() closes the read gate; subsequent activate() re-exposes the live graph', () => {
+    // Per the post-#900 contract, `deactivate()` flips `_active = false`
+    // but does NOT clear the registry — so a "close panel + reopen
+    // panel" cycle re-exposes the same live graph. Clearing on
+    // deactivate would re-create the activate-after-creation bug at the
+    // close/reopen boundary.
     const r = reactiveHook()
     r.activate()
     const s = signal(0, { name: '$live' })
@@ -176,9 +227,16 @@ describe('reactive devtools — real-app end-to-end', () => {
     })
     s.set(1)
     expect(r.getGraph().nodes.length).toBeGreaterThan(0)
+    const beforeCount = r.getGraph().nodes.length
 
     r.deactivate()
+    // Output gated — empty.
     expect(r.getGraph().nodes).toHaveLength(0)
     expect(r.getFires()).toHaveLength(0)
+
+    // Re-activate — the same live nodes are re-exposed.
+    r.activate()
+    expect(r.getGraph().nodes.find((n) => n.name === '$live')).toBeDefined()
+    expect(r.getGraph().nodes.length).toBe(beforeCount)
   })
 })

@@ -1,17 +1,32 @@
 /**
- * Reactive devtools bridge — an OPT-IN, leak-free introspection layer
- * over the live signal / computed / effect graph.
+ * Reactive devtools bridge — a leak-free introspection layer over the
+ * live signal / computed / effect graph.
  *
  * Powers the `@pyreon/devtools` Signals / Graph / Effects / Console
  * surfaces. Design constraints (mirroring `reactive-trace.ts`):
  *
- *   - **Zero cost until attached.** Every instrumentation entry point
- *     early-returns on `!_active`. The registry is empty and no work
- *     happens until a devtools client calls `activateReactiveDevtools()`.
- *     The single call site per creation/track sits inside the existing
- *     `process.env.NODE_ENV !== 'production'` gate (tree-shaken in prod)
- *     and is structurally identical to the perf-harness counter calls
- *     and `_recordSignalWrite` already on those paths.
+ *   - **Zero cost in production.** Every instrumentation entry point is
+ *     called from inside the existing `process.env.NODE_ENV !== 'production'`
+ *     gate at the framework callers (signal/computed/effect) — bundlers
+ *     fold the whole call chain to dead code in prod.
+ *   - **Always-on in __DEV__.** Registration + fire-recording run for
+ *     every signal/computed/effect created in dev — independent of
+ *     whether a devtools client is attached. This is what lets a user
+ *     open the panel AFTER the app has mounted and still see the full
+ *     live graph (the activate-after-creation user workflow). The cost
+ *     is a `Map.set` + `WeakRef` + `WeakMap.set` + `finalizer.register`
+ *     per node (~hundreds of ns) and a counter bump + bounded ring-buffer
+ *     append per fire (~ns).
+ *   - **`_active` is a READ gate, not a recording gate.** Output methods
+ *     (`getReactiveGraph` / `getReactiveFires` / `getFireSummaries`)
+ *     return empty when no client has called `activateReactiveDevtools()`.
+ *     A devtools panel reads through these; nothing leaks to non-attached
+ *     consumers.
+ *   - **`_captureCallerLocation` STAYS gated on `_active`** — stack
+ *     parsing (`new Error().stack`) is the expensive part (~2.2µs/call).
+ *     Pre-activate signals lack a captured loc; build-time-injected loc
+ *     (via `@pyreon/vite-plugin`'s `injectSignalLocations`) is always on
+ *     and free, so most dev signals get loc anyway.
  *   - **No retention / no leak.** Nodes are held via `WeakRef` and
  *     pruned by a `FinalizationRegistry`. The registry never pins a
  *     signal/computed/effect alive. Edges + the fire ring buffer hold
@@ -19,6 +34,11 @@
  *   - **Snapshot on demand.** `getReactiveGraph()` recomputes the edge
  *     set fresh from the live subscriber Sets — no incremental
  *     bookkeeping to drift out of sync with `cleanupEffect`.
+ *   - **`deactivate` does NOT clear the registry.** A panel close +
+ *     reopen cycle re-exposes the same live graph; clearing on
+ *     deactivate would re-create the activate-after-creation bug at the
+ *     close/reopen boundary. The registry tracks the live app state;
+ *     `_active` only toggles whether we expose it.
  *
  * Names: signals carry `.label` (set explicitly or by the vite plugin's
  * dev auto-naming). Computeds/effects have no name in the framework, so
@@ -211,10 +231,28 @@ export function activateReactiveDevtools(): void {
 }
 
 /**
- * Deactivate + drop all retained state. Called when the devtools client
- * disconnects so a closed panel leaves zero residue.
+ * Deactivate the bridge. Flips `_active = false` so the output methods
+ * return empty. Does NOT clear the registry — the registry tracks the
+ * LIVE app state, which a subsequent `activateReactiveDevtools()` should
+ * still see (matches the user "close + reopen panel" workflow). Dead
+ * nodes are pruned automatically by the `FinalizationRegistry`.
+ *
+ * For test isolation across `it()` blocks, use
+ * `__resetReactiveDevtoolsForTesting()` instead.
  */
 export function deactivateReactiveDevtools(): void {
+  _active = false
+}
+
+/**
+ * Test-only reset: drops the entire registry, fire buffer, and the
+ * `_active` flag. NOT for production use — wipes the live-app state
+ * tracked by always-on `_rdRegister`. Tests use this in `afterEach` so
+ * one test's signals don't pollute the next test's graph.
+ *
+ * @internal
+ */
+export function __resetReactiveDevtoolsForTesting(): void {
   _active = false
   _byId.clear()
   _fireBuf = null
@@ -298,6 +336,14 @@ function parseStackLine(line: string): SourceLocation | undefined {
  * internal host). `sub` is the notify closure (`recompute`/`run`) whose
  * identity appears in upstream `_s` Sets — used to resolve edges.
  *
+ * Always-on in __DEV__ (the caller guards on NODE_ENV — tree-shaken in
+ * prod). Independent of `_active` so a devtools panel attached AFTER
+ * the app mounted sees the full live graph. The `loc` is captured by
+ * the caller via `_captureCallerLocation()`, which IS `_active`-gated
+ * (stack parsing is the expensive part) — pre-activate signals get
+ * `undefined` loc unless the vite plugin's build-time injection
+ * provided one.
+ *
  * @internal
  */
 export function _rdRegister(
@@ -308,7 +354,6 @@ export function _rdRegister(
   label: string | undefined,
   loc?: SourceLocation,
 ): number | undefined {
-  if (!_active) return undefined
   const id = _nextId++
   _byId.set(id, {
     id,
@@ -340,10 +385,14 @@ export function _rdRegister(
  * Record that a node fired (signal write / computed recompute / effect
  * run). Bumps counters + appends to the bounded fire buffer.
  *
+ * Always-on in __DEV__. The bounded ring buffer (`FIRE_CAP=512`) caps
+ * memory regardless of how long the app has been running before a
+ * devtools client attaches — old fires age out naturally as new ones
+ * arrive.
+ *
  * @internal
  */
 export function _rdRecordFire(node: object): void {
-  if (!_active) return
   const id = (node as { __pxRdId?: number }).__pxRdId
   if (id === undefined) return
   const rec = _byId.get(id)
@@ -386,8 +435,13 @@ function resolveSubId(sub: () => void): number | undefined {
  * Fresh snapshot of the live reactive graph. Edges are recomputed from
  * each live node's current subscriber Set — always consistent with the
  * framework's real subscription state, no incremental drift.
+ *
+ * Returns `{nodes: [], edges: []}` when no devtools client has called
+ * `activateReactiveDevtools()` (so non-attached consumers see nothing
+ * even though the registry is always-on in __DEV__).
  */
 export function getReactiveGraph(): ReactiveGraph {
+  if (!_active) return { nodes: [], edges: [] }
   const nodes: ReactiveNode[] = []
   const edges: ReactiveEdge[] = []
   for (const rec of _byId.values()) {
@@ -434,6 +488,7 @@ export function getReactiveGraph(): ReactiveGraph {
  * devtools-host bridge or to write into an LSP cache file.
  */
 export function getFireSummaries(): FireSummary[] {
+  if (!_active) return []
   const byKey = new Map<string, FireSummary>()
   // Snapshot "now" once per call — decay-at-read uses a consistent timestamp
   // for all nodes, so two locations firing at the same rate show the same
@@ -481,6 +536,7 @@ export function getFireSummaries(): FireSummary[] {
 
 /** Bounded recent-fire timeline (oldest → newest). Fresh copy. */
 export function getReactiveFires(): ReactiveFire[] {
+  if (!_active) return []
   if (_fireBuf === null || _fireCount === 0) return []
   if (_fireCount <= FIRE_CAP) return _fireBuf.slice(0, _fireCount)
   const start = _fireCount % FIRE_CAP

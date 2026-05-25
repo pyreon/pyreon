@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { computed } from '../computed'
 import { effect } from '../effect'
 import {
+  __resetReactiveDevtoolsForTesting,
   _rdPrune,
   activateReactiveDevtools,
   deactivateReactiveDevtools,
@@ -12,11 +13,18 @@ import {
 import { signal } from '../signal'
 
 afterEach(() => {
-  deactivateReactiveDevtools()
+  // Test-only full reset (drops registry + fire buffer + _active).
+  // Production `deactivateReactiveDevtools()` deliberately does NOT
+  // clear the registry so a close+reopen panel cycle re-exposes the
+  // live graph — but tests need cross-`it()` isolation.
+  __resetReactiveDevtoolsForTesting()
 })
 
-describe('reactive-devtools — opt-in contract', () => {
-  it('is inactive by default and tracks nothing until activated', () => {
+describe('reactive-devtools — read gate contract', () => {
+  it('output methods return empty when no client has activated', () => {
+    // Registry is always-on in __DEV__ — `s`, `s.set(2)`, and `c` ARE
+    // recorded internally — but until a devtools client calls
+    // `activateReactiveDevtools()`, the output methods return empty.
     expect(isReactiveDevtoolsActive()).toBe(false)
     const s = signal(1)
     s.set(2)
@@ -26,7 +34,7 @@ describe('reactive-devtools — opt-in contract', () => {
     expect(getReactiveFires()).toEqual([])
   })
 
-  it('activate() then deactivate() is idempotent and clears state', () => {
+  it('activate() then deactivate() — output gates flip; registry retained', () => {
     activateReactiveDevtools()
     expect(isReactiveDevtoolsActive()).toBe(true)
     activateReactiveDevtools() // idempotent
@@ -36,7 +44,54 @@ describe('reactive-devtools — opt-in contract', () => {
     expect(getReactiveGraph().nodes.length).toBe(1)
     deactivateReactiveDevtools()
     expect(isReactiveDevtoolsActive()).toBe(false)
+    // Output returns empty — the read gate is closed.
     expect(getReactiveGraph().nodes).toEqual([])
+    // But the registry is RETAINED — re-activate sees the live node.
+    activateReactiveDevtools()
+    expect(getReactiveGraph().nodes.find((n) => n.name === 'x')).toBeDefined()
+  })
+
+  it('REGRESSION: pre-existing signals appear after late activate', () => {
+    // The bug this contract change fixes: a user opens devtools AFTER
+    // the app has mounted hundreds of signals. Pre-fix `_rdRegister`
+    // early-returned on `!_active`, so the late activate saw an empty
+    // graph. With always-on registration the graph populates the moment
+    // the client attaches.
+    expect(isReactiveDevtoolsActive()).toBe(false)
+    const a = signal(1, { name: 'pre_a' })
+    const b = signal(2, { name: 'pre_b' })
+    const c = signal(3, { name: 'pre_c' })
+    // Establish a subscriber edge so the graph has structure to render.
+    effect(() => {
+      void a()
+      void b()
+      void c()
+    })
+    // Devtools client attaches LATE — same shape as panel opened after
+    // page load completes.
+    activateReactiveDevtools()
+    const g = getReactiveGraph()
+    expect(g.nodes.find((n) => n.name === 'pre_a')).toBeDefined()
+    expect(g.nodes.find((n) => n.name === 'pre_b')).toBeDefined()
+    expect(g.nodes.find((n) => n.name === 'pre_c')).toBeDefined()
+    // At least one effect node + edges from each signal to it.
+    expect(g.nodes.some((n) => n.kind === 'effect')).toBe(true)
+    expect(g.edges.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('REGRESSION: signal writes recorded BEFORE activate are visible after', () => {
+    // Same shape for the fire timeline: fires recorded while inactive
+    // land in the bounded ring buffer (capped at FIRE_CAP=512). On
+    // activate, the buffer is exposed.
+    const s = signal(0, { name: 'pre_fires' })
+    s.set(1)
+    s.set(2)
+    s.set(3)
+    activateReactiveDevtools()
+    const fires = getReactiveFires()
+    expect(fires.length).toBeGreaterThanOrEqual(3)
+    const node = getReactiveGraph().nodes.find((n) => n.name === 'pre_fires')!
+    expect(node.fires).toBe(3)
   })
 })
 
@@ -184,17 +239,24 @@ describe('reactive-devtools — value preview branches', () => {
 })
 
 describe('reactive-devtools — resilience', () => {
-  it('a stale __pxRdId (registry cleared, node re-fires) is buffered, not crashed', () => {
+  it('a stale __pxRdId (registry test-reset, node re-fires) is buffered, not crashed', () => {
+    // Resilience: `__resetReactiveDevtoolsForTesting()` drops the
+    // registry but signals already created still carry their old
+    // `__pxRdId` (the property is non-enumerable on the read fn).
+    // Subsequent writes must NOT crash; the fire buffer captures the
+    // event keyed by the stale id, no record matches, no node appears.
+    // (This was the previous behaviour of `deactivate` and now applies
+    // only to the test-only reset.)
     activateReactiveDevtools()
     const s = signal(0, { name: 'stale' })
     void s()
-    deactivateReactiveDevtools()
+    __resetReactiveDevtoolsForTesting()
     // Re-activate: _byId is empty but `s` still carries its old __pxRdId.
     activateReactiveDevtools()
     expect(() => s.set(1)).not.toThrow()
     // Fire is still buffered even though no record exists for the id.
     expect(getReactiveFires().length).toBe(1)
-    // …and it does not appear as a node (record was cleared).
+    // …and it does not appear as a node (record was wiped by the test reset).
     expect(getReactiveGraph().nodes.find((n) => n.name === 'stale')).toBeUndefined()
   })
 

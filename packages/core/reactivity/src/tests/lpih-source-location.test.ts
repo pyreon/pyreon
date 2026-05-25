@@ -15,17 +15,20 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { computed } from '../computed'
 import { effect } from '../effect'
 import {
+  __resetReactiveDevtoolsForTesting,
   _captureCallerLocation,
   _parseStackLine,
   activateReactiveDevtools,
-  deactivateReactiveDevtools,
   getFireSummaries,
   getReactiveGraph,
 } from '../reactive-devtools'
 import { signal } from '../signal'
 
 afterEach(() => {
-  deactivateReactiveDevtools()
+  // Cross-test isolation: drop registry + fire buffer + _active.
+  // Production `deactivateReactiveDevtools()` only flips _active now
+  // (registry is retained for the close+reopen-panel user workflow).
+  __resetReactiveDevtoolsForTesting()
 })
 
 describe('LPIH — stack-line parser', () => {

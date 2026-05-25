@@ -20,8 +20,8 @@ import {
   writeLpihCache,
 } from '../lpih'
 import {
+  __resetReactiveDevtoolsForTesting,
   activateReactiveDevtools,
-  deactivateReactiveDevtools,
 } from '../reactive-devtools'
 import { signal } from '../signal'
 
@@ -36,11 +36,15 @@ afterAll(() => {
 })
 
 beforeEach(() => {
-  deactivateReactiveDevtools()
+  // Cross-test isolation — full reset of registry + fire buffer + _active.
+  // (Pre-fix this used `deactivateReactiveDevtools()` which doubled as
+  // a reset path; production deactivate now only flips _active, so tests
+  // need the explicit reset.)
+  __resetReactiveDevtoolsForTesting()
 })
 
 afterEach(() => {
-  deactivateReactiveDevtools()
+  __resetReactiveDevtoolsForTesting()
 })
 
 const readCache = (path: string): { fires: unknown[] } =>
