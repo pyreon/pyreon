@@ -33,7 +33,7 @@
  * stays in code (the script), not in CI yaml (which just invokes it).
  */
 
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 
 const SENSITIVE_PATTERNS = [
   'packages/core/runtime-dom/',
@@ -46,11 +46,30 @@ const SENSITIVE_PATTERNS = [
 const CATALOG_FILE = 'packages/core/compiler/src/react-intercept.ts'
 const CATALOG_MARKER = 'const ERROR_PATTERNS: ErrorPattern[] = ['
 
-const BASE_REF = process.env['BASE_REF'] || 'main'
+// `BASE_REF` is supplied by CI from `github.event.pull_request.base.ref`,
+// which IS attacker-influenceable (a PR can target any base branch).
+// Validate it against a strict allowlist before any shell use to close the
+// CodeQL "Indirect uncontrolled command line" finding (a malicious BASE_REF
+// like `main; rm -rf /` would otherwise reach the shell).
+const RAW_BASE_REF = process.env['BASE_REF'] || 'main'
+if (!/^[a-zA-Z0-9._/-]+$/.test(RAW_BASE_REF)) {
+  console.error(
+    `[check-diagnose-catalog] FAILED — BASE_REF "${RAW_BASE_REF}" contains characters outside the allowed set [a-zA-Z0-9._/-]. Refusing to use it.`,
+  )
+  process.exit(1)
+}
+const BASE_REF = RAW_BASE_REF
+
 const HAS_SKIP_LABEL = process.env['HAS_SKIP_LABEL'] === 'true'
 
-function shell(cmd: string): string {
-  return execSync(cmd, { encoding: 'utf8' }).trim()
+/**
+ * `git diff` / `git show` runner. Uses `execFileSync` (no shell parsing)
+ * with discrete argv so even an unexpected character in a sanitized value
+ * can't be interpreted as a shell metacharacter — defense in depth on top
+ * of the BASE_REF allowlist.
+ */
+function git(...args: string[]): string {
+  return execFileSync('git', args, { encoding: 'utf8' }).trim()
 }
 
 function changedFiles(): string[] {
@@ -58,7 +77,7 @@ function changedFiles(): string[] {
   // to compare only commits unique to HEAD, not the union of both branches'
   // changes since divergence. Matches the changeset-check workflow shape.
   try {
-    const out = shell(`git diff --name-only "origin/${BASE_REF}...HEAD"`)
+    const out = git('diff', '--name-only', `origin/${BASE_REF}...HEAD`)
     return out.length === 0 ? [] : out.split('\n')
   } catch {
     return []
@@ -107,8 +126,12 @@ function countCatalogEntries(source: string): number {
 }
 
 function readFileAt(ref: string, path: string): string | null {
+  // `git` (execFileSync) keeps argv discrete — no shell interpolation,
+  // no command-substitution risk. `ref` is `origin/${BASE_REF}` (BASE_REF
+  // already allowlist-validated above); `path` is the constant
+  // `CATALOG_FILE`. Belt-and-suspenders.
   try {
-    return shell(`git show "${ref}:${path}"`)
+    return git('show', `${ref}:${path}`)
   } catch {
     return null
   }
@@ -116,7 +139,7 @@ function readFileAt(ref: string, path: string): string | null {
 
 function readFileAtHead(path: string): string | null {
   try {
-    return shell(`git show HEAD:"${path}"`)
+    return git('show', `HEAD:${path}`)
   } catch {
     return null
   }
