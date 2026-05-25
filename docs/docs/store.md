@@ -467,6 +467,173 @@ const useTheme = defineStore('theme', () => {
 })
 ```
 
+## Schema-driven Stores
+
+For state that needs runtime validation, `defineStore` accepts a **schema-driven** config that derives signals + types from a validation library (zod, valibot, arktype, or any Standard Schema-compliant library). Every `set` and `patch` is validated through the schema; types are inferred end-to-end with zero manual annotations.
+
+```ts
+import { zodSchema } from '@pyreon/validation'
+import { defineStore, computed } from '@pyreon/store'
+import { z } from 'zod'
+
+const UserSchema = zodSchema(z.object({
+  name: z.string().min(1),
+  age: z.number().int().nonnegative(),
+  prefs: z.object({ theme: z.enum(['light', 'dark']) }),
+}))
+
+const useUser = defineStore('user', {
+  schema: UserSchema,
+  initial: { name: '', age: 0, prefs: { theme: 'light' } },
+  setup: ({ state, set, patch, reset }) => ({
+    // state.name: Signal<string>           ← inferred from schema
+    // state.age:  Signal<number>
+    // state.prefs: Signal<{ theme: 'light' | 'dark' }>
+    greet: computed(() => `Hello, ${state.name()}`),
+    incAge: () => state.age.update(n => n + 1),
+  }),
+})
+
+const u = useUser()
+u.store.name()                              // Signal<string>
+u.store.greet()                             // computed
+u.store.incAge()                            // action
+u.set({ name: 'Alice', age: 30, prefs: { theme: 'dark' } })  // full replace + validate
+u.patch({ age: 31 })                        // partial merge + validate
+u.store.age.set(-1)                         // direct write — bypasses validation (escape hatch)
+```
+
+### Library support
+
+The schema-mode overload works with **every** validation library through two complementary mechanisms.
+
+**Tier A — First-party + Standard Schema (zero user work):**
+
+| Library | Adapter | Standard Schema |
+| --- | --- | --- |
+| Zod | `zodSchema(zSchema)` | ✅ raw schema (zod 3.24+) |
+| Valibot | `valibotSchema(vSchema, v.safeParse)` | ✅ raw schema (valibot 1.0+) |
+| ArkType | `arktypeSchema(aType)` | ✅ raw schema (arktype 2.0+) |
+| Effect Schema | — | ✅ raw schema (Effect Schema 0.66+) |
+| Other Standard-Schema libs | — | ✅ raw schema |
+
+Standard Schema-compliant schemas are **auto-detected** via the `'~standard'` property. Pass the raw schema directly — no adapter wrapping required:
+
+```ts
+// Tier A.2: raw zod schema (Standard Schema-compliant)
+const useUser = defineStore('user', {
+  schema: z.object({ name: z.string(), age: z.number() }),  // ← no wrap
+  initial: { name: 'Alice', age: 30 },
+})
+```
+
+**Tier B — User-authored adapter (any other library):**
+
+For libraries that don't implement Standard Schema (yup, joi, ajv, io-ts, runtypes, Superstruct, custom validators), write a 5-10 line adapter:
+
+```ts
+import * as yup from 'yup'
+import type { TypedSchemaAdapter } from '@pyreon/validation'
+
+function yupSchema<T extends Record<string, unknown>>(
+  schema: yup.Schema<T>
+): TypedSchemaAdapter<T> {
+  return {
+    _infer: undefined as never,
+    validator: async () => ({}) as never,
+    parse: (value) => {
+      try { return { ok: true, value: schema.validateSync(value) } }
+      catch (err) {
+        return { ok: false, issues: [{ path: '', message: String(err) }] }
+      }
+    },
+  }
+}
+
+defineStore('user', { schema: yupSchema(yupUserSchema), initial })
+```
+
+### Mutation methods
+
+The schema-driven `defineStore` overload returns a `SchemaStoreApi<T>` with four validated mutation methods covering the common state-update patterns:
+
+```ts
+const useStore = defineStore('s', {
+  schema: zodSchema(z.object({
+    count: z.number(),
+    items: z.array(z.object({ id: z.number(), label: z.string() })),
+    prefs: z.object({ theme: z.string(), density: z.string() }),
+  })),
+  initial: {
+    count: 0,
+    items: [{ id: 1, label: 'one' }],
+    prefs: { theme: 'light', density: 'cozy' },
+  },
+})
+const s = useStore()
+
+// `set` — REPLACES the whole state atomically.
+// Requires the full schema shape; throws on mismatch.
+s.set({ count: 5, items: [], prefs: { theme: 'dark', density: 'compact' } })
+
+// `patch` — SHALLOW merge of top-level fields. The whole `prefs` object
+// is replaced if you pass it; sibling keys at depth ≥ 2 are NOT preserved.
+s.patch({ count: 10 })                                  // writes `count`
+s.patch({ prefs: { theme: 'dark', density: 'cozy' } })  // replaces whole `prefs`
+
+// `deepPatch` — RECURSIVE merge of nested plain objects. Arrays and
+// class instances (Date, Map, Set, etc.) REPLACE — only plain objects
+// recurse. Use this when you want to update a nested key without
+// spreading the parent yourself.
+s.deepPatch({ prefs: { theme: 'dark' } })  // density survives, theme changes
+s.deepPatch({ items: [{ id: 2, label: 'replaced' }] })  // array REPLACES
+
+// `update` — transform a single top-level field via callback. Covers
+// add / remove / filter / map / object-key-delete patterns in one method.
+// The transformer receives `unknown` — cast at the call site if you want
+// stronger inference (future versions will narrow this automatically).
+s.update('count', n => (n as number) + 1)                            // increment
+s.update('items', items => (items as Item[]).filter(x => x.id !== 1))  // remove
+s.update('items', items => [...(items as Item[]), newItem])           // append
+s.update('prefs', prefs => ({ ...(prefs as Prefs), theme: 'dark' }))  // edit nested
+```
+
+All four methods validate the merged result against the schema and either throw or invoke `onValidationError` if configured. The choice between them:
+
+| Method | Shape | Merge depth | Use when |
+| --- | --- | --- | --- |
+| `set(full)` | full state | n/a (replaces) | resetting to a known full shape |
+| `patch(partial)` | top-level partial | shallow (depth-1) | replacing one or more top-level fields |
+| `deepPatch(partial)` | recursive partial | deep (plain objects only) | updating nested fields without spreading the parent |
+| `update(key, fn)` | one field | n/a (transformer-controlled) | array filter/append, object key delete/add, primitive math |
+
+### Validation rules
+
+- **`set(full)` and `patch(partial)` validate.** Invalid input throws (or invokes `onValidationError` if provided). State stays at its previous value on failure.
+- **Direct signal writes bypass validation** by design — `store.fieldName.set(v)` is an escape hatch for hot paths where the per-write schema parse cost (~50-200µs) matters. For guaranteed validation, route through `set` or `patch`.
+- **Initial is validated once at defineStore-time.** Invalid initial throws immediately. Schema defaults (`z.string().default('Alice')`) and transforms are applied — the PARSED value is written to signals.
+- **Async validators are unsupported.** A schema whose validator returns a `Promise` is rejected at defineStore-time. Use `@pyreon/form` for async refinements.
+
+### Validation error handling
+
+By default, validation failures throw. Provide `onValidationError` to suppress the throw and handle errors yourself (e.g. show a toast):
+
+```ts
+defineStore('user', {
+  schema: UserSchema,
+  initial: { name: 'Alice', age: 30 },
+  onValidationError: (issues, op) => {
+    toast.error(`${op}: ${issues.map(i => i.message).join(', ')}`)
+  },
+})
+```
+
+### Limitations
+
+- **Top-level fields only get signals.** Nested objects (e.g. `prefs: { theme: 'light' }`) remain as values inside the parent signal. To update `prefs.theme` without spreading the parent, use `deepPatch({ prefs: { theme: 'dark' } })` — recursive signal-ization is intentionally not supported (it would require library-specific schema introspection).
+- **Reserved StoreApi keys.** Schema field names cannot collide with `StoreApi` methods (`set`, `patch`, `deepPatch`, `update`, etc.) — defineStore throws at construction with a clear message.
+- **`update`'s transformer is currently `(current: unknown) => unknown`.** The key is constrained to `keyof T & string` (typos fail typecheck), but the value type is not yet inferred from the schema — cast at the call site. A future refinement will narrow the transformer signature to the schema-inferred field type.
+
 ## Composing Stores
 
 Stores can use other stores. Simply call the other store's hook inside your setup function:

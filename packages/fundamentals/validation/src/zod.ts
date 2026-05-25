@@ -1,5 +1,5 @@
 import type { SchemaValidateFn, ValidateFn, ValidationError } from '@pyreon/form'
-import type { TypedSchemaAdapter, ValidationIssue } from './types'
+import type { ParseResult, TypedSchemaAdapter, ValidationIssue } from './types'
 import { issuesToRecord } from './utils'
 
 /**
@@ -72,9 +72,26 @@ export function zodSchema<TValues extends Record<string, unknown>>(
     }
   }
 
+  // Sync parse path for @pyreon/store's schema-driven defineStore.
+  // Uses `safeParse` (NOT `safeParseAsync`) — async refinements are
+  // unsupported in store mode (caller throws at defineStore-time).
+  const parse = (value: unknown): ParseResult<TValues> => {
+    try {
+      const r = schema.safeParse(value)
+      if (r.success) return { ok: true, value: r.data as TValues }
+      return { ok: false, issues: zodIssuesToGeneric(r.error?.issues ?? []) }
+    } catch (err) {
+      return {
+        ok: false,
+        issues: [{ path: '', message: err instanceof Error ? err.message : String(err) }],
+      }
+    }
+  }
+
   return {
     _infer: undefined as any,
     validator,
+    parse,
   }
 }
 

@@ -92,7 +92,134 @@ patch({ count: 42 })`,
         'Mutating state by reassigning `store.count` — it is a frozen accessor; write via `store.increment()` (an action) or `patch({ count })`. Direct property assignment is silently ineffective',
         'Registering an `addStorePlugin` AFTER the store was first created and expecting it to apply — plugins run only at creation time. The already-created store never sees it (see `addStorePlugin` mistakes)',
       ],
-      seeAlso: ['StoreApi', 'addStorePlugin', 'resetStore'],
+      seeAlso: ['StoreApi', 'addStorePlugin', 'resetStore', 'defineStore (schema mode)'],
+    },
+    {
+      name: 'defineStore (schema mode)',
+      kind: 'function',
+      signature:
+        '<S, U extends Record<string, unknown> = {}>(id: string, config: SchemaStoreConfig<S, U>) => () => SchemaStoreApi<SignalsOf<InferSchema<S>> & U>',
+      summary:
+        "Schema-driven `defineStore` overload. Accepts a `TypedSchemaAdapter` (from `@pyreon/validation` — Tier A.1) OR a Standard Schema-compliant schema (Tier A.2, e.g. raw zod 3.24+ / valibot 1.0+ / arktype 2.0+ / Effect Schema) plus an `initial` state. Field types are inferred from the schema — zero manual annotations. Returns a hook whose `store` exposes per-field signals at the top level alongside any setup-returned actions/computeds. `set` (full replace) and `patch` (partial merge) validate every write through the schema; direct signal writes (`store.field.set(v)`) bypass validation by design as an escape hatch for hot paths. The PARSED initial is written to signals — zod `.default()` / `.transform()` work correctly. Async validators are rejected at `defineStore`-time. For libraries without Standard Schema support (yup, joi, ajv, io-ts, etc.), users author a 5-10 line adapter (Tier B) matching the `_infer` + `parse` shape.",
+      example: `import { zodSchema } from '@pyreon/validation'
+import { defineStore, computed } from '@pyreon/store'
+import { z } from 'zod'
+
+const UserSchema = zodSchema(z.object({
+  name: z.string().min(1),
+  age: z.number(),
+}))
+
+const useUser = defineStore('user', {
+  schema: UserSchema,
+  initial: { name: '', age: 0 },
+  setup: ({ state }) => ({
+    // state.name: Signal<string>  ← inferred from schema
+    // state.age:  Signal<number>
+    greet: computed(() => \`Hello, \${state.name()}\`),
+  }),
+})
+
+const u = useUser()
+u.store.name()                              // Signal read
+u.store.greet()                             // computed
+u.set({ name: 'Alice', age: 30 })           // validates + replaces
+u.patch({ age: 31 })                        // validates merged + writes only changed
+u.store.age.set(-1)                         // direct write — bypasses validation`,
+      mistakes: [
+        '**Direct signal writes bypass validation.** `store.fieldName.set(v)` writes directly to the underlying signal — the schema is NOT consulted. Intentional escape hatch for hot paths, but easy to hit by accident. Use `.set(full)` or `.patch(partial)` for guaranteed validation',
+        '**Top-level fields only get signals.** Nested objects (e.g. `prefs: { theme: "light" }`) remain as VALUES inside the parent signal. To mutate a nested field: `patch({ prefs: { ...store.prefs(), theme: "dark" } })`. Recursive signal-ization is NOT supported — would require library-specific schema introspection',
+        '**Async validators are unsupported.** If the schema validator returns a Promise, `defineStore` throws at definition-time. Use `@pyreon/form` for async refinements, or validate manually before calling `.set()`',
+        '**`initial` is validated ONCE at defineStore-time.** A bad initial throws immediately (fail-fast). The PARSED initial (defaults applied, transforms run) is what gets written to signals — `z.string().default("Alice")` with `initial: { name: undefined }` yields `store.name() === "Alice"`',
+        '**Reserved StoreApi keys can\'t be schema fields.** `set` is reserved on the returned API. A schema with `set: z.string()` throws at defineStore-time. Rename the schema field',
+        '**setup() return-value collision with schema fields throws.** If your setup returns `{ name: ... }` but `name` is also a schema field, defineStore throws. Schema field signals always live on `store` at the top level — actions/computeds named identically would silently overwrite them, so the check is strict',
+        '**`patch((s) => ...)` (functional form) skips validation.** The functional patch receives raw signals and is an explicit escape hatch. Use object form `patch({ key: value })` for validated writes',
+        "**`onValidationError` callback suppresses the throw.** When set, validation failures invoke the callback with `{ issues, op }` and skip the write — state stays at its previous value. Without the callback, the same failure throws. Choose the mode that matches your UX (e.g. callback → show toast; throw → developer-time error boundary)",
+      ],
+      seeAlso: ['SchemaStoreApi', 'SchemaStoreConfig', 'SchemaStoreContext', 'StoreApi'],
+    },
+    {
+      name: 'SchemaStoreApi',
+      kind: 'type',
+      signature:
+        'interface SchemaStoreApi<T> extends StoreApi<T> { set(next): void; deepPatch(partial): void; update<K extends keyof T>(key: K, fn): void }',
+      summary:
+        'Return type of the schema-driven `defineStore` overload. Extends `StoreApi<T>` with four validated mutation methods: `set(next)` REPLACES the whole state atomically; `patch(partial)` SHALLOW-merges top-level fields (inherited from StoreApi, wrapped to validate the merged result); `deepPatch(partial)` recursively merges nested plain objects while REPLACING arrays / class instances / primitives; `update(key, transformer)` transforms a single field via callback (covers add / remove / map / filter / object-key-delete in one method). All four validate the merged result against the schema and throw on failure (or invoke `onValidationError` if configured). Direct signal writes (`store.field.set(v)`) bypass validation by design — the documented escape hatch.',
+      example: `const u = useUser()  // SchemaStoreApi<{ name: Signal<string>; prefs: Signal<{theme: string}> }>
+u.set({ name: 'Alice', prefs: { theme: 'dark' } })   // full replace, validated
+u.patch({ name: 'Bob' })                              // shallow per-field replace, validated
+u.deepPatch({ prefs: { theme: 'dark' } })             // deep-merge nested objects, validated
+u.update('items', items => items.filter(x => x.id !== 1))  // transform single field, validated`,
+      mistakes: [
+        'Passing the wrong shape to `set` — it requires the FULL state matching the schema. Use `patch` / `deepPatch` for partial updates',
+        'Expecting `set` to silently merge — it REPLACES. Use `patch` (shallow) or `deepPatch` (recursive) to merge with current state',
+        'Using `patch({ prefs: { theme: "dark" } })` expecting other `prefs` keys to survive — `patch` is SHALLOW, the whole `prefs` object is replaced. Use `deepPatch` for nested-object merging',
+        '`deepPatch` REPLACES arrays / class instances / Dates — it only recurses into PLAIN objects. To merge an array, use `update` with a callback',
+        'Using `update` for multi-field changes — it transforms ONE top-level field at a time. For multi-field updates, use `patch` / `deepPatch` / `set`',
+        'Expecting `update`\'s transformer to receive a strongly-typed value — current signature passes `unknown`. Cast at the call site (`(n as number) + 1`); future versions will infer from the schema',
+      ],
+      seeAlso: ['defineStore (schema mode)', 'DeepPartial', 'StoreApi'],
+    },
+    {
+      name: 'DeepPartial',
+      kind: 'type',
+      signature: 'type DeepPartial<T> = T extends ReadonlyArray<unknown> ? T : T extends object ? { readonly [K in keyof T]?: DeepPartial<T[K]> } : T',
+      summary:
+        'Recursive partial — every property optional at every depth. Used by `SchemaStoreApi.deepPatch` as the partial-shape constraint. Arrays and primitives pass through unchanged (because `deepPatch` REPLACES them); only plain objects get the recursive optional treatment, matching the runtime merge semantics.',
+      example: `// State { count: number; prefs: { theme: string; density: string } }
+// DeepPartial admits:
+deepPatch({ count: 5 })                          // primitive field
+deepPatch({ prefs: { theme: 'dark' } })          // partial nested object — density survives
+deepPatch({ prefs: { theme: 'dark', density: 'compact' } })  // full nested object
+// Arrays REPLACE — DeepPartial<T[]> = T[], must pass full array shape`,
+      mistakes: [
+        '`DeepPartial<T[]>` is `T[]` (no element-level optionality) — arrays REPLACE in `deepPatch`. To mutate array contents, use `update`',
+        'Class instances (Date, Map, Set) keep their full shape under `DeepPartial` — they are NOT plain objects and replace wholesale',
+      ],
+      seeAlso: ['SchemaStoreApi'],
+    },
+    {
+      name: 'SchemaStoreConfig',
+      kind: 'type',
+      signature:
+        'interface SchemaStoreConfig<S, U> { schema: S; initial: InferSchema<S>; setup?: (ctx: SchemaStoreContext<InferSchema<S>>) => U; onValidationError?: (issues: SchemaIssue[], op: "set" | "patch" | "init") => void }',
+      summary:
+        "Config object passed as the 2nd arg of the schema-mode `defineStore` overload. `schema` accepts either a Pyreon `TypedSchemaAdapter` (from `@pyreon/validation`) or a Standard Schema-compliant instance — duck-typed at runtime. `initial` is validated once at definition time; the parsed (coerced) value is written to signals. `setup` (optional) runs once at store-creation; it receives the per-field signals + validated mutation helpers. `onValidationError`, if provided, replaces the default throw-on-invalid behavior — useful for non-fatal UX (e.g. show a toast instead of crashing the render).",
+      example: `defineStore('user', {
+  schema: zodSchema(z.object({ name: z.string(), age: z.number() })),
+  initial: { name: '', age: 0 },
+  setup: ({ state, set, patch, reset }) => ({
+    greet: computed(() => 'Hi, ' + state.name()),
+  }),
+  onValidationError: (issues, op) => toast.error(\`\${op}: \${issues.length} errors\`),
+})`,
+      mistakes: [
+        '`schema` must carry the type-inference brand — pass `zodSchema(z.object(...))`, not `z.object(...)` directly (for the Tier A.1 path). For Tier A.2 (Standard Schema), pass the raw schema — auto-detected via `~standard`',
+        '`initial` is REQUIRED and is type-checked against `InferSchema<S>`. A bad shape is a TypeScript error',
+        '`setup`-returned keys MUST NOT collide with schema field names — defineStore throws at construction',
+      ],
+      seeAlso: ['defineStore (schema mode)', 'SchemaStoreContext'],
+    },
+    {
+      name: 'SchemaStoreContext',
+      kind: 'type',
+      signature:
+        'interface SchemaStoreContext<T> { state: SignalsOf<T>; set: (next: T) => void; patch: (partial: Partial<T>) => void; reset: () => void }',
+      summary:
+        'Argument passed to the schema-mode `setup` function. `state` is the per-field signals map (`state.name` is `Signal<string>` etc.). `set` / `patch` / `reset` are validated mutation helpers — calling them from inside setup actions is the canonical way to write validated state.',
+      example: `defineStore('counter', {
+  schema: zodSchema(z.object({ count: z.number().nonnegative() })),
+  initial: { count: 0 },
+  setup: ({ state, patch }) => ({
+    inc: () => patch({ count: state.count() + 1 }),    // validated
+    dec: () => state.count.update(n => n - 1),         // BYPASSES validation — can go negative
+  }),
+})`,
+      mistakes: [
+        '`state.x.set(v)` skips validation — for guaranteed validation, call `set`/`patch` from the context',
+        '`state` contains SIGNALS, not values. Read via `state.x()`; assign via `set`/`patch` or direct `state.x.set()`',
+      ],
+      seeAlso: ['defineStore (schema mode)', 'SchemaStoreConfig'],
     },
     {
       name: 'StoreApi',

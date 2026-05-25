@@ -1,5 +1,5 @@
 import type { SchemaValidateFn, ValidateFn, ValidationError } from '@pyreon/form'
-import type { TypedSchemaAdapter, ValidationIssue } from './types'
+import type { ParseResult, TypedSchemaAdapter, ValidationIssue } from './types'
 import { issuesToRecord } from './utils'
 
 /**
@@ -70,10 +70,10 @@ export function valibotSchema<TValues extends Record<string, unknown>>(
   schema: unknown,
   safeParseFn: GenericSafeParseFn,
 ): TypedSchemaAdapter<TValues> {
-  const parse = safeParseFn as InternalParseFn
+  const runParse = safeParseFn as InternalParseFn
   const validator: SchemaValidateFn<TValues> = async (values: TValues) => {
     try {
-      const result = await parse(schema, values)
+      const result = await runParse(schema, values)
       if (result.success) return {} as Partial<Record<keyof TValues, ValidationError>>
       return issuesToRecord<TValues>(valibotIssuesToGeneric(result.issues ?? []))
     } catch (err) {
@@ -83,9 +83,33 @@ export function valibotSchema<TValues extends Record<string, unknown>>(
     }
   }
 
+  // Sync parse path for @pyreon/store's schema-driven defineStore.
+  // Caller must pass the SYNC `safeParse` (not `safeParseAsync`) — if
+  // they pass async, the result is a Promise and store throws at
+  // defineStore-time. Wrap in try/catch + Promise-detection so the
+  // failure mode is loud, not silent.
+  const parse = (value: unknown): ParseResult<TValues> => {
+    try {
+      const result = runParse(schema, value)
+      if (result instanceof Promise) {
+        // Async safeParseAsync was passed by mistake. Caller (store)
+        // detects this via the Promise return.
+        return result as unknown as ParseResult<TValues>
+      }
+      if (result.success) return { ok: true, value: result.output as TValues }
+      return { ok: false, issues: valibotIssuesToGeneric(result.issues ?? []) }
+    } catch (err) {
+      return {
+        ok: false,
+        issues: [{ path: '', message: err instanceof Error ? err.message : String(err) }],
+      }
+    }
+  }
+
   return {
     _infer: undefined as any,
     validator,
+    parse,
   }
 }
 
