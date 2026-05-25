@@ -15,7 +15,6 @@
   "files": [
     "bin",
     "lib",
-    "!lib/**/*.map",
     "!lib/analysis",
     "LICENSE",
     "README.md"

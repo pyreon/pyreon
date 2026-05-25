@@ -1366,7 +1366,7 @@ pyreon doctor --audit-min-risk high       # tighten test-environment audit
 | `react-patterns`  | correctness      | fast  | `useState` / `useEffect` / `className` / React imports      |
 | `pyreon-patterns` | correctness      | fast  | 14 Pyreon-specific anti-patterns (signal-write-as-call, …)  |
 | `lint`            | correctness      | fast  | All 67 `@pyreon/lint` rules                                 |
-| `distribution`    | architecture     | fast  | `sideEffects` + `!lib/**/*.map` in published packages       |
+| `distribution`    | architecture     | fast  | `sideEffects` declared + source maps shipped (not excluded) |
 | `doc-claims`      | documentation    | fast  | Hand-quoted numeric claims in docs match the source         |
 | `audit-tests`     | testing          | fast  | Mock-vnode test patterns (PR #197 bug class)                |
 | `islands-audit`   | architecture     | fast  | Cross-file island foot-guns (5 detector codes)              |
@@ -1479,16 +1479,18 @@ The wildcard is intentional — it mirrors the convention used by every official
 `scripts/check-distribution.ts` enforces two static invariants on every published `@pyreon/*` package:
 
 1. **`sideEffects` field declared** — required for bundlers (Vite, Webpack, Rollup, esbuild) to tree-shake unused exports. A missing field forces the bundler to assume every imported module has side effects, defeating tree-shaking even for pure library code.
-2. **Source maps excluded from the published tarball** — the package's `files` array must include `"!lib/**/*.map"`, which excludes both `.js.map` and `.d.ts.map`. Source maps are useful for in-repo development but ship as ~19MB of pure overhead across the monorepo otherwise.
+2. **Source maps shipped (NOT excluded from `files`)** — the package's `files` array must NOT include `"!lib/**/*.map"`. Maps make framework stack traces readable for users — every major JS library (React, Vue, Solid, Preact, Svelte, TanStack) ships them. Bundlers strip maps from production builds automatically; they never reach end users. Excluding them ships minified framework code with no way to debug.
 
 ```bash
 bun run check-distribution         # exit non-zero if violations
 bun run check-distribution --json  # machine-readable
 ```
 
-CI runs this on every PR as a required `Check Distribution` job. The gate ALSO simulates `npm pack --dry-run` against `@pyreon/reactivity` and asserts the would-be-published tarball lists zero `.map` files — catching the case where the `files` field is technically right but npm's interpretation diverges. Bisect-verified: removing `sideEffects` fails with `missing-sideEffects`; removing `!lib/**/*.map` fails with both `missing-map-exclusion` (config) AND `tarball-contains-map` (live pack proof).
+CI runs this on every PR as a required `Check Distribution` job. The gate ALSO simulates `npm pack --dry-run` against `@pyreon/reactivity` and asserts the would-be-published tarball contains at least one `.map` file — catching the case where the `files` field is technically right but npm's interpretation strips them anyway. Bisect-verified: removing `sideEffects` fails with `missing-sideEffects`; adding `!lib/**/*.map` back to `files` fails with both `excludes-source-maps` (config) AND `tarball-missing-maps` (live pack proof).
 
-Adding a new published package: declare `sideEffects` (`false` for pure libraries, an array for entry-point side effects) and include `"!lib/**/*.map"` in `files` right after `"lib"`. The gate refuses to merge without both.
+Adding a new published package: declare `sideEffects` (`false` for pure libraries, an array for entry-point side effects) and do NOT add `"!lib/**/*.map"` to `files`. The gate refuses to merge if either invariant is violated.
+
+**Historical note** — pre-2026-05, the framework excluded maps via `!lib/**/*.map` to save ~19MB across the monorepo per publish. The trade-off was wrong for a 0.x framework where consumers actively debug into internals: install footprint is invisible (~350KB-1MB extra per package, never reaches production bundles), while opaque stack traces (`lib/index.js:1:42857`) are visible every time a user hits a framework bug. The flip aligns Pyreon with every comparable library (React, Vue, Solid, Preact, Svelte, TanStack) — all ship maps.
 
 ## Check Doc Claims — numeric drift gate
 

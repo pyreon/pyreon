@@ -32,7 +32,7 @@ pyreon doctor --format text|json|gha   # explicit format (alternative to --json 
 | `react-patterns`  | correctness   | fast  | `useState` / `useEffect` / `className` / React imports         |
 | `pyreon-patterns` | correctness   | fast  | 15 Pyreon-specific anti-patterns (`detectPyreonPatterns`)      |
 | `lint`            | varies        | fast  | All 80 `@pyreon/lint` rules                                    |
-| `distribution`    | architecture  | fast  | `sideEffects` declared, `!lib/**/*.map` excluded from `files`  |
+| `distribution`    | architecture  | fast  | `sideEffects` declared, source maps shipped (not excluded)     |
 | `doc-claims`      | documentation | fast  | Hand-quoted numeric claims agree with source of truth          |
 | `audit-tests`     | testing       | fast  | Mock-vnode test patterns (PR #197 bug class)                   |
 | `islands-audit`   | architecture  | fast  | Cross-file island foot-guns (5 detector codes)                 |

@@ -16,7 +16,6 @@
   "files": [
     "bin",
     "lib",
-    "!lib/**/*.map",
     "!lib/analysis",
     "templates",
     "LICENSE",

@@ -91,7 +91,7 @@ describe('runDistributionGate', () => {
       JSON.stringify({
         name: '@pyreon/ok',
         sideEffects: false,
-        files: ['lib', '!lib/**/*.map'],
+        files: ['lib'],
       }),
     )
 
@@ -108,14 +108,18 @@ describe('runDistributionGate', () => {
 
   it('emits findings with the expected code prefixes when invariants fail', async () => {
     // Create a synthetic broken package: published (no `private`),
-    // missing both sideEffects AND files-array map exclusion.
+    // missing sideEffects AND excludes source maps (regressed back to
+    // the pre-inversion shape).
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-dist-gate-'))
     fs.mkdirSync(path.join(tmp, 'packages', 'fundamentals', 'broken'), {
       recursive: true,
     })
     fs.writeFileSync(
       path.join(tmp, 'packages', 'fundamentals', 'broken', 'package.json'),
-      JSON.stringify({ name: '@pyreon/broken', files: ['lib'] }),
+      JSON.stringify({
+        name: '@pyreon/broken',
+        files: ['lib', '!lib/**/*.map'],
+      }),
     )
 
     const result = await runDistributionGate({ cwd: tmp, skipPackProbe: true })
@@ -123,7 +127,7 @@ describe('runDistributionGate', () => {
 
     const codes = result.findings.map((f) => f.code).sort()
     expect(codes).toContain('distribution/missing-sideEffects')
-    expect(codes).toContain('distribution/missing-map-exclusion')
+    expect(codes).toContain('distribution/excludes-source-maps')
     for (const f of result.findings) {
       expect(f.severity).toBe('error')
       expect(f.message).toContain('@pyreon/broken')
@@ -544,7 +548,7 @@ describe('_detectMapsInPackOutput', () => {
   const probe = { dir: '/repo/packages/core/reactivity' }
   const cwd = '/repo'
 
-  it('returns null when the tarball has no .map files', () => {
+  it('emits tarball-missing-maps finding when the tarball has no .map files', () => {
     const raw = JSON.stringify([
       {
         files: [
@@ -560,10 +564,18 @@ describe('_detectMapsInPackOutput', () => {
       probe,
       '@pyreon/reactivity',
     )
-    expect(result).toBeNull()
+    expect(result).not.toBeNull()
+    expect(result!.code).toBe('distribution/tarball-missing-maps')
+    expect(result!.severity).toBe('error')
+    expect(result!.gate).toBe('distribution')
+    expect(result!.message).toContain('@pyreon/reactivity')
+    expect(result!.message).toContain('0 .map files')
+    expect(result!.location?.relPath).toBe(
+      'packages/core/reactivity/package.json',
+    )
   })
 
-  it('emits tarball-contains-map finding when .map files leak in', () => {
+  it('returns null when .map files are present in the tarball', () => {
     const raw = JSON.stringify([
       {
         files: [
@@ -579,43 +591,14 @@ describe('_detectMapsInPackOutput', () => {
       probe,
       '@pyreon/reactivity',
     )
-    expect(result).not.toBeNull()
-    expect(result!.code).toBe('distribution/tarball-contains-map')
-    expect(result!.severity).toBe('error')
-    expect(result!.gate).toBe('distribution')
-    expect(result!.message).toContain('@pyreon/reactivity')
-    expect(result!.message).toContain('2 .map file(s)')
-    expect(result!.message).toContain('lib/index.js.map')
-    expect(result!.location?.relPath).toBe(
-      'packages/core/reactivity/package.json',
-    )
-  })
-
-  it('truncates the listed maps to the first 3 with an ellipsis', () => {
-    const raw = JSON.stringify([
-      {
-        files: [
-          { path: 'a.js.map' },
-          { path: 'b.js.map' },
-          { path: 'c.js.map' },
-          { path: 'd.js.map' },
-        ],
-      },
-    ])
-    const result = _detectMapsInPackOutput(
-      raw,
-      cwd,
-      probe,
-      '@pyreon/reactivity',
-    )!
-    expect(result.message).toContain('a.js.map, b.js.map, c.js.map')
-    expect(result.message).toContain('…')
-    expect(result.message).not.toContain('d.js.map')
+    expect(result).toBeNull()
   })
 
   it('handles npm pack output with no files entry gracefully', () => {
     // Some npm versions / edge cases emit an empty array; the gate
-    // shouldn't crash.
+    // shouldn't crash. The static `files`-array check is the
+    // authoritative source of truth, so the live probe stays silent
+    // on malformed output instead of false-positiving.
     const result = _detectMapsInPackOutput('[]', cwd, probe, '@pyreon/x')
     expect(result).toBeNull()
   })

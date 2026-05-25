@@ -75,7 +75,7 @@ Each gate emits findings with a `category`, a `severity` (`error` / `warning` / 
 | `react-patterns` | fast | `correctness` | "Coming from React" mistakes — `useState`, `useEffect`, `className`, `htmlFor`, `onChange` on inputs, `.value` writes, React imports. |
 | `pyreon-patterns` | fast | `correctness` | "Using Pyreon wrong" mistakes — `<For>` missing `by`, destructured props, bundler-coupled dev gates, signal-write-as-call, and 8 more. |
 | `lint` | fast | `correctness` | All `@pyreon/lint` rules across the project. |
-| `distribution` | fast | `architecture` | Published-package hygiene — `sideEffects` declared, source maps excluded from the tarball (`!lib/**/*.map`). |
+| `distribution` | fast | `architecture` | Published-package hygiene — `sideEffects` declared, source maps shipped (not excluded via `!lib/**/*.map`). |
 | `doc-claims` | fast | `documentation` | Numeric claims in human-written docs match the source of truth (hook count, doc-page count). Skipped automatically in non-Pyreon projects. |
 | `audit-tests` | fast | `testing` | The mock-vnode anti-pattern — tests that build `{ type, props, children }` literals instead of going through real `h()`. |
 | `islands-audit` | fast | `architecture` | Cross-file islands detectors — duplicate name, never+registry, registry mismatch, nested island, dead island. |
