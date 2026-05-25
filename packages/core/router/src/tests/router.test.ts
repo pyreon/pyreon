@@ -1,5 +1,6 @@
 import { h, popContext } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
+import { accessInternal, callInternal } from '@pyreon/test-utils'
 import type { ResolvedRoute, RouteRecord } from '../index'
 import { isNotFoundError, NotFoundBoundary, notFound } from '../not-found'
 import { getRedirectInfo, redirect } from '../redirect'
@@ -47,7 +48,7 @@ function resolveOn(routes: RouteRecord[], path: string) {
       ? R
       : never
   }
-  return (router as unknown as { _resolve(p: string): unknown })._resolve(path)
+  return callInternal<'_resolve', unknown>(router, '_resolve', path)
 }
 
 const Home = () => null
@@ -4789,12 +4790,12 @@ describe('View Transitions API', () => {
     // If the fix holds, the loadingSignal decrement hasn't run yet.
     // If the fix regresses (decrement moved above the await), the signal
     // would already be 0 here — this assertion catches that.
-    observations.push((router as unknown as { _loadingSignal: { peek(): number } })._loadingSignal.peek())
+    observations.push(accessInternal<{ _loadingSignal: { peek(): number } }>(router)._loadingSignal.peek())
 
     // Release updateCallbackDone; navigate unwinds, push() settles.
     deferred.resolve?.()
     await pushPromise
-    observations.push((router as unknown as { _loadingSignal: { peek(): number } })._loadingSignal.peek())
+    observations.push(accessInternal<{ _loadingSignal: { peek(): number } }>(router)._loadingSignal.peek())
 
     // Observation 1: in-flight → loadingSignal > 0.
     expect(observations[0]).toBeGreaterThan(0)
