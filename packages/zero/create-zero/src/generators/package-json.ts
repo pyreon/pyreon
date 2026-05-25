@@ -9,6 +9,12 @@
  *
  * All `@pyreon/*` deps share the monorepo version — read from this
  * package's OWN `package.json` at runtime (no manual updates per release).
+ *
+ * For monorepo templates, three shapes are emitted:
+ *   - `monorepo-root`: workspace declaration + proxy scripts; no deps.
+ *   - `monorepo-web` : same as flat, name="web", + `@<scope>/ui` and
+ *                      `@<scope>/types` workspace deps.
+ *   - flat (default) : current behavior — project name + all deps.
  */
 
 import { readFileSync } from 'node:fs'
@@ -32,7 +38,23 @@ const COMPAT_PKG: Record<string, string> = {
   preact: '@pyreon/preact-compat',
 }
 
-export function generatePackageJson(config: ProjectConfig): string {
+export type PackageJsonKind = 'flat' | 'monorepo-root' | 'monorepo-web'
+
+/**
+ * Generate a `package.json` body. `kind` controls the shape:
+ *   - `flat`           — current behavior (project name + all deps).
+ *   - `monorepo-root`  — workspace declaration + proxy scripts; no deps.
+ *   - `monorepo-web`   — same as flat but name="web" + workspace deps for
+ *                        `@<projectName>/ui` and `@<projectName>/types`.
+ */
+export function generatePackageJson(
+  config: ProjectConfig,
+  kind: PackageJsonKind = 'flat',
+): string {
+  if (kind === 'monorepo-root') {
+    return generateMonorepoRootPackageJson(config)
+  }
+
   const deps: Record<string, string> = {
     '@pyreon/core': pyreonVersion('@pyreon/core'),
     '@pyreon/head': pyreonVersion('@pyreon/head'),
@@ -105,6 +127,16 @@ export function generatePackageJson(config: ProjectConfig): string {
   const compatPkg = config.compat !== 'none' ? COMPAT_PKG[config.compat] : undefined
   if (compatPkg) deps[compatPkg] = pyreonVersion(compatPkg)
 
+  // Monorepo: add workspace deps so the web app can import from the shared
+  // packages. The user-visible scope is `@<projectName>/...` (matches the
+  // root workspaces declaration and the package.json names in
+  // packages/ui/ and packages/types/).
+  if (kind === 'monorepo-web') {
+    const scope = basename(config.name)
+    deps[`@${scope}/ui`] = 'workspace:^'
+    deps[`@${scope}/types`] = 'workspace:^'
+  }
+
   const devDeps: Record<string, string> = {
     '@pyreon/vite-plugin': pyreonVersion('@pyreon/vite-plugin'),
     '@pyreon/zero-cli': pyreonVersion('@pyreon/zero-cli'),
@@ -129,7 +161,7 @@ export function generatePackageJson(config: ProjectConfig): string {
   if (config.lint) scripts.lint = 'pyreon-lint .'
 
   const pkg = {
-    name: basename(config.name),
+    name: kind === 'monorepo-web' ? 'web' : basename(config.name),
     version: '0.0.1',
     private: true,
     type: 'module',
@@ -140,5 +172,32 @@ export function generatePackageJson(config: ProjectConfig): string {
     ),
   }
 
+  return `${JSON.stringify(pkg, null, 2)}\n`
+}
+
+/**
+ * Root `package.json` for the monorepo template. Declares Bun workspaces
+ * and proxies dev/build/preview/typecheck to the web app via
+ * `bun run --filter='web' <script>` (Bun picks up the workspace by name).
+ *
+ * Intentionally has no `dependencies` / `devDependencies` — every dep is
+ * declared at the workspace package level (`apps/web/`, `packages/ui/`,
+ * `packages/types/`). The root is the dispatcher, not a code-bearing
+ * package.
+ */
+function generateMonorepoRootPackageJson(config: ProjectConfig): string {
+  const pkg = {
+    name: basename(config.name),
+    version: '0.0.1',
+    private: true,
+    type: 'module',
+    workspaces: ['apps/*', 'packages/*'],
+    scripts: {
+      dev: "bun run --filter='web' dev",
+      build: "bun run --filter='web' build",
+      preview: "bun run --filter='web' preview",
+      typecheck: "bun run --filter='*' typecheck",
+    },
+  }
   return `${JSON.stringify(pkg, null, 2)}\n`
 }

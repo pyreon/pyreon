@@ -4,7 +4,7 @@
  * computed files — `package.json` and `vite.config.ts` — are built by
  * generators in `src/generators/` and written last.
  *
- * Flow:
+ * Flow (flat templates):
  *   1. Copy the picked template's base files (`templates/<template>/`).
  *   2. Copy `templates/_shared/` base (`.gitignore`, `env.d.ts`,
  *      `src/entry-server.ts` with `{{ssrMode}}` substitution). Underscore-
@@ -16,15 +16,20 @@
  *   7. Apply lint overlay (`templates/_shared/_lint/`) when enabled.
  *   8. Generate `package.json` and `vite.config.ts` (runtime — computed).
  *
- * Feature-conditional file removal (the old regex-strip pattern) is
- * GONE — the base template's `src/routes/_layout.tsx` is the no-store
- * variant; the `store` overlay's layout overwrites it when the feature
- * is selected. Same shape for `feature` (moves `src/features/posts.ts`
- * and `src/routes/posts/new.tsx` into the overlay).
+ * Monorepo branch (template === 'monorepo'):
+ *   - Recursively runs the flat pipeline against `<targetDir>/apps/web/`
+ *     using the `app` template shape.
+ *   - Copies the `templates/monorepo/` overlay (root tsconfig, README,
+ *     .gitignore, packages/ui/ + packages/types/) with `{{name}}` and
+ *     `{{pyreonVersion}}` substitution.
+ *   - Writes a root `package.json` with Bun workspaces + proxy scripts.
+ *   - Overwrites the web app's package.json with workspace deps for the
+ *     two shared packages.
  */
 
+import { basename, join, resolve } from 'node:path'
+import { readFileSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
 import { adapterFor } from './adapters'
 import { applyAiTools } from './ai-tools'
 import { generatePackageJson } from './generators/package-json'
@@ -36,6 +41,12 @@ import { type ProjectConfig, templateDir } from './templates'
 const TEMPLATES_ROOT = resolve(import.meta.dirname, '..', 'templates')
 const SHARED_ROOT = resolve(TEMPLATES_ROOT, '_shared')
 const FEATURES_ROOT = resolve(TEMPLATES_ROOT, '_features')
+const MONOREPO_ROOT = resolve(TEMPLATES_ROOT, 'monorepo')
+
+const _ownPkgJson = JSON.parse(
+  readFileSync(resolve(import.meta.dirname, '..', 'package.json'), 'utf-8'),
+) as { version: string }
+const PYREON_VERSION = _ownPkgJson.version
 
 // SSR mode passed to `createServer({ config: { ssr: { mode: '...' } } })`.
 // Note: the user-facing render-mode field has 4 values (`ssr-stream`,
@@ -50,6 +61,14 @@ const SSR_MODE_MAP: Record<ProjectConfig['renderMode'], string> = {
 }
 
 export async function scaffold(config: ProjectConfig): Promise<void> {
+  if (config.template === 'monorepo') {
+    await scaffoldMonorepo(config)
+    return
+  }
+  await scaffoldFlat(config)
+}
+
+async function scaffoldFlat(config: ProjectConfig): Promise<void> {
   // 1. Template base.
   await copyOverlay(templateDir(config.template), config.targetDir)
 
@@ -84,4 +103,41 @@ export async function scaffold(config: ProjectConfig): Promise<void> {
   // 8. Generated files (deps + plugins are computed).
   await writeFile(join(config.targetDir, 'package.json'), generatePackageJson(config))
   await writeFile(join(config.targetDir, 'vite.config.ts'), generateViteConfig(config))
+}
+
+async function scaffoldMonorepo(config: ProjectConfig): Promise<void> {
+  const projectName = basename(config.name)
+
+  // 1. Scaffold the web app FIRST — runs the entire flat pipeline against
+  //    `<targetDir>/apps/web/`. Uses the `app` template shape for the inner
+  //    project. The user's feature/adapter/integration/AI/lint choices all
+  //    apply to the web app.
+  const webTargetDir = join(config.targetDir, 'apps', 'web')
+  const webConfig: ProjectConfig = {
+    ...config,
+    template: 'app',
+    targetDir: webTargetDir,
+  }
+  await scaffoldFlat(webConfig)
+
+  // 2. Rewrite the web app's package.json — name becomes "web" and
+  //    workspace deps for the shared packages are added.
+  await writeFile(
+    join(webTargetDir, 'package.json'),
+    generatePackageJson(webConfig, 'monorepo-web'),
+  )
+
+  // 3. Root-level monorepo files (README, tsconfig, .gitignore, ui/, types/).
+  //    `{{name}}` becomes the project name (used as the scope for shared
+  //    packages); `{{pyreonVersion}}` is the runtime monorepo version.
+  await copyOverlay(MONOREPO_ROOT, config.targetDir, {
+    name: projectName,
+    pyreonVersion: PYREON_VERSION,
+  })
+
+  // 4. Root package.json — workspace declaration + proxy scripts.
+  await writeFile(
+    join(config.targetDir, 'package.json'),
+    generatePackageJson(config, 'monorepo-root'),
+  )
 }
