@@ -1,4 +1,13 @@
-import type { AdapterId, AiToolId, IntegrationId, RenderMode, TemplateId } from './templates'
+import {
+  type AdapterId,
+  type AiToolId,
+  FEATURES,
+  type IntegrationId,
+  type PresetId,
+  PRESETS,
+  type RenderMode,
+  type TemplateId,
+} from './templates'
 
 /**
  * Parsed CLI arguments. Every field is optional — fields with a value
@@ -17,7 +26,14 @@ export interface CliArgs {
   template: TemplateId | undefined
   adapter: AdapterId | undefined
   mode: RenderMode | undefined
+  /** Explicit feature list (--features csv). Mutually exclusive with --preset + --with/--no. */
   features: string[] | undefined
+  /** Preset shortcut — composes with --with-X / --no-X overrides. */
+  preset: PresetId | undefined
+  /** Per-feature additive flags (--with-store). Keys are feature IDs. */
+  withFeatures: Set<string>
+  /** Per-feature subtractive flags (--no-store). Keys are feature IDs. */
+  withoutFeatures: Set<string>
   integrations: IntegrationId[] | undefined
   ai: AiToolId[] | undefined
   compat: 'none' | 'react' | 'vue' | 'solid' | 'preact' | undefined
@@ -25,7 +41,7 @@ export interface CliArgs {
   lint: boolean | undefined
 }
 
-const TEMPLATE_VALUES: TemplateId[] = ['app', 'blog', 'dashboard']
+const TEMPLATE_VALUES: TemplateId[] = ['app', 'blog', 'dashboard', 'monorepo']
 const ADAPTER_VALUES: AdapterId[] = [
   'vercel',
   'cloudflare',
@@ -42,6 +58,8 @@ type PackageStrategy = 'meta' | 'individual'
 
 const COMPAT_VALUES: CompatId[] = ['none', 'react', 'vue', 'solid', 'preact']
 const PKG_STRATEGY_VALUES: PackageStrategy[] = ['meta', 'individual']
+const PRESET_VALUES: PresetId[] = Object.keys(PRESETS) as PresetId[]
+const FEATURE_KEYS: ReadonlySet<string> = new Set(Object.keys(FEATURES))
 
 export function parseArgs(argv: readonly string[]): CliArgs {
   const out: CliArgs = {
@@ -52,6 +70,9 @@ export function parseArgs(argv: readonly string[]): CliArgs {
     adapter: undefined,
     mode: undefined,
     features: undefined,
+    preset: undefined,
+    withFeatures: new Set(),
+    withoutFeatures: new Set(),
     integrations: undefined,
     ai: undefined,
     compat: undefined,
@@ -77,6 +98,28 @@ export function parseArgs(argv: readonly string[]): CliArgs {
         return next
       }
 
+      // Per-feature additive / subtractive flags: --with-store / --no-i18n
+      if (key.startsWith('with-') && key.length > 5) {
+        const feat = key.slice(5)
+        if (!FEATURE_KEYS.has(feat)) {
+          throw new Error(
+            `Unknown feature in --with-${feat}. Known features: ${[...FEATURE_KEYS].sort().join(', ')}.`,
+          )
+        }
+        out.withFeatures.add(feat)
+        continue
+      }
+      if (key.startsWith('no-') && key.length > 3 && key !== 'no-lint') {
+        const feat = key.slice(3)
+        if (!FEATURE_KEYS.has(feat)) {
+          throw new Error(
+            `Unknown feature in --no-${feat}. Known features: ${[...FEATURE_KEYS].sort().join(', ')}.`,
+          )
+        }
+        out.withoutFeatures.add(feat)
+        continue
+      }
+
       switch (key) {
         case 'help':
         case 'h':
@@ -90,6 +133,9 @@ export function parseArgs(argv: readonly string[]): CliArgs {
           break
         case 'no-lint':
           out.lint = false
+          break
+        case 'preset':
+          out.preset = pickEnum(consumeValue(), PRESET_VALUES, '--preset')
           break
         case 'template':
           out.template = pickEnum(consumeValue(), TEMPLATE_VALUES, '--template')
@@ -188,7 +234,7 @@ export function helpText(invokedAs: string): string {
 Scaffold a new Pyreon Zero project.
 
 Templates:
-  --template <id>          app | blog | dashboard
+  --template <id>          app | blog | dashboard | monorepo
 
 Deployment:
   --adapter <id>           vercel | cloudflare | netlify | node | bun | static
@@ -196,10 +242,15 @@ Deployment:
 Rendering:
   --mode <id>              ssr-stream | ssr-string | ssg | spa
 
-Features (csv):
-  --features <list>        store,query,forms,table,virtual,i18n,charts,…
-  --integrations <list>    supabase,email
-  --ai <list>              mcp,claude,cursor,copilot,agents
+Features:
+  --preset <id>            minimal | standard | dashboard | full
+                           (composes with --with-<feat> / --no-<feat>)
+  --features <csv>         store,query,forms,table,virtual,i18n,charts,…
+                           (explicit list — overrides --preset entirely)
+  --with-<feature>         atomic add — e.g. --with-store --with-i18n
+  --no-<feature>           atomic remove — e.g. --no-forms
+  --integrations <csv>     supabase,email
+  --ai <csv>               mcp,claude,cursor,copilot,agents
 
 Other:
   --compat <id>            none | react | vue | solid | preact
@@ -210,7 +261,9 @@ Other:
 
 Examples:
   ${invokedAs} my-app
+  ${invokedAs} my-app --preset dashboard --with-i18n --yes
   ${invokedAs} my-app --template dashboard --adapter vercel --integrations supabase,email --yes
   ${invokedAs} my-blog --template blog --adapter cloudflare --yes
+  ${invokedAs} my-monorepo --template monorepo --preset standard --yes
 `
 }

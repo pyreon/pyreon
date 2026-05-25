@@ -2,7 +2,7 @@ import { resolve } from 'node:path'
 
 // ─── Project config ─────────────────────────────────────────────────────────
 
-export type TemplateId = 'app' | 'blog' | 'dashboard'
+export type TemplateId = 'app' | 'blog' | 'dashboard' | 'monorepo'
 
 export type RenderMode = 'ssr-stream' | 'ssr-string' | 'ssg' | 'spa'
 
@@ -46,6 +46,109 @@ export interface ProjectConfig {
   /** Include @pyreon/lint with recommended preset */
   lint: boolean
 }
+
+// ─── Feature categories + presets ──────────────────────────────────────────
+
+/**
+ * Feature categories — used by the grouped multiselect prompt and the
+ * preset shortcuts. Each feature key must exist in `FEATURES` below.
+ * Ordering matches the visual order in the prompt.
+ */
+export const FEATURE_CATEGORIES = {
+  state: {
+    label: 'State management',
+    features: ['store', 'state-tree', 'storage', 'url-state'] as const,
+  },
+  forms: {
+    label: 'Forms + validation',
+    features: ['forms', 'feature'] as const,
+  },
+  data: {
+    label: 'Data fetching + transforms',
+    features: ['query', 'rx'] as const,
+  },
+  ui: {
+    label: 'UI primitives + animation',
+    features: ['styler', 'elements', 'animations', 'coolgrid'] as const,
+  },
+  collections: {
+    label: 'Collections + tables',
+    features: ['table', 'virtual'] as const,
+  },
+  interactive: {
+    label: 'Interactive widgets',
+    features: ['charts', 'code', 'flow', 'toast'] as const,
+  },
+  i18n: {
+    label: 'Internationalization + accessibility',
+    features: ['i18n', 'hotkeys', 'permissions'] as const,
+  },
+  utility: {
+    label: 'Utility hooks',
+    features: ['hooks'] as const,
+  },
+} as const
+
+/**
+ * Atomic preset shortcuts. Each preset is a (mode, adapter, feature set)
+ * triple — picked via `--preset <name>`. Per-feature flags
+ * (`--with-X` / `--no-X`) compose on top of the preset.
+ *
+ * Templates remain orthogonal — a preset doesn't pick the template; it
+ * just sets the feature/mode/adapter trio that's reasonable for any
+ * chosen template.
+ */
+export const PRESETS = {
+  minimal: {
+    label: 'Minimal — no features, SPA, static deploy',
+    features: [] as readonly string[],
+    mode: 'spa' as const,
+    adapter: 'static' as const,
+  },
+  standard: {
+    label: "Standard — store + query + forms (today's `app` defaults)",
+    features: ['store', 'query', 'forms'] as readonly string[],
+    mode: 'ssr-stream' as const,
+    adapter: 'vercel' as const,
+  },
+  dashboard: {
+    label: 'Dashboard — standard + table + charts',
+    features: ['store', 'query', 'forms', 'table', 'charts'] as readonly string[],
+    mode: 'ssr-stream' as const,
+    adapter: 'vercel' as const,
+  },
+  full: {
+    label: 'Full — every feature on',
+    features: [
+      'store',
+      'state-tree',
+      'storage',
+      'url-state',
+      'forms',
+      'feature',
+      'query',
+      'rx',
+      'styler',
+      'elements',
+      'animations',
+      'coolgrid',
+      'table',
+      'virtual',
+      'charts',
+      'code',
+      'flow',
+      'toast',
+      'i18n',
+      'hotkeys',
+      'permissions',
+      'hooks',
+    ] as readonly string[],
+    mode: 'ssr-stream' as const,
+    adapter: 'vercel' as const,
+  },
+} as const
+
+export type PresetId = keyof typeof PRESETS
 
 // ─── Feature definitions ────────────────────────────────────────────────────
 
@@ -201,6 +304,19 @@ export const TEMPLATES: Record<TemplateId, TemplateMeta> = {
     adapters: ['vercel', 'cloudflare', 'netlify', 'node', 'bun'],
     defaultAdapter: 'vercel',
     defaultIntegrations: ['supabase', 'email'],
+  },
+  monorepo: {
+    id: 'monorepo',
+    label: 'Monorepo',
+    hint: 'Bun workspaces — apps/web/ + packages/ui/ + packages/types/',
+    defaultMode: 'ssr-stream',
+    // Web app gets the `app` template's feature defaults — sensible starting
+    // point for the most common monorepo shape.
+    defaultFeatures: ['store', 'query', 'forms'],
+    forcesMode: false,
+    adapters: ['vercel', 'cloudflare', 'netlify', 'node', 'bun', 'static'],
+    defaultAdapter: 'vercel',
+    defaultIntegrations: [],
   },
 }
 
