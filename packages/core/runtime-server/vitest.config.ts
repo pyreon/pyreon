@@ -1,28 +1,18 @@
-import { mergeConfig } from 'vite'
-import { defineConfig } from 'vitest/config'
-import { sharedConfig } from '../../../vitest.shared'
+import { defineNodeConfig } from '@pyreon/vitest-config'
 
-// This package has all logic in src/index.ts (not just re-exports),
-// so we define coverage config directly instead of using createVitestConfig()
-// which excludes src/**/index.ts by default.
-export default mergeConfig(
-  sharedConfig,
-  defineConfig({
-    test: {
-      globals: true,
-      mockReset: true,
-      include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
-      coverage: {
-        provider: 'v8',
-        include: ['src/**/*.ts', 'src/**/*.tsx'],
-        exclude: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'src/bin/**'],
-        thresholds: {
-          statements: 95,
-          branches: 95,
-          functions: 95,
-          lines: 95,
-        },
-      },
-    },
-  }),
-)
+// runtime-server has its renderToString + full SSR pipeline implemented
+// in src/index.ts directly (not just re-exports). The default coverage
+// exclude list contains `src/**/index.ts`, so we opt in to including it.
+// Threshold is 95/95/95/95 — the package is tightly-covered (no SSR
+// branches behind happy-dom or browser timing gates), so the high floor
+// surfaces real coverage regressions immediately.
+export default defineNodeConfig({
+  category: 'core',
+  includeIndexInCoverage: true,
+  coverageThresholds: {
+    statements: 95,
+    branches: 95,
+    functions: 95,
+    lines: 95,
+  },
+})

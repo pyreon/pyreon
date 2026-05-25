@@ -1,8 +1,7 @@
-import { createVitestConfig } from '@vitus-labs/tools-vitest'
-import { mergeConfig } from 'vite'
-import { nodeExcludeBrowserTests, sharedConfig } from '../../../vitest.shared'
+import { defineNodeConfig } from '@pyreon/vitest-config'
 
-export default mergeConfig(
-  mergeConfig(createVitestConfig({ environment: 'happy-dom' }), sharedConfig),
-  nodeExcludeBrowserTests,
-)
+export default defineNodeConfig({
+  category: 'core',
+  environment: 'happy-dom',
+  excludeBrowserTests: true,
+})

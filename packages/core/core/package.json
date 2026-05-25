@@ -55,6 +55,7 @@
     "@pyreon/reactivity": "workspace:^"
   },
   "devDependencies": {
-    "@pyreon/manifest": "workspace:*"
+    "@pyreon/manifest": "workspace:*",
+    "@pyreon/vitest-config": "workspace:*"
   }
 }
