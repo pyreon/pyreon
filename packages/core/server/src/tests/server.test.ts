@@ -1,6 +1,7 @@
 import type { ComponentFn, VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { RouterView } from '@pyreon/router'
+import { accessInternal } from '@pyreon/test-utils'
 import { createHandler } from '../handler'
 import {
   buildClientEntryTag,
@@ -576,7 +577,7 @@ describe('island', () => {
       name: 'Counter',
     })
     expect(typeof Counter).toBe('function')
-    expect((Counter as unknown as { __island: boolean }).__island).toBe(true)
+    expect(accessInternal<{ __island: boolean }>(Counter).__island).toBe(true)
     expect(Counter.name).toBe('Counter')
   })
 

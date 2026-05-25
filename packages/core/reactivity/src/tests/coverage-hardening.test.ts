@@ -9,6 +9,7 @@
  * unexercised. Each test here asserts real observable behaviour of one of
  * those previously-uncovered branches; none games coverage.
  */
+import { accessInternal } from '@pyreon/test-utils'
 import { batch } from '../batch'
 import { Cell } from '../cell'
 import { computed } from '../computed'
@@ -216,13 +217,13 @@ describe('computed — error handler and direct updaters', () => {
     const unsub = c.direct(() => seen.push(c()))
 
     // `_d` getter (computed.ts:243-247) exposes the live direct-updater set.
-    expect((c as unknown as { _d: Set<unknown> })._d.size).toBe(1)
+    expect(accessInternal<{ _d: Set<unknown> }>(c)._d.size).toBe(1)
 
     src.set(5)
     expect(seen).toEqual([10])
 
     unsub()
-    expect((c as unknown as { _d: Set<unknown> })._d.size).toBe(0)
+    expect(accessInternal<{ _d: Set<unknown> }>(c)._d.size).toBe(0)
     src.set(7)
     expect(seen).toEqual([10]) // no further direct notifications
   })
