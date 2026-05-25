@@ -139,6 +139,12 @@ for (const pkg of zeroPackages) {
 export const sharedConfig: VitestUserConfig = {
   resolve: { alias, conditions: ['bun'] },
   test: {
+    // Re-install `localStorage` on globalThis when happy-dom is active.
+    // Vitest's adapter excludes it because Node 22+ defines an
+    // experimental getter; see vitest.setup.ts for the full story.
+    // Absolute path — the setup file must resolve from any package's
+    // vitest run, not just the workspace root.
+    setupFiles: [resolve(root, 'vitest.setup.ts')],
     // Vitest's default 5000ms is too tight for tests that do
     // `await import(...)` on Pyreon's transitively-deep module graphs
     // (rocketstyle + attrs + styler + unistyle chain, ECharts dynamic
