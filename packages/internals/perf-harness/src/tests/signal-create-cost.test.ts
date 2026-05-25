@@ -34,7 +34,47 @@ describe('signal creation cost', () => {
     expect(outcome.after['reactivity.signalCreate']).toBe(10_000)
     // oxlint-disable-next-line no-console
     console.log(`[signal-create] 10k signals in ${elapsed.toFixed(1)}ms`)
-    // 10k signals should complete in well under 100ms on any dev machine.
+    // 10k signals — RUNTIME-ONLY worst case threshold.
+    //
+    // This test does NOT load `@pyreon/vite-plugin` (the perf-harness
+    // vitest config is plain `environment: 'node'`), so every signal
+    // pays the always-on `_captureCallerLocation` cost (~30µs in V8 +
+    // Bun's expensive `.stack` formatting). Real vite-built apps short-
+    // circuit to the build-time-injected `__sourceLocation` and pay
+    // 0µs/signal regardless of count — that path is exercised by the
+    // sibling 'vite-injected fast path' test below.
+    //
+    // Steady-state baseline: ~36µs/signal × 10k = ~360ms. Threshold
+    // gives 2× headroom for CI parallel-load variance. Going above
+    // 800ms suggests an allocation-pathology regression (e.g. stack
+    // capture became super-linear, FinalizationRegistry GC pressure,
+    // or NodeRec grew).
+    expect(elapsed).toBeLessThan(800)
+  })
+
+  it('creating 10000 signals with __sourceLocation (vite-injected path) stays cheap', async () => {
+    // Production path: `@pyreon/vite-plugin` rewrites `signal(0)` →
+    // `signal(0, { __sourceLocation })` at build time so the runtime
+    // `_captureCallerLocation` short-circuits. This proves the always-on
+    // capture has ZERO impact on real vite-built apps regardless of
+    // signal count.
+    const injected = { file: '/fake/build/path.ts', line: 1, col: 1 }
+    const t0 = performance.now()
+    const outcome = await perfHarness.record('create-10k-injected', () => {
+      const all: unknown[] = []
+      for (let i = 0; i < 10_000; i++)
+        all.push(signal(i, { __sourceLocation: injected }))
+    })
+    const elapsed = performance.now() - t0
+    expect(outcome.after['reactivity.signalCreate']).toBe(10_000)
+    // oxlint-disable-next-line no-console
+    console.log(`[signal-create] 10k vite-injected signals in ${elapsed.toFixed(1)}ms`)
+    // Without stack capture, 10k signals should complete in well under
+    // 100ms on any dev machine. 200ms threshold matches the OLD
+    // runtime-only threshold (pre-#913, when devtools was opt-in and
+    // _captureCallerLocation early-returned) — proving the vite-injected
+    // path under the NEW always-on contract is at parity with the OLD
+    // always-off contract.
     expect(elapsed).toBeLessThan(200)
   })
 
