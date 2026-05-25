@@ -7,8 +7,6 @@ import { effect, runUntracked, signal } from '@pyreon/reactivity'
 // pattern was dead code in real Vite browser bundles because Vite does not
 // polyfill `process` for the client — every wrapped warning silently never
 // fired in dev. Enforced by the `pyreon/no-process-dev-gate` lint rule.
-const __DEV__ = process.env.NODE_ENV !== 'production'
-
 export interface TransitionProps {
   /**
    * CSS class name prefix.
@@ -229,7 +227,7 @@ export function Transition(props: TransitionProps): VNodeChild {
     const vnode = rawChild as VNode
     // Only inject ref into DOM element children — component children need ref forwarding
     if (typeof vnode.type !== 'string') {
-      if (__DEV__) {
+      if (process.env.NODE_ENV !== 'production') {
         console.warn(
           '[Pyreon] Transition child is a component. Wrap it in a DOM element for enter/leave animations to work.',
         )

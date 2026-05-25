@@ -5,7 +5,6 @@
 // Dev-mode invariant gate: see https://github.com/pyreon/pyreon/blob/main/packages/core/reactivity/src/tests/batch.test.ts
 // for the property-based test that fuzzes random cascade graphs against this
 // invariant. The build-time gate folds to dead code in production bundles.
-const __DEV__ = process.env.NODE_ENV !== 'production'
 
 let batchDepth = 0
 
@@ -101,7 +100,7 @@ export function batch(fn: () => void): void {
           // tier 1 to drain any recomputes the effects enqueued.
           if (pendingEffects.size > 0) {
             if (++effectPass > MAX_PASSES) {
-              if (__DEV__) {
+              if (process.env.NODE_ENV !== 'production') {
                 // Surface labels of dropped effects when available — helps
                 // identify the offending effect in a real app. Falls back to
                 // bare count for anonymous effects.

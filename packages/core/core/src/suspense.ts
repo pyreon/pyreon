@@ -3,8 +3,6 @@ import type { Props, VNode, VNodeChild } from './types'
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
-const __DEV__ = process.env.NODE_ENV !== 'production'
-
 /** Internal marker attached to lazy()-wrapped components */
 export type LazyComponent<P extends Props = Props> = ((props: P) => VNodeChild) & {
   __loading: () => boolean
@@ -24,7 +22,7 @@ export type LazyComponent<P extends Props = Props> = ((props: P) => VNodeChild) 
  *   <Suspense fallback={<Spinner />}><Page /></Suspense>
  */
 export function Suspense(props: { fallback: VNodeChild; children?: VNodeChild }): VNode {
-  if (__DEV__ && props.fallback === undefined) {
+  if (process.env.NODE_ENV !== 'production' && props.fallback === undefined) {
     // oxlint-disable-next-line no-console
     console.warn(
       '[Pyreon] <Suspense> is missing a `fallback` prop. Provide fallback UI to show while loading.',

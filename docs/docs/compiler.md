@@ -847,6 +847,77 @@ _tpl('<div><span></span><span></span></div>', (__root) => {
 
 Changing `firstName` only re-executes `__d0`, not `__d1`. This is fine-grained reactivity at the individual text node level.
 
+## Auto-promoted Fast Paths
+
+For canonical reactive patterns the compiler emits an **effect-free** subscription instead of the default `_bind(() => …)` wrap. Same observed behaviour, ~5 → ~2 allocations per binding, no `renderEffect` machinery setup. Three shapes are auto-promoted today; all share the same conservative bail catalog (uncertain ⇒ no promotion).
+
+### `selector(k) ? a : b` ternary in className/attr bindings (PR #898)
+
+```tsx
+const isSelected = createSelector(selectedId)
+;<For each={rows} by={(r) => r.id}>
+  {(row) => <tr class={() => isSelected(row.id) ? 'selected' : ''}>...</tr>}
+</For>
+
+// Compiles to (effect-free per-key fast path):
+const __d0 = isSelected.subscribe(row.id, (m) => {
+  __root.className = (m ? 'selected' : '')
+})
+
+// Instead of the default _bind(() => …) shape:
+const __d0 = _bind(() => {
+  __root.className = isSelected(row.id) ? 'selected' : ''
+})
+```
+
+The runtime API (`createSelector.subscribe`) ships with `@pyreon/reactivity` 0.25+. The promoted updater receives a boolean and applies the ternary inline; only the deselected and newly-selected rows re-run on selection change, never the entire `<For>` list.
+
+### `selector(k) ? a : b` ternary as a text-child (PR #899)
+
+```tsx
+<For each={rows} by={(r) => r.id}>
+  {(row) => <td>{() => isSelected(row.id) ? '✓' : ''}</td>}
+</For>
+
+// Compiles to:
+const __d0 = isSelected.subscribe(row.id, (m) => {
+  __t0.data = (m ? '✓' : '')
+})
+```
+
+Companion to the className path — same detector, different emission target. Common in row checkmark / badge columns of selection-bound tables.
+
+### `signalRef().method(...args)` formatter in text-child bindings (PR #899)
+
+```tsx
+const count = signal(0)
+const name = signal('hello')
+;<span>{count().toFixed(2)}</span>
+;<h2>{name().toUpperCase()}</h2>
+;<code>{n().toString(16)}</code>
+
+// Compile to (subscribes directly to the signal, applies formatter in updater):
+const __d0 = _bindDirect(count, (v) => { __t0.data = v.toFixed(2) })
+const __d1 = _bindDirect(name, (v) => { __t1.data = v.toUpperCase() })
+const __d2 = _bindDirect(n, (v) => { __t2.data = v.toString(16) })
+```
+
+Detects `signalRef().method(...staticArgs)` where the method is in a curated safelist of pure Number / String / Boolean prototype methods (`toFixed`, `toExponential`, `toPrecision`, `toString`, `valueOf`, `toUpperCase`, `toLowerCase`, `toLocaleUpperCase`, `toLocaleLowerCase`, `trim`, `trimStart`, `trimEnd`, `slice`, `substring`, `substr`, `charAt`, `charCodeAt`, `codePointAt`, `padStart`, `padEnd`, `repeat`, `normalize`, `concat`, `startsWith`, `endsWith`, `includes`, `indexOf`, `lastIndexOf`, `at`). The safelist is intentionally narrow — methods that mutate (`Array.sort`) or depend on call-time state are excluded.
+
+### Bail catalog (same shape for all three)
+
+Auto-promotion falls back to `_bind(...)` when:
+- The receiver isn't a known signal or `createSelector()` result (tracked at module scope via `signalVars` / `selectorVars` — same scope-awareness as signal auto-call)
+- The selector call has 0 or 2+ arguments (not the standard shape) / the method receiver has args
+- The key, branch, or method args contain a reactive read
+- The expression isn't a ternary (selector path) or method call (formatter path)
+- The method callee is computed (`sig()["toFixed"](2)`)
+- The expression chains methods (`sig().a().b()`)
+
+### Dual-backend parity
+
+Both the JS path and the Rust native binary implement all three detectors byte-for-byte. Cross-backend equivalence tests lock the parity so the two backends can't drift.
+
 ## Pure Static Call Detection
 
 The compiler recognizes 40+ standard library functions as pure (side-effect-free). Expressions containing only pure calls are **not** wrapped in reactive getters, since they cannot contain signal reads:

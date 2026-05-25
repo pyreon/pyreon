@@ -7,8 +7,6 @@ import type { ElementType } from './types/utils'
 // time and tree-shakes to zero bytes in prod. The previous
 // `process.env.NODE_ENV !== 'production'` form was dead code in real Vite
 // browser bundles (Vite does not polyfill `process`).
-const __DEV__ = process.env.NODE_ENV !== 'production'
-
 /**
  * Public entry point for creating an attrs-enhanced component.
  *
@@ -30,7 +28,7 @@ export type Attrs = <C extends ElementType>({
 
 const attrs: Attrs = ({ name, component }) => {
   // Validate required params in development — fail fast with clear errors.
-  if (__DEV__) {
+  if (process.env.NODE_ENV !== 'production') {
     type Errors = Partial<{
       component: string
       name: string

@@ -25,8 +25,6 @@ import { applyProps } from './props'
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
-const __DEV__ = process.env.NODE_ENV !== 'production'
-
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
@@ -44,7 +42,7 @@ let _elementDepth = 0
 // Used to infer parent/child relationships for DevTools.
 // Only allocated in dev — production mounts skip devtools entirely.
 let _mountingStack: string[] | undefined
-if (__DEV__) _mountingStack = []
+if (process.env.NODE_ENV !== 'production') _mountingStack = []
 
 /**
  * Mount a single child into `parent`, inserting before `anchor` (null = append).
@@ -58,7 +56,7 @@ export function mountChild(
   parent: Node,
   anchor: Node | null = null,
 ): Cleanup {
-  if (__DEV__) _countSink.__pyreon_count__?.('runtime.mountChild')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.mountChild')
   // Reactive accessor — function that reads signals
   if (typeof child === 'function') {
     const sample = runUntracked(() => (child as () => VNodeChild | VNodeChild[])())
@@ -161,11 +159,11 @@ export function mountChild(
 
   if (vnode.type === (PortalSymbol as unknown as string)) {
     const { target, children } = vnode.props as unknown as PortalProps
-    if (__DEV__ && !target) {
+    if (process.env.NODE_ENV !== 'production' && !target) {
       console.warn('[Pyreon] <Portal> received a falsy `target`. Provide a valid DOM element.')
       return noop
     }
-    if (__DEV__ && !(target instanceof Node)) {
+    if (process.env.NODE_ENV !== 'production' && !(target instanceof Node)) {
       console.warn(
         `[Pyreon] <Portal> target must be a DOM node. Received ${typeof target}. ` +
           'Use document.getElementById() or a ref to get the target element.',
@@ -178,7 +176,7 @@ export function mountChild(
     return mountComponent(vnode as VNode & { type: ComponentFn }, parent, anchor)
   }
 
-  if (__DEV__ && typeof vnode.type !== 'string') {
+  if (process.env.NODE_ENV !== 'production' && typeof vnode.type !== 'string') {
     console.warn(
       `[Pyreon] Invalid VNode type: expected a string tag or component function, ` +
         `received ${typeof vnode.type} (${String(vnode.type)}). ` +
@@ -310,7 +308,7 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
   if (isSvg) _svgDepth++
   if (isMathml) _mathmlDepth++
 
-  if (__DEV__ && (vnode.children?.length ?? 0) > 0 && VOID_ELEMENTS.has(vnode.type as string)) {
+  if (process.env.NODE_ENV !== 'production' && (vnode.children?.length ?? 0) > 0 && VOID_ELEMENTS.has(vnode.type as string)) {
     console.warn(
       `[Pyreon] <${vnode.type as string}> is a void element and cannot have children. ` +
         'Children passed to void elements will be ignored by the browser.',
@@ -395,7 +393,7 @@ function mountComponent(
   // all __DEV__ blocks + the devtools module import to zero bytes.
   let compId: string | undefined
   let devParentId: string | null | undefined
-  if (__DEV__) {
+  if (process.env.NODE_ENV !== 'production') {
     compId = `${componentName}-${Math.random().toString(36).slice(2, 9)}`
     devParentId = _mountingStack![_mountingStack!.length - 1] ?? null
     _mountingStack!.push(compId)
@@ -422,7 +420,7 @@ function mountComponent(
     hooks = result.hooks
     output = result.vnode
   } catch (err) {
-    if (__DEV__) _mountingStack!.pop()
+    if (process.env.NODE_ENV !== 'production') _mountingStack!.pop()
     setCurrentScope(null)
     scope.stop()
     reportError({
@@ -436,7 +434,7 @@ function mountComponent(
     if (!handled) {
       console.error(`[Pyreon] <${componentName}> threw during setup:`, err)
     }
-    if (__DEV__ && !handled) {
+    if (process.env.NODE_ENV !== 'production' && !handled) {
       const overlay = document.createElement('pre')
       overlay.style.cssText =
         'color:#e53e3e;background:#fff5f5;padding:12px;border:2px solid #e53e3e;border-radius:6px;font-size:12px;margin:4px;font-family:monospace;white-space:pre-wrap;word-break:break-word'
@@ -450,7 +448,7 @@ function mountComponent(
     setCurrentScope(null)
   }
 
-  if (__DEV__ && output != null && typeof output === 'object') {
+  if (process.env.NODE_ENV !== 'production' && output != null && typeof output === 'object') {
     if (output instanceof Promise) {
       console.warn(
         `[Pyreon] Component <${componentName}> returned a Promise. ` +
@@ -475,7 +473,7 @@ function mountComponent(
   try {
     subtreeCleanup = output != null ? mountChild(output, parent, anchor) : noop
   } catch (err) {
-    if (__DEV__) _mountingStack!.pop()
+    if (process.env.NODE_ENV !== 'production') _mountingStack!.pop()
     scope.stop()
     const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
     if (!handled) {
@@ -491,7 +489,7 @@ function mountComponent(
     return noop
   }
 
-  if (__DEV__) {
+  if (process.env.NODE_ENV !== 'production') {
     _mountingStack!.pop()
     const firstEl = parent instanceof Element ? parent.firstElementChild : null
     registerComponent(compId!, componentName, firstEl, devParentId!)
@@ -519,7 +517,7 @@ function mountComponent(
   }
 
   return () => {
-    if (__DEV__) unregisterComponent(compId!)
+    if (process.env.NODE_ENV !== 'production') unregisterComponent(compId!)
     scope.stop()
     subtreeCleanup()
     if (hooks.unmount) {

@@ -12,8 +12,6 @@ import { createStaticsEnhancers } from './utils/statics'
 // time and tree-shakes to zero bytes in prod. The previous
 // `process.env.NODE_ENV !== 'production'` form was dead code in real Vite
 // browser bundles (Vite does not polyfill `process`).
-const __DEV__ = process.env.NODE_ENV !== 'production'
-
 /**
  * Clones the current configuration and merges new options, then creates a
  * fresh component. This makes the chaining API immutable — each `.attrs()`
@@ -67,7 +65,7 @@ const attrsComponent: InitAttrsComponent = (options) => {
 
     const filteredProps = needsFiltering ? omit(props, options.filterAttrs) : props
 
-    const finalProps = __DEV__
+    const finalProps = process.env.NODE_ENV !== 'production'
       ? { ...filteredProps, 'data-attrs': componentName }
       : filteredProps
 

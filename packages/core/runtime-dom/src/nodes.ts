@@ -7,8 +7,6 @@ import { effect, runUntracked } from '@pyreon/reactivity'
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
-const __DEV__ = process.env.NODE_ENV !== 'production'
-
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
@@ -39,7 +37,7 @@ function clearBetween(start: Node, end: Node): void {
 
 /** Emit `runtime.cleanup` once per registered mount cleanup that actually runs. */
 function _emitCleanup(): void {
-  if (__DEV__) _countSink.__pyreon_count__?.('runtime.cleanup')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.cleanup')
 }
 
 /**
@@ -54,7 +52,7 @@ export function mountReactive(
   anchor: Node | null,
   mount: (child: VNodeChild, p: Node, a: Node | null) => Cleanup,
 ): Cleanup {
-  if (__DEV__) _countSink.__pyreon_count__?.('runtime.mountReactive')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.mountReactive')
   const marker = document.createComment('pyreon')
   parent.insertBefore(marker, anchor)
 
@@ -201,7 +199,7 @@ function computeKeyedLis(
     if (lo > 0) pred[i] = tailIdx[lo - 1] as number
     if (lo === lisLen) lisLen++
   }
-  if (__DEV__ && ops > 0) _countSink.__pyreon_count__?.('runtime.mountFor.lisOps', ops)
+  if (process.env.NODE_ENV !== 'production' && ops > 0) _countSink.__pyreon_count__?.('runtime.mountFor.lisOps', ops)
   return lisLen
 }
 
@@ -480,7 +478,7 @@ function computeForLis(
     if (lo > 0) pred[i] = tailIdx[lo - 1] as number
     // v ≤ lastV here, so tails can't be extended: lo < lisLen always.
   }
-  if (__DEV__ && ops > 0) _countSink.__pyreon_count__?.('runtime.mountFor.lisOps', ops)
+  if (process.env.NODE_ENV !== 'production' && ops > 0) _countSink.__pyreon_count__?.('runtime.mountFor.lisOps', ops)
   return lisLen
 }
 
@@ -563,14 +561,14 @@ export function mountFor<T>(
 
   const warnForKey = (seen: Set<string | number> | null, key: string | number) => {
     if (!seen) return
-    if (__DEV__ && key == null) {
+    if (process.env.NODE_ENV !== 'production' && key == null) {
       console.warn(
         '[Pyreon] <For> `by` function returned null/undefined. ' +
           'Keys must be strings or numbers. Check your `by` prop.',
       )
     }
     if (seen.has(key)) {
-      if (__DEV__) {
+      if (process.env.NODE_ENV !== 'production') {
         console.warn(`[Pyreon] Duplicate key "${String(key)}" in <For> list. Keys must be unique.`)
       }
       // In production: skip duplicate — use first occurrence only.

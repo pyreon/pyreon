@@ -7,8 +7,6 @@ import type { VNodeChild, VNodeChildAtom } from './types'
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
-const __DEV__ = process.env.NODE_ENV !== 'production'
-
 /**
  * ErrorBoundary — catches errors thrown by child components and renders a
  * fallback UI instead of crashing the whole tree.
@@ -40,7 +38,7 @@ export function ErrorBoundary(props: {
   fallback: (err: unknown, reset: () => void) => VNodeChild
   children?: VNodeChild
 }): VNodeChild {
-  if (__DEV__ && typeof props.fallback !== 'function') {
+  if (process.env.NODE_ENV !== 'production' && typeof props.fallback !== 'function') {
     // oxlint-disable-next-line no-console
     console.warn(
       '[Pyreon] <ErrorBoundary> expects `fallback` to be a function: (err, reset) => VNode. ' +

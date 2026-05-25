@@ -3,8 +3,6 @@ import type { CleanupFn, LifecycleHooks } from './types'
 // Dev-mode gate: bundler-agnostic. Every modern bundler auto-replaces
 // `process.env.NODE_ENV` at consumer build time and tree-shakes the
 // dev branch in production.
-const __DEV__ = process.env.NODE_ENV !== 'production'
-
 // Currently-executing component's hook storage. Plain module-scope state
 // — the duplicate-instance bug class is now prevented at the bundler
 // layer (`@pyreon/vite-plugin` injects `resolve.dedupe`) and detected at
@@ -84,7 +82,7 @@ function captureCallSite(): string {
 }
 
 function warnOutsideSetup(hookName: string): void {
-  if (__DEV__ && !_current) {
+  if (process.env.NODE_ENV !== 'production' && !_current) {
     const callSite = captureCallSite()
     // Local name must NOT shadow the `location` browser global (poor
     // hygiene + trips SSR static analysis into a false positive).

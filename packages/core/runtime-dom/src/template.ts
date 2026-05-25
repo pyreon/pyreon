@@ -5,8 +5,6 @@ import { _bindEvent } from './props'
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
-const __DEV__ = process.env.NODE_ENV !== 'production'
-
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
@@ -72,7 +70,7 @@ export function _bindText(
   source: { _v?: unknown; direct?: (fn: () => void) => () => void },
   node: Text,
 ): () => void {
-  if (__DEV__) _countSink.__pyreon_count__?.('runtime.bindText')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.bindText')
   // Fast path: source has .direct() (signal or computed)
   if (source.direct) {
     const textUpdate = () => {
@@ -114,7 +112,7 @@ export function _bindDirect(
   source: { _v?: unknown; direct?: (fn: () => void) => () => void },
   updater: (value: unknown) => void,
 ): () => void {
-  if (__DEV__) _countSink.__pyreon_count__?.('runtime.bindDirect')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.bindDirect')
   // Fast path: source has .direct() (signal or computed)
   if (source.direct) {
     updater(source._v)
@@ -170,7 +168,7 @@ const _tplCache = new Map<string, HTMLTemplateElement>()
  * })
  */
 export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | null): NativeItem {
-  if (__DEV__) _countSink.__pyreon_count__?.('runtime.tpl')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.tpl')
   let tpl = _tplCache.get(html)
   if (!tpl) {
     tpl = document.createElement('template')

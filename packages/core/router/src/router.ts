@@ -26,8 +26,6 @@ import {
 const _isBrowser = typeof window !== 'undefined'
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
-const __DEV__ = process.env.NODE_ENV !== 'production'
-
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
@@ -672,7 +670,7 @@ export function createRouter<TNames extends string = string>(
     if (!record.staleWhileRevalidate) {
       const cached = router._loaderCache.get(key)
       if (cached && isCacheFresh(cached, record)) {
-        if (__DEV__) _countSink.__pyreon_count__?.('router.loaderCache.hit')
+        if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('router.loaderCache.hit')
         return Promise.resolve(cached.data)
       }
     }
@@ -692,7 +690,7 @@ export function createRouter<TNames extends string = string>(
     // `throw new Error(...)`) becomes a rejected promise the `.catch` can
     // handle — instead of escaping past the promise chain and surfacing as
     // an unhandled exception in `runBlockingLoaders`'s `Promise.allSettled`.
-    if (__DEV__) _countSink.__pyreon_count__?.('router.loaderRun')
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('router.loaderRun')
     const promise = Promise.resolve()
       .then(() => record.loader!(loaderCtx))
       .then((data) => {
@@ -767,7 +765,7 @@ export function createRouter<TNames extends string = string>(
           // value. This path was dead code until the SWR prune fix
           // (#617) made `revalidateSwrLoaders` actually run for the
           // nav-away/back case.
-          if (__DEV__) {
+          if (process.env.NODE_ENV !== 'production') {
             // oxlint-disable-next-line no-console
             console.warn(
               `[Pyreon Router] SWR background revalidation failed for "${r.path}" — serving stale data:`,
@@ -905,7 +903,7 @@ export function createRouter<TNames extends string = string>(
       try {
         hook(to, from)
       } catch (err) {
-        if (__DEV__) {
+        if (process.env.NODE_ENV !== 'production') {
           console.warn(`[Pyreon Router] afterEach hook threw an error:`, err)
         }
       }
@@ -955,10 +953,10 @@ export function createRouter<TNames extends string = string>(
   }
 
   async function navigate(rawPath: string, replace: boolean, redirectDepth = 0): Promise<void> {
-    if (__DEV__) _countSink.__pyreon_count__?.('router.navigate')
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('router.navigate')
     router._navigationStartTime = Date.now()
     if (redirectDepth > 10) {
-      if (__DEV__) {
+      if (process.env.NODE_ENV !== 'production') {
         // oxlint-disable-next-line no-console
         console.warn(
           `[Pyreon] Navigation to "${rawPath}" aborted: redirect depth exceeded 10 levels. ` +
@@ -1224,7 +1222,7 @@ export function createRouter<TNames extends string = string>(
       router._abortController = null
       // Clear global ref so stale router doesn't survive in SSR or re-creation
       if (_activeRouter === router) _activeRouter = null
-      if (__DEV__ && _isBrowser) {
+      if (process.env.NODE_ENV !== 'production' && _isBrowser) {
         const g = globalThis as Record<string, unknown>
         if (g.__pyreon_hmr_swap__ === router._hmrSwap) {
           delete g.__pyreon_hmr_swap__
@@ -1236,7 +1234,7 @@ export function createRouter<TNames extends string = string>(
 
     // Dev-only HMR coordinator — see RouterInstance._hmrSwap JSDoc.
     // Gated to dev+browser so it's tree-shaken from production bundles.
-    ...(__DEV__ && _isBrowser
+    ...(process.env.NODE_ENV !== 'production' && _isBrowser
       ? {
           _hmrSwap(id: string, mod: unknown): boolean {
             const m = mod as { default?: ComponentFn } | ComponentFn | null
@@ -1282,7 +1280,7 @@ export function createRouter<TNames extends string = string>(
   // `@pyreon/router` (zero import coupling — same pattern as the perf-harness
   // counter sink). Last router wins; single-router apps (the norm, every
   // `@pyreon/zero` app) are unaffected. Dev+browser only.
-  if (__DEV__ && _isBrowser && router._hmrSwap) {
+  if (process.env.NODE_ENV !== 'production' && _isBrowser && router._hmrSwap) {
     // `_hmrSwap` closes over `currentRoute`/`componentCache`/`loadingSignal`
     // (not `this`), so the raw reference is safe to expose and to compare by
     // identity on `destroy()`.
@@ -1321,7 +1319,7 @@ async function runGuard(
   try {
     return await guard(to, from)
   } catch (err) {
-    if (__DEV__) {
+    if (process.env.NODE_ENV !== 'production') {
       console.warn(`[Pyreon Router] Navigation guard threw an error — navigation cancelled:`, err)
     }
     return false
@@ -1336,7 +1334,7 @@ function resolveNamedPath(
 ): string {
   const record = index.get(name)
   if (!record) {
-    if (__DEV__) {
+    if (process.env.NODE_ENV !== 'production') {
       // oxlint-disable-next-line no-console
       console.warn(
         `[Pyreon Router] Unknown route name "${name}". ` +
