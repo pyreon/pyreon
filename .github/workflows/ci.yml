@@ -299,6 +299,19 @@ jobs:
             ~/.cargo/git
           key: cargo-registry-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock') }}
           restore-keys: cargo-registry-${{ runner.os }}-
+      # P1c — cache cargo `target/` (compiled artifacts), keyed by Cargo.lock
+      # + every Rust source file under native/src. Cargo's content hashing
+      # invalidates correctly on source change; the cache only hits when the
+      # exact compiled output is reproducible. Saves ~2-3 min on common case
+      # where compiler source is unchanged (vast majority of CI runs).
+      - name: Cache cargo target/
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: packages/core/compiler/native/target
+          key: cargo-target-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock', 'packages/core/compiler/native/src/**/*.rs') }}
+          restore-keys: |
+            cargo-target-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock') }}-
+            cargo-target-${{ runner.os }}-
       - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
