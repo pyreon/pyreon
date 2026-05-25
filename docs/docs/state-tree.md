@@ -31,21 +31,20 @@ yarn add @pyreon/state-tree
 
 ## Quick Start
 
+`model()` returns a chainable builder. Add derived values with `.views(...)` and mutators with `.actions(...)`, then `.create(initial?)` to instantiate or `.asHook(id)` for a singleton.
+
 ```ts
 import { model, getSnapshot, onPatch, addMiddleware } from '@pyreon/state-tree'
-import { computed } from '@pyreon/reactivity'
 
-const Counter = model({
-  state: { count: 0 },
-  views: (self) => ({
-    doubled: computed(() => self.count() * 2),
-  }),
-  actions: (self) => ({
+const Counter = model({ state: { count: 0 } })
+  .views((self) => ({
+    doubled: () => self.count() * 2,
+  }))
+  .actions((self) => ({
     increment: () => self.count.update((c) => c + 1),
     decrement: () => self.count.update((c) => c - 1),
     reset: () => self.count.set(0),
-  }),
-})
+  }))
 
 const counter = Counter.create({ count: 5 })
 counter.increment()
@@ -76,27 +75,26 @@ mount(ui, app)
 
 ## Defining a Model
 
-Use `model()` to define a reactive model with state, views, and actions.
+`model()` carries one piece of state declaration — `state` (plain mode) OR `schema` (schema mode). Both modes return the same chainable {{ModelDefinition}}; `views` and `actions` are added exclusively via `.views(...)` / `.actions(...)`.
 
-- **state** -- Plain JS object. Each key becomes a `Signal<T>` on the instance.
-- **views** -- Factory receiving `self`. Return computed signals for derived state.
-- **actions** -- Factory receiving `self`. Return functions that mutate state signals.
+- **state** -- Plain JS object. Each key becomes a `Signal<T>` on the instance. Plain mode.
+- **schema** -- A {{TypedSchemaAdapter}} (`zodSchema(...)`, `valibotSchema(...)`, `arktypeSchema(...)`) or a Standard Schema-compliant instance (zod 3.24+, valibot 1.0+, arktype 2.0+, Effect Schema, ...). Schema mode — adds runtime validation and `$set` / `$patch` / `$reset` helpers.
+- **`.views(self => ...)`** -- Chainable. Each call adds a layer of derived values; subsequent layers see prior ones via `self`.
+- **`.actions(self => ...)`** -- Chainable. Each call adds a layer of methods; can be `async` out of the box.
 
 ```ts
 import { model } from '@pyreon/state-tree'
 import { computed } from '@pyreon/reactivity'
 
-const Counter = model({
-  state: { count: 0 },
-  views: (self) => ({
+const Counter = model({ state: { count: 0 } })
+     .views((self) => ({
     doubled: computed(() => self.count() * 2),
-  }),
-  actions: (self) => ({
+  }))
+     .actions((self) => ({
     increment: () => self.count.update((c) => c + 1),
     decrement: () => self.count.update((c) => c - 1),
     reset: () => self.count.set(0),
-  }),
-})
+  }))
 ```
 
 ### State Field Types
@@ -110,15 +108,14 @@ const Settings = model({
     name: '',
     count: 0,
     enabled: true,
-
     // Objects and arrays
     tags: [] as string[],
     config: { theme: 'light', locale: 'en' } as { theme: string; locale: string },
-
     // Nullable values
     selectedId: null as string | null,
   },
-  actions: (self) => ({
+})
+  .actions((self) => ({
     setName: (name: string) => self.name.set(name),
     addTag: (tag: string) => self.tags.update((t) => [...t, tag]),
     toggleTheme: () =>
@@ -127,8 +124,7 @@ const Settings = model({
         theme: c.theme === 'light' ? 'dark' : 'light',
       })),
     select: (id: string | null) => self.selectedId.set(id),
-  }),
-})
+  }))
 ```
 
 ### Reading and Writing Signals
@@ -164,6 +160,111 @@ const config = Config.create()
 config.theme() // "light"
 config.theme.set('dark')
 ```
+
+## Schema Mode
+
+`model({ schema })` lets you define state with a validation schema. Field types are inferred end-to-end, and every `$set` / `$patch` is validated through the schema. Direct signal writes (`self.field.set(v)`) bypass validation by design — the documented escape hatch.
+
+Schema mode accepts any of:
+
+- **Pyreon adapters** — `zodSchema(...)`, `valibotSchema(...)`, `arktypeSchema(...)` (Tier A.1, brand: `_infer` + sync `parse`)
+- **Standard Schema-compliant instances** — zod 3.24+, valibot 1.0+, arktype 2.0+, Effect Schema 0.66+, any future spec-compliant library (Tier A.2, auto-detected via the `~standard` property)
+- **User-authored adapters** — any other library (yup, joi, ajv, runtypes, ...) wrapped in 5-10 lines (Tier B)
+
+```ts
+import { model } from '@pyreon/state-tree'
+import { zodSchema } from '@pyreon/validation'
+import { z } from 'zod'
+
+const UserSchema = zodSchema(
+  z.object({
+    name: z.string().min(1),
+    age: z.number().int().nonnegative(),
+    prefs: z.object({ theme: z.enum(['light', 'dark']) }),
+  }),
+)
+
+const User = model({
+  schema: UserSchema,
+  initial: { name: '', age: 0, prefs: { theme: 'light' } },
+})
+  .views((self) => ({
+    greeting: () => `Hi, ${self.name()}`,
+  }))
+  .actions((self) => ({
+    rename: (next: string) => self.$patch({ name: next }),
+  }))
+
+const u = User.create({ name: 'Alice', age: 30, prefs: { theme: 'dark' } })
+u.name()      // "Alice"
+u.greeting()  // "Hi, Alice"
+u.$set({ name: 'Bob', age: 40, prefs: { theme: 'light' } })   // full replace, validated
+u.$patch({ age: 41 })                                          // shallow merge, validated
+u.name.set('')   // direct signal write — bypasses validation (escape hatch)
+u.$reset()       // restore parsed initial
+```
+
+**Standard Schema (Tier A.2)** — pass the raw schema, no adapter wrap needed:
+
+```ts
+const User = model({
+  schema: z.object({ name: z.string(), age: z.number() }),  // raw zod (~standard)
+  initial: { name: 'Alice', age: 30 },
+})
+```
+
+**Validation rules** mirror `@pyreon/store` schema mode exactly:
+
+- `$set(full)` / `$patch(partial)` validate every write. Invalid input throws (or invokes `onValidationError` if provided). State stays at its previous value on failure.
+- Initial is validated once at `model({ schema, initial })` time. Invalid initial throws immediately. Schema defaults + transforms apply — the PARSED value is written to signals.
+- Async validators are unsupported — schemas whose validator returns a Promise are rejected at definition time. Use `@pyreon/form` for async refinements.
+- Schema field names cannot collide with `$set` / `$patch` / `$reset` / `self` proxy keys — defineStore throws at construction with a clear message.
+
+```ts
+// Validation error handling — suppress throw, log instead
+const User = model({
+  schema: UserSchema,
+  initial: { name: 'Alice', age: 30, prefs: { theme: 'light' } },
+  onValidationError: (issues, op) => {
+    toast.error(`${op}: ${issues.map((i) => i.message).join(', ')}`)
+  },
+})
+```
+
+## Chainable Views and Actions
+
+Both `.views()` and `.actions()` are **chainable** — each call returns a NEW `ModelDefinition` with the new layer accumulated. Subsequent factory calls see every prior view + action via `self`. This mirrors MobX-State-Tree's `.views().actions()` shape.
+
+```ts
+const M = model({ state: { count: 0 } })
+  .views((self) => ({
+    doubled: () => self.count() * 2,
+  }))
+  .views((self) => ({
+    // CHAINS — this factory sees `doubled` from the prior block via self.
+    quadrupled: () => self.doubled() * 2,
+  }))
+  .actions((self) => ({
+    inc: () => self.count.update((n) => n + 1),
+  }))
+  .actions((self) => ({
+    // CHAINS — sees `inc` AND every accumulated view.
+    twice: () => {
+      self.inc()
+      self.inc()
+    },
+    quadFromHere: () => self.quadrupled(),  // also sees views
+  }))
+```
+
+**Order semantics**:
+
+- Within a single `.views(...)` factory, the returned record's keys are installed at once (so two views in the same block can't reference each other via `self` at evaluation time — only at call time, via the live `self` proxy).
+- Across the chain: `.views(...)` calls run before `.actions(...)` calls (every view is in place before any action factory evaluates). This means actions can always read view values, but views cannot read actions defined in earlier `.actions()` blocks.
+- Subsequent `.views(...)` blocks always see prior views.
+- Subsequent `.actions(...)` blocks always see prior actions + views.
+
+**Builder immutability**: each chain method returns a NEW `ModelDefinition`; the prior one is unchanged. Safe to share builders across call sites.
 
 ## Creating Instances
 
@@ -216,18 +317,16 @@ Views are computed signals derived from state. They automatically recompute when
 import { model } from '@pyreon/state-tree'
 import { computed, effect } from '@pyreon/reactivity'
 
-const Counter = model({
-  state: { count: 0 },
-  views: (self) => ({
+const Counter = model({ state: { count: 0 } })
+     .views((self) => ({
     doubled: computed(() => self.count() * 2),
     isPositive: computed(() => self.count() > 0),
     label: computed(() => `Count is ${self.count()}`),
-  }),
-  actions: (self) => ({
+  }))
+     .actions((self) => ({
     increment: () => self.count.update((c) => c + 1),
     decrement: () => self.count.update((c) => c - 1),
-  }),
-})
+  }))
 
 const counter = Counter.create({ count: 5 })
 counter.doubled() // 10
@@ -262,21 +361,19 @@ counter.decrement()
 Views can depend on multiple state fields:
 
 ```ts
-const CartItem = model({
-  state: { price: 0, quantity: 1, taxRate: 0.1 },
-  views: (self) => ({
+const CartItem = model({ state: { price: 0, quantity: 1, taxRate: 0.1 } })
+     .views((self) => ({
     subtotal: computed(() => self.price() * self.quantity()),
     tax: computed(() => self.price() * self.quantity() * self.taxRate()),
     total: computed(() => {
       const sub = self.price() * self.quantity()
       return sub + sub * self.taxRate()
     }),
-  }),
-  actions: (self) => ({
+  }))
+     .actions((self) => ({
     setPrice: (p: number) => self.price.set(p),
     setQuantity: (q: number) => self.quantity.set(q),
-  }),
-})
+  }))
 
 const item = CartItem.create({ price: 100, quantity: 3 })
 item.subtotal() // 300
@@ -291,14 +388,12 @@ Actions are functions that mutate state. They are wrapped with the middleware ru
 ### Sync Actions
 
 ```ts
-const Todo = model({
-  state: { text: '', done: false },
-  actions: (self) => ({
+const Todo = model({ state: { text: '', done: false } })
+     .actions((self) => ({
     setText: (text: string) => self.text.set(text),
     toggle: () => self.done.update((d) => !d),
     complete: () => self.done.set(true),
-  }),
-})
+  }))
 ```
 
 ### Actions With Arguments
@@ -306,13 +401,11 @@ const Todo = model({
 Actions can accept any number of arguments:
 
 ```ts
-const Counter = model({
-  state: { count: 0 },
-  actions: (self) => ({
+const Counter = model({ state: { count: 0 } })
+     .actions((self) => ({
     add: (n: number) => self.count.update((c) => c + n),
     addMultiple: (a: number, b: number) => self.count.update((c) => c + a + b),
-  }),
-})
+  }))
 
 const counter = Counter.create()
 counter.add(5)
@@ -326,16 +419,14 @@ counter.count() // 15
 Actions can call other actions through `self`. The `self` proxy always reflects the final, fully-populated instance:
 
 ```ts
-const Counter = model({
-  state: { x: 0 },
-  actions: (self) => ({
+const Counter = model({ state: { x: 0 } })
+     .actions((self) => ({
     doubleInc: () => {
       self.inc()
       self.inc()
     },
     inc: () => self.x.update((n: number) => n + 1),
-  }),
-})
+  }))
 
 const c = Counter.create()
 c.doubleInc()
@@ -344,7 +435,7 @@ c.x() // 2
 
 ### Async Actions
 
-Since actions are plain functions, you can use async/await. Note that each `self` signal write is synchronous -- the reactive system processes each `.set()` or `.update()` immediately.
+Actions can be `async` out of the box — no `flow()` / `yield` wrapper needed (unlike MobX-State-Tree). The runtime detects Promise returns and propagates them verbatim through the middleware chain, so `await u.fetchUsers()` works end-to-end. Each signal write inside the async body is synchronous; subscribers and patch listeners fire at each `await` checkpoint.
 
 ```ts
 const UserStore = model({
@@ -353,8 +444,9 @@ const UserStore = model({
     loading: false,
     error: null as string | null,
   },
-  actions: (self) => ({
-    fetchUsers: async () => {
+})
+  .actions((self) => ({
+    async fetchUsers() {
       self.loading.set(true)
       self.error.set(null)
       try {
@@ -367,11 +459,44 @@ const UserStore = model({
         self.loading.set(false)
       }
     },
-  }),
-})
+  }))
 
 const store = UserStore.create()
-await store.fetchUsers()
+await store.fetchUsers()    // awaitable
+```
+
+**Middleware can observe async completion** by awaiting `next(call)`:
+
+```ts
+addMiddleware(store, async (call, next) => {
+  const start = Date.now()
+  try {
+    const result = await (next(call) as Promise<unknown>)
+    console.log(`${call.name} took ${Date.now() - start}ms`)
+    return result
+  } catch (err) {
+    console.error(`${call.name} threw`, err)
+    throw err
+  }
+})
+```
+
+Middleware that doesn't care about completion can stay sync — `next(call)` returns the Promise but the middleware doesn't have to await it. The runtime never forces awaiting.
+
+**Schema mode + async**: `$set` / `$patch` are sync. Inside an async action you can call them between `await`s; each call validates at its own checkpoint. A rejected validation propagates through the action's Promise, and the pre-throw state survives (schema mode never half-writes).
+
+```ts
+const User = model({
+  schema: zodSchema(z.object({ age: z.number().nonnegative() })),
+  initial: { age: 0 },
+})
+  .actions((self) => ({
+    async setAgeFromServer() {
+      const r = await fetch('/api/age')
+      const { age } = await r.json()
+      self.$patch({ age })  // throws if age < 0, leaving state intact
+    },
+  }))
 ```
 
 ## Nested Models (Composition)
@@ -379,23 +504,16 @@ await store.fetchUsers()
 Use a `ModelDefinition` as a state field value to compose models. Nested models are automatically instantiated and their patches propagate upward.
 
 ```ts
-const Profile = model({
-  state: { name: '', email: '' },
-  actions: (self) => ({
+const Profile = model({ state: { name: '', email: '' } })
+     .actions((self) => ({
     setName: (name: string) => self.name.set(name),
     setEmail: (email: string) => self.email.set(email),
-  }),
-})
+  }))
 
-const App = model({
-  state: {
-    title: 'My App',
-    profile: Profile, // nested model definition
-  },
-  actions: (self) => ({
+const App = model({ state: { title: 'My App', profile: Profile, // nested model definition } })
+     .actions((self) => ({
     setTitle: (title: string) => self.title.set(title),
-  }),
-})
+  }))
 ```
 
 ### Creating Nested Instances
@@ -593,20 +711,15 @@ app.title() // "new"
 Combine `getSnapshot` and `applySnapshot` for persistence:
 
 ```ts
-const TodoList = model({
-  state: {
-    items: [] as Array<{ text: string; done: boolean }>,
-    filter: 'all' as 'all' | 'active' | 'done',
-  },
-  actions: (self) => ({
+const TodoList = model({ state: { items: [] as Array<{ text: string; done: boolean }>, filter: 'all' as 'all' | 'active' | 'done', } })
+     .actions((self) => ({
     addItem: (text: string) => self.items.update((i) => [...i, { text, done: false }]),
     toggleItem: (idx: number) =>
       self.items.update((i) =>
         i.map((item, i2) => (i2 === idx ? { ...item, done: !item.done } : item)),
       ),
     setFilter: (f: 'all' | 'active' | 'done') => self.filter.set(f),
-  }),
-})
+  }))
 
 // Save to localStorage
 function save(store: ReturnType<typeof TodoList.create>) {
@@ -995,17 +1108,15 @@ Models are plain objects with signals and functions, making them straightforward
 import { model, getSnapshot, applySnapshot, onPatch } from '@pyreon/state-tree'
 import { computed } from '@pyreon/reactivity'
 
-const Counter = model({
-  state: { count: 0 },
-  views: (self) => ({
+const Counter = model({ state: { count: 0 } })
+     .views((self) => ({
     doubled: computed(() => self.count() * 2),
-  }),
-  actions: (self) => ({
+  }))
+     .actions((self) => ({
     inc: () => self.count.update((c) => c + 1),
     add: (n: number) => self.count.update((c) => c + n),
     reset: () => self.count.set(0),
-  }),
-})
+  }))
 
 describe('Counter', () => {
   it('creates with default state', () => {
@@ -1084,26 +1195,15 @@ import { model, getSnapshot, applySnapshot, onPatch, addMiddleware } from '@pyre
 import { computed } from '@pyreon/reactivity'
 
 // ---- Todo Item Model ----
-const TodoItem = model({
-  state: {
-    id: '',
-    text: '',
-    done: false,
-  },
-  actions: (self) => ({
+const TodoItem = model({ state: { id: '', text: '', done: false, } })
+     .actions((self) => ({
     toggle: () => self.done.update((d) => !d),
     setText: (text: string) => self.text.set(text),
-  }),
-})
+  }))
 
 // ---- Todo List Model ----
-const TodoList = model({
-  state: {
-    items: [] as Array<{ id: string; text: string; done: boolean }>,
-    filter: 'all' as 'all' | 'active' | 'done',
-    nextId: 1,
-  },
-  views: (self) => ({
+const TodoList = model({ state: { items: [] as Array<{ id: string; text: string; done: boolean }>, filter: 'all' as 'all' | 'active' | 'done', nextId: 1, } })
+     .views((self) => ({
     filteredItems: computed(() => {
       const items = self.items()
       const filter = self.filter()
@@ -1119,8 +1219,8 @@ const TodoList = model({
     activeCount: computed(() => self.items().filter((i) => !i.done).length),
     doneCount: computed(() => self.items().filter((i) => i.done).length),
     totalCount: computed(() => self.items().length),
-  }),
-  actions: (self) => ({
+  }))
+     .actions((self) => ({
     addItem: (text: string) => {
       const id = `todo-${self.nextId.peek()}`
       self.nextId.update((n) => n + 1)
@@ -1138,8 +1238,7 @@ const TodoList = model({
     setFilter: (filter: 'all' | 'active' | 'done') => {
       self.filter.set(filter)
     },
-  }),
-})
+  }))
 
 // ---- Undo/redo manager ----
 const todos = TodoList.create()
@@ -1197,15 +1296,13 @@ redo() // re-toggles todo-1
 Use `ReturnType` on `.create()` to extract the instance type:
 
 ```ts
-const Counter = model({
-  state: { count: 0 },
-  views: (self) => ({
+const Counter = model({ state: { count: 0 } })
+     .views((self) => ({
     doubled: computed(() => self.count() * 2),
-  }),
-  actions: (self) => ({
+  }))
+     .actions((self) => ({
     inc: () => self.count.update((c) => c + 1),
-  }),
-})
+  }))
 
 type CounterInstance = ReturnType<typeof Counter.create>
 // CounterInstance has:
@@ -1233,9 +1330,8 @@ import type { Snapshot } from '@pyreon/state-tree'
 Inside `actions` and `views`, `self` is typed with `StateSignals<TState>` for state fields and `Record<string, any>` for actions/views. This avoids circular type issues when actions call each other:
 
 ```ts
-const M = model({
-  state: { x: 0 },
-  actions: (self) => ({
+const M = model({ state: { x: 0 } })
+     .actions((self) => ({
     doubleInc: () => {
       // self.inc is typed as `any` (avoids circular reference)
       // but works correctly at runtime
@@ -1243,8 +1339,7 @@ const M = model({
       self.inc()
     },
     inc: () => self.x.update((n: number) => n + 1),
-  }),
-})
+  }))
 ```
 
 ## API Reference

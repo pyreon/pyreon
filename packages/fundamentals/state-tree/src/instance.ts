@@ -1,20 +1,17 @@
-import type { Computed, Signal } from '@pyreon/reactivity'
-import { signal } from '@pyreon/reactivity'
+import { batch, signal, type Signal } from '@pyreon/reactivity'
+import { formatIssues } from '@pyreon/validation'
+import type { NormalizedConfig } from './model'
 import { runAction } from './middleware'
 import { onPatch, trackedSignal } from './patch'
 import { instanceMeta } from './registry'
-import type { InstanceMeta, ModelInstance, Snapshot, StateShape } from './types'
+import type { InstanceMeta, StateShape } from './types'
 import { MODEL_BRAND } from './types'
 
 // ─── Model definition detection ───────────────────────────────────────────────
 
 interface AnyModelDef {
   readonly [MODEL_BRAND]: true
-  readonly _config: ModelConfig<
-    StateShape,
-    Record<string, (...args: unknown[]) => unknown>,
-    Record<string, Signal<unknown>>
-  >
+  readonly _config: NormalizedConfig<StateShape>
 }
 
 function isModelDef(v: unknown): v is AnyModelDef {
@@ -22,28 +19,28 @@ function isModelDef(v: unknown): v is AnyModelDef {
   return (v as Record<string, unknown>)[MODEL_BRAND] === true
 }
 
-// ─── Config shape ─────────────────────────────────────────────────────────────
-
-export interface ModelConfig<TState extends StateShape, TActions, TViews> {
-  state: TState
-  views?: (self: any) => TViews
-  actions?: (self: any) => TActions
-}
-
 // ─── createInstance ───────────────────────────────────────────────────────────
 
 /**
- * Create a live model instance from a config + optional initial snapshot.
- * Called by `ModelDefinition.create()`.
+ * Create a live model instance from a normalized config + optional initial
+ * snapshot. Called by `ModelDefinition.create()`.
+ *
+ * Lifecycle (in order):
+ *   1. Resolve state defaults — plain mode uses `_config.state`; schema mode
+ *      runs the parser against `_parsedInitial` ∪ caller-supplied `initial`.
+ *   2. Allocate per-field signals (each wrapped with `trackedSignal` so that
+ *      writes emit JSON patches).
+ *   3. Install schema-mode helpers (`$set` / `$patch` / `$reset`) on the
+ *      instance when `_parseFn` is configured.
+ *   4. Run every view factory in registration order, merging onto `self`.
+ *      Each factory sees prior views + actions via the live `self` proxy.
+ *   5. Run every action factory in registration order, wrapping each
+ *      returned function in `runAction` for middleware interception.
  */
-export function createInstance<
-  TState extends StateShape,
-  TActions extends Record<string, (...args: any[]) => any>,
-  TViews extends Record<string, Signal<any> | Computed<any>>,
->(
-  config: ModelConfig<TState, TActions, TViews>,
-  initial: Partial<Snapshot<TState>>,
-): ModelInstance<TState, TActions, TViews> {
+export function createInstance(
+  config: NormalizedConfig<StateShape>,
+  initial: Partial<StateShape>,
+): Record<string, unknown> {
   // Raw object that will become the instance.
   const instance: Record<string, unknown> = {}
 
@@ -61,42 +58,116 @@ export function createInstance<
   instanceMeta.set(instance, meta)
 
   // `self` is a live proxy so that actions/views always see the final
-  // (fully-populated) instance — including wrapped actions added later.
+  // (fully-populated) instance — including methods added by later chain
+  // layers and the schema-mode `$set / $patch / $reset` helpers.
   const self = new Proxy(instance, {
     get(_, k) {
       return instance[k as string]
     },
   })
 
-  // ── 1. State signals ──────────────────────────────────────────────────────
+  // ── 1. Determine the per-field allocation source ──────────────────────────
+  // Schema mode: the parsed value is the authoritative source (schemas
+  // can't describe ModelDefinitions, so every field is a plain value).
+  // Plain mode: iterate `config.state` because it carries the *structural*
+  // shape — keys point at either plain defaults or `ModelDefinition`
+  // sentinels. The caller's `initial[key]` overrides plain values OR
+  // feeds into nested `.create()` calls.
+  let allocationSource: Record<string, unknown>
+  let initialSnapshotForReset: Record<string, unknown>
+
+  if (config._parseFn) {
+    const callerProvided = Object.keys(initial).length > 0
+    const candidate = callerProvided
+      ? { ...(config._parsedInitial ?? {}), ...initial }
+      : config._parsedInitial
+    if (candidate === undefined) {
+      throw new Error(
+        '[Pyreon] model({ schema }).create(): no `initial` value available. ' +
+          'Either pass `initial` to `model({ schema, initial })` at definition ' +
+          'time, or pass it to `.create({...})`. Schema mode cannot allocate ' +
+          'signals without a starting value.',
+      )
+    }
+    const result = config._parseFn(candidate)
+    if (result instanceof Promise) {
+      throw new Error(
+        '[Pyreon] model.create(): schema returned a Promise from `parse`. ' +
+          'Async schemas are unsupported — use a synchronous validator.',
+      )
+    }
+    if (!result.ok) {
+      const message = formatIssues(result.issues, 'init')
+      if (config._onValidationError) {
+        config._onValidationError(result.issues, 'init')
+        // Fall back to the parsed initial captured at definition time so
+        // the instance still constructs cleanly.
+        if (config._parsedInitial === undefined) {
+          throw new Error(message)
+        }
+        allocationSource = config._parsedInitial as Record<string, unknown>
+      } else {
+        throw new Error(message)
+      }
+    } else {
+      allocationSource = result.value as Record<string, unknown>
+    }
+    // Capture the parsed-initial for `$reset`. JSON clone ensures
+    // subsequent in-place mutations don't poison the reset value.
+    initialSnapshotForReset = JSON.parse(JSON.stringify(allocationSource))
+  } else {
+    // Plain mode — STRUCTURAL source is `config.state` (keys + ModelDef
+    // sentinels). Caller's `initial` is consulted per-key in the loop.
+    allocationSource = (config.state as Record<string, unknown>) ?? {}
+    initialSnapshotForReset = {}
+  }
+
+  // ── 2. State signals ──────────────────────────────────────────────────────
   // Per-state-key signal allocation at instance CREATION (createInstance
   // runs once per model instance), not per-render — this is the model's
   // fine-grained reactive architecture, not the signal-in-render-loop
   // anti-pattern the rule targets. Disabled per-site below with rationale.
-  for (const [key, defaultValue] of Object.entries(config.state)) {
+  const isSchemaMode = config._parseFn !== undefined
+  for (const [key, defaultValue] of Object.entries(allocationSource)) {
     meta.stateKeys.push(key)
     const path = `/${key}`
-    const initValue: unknown =
-      key in initial ? (initial as Record<string, unknown>)[key] : undefined
+
+    // For plain mode: caller's `initial[key]` overrides the default OR
+    // feeds into nested model creation. For schema mode: the parsed
+    // value at `allocationSource[key]` IS the initial — caller overrides
+    // were already merged into `candidate` before parsing.
+    const callerOverride = (initial as Record<string, unknown>)[key]
+    const hasCallerOverride = key in initial && callerOverride !== undefined
 
     let rawSig: Signal<unknown>
 
-    if (isModelDef(defaultValue)) {
-      // Nested model — create its instance from the supplied snapshot (or defaults).
-      const nestedInstance = createInstance(
-        defaultValue._config,
-        (initValue as Record<string, unknown>) ?? {},
-      )
+    if (!isSchemaMode && isModelDef(defaultValue)) {
+      // Plain-mode nested model — instantiate from caller's snapshot for
+      // this key (or empty for defaults).
+      const nestedInitial = (hasCallerOverride && typeof callerOverride === 'object'
+        ? (callerOverride as Record<string, unknown>)
+        : {})
+      const nestedInstance = createInstance(defaultValue._config, nestedInitial)
       // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
       rawSig = signal(nestedInstance)
+
+      // Capture the nested SNAPSHOT (not the live instance) for reset.
+      initialSnapshotForReset[key] = nestedInitial
 
       // Propagate nested patches upward with the key as path prefix.
       onPatch(nestedInstance, (patch) => {
         meta.emitPatch({ ...patch, path: path + patch.path })
       })
     } else {
+      // Plain leaf OR schema-mode field.
+      const value = isSchemaMode
+        ? defaultValue
+        : hasCallerOverride
+          ? callerOverride
+          : defaultValue
       // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
-      rawSig = signal(initValue !== undefined ? initValue : defaultValue)
+      rawSig = signal(value)
+      if (!isSchemaMode) initialSnapshotForReset[key] = value
     }
 
     const tracked = trackedSignal(
@@ -108,21 +179,127 @@ export function createInstance<
     instance[key] = tracked
   }
 
-  // ── 2. Views ──────────────────────────────────────────────────────────────
-  if (config.views) {
-    const views = config.views(self)
-    for (const [key, view] of Object.entries(views as Record<string, unknown>)) {
+  // ── 3. Schema-mode helpers ────────────────────────────────────────────────
+  // Install $set / $patch / $reset when schema mode is active. Each helper
+  // validates the merged result via the schema before writing to signals;
+  // direct signal writes (`self.field.set(v)`) bypass validation by design
+  // (documented escape hatch, parallel to @pyreon/store).
+  if (config._parseFn) {
+    const parseFn = config._parseFn
+    const onErr = config._onValidationError
+    const stateKeys = meta.stateKeys
+
+    const validateOrFail = (
+      candidate: Record<string, unknown>,
+      op: string,
+    ): Record<string, unknown> | undefined => {
+      const result = parseFn(candidate)
+      if (result instanceof Promise) {
+        throw new Error(
+          `[Pyreon] model.${op}(): schema returned a Promise from \`parse\`. ` +
+            'Async schemas are unsupported.',
+        )
+      }
+      if (!result.ok) {
+        const message = formatIssues(result.issues, op)
+        if (onErr) {
+          onErr(result.issues, op)
+          return undefined
+        }
+        throw new Error(message)
+      }
+      return result.value as Record<string, unknown>
+    }
+
+    const readCurrent = (): Record<string, unknown> => {
+      const out: Record<string, unknown> = {}
+      for (const k of stateKeys) {
+        const s = instance[k] as Signal<unknown>
+        out[k] = s.peek()
+      }
+      return out
+    }
+
+    const writeAll = (next: Record<string, unknown>): void => {
+      batch(() => {
+        for (const k of stateKeys) {
+          const s = instance[k] as Signal<unknown>
+          if (!Object.is(s.peek(), next[k])) {
+            s.set(next[k])
+          }
+        }
+      })
+    }
+
+    instance.$set = (next: Record<string, unknown>) => {
+      const valid = validateOrFail(next, '$set')
+      if (valid === undefined) return // suppressed via onValidationError
+      writeAll(valid)
+    }
+
+    instance.$patch = (partial: Record<string, unknown>) => {
+      const merged = { ...readCurrent(), ...partial }
+      const valid = validateOrFail(merged, '$patch')
+      if (valid === undefined) return
+      writeAll(valid)
+    }
+
+    instance.$reset = () => {
+      // initialSnapshotForReset is the PARSED value captured at .create()
+      // time. Re-parse to apply any defaults that depend on call time.
+      const result = parseFn(initialSnapshotForReset)
+      if (result instanceof Promise) {
+        throw new Error(
+          '[Pyreon] model.$reset(): schema returned a Promise. Async schemas unsupported.',
+        )
+      }
+      if (!result.ok) {
+        throw new Error(formatIssues(result.issues, '$reset'))
+      }
+      writeAll(result.value as Record<string, unknown>)
+    }
+  }
+
+  // ── 4. Views (chained, in registration order) ─────────────────────────────
+  // Each factory sees the live `self` proxy — including prior views/actions
+  // and (in schema mode) the $set/$patch/$reset helpers installed above.
+  // Reserved-key collision: throw if a factory tries to overwrite a state
+  // signal or a previously-installed schema helper.
+  for (const factory of config.viewFactories) {
+    const views = factory(self) as Record<string, unknown>
+    for (const [key, view] of Object.entries(views)) {
+      if (meta.stateKeys.includes(key)) {
+        throw new Error(
+          `[Pyreon] model.views(): "${key}" collides with a schema/state field. ` +
+            'Pick a different name.',
+        )
+      }
       instance[key] = view
     }
   }
 
-  // ── 3. Actions (wrapped with middleware runner) ───────────────────────────
-  if (config.actions) {
-    const rawActions = config.actions(self) as Record<string, (...args: unknown[]) => unknown>
+  // ── 5. Actions (chained, wrapped with middleware runner) ──────────────────
+  // Same collision rule. Each action is wrapped in `runAction` so middleware
+  // sees every call (sync OR async — `runAction` awaits Promise returns).
+  for (const factory of config.actionFactories) {
+    const rawActions = factory(self) as Record<
+      string,
+      (...args: unknown[]) => unknown
+    >
     for (const [key, actionFn] of Object.entries(rawActions)) {
+      if (meta.stateKeys.includes(key)) {
+        throw new Error(
+          `[Pyreon] model.actions(): "${key}" collides with a schema/state field. ` +
+            'Pick a different name.',
+        )
+      }
       instance[key] = (...args: unknown[]) => runAction(meta, key, actionFn, args)
     }
   }
 
-  return instance as ModelInstance<TState, TActions, TViews>
+  return instance
 }
+
+// Legacy alias — `ModelConfig` was the previous interface name. Re-exported
+// as `NormalizedConfig` for any external consumer.
+export type { NormalizedConfig as ModelConfig } from './model'

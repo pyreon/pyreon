@@ -12,52 +12,42 @@ import {
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
-const Profile = model({
-  state: { name: '', bio: '' },
-  actions: (self) => ({
+const Profile = model({ state: { name: '', bio: '' } })
+     .actions((self) => ({
     rename: (n: string) => self.name.set(n),
     setBio: (b: string) => self.bio.set(b),
-  }),
-})
+  }))
 
-const App = model({
-  state: { profile: Profile, title: 'My App' },
-  actions: (self) => ({
+const App = model({ state: { profile: Profile, title: 'My App' } })
+     .actions((self) => ({
     setTitle: (t: string) => self.title.set(t),
     replaceProfile: (p: any) => self.profile.set(p),
-  }),
-})
+  }))
 
-const Counter = model({
-  state: { count: 0 },
-  views: (self) => ({
+const Counter = model({ state: { count: 0 } })
+     .views((self) => ({
     doubled: computed(() => self.count() * 2),
-  }),
-  actions: (self) => ({
+  }))
+     .actions((self) => ({
     inc: () => self.count.update((c: number) => c + 1),
     add: (n: number) => self.count.update((c: number) => c + n),
     reset: () => self.count.set(0),
-  }),
-})
+  }))
 
 // ─── 1. Nested model deletion ────────────────────────────────────────────────
 
 describe('nested model deletion', () => {
   it('replacing a nested child model updates snapshot correctly', () => {
-    const Child = model({
-      state: { value: 0 },
-      actions: (self) => ({
+    const Child = model({ state: { value: 0 } })
+         .actions((self) => ({
         setValue: (v: number) => self.value.set(v),
-      }),
-    })
+      }))
 
-    const Parent = model({
-      state: { child: Child, label: 'parent' },
-      actions: (self) => ({
+    const Parent = model({ state: { child: Child, label: 'parent' } })
+         .actions((self) => ({
         replaceChild: (c: any) => self.child.set(c),
         setLabel: (l: string) => self.label.set(l),
-      }),
-    })
+      }))
 
     const parent = Parent.create({
       child: { value: 10 },
@@ -81,19 +71,15 @@ describe('nested model deletion', () => {
   })
 
   it('nested patches stop propagating after child replacement', () => {
-    const Child = model({
-      state: { x: 0 },
-      actions: (self) => ({
+    const Child = model({ state: { x: 0 } })
+         .actions((self) => ({
         setX: (v: number) => self.x.set(v),
-      }),
-    })
+      }))
 
-    const Parent = model({
-      state: { child: Child },
-      actions: (self) => ({
+    const Parent = model({ state: { child: Child } })
+         .actions((self) => ({
         replaceChild: (c: any) => self.child.set(c),
-      }),
-    })
+      }))
 
     const parent = Parent.create({ child: { x: 1 } })
     const oldChild = parent.child()
@@ -118,12 +104,10 @@ describe('nested model deletion', () => {
 
 describe('snapshot edge cases', () => {
   it('handles null values in state', () => {
-    const M = model({
-      state: { data: null as string | null },
-      actions: (self) => ({
+    const M = model({ state: { data: null as string | null } })
+         .actions((self) => ({
         setData: (v: string | null) => self.data.set(v),
-      }),
-    })
+      }))
 
     const m = M.create()
     expect(getSnapshot(m)).toEqual({ data: null })
@@ -136,12 +120,10 @@ describe('snapshot edge cases', () => {
   })
 
   it('handles empty arrays in state', () => {
-    const M = model({
-      state: { items: [] as number[] },
-      actions: (self) => ({
+    const M = model({ state: { items: [] as number[] } })
+         .actions((self) => ({
         setItems: (v: number[]) => self.items.set(v),
-      }),
-    })
+      }))
 
     const m = M.create()
     expect(getSnapshot(m)).toEqual({ items: [] })
@@ -173,14 +155,10 @@ describe('snapshot edge cases', () => {
   })
 
   it('handles complex nested objects in state', () => {
-    const M = model({
-      state: {
-        config: { theme: 'dark', fontSize: 14, plugins: ['a', 'b'] },
-      },
-      actions: (self) => ({
+    const M = model({ state: { config: { theme: 'dark', fontSize: 14, plugins: ['a', 'b'] }, } })
+         .actions((self) => ({
         setConfig: (c: any) => self.config.set(c),
-      }),
-    })
+      }))
 
     const m = M.create()
     expect(getSnapshot(m)).toEqual({
@@ -198,13 +176,11 @@ describe('snapshot edge cases', () => {
 
 describe('patch replay', () => {
   it('replaying recorded patches on a fresh instance reproduces final state', () => {
-    const M = model({
-      state: { a: 0, b: '' },
-      actions: (self) => ({
+    const M = model({ state: { a: 0, b: '' } })
+         .actions((self) => ({
         setA: (v: number) => self.a.set(v),
         setB: (v: string) => self.b.set(v),
-      }),
-    })
+      }))
 
     const original = M.create()
     const patches: Patch[] = []
@@ -250,26 +226,20 @@ describe('patch replay', () => {
 
 describe('patch with nested operations', () => {
   it('applies replace on deeply nested model property', () => {
-    const Leaf = model({
-      state: { value: 0 },
-      actions: (self) => ({
+    const Leaf = model({ state: { value: 0 } })
+         .actions((self) => ({
         setValue: (v: number) => self.value.set(v),
-      }),
-    })
+      }))
 
-    const Branch = model({
-      state: { leaf: Leaf, tag: '' },
-      actions: (self) => ({
+    const Branch = model({ state: { leaf: Leaf, tag: '' } })
+         .actions((self) => ({
         setTag: (t: string) => self.tag.set(t),
-      }),
-    })
+      }))
 
-    const Root = model({
-      state: { branch: Branch, name: 'root' },
-      actions: (self) => ({
+    const Root = model({ state: { branch: Branch, name: 'root' } })
+         .actions((self) => ({
         setName: (n: string) => self.name.set(n),
-      }),
-    })
+      }))
 
     const root = Root.create({
       branch: { leaf: { value: 1 }, tag: 'a' },
@@ -430,15 +400,13 @@ describe('middleware chain order', () => {
   })
 
   it('middleware can replace action result', () => {
-    const M = model({
-      state: { value: '' },
-      actions: (self) => ({
+    const M = model({ state: { value: '' } })
+         .actions((self) => ({
         getValue: () => {
           return self.value()
         },
         setValue: (v: string) => self.value.set(v),
-      }),
-    })
+      }))
 
     const m = M.create()
     m.setValue('original')
@@ -518,13 +486,11 @@ describe('model with no actions', () => {
   })
 
   it('supports views without actions', () => {
-    const Derived = model({
-      state: { a: 3, b: 4 },
-      views: (self) => ({
+    const Derived = model({ state: { a: 3, b: 4 } })
+         .views((self) => ({
         sum: computed(() => self.a() + self.b()),
         product: computed(() => self.a() * self.b()),
-      }),
-    })
+      }))
 
     const d = Derived.create()
     expect(d.sum()).toBe(7)
@@ -579,13 +545,11 @@ describe('model with no actions', () => {
 
 describe('applySnapshot with partial data', () => {
   it('only updates specified fields, keeps others unchanged', () => {
-    const M = model({
-      state: { name: 'default', age: 0, active: false },
-      actions: (self) => ({
+    const M = model({ state: { name: 'default', age: 0, active: false } })
+         .actions((self) => ({
         setName: (n: string) => self.name.set(n),
         setAge: (a: number) => self.age.set(a),
-      }),
-    })
+      }))
 
     const m = M.create({ name: 'Alice', age: 30, active: true })
 

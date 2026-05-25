@@ -1,0 +1,239 @@
+/**
+ * Cross-library schema-detection + parse helpers — shared by
+ * `@pyreon/store` (schema-mode `defineStore`) and `@pyreon/state-tree`
+ * (schema-mode `model`).
+ *
+ * Two-tier validation contract:
+ *   - Tier A.1: Pyreon `TypedSchemaAdapter` (zod / valibot / arktype via
+ *     this package's `zodSchema` / `valibotSchema` / `arktypeSchema`)
+ *   - Tier A.2: Standard Schema-compliant instance (zod 3.24+, valibot
+ *     1.0+, arktype 2.0+, Effect Schema 0.66+, any future spec-compliant
+ *     library). See https://standardschema.dev/.
+ *
+ * The helpers in this file duck-type both shapes at runtime — no hard
+ * dependencies on any specific validation library.
+ */
+
+import type { ParseResult, ValidationIssue } from './types'
+
+/**
+ * Alias for `ValidationIssue` — re-exported under the schema-store /
+ * state-tree friendly name. Same shape; either name works.
+ */
+export type SchemaIssue = ValidationIssue
+
+/**
+ * Alias for `ParseResult<T>` — re-exported under the schema-store /
+ * state-tree friendly name. Same shape; either name works.
+ */
+export type SchemaParseResult<T> = ParseResult<T>
+
+/**
+ * Duck-typed `TypedSchemaAdapter` shape (Tier A.1). The `_infer` field
+ * is the brand; `parse` is the sync entry point schema-driven consumers
+ * (store, state-tree) need.
+ */
+export interface PyreonAdapterShape<T extends Record<string, unknown>> {
+  readonly _infer: T
+  readonly parse?: (value: unknown) => SchemaParseResult<T>
+}
+
+/**
+ * Duck-typed Standard Schema shape (Tier A.2). Cross-library spec
+ * implemented by zod 3.24+, valibot 1.0+, arktype 2.0+, Effect Schema
+ * 0.66+, and any future spec-compliant library. Detected via the
+ * `'~standard'` property.
+ *
+ * See https://standardschema.dev/ for the full spec.
+ */
+export interface StandardSchemaShape<T> {
+  readonly '~standard': {
+    readonly version: 1
+    readonly vendor: string
+    readonly validate: (value: unknown) =>
+      | { readonly value: T }
+      | {
+          readonly issues: ReadonlyArray<{
+            readonly message: string
+            readonly path?: ReadonlyArray<
+              string | number | symbol | { readonly key: PropertyKey }
+            >
+          }>
+        }
+      | Promise<unknown>
+    readonly types?: { readonly input?: unknown; readonly output?: T }
+  }
+}
+
+/**
+ * Extract the inferred output type from either adapter shape.
+ *   Tier A.1 → `_infer`
+ *   Tier A.2 → `~standard.types.output`
+ *
+ * Falls back to `Record<string, unknown>` for unknown shapes — keeps
+ * the consumer's downstream type machinery from collapsing to `never`.
+ */
+export type InferSchema<S> = S extends {
+  readonly _infer: infer T extends Record<string, unknown>
+}
+  ? T
+  : S extends {
+        readonly '~standard': {
+          readonly types: {
+            readonly output: infer O extends Record<string, unknown>
+          }
+        }
+      }
+    ? O
+    : Record<string, unknown>
+
+/**
+ * Detect a Pyreon `TypedSchemaAdapter` (Tier A.1). The `_infer` field is
+ * the brand; `parse` is the sync entry point schema-driven consumers
+ * need.
+ */
+export function isPyreonAdapter(
+  value: unknown,
+): value is PyreonAdapterShape<Record<string, unknown>> {
+  return (
+    value != null &&
+    typeof value === 'object' &&
+    '_infer' in value &&
+    typeof (value as { parse?: unknown }).parse === 'function'
+  )
+}
+
+/**
+ * Detect a Standard Schema-compliant schema (Tier A.2). Spec:
+ * https://standardschema.dev/
+ */
+export function isStandardSchema(
+  value: unknown,
+): value is StandardSchemaShape<unknown> {
+  if (value == null || typeof value !== 'object') return false
+  const std = (value as { '~standard'?: unknown })['~standard']
+  return (
+    std != null &&
+    typeof std === 'object' &&
+    typeof (std as { validate?: unknown }).validate === 'function'
+  )
+}
+
+/**
+ * Convert a Standard Schema instance into a `SchemaParseResult` parser.
+ * Synchronous only — surfaces async validation as a Promise return so
+ * callers can probe for it and throw with a clear error.
+ *
+ * @internal — exported for advanced consumers who construct their own
+ * Standard-Schema-derived parsers. Most users go through `extractParseFn`.
+ */
+export function wrapStandardSchema<T extends Record<string, unknown>>(
+  schema: StandardSchemaShape<unknown>,
+): (value: unknown) => SchemaParseResult<T> {
+  return (value: unknown) => {
+    try {
+      const result = schema['~standard'].validate(value)
+      // Async escape — caller rejects via Promise-detection.
+      if (result instanceof Promise) {
+        return result as unknown as SchemaParseResult<T>
+      }
+      const r = result as {
+        value?: unknown
+        issues?: ReadonlyArray<{
+          message: string
+          path?: ReadonlyArray<
+            string | number | symbol | { key: PropertyKey }
+          >
+        }>
+      }
+      if ('value' in r) {
+        return { ok: true, value: r.value as T }
+      }
+      const issues = (r.issues ?? []).map((issue) => ({
+        path: (issue.path ?? [])
+          .map((p) =>
+            typeof p === 'object' && p !== null ? String(p.key) : String(p),
+          )
+          .join('.'),
+        message: issue.message,
+      }))
+      return { ok: false, issues }
+    } catch (err) {
+      return {
+        ok: false,
+        issues: [
+          {
+            path: '',
+            message: err instanceof Error ? err.message : String(err),
+          },
+        ],
+      }
+    }
+  }
+}
+
+/**
+ * Extract a sync `parse` function from either adapter shape. Throws if
+ * neither shape matches OR if the schema's `parse` is missing (Tier A.1
+ * adapter that didn't ship sync `parse`). Callers should additionally
+ * probe the returned function's first call for a `Promise` return and
+ * throw at construction time if so (async-only schemas are unsupported
+ * for schema-store / state-tree — use `@pyreon/form` for async).
+ *
+ * @example
+ * ```ts
+ * const parse = extractParseFn(userSchema)
+ * const result = parse(initial)
+ * if (result instanceof Promise) {
+ *   throw new Error('[Pyreon] async schemas are unsupported')
+ * }
+ * if (!result.ok) throw new Error(formatIssues(result.issues, 'init'))
+ * const value = result.value  // parsed + coerced
+ * ```
+ */
+export function extractParseFn<T extends Record<string, unknown>>(
+  schema: unknown,
+): (value: unknown) => SchemaParseResult<T> {
+  if (isPyreonAdapter(schema)) {
+    const parse = schema.parse
+    if (!parse) {
+      throw new Error(
+        '[Pyreon] schema adapter is missing `parse` method. ' +
+          'Upgrade @pyreon/validation to a version that exports `parse` ' +
+          '(zod/valibot/arktype adapters all support it). The validator-only ' +
+          'shape used by @pyreon/form is not enough for schema-driven state — ' +
+          'consumers need the coerced parsed value, not just errors.',
+      )
+    }
+    return parse as (value: unknown) => SchemaParseResult<T>
+  }
+
+  if (isStandardSchema(schema)) {
+    return wrapStandardSchema<T>(schema)
+  }
+
+  throw new Error(
+    '[Pyreon] `schema` must be a TypedSchemaAdapter (from @pyreon/validation) ' +
+      'or a Standard Schema-compliant object (zod 3.24+, valibot 1.0+, ' +
+      'arktype 2.0+, Effect Schema, etc.). ' +
+      'See https://standardschema.dev/ for the spec.',
+  )
+}
+
+/**
+ * Format schema issues into a readable error message. Truncates after
+ * 5 issues with a "and N more" suffix.
+ *
+ * @param issues - normalized validation issues from a parse result
+ * @param op - the operation that failed (for the error prefix); free-form
+ *   string so consumers can pass their own operation labels (`'init'`,
+ *   `'set'`, `'patch'`, `'create'`, `'$set'`, etc.)
+ */
+export function formatIssues(issues: SchemaIssue[], op: string): string {
+  const lines = issues
+    .slice(0, 5)
+    .map((i) => `  - ${i.path || '<root>'}: ${i.message}`)
+  const more =
+    issues.length > 5 ? `\n  ... and ${issues.length - 5} more` : ''
+  return `[Pyreon] Schema validation failed (${op}):\n${lines.join('\n')}${more}`
+}

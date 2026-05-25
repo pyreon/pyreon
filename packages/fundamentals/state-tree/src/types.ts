@@ -1,4 +1,4 @@
-import type { Computed, Signal } from '@pyreon/reactivity'
+import type { Signal } from '@pyreon/reactivity'
 
 // ─── Model brand ──────────────────────────────────────────────────────────────
 
@@ -26,29 +26,74 @@ export type StateSignals<TState extends StateShape> = {
   readonly [K in keyof TState]: Signal<ResolveField<TState[K]>>
 }
 
-/**
- * `self` type inside actions / views:
- * strongly typed for state signals, `any` for actions and views so that
- * actions can call each other without circular type issues.
- */
-export type ModelSelf<TState extends StateShape> = StateSignals<TState> & Record<string, any>
+// ─── Schema-mode mutation helpers ────────────────────────────────────────────
 
-/** The public instance type returned by `.create()` and hooks. */
+/**
+ * Validated mutation helpers exposed on schema-mode model instances and on
+ * `self` inside schema-mode action / view factories. `$`-prefixed to avoid
+ * colliding with user schema field names — `name`, `set`, `patch`, `reset`
+ * are all plausible field names in a real schema.
+ */
+export interface SchemaModelHelpers<TState extends StateShape> {
+  /** Replace the whole state. Validates via schema; throws on failure. */
+  readonly $set: (next: TState) => void
+  /** Shallow partial merge. Validates merged result via schema; throws on failure. */
+  readonly $patch: (partial: Partial<TState>) => void
+  /** Reset every signal to the parsed-initial value captured at `.create()` time. */
+  readonly $reset: () => void
+}
+
+/**
+ * `self` type inside actions / views. Includes state signals + all previously-
+ * accumulated views/actions (from prior `.views()` / `.actions()` chain calls)
+ * + schema helpers when schema mode is active. The `Record<string, any>` tail
+ * keeps factories able to forward-reference each other without circular type
+ * errors.
+ */
+export type ModelSelf<
+  TState extends StateShape,
+  TViews extends Record<string, unknown>,
+  TActions extends Record<string, (...args: any[]) => any>,
+  HasSchema extends boolean,
+> = StateSignals<TState> &
+  TViews &
+  TActions &
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  (HasSchema extends true ? SchemaModelHelpers<TState> : {}) &
+  Record<string, any>
+
+/**
+ * The public instance type returned by `.create()` and hooks. Includes
+ * state signals + every chained `.views()` + every chained `.actions()` +
+ * schema mutation helpers (when applicable).
+ */
 export type ModelInstance<
   TState extends StateShape,
-  TActions extends Record<string, (...args: any[]) => any>,
-  TViews extends Record<string, Signal<any> | Computed<any>>,
-> = StateSignals<TState> & TActions & TViews
+  TViews extends Record<string, unknown> = Record<never, never>,
+  TActions extends Record<string, (...args: any[]) => any> = Record<never, never>,
+  HasSchema extends boolean = false,
+> = StateSignals<TState> &
+  TViews &
+  TActions &
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  (HasSchema extends true ? SchemaModelHelpers<TState> : {})
 
 /**
  * Extract the state type from a ModelDefinition.
  * Used by Snapshot to recursively resolve nested model types.
+ *
+ * `_typeState` is a phantom type-slot stamped on every ModelDefinition by
+ * the model() factory — it carries the inferred `TState` type parameter
+ * without runtime cost. Reading via `_config.state` no longer works
+ * because `state` is optional (schema mode has no `state` field).
  */
 type ExtractModelState<T> = T extends {
   readonly __pyreonMod: true
-  readonly _config: { state: infer S extends StateShape }
+  readonly _typeState?: infer S
 }
-  ? S
+  ? S extends StateShape
+    ? S
+    : never
   : never
 
 /**

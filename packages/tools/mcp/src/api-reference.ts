@@ -1800,25 +1800,53 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())`,
   // <gen-docs:api-reference:start @pyreon/state-tree>
 
   'state-tree/model': {
-    signature: '(definition: { state: StateShape, views?: (self: ModelSelf) => Record<string, () => any>, actions?: (self: ModelSelf) => Record<string, (...args: any[]) => any> }) => ModelDefinition',
-    example: `const Counter = model({
-  state: { count: 0 },
-  views: (self) => ({
-    doubled: () => self.count() * 2,
-  }),
-  actions: (self) => ({
-    increment: () => self.count.update(n => n + 1),
-  }),
-})
+    signature: 'model({ state }) | model({ schema, initial?, onValidationError? }) → ModelDefinition; chain .views(f).actions(f) then .create(initial?) or .asHook(id)',
+    example: `// Plain mode
+const Counter = model({ state: { count: 0 } })
+  .views((self) => ({ doubled: () => self.count() * 2 }))
+  .actions((self) => ({ inc: () => self.count.update(n => n + 1) }))
 
-const counter = Counter.create({ count: 10 })
-counter.count()    // 10
-counter.increment()
-counter.doubled()  // 22`,
-    notes: 'Define a structured reactive model. `state` declares signal-backed fields with their initial values. `views` are computed derivations. `actions` are the only way to mutate state — enabling middleware interception and patch recording. Returns a `ModelDefinition` with `.create(initial?)` for instances and `.asHook(id)` for singleton access. See also: getSnapshot, applySnapshot, onPatch, addMiddleware.',
+// Schema mode (zod / valibot / arktype / Standard Schema)
+import { zodSchema } from '@pyreon/validation'
+import { z } from 'zod'
+
+const User = model({
+  schema: zodSchema(z.object({ name: z.string().min(1), age: z.number() })),
+  initial: { name: '', age: 0 },
+})
+  .views((self) => ({ greet: () => \`Hi, \${self.name()}\` }))
+  .actions((self) => ({
+    rename: (next: string) => self.$patch({ name: next }),
+    async fetchProfile() {
+      const res = await fetch('/api/profile')
+      const data = await res.json()
+      self.$set(data)
+    },
+  }))
+
+const u = User.create({ name: 'Alice', age: 30 })
+u.greet()                 // "Hi, Alice"
+await u.fetchProfile()    // async action, awaitable
+u.$reset()                // back to initial`,
+    notes: 'Define a reactive model via a chainable builder. Two modes (mutually exclusive): **plain mode** `model({ state })` declares signal-backed fields with their initial values; **schema mode** `model({ schema, initial? })` validates state via a TypedSchemaAdapter (`zodSchema` / `valibotSchema` / `arktypeSchema`) or a Standard Schema-compliant instance (zod 3.24+ / valibot 1.0+ / arktype 2.0+ / Effect Schema, etc.) — types are inferred end-to-end. Chain `.views(f)` for derived values and `.actions(f)` for mutators; both are CHAINABLE — every subsequent layer sees prior views + actions via `self`. Schema mode adds `$set` / `$patch` / `$reset` helpers on `self` and on the instance, each validated through the schema. Actions can be `async`; `await u.fetchPosts()` works end-to-end and middleware sees completion via `await next(call)`. Returns a `ModelDefinition` — call `.create(initial?)` for an independent instance or `.asHook(id)` for a singleton. See also: ModelDefinition, getSnapshot, applySnapshot, onPatch, addMiddleware.',
     mistakes: `- Mutating state outside of actions — bypasses middleware and patch recording, breaks the structured contract
 - Forgetting that \`self.count\` is a signal — read with \`self.count()\`, write with \`self.count.set(v)\` or \`.update(fn)\` inside actions
-- Nesting plain objects in state instead of child models — plain objects are not signal-backed, changes to their properties are not reactive`,
+- Nesting plain objects in state instead of child models — plain objects are not signal-backed, changes to their properties are not reactive
+- Confusing \`self.$set\` (validates against schema, throws on failure) with \`self.field.set(v)\` (direct signal write, bypasses validation — the documented escape hatch)
+- Using \`model({ state, views, actions })\` — that single-config form was REMOVED. Chain \`.views()\` / \`.actions()\` instead
+- Defining views/actions referencing each other across MULTIPLE \`.actions()\` blocks but expecting tight typing — \`self\` in each block is loosely typed at the tail (\`Record<string, any>\`) so cross-block calls work; the cost is weak inference for cross-block helpers`,
+  },
+
+  'state-tree/ModelDefinition': {
+    signature: 'class ModelDefinition<TState, TViews, TActions, HasSchema> { views(f), actions(f), create(initial?), asHook(id) }',
+    example: `const M = model({ schema })
+  .views((self) => ({ a: () => self.x() }))     // self has state
+  .views((self) => ({ b: () => self.a() + 1 })) // self also has a
+  .actions((self) => ({ go: () => self.b() })) // self has a + b
+  .actions((self) => ({ go2: () => self.go() })) // self has a + b + go`,
+    notes: 'The chainable builder returned by `model()`. Each `.views(f)` / `.actions(f)` returns a NEW `ModelDefinition` with the accumulated layer — immutable builder, safe to share across call sites. `f` receives `self` typed as the model AS IT IS SO FAR (state signals + prior views + prior actions + schema helpers when applicable). Type parameters: `TState` is the underlying value shape; `TViews` / `TActions` accumulate across chain steps; `HasSchema` flips to `true` in schema mode (adds `$set`/`$patch`/`$reset` to instance type). See also: model.',
+    mistakes: `- Trying to mutate \`_config\` directly — it's frozen by intent. Use the chain methods.
+- Forgetting that \`.views(f).actions(g)\` does NOT call \`f\` or \`g\` immediately — they run inside \`.create()\`. Side effects in factories run per-instance, not per-definition.`,
   },
 
   'state-tree/getSnapshot': {

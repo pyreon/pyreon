@@ -13,33 +13,27 @@ import {
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
-const Counter = model({
-  state: { count: 0 },
-  views: (self) => ({
+const Counter = model({ state: { count: 0 } })
+     .views((self) => ({
     doubled: computed(() => self.count() * 2),
-  }),
-  actions: (self) => ({
+  }))
+     .actions((self) => ({
     inc: () => self.count.update((c: number) => c + 1),
     dec: () => self.count.update((c: number) => c - 1),
     add: (n: number) => self.count.update((c: number) => c + n),
     reset: () => self.count.set(0),
-  }),
-})
+  }))
 
-const Profile = model({
-  state: { name: '', bio: '' },
-  actions: (self) => ({
+const Profile = model({ state: { name: '', bio: '' } })
+     .actions((self) => ({
     rename: (n: string) => self.name.set(n),
     setBio: (b: string) => self.bio.set(b),
-  }),
-})
+  }))
 
-const App = model({
-  state: { profile: Profile, title: 'My App' },
-  actions: (self) => ({
+const App = model({ state: { profile: Profile, title: 'My App' } })
+     .actions((self) => ({
     setTitle: (t: string) => self.title.set(t),
-  }),
-})
+  }))
 
 // ─── getSnapshot — JSON-serializable output ────────────────────────────────
 
@@ -339,18 +333,14 @@ describe('addMiddleware — intercepts actions', () => {
 
 describe('nested model composition', () => {
   it('deeply nested models work correctly', () => {
-    const Leaf = model({
-      state: { val: 0 },
-      actions: (self) => ({
+    const Leaf = model({ state: { val: 0 } })
+         .actions((self) => ({
         set: (v: number) => self.val.set(v),
-      }),
-    })
-    const Branch = model({
-      state: { leaf: Leaf, tag: '' },
-      actions: (self) => ({
+      }))
+    const Branch = model({ state: { leaf: Leaf, tag: '' } })
+         .actions((self) => ({
         setTag: (t: string) => self.tag.set(t),
-      }),
-    })
+      }))
     const Root = model({
       state: { branch: Branch, name: 'root' },
     })
@@ -366,12 +356,10 @@ describe('nested model composition', () => {
   })
 
   it('nested model patches propagate up with correct paths', () => {
-    const Leaf = model({
-      state: { val: 0 },
-      actions: (self) => ({
+    const Leaf = model({ state: { val: 0 } })
+         .actions((self) => ({
         setVal: (v: number) => self.val.set(v),
-      }),
-    })
+      }))
     const Branch = model({
       state: { leaf: Leaf },
     })

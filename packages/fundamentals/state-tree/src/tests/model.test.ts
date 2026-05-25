@@ -14,34 +14,28 @@ import { instanceMeta } from '../registry'
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
-const Counter = model({
-  state: { count: 0 },
-  views: (self) => ({
+const Counter = model({ state: { count: 0 } })
+     .views((self) => ({
     doubled: computed(() => self.count() * 2),
     isPositive: computed(() => self.count() > 0),
-  }),
-  actions: (self) => ({
+  }))
+     .actions((self) => ({
     inc: () => self.count.update((c: number) => c + 1),
     dec: () => self.count.update((c: number) => c - 1),
     add: (n: number) => self.count.update((c: number) => c + n),
     reset: () => self.count.set(0),
-  }),
-})
+  }))
 
-const Profile = model({
-  state: { name: '', bio: '' },
-  actions: (self) => ({
+const Profile = model({ state: { name: '', bio: '' } })
+     .actions((self) => ({
     rename: (n: string) => self.name.set(n),
     setBio: (b: string) => self.bio.set(b),
-  }),
-})
+  }))
 
-const App = model({
-  state: { profile: Profile, title: 'My App' },
-  actions: (self) => ({
+const App = model({ state: { profile: Profile, title: 'My App' } })
+     .actions((self) => ({
     setTitle: (t: string) => self.title.set(t),
-  }),
-})
+  }))
 
 // ─── State signals ─────────────────────────────────────────────────────────────
 
@@ -93,16 +87,14 @@ describe('actions', () => {
   })
 
   it('actions can call other actions via self (Proxy)', () => {
-    const M = model({
-      state: { x: 0 },
-      actions: (self) => ({
+    const M = model({ state: { x: 0 } })
+         .actions((self) => ({
         doubleInc: () => {
           self.inc()
           self.inc()
         },
         inc: () => self.x.update((n: number) => n + 1),
-      }),
-    })
+      }))
     const m = M.create()
     m.doubleInc()
     expect(m.x()).toBe(2)
@@ -391,19 +383,15 @@ describe('patch snapshotValue', () => {
   it('emits a snapshot (not a live instance) when setting a nested model signal', () => {
     // When a nested model instance is set as a value and a patch listener is active,
     // snapshotValue should recursively serialize the nested model.
-    const Inner = model({
-      state: { x: 10, y: 20 },
-      actions: (self) => ({
+    const Inner = model({ state: { x: 10, y: 20 } })
+         .actions((self) => ({
         setX: (v: number) => self.x.set(v),
-      }),
-    })
+      }))
 
-    const Outer = model({
-      state: { child: Inner, label: 'hi' },
-      actions: (self) => ({
+    const Outer = model({ state: { child: Inner, label: 'hi' } })
+         .actions((self) => ({
         replaceChild: (newChild: any) => self.child.set(newChild),
-      }),
-    })
+      }))
 
     const outer = Outer.create()
     const patches: Patch[] = []
@@ -428,12 +416,10 @@ describe('patch snapshotValue', () => {
     const Mid = model({
       state: { leaf: Leaf, tag: 'mid' },
     })
-    const Root = model({
-      state: { mid: Mid, name: 'root' },
-      actions: (self) => ({
+    const Root = model({ state: { mid: Mid, name: 'root' } })
+         .actions((self) => ({
         replaceMid: (m: any) => self.mid.set(m),
-      }),
-    })
+      }))
 
     const root = Root.create()
     const patches: Patch[] = []
@@ -457,12 +443,10 @@ describe('patch snapshotValue', () => {
       state: { x: 10 },
     })
 
-    const Outer = model({
-      state: { child: Inner },
-      actions: (self) => ({
+    const Outer = model({ state: { child: Inner } })
+         .actions((self) => ({
         replaceChild: (c: any) => self.child.set(c),
-      }),
-    })
+      }))
 
     const outer = Outer.create()
     const patches: Patch[] = []
@@ -493,12 +477,10 @@ describe('patch snapshotValue', () => {
     const Branch = model({
       state: { leaf: Leaf, tag: 'a' },
     })
-    const Root = model({
-      state: { branch: Branch },
-      actions: (self) => ({
+    const Root = model({ state: { branch: Branch } })
+         .actions((self) => ({
         replaceBranch: (b: any) => self.branch.set(b),
-      }),
-    })
+      }))
 
     const root = Root.create()
     const patches: Patch[] = []

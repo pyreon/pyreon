@@ -963,27 +963,23 @@ MobX-State-Tree-inspired structured state management built on Pyreon signals. Mo
 ```typescript
 import { model, getSnapshot, applySnapshot, onPatch, applyPatch, addMiddleware } from '@pyreon/state-tree'
 
-// Define a model — state (signals), views (derived), actions (mutations):
-const Todo = model({
-  state: { title: '', done: false },
-  views: (self) => ({
+// Define a model — chainable: state, then .views(), then .actions():
+const Todo = model({ state: { title: '', done: false } })
+  .views((self) => ({
     summary: () => `${self.title()} [${self.done() ? 'x' : ' '}]`,
-  }),
-  actions: (self) => ({
+  }))
+  .actions((self) => ({
     toggle: () => self.done.set(!self.done()),
     rename: (title: string) => self.title.set(title),
-  }),
-})
+  }))
 
-const TodoList = model({
-  state: { todos: [] as ReturnType<typeof Todo.create>[] },
-  actions: (self) => ({
+const TodoList = model({ state: { todos: [] as ReturnType<typeof Todo.create>[] } })
+  .actions((self) => ({
     add: (title: string) => {
       const todo = Todo.create({ title, done: false })
       self.todos.update(list => [...list, todo])
     },
-  }),
-})
+  }))
 
 // Create instances:
 const list = TodoList.create({ todos: [] })

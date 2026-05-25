@@ -21,14 +21,9 @@ import {
  *      which we collect into an `undoStack` so the user can undo
  *      edits across steps. The patch tape is also a free audit log.
  */
-export const WizardModel = model({
-  state: {
-    account: DEFAULT_WIZARD.account,
-    profile: DEFAULT_WIZARD.profile,
-    preferences: DEFAULT_WIZARD.preferences,
-  },
-  views: () => ({}),
-  actions: (self) => ({
+export const WizardModel = model({ state: { account: DEFAULT_WIZARD.account, profile: DEFAULT_WIZARD.profile, preferences: DEFAULT_WIZARD.preferences, } })
+      .views(() => ({}))
+      .actions((self) => ({
     setAccount(values: AccountValues) {
       self.account.set(values)
     },
@@ -44,8 +39,7 @@ export const WizardModel = model({
       self.profile.set(DEFAULT_WIZARD.profile)
       self.preferences.set(DEFAULT_WIZARD.preferences)
     },
-  }),
-})
+  }))
 
 /** Singleton hook so every step component shares one wizard instance. */
 export const useWizard = WizardModel.asHook('forms-wizard')

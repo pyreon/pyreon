@@ -2,19 +2,14 @@ import { computed, signal } from '@pyreon/reactivity'
 import type { Patch } from '@pyreon/state-tree'
 import { applySnapshot, getSnapshot, model, onPatch } from '@pyreon/state-tree'
 
-const TodoList = model({
-  state: {
-    title: 'My Todos',
-    nextId: 1,
-  },
-  views: (self) => ({
+const TodoList = model({ state: { title: 'My Todos', nextId: 1, } })
+     .views((self) => ({
     displayTitle: computed(() => `${self.title()} (#${self.nextId() - 1} items added)`),
-  }),
-  actions: (self) => ({
+  }))
+     .actions((self) => ({
     setTitle: (title: string) => self.title.set(title),
     bumpId: () => self.nextId.update((n: number) => n + 1),
-  }),
-})
+  }))
 
 export function StateTreeDemo() {
   const list = TodoList.create({ title: 'Shopping List' })
