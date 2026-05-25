@@ -22,10 +22,12 @@
  * upstream tooling. Idempotent — running twice removes nothing the
  * second time. Logs the per-file action for verifier confirmation.
  */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const DIST = join(import.meta.dir, '..', 'dist')
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const DIST = join(__dirname, '..', 'dist')
 
 // IIFE entries that need the strip. Background is ESM so excluded.
 const IIFE_ENTRIES = ['content-script.js', 'devtools.js', 'panel.js', 'page-hook.js']
@@ -47,7 +49,16 @@ for (const name of IIFE_ENTRIES) {
     alreadyClean++
     continue
   }
-  writeFileSync(path, after)
+  // Write via tmp + atomic rename. Avoids the CodeQL race-condition
+  // warning (file may have changed between read + write); also makes the
+  // write resilient to mid-write interruption — readers see either the
+  // OLD file or the FULL new file, never a partially-written body.
+  // Build steps are sequential so the race is theoretical, but the
+  // pattern is cheap and applies the same atomic-write discipline used
+  // elsewhere in the monorepo (see `writeFileAtomic` in ssg-plugin).
+  const tmp = `${path}.tmp.${process.pid}`
+  writeFileSync(tmp, after)
+  renameSync(tmp, path)
   stripped++
   console.log(`[strip-cjs] ${name} — stripped exports decorator`)
 }

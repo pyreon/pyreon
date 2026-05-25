@@ -23,11 +23,15 @@
  *    running at http://localhost:5180)
  */
 
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 
-const DEVTOOLS_DIR = join(import.meta.dir, '..')
+// Standard ESM idiom (works in Bun + Node + tsc). Replaces `import.meta.dir`
+// which is Bun-only and untyped under the standard TS lib.
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const DEVTOOLS_DIR = join(__dirname, '..')
 const DIST = join(DEVTOOLS_DIR, 'dist')
 const APP_URL = process.env.APP_URL ?? 'http://localhost:5180'
 
@@ -103,7 +107,7 @@ if (process.exitCode) {
 // ── 2. Launch Chromium with the extension loaded ──────────────────────────
 console.log('\n2. Launch Chromium with --load-extension')
 
-const userDataDir = join(import.meta.dir, '..', '.playwright-profile')
+const userDataDir = join(__dirname, '..', '.playwright-profile')
 let context: Awaited<ReturnType<typeof chromium.launchPersistentContext>> | null = null
 
 try {
@@ -290,7 +294,7 @@ else fail('Component tree empty — registerComponent may not be firing during m
 // ── 6. Screenshot the loaded page (for visual confirmation) ───────────────
 console.log('\n6. Screenshot the app page (for visual evidence)')
 
-const screenshotPath = join(import.meta.dir, '..', 'verification-screenshots', 'app-with-extension.png')
+const screenshotPath = join(__dirname, '..', 'verification-screenshots', 'app-with-extension.png')
 await page.screenshot({ path: screenshotPath, fullPage: false })
 pass(`Saved ${screenshotPath}`)
 
@@ -304,7 +308,7 @@ await page.goto(panelHtmlPath, { waitUntil: 'domcontentloaded' })
 // screenshot what we get — proves the static HTML + CSS render correctly.
 await page.waitForTimeout(500)
 
-const panelEmptyShot = join(import.meta.dir, '..', 'verification-screenshots', 'panel-standalone.png')
+const panelEmptyShot = join(__dirname, '..', 'verification-screenshots', 'panel-standalone.png')
 await page.screenshot({ path: panelEmptyShot, fullPage: true })
 pass(`Saved ${panelEmptyShot}`)
 
