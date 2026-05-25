@@ -27,7 +27,7 @@
     "@happy-dom/global-registrator": "^20.8.9",
     "@pyreon/vite-plugin": "workspace:*",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
-    "@types/node": "^22.10.0",
+    "@types/node": "^25.9.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "playwright": "^1.49.0",
