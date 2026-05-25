@@ -1,0 +1,5 @@
+.gradle/
+build/
+*.class
+META-INF/
+node_modules/
