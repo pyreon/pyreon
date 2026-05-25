@@ -124,6 +124,7 @@ fn is_stateful_call(name: &str) -> bool {
             | "computed"
             | "effect"
             | "batch"
+            | "createSelector"
             | "createContext"
             | "createReactiveContext"
             | "useContext"
@@ -352,6 +353,13 @@ struct Ctx<'a> {
     signal_vars: FxHashSet<String>,
     /// Shadowed signal names in current scope (for scope-aware auto-call)
     shadowed_signals: FxHashSet<String>,
+    /// Selector variables: `const x = createSelector(...)` — drives the
+    /// `selector(k) ? a : b` ternary auto-promotion to `.subscribe(k, m => ...)`.
+    /// See JS backend's `selectorVars` for parity.
+    selector_vars: FxHashSet<String>,
+    /// Shadowed selector names — populated by find_shadowing logic in
+    /// future PR. Currently always empty (matches JS backend's TODO).
+    shadowed_selectors: FxHashSet<String>,
     /// Bindings whose initializer is DIRECTLY a JSX element/fragment
     /// (optionally parenthesized) — e.g. `const header = <h1/>`. A bare
     /// `{header}` child of such a binding must MOUNT via `_mountSlot`, not be
@@ -401,6 +409,8 @@ impl<'a> Ctx<'a> {
             parent_is_component_jsx_element: false,
             signal_vars: FxHashSet::default(),
             shadowed_signals: FxHashSet::default(),
+            selector_vars: FxHashSet::default(),
+            shadowed_selectors: FxHashSet::default(),
             element_vars: FxHashSet::default(),
             collect_lens,
             reactivity_lens: Vec::new(),
@@ -632,6 +642,152 @@ fn is_signal_call_expr(expr: &Expression) -> bool {
 /// Check if an identifier name is an active (non-shadowed) signal variable.
 fn is_active_signal(name: &str, ctx: &Ctx) -> bool {
     ctx.signal_vars.contains(name) && !ctx.shadowed_signals.contains(name)
+}
+
+/// Check if a call expression creates a selector (`createSelector(...)`).
+fn is_selector_call_expr(expr: &Expression) -> bool {
+    if let Expression::CallExpression(call) = expr {
+        if let Expression::Identifier(id) = &call.callee {
+            return id.name.as_str() == "createSelector";
+        }
+    }
+    false
+}
+
+/// Check if an identifier name is an active (non-shadowed) selector variable.
+fn is_active_selector(name: &str, ctx: &Ctx) -> bool {
+    ctx.selector_vars.contains(name) && !ctx.shadowed_selectors.contains(name)
+}
+
+/// Conservative reactivity check for the selector-promote bail catalog.
+/// Returns true iff the subtree contains a CallExpression whose callee is a
+/// known active signal — i.e. an actual reactive read. Plain member access
+/// (`row.id`, `obj.deep.x`) returns FALSE even though it would trip the more
+/// permissive `is_dynamic` (which also flags props access). That distinction
+/// matters for `<For>` row keys — the callback parameter is stable, and its
+/// member chain is a safe key for `.subscribe`. Mirrors JS `containsSignalCall`.
+fn contains_signal_call(expr: &Expression, ctx: &Ctx) -> bool {
+    if let Expression::CallExpression(call) = expr {
+        if let Expression::Identifier(id) = &call.callee {
+            if is_active_signal(id.name.as_str(), ctx) {
+                return true;
+            }
+        }
+    }
+    match expr {
+        Expression::CallExpression(c) => {
+            contains_signal_call(&c.callee, ctx)
+                || c.arguments
+                    .iter()
+                    .any(|a| a.as_expression().map_or(false, |e| contains_signal_call(e, ctx)))
+        }
+        Expression::StaticMemberExpression(m) => contains_signal_call(&m.object, ctx),
+        Expression::ComputedMemberExpression(m) => {
+            contains_signal_call(&m.object, ctx) || contains_signal_call(&m.expression, ctx)
+        }
+        Expression::BinaryExpression(b) => {
+            contains_signal_call(&b.left, ctx) || contains_signal_call(&b.right, ctx)
+        }
+        Expression::LogicalExpression(l) => {
+            contains_signal_call(&l.left, ctx) || contains_signal_call(&l.right, ctx)
+        }
+        Expression::ConditionalExpression(c) => {
+            contains_signal_call(&c.test, ctx)
+                || contains_signal_call(&c.consequent, ctx)
+                || contains_signal_call(&c.alternate, ctx)
+        }
+        Expression::UnaryExpression(u) => contains_signal_call(&u.argument, ctx),
+        Expression::ParenthesizedExpression(p) => contains_signal_call(&p.expression, ctx),
+        Expression::TemplateLiteral(t) => t.expressions.iter().any(|e| contains_signal_call(e, ctx)),
+        Expression::TSAsExpression(e) => contains_signal_call(&e.expression, ctx),
+        Expression::TSSatisfiesExpression(e) => contains_signal_call(&e.expression, ctx),
+        Expression::TSNonNullExpression(e) => contains_signal_call(&e.expression, ctx),
+        Expression::TSTypeAssertion(e) => contains_signal_call(&e.expression, ctx),
+        Expression::ChainExpression(c) => match &c.expression {
+            ChainElement::CallExpression(call) => {
+                contains_signal_call(&call.callee, ctx)
+                    || call
+                        .arguments
+                        .iter()
+                        .any(|a| a.as_expression().map_or(false, |e| contains_signal_call(e, ctx)))
+            }
+            ChainElement::StaticMemberExpression(m) => contains_signal_call(&m.object, ctx),
+            ChainElement::ComputedMemberExpression(m) => {
+                contains_signal_call(&m.object, ctx) || contains_signal_call(&m.expression, ctx)
+            }
+            ChainElement::PrivateFieldExpression(p) => contains_signal_call(&p.object, ctx),
+            ChainElement::TSNonNullExpression(e) => contains_signal_call(&e.expression, ctx),
+        },
+        _ => false,
+    }
+}
+
+/// Detect the `selector(key) ? consequent : alternate` ternary shape for
+/// effect-free promotion to `selector.subscribe(key, m => ...)`. Mirrors
+/// JS backend's `tryDirectSelectorTernary` — conservative, bails on every
+/// shape we can't prove safe. See JS comment for the full bail catalog.
+struct SelectorTernary {
+    selector_ref: String,
+    key_expr: String,
+    consequent: String,
+    alternate: String,
+}
+
+fn try_direct_selector_ternary(
+    expr_node: &Expression,
+    ctx: &mut Ctx,
+) -> Option<SelectorTernary> {
+    // Unwrap a leading arrow function expression body (`() => sel(k) ? a : b`).
+    // oxc represents `(x) => expr` with `arrow.expression == true` and the
+    // body's single statement wrapping the expression.
+    let mut inner: &Expression = expr_node;
+    if let Expression::ArrowFunctionExpression(arrow) = expr_node {
+        if arrow.expression {
+            if let Some(Statement::ExpressionStatement(stmt)) = arrow.body.statements.first() {
+                inner = &stmt.expression;
+            }
+        }
+    }
+    while let Expression::ParenthesizedExpression(p) = inner {
+        inner = &p.expression;
+    }
+    let cond = match inner {
+        Expression::ConditionalExpression(c) => c,
+        _ => return None,
+    };
+    let test_call = match &cond.test {
+        Expression::CallExpression(c) => c,
+        _ => return None,
+    };
+    if test_call.arguments.len() != 1 {
+        return None;
+    }
+    let callee_name = match &test_call.callee {
+        Expression::Identifier(id) => id.name.to_string(),
+        _ => return None,
+    };
+    if !is_active_selector(&callee_name, ctx) {
+        return None;
+    }
+    let key_arg = test_call.arguments.first()?.as_expression()?;
+    if contains_signal_call(key_arg, ctx) {
+        return None;
+    }
+    if contains_signal_call(&cond.consequent, ctx) {
+        return None;
+    }
+    if contains_signal_call(&cond.alternate, ctx) {
+        return None;
+    }
+    let key_expr = slice_expr(key_arg, ctx);
+    let consequent = slice_expr(&cond.consequent, ctx);
+    let alternate = slice_expr(&cond.alternate, ctx);
+    Some(SelectorTernary {
+        selector_ref: callee_name,
+        key_expr,
+        consequent,
+        alternate,
+    })
 }
 
 /// Find variable declarations and parameters in a function that shadow signal names.
@@ -3657,6 +3813,22 @@ fn emit_dynamic_attr(
             .push(format!("const {} = _bindDirect({}, {})", d, signal_name, updater));
         return;
     }
+    // Selector-ternary auto-promotion: `selector(k) ? a : b` becomes
+    // `selector.subscribe(k, m => setter(m ? a : b))` — the effect-free
+    // per-key fast path. See `try_direct_selector_ternary` for the bail
+    // catalog. Real-world impact: per-row className-on-selection in
+    // <For> drops from ~5 allocs (full renderEffect) to ~2 (Set.add +
+    // dispose closure).
+    if let Some(sel) = try_direct_selector_ternary(expr_node, ctx) {
+        let d = tb.next_disp();
+        let setter_expr = format!("(m ? {} : {})", sel.consequent, sel.alternate);
+        let setter_body = attr_setter(html_attr_name, var_name, &setter_expr);
+        tb.bind_lines.push(format!(
+            "const {} = {}.subscribe({}, (m) => {{ {} }})",
+            d, sel.selector_ref, sel.key_expr, setter_body
+        ));
+        return;
+    }
     tb.reactive_bind_exprs
         .push(attr_setter(html_attr_name, var_name, &expr_text));
 }
@@ -4083,6 +4255,11 @@ fn collect_prop_derived(decl: &VariableDeclaration, ctx: &mut Ctx) {
                     // Track signal() and computed() declarations for auto-call
                     if is_signal_call_expr(init) {
                         ctx.signal_vars.insert(id.name.to_string());
+                    }
+                    // Track createSelector() for .subscribe auto-promotion
+                    // in className/attr bindings (see try_direct_selector_ternary).
+                    if is_selector_call_expr(init) {
+                        ctx.selector_vars.insert(id.name.to_string());
                     }
                     continue;
                 }

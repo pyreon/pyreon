@@ -922,3 +922,87 @@ describeNative('cross-backend: component-child stable-reference carve-out', () =
       )
     `))
 })
+
+// ----------------------------------------------------------------------
+// Selector-ternary auto-promotion: `selector(k) ? a : b` in className/attr
+// bindings compiles to `selector.subscribe(k, m => ...)` — the effect-free
+// per-key fast path. Both backends must emit byte-identical output for
+// every shape in the bail catalog.
+// ----------------------------------------------------------------------
+
+describeNative('Native vs JS equivalence — selector.subscribe auto-promotion', () => {
+  test('promotes `class={() => sel(id) ? "a" : "b"}` shape', () =>
+    compare(`
+      import { createSelector, signal } from '@pyreon/reactivity'
+      const selected = signal(null)
+      const isSel = createSelector(selected)
+      export const Row = (row) => (
+        <tr class={() => isSel(row.id) ? 'selected' : ''}>
+          <td>{row.id}</td>
+        </tr>
+      )
+    `))
+
+  test('promotes bare `class={sel(k) ? a : b}` (no arrow)', () =>
+    compare(`
+      import { createSelector, signal } from '@pyreon/reactivity'
+      const selected = signal(null)
+      const isSel = createSelector(selected)
+      export const X = (k) => <div class={isSel(k) ? 'on' : 'off'}>x</div>
+    `))
+
+  test('promotes for setAttribute-style attrs (aria-current)', () =>
+    compare(`
+      import { createSelector, signal } from '@pyreon/reactivity'
+      const sel = createSelector(signal(null))
+      export const X = (k) => <a aria-current={() => sel(k) ? 'page' : 'false'}>x</a>
+    `))
+
+  test('preserves deep key expression literally (item.deep.path.id)', () =>
+    compare(`
+      import { createSelector, signal } from '@pyreon/reactivity'
+      const sel = createSelector(signal(null))
+      export const X = (item) => <div class={() => sel(item.deep.path.id) ? 'a' : 'b'}>x</div>
+    `))
+
+  test('bails when selector identifier is NOT createSelector result', () =>
+    compare(`
+      import { signal } from '@pyreon/reactivity'
+      const someFn = (k) => k === 1
+      export const X = (k) => <div class={() => someFn(k) ? 'a' : 'b'}>x</div>
+    `))
+
+  test('bails when key argument contains a signal call', () =>
+    compare(`
+      import { createSelector, signal } from '@pyreon/reactivity'
+      const selected = signal(null)
+      const id = signal(0)
+      const isSel = createSelector(selected)
+      export const X = () => <div class={() => isSel(id()) ? 'a' : 'b'}>x</div>
+    `))
+
+  test('bails when a branch contains a signal call', () =>
+    compare(`
+      import { createSelector, signal } from '@pyreon/reactivity'
+      const selected = signal(null)
+      const cls = signal('default')
+      const isSel = createSelector(selected)
+      export const X = (k) => <div class={() => isSel(k) ? cls() : 'b'}>x</div>
+    `))
+
+  test('bails when call has 2 args (not the standard shape)', () =>
+    compare(`
+      import { createSelector, signal } from '@pyreon/reactivity'
+      const selected = signal(null)
+      const isSel = createSelector(selected)
+      export const X = (k, extra) => <div class={() => isSel(k, extra) ? 'a' : 'b'}>x</div>
+    `))
+
+  test('bails when expression is NOT a ternary (plain call)', () =>
+    compare(`
+      import { createSelector, signal } from '@pyreon/reactivity'
+      const selected = signal(null)
+      const isSel = createSelector(selected)
+      export const X = (k) => <div class={() => isSel(k)}>x</div>
+    `))
+})
