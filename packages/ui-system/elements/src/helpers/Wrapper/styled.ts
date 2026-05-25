@@ -8,7 +8,7 @@
 import { config } from '@pyreon/ui-core'
 import { alignContent, extendCss, makeItResponsive } from '@pyreon/unistyle'
 import type { ResponsiveStylesCallback } from '../../types'
-import type { StyledProps } from './types'
+import type { StyledProps, ThemeProps } from './types'
 
 const { styled, css, component } = config
 
@@ -23,7 +23,7 @@ const parentFixCSS = `
   flex-direction: column;
 `
 
-export const styles: ResponsiveStylesCallback = ({ theme: t, css: cssFn }) => cssFn`
+export const styles: ResponsiveStylesCallback<ThemeProps> = ({ theme: t, css: cssFn }) => cssFn`
   ${alignContent({
     direction: t.direction,
     alignX: t.alignX,

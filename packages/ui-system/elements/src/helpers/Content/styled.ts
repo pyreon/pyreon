@@ -47,8 +47,11 @@ const calculateGap = ({
   type,
   value: gapValue,
 }: {
-  direction: keyof typeof gapDimensions
-  type: ThemeProps['contentType']
+  // Optional to match the responsive engine's per-breakpoint resolution —
+  // the body's first line falsy-guards both. ThemeProps fields are
+  // optional after the typed-themes change, so undefined flows in.
+  direction?: keyof typeof gapDimensions | undefined
+  type?: ThemeProps['contentType']
   value: string | number | null | undefined
 }) => {
   if (!direction || !type || type === 'content') return undefined
@@ -61,7 +64,7 @@ const calculateGap = ({
 // --------------------------------------------------------
 // calculations of styles to be rendered
 // --------------------------------------------------------
-const styles: ResponsiveStylesCallback = ({ css: cssFn, theme: t, rootSize }) => cssFn`
+const styles: ResponsiveStylesCallback<ThemeProps> = ({ css: cssFn, theme: t, rootSize }) => cssFn`
   ${alignContent({
     direction: t.direction,
     alignX: t.alignX,

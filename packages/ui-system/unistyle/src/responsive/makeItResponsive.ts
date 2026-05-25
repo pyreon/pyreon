@@ -47,14 +47,18 @@ type Theme = Partial<{
 }> &
   CustomTheme
 
-// The generic default stays `any` (not `unknown`) to preserve back-compat
-// for callers that use the alias without specifying a theme type — e.g.
-// elements' `ResponsiveStylesCallback = MakeItResponsiveStyles`, which
-// then destructures `t.direction`, `t.alignX`, etc. Tightening the default
-// to `unknown` would force casts at every key access in those callbacks.
-// Callers that DO supply a generic (coolgrid's `MakeItResponsiveStyles<
-// Pick<StyledTypes, 'width' | 'extraStyles'>>`) get the full strict shape.
-export type MakeItResponsiveStyles<T extends Partial<Record<string, any>> = any> = ({
+// Default tightened from `any` to `Partial<Record<string, unknown>>` so
+// un-typed callers (`MakeItResponsiveStyles` with no generic) get strict
+// `unknown` per key — forcing narrowing at the access site. Every shipped
+// caller now passes an explicit theme shape:
+//   - coolgrid Container/Row/Col: `Pick<StyledTypes, 'width' | 'extraStyles'>`
+//   - elements Wrapper/Content/Text: `ThemeProps` (per helper)
+// The constraint stays `Partial<Record<string, any>>` (not `unknown`) so
+// strict generic arguments with named keys (e.g. `Partial<{ direction:
+// ContentDirection; ... }>`) continue to satisfy it.
+export type MakeItResponsiveStyles<
+  T extends Partial<Record<string, any>> = Partial<Record<string, unknown>>,
+> = ({
   theme,
   css,
   rootSize,

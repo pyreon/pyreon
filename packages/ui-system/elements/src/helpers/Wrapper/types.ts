@@ -43,12 +43,16 @@ export interface StyledProps {
   $childFix?: true
 }
 
-export type ThemeProps = {
+// All fields optional — at the styles-callback boundary the responsive
+// engine passes per-breakpoint resolved scalars, and the Wrapper component
+// forwards `own.X` props which are all `<X> | undefined`. The callback
+// body already guards each key with truthy / `=== 'block'` / ternary
+// checks, so undefined is a valid value.
+export type ThemeProps = Partial<{
   direction: ContentDirection
   alignX: ContentAlignX
   alignY: ContentAlignY
   equalCols: ContentBoolean
-} & Partial<{
   block: ContentBoolean
   extraStyles: Css
   childFix: true
