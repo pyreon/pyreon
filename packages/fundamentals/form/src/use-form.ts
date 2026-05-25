@@ -161,6 +161,40 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     return values
   }
 
+  // Per-field schema-version tracking — independent of `validationVersions`
+  // (which tracks per-field-validator runs) so an in-flight schema call from
+  // ONE field's blur doesn't get clobbered by another field's blur. Each
+  // call captures the current version, awaits the schema, and writes only
+  // if the version is still current.
+  const schemaFieldVersions: Partial<Record<keyof TValues, number>> = {}
+
+  /**
+   * Run the form-level schema and apply ONLY this field's error.
+   *
+   * Used by `setTouched` when `validateOn: 'blur'` is set AND a schema is
+   * configured AND the field has no per-field validator. Without this,
+   * schema-only forms with `validateOn: 'blur'` would silently skip
+   * blur-time validation — the schema only fires in `validate()` on
+   * submit (#942 W10).
+   *
+   * Deliberately does NOT touch other fields' errors. Blur validates the
+   * field that was blurred; surprising the user with errors on fields
+   * they haven't visited yet would defeat the `touched`-gated display
+   * convention every form library follows.
+   */
+  const runSchemaForField = async (name: keyof TValues & string) => {
+    if (!schema) return
+    schemaFieldVersions[name] = (schemaFieldVersions[name] ?? 0) + 1
+    const v = schemaFieldVersions[name]
+    const allValues = getValues()
+    const result = await schema(allValues)
+    // Discard stale result if a newer blur on the same field has fired.
+    if (disposed || schemaFieldVersions[name] !== v) return
+    const field = fields[name]
+    if (!field) return
+    field.error.set(result[name])
+  }
+
   // Clear all pending debounce timers
   const clearAllTimers = () => {
     for (const key of Object.keys(debounceTimers)) {
@@ -351,7 +385,26 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       setTouched: () => {
         touchedSig.set(true)
         if (validateOn === 'blur') {
+          // Run the per-field validator (matches `validators[name]`).
           validateField(valueSig.peek())
+          // Schema-only forms (no per-field validators) used to silently
+          // skip blur-time validation — `validateField` is a no-op when
+          // there's no `validators[name]`, and the schema only fires
+          // inside `validate()` on submit. That made `validateOn: 'blur'`
+          // a lie for schema-only forms (#942 W10).
+          //
+          // Fix: when a schema is configured AND there's no per-field
+          // validator for this field, run the schema and apply ONLY this
+          // field's resulting error. Other fields' errors are left
+          // untouched — blur should validate the field that was blurred,
+          // not surprise the user with errors on fields they haven't
+          // visited yet.
+          if (schema && !validators?.[name]) {
+            runSchemaForField(name).catch(() => {
+              // Schema threw — swallowed here; submit's `validate()`
+              // surfaces the error properly via `submitError`.
+            })
+          }
         }
       },
       reset: () => {
