@@ -5,8 +5,11 @@ import type { CliArgs } from './args'
 import {
   type AdapterId,
   type AiToolId,
+  FEATURE_CATEGORIES,
   FEATURES,
   type IntegrationId,
+  type PresetId,
+  PRESETS,
   type ProjectConfig,
   TEMPLATES,
   type TemplateId,
@@ -148,27 +151,13 @@ export async function runPrompts(args: CliArgs): Promise<ProjectConfig> {
   }
 
   // ─── Features ─────────────────────────────────────────────────────────────
-  let features: string[]
-  if (args.features !== undefined) {
-    features = args.features
-  } else if (yes) {
-    features = [...tmpl.defaultFeatures]
-  } else {
-    const value = await p.multiselect({
-      message: 'Select features (space to toggle, enter to confirm)',
-      options: Object.entries(FEATURES).map(([key, { label }]) => ({
-        value: key,
-        label,
-      })),
-      initialValues: [...tmpl.defaultFeatures],
-      required: false,
-    })
-    if (p.isCancel(value)) {
-      p.cancel('Cancelled.')
-      process.exit(0)
-    }
-    features = value as string[]
-  }
+  // Resolution order (highest-priority overrides lower):
+  //   1. --features <csv> — explicit list, ignores everything else
+  //   2. --preset <id> as starting set + --with-X / --no-X applied
+  //   3. --yes mode: template default + --with-X / --no-X
+  //   4. Interactive: preset prompt OR template default → grouped multiselect
+  //      → --with-X / --no-X applied
+  const features = await resolveFeatures(args, tmpl.defaultFeatures, yes)
 
   // ─── Package strategy ─────────────────────────────────────────────────────
   let packageStrategy: ProjectConfig['packageStrategy']
@@ -311,4 +300,90 @@ export async function runPrompts(args: CliArgs): Promise<ProjectConfig> {
     compat,
     lint,
   }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * Resolve the feature set per the priority order documented at the call
+ * site. Exported for tests so the resolution shape can be locked
+ * independently of the prompt machinery.
+ */
+export async function resolveFeatures(
+  args: CliArgs,
+  templateDefault: readonly string[],
+  yes: boolean,
+): Promise<string[]> {
+  // 1. Explicit --features wins outright. --with/--no still compose on top
+  //    so users can do `--features store,query --with-i18n`.
+  if (args.features !== undefined) {
+    return applyWithWithout(args.features, args)
+  }
+
+  // 2. --preset sets a starting point. Skip prompts entirely; --with/--no
+  //    compose on top.
+  if (args.preset) {
+    return applyWithWithout([...PRESETS[args.preset].features], args)
+  }
+
+  // 3. --yes uses the template's default feature set (back-compat) plus
+  //    any --with/--no overrides.
+  if (yes) {
+    return applyWithWithout([...templateDefault], args)
+  }
+
+  // 4. Interactive: offer a preset shortcut first; "Custom" drops to the
+  //    grouped multiselect.
+  const presetChoice = await p.select({
+    message: 'Feature preset',
+    options: [
+      ...Object.entries(PRESETS).map(([id, meta]) => ({
+        value: id as PresetId | 'custom',
+        label: meta.label,
+      })),
+      {
+        value: 'custom' as PresetId | 'custom',
+        label: 'Custom — pick features one by one',
+      },
+    ],
+    initialValue: 'custom' as PresetId | 'custom',
+  })
+  if (p.isCancel(presetChoice)) {
+    p.cancel('Cancelled.')
+    process.exit(0)
+  }
+
+  if (presetChoice !== 'custom') {
+    return applyWithWithout([...PRESETS[presetChoice as PresetId].features], args)
+  }
+
+  // Grouped multiselect — features visually grouped by category for
+  // discoverability. clack's `groupMultiselect` renders the section
+  // headings inline so the user doesn't drown in a 22-option flat list.
+  const grouped: Record<string, Array<{ value: string; label: string }>> = {}
+  for (const cat of Object.values(FEATURE_CATEGORIES)) {
+    grouped[cat.label] = cat.features.map((key) => ({
+      value: key,
+      label: FEATURES[key as keyof typeof FEATURES].label,
+    }))
+  }
+
+  const value = await p.groupMultiselect({
+    message: 'Features',
+    options: grouped,
+    initialValues: [...templateDefault],
+    required: false,
+  })
+  if (p.isCancel(value)) {
+    p.cancel('Cancelled.')
+    process.exit(0)
+  }
+  return applyWithWithout(value as string[], args)
+}
+
+function applyWithWithout(base: string[], args: CliArgs): string[] {
+  const set = new Set(base)
+  for (const feat of args.withFeatures) set.add(feat)
+  for (const feat of args.withoutFeatures) set.delete(feat)
+  return [...set]
 }
