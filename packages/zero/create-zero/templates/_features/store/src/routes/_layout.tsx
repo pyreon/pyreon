@@ -2,12 +2,17 @@ import { QueryClient, QueryClientProvider } from "@pyreon/query"
 import { RouterView } from "@pyreon/router"
 import { Link } from "@pyreon/zero/link"
 import { ThemeToggle } from "@pyreon/zero/theme"
+import { useAppStore } from "../stores/app"
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30000 } },
 })
 
 export function layout() {
+  const app = useAppStore()
+  const sidebarOpen = app.store.sidebarOpen
+  const toggleSidebar = app.store.toggleSidebar
+
   return (
     <QueryClientProvider client={queryClient}>
       <header class="app-header">
@@ -32,6 +37,14 @@ export function layout() {
             <Link href="/dashboard" prefetch="hover" exactActiveClass="nav-active">
               Dashboard
             </Link>
+            <button
+              type="button"
+              class="sidebar-toggle"
+              onClick={toggleSidebar}
+              title="Toggle sidebar"
+            >
+              {() => (sidebarOpen() ? "◀" : "▶")}
+            </button>
             <ThemeToggle class="theme-toggle" />
           </nav>
         </div>
