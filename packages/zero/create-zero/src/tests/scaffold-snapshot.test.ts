@@ -58,6 +58,7 @@ describe('scaffold — output file-set snapshots', () => {
           ".mcp.json",
           ".pyreonlintrc.json",
           "CLAUDE.md",
+          "README.md",
           "env.d.ts",
           "index.html",
           "package.json",
