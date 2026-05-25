@@ -45,6 +45,7 @@
     "@pyreon/core": "workspace:^",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/reactivity": "workspace:^",
+    "@pyreon/vitest-config": "workspace:*",
     "@types/pdfmake": "^0.3.2",
     "@vitus-labs/tools-lint": "^2.4.0",
     "docx": "^9.6.0",
