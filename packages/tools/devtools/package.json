@@ -15,16 +15,18 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "vl_rolldown_build && bun run scripts/sync-manifest.ts",
+    "build": "vl_rolldown_build && bun run scripts/sync-manifest.ts && bun run scripts/strip-cjs-decorators.ts",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint ."
+    "lint": "oxlint .",
+    "verify": "bun scripts/verify-extension.ts"
   },
   "devDependencies": {
     "@pyreon/core": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
-    "@types/chrome": "^0.1.38"
+    "@types/chrome": "^0.1.38",
+    "playwright": "^1.60.0"
   }
 }

@@ -69,6 +69,23 @@ The `reactive` namespace on `__PYREON_DEVTOOLS__` is **optional**. Against a fra
 
 The panel implements the Claude-Design handoff (`pyreon-devtools.jsx` + `tokens.css`): the `PxDevChrome` shell (traffic-light title bar, glyph + wordmark, ember-gradient active-tab underline, breadcrumb + live status) and the `PxArtDevTree` Components split (depth-indented mono tree, `SELECTED`-eyebrow inspector). Full design token system (ink/paper/gray ramps, ember gradient, cyan), JetBrains Mono + Space Grotesk, dark by default with the light token block honoring DevTools' theme.
 
+## Verification
+
+`bun run verify` (after `bun run build`) launches a real Chromium with the extension loaded via `--load-extension=dist`, opens a running Pyreon dev app (defaults to `http://localhost:5800`; override with `APP_URL=...`), and asserts:
+
+1. All required `dist/` files are present (manifest + 6 JS entries + panel/devtools HTML + CSS + icons)
+2. Chromium launches with the extension loaded
+3. The content-script + page-hook actually inject `window.__PYREON_DEVTOOLS__` on the page
+4. All 7 component-surface methods are exposed (`getComponentTree` / `getAllComponents` / `highlight` / `onComponentMount` / `onComponentUnmount` / `enableOverlay` / `disableOverlay`)
+5. The `.reactive` Foundation surface is exposed with all 4 methods (`activate` / `deactivate` / `getGraph` / `getFires`)
+6. `.reactive.getGraph()` + `.reactive.getFires()` are callable end-to-end against real reactive state
+7. The component tree is populated when a real app mounts
+8. `panel.html` renders standalone with the Claude-Design handoff styling
+
+Closes the gap unit tests can't reach: the extension's content-script + page-hook + bridge actually working in a real Chrome instance.
+
+What `verify` does NOT cover: opening the actual Chrome DevTools window (F12) and clicking the "Pyreon" tab — that requires `chrome.devtools.panels.create()` to render in the DevTools tab strip, which is privileged Chrome chrome Playwright can't drive. For that step, follow the manual install steps at the top of this README and click through F12 → Pyreon tab → each of the 6 tabs.
+
 ## License
 
 MIT
