@@ -553,6 +553,60 @@ function yupSchema<T extends Record<string, unknown>>(
 defineStore('user', { schema: yupSchema(yupUserSchema), initial })
 ```
 
+### Mutation methods
+
+The schema-driven `defineStore` overload returns a `SchemaStoreApi<T>` with four validated mutation methods covering the common state-update patterns:
+
+```ts
+const useStore = defineStore('s', {
+  schema: zodSchema(z.object({
+    count: z.number(),
+    items: z.array(z.object({ id: z.number(), label: z.string() })),
+    prefs: z.object({ theme: z.string(), density: z.string() }),
+  })),
+  initial: {
+    count: 0,
+    items: [{ id: 1, label: 'one' }],
+    prefs: { theme: 'light', density: 'cozy' },
+  },
+})
+const s = useStore()
+
+// `set` — REPLACES the whole state atomically.
+// Requires the full schema shape; throws on mismatch.
+s.set({ count: 5, items: [], prefs: { theme: 'dark', density: 'compact' } })
+
+// `patch` — SHALLOW merge of top-level fields. The whole `prefs` object
+// is replaced if you pass it; sibling keys at depth ≥ 2 are NOT preserved.
+s.patch({ count: 10 })                                  // writes `count`
+s.patch({ prefs: { theme: 'dark', density: 'cozy' } })  // replaces whole `prefs`
+
+// `deepPatch` — RECURSIVE merge of nested plain objects. Arrays and
+// class instances (Date, Map, Set, etc.) REPLACE — only plain objects
+// recurse. Use this when you want to update a nested key without
+// spreading the parent yourself.
+s.deepPatch({ prefs: { theme: 'dark' } })  // density survives, theme changes
+s.deepPatch({ items: [{ id: 2, label: 'replaced' }] })  // array REPLACES
+
+// `update` — transform a single top-level field via callback. Covers
+// add / remove / filter / map / object-key-delete patterns in one method.
+// The transformer receives `unknown` — cast at the call site if you want
+// stronger inference (future versions will narrow this automatically).
+s.update('count', n => (n as number) + 1)                            // increment
+s.update('items', items => (items as Item[]).filter(x => x.id !== 1))  // remove
+s.update('items', items => [...(items as Item[]), newItem])           // append
+s.update('prefs', prefs => ({ ...(prefs as Prefs), theme: 'dark' }))  // edit nested
+```
+
+All four methods validate the merged result against the schema and either throw or invoke `onValidationError` if configured. The choice between them:
+
+| Method | Shape | Merge depth | Use when |
+| --- | --- | --- | --- |
+| `set(full)` | full state | n/a (replaces) | resetting to a known full shape |
+| `patch(partial)` | top-level partial | shallow (depth-1) | replacing one or more top-level fields |
+| `deepPatch(partial)` | recursive partial | deep (plain objects only) | updating nested fields without spreading the parent |
+| `update(key, fn)` | one field | n/a (transformer-controlled) | array filter/append, object key delete/add, primitive math |
+
 ### Validation rules
 
 - **`set(full)` and `patch(partial)` validate.** Invalid input throws (or invokes `onValidationError` if provided). State stays at its previous value on failure.
@@ -576,8 +630,9 @@ defineStore('user', {
 
 ### Limitations
 
-- **Top-level fields only get signals.** Nested objects (e.g. `prefs: { theme: 'light' }`) remain as values inside the parent signal. To update `prefs.theme`, use `patch({ prefs: { ...store.prefs(), theme: 'dark' } })` — recursive signal-ization is intentionally not supported (it would require library-specific schema introspection).
-- **Reserved StoreApi keys.** Schema field names cannot collide with `StoreApi` methods (`set`, etc.) — defineStore throws at construction with a clear message.
+- **Top-level fields only get signals.** Nested objects (e.g. `prefs: { theme: 'light' }`) remain as values inside the parent signal. To update `prefs.theme` without spreading the parent, use `deepPatch({ prefs: { theme: 'dark' } })` — recursive signal-ization is intentionally not supported (it would require library-specific schema introspection).
+- **Reserved StoreApi keys.** Schema field names cannot collide with `StoreApi` methods (`set`, `patch`, `deepPatch`, `update`, etc.) — defineStore throws at construction with a clear message.
+- **`update`'s transformer is currently `(current: unknown) => unknown`.** The key is constrained to `keyof T & string` (typos fail typecheck), but the value type is not yet inferred from the schema — cast at the call site. A future refinement will narrow the transformer signature to the schema-inferred field type.
 
 ## Composing Stores
 

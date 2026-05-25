@@ -83,9 +83,10 @@ describe('gen-docs — store snapshot', () => {
     const record = renderApiReferenceEntries(manifest)
     // Enriched to MCP density (manifest-depth PR): defineStore,
     // defineStore + defineStore (schema mode) + SchemaStoreApi +
-    // SchemaStoreConfig + SchemaStoreContext + StoreApi + addStorePlugin +
-    // setStoreRegistryProvider + resetStore + resetAllStores = 10.
-    expect(Object.keys(record).length).toBe(10)
+    // SchemaStoreConfig + SchemaStoreContext + DeepPartial +
+    // StoreApi + addStorePlugin + setStoreRegistryProvider +
+    // resetStore + resetAllStores = 11.
+    expect(Object.keys(record).length).toBe(11)
     expect(record['store/defineStore']!.notes).toContain('singleton')
     expect(record['store/defineStore']!.mistakes?.split('\n').length).toBe(7)
     // The previously-missing StoreApi entry now resolves (no 404).
@@ -95,7 +96,11 @@ describe('gen-docs — store snapshot', () => {
     expect(record['store/defineStore (schema mode)']).toBeDefined()
     expect(record['store/defineStore (schema mode)']!.notes).toContain('Schema-driven')
     expect(record['store/SchemaStoreApi']).toBeDefined()
+    expect(record['store/SchemaStoreApi']!.notes).toContain('deepPatch')
+    expect(record['store/SchemaStoreApi']!.notes).toContain('update')
     expect(record['store/SchemaStoreConfig']).toBeDefined()
     expect(record['store/SchemaStoreContext']).toBeDefined()
+    expect(record['store/DeepPartial']).toBeDefined()
+    expect(record['store/DeepPartial']!.notes).toContain('Recursive partial')
   })
 })

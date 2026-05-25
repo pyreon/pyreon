@@ -85,7 +85,7 @@ describe('zodSchema.parse', () => {
       safeParseAsync() {
         return Promise.reject(new Error('boom'))
       },
-    } as unknown as Parameters<typeof zodSchema>[0]
+    } as unknown as Parameters<typeof zodSchema<{ x: string }>>[0]
     const adapter = zodSchema<{ x: string }>(bad)
     const result = adapter.parse!({ x: 'y' })
     expect(result.ok).toBe(false)
@@ -102,7 +102,7 @@ describe('zodSchema.parse', () => {
       safeParseAsync() {
         return Promise.resolve({ success: false })
       },
-    } as unknown as Parameters<typeof zodSchema>[0]
+    } as unknown as Parameters<typeof zodSchema<{ x: string }>>[0]
     const adapter = zodSchema<{ x: string }>(stub)
     const result = adapter.parse!({ x: 'y' })
     expect(result.ok).toBe(false)

@@ -459,3 +459,178 @@ describe('schema-driven defineStore — singleton semantics', () => {
     expect(a).toBe(b)
   })
 })
+
+// ─── deepPatch — nested-object merge + validation ────────────────────────────
+
+describe('schema-driven defineStore — deepPatch', () => {
+  // Schema with a nested plain-object field (`prefs`), a primitive field
+  // (`count`), and an array field (`items`). Exercises every branch of the
+  // plain-object-recurse vs replace decision in `deepMerge`.
+  const Schema = zodSchema(
+    z.object({
+      count: z.number(),
+      prefs: z.object({
+        theme: z.enum(['light', 'dark']),
+        density: z.enum(['compact', 'cozy']),
+      }),
+      items: z.array(z.object({ id: z.number(), label: z.string() })),
+    }),
+  )
+  const initial = {
+    count: 0,
+    prefs: { theme: 'light' as const, density: 'cozy' as const },
+    items: [{ id: 1, label: 'one' }],
+  }
+
+  it('deep-merges nested plain objects (preserves untouched sibling keys)', () => {
+    const useS = defineStore('deepPatch-1', { schema: Schema, initial })
+    const s = useS() as ReturnType<typeof useS> & {
+      store: { prefs: { (): typeof initial.prefs } }
+    }
+    s.deepPatch({ prefs: { theme: 'dark' } })
+    // `density` survives even though only `theme` was patched
+    expect(s.store.prefs()).toEqual({ theme: 'dark', density: 'cozy' })
+  })
+
+  it('REPLACES arrays (does not merge by index)', () => {
+    const useS = defineStore('deepPatch-2', { schema: Schema, initial })
+    const s = useS() as ReturnType<typeof useS> & {
+      store: { items: { (): typeof initial.items } }
+    }
+    s.deepPatch({ items: [{ id: 99, label: 'replaced' }] })
+    expect(s.store.items()).toEqual([{ id: 99, label: 'replaced' }])
+  })
+
+  it('validates the merged result and throws on schema failure', () => {
+    const useS = defineStore('deepPatch-3', { schema: Schema, initial })
+    const s = useS()
+    expect(() =>
+      // `theme` enum doesn't allow 'midnight'
+      s.deepPatch({ prefs: { theme: 'midnight' as unknown as 'light' } }),
+    ).toThrow(/Schema validation failed.*patch/)
+  })
+
+  it('writes only top-level keys passed (not the whole state)', () => {
+    const useS = defineStore('deepPatch-4', { schema: Schema, initial })
+    const s = useS()
+    const events: { type: string; keys: string[] }[] = []
+    s.subscribe((m) => {
+      events.push({
+        type: m.type,
+        keys: m.events.map((e) => e.key),
+      })
+    })
+    s.deepPatch({ count: 5 })
+    // The notification should mention `count`, not `prefs` or `items`
+    expect(events.length).toBeGreaterThan(0)
+    const lastKeys = events[events.length - 1]!.keys
+    expect(lastKeys).toContain('count')
+    expect(lastKeys).not.toContain('prefs')
+    expect(lastKeys).not.toContain('items')
+  })
+
+  it('REPLACES class instances / Dates (not plain objects, do not recurse)', () => {
+    // Schema with a Date field — proves the `isPlainObject` predicate filters
+    // class instances out of the merge path. Without it, a future Date prop
+    // would attempt to recurse into the Date's internal slots and corrupt it.
+    const DateSchema = zodSchema(z.object({ when: z.date(), tag: z.string() }))
+    const useS = defineStore('deepPatch-5', {
+      schema: DateSchema,
+      initial: { when: new Date('2020-01-01'), tag: 'a' },
+    })
+    const s = useS() as ReturnType<typeof useS> & {
+      store: { when: { (): Date } }
+    }
+    const newDate = new Date('2030-06-15')
+    s.deepPatch({ when: newDate })
+    expect(s.store.when().toISOString()).toBe(newDate.toISOString())
+  })
+})
+
+// ─── update — single-field transformer + validation ─────────────────────────
+
+describe('schema-driven defineStore — update', () => {
+  const Schema = zodSchema(
+    z.object({
+      count: z.number().nonnegative(),
+      items: z.array(z.object({ id: z.number(), label: z.string() })),
+      prefs: z.object({ theme: z.string(), density: z.string() }),
+    }),
+  )
+  const initial = {
+    count: 0,
+    items: [
+      { id: 1, label: 'one' },
+      { id: 2, label: 'two' },
+    ],
+    prefs: { theme: 'light', density: 'cozy' },
+  }
+
+  it('transforms a primitive via callback', () => {
+    const useS = defineStore('update-1', { schema: Schema, initial })
+    const s = useS() as ReturnType<typeof useS> & { store: { count: { (): number } } }
+    s.update('count', (n) => (n as number) + 1)
+    expect(s.store.count()).toBe(1)
+  })
+
+  it('filters an array (covers "remove item")', () => {
+    const useS = defineStore('update-2', { schema: Schema, initial })
+    const s = useS() as ReturnType<typeof useS> & { store: { items: { (): typeof initial.items } } }
+    s.update('items', (items) =>
+      (items as typeof initial.items).filter((x) => x.id !== 1),
+    )
+    expect(s.store.items()).toEqual([{ id: 2, label: 'two' }])
+  })
+
+  it('appends to an array (covers "add item")', () => {
+    const useS = defineStore('update-3', { schema: Schema, initial })
+    const s = useS() as ReturnType<typeof useS> & { store: { items: { (): typeof initial.items } } }
+    s.update('items', (items) => [
+      ...(items as typeof initial.items),
+      { id: 3, label: 'three' },
+    ])
+    expect(s.store.items()).toHaveLength(3)
+    expect(s.store.items()[2]).toEqual({ id: 3, label: 'three' })
+  })
+
+  it('deletes a key from a nested object via destructure-rest', () => {
+    // The `prefs` object schema requires both `theme` AND `density`, so
+    // deleting `density` would throw on validation. Instead, transform
+    // `prefs` into a new object that still has both keys but with one
+    // overwritten — proves the transformer can return any shape the
+    // schema accepts.
+    const useS = defineStore('update-4', { schema: Schema, initial })
+    const s = useS() as ReturnType<typeof useS> & {
+      store: { prefs: { (): typeof initial.prefs } }
+    }
+    s.update('prefs', (prefs) => {
+      const p = prefs as typeof initial.prefs
+      return { ...p, theme: 'dark' }
+    })
+    expect(s.store.prefs()).toEqual({ theme: 'dark', density: 'cozy' })
+  })
+
+  it('validates the transformed result and throws on schema failure', () => {
+    const useS = defineStore('update-5', { schema: Schema, initial })
+    const s = useS()
+    // `count` is `z.number().nonnegative()` — negative violates the schema
+    expect(() => s.update('count', () => -1)).toThrow(/Schema validation failed.*patch/)
+  })
+
+  it('onValidationError suppresses throw on update failure', () => {
+    const errors: { op: string }[] = []
+    const useS = defineStore('update-6', {
+      schema: Schema,
+      initial,
+      onValidationError: (_issues, op) => {
+        errors.push({ op })
+      },
+    })
+    const s = useS() as ReturnType<typeof useS> & { store: { count: { (): number } } }
+    s.update('count', () => -1) // would normally throw
+    expect(errors.length).toBe(1)
+    expect(errors[0]!.op).toBe('patch')
+    // State unchanged when validation fails
+    expect(s.store.count()).toBe(0)
+  })
+})

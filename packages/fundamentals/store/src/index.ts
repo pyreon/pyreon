@@ -232,10 +232,54 @@ export interface SchemaStoreConfig<
   readonly onValidationError?: (issues: SchemaIssue[], op: 'set' | 'patch' | 'init') => void
 }
 
-/** `StoreApi` extended with the validated `set` method (schema mode only). */
+/**
+ * Recursive partial — every property optional at every depth. Arrays
+ * and class instances replace (not merge), only plain objects deep-merge.
+ */
+export type DeepPartial<T> = T extends ReadonlyArray<unknown>
+  ? T
+  : T extends object
+    ? { readonly [K in keyof T]?: DeepPartial<T[K]> }
+    : T
+
+/** `StoreApi` extended with schema-mode mutation methods. */
 export interface SchemaStoreApi<T> extends StoreApi<T> {
   /** Replace the whole state. Validates input via schema; throws on failure. */
   set(next: Record<string, unknown>): void
+  /**
+   * Deep-merge a partial state. Nested plain objects merge recursively;
+   * arrays / class instances / primitives REPLACE. Validates the merged
+   * result via schema; throws on failure. Use this when you want to
+   * update a nested field without spreading the parent — e.g.
+   * `deepPatch({ prefs: { theme: 'dark' } })` preserves other `prefs` keys.
+   * For a shallow per-field replace, use `patch`.
+   */
+  deepPatch(partial: Record<string, unknown>): void
+  /**
+   * Transform a single top-level field via a callback. The current
+   * value is passed to the transformer; the return value replaces it
+   * (after validating the resulting merged state). Useful for
+   * array filter / append, object key delete / add, primitive math —
+   * one call covers all remove / add / transform patterns.
+   *
+   * The `key` is constrained to keys of the store's exposed shape (signal
+   * fields + setup-returned keys); typos fail typecheck. The transformer
+   * receives / returns `unknown` — narrow at the call site if you want
+   * stronger inference. (Full unwrap-to-raw-value typing is a future
+   * refinement; current shape favors interface simplicity.)
+   *
+   * @example
+   * ```ts
+   * u.update('items', items => (items as Item[]).filter(x => x.id !== id))
+   * u.update('items', items => [...(items as Item[]), newItem])
+   * u.update('prefs', prefs => ({ ...(prefs as Prefs), theme: 'dark' }))
+   * u.update('count', n => (n as number) + 1)
+   * ```
+   */
+  update<K extends keyof T & string>(
+    key: K,
+    transformer: (current: unknown) => unknown,
+  ): void
 }
 
 // ─── Schema dispatch helpers ─────────────────────────────────────────────────
@@ -350,6 +394,39 @@ function wrapStandardSchema<T extends Record<string, unknown>>(
       }
     }
   }
+}
+
+/**
+ * Detect a plain object (literal `{}` or `Object.create(null)`) — used by
+ * `deepMerge` to decide whether to recurse or replace. Arrays, class
+ * instances, Maps, Sets, Dates, Promises etc. are NOT plain objects and
+ * REPLACE rather than merge.
+ */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value == null || typeof value !== 'object') return false
+  const proto = Object.getPrototypeOf(value)
+  return proto === null || proto === Object.prototype
+}
+
+/**
+ * Recursively merge `source` into `target` for plain-object branches.
+ * Returns a NEW object — never mutates inputs. Used by `deepPatch`.
+ *
+ * - Plain object × plain object → recurse
+ * - Anything else (array, class instance, primitive, null, undefined) →
+ *   `source` value wins (replace semantics). Matches Vue 3 `reactive` /
+ *   Lodash `_.merge` (without array-index merging) — the convention
+ *   schema-store users expect for "deep-update this nested thing."
+ */
+function deepMerge(target: unknown, source: unknown): unknown {
+  if (!isPlainObject(target) || !isPlainObject(source)) return source
+  const out: Record<string, unknown> = { ...target }
+  for (const key of Object.keys(source)) {
+    out[key] = isPlainObject(target[key]) && isPlainObject(source[key])
+      ? deepMerge(target[key], source[key])
+      : source[key]
+  }
+  return out
 }
 
 /**
@@ -569,6 +646,30 @@ function defineSchemaStore(
           writeSet[key] = valid[key]
         }
         innerPatch(writeSet)
+      },
+      deepPatch(partial: Record<string, unknown>) {
+        // Deep-merge `partial` into the current state, then validate the
+        // merged result via schema. Only plain objects recurse; arrays /
+        // class instances / primitives replace. Same write-the-changed-
+        // top-level-keys-only pattern as `patch`.
+        const merged = deepMerge(inner.state, partial) as Record<string, unknown>
+        const valid = validateOrFail(merged, 'patch')
+        if (valid === SKIP_WRITE) return
+        const writeSet: Record<string, unknown> = {}
+        for (const key of Object.keys(partial)) {
+          writeSet[key] = valid[key]
+        }
+        innerPatch(writeSet)
+      },
+      update(key: string, transformer: (current: unknown) => unknown) {
+        // Transform a single top-level field via callback. Read current,
+        // apply transformer, validate merged state, write only that key.
+        const current = inner.state[key]
+        const next = transformer(current)
+        const merged = { ...inner.state, [key]: next }
+        const valid = validateOrFail(merged, 'patch')
+        if (valid === SKIP_WRITE) return
+        innerPatch({ [key]: valid[key] })
       },
       reset() {
         const reParsed = parse(initial)

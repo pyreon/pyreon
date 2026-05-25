@@ -141,17 +141,42 @@ u.store.age.set(-1)                         // direct write — bypasses validat
     {
       name: 'SchemaStoreApi',
       kind: 'type',
-      signature: 'interface SchemaStoreApi<T> extends StoreApi<T> { set(next: Record<string, unknown>): void }',
+      signature:
+        'interface SchemaStoreApi<T> extends StoreApi<T> { set(next): void; deepPatch(partial): void; update<K extends keyof T>(key: K, fn): void }',
       summary:
-        'Return type of the schema-driven `defineStore` overload. Extends `StoreApi<T>` with a validated `set(next)` method that replaces the whole state atomically through the schema. The inherited `patch` is also wrapped to validate the merged result against the schema (object form only — functional form is an unvalidated escape hatch).',
-      example: `const u = useUser()  // SchemaStoreApi<{ name: Signal<string>; age: Signal<number> }>
-u.set({ name: 'Alice', age: 30 })  // full replace, validated
-u.patch({ age: 31 })               // partial merge, validated`,
+        'Return type of the schema-driven `defineStore` overload. Extends `StoreApi<T>` with four validated mutation methods: `set(next)` REPLACES the whole state atomically; `patch(partial)` SHALLOW-merges top-level fields (inherited from StoreApi, wrapped to validate the merged result); `deepPatch(partial)` recursively merges nested plain objects while REPLACING arrays / class instances / primitives; `update(key, transformer)` transforms a single field via callback (covers add / remove / map / filter / object-key-delete in one method). All four validate the merged result against the schema and throw on failure (or invoke `onValidationError` if configured). Direct signal writes (`store.field.set(v)`) bypass validation by design — the documented escape hatch.',
+      example: `const u = useUser()  // SchemaStoreApi<{ name: Signal<string>; prefs: Signal<{theme: string}> }>
+u.set({ name: 'Alice', prefs: { theme: 'dark' } })   // full replace, validated
+u.patch({ name: 'Bob' })                              // shallow per-field replace, validated
+u.deepPatch({ prefs: { theme: 'dark' } })             // deep-merge nested objects, validated
+u.update('items', items => items.filter(x => x.id !== 1))  // transform single field, validated`,
       mistakes: [
-        'Passing the wrong shape to `set` — it requires the FULL state matching the schema. Use `patch` for partial updates',
-        'Expecting `set` to silently merge — it REPLACES. Use `patch` to merge with current state',
+        'Passing the wrong shape to `set` — it requires the FULL state matching the schema. Use `patch` / `deepPatch` for partial updates',
+        'Expecting `set` to silently merge — it REPLACES. Use `patch` (shallow) or `deepPatch` (recursive) to merge with current state',
+        'Using `patch({ prefs: { theme: "dark" } })` expecting other `prefs` keys to survive — `patch` is SHALLOW, the whole `prefs` object is replaced. Use `deepPatch` for nested-object merging',
+        '`deepPatch` REPLACES arrays / class instances / Dates — it only recurses into PLAIN objects. To merge an array, use `update` with a callback',
+        'Using `update` for multi-field changes — it transforms ONE top-level field at a time. For multi-field updates, use `patch` / `deepPatch` / `set`',
+        'Expecting `update`\'s transformer to receive a strongly-typed value — current signature passes `unknown`. Cast at the call site (`(n as number) + 1`); future versions will infer from the schema',
       ],
-      seeAlso: ['defineStore (schema mode)', 'StoreApi'],
+      seeAlso: ['defineStore (schema mode)', 'DeepPartial', 'StoreApi'],
+    },
+    {
+      name: 'DeepPartial',
+      kind: 'type',
+      signature: 'type DeepPartial<T> = T extends ReadonlyArray<unknown> ? T : T extends object ? { readonly [K in keyof T]?: DeepPartial<T[K]> } : T',
+      summary:
+        'Recursive partial — every property optional at every depth. Used by `SchemaStoreApi.deepPatch` as the partial-shape constraint. Arrays and primitives pass through unchanged (because `deepPatch` REPLACES them); only plain objects get the recursive optional treatment, matching the runtime merge semantics.',
+      example: `// State { count: number; prefs: { theme: string; density: string } }
+// DeepPartial admits:
+deepPatch({ count: 5 })                          // primitive field
+deepPatch({ prefs: { theme: 'dark' } })          // partial nested object — density survives
+deepPatch({ prefs: { theme: 'dark', density: 'compact' } })  // full nested object
+// Arrays REPLACE — DeepPartial<T[]> = T[], must pass full array shape`,
+      mistakes: [
+        '`DeepPartial<T[]>` is `T[]` (no element-level optionality) — arrays REPLACE in `deepPatch`. To mutate array contents, use `update`',
+        'Class instances (Date, Map, Set) keep their full shape under `DeepPartial` — they are NOT plain objects and replace wholesale',
+      ],
+      seeAlso: ['SchemaStoreApi'],
     },
     {
       name: 'SchemaStoreConfig',
