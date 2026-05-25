@@ -173,17 +173,20 @@ export function resolveColor(value: string, target: 'swift' | 'kotlin'): string 
   const rgb = COLOR_TOKENS_RGB[value]
   if (rgb === undefined) {
     // Unknown token — emit a neutral grey as a defensive fallback.
-    return target === 'swift'
-      ? 'Color.gray'
-      : 'androidx.compose.ui.graphics.Color.Gray'
+    return target === 'swift' ? 'Color.gray' : 'Color.Gray'
   }
   const [r, g, b] = rgb
   if (target === 'swift') {
     return `Color(red: ${r / 255}, green: ${g / 255}, blue: ${b / 255})`
   }
-  // Kotlin / Compose Color hex: 0xFFRRGGBB
+  // Kotlin / Compose Color hex: 0xFFRRGGBB. Emit bare `Color(...)`
+  // matching the convention of @Serializable / Json / TextField / etc.
+  // — consumer apps import from androidx.compose.ui.graphics.
+  // Lets kotlin-stubs.ts ship the mock `Color` in the default package
+  // without needing a multi-package stub file (Kotlin can't represent
+  // that in one file).
   const hex = ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0').toUpperCase()
-  return `androidx.compose.ui.graphics.Color(0xFF${hex})`
+  return `Color(0xFF${hex})`
 }
 
 /**
