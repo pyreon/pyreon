@@ -25,6 +25,7 @@
     "oxc-parser": "^0.129.0"
   },
   "devDependencies": {
+    "@pyreon/vitest-config": "workspace:*",
     "vitest": "^4.1.4"
   }
 }

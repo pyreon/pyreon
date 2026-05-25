@@ -32,6 +32,7 @@
   },
   "devDependencies": {
     "@pyreon/reactivity": "workspace:^",
+    "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser": "^4.1.4",
     "@vitest/browser-playwright": "^4.1.4",
     "@vitest/coverage-v8": "^4.1.4",

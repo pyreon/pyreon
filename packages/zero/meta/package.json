@@ -70,5 +70,8 @@
     "@pyreon/url-state": "workspace:^",
     "@pyreon/validation": "workspace:^",
     "@pyreon/virtual": "workspace:^"
+  },
+  "devDependencies": {
+    "@pyreon/vitest-config": "workspace:*"
   }
 }
