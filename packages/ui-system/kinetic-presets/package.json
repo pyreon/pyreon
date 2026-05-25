@@ -41,6 +41,7 @@
   },
   "devDependencies": {
     "@pyreon/typescript": "workspace:^",
+    "@pyreon/vitest-config": "workspace:*",
     "@vitus-labs/tools-rolldown": "^2.4.0"
   },
   "engines": {
