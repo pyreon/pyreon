@@ -1,5 +1,5 @@
 import { playwright } from '@vitest/browser-playwright'
-import { defineBrowserConfig } from '../../../vitest.browser'
+import { defineBrowserConfig } from '@pyreon/vitest-config'
 
 // Real-Chromium browser tests for `@pyreon/dnd` hooks. The unit suite
 // in `src/tests/dnd.test.ts` covers signal surfaces under happy-dom,

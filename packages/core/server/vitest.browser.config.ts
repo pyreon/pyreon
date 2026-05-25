@@ -1,5 +1,5 @@
 import { playwright } from '@vitest/browser-playwright'
-import { defineBrowserConfig } from '../../../vitest.browser'
+import { defineBrowserConfig } from '@pyreon/vitest-config'
 
 // JSX in `*.browser.test.tsx` uses the `@pyreon/core` runtime — vite's default
 // JSX transform doesn't route there, so without this override the test file

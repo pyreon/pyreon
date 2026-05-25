@@ -1,18 +1,14 @@
-import { createVitestConfig } from '@vitus-labs/tools-vitest'
-import { defineConfig, mergeConfig } from 'vitest/config'
-import { sharedConfig } from '../../vitest.shared'
+import { defineNodeConfig } from '@pyreon/vitest-config'
 
-export default mergeConfig(
-  createVitestConfig({ environment: 'happy-dom' }),
-  mergeConfig(
-    sharedConfig,
-    defineConfig({
-      oxc: {
-        jsx: {
-          runtime: 'automatic',
-          importSource: '@pyreon/core',
-        },
+export default defineNodeConfig({
+  environment: 'happy-dom',
+  overrides: {
+    // @ts-expect-error vitest UserConfig doesn't expose oxc plugin opts
+    oxc: {
+      jsx: {
+        runtime: 'automatic',
+        importSource: '@pyreon/core',
       },
-    }),
-  ),
-)
+    },
+  },
+})

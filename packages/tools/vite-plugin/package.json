@@ -46,6 +46,7 @@
     "@pyreon/reactivity": "workspace:^"
   },
   "devDependencies": {
+    "@pyreon/vitest-config": "workspace:*",
     "vite": "^8.0.0"
   },
   "peerDependencies": {
