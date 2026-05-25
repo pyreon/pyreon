@@ -67,14 +67,23 @@ describe('LPIH — stack-line parser', () => {
 })
 
 describe('LPIH — always-on capture in __DEV__ (no _active gate)', () => {
-  it('_captureCallerLocation returns a real location even when inactive', () => {
+  it('_captureCallerLocation returns a deferred handle even when inactive', () => {
     // Contract change (post-#913 followup): always-on in __DEV__ so
     // signals/computeds/effects created BEFORE a devtools client attaches
     // still get loc captured — the LPIH editor inlay-hint surfaces work
     // uniformly for the activate-after-creation user workflow.
-    const loc = _captureCallerLocation(0)
-    expect(loc).toBeDefined()
-    expect(loc?.file).toContain('lpih-source-location.test.ts')
+    //
+    // The handle is DEFERRED: capture cost is one cheap `new Error()`
+    // (~0.14µs); the expensive `.stack` formatting + parseStackLine is
+    // resolved lazily by `getReactiveGraph()` / `getFireSummaries()` at
+    // read time. Most app signals never have their loc read (LPIH only
+    // touches hot lines the user has on screen), so the typical cost
+    // per signal is the cheap Error allocation, regardless of count.
+    const handle = _captureCallerLocation(0)
+    expect(handle).toBeDefined()
+    expect(handle.__deferred).toBe(true)
+    expect(handle.err).toBeInstanceOf(Error)
+    expect(typeof handle.skipFrames).toBe('number')
   })
 
   it('REGRESSION: late activate exposes loc on pre-existing signals', () => {

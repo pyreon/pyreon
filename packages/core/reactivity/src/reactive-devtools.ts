@@ -162,8 +162,29 @@ interface NodeRec {
   hostRef: WeakRef<{ _s: Set<() => void> | null }> | null
   fires: number
   lastFire: number | null
-  /** Source location captured at registration. Undefined if stack parse failed. */
-  loc?: SourceLocation | undefined
+  /**
+   * Resolved source location. Populated either by `__sourceLocation`
+   * passed in by `@pyreon/vite-plugin` at build time (free) OR by a
+   * lazy resolution of `_pendingErr` at first read. `null` means
+   * "resolved but parse failed"; `undefined` means "not yet resolved".
+   */
+  loc?: SourceLocation | null | undefined
+  /**
+   * **Deferred-parse state**. When loc capture is needed at the runtime
+   * fallback path, the caller passes a captured `Error` here instead of
+   * a resolved `SourceLocation`. The expensive `.stack` formatting +
+   * parseStackLine call is deferred until `getReactiveGraph()` or
+   * `getFireSummaries()` actually reads the location — most nodes
+   * never get their loc read (the LPIH inlay-hint surface only reads
+   * loc for hot lines the user has on screen), so the typical app
+   * pays only the cheap `new Error()` allocation per node.
+   *
+   * Cleared the first time `_resolveLoc(rec)` succeeds; the Error is
+   * GC-eligible from that moment.
+   */
+  pendingErr?: Error | undefined
+  /** skipFrames from the deferred capture — needed by the lazy parser. */
+  pendingSkip?: number | undefined
   /**
    * EWMA-tracked fire rate (~fires/sec, 1s time constant). Updated on
    * every fire; decayed to "now" at read time. See `FireSummary.rate1s`.
@@ -270,22 +291,29 @@ export function isReactiveDevtoolsActive(): boolean {
 //    after the existing prod gate; each is a no-op until activated) ──────
 
 /**
- * Parse the user's call site from `new Error().stack`. Returns undefined
- * when the stack format isn't recognized. Always-on in `__DEV__` (the
- * caller-side `process.env.NODE_ENV` gate tree-shakes it in production).
+ * Capture a deferred source-location handle from the user's call site.
+ * Returns an opaque `{ err, skipFrames }` token — the expensive
+ * `.stack` formatting + line parsing is deferred to `_resolveLoc(rec)`
+ * at the moment a devtools consumer actually reads the location.
  *
- * **Cost**: a single `new Error()` allocation + a small regex against
- * one line of `.stack` per call (~2.2µs in V8). For typical apps (~hundreds
- * of signals) that's ~1ms of total startup overhead — invisible against
- * mount times. Most user signals pay 0µs anyway: `@pyreon/vite-plugin`'s
+ * Always-on in `__DEV__` (the caller-side `process.env.NODE_ENV` gate
+ * tree-shakes it in production).
+ *
+ * **Cost at capture time**: a single `new Error()` allocation (~0.14µs
+ * in V8/Bun — stack is captured but NOT formatted). Negligible per call;
+ * for a 10k-signal startup that's ~1.4ms total even on a contended CI
+ * runner. Most user signals pay 0µs anyway because `@pyreon/vite-plugin`'s
  * `injectSignalLocations` rewrites `signal(0)` → `signal(0, { __sourceLocation })`
- * at build time, and the caller short-circuits to that injected value
+ * at build time and the caller short-circuits to that resolved value
  * before invoking this helper.
  *
- * Always-on (no `_active` gate) so signals/computeds/effects created
- * BEFORE a devtools client attaches still get loc captured — the LPIH
- * editor inlay-hint surfaces ("🔥 signal fired N×") work uniformly for
- * the activate-after-creation user workflow.
+ * **Cost at read time** (rare): `.stack` access (~3-10µs in V8 under
+ * normal load, much higher under happy-dom + parallel-load CI with
+ * source-map resolution) + small regex per line. Only paid when
+ * `getReactiveGraph()` or `getFireSummaries()` ACTUALLY reads the
+ * loc — most app signals never have their loc read since the LPIH
+ * inlay-hint surface only consumes loc for hot lines the user has
+ * on screen.
  *
  * `skipFrames` is the number of caller-frames to skip past _captureCallerLocation
  * itself. The framework's hot-path callers (signal / computedLazy / effect)
@@ -299,17 +327,62 @@ export function isReactiveDevtoolsActive(): boolean {
  *
  * @internal
  */
-export function _captureCallerLocation(skipFrames: number): SourceLocation | undefined {
-  const err = new Error()
-  const raw = err.stack
+export interface DeferredLocation {
+  /** Marker brand to disambiguate from resolved `SourceLocation`. */
+  __deferred: true
+  err: Error
+  skipFrames: number
+}
+
+export function _captureCallerLocation(skipFrames: number): DeferredLocation {
+  return { __deferred: true, err: new Error(), skipFrames }
+}
+
+/**
+ * Eager-resolve a deferred location to a `SourceLocation` (or undefined
+ * if the stack format isn't recognized). Used internally by the snapshot
+ * APIs to lazily parse `.stack` on first read.
+ *
+ * @internal
+ */
+function resolveDeferred(d: DeferredLocation): SourceLocation | undefined {
+  const raw = d.err.stack
   if (!raw) return undefined
   const lines = raw.split('\n')
   // V8 prepends "Error\n"; JSC doesn't. Detect and offset.
   const startIdx = lines[0] && lines[0].trim().startsWith('Error') ? 1 : 0
-  // Skip past _captureCallerLocation's own frame (always +1) + caller's depth.
-  const target = lines[startIdx + 1 + skipFrames]
+  // Skip past _captureCallerLocation's own frame (always +1) + caller's
+  // depth. Plus an additional +1 because the Error was allocated INSIDE
+  // _captureCallerLocation in the deferred path, so the frame depth from
+  // the user's call site is one deeper than the original synchronous
+  // form's contract.
+  const target = lines[startIdx + 1 + d.skipFrames]
   if (!target) return undefined
   return parseStackLine(target)
+}
+
+/**
+ * Resolve a record's loc — returns the cached value, or parses the
+ * deferred Error on first read and memoizes the result.
+ *
+ * @internal
+ */
+function _resolveLoc(rec: NodeRec): SourceLocation | undefined {
+  // Already resolved (success or definitively-failed): return cached.
+  if (rec.loc !== undefined) return rec.loc ?? undefined
+  // No deferred handle to resolve.
+  if (!rec.pendingErr) return undefined
+  const parsed = resolveDeferred({
+    __deferred: true,
+    err: rec.pendingErr,
+    skipFrames: rec.pendingSkip ?? 0,
+  })
+  // Cache the result (or `null` for failed parse — distinguishes from
+  // "not yet resolved" undefined). Drop the Error so it's GC-eligible.
+  rec.loc = parsed ?? null
+  rec.pendingErr = undefined
+  rec.pendingSkip = undefined
+  return parsed
 }
 
 /** @internal — exported for unit testing across runtimes. */
@@ -367,9 +440,13 @@ export function _rdRegister(
   host: { _s: Set<() => void> | null } | null,
   sub: object | null,
   label: string | undefined,
-  loc?: SourceLocation,
+  loc?: SourceLocation | DeferredLocation,
 ): number | undefined {
   const id = _nextId++
+  // Distinguish resolved-loc (build-time injected, `{file, line, col}`)
+  // from deferred-loc (runtime fallback, `{__deferred, err, skipFrames}`).
+  // The deferred form stashes the Error for lazy parse on first read.
+  const isDeferred = !!loc && (loc as DeferredLocation).__deferred === true
   _byId.set(id, {
     id,
     kind,
@@ -378,7 +455,9 @@ export function _rdRegister(
     hostRef: host ? new WeakRef(host) : null,
     fires: 0,
     lastFire: null,
-    loc,
+    loc: isDeferred ? undefined : (loc as SourceLocation | undefined),
+    pendingErr: isDeferred ? (loc as DeferredLocation).err : undefined,
+    pendingSkip: isDeferred ? (loc as DeferredLocation).skipFrames : undefined,
     rate1s: 0,
   })
   if (sub) _subId.set(sub, id)
@@ -471,6 +550,11 @@ export function getReactiveGraph(): ReactiveGraph {
     // here — it would be an uncoverable dead branch.
     const valueStr =
       rec.kind === 'effect' ? '' : preview((node as { _v?: unknown })._v)
+    // Resolve the deferred loc on first read — most apps never reach
+    // this branch for the bulk of their signals, so the expensive
+    // `.stack` formatting cost is paid only for nodes the consumer
+    // actually inspects.
+    const resolvedLoc = _resolveLoc(rec)
     nodes.push({
       id: rec.id,
       kind: rec.kind,
@@ -479,7 +563,7 @@ export function getReactiveGraph(): ReactiveGraph {
       subscribers: subs?.size ?? 0,
       fires: rec.fires,
       lastFire: rec.lastFire,
-      ...(rec.loc ? { loc: rec.loc } : {}),
+      ...(resolvedLoc ? { loc: resolvedLoc } : {}),
     })
     if (subs) {
       for (const cb of subs) {
@@ -513,9 +597,13 @@ export function getFireSummaries(): FireSummary[] {
       ? performance.now()
       : Date.now()
   for (const rec of _byId.values()) {
-    if (!rec.loc) continue
     if (!rec.ref.deref()) continue
-    const k = `${rec.loc.file}:${rec.loc.line}:${rec.loc.col}`
+    // Resolve deferred loc on demand. `_resolveLoc` returns undefined
+    // for nodes whose stack parse failed (or who never had a captured
+    // location) — those are skipped from the summary, same as pre-fix.
+    const loc = _resolveLoc(rec)
+    if (!loc) continue
+    const k = `${loc.file}:${loc.line}:${loc.col}`
     // Decay rate1s to "now" — a node that hasn't fired in 5×TAU shows
     // ≈0.7% of its steady-state rate; in 10×TAU, basically 0. This is
     // what makes "stopped firing" visible in the editor.
@@ -538,7 +626,7 @@ export function getFireSummaries(): FireSummary[] {
       }
     } else {
       byKey.set(k, {
-        loc: rec.loc,
+        loc,
         count: rec.fires,
         lastFire: rec.lastFire,
         kind: rec.kind,
