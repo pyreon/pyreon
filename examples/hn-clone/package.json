@@ -1,0 +1,35 @@
+{
+  "name": "hn-clone",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "zero dev",
+    "build": "zero build",
+    "preview": "zero preview",
+    "doctor": "zero doctor",
+    "doctor:fix": "zero doctor --fix",
+    "doctor:ci": "zero doctor --ci"
+  },
+  "dependencies": {
+    "@pyreon/core": "^0.25.1",
+    "@pyreon/head": "^0.25.1",
+    "@pyreon/meta": "^0.25.1",
+    "@pyreon/query": "^0.25.1",
+    "@pyreon/reactivity": "^0.25.1",
+    "@pyreon/router": "^0.25.1",
+    "@pyreon/runtime-dom": "^0.25.1",
+    "@pyreon/runtime-server": "^0.25.1",
+    "@pyreon/server": "^0.25.1",
+    "@pyreon/store": "^0.25.1",
+    "@pyreon/zero": "^0.25.1",
+    "@tanstack/query-core": "^5.90.0"
+  },
+  "devDependencies": {
+    "@pyreon/mcp": "^0.25.1",
+    "@pyreon/vite-plugin": "^0.25.1",
+    "@pyreon/zero-cli": "^0.25.1",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.3"
+  }
+}

@@ -83,8 +83,17 @@ export async function scaffold(config: ProjectConfig) {
       if (existsSync(layoutPath)) {
         let layout = await readFile(layoutPath, 'utf-8')
         layout = layout
-          .replace(/import .* from '\.\.\/stores\/app'\n/g, '')
-          .replace(/.*useAppStore.*\n/g, '')
+          // Template uses double-quoted import paths; accept either.
+          .replace(/import .* from ['"]\.\.\/stores\/app['"]\s*\n/g, '')
+          // The template's body holds:
+          //   const app = useAppStore()
+          //   const sidebarOpen = app.store.sidebarOpen
+          //   const toggleSidebar = app.store.toggleSidebar
+          // Strip the entire `app.store.X` chain — not just the
+          // `useAppStore` line — so we don't leave dangling `app.`
+          // references that throw ReferenceError at render time.
+          .replace(/^\s*const\s+\w+\s*=\s*useAppStore\(\)\s*\n/gm, '')
+          .replace(/^\s*const\s+\w+\s*=\s*app\.store\.\w+\s*\n/gm, '')
           .replace(/\s*<button[\s\S]*?sidebar-toggle[\s\S]*?<\/button>\n/g, '')
         await writeFile(layoutPath, layout)
       }
