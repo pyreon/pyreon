@@ -182,11 +182,9 @@ After the slice shipped, three adjacent "next compiler win" ideas were floated. 
 
 Cheap individually, finishes the Tier 2.5 deliverable. Total ~3-5 days.
 
-#### T2.5.9 — Tool description manifest (`mcp_overview` tool)
+#### T2.5.9 — Tool description manifest (`mcp_overview` tool) — **✅ DONE**
 
-**State**: not registered in `packages/tools/mcp/src/index.ts`. AI agents have no top-level "what tool when" map — they can list tools but not navigate them by intent.
-
-**What's needed**: a single `mcp_overview` tool that returns a structured summary: `{ tool, when_to_use, example_query }` for every registered tool. Effort: ~half-day.
+Shipped: `mcp_overview` registered in `packages/tools/mcp/src/index.ts:737`. Returns a markdown table read from the package manifest at runtime — single source of truth, new tools surface automatically. The earlier "not registered" status was stale by the time the plan was last reviewed.
 
 #### T2.5.10 — Telemetry (opt-in)
 
@@ -194,23 +192,21 @@ Cheap individually, finishes the Tier 2.5 deliverable. Total ~3-5 days.
 
 **What's needed**: opt-in usage logging behind env var; stats summarizer in the CLI. Effort: ~1 day.
 
-#### T2.5.11 — Expand MCP integration tests (5 → ≥20 across all 11 tools)
+**Deferred**: Pyreon is 0.x with no production user base; collecting usage data is premature. Reconsider when there are ≥10 known consumer projects on the MCP server — then the data will inform which tools to invest in vs prune.
 
-**State**: `packages/tools/mcp/src/tests/server-integration.test.ts` covers `validate` over real JSON-RPC + `InMemoryTransport` — 5 tests. Original plan asked for ≥20 covering every tool.
+#### T2.5.11 — Expand MCP integration tests (5 → ≥20 across all 11 tools) — **✅ DONE (#917)**
 
-**What's left**: integration tests for `get_api`, `migrate_react`, `diagnose`, `get_routes`, `get_components`, `get_pattern`, `get_anti_patterns`, `get_changelog`, `audit_test_environment`, `get_browser_smoke_status` (5 of 11 tools currently covered). Effort: ~1-2 days.
+Shipped: `packages/tools/mcp/src/tests/server-integration.test.ts` now has 22 specs (was 5) — every tool's JSON-RPC handler registration + response shape is locked.
 
-#### T2.5.12 — Document the 5 newer tools in `docs/docs/mcp.md`
+#### T2.5.12 — Document the 5 newer tools in `docs/docs/mcp.md` — **✅ DONE**
 
-**State**: file exists (228 lines), documents only 6 tools (`get_api`, `validate`, `migrate_react`, `diagnose`, `get_routes`, `get_components`). Missing: `get_pattern`, `get_anti_patterns`, `get_changelog`, `audit_test_environment`, `get_browser_smoke_status`. No "5 most useful tools and example queries" section. No troubleshooting section.
+Shipped: `docs/docs/mcp.md` is now 434 lines (was 228). All 13 tools have their own sections; a "Tools by intent" quick-reference at the top (line 74) maps user intent → tool. The earlier "228 lines, 6 tools" snapshot was stale by the time the plan was last reviewed.
 
-**What's needed**: doc the 5 missing tools with example queries; add a usage-by-intent quick-reference. Effort: ~half-day.
+Follow-up: a "Troubleshooting" section was added in the same PR that did this stale-marking — see [docs/docs/mcp.md](../../docs/docs/mcp.md) "Troubleshooting".
 
-#### T2.5.5 — `diagnose` catalog growth as a CI gate
+#### T2.5.5 — `diagnose` catalog growth as a CI gate — **✅ DONE (#917)**
 
-**State**: `ERROR_PATTERNS` in `compiler/src/react-intercept.ts` has 11 entries. The CI check that requires bug-fix PRs to add catalog entries is missing.
-
-**What's needed**: a `scripts/check-diagnose-catalog.ts` that flags PRs touching `runtime-dom/`, `runtime-server/`, `core/`, `compiler/`, or `router/` without growing the catalog (with an opt-out for genuinely catalog-irrelevant changes). Effort: ~half-day.
+Shipped: `scripts/check-diagnose-catalog.ts` + `.github/workflows/diagnose-catalog-check.yml`. PRs touching `packages/core/{runtime-dom,runtime-server,core,compiler,router}/` must grow `ERROR_PATTERNS` or carry the `skip-diagnose-catalog` label (created in this follow-up).
 
 ---
 
