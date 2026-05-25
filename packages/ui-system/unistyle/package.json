@@ -44,6 +44,7 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/typescript": "workspace:^",
+    "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^4.1.4",
     "@vitus-labs/tools-rolldown": "^2.4.0"
   },
