@@ -261,11 +261,19 @@ if (reactiveResult.sampleFire) {
   info(`  sample fire: ${JSON.stringify(reactiveResult.sampleFire).slice(0, 120)}`)
 }
 
+// Hard assertion (closes the bug class behind PR #900's first false-positive
+// verification): the verifier MUST assert the graph populates against a real
+// Pyreon app, not just log the count. Pre-fix the activate-after-mount path
+// returned 0 nodes for every user-shape app because `_rdRegister` early-
+// returned on `!_active`. Post-fix the registry is always-on in __DEV__;
+// activate exposes the live graph. Verifier asserts the post-fix contract.
 if (reactiveResult.afterDelayNodeCount > 0) {
-  pass('Reactive graph populated with live signal/effect nodes')
+  pass(`Reactive graph populated with live signal/effect nodes (${reactiveResult.afterDelayNodeCount} nodes, ${reactiveResult.afterDelayEdgeCount} edges)`)
 } else {
-  info(
-    '  (no reactive nodes captured — the app may not have triggered any reactive activity in 500ms, OR reactive.activate() needs to be called BEFORE the app mounts)',
+  fail(
+    '  Reactive graph EMPTY after activate() — this is the post-mount-activate bug. ' +
+      'Always-on registration in __DEV__ should expose pre-existing signals as soon as activate() fires. ' +
+      'Check `_rdRegister` is no longer gated on `!_active`, and that `@pyreon/reactivity`\'s lib/ is freshly built.',
   )
 }
 

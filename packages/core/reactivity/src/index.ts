@@ -31,6 +31,7 @@ export type {
   SourceLocation,
 } from './reactive-devtools'
 export {
+  __resetReactiveDevtoolsForTesting,
   activateReactiveDevtools,
   deactivateReactiveDevtools,
   getFireSummaries,
