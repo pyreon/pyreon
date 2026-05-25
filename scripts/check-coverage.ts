@@ -80,6 +80,12 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     reason:
       'PR #323 cleanup raised statements 60 → 85 (actual 87.33%) and branches 50 → 75 (actual 79.41%). Meta-framework with build-time / server-runtime surface — most code is integration-tier.',
   },
+  '@pyreon/create-zero': {
+    currentStatements: 85,
+    currentBranches: 80,
+    reason:
+      'CLI scaffolder. PR1/PR2/PR3 added 31 structural tests covering parseArgs + resolveFeatures + the full scaffold pipeline via real-disk snapshots (actual statements 89.04%, branches 81.39%, functions 70.45%). Uncovered branches are per-adapter file copies, binary-file path in template-engine, env.example append, and compat-shim deps — exercised at the bin level but not snapshot-locked. args.ts + prompts.ts + index.ts excluded since they need a TTY mock; resolveFeatures is the testable core and IS covered via features.test.ts.',
+  },
   '@pyreon/kinetic': {
     currentStatements: 88,
     currentBranches: 80,

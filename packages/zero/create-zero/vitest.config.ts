@@ -9,22 +9,24 @@ export default mergeConfig(
       include: ['src/tests/**/*.test.ts'],
       coverage: {
         provider: 'v8',
-        // Coverage is informational here — `create-zero` is a CLI that
-        // shells out to file-system operations and produces a directory
-        // tree; the snapshot tests cover the scaffolder pipeline
-        // end-to-end. Bin / args / prompt interaction is mainly tested
-        // by manually running the binary.
+        // `create-zero` is a CLI scaffolder. PR2 added test coverage for
+        // `parseArgs` + `resolveFeatures`; PR1 covers the scaffolder
+        // pipeline end-to-end via real-disk snapshot tests. The surfaces
+        // NOT covered are the entry-point's interactive wizard (clack
+        // prompts against a real TTY) and the args.ts help text / error
+        // branches — both reachable only via the bin entry, would need
+        // a TTY mock to test meaningfully.
         include: ['src/**/*.ts'],
         exclude: [
           'src/tests/**',
           'src/index.ts', // bin entry — runs the wizard interactively
-          'src/args.ts',
-          'src/prompts.ts',
+          'src/args.ts', // CLI arg parser — parseArgs + resolveFeatures tested via features.test.ts; help text + error branches reachable only via bin
+          'src/prompts.ts', // interactive prompt machinery (resolveFeatures itself is tested via features.test.ts)
         ],
         thresholds: {
-          statements: 50,
-          branches: 50,
-          functions: 50,
+          statements: 85,
+          branches: 80,
+          functions: 70,
         },
       },
     },
