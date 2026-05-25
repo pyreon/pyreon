@@ -71,7 +71,7 @@ const { store } = useTodoList() // same instance on every call`,
       signature:
         'model({ state }) | model({ schema, initial?, onValidationError? }) → ModelDefinition; chain .views(f).actions(f) then .create(initial?) or .asHook(id)',
       summary:
-        'Define a reactive model via a chainable builder. Two modes (mutually exclusive): **plain mode** `model({ state })` declares signal-backed fields with their initial values; **schema mode** `model({ schema, initial? })` validates state via a TypedSchemaAdapter (`zodSchema` / `valibotSchema` / `arktypeSchema`) or a Standard Schema-compliant instance (zod 3.24+ / valibot 1.0+ / arktype 2.0+ / Effect Schema, etc.) — types are inferred end-to-end. Chain `.views(f)` for derived values and `.actions(f)` for mutators; both are CHAINABLE — every subsequent layer sees prior views + actions via `self`. Schema mode adds `$set` / `$patch` / `$reset` helpers on `self` and on the instance, each validated through the schema. Actions can be `async`; `await u.fetchPosts()` works end-to-end and middleware sees completion via `await next(call)`. Returns a `ModelDefinition` — call `.create(initial?)` for an independent instance or `.asHook(id)` for a singleton.',
+        'Define a reactive model via a chainable builder. Two modes (mutually exclusive): **plain mode** `model({ state })` declares signal-backed fields with their initial values; **schema mode** `model({ schema, initial? })` validates state via a TypedSchemaAdapter (`zodSchema` / `valibotSchema` / `arktypeSchema`) or a Standard Schema-compliant instance (zod 3.24+ / valibot 1.0+ / arktype 2.0+ / Effect Schema, etc.) — types are inferred end-to-end. Chain `.views(f)` for derived values and `.actions(f)` for mutators; both are CHAINABLE — every subsequent layer sees prior views + actions via `self`. Schema mode adds `set` / `patch` / `reset` helpers on `self` and on the instance, each validated through the schema. Actions can be `async`; `await u.fetchPosts()` works end-to-end and middleware sees completion via `await next(call)`. Returns a `ModelDefinition` — call `.create(initial?)` for an independent instance or `.asHook(id)` for a singleton.',
       example: `// Plain mode
 const Counter = model({ state: { count: 0 } })
   .views((self) => ({ doubled: () => self.count() * 2 }))
@@ -87,23 +87,23 @@ const User = model({
 })
   .views((self) => ({ greet: () => \`Hi, \${self.name()}\` }))
   .actions((self) => ({
-    rename: (next: string) => self.$patch({ name: next }),
+    rename: (next: string) => self.patch({ name: next }),
     async fetchProfile() {
       const res = await fetch('/api/profile')
       const data = await res.json()
-      self.$set(data)
+      self.set(data)
     },
   }))
 
 const u = User.create({ name: 'Alice', age: 30 })
 u.greet()                 // "Hi, Alice"
 await u.fetchProfile()    // async action, awaitable
-u.$reset()                // back to initial`,
+u.reset()                // back to initial`,
       mistakes: [
         'Mutating state outside of actions — bypasses middleware and patch recording, breaks the structured contract',
         'Forgetting that `self.count` is a signal — read with `self.count()`, write with `self.count.set(v)` or `.update(fn)` inside actions',
         'Nesting plain objects in state instead of child models — plain objects are not signal-backed, changes to their properties are not reactive',
-        'Confusing `self.$set` (validates against schema, throws on failure) with `self.field.set(v)` (direct signal write, bypasses validation — the documented escape hatch)',
+        'Confusing `self.set` (validates against schema, throws on failure) with `self.field.set(v)` (direct signal write, bypasses validation — the documented escape hatch)',
         'Using `model({ state, views, actions })` — that single-config form was REMOVED. Chain `.views()` / `.actions()` instead',
         'Defining views/actions referencing each other across MULTIPLE `.actions()` blocks but expecting tight typing — `self` in each block is loosely typed at the tail (`Record<string, any>`) so cross-block calls work; the cost is weak inference for cross-block helpers',
       ],
@@ -113,20 +113,20 @@ u.$reset()                // back to initial`,
       name: 'SchemaModelHelpers',
       kind: 'type',
       signature:
-        'interface SchemaModelHelpers<TState> { $set, $patch, $deepPatch, $update<K>, $reset }',
+        'interface SchemaModelHelpers<TState> { set, patch, deepPatch, update<K>, reset }',
       summary:
         'The five schema-validated mutation helpers exposed on every schema-mode model instance AND on `self` inside schema-mode action/view factories. `$`-prefixed so they never collide with user schema field names (`name`, `set`, `patch`, etc.). All five validate the merged result through the schema before writing to signals (or invoke `onValidationError` if configured). Direct signal writes (`self.field.set(v)`) bypass validation — the documented escape hatch. Parallel to `@pyreon/store`\'s `SchemaStoreApi`.',
       example: `// All five helpers — pick by mutation shape:
-u.$set({ name: 'Bob', age: 40, prefs: { theme: 'dark', density: 'cozy' } })   // full replace
-u.$patch({ name: 'Bob' })                                                       // shallow merge
-u.$deepPatch({ prefs: { theme: 'dark' } })                                      // recursive merge — density survives
-u.$update('items', items => items.filter(x => x.id !== 1))                      // transform one field
-u.$reset()                                                                       // restore parsed initial`,
+u.set({ name: 'Bob', age: 40, prefs: { theme: 'dark', density: 'cozy' } })   // full replace
+u.patch({ name: 'Bob' })                                                       // shallow merge
+u.deepPatch({ prefs: { theme: 'dark' } })                                      // recursive merge — density survives
+u.update('items', items => items.filter(x => x.id !== 1))                      // transform one field
+u.reset()                                                                       // restore parsed initial`,
       mistakes: [
-        '`$patch({ prefs: { theme } })` REPLACES the whole `prefs` object (shallow merge); use `$deepPatch` to keep `density` intact',
-        '`$deepPatch` REPLACES arrays / class instances (Date, Map, Set) — only plain objects recurse',
-        '`$update`\'s transformer is `(unknown) => unknown` — cast at the call site for typed inference (key is constrained to `keyof TState & string`)',
-        'Using `$update` for multi-field changes — it transforms ONE top-level field at a time; use `$patch` / `$deepPatch` / `$set` for multi-field',
+        '`patch({ prefs: { theme } })` REPLACES the whole `prefs` object (shallow merge); use `deepPatch` to keep `density` intact',
+        '`deepPatch` REPLACES arrays / class instances (Date, Map, Set) — only plain objects recurse',
+        '`update`\'s transformer is `(unknown) => unknown` — cast at the call site for typed inference (key is constrained to `keyof TState & string`)',
+        'Using `update` for multi-field changes — it transforms ONE top-level field at a time; use `patch` / `deepPatch` / `set` for multi-field',
       ],
       seeAlso: ['model', 'DeepPartial'],
     },
@@ -136,15 +136,15 @@ u.$reset()                                                                      
       signature:
         'type DeepPartial<T> = T extends ReadonlyArray<unknown> ? T : T extends object ? { readonly [K in keyof T]?: DeepPartial<T[K]> } : T',
       summary:
-        'Recursive partial — every property optional at every depth. Used by `SchemaModelHelpers.$deepPatch` as the partial-shape constraint. Arrays and primitives pass through unchanged (because `$deepPatch` REPLACES them); only plain objects get the recursive optional treatment, matching the runtime merge semantics. Parallel to `@pyreon/store`\'s `DeepPartial`.',
+        'Recursive partial — every property optional at every depth. Used by `SchemaModelHelpers.deepPatch` as the partial-shape constraint. Arrays and primitives pass through unchanged (because `deepPatch` REPLACES them); only plain objects get the recursive optional treatment, matching the runtime merge semantics. Parallel to `@pyreon/store`\'s `DeepPartial`.',
       example: `// State { count: number; prefs: { theme: string; density: string } }
 // DeepPartial admits:
-$deepPatch({ count: 5 })                                  // primitive field
-$deepPatch({ prefs: { theme: 'dark' } })                  // partial nested object — density survives
-$deepPatch({ prefs: { theme: 'dark', density: 'cozy' } }) // full nested object
+deepPatch({ count: 5 })                                  // primitive field
+deepPatch({ prefs: { theme: 'dark' } })                  // partial nested object — density survives
+deepPatch({ prefs: { theme: 'dark', density: 'cozy' } }) // full nested object
 // Arrays REPLACE — DeepPartial<T[]> = T[], must pass full array shape`,
       mistakes: [
-        '`DeepPartial<T[]>` is `T[]` (no element-level optionality) — arrays REPLACE in `$deepPatch`. To mutate array contents, use `$update`',
+        '`DeepPartial<T[]>` is `T[]` (no element-level optionality) — arrays REPLACE in `deepPatch`. To mutate array contents, use `update`',
         'Class instances (Date, Map, Set) keep their full shape under `DeepPartial` — they are NOT plain objects and replace wholesale',
       ],
       seeAlso: ['SchemaModelHelpers', 'model'],
@@ -154,7 +154,7 @@ $deepPatch({ prefs: { theme: 'dark', density: 'cozy' } }) // full nested object
       kind: 'type',
       signature: 'class ModelDefinition<TState, TViews, TActions, HasSchema> { views(f), actions(f), create(initial?), asHook(id) }',
       summary:
-        'The chainable builder returned by `model()`. Each `.views(f)` / `.actions(f)` returns a NEW `ModelDefinition` with the accumulated layer — immutable builder, safe to share across call sites. `f` receives `self` typed as the model AS IT IS SO FAR (state signals + prior views + prior actions + schema helpers when applicable). Type parameters: `TState` is the underlying value shape; `TViews` / `TActions` accumulate across chain steps; `HasSchema` flips to `true` in schema mode (adds `$set`/`$patch`/`$reset` to instance type).',
+        'The chainable builder returned by `model()`. Each `.views(f)` / `.actions(f)` returns a NEW `ModelDefinition` with the accumulated layer — immutable builder, safe to share across call sites. `f` receives `self` typed as the model AS IT IS SO FAR (state signals + prior views + prior actions + schema helpers when applicable). Type parameters: `TState` is the underlying value shape; `TViews` / `TActions` accumulate across chain steps; `HasSchema` flips to `true` in schema mode (adds `set`/`patch`/`reset` to instance type).',
       example: `const M = model({ schema })
   .views((self) => ({ a: () => self.x() }))     // self has state
   .views((self) => ({ b: () => self.a() + 1 })) // self also has a

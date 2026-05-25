@@ -5,7 +5,7 @@ import { runAction } from './middleware'
 import { onPatch, trackedSignal } from './patch'
 import { instanceMeta } from './registry'
 import type { InstanceMeta, StateShape } from './types'
-import { MODEL_BRAND } from './types'
+import { MODEL_BRAND, RESERVED_SCHEMA_HELPER_KEYS } from './types'
 
 // ─── Model definition detection ───────────────────────────────────────────────
 
@@ -19,7 +19,7 @@ function isModelDef(v: unknown): v is AnyModelDef {
   return (v as Record<string, unknown>)[MODEL_BRAND] === true
 }
 
-// ─── Plain-object detection + deep merge (used by schema-mode $deepPatch) ────
+// ─── Plain-object detection + deep merge (used by schema-mode deepPatch) ────
 
 /**
  * Detect a plain object (literal `{}` or `Object.create(null)`) — used by
@@ -35,7 +35,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 /**
  * Recursively merge `source` into `target` for plain-object branches.
- * Returns a NEW object — never mutates inputs. Used by `$deepPatch`.
+ * Returns a NEW object — never mutates inputs. Used by `deepPatch`.
  *
  * - Plain object × plain object → recurse
  * - Anything else (array, class instance, primitive, null, undefined) →
@@ -67,7 +67,7 @@ function deepMerge(target: unknown, source: unknown): unknown {
  *      runs the parser against `_parsedInitial` ∪ caller-supplied `initial`.
  *   2. Allocate per-field signals (each wrapped with `trackedSignal` so that
  *      writes emit JSON patches).
- *   3. Install schema-mode helpers (`$set` / `$patch` / `$reset`) on the
+ *   3. Install schema-mode helpers (`set` / `patch` / `reset`) on the
  *      instance when `_parseFn` is configured.
  *   4. Run every view factory in registration order, merging onto `self`.
  *      Each factory sees prior views + actions via the live `self` proxy.
@@ -96,7 +96,7 @@ export function createInstance(
 
   // `self` is a live proxy so that actions/views always see the final
   // (fully-populated) instance — including methods added by later chain
-  // layers and the schema-mode `$set / $patch / $reset` helpers.
+  // layers and the schema-mode `set / patch / reset` helpers.
   const self = new Proxy(instance, {
     get(_, k) {
       return instance[k as string]
@@ -149,7 +149,7 @@ export function createInstance(
     } else {
       allocationSource = result.value as Record<string, unknown>
     }
-    // Capture the parsed-initial for `$reset`. JSON clone ensures
+    // Capture the parsed-initial for `reset`. JSON clone ensures
     // subsequent in-place mutations don't poison the reset value.
     initialSnapshotForReset = JSON.parse(JSON.stringify(allocationSource))
   } else {
@@ -164,7 +164,26 @@ export function createInstance(
   // runs once per model instance), not per-render — this is the model's
   // fine-grained reactive architecture, not the signal-in-render-loop
   // anti-pattern the rule targets. Disabled per-site below with rationale.
+  //
+  // Reserved-name check (schema mode only): schema field names can't
+  // collide with mutation helper names — `set` / `patch` / `deepPatch` /
+  // `update` / `reset`. Plain mode skips this check because plain models
+  // have no installed mutation helpers (state is the API surface).
   const isSchemaMode = config._parseFn !== undefined
+  if (isSchemaMode) {
+    for (const reserved of RESERVED_SCHEMA_HELPER_KEYS) {
+      if (reserved in allocationSource) {
+        throw new Error(
+          `[Pyreon] model({ schema }): schema field "${reserved}" collides ` +
+            'with a reserved mutation helper name. Rename the field — schema mode ' +
+            'installs `set` / `patch` / `deepPatch` / `update` / `reset` as bare ' +
+            'methods on the instance (parallel to @pyreon/store). Direct signal ' +
+            'writes are still available via `self.fieldName.set(v)` as an escape ' +
+            'hatch, but the schema field cannot use one of the reserved names.',
+        )
+      }
+    }
+  }
   for (const [key, defaultValue] of Object.entries(allocationSource)) {
     meta.stateKeys.push(key)
     const path = `/${key}`
@@ -217,10 +236,11 @@ export function createInstance(
   }
 
   // ── 3. Schema-mode helpers ────────────────────────────────────────────────
-  // Install $set / $patch / $reset when schema mode is active. Each helper
-  // validates the merged result via the schema before writing to signals;
-  // direct signal writes (`self.field.set(v)`) bypass validation by design
-  // (documented escape hatch, parallel to @pyreon/store).
+  // Install set / patch / deepPatch / update / reset when schema mode is
+  // active. Each helper validates the merged result via the schema before
+  // writing to signals; direct signal writes (`self.field.set(v)`) bypass
+  // validation by design (documented escape hatch, parallel to @pyreon/store).
+  // Reserved-name collision check ran above (state allocation phase).
   if (config._parseFn) {
     const parseFn = config._parseFn
     const onErr = config._onValidationError
@@ -268,36 +288,36 @@ export function createInstance(
       })
     }
 
-    instance.$set = (next: Record<string, unknown>) => {
-      const valid = validateOrFail(next, '$set')
+    instance.set = (next: Record<string, unknown>) => {
+      const valid = validateOrFail(next, 'set')
       if (valid === undefined) return // suppressed via onValidationError
       writeAll(valid)
     }
 
-    instance.$patch = (partial: Record<string, unknown>) => {
+    instance.patch = (partial: Record<string, unknown>) => {
       const merged = { ...readCurrent(), ...partial }
-      const valid = validateOrFail(merged, '$patch')
+      const valid = validateOrFail(merged, 'patch')
       if (valid === undefined) return
       writeAll(valid)
     }
 
-    instance.$deepPatch = (partial: Record<string, unknown>) => {
+    instance.deepPatch = (partial: Record<string, unknown>) => {
       // Recursive plain-object merge. Arrays / class instances REPLACE.
       // Parallel to @pyreon/store's `deepPatch`.
       const merged = deepMerge(readCurrent(), partial) as Record<string, unknown>
-      const valid = validateOrFail(merged, '$deepPatch')
+      const valid = validateOrFail(merged, 'deepPatch')
       if (valid === undefined) return
       writeAll(valid)
     }
 
-    instance.$update = (key: string, transformer: (current: unknown) => unknown) => {
+    instance.update = (key: string, transformer: (current: unknown) => unknown) => {
       // Transform a single top-level field. Read → transform → validate
       // merged state → write only that key. Parallel to @pyreon/store's
       // `update<K extends keyof T & string>(...)`.
       const current = readCurrent()
       const next = transformer(current[key])
       const merged = { ...current, [key]: next }
-      const valid = validateOrFail(merged, '$update')
+      const valid = validateOrFail(merged, 'update')
       if (valid === undefined) return
       // Write only the changed key (other keys already validated equal).
       const sig = instance[key] as Signal<unknown>
@@ -306,36 +326,49 @@ export function createInstance(
       }
     }
 
-    instance.$reset = () => {
+    instance.reset = () => {
       // initialSnapshotForReset is the PARSED value captured at .create()
       // time. Re-parse to apply any defaults that depend on call time.
       const result = parseFn(initialSnapshotForReset)
       if (result instanceof Promise) {
         throw new Error(
-          '[Pyreon] model.$reset(): schema returned a Promise. Async schemas unsupported.',
+          '[Pyreon] model.reset(): schema returned a Promise. Async schemas unsupported.',
         )
       }
       if (!result.ok) {
-        throw new Error(formatIssues(result.issues, '$reset'))
+        throw new Error(formatIssues(result.issues, 'reset'))
       }
       writeAll(result.value as Record<string, unknown>)
     }
   }
 
+  // Helper: forbid a view/action from shadowing state OR a schema-installed
+  // mutation helper. Plain mode skips the helper check (no helpers installed).
+  const checkReserved = (key: string, factoryKind: 'views' | 'actions'): void => {
+    if (meta.stateKeys.includes(key)) {
+      throw new Error(
+        `[Pyreon] model.${factoryKind}(): "${key}" collides with a schema/state field. ` +
+          'Pick a different name.',
+      )
+    }
+    if (isSchemaMode && RESERVED_SCHEMA_HELPER_KEYS.includes(key as never)) {
+      throw new Error(
+        `[Pyreon] model.${factoryKind}(): "${key}" collides with a reserved ` +
+          'schema-mode mutation helper (`set` / `patch` / `deepPatch` / `update` / ' +
+          '`reset`). These names are reserved for the validated mutation surface. ' +
+          'Pick a different name.',
+      )
+    }
+  }
+
   // ── 4. Views (chained, in registration order) ─────────────────────────────
   // Each factory sees the live `self` proxy — including prior views/actions
-  // and (in schema mode) the $set/$patch/$reset helpers installed above.
-  // Reserved-key collision: throw if a factory tries to overwrite a state
-  // signal or a previously-installed schema helper.
+  // and (in schema mode) the set/patch/deepPatch/update/reset helpers
+  // installed above.
   for (const factory of config.viewFactories) {
     const views = factory(self) as Record<string, unknown>
     for (const [key, view] of Object.entries(views)) {
-      if (meta.stateKeys.includes(key)) {
-        throw new Error(
-          `[Pyreon] model.views(): "${key}" collides with a schema/state field. ` +
-            'Pick a different name.',
-        )
-      }
+      checkReserved(key, 'views')
       instance[key] = view
     }
   }
@@ -349,12 +382,7 @@ export function createInstance(
       (...args: unknown[]) => unknown
     >
     for (const [key, actionFn] of Object.entries(rawActions)) {
-      if (meta.stateKeys.includes(key)) {
-        throw new Error(
-          `[Pyreon] model.actions(): "${key}" collides with a schema/state field. ` +
-            'Pick a different name.',
-        )
-      }
+      checkReserved(key, 'actions')
       instance[key] = (...args: unknown[]) => runAction(meta, key, actionFn, args)
     }
   }

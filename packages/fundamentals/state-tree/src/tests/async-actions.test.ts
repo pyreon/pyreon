@@ -187,10 +187,10 @@ describe('async actions — middleware integration', () => {
 })
 
 describe('async actions — schema mode integration', () => {
-  // Schema mode + async actions: $patch / $set inside an async body validates
+  // Schema mode + async actions: patch / set inside an async body validates
   // each call at its checkpoint. A rejected validation propagates through the
   // action's promise.
-  it('async action using $patch validates each write', async () => {
+  it('async action using patch validates each write', async () => {
     const { zodSchema } = await import('@pyreon/validation/zod')
     const { z } = await import('zod')
 
@@ -206,7 +206,7 @@ describe('async actions — schema mode integration', () => {
     }).actions((self) => ({
       async setAge(next: number) {
         await Promise.resolve()
-        ;(self.$patch as (p: { age: number }) => void)({ age: next })
+        ;(self.patch as (p: { age: number }) => void)({ age: next })
         return next
       },
     }))

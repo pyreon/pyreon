@@ -82,7 +82,7 @@ export interface NormalizedConfig<TState extends StateShape> {
  * - `TState` — the underlying value shape (raw, not wrapped in signals)
  * - `TViews` — accumulated `.views(...)` returns (unioned across chain)
  * - `TActions` — accumulated `.actions(...)` returns (unioned across chain)
- * - `HasSchema` — whether schema mode is active (adds `$set`/`$patch`/`$reset`)
+ * - `HasSchema` — whether schema mode is active (adds `set`/`patch`/`reset`)
  */
 export class ModelDefinition<
   TState extends StateShape,
@@ -218,7 +218,7 @@ export class ModelDefinition<
  * })
  *   .views((self) => ({ greet: () => `Hi, ${self.name()}` }))
  *   .actions((self) => ({
- *     rename: (next: string) => self.$patch({ name: next }),
+ *     rename: (next: string) => self.patch({ name: next }),
  *     async fetchProfile() { /\* async out of the box \*\/ },
  *   }))
  * ```

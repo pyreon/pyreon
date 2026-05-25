@@ -78,7 +78,7 @@ mount(ui, app)
 `model()` carries one piece of state declaration — `state` (plain mode) OR `schema` (schema mode). Both modes return the same chainable {{ModelDefinition}}; `views` and `actions` are added exclusively via `.views(...)` / `.actions(...)`.
 
 - **state** -- Plain JS object. Each key becomes a `Signal<T>` on the instance. Plain mode.
-- **schema** -- A {{TypedSchemaAdapter}} (`zodSchema(...)`, `valibotSchema(...)`, `arktypeSchema(...)`) or a Standard Schema-compliant instance (zod 3.24+, valibot 1.0+, arktype 2.0+, Effect Schema, ...). Schema mode — adds runtime validation and `$set` / `$patch` / `$reset` helpers.
+- **schema** -- A {{TypedSchemaAdapter}} (`zodSchema(...)`, `valibotSchema(...)`, `arktypeSchema(...)`) or a Standard Schema-compliant instance (zod 3.24+, valibot 1.0+, arktype 2.0+, Effect Schema, ...). Schema mode — adds runtime validation and `set` / `patch` / `reset` helpers.
 - **`.views(self => ...)`** -- Chainable. Each call adds a layer of derived values; subsequent layers see prior ones via `self`.
 - **`.actions(self => ...)`** -- Chainable. Each call adds a layer of methods; can be `async` out of the box.
 
@@ -163,7 +163,7 @@ config.theme.set('dark')
 
 ## Schema Mode
 
-`model({ schema })` lets you define state with a validation schema. Field types are inferred end-to-end, and every `$set` / `$patch` is validated through the schema. Direct signal writes (`self.field.set(v)`) bypass validation by design — the documented escape hatch.
+`model({ schema })` lets you define state with a validation schema. Field types are inferred end-to-end, and every `set` / `patch` is validated through the schema. Direct signal writes (`self.field.set(v)`) bypass validation by design — the documented escape hatch.
 
 Schema mode accepts any of:
 
@@ -192,18 +192,18 @@ const User = model({
     greeting: () => `Hi, ${self.name()}`,
   }))
   .actions((self) => ({
-    rename: (next: string) => self.$patch({ name: next }),
+    rename: (next: string) => self.patch({ name: next }),
   }))
 
 const u = User.create({ name: 'Alice', age: 30, prefs: { theme: 'dark' } })
 u.name()      // "Alice"
 u.greeting()  // "Hi, Alice"
-u.$set({ name: 'Bob', age: 40, prefs: { theme: 'light' } })   // full replace, validated
-u.$patch({ age: 41 })                                          // shallow merge, validated
-u.$deepPatch({ prefs: { theme: 'dark' } })                     // recursive merge — keeps other prefs keys
-u.$update('age', n => (n as number) + 1)                       // transform one field, validated
+u.set({ name: 'Bob', age: 40, prefs: { theme: 'light' } })   // full replace, validated
+u.patch({ age: 41 })                                          // shallow merge, validated
+u.deepPatch({ prefs: { theme: 'dark' } })                     // recursive merge — keeps other prefs keys
+u.update('age', n => (n as number) + 1)                       // transform one field, validated
 u.name.set('')   // direct signal write — bypasses validation (escape hatch)
-u.$reset()       // restore parsed initial
+u.reset()       // restore parsed initial
 ```
 
 **Standard Schema (Tier A.2)** — pass the raw schema, no adapter wrap needed:
@@ -221,21 +221,21 @@ Schema mode exposes five validated mutation methods. Pick by mutation shape:
 
 | Method | Shape | Merge depth | Use when |
 | --- | --- | --- | --- |
-| `$set(full)` | full state | n/a (replaces) | resetting to a known full shape |
-| `$patch(partial)` | top-level partial | shallow (depth-1) | replacing one or more top-level fields |
-| `$deepPatch(partial)` | recursive partial | deep (plain objects only) | updating nested fields without spreading the parent |
-| `$update(key, fn)` | one field | n/a (transformer-controlled) | array filter/append, object key edit, primitive math |
-| `$reset()` | (none) | n/a | restore the parsed-initial captured at `.create()` time |
+| `set(full)` | full state | n/a (replaces) | resetting to a known full shape |
+| `patch(partial)` | top-level partial | shallow (depth-1) | replacing one or more top-level fields |
+| `deepPatch(partial)` | recursive partial | deep (plain objects only) | updating nested fields without spreading the parent |
+| `update(key, fn)` | one field | n/a (transformer-controlled) | array filter/append, object key edit, primitive math |
+| `reset()` | (none) | n/a | restore the parsed-initial captured at `.create()` time |
 
 All five validate the merged result against the schema and throw on failure (or invoke `onValidationError` if configured). Direct signal writes (`self.field.set(v)`) bypass validation by design — the documented escape hatch.
 
 ```ts
 // Real-world mix:
-u.$patch({ name: 'Bob' })                          // simple top-level edit
-u.$deepPatch({ prefs: { theme: 'dark' } })         // density survives
-u.$update('items', items => items.filter(x => x.id !== id))  // array remove
-u.$update('items', items => [...items, newItem])             // array append
-u.$update('prefs', p => ({ ...p, theme: 'dark' }))           // alt to $deepPatch
+u.patch({ name: 'Bob' })                          // simple top-level edit
+u.deepPatch({ prefs: { theme: 'dark' } })         // density survives
+u.update('items', items => items.filter(x => x.id !== id))  // array remove
+u.update('items', items => [...items, newItem])             // array append
+u.update('prefs', p => ({ ...p, theme: 'dark' }))           // alt to deepPatch
 ```
 
 **Validation rules** mirror `@pyreon/store` schema mode exactly:
@@ -243,9 +243,9 @@ u.$update('prefs', p => ({ ...p, theme: 'dark' }))           // alt to $deepPatc
 - All five `$*` methods validate every write. Invalid input throws (or invokes `onValidationError` if provided). State stays at its previous value on failure.
 - Initial is validated once at `model({ schema, initial })` time. Invalid initial throws immediately. Schema defaults + transforms apply — the PARSED value is written to signals.
 - Async validators are unsupported — schemas whose validator returns a Promise are rejected at definition time. Use `@pyreon/form` for async refinements.
-- Schema field names cannot collide with `$set` / `$patch` / `$deepPatch` / `$update` / `$reset` / `self` proxy keys — `model()` throws at construction with a clear message.
-- `$deepPatch` REPLACES arrays and class instances (Date, Map, Set) — only plain objects recurse.
-- `$update`'s key is constrained to `keyof TState & string` at the type level; the transformer signature is `(unknown) => unknown` (cast at call site for typed inference — a future refinement will narrow this automatically).
+- Schema field names cannot collide with `set` / `patch` / `deepPatch` / `update` / `reset` / `self` proxy keys — `model()` throws at construction with a clear message.
+- `deepPatch` REPLACES arrays and class instances (Date, Map, Set) — only plain objects recurse.
+- `update`'s key is constrained to `keyof TState & string` at the type level; the transformer signature is `(unknown) => unknown` (cast at call site for typed inference — a future refinement will narrow this automatically).
 
 ```ts
 // Validation error handling — suppress throw, log instead
@@ -510,7 +510,7 @@ addMiddleware(store, async (call, next) => {
 
 Middleware that doesn't care about completion can stay sync — `next(call)` returns the Promise but the middleware doesn't have to await it. The runtime never forces awaiting.
 
-**Schema mode + async**: `$set` / `$patch` are sync. Inside an async action you can call them between `await`s; each call validates at its own checkpoint. A rejected validation propagates through the action's Promise, and the pre-throw state survives (schema mode never half-writes).
+**Schema mode + async**: `set` / `patch` are sync. Inside an async action you can call them between `await`s; each call validates at its own checkpoint. A rejected validation propagates through the action's Promise, and the pre-throw state survives (schema mode never half-writes).
 
 ```ts
 const User = model({
@@ -521,7 +521,7 @@ const User = model({
     async setAgeFromServer() {
       const r = await fetch('/api/age')
       const { age } = await r.json()
-      self.$patch({ age })  // throws if age < 0, leaving state intact
+      self.patch({ age })  // throws if age < 0, leaving state intact
     },
   }))
 ```

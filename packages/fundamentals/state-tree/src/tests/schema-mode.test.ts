@@ -10,16 +10,16 @@
  *
  * Behavioral assertions:
  *   - Field signals inferred from schema
- *   - `$set` validates + replaces atomically
- *   - `$patch` validates merged + writes only changed
- *   - `$reset` restores parsed initial
+ *   - `set` validates + replaces atomically
+ *   - `patch` validates merged + writes only changed
+ *   - `reset` restores parsed initial
  *   - Direct signal write bypasses validation (documented escape hatch)
  *   - Bad initial throws at create-time (or invokes onValidationError)
  *   - Async validator rejected at create-time
  *   - Schema defaults / transforms apply (parsed value written to signals)
  *   - Reserved-key collision throws
  *   - Chained .views() / .actions() compose with schema mode
- *   - $set / $patch / $reset available on self inside actions
+ *   - set / patch / reset available on self inside actions
  */
 import { arktypeSchema } from '@pyreon/validation/arktype'
 import { valibotSchema } from '@pyreon/validation/valibot'
@@ -53,7 +53,7 @@ describe('schema-mode model — zod (TypedSchemaAdapter / Tier A.1)', () => {
     expect(u.age()).toBe(30)
   })
 
-  it('$set validates and replaces atomically', () => {
+  it('set validates and replaces atomically', () => {
     const User = model({
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
@@ -61,27 +61,27 @@ describe('schema-mode model — zod (TypedSchemaAdapter / Tier A.1)', () => {
     const u = User.create() as ReturnType<typeof User.create> & {
       name: { (): string }
       age: { (): number }
-      $set: (next: { name: string; age: number }) => void
+      set: (next: { name: string; age: number }) => void
     }
-    u.$set({ name: 'Bob', age: 40 })
+    u.set({ name: 'Bob', age: 40 })
     expect(u.name()).toBe('Bob')
     expect(u.age()).toBe(40)
   })
 
-  it('$set with invalid input throws (state unchanged)', () => {
+  it('set with invalid input throws (state unchanged)', () => {
     const User = model({
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
     })
     const u = User.create() as ReturnType<typeof User.create> & {
       name: { (): string }
-      $set: (next: { name: string; age: number }) => void
+      set: (next: { name: string; age: number }) => void
     }
-    expect(() => u.$set({ name: '', age: 30 })).toThrow(/Schema validation failed/)
+    expect(() => u.set({ name: '', age: 30 })).toThrow(/Schema validation failed/)
     expect(u.name()).toBe('Alice')
   })
 
-  it('$patch validates merged + writes only changed fields', () => {
+  it('patch validates merged + writes only changed fields', () => {
     const User = model({
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
@@ -89,14 +89,14 @@ describe('schema-mode model — zod (TypedSchemaAdapter / Tier A.1)', () => {
     const u = User.create() as ReturnType<typeof User.create> & {
       name: { (): string }
       age: { (): number }
-      $patch: (partial: Partial<{ name: string; age: number }>) => void
+      patch: (partial: Partial<{ name: string; age: number }>) => void
     }
-    u.$patch({ age: 31 })
+    u.patch({ age: 31 })
     expect(u.age()).toBe(31)
     expect(u.name()).toBe('Alice')
   })
 
-  it('$reset restores parsed initial', () => {
+  it('reset restores parsed initial', () => {
     const User = model({
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
@@ -104,11 +104,11 @@ describe('schema-mode model — zod (TypedSchemaAdapter / Tier A.1)', () => {
     const u = User.create() as ReturnType<typeof User.create> & {
       name: { (): string }
       age: { (): number }
-      $set: (next: { name: string; age: number }) => void
-      $reset: () => void
+      set: (next: { name: string; age: number }) => void
+      reset: () => void
     }
-    u.$set({ name: 'Bob', age: 99 })
-    u.$reset()
+    u.set({ name: 'Bob', age: 99 })
+    u.reset()
     expect(u.name()).toBe('Alice')
     expect(u.age()).toBe(30)
   })
@@ -152,7 +152,7 @@ describe('schema-mode model — zod (TypedSchemaAdapter / Tier A.1)', () => {
     expect(m.name()).toBe('Default')
   })
 
-  it('onValidationError suppresses throw on $set', () => {
+  it('onValidationError suppresses throw on set', () => {
     const errors: { op: string }[] = []
     const User = model({
       schema: UserSchema,
@@ -163,11 +163,11 @@ describe('schema-mode model — zod (TypedSchemaAdapter / Tier A.1)', () => {
     })
     const u = User.create() as ReturnType<typeof User.create> & {
       name: { (): string }
-      $set: (next: { name: string; age: number }) => void
+      set: (next: { name: string; age: number }) => void
     }
-    u.$set({ name: '', age: 30 }) // would normally throw
+    u.set({ name: '', age: 30 }) // would normally throw
     expect(errors.length).toBe(1)
-    expect(errors[0]!.op).toBe('$set')
+    expect(errors[0]!.op).toBe('set')
     expect(u.name()).toBe('Alice') // unchanged
   })
 })
@@ -230,15 +230,15 @@ describe('schema-mode model — arktype (Tier A.1)', () => {
     expect(u.name()).toBe('Alice')
   })
 
-  it('$set with invalid input throws', () => {
+  it('set with invalid input throws', () => {
     const User = model({
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
     })
     const u = User.create() as ReturnType<typeof User.create> & {
-      $set: (next: { name: string; age: number }) => void
+      set: (next: { name: string; age: number }) => void
     }
-    expect(() => u.$set({ name: '', age: 30 })).toThrow(/Schema validation failed/)
+    expect(() => u.set({ name: '', age: 30 })).toThrow(/Schema validation failed/)
   })
 })
 
@@ -261,18 +261,18 @@ describe('schema-mode model — Standard Schema (Tier A.2)', () => {
     expect(u.age!()).toBe(30)
   })
 
-  it('Standard Schema path validates $set / $patch', () => {
+  it('Standard Schema path validates set / patch', () => {
     const User = model({
       schema: RawSchema,
       initial: { name: 'Alice', age: 30 },
     })
     const u = User.create() as unknown as Record<string, unknown> & {
-      $set: (next: { name: string; age: number }) => void
+      set: (next: { name: string; age: number }) => void
       name: { (): string }
     }
-    u.$set({ name: 'Bob', age: 40 })
+    u.set({ name: 'Bob', age: 40 })
     expect(u.name()).toBe('Bob')
-    expect(() => u.$set({ name: '', age: 30 })).toThrow(/Schema validation failed/)
+    expect(() => u.set({ name: '', age: 30 })).toThrow(/Schema validation failed/)
   })
 })
 
@@ -306,13 +306,13 @@ describe('schema-mode model — user-authored adapter (Tier B)', () => {
     const u = User.create() as unknown as Record<string, unknown> & {
       name: { (): string }
       age: { (): number }
-      $set: (next: UserShape) => void
+      set: (next: UserShape) => void
     }
     expect(u.name()).toBe('Alice')
     expect(u.age()).toBe(30)
-    u.$set({ name: 'Bob', age: 40 })
+    u.set({ name: 'Bob', age: 40 })
     expect(u.name()).toBe('Bob')
-    expect(() => u.$set({ name: '', age: 30 })).toThrow(/name must be non-empty/)
+    expect(() => u.set({ name: '', age: 30 })).toThrow(/name must be non-empty/)
   })
 })
 
@@ -335,9 +335,9 @@ describe('schema-mode model — chainable views/actions', () => {
         greeting: () => `Hi, ${self.name()}`,
       }))
       .actions((self) => ({
-        // self.$patch is callable inside actions (schema-mode adds helpers).
+        // self.patch is callable inside actions (schema-mode adds helpers).
         rename: (next: string) =>
-          (self.$patch as (p: Partial<{ name: string; age: number }>) => void)({
+          (self.patch as (p: Partial<{ name: string; age: number }>) => void)({
             name: next,
           }),
       }))
@@ -352,14 +352,14 @@ describe('schema-mode model — chainable views/actions', () => {
     expect(u.greeting()).toBe('Hi, Bob')
   })
 
-  it('actions calling $patch with invalid value throws + leaves state intact', () => {
+  it('actions calling patch with invalid value throws + leaves state intact', () => {
     const User = model({
       schema: UserSchema,
       initial: { name: 'Alice', age: 30 },
     })
       .actions((self) => ({
         rename: (next: string) =>
-          (self.$patch as (p: Partial<{ name: string; age: number }>) => void)({
+          (self.patch as (p: Partial<{ name: string; age: number }>) => void)({
             name: next,
           }),
       }))
@@ -372,9 +372,75 @@ describe('schema-mode model — chainable views/actions', () => {
   })
 })
 
-// ─── $deepPatch — recursive plain-object merge ──────────────────────────────
+// ─── Reserved-name collision check ──────────────────────────────────────────
 
-describe('schema-mode model — $deepPatch (nested merge)', () => {
+describe('schema-mode model — reserved mutation-helper names', () => {
+  it('throws at .create() time when schema declares a field named `set`', () => {
+    const SchemaWithSet = zodSchema(
+      z.object({ set: z.string() }) as unknown as z.ZodType<{ set: string }>,
+    )
+    const M = model({ schema: SchemaWithSet, initial: { set: 'oops' } })
+    expect(() => M.create()).toThrow(/collides with a reserved mutation helper/)
+  })
+
+  it('throws when schema field is `patch`', () => {
+    const SchemaWithPatch = zodSchema(
+      z.object({ patch: z.string() }) as unknown as z.ZodType<{ patch: string }>,
+    )
+    const M = model({ schema: SchemaWithPatch, initial: { patch: 'oops' } })
+    expect(() => M.create()).toThrow(/collides with a reserved mutation helper/)
+  })
+
+  it('throws when schema field is `deepPatch` / `update` / `reset`', () => {
+    for (const name of ['deepPatch', 'update', 'reset'] as const) {
+      const S = zodSchema(
+        z.object({ [name]: z.string() }) as unknown as z.ZodType<
+          Record<string, string>
+        >,
+      )
+      const M = model({ schema: S, initial: { [name]: 'oops' } })
+      expect(() => M.create()).toThrow(
+        /collides with a reserved mutation helper/,
+      )
+    }
+  })
+
+  it('throws when an .actions() factory tries to define a reserved name', () => {
+    const Schema = zodSchema(z.object({ count: z.number() }))
+    const Bad = model({ schema: Schema, initial: { count: 0 } }).actions(
+      () => ({
+        // `set` would shadow the installed schema-mode helper.
+        set: () => {},
+      }),
+    )
+    expect(() => Bad.create()).toThrow(
+      /collides with a reserved schema-mode mutation helper/,
+    )
+  })
+
+  it('plain mode (no schema) allows actions named `set` / `reset` — no collision', () => {
+    // Reserved names only apply in schema mode; plain models have no
+    // installed mutation helpers, so user actions named `reset` / `set`
+    // are still fine.
+    const Counter = model({ state: { count: 0 } }).actions((self) => ({
+      reset: () => self.count.set(0),
+      set: (n: number) => self.count.set(n),
+    }))
+    const c = Counter.create({ count: 5 }) as ReturnType<typeof Counter.create> & {
+      reset: () => void
+      set: (n: number) => void
+      count: { (): number }
+    }
+    c.set(10)
+    expect(c.count()).toBe(10)
+    c.reset()
+    expect(c.count()).toBe(0)
+  })
+})
+
+// ─── deepPatch — recursive plain-object merge ──────────────────────────────
+
+describe('schema-mode model — deepPatch (nested merge)', () => {
   const Schema = zodSchema(
     z.object({
       count: z.number(),
@@ -395,9 +461,9 @@ describe('schema-mode model — $deepPatch (nested merge)', () => {
     const M = model({ schema: Schema, initial })
     const m = M.create() as ReturnType<typeof M.create> & {
       prefs: { (): typeof initial.prefs }
-      $deepPatch: (p: { prefs?: { theme?: string } }) => void
+      deepPatch: (p: { prefs?: { theme?: string } }) => void
     }
-    m.$deepPatch({ prefs: { theme: 'dark' } })
+    m.deepPatch({ prefs: { theme: 'dark' } })
     // `density` survives even though only `theme` was patched.
     expect(m.prefs()).toEqual({ theme: 'dark', density: 'cozy' })
   })
@@ -406,20 +472,20 @@ describe('schema-mode model — $deepPatch (nested merge)', () => {
     const M = model({ schema: Schema, initial })
     const m = M.create() as ReturnType<typeof M.create> & {
       items: { (): typeof initial.items }
-      $deepPatch: (p: { items?: typeof initial.items }) => void
+      deepPatch: (p: { items?: typeof initial.items }) => void
     }
-    m.$deepPatch({ items: [{ id: 99, label: 'replaced' }] })
+    m.deepPatch({ items: [{ id: 99, label: 'replaced' }] })
     expect(m.items()).toEqual([{ id: 99, label: 'replaced' }])
   })
 
   it('validates merged result + throws on schema failure', () => {
     const M = model({ schema: Schema, initial })
     const m = M.create() as ReturnType<typeof M.create> & {
-      $deepPatch: (p: { prefs?: { theme?: string } }) => void
+      deepPatch: (p: { prefs?: { theme?: string } }) => void
     }
     expect(() =>
-      m.$deepPatch({ prefs: { theme: 'midnight' as 'light' | 'dark' } }),
-    ).toThrow(/Schema validation failed.*\$deepPatch/)
+      m.deepPatch({ prefs: { theme: 'midnight' as 'light' | 'dark' } }),
+    ).toThrow(/Schema validation failed.*deepPatch/)
   })
 
   it('REPLACES class instances (Date) — does not recurse into prototype-bearing objects', () => {
@@ -430,10 +496,10 @@ describe('schema-mode model — $deepPatch (nested merge)', () => {
     })
     const m = M.create() as ReturnType<typeof M.create> & {
       when: { (): Date }
-      $deepPatch: (p: { when?: Date }) => void
+      deepPatch: (p: { when?: Date }) => void
     }
     const newDate = new Date('2030-06-15')
-    m.$deepPatch({ when: newDate })
+    m.deepPatch({ when: newDate })
     expect(m.when().toISOString()).toBe(newDate.toISOString())
   })
 
@@ -448,18 +514,18 @@ describe('schema-mode model — $deepPatch (nested merge)', () => {
     })
     const m = M.create() as ReturnType<typeof M.create> & {
       prefs: { (): typeof initial.prefs }
-      $deepPatch: (p: { prefs?: { theme?: string } }) => void
+      deepPatch: (p: { prefs?: { theme?: string } }) => void
     }
-    m.$deepPatch({ prefs: { theme: 'midnight' as 'light' | 'dark' } })
+    m.deepPatch({ prefs: { theme: 'midnight' as 'light' | 'dark' } })
     expect(errors.length).toBe(1)
-    expect(errors[0]!.op).toBe('$deepPatch')
+    expect(errors[0]!.op).toBe('deepPatch')
     expect(m.prefs()).toEqual({ theme: 'light', density: 'cozy' })
   })
 })
 
-// ─── $update — single-field transformer ─────────────────────────────────────
+// ─── update — single-field transformer ─────────────────────────────────────
 
-describe('schema-mode model — $update (single-field transformer)', () => {
+describe('schema-mode model — update (single-field transformer)', () => {
   const Schema = zodSchema(
     z.object({
       count: z.number().nonnegative(),
@@ -480,12 +546,12 @@ describe('schema-mode model — $update (single-field transformer)', () => {
     const M = model({ schema: Schema, initial })
     const m = M.create() as ReturnType<typeof M.create> & {
       count: { (): number }
-      $update: (
+      update: (
         key: 'count' | 'items' | 'prefs',
         fn: (current: unknown) => unknown,
       ) => void
     }
-    m.$update('count', (n) => (n as number) + 1)
+    m.update('count', (n) => (n as number) + 1)
     expect(m.count()).toBe(1)
   })
 
@@ -493,12 +559,12 @@ describe('schema-mode model — $update (single-field transformer)', () => {
     const M = model({ schema: Schema, initial })
     const m = M.create() as ReturnType<typeof M.create> & {
       items: { (): typeof initial.items }
-      $update: (
+      update: (
         key: 'count' | 'items' | 'prefs',
         fn: (current: unknown) => unknown,
       ) => void
     }
-    m.$update('items', (items) =>
+    m.update('items', (items) =>
       (items as typeof initial.items).filter((x) => x.id !== 1),
     )
     expect(m.items()).toEqual([{ id: 2, label: 'two' }])
@@ -508,12 +574,12 @@ describe('schema-mode model — $update (single-field transformer)', () => {
     const M = model({ schema: Schema, initial })
     const m = M.create() as ReturnType<typeof M.create> & {
       items: { (): typeof initial.items }
-      $update: (
+      update: (
         key: 'count' | 'items' | 'prefs',
         fn: (current: unknown) => unknown,
       ) => void
     }
-    m.$update('items', (items) => [
+    m.update('items', (items) => [
       ...(items as typeof initial.items),
       { id: 3, label: 'three' },
     ])
@@ -525,12 +591,12 @@ describe('schema-mode model — $update (single-field transformer)', () => {
     const M = model({ schema: Schema, initial })
     const m = M.create() as ReturnType<typeof M.create> & {
       prefs: { (): typeof initial.prefs }
-      $update: (
+      update: (
         key: 'count' | 'items' | 'prefs',
         fn: (current: unknown) => unknown,
       ) => void
     }
-    m.$update('prefs', (prefs) => ({
+    m.update('prefs', (prefs) => ({
       ...(prefs as typeof initial.prefs),
       theme: 'dark',
     }))
@@ -540,14 +606,14 @@ describe('schema-mode model — $update (single-field transformer)', () => {
   it('validates the transformed result + throws on schema failure', () => {
     const M = model({ schema: Schema, initial })
     const m = M.create() as ReturnType<typeof M.create> & {
-      $update: (
+      update: (
         key: 'count' | 'items' | 'prefs',
         fn: (current: unknown) => unknown,
       ) => void
     }
     // count is z.number().nonnegative() — negative violates the schema
-    expect(() => m.$update('count', () => -1)).toThrow(
-      /Schema validation failed.*\$update/,
+    expect(() => m.update('count', () => -1)).toThrow(
+      /Schema validation failed.*update/,
     )
   })
 
@@ -562,30 +628,30 @@ describe('schema-mode model — $update (single-field transformer)', () => {
     })
     const m = M.create() as ReturnType<typeof M.create> & {
       count: { (): number }
-      $update: (
+      update: (
         key: 'count' | 'items' | 'prefs',
         fn: (current: unknown) => unknown,
       ) => void
     }
-    m.$update('count', () => -1)
+    m.update('count', () => -1)
     expect(errors.length).toBe(1)
-    expect(errors[0]!.op).toBe('$update')
+    expect(errors[0]!.op).toBe('update')
     expect(m.count()).toBe(0)
   })
 
-  it('$update inside an async action awaits + validates each step', async () => {
+  it('update inside an async action awaits + validates each step', async () => {
     const M = model({ schema: Schema, initial }).actions((self) => ({
       async asyncIncrement() {
         await Promise.resolve()
         ;(
-          self.$update as (
+          self.update as (
             key: 'count',
             fn: (c: unknown) => unknown,
           ) => void
         )('count', (n) => (n as number) + 1)
         await Promise.resolve()
         ;(
-          self.$update as (
+          self.update as (
             key: 'count',
             fn: (c: unknown) => unknown,
           ) => void

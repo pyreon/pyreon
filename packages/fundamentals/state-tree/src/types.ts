@@ -41,43 +41,43 @@ export type DeepPartial<T> = T extends ReadonlyArray<unknown>
 
 /**
  * Validated mutation helpers exposed on schema-mode model instances and on
- * `self` inside schema-mode action / view factories. `$`-prefixed to avoid
- * colliding with user schema field names — `name`, `set`, `patch`, `reset`,
- * `update` are all plausible field names in a real schema.
+ * `self` inside schema-mode action / view factories. Bare names (matching
+ * `@pyreon/store`'s `SchemaStoreApi`). Schema field names CANNOT collide
+ * with these reserved names — `model({ schema })` throws at `.create()`
+ * time if your schema declares a field named `set` / `patch` /
+ * `deepPatch` / `update` / `reset`.
  *
- * Four helpers covering the canonical mutation shapes (parallel to
- * `@pyreon/store`'s `SchemaStoreApi`):
+ * Five helpers covering the canonical mutation shapes:
  *
- * - **`$set(full)`** — replace the whole state atomically. Requires the
+ * - **`set(full)`** — replace the whole state atomically. Requires the
  *   full schema shape; throws on shape mismatch.
- * - **`$patch(partial)`** — shallow merge of top-level fields. Sibling
+ * - **`patch(partial)`** — shallow merge of top-level fields. Sibling
  *   keys at depth ≥ 2 inside an object are NOT preserved (the whole
  *   object is replaced).
- * - **`$deepPatch(partial)`** — recursive merge of nested plain objects.
+ * - **`deepPatch(partial)`** — recursive merge of nested plain objects.
  *   Arrays and class instances (Date, Map, Set) REPLACE; only plain
- *   objects recurse. Use this when you want to update a nested key
- *   without spreading the parent.
- * - **`$update(key, fn)`** — transform a single top-level field via
+ *   objects recurse.
+ * - **`update(key, fn)`** — transform a single top-level field via
  *   callback. Covers add / remove / filter / map / object-key-delete
  *   patterns in one method.
- * - **`$reset()`** — restore every signal to the parsed-initial value
+ * - **`reset()`** — restore every signal to the parsed-initial value
  *   captured at `.create()` time.
  *
- * All four validate the merged result via schema before writing to
+ * All five validate the merged result via schema before writing to
  * signals (or invoke `onValidationError` if configured). Direct signal
  * writes (`self.field.set(v)`) bypass validation — the documented
  * escape hatch.
  */
 export interface SchemaModelHelpers<TState extends StateShape> {
   /** Replace the whole state. Validates via schema; throws on failure. */
-  readonly $set: (next: TState) => void
+  readonly set: (next: TState) => void
   /** Shallow partial merge. Validates merged result via schema; throws on failure. */
-  readonly $patch: (partial: Partial<TState>) => void
+  readonly patch: (partial: Partial<TState>) => void
   /**
    * Recursively merge a partial state. Plain objects recurse; arrays /
    * class instances REPLACE. Validates merged result via schema.
    */
-  readonly $deepPatch: (partial: DeepPartial<TState>) => void
+  readonly deepPatch: (partial: DeepPartial<TState>) => void
   /**
    * Transform a single top-level field via callback. Validates the
    * resulting merged state via schema. Key is constrained to `keyof
@@ -85,13 +85,26 @@ export interface SchemaModelHelpers<TState extends StateShape> {
    * (cast at call site — schema-inferred narrowing is a future
    * refinement, parallel to `@pyreon/store`'s `update`).
    */
-  readonly $update: <K extends keyof TState & string>(
+  readonly update: <K extends keyof TState & string>(
     key: K,
     transformer: (current: unknown) => unknown,
   ) => void
   /** Reset every signal to the parsed-initial value captured at `.create()` time. */
-  readonly $reset: () => void
+  readonly reset: () => void
 }
+
+/**
+ * Reserved key names in schema mode — schema field names cannot collide
+ * with these mutation helper names. Exposed for downstream consumers
+ * that want to validate field names at design time (e.g. linting).
+ */
+export const RESERVED_SCHEMA_HELPER_KEYS = [
+  'set',
+  'patch',
+  'deepPatch',
+  'update',
+  'reset',
+] as const
 
 /**
  * `self` type inside actions / views. Includes state signals + all previously-

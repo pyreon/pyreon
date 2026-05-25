@@ -32,17 +32,19 @@ Migration is mechanical: `state` stays inside `model(...)`; `views` and `actions
 
 Accepts a `TypedSchemaAdapter` (`zodSchema(...)` / `valibotSchema(...)` / `arktypeSchema(...)`) OR a Standard Schema-compliant instance (zod 3.24+, valibot 1.0+, arktype 2.0+, Effect Schema, ...). Field types inferred end-to-end; every write validated through the schema.
 
-Schema-mode instances expose **five validated mutation helpers** parallel to `@pyreon/store`'s `SchemaStoreApi`:
+Schema-mode instances expose **five validated mutation helpers** with bare names matching `@pyreon/store`'s `SchemaStoreApi`:
 
 ```ts
-u.$set({ ...full })           // full replace, validated
-u.$patch({ name: 'Bob' })     // shallow merge, validated
-u.$deepPatch({ prefs: { theme: 'dark' } })  // recursive merge — keeps siblings
-u.$update('items', items => items.filter(x => x.id !== id))  // transform one field
-u.$reset()                     // restore parsed initial
+u.set({ ...full })           // full replace, validated
+u.patch({ name: 'Bob' })     // shallow merge, validated
+u.deepPatch({ prefs: { theme: 'dark' } })  // recursive merge — keeps siblings
+u.update('items', items => items.filter(x => x.id !== id))  // transform one field
+u.reset()                     // restore parsed initial
 ```
 
 Direct signal writes (`self.field.set(v)`) bypass validation by design — the documented escape hatch.
+
+**Reserved-name check** — in schema mode, schema field names AND chained `.views()` / `.actions()` keys cannot collide with `set` / `patch` / `deepPatch` / `update` / `reset`. The runtime throws at `.create()` time with a clear error naming the colliding key. Plain mode (no schema) has no installed helpers, so user actions named `reset` / `set` etc. still work in plain models.
 
 ### Chainable `.views()` / `.actions()`
 
