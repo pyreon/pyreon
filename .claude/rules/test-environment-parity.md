@@ -66,6 +66,36 @@ Environment-independent. Vitest is fine — but with one exception below.
 - Code that checks `import.meta.env.DEV` → must have a vitest test (which sets `DEV = true`) AND an esbuild bundle inspection test (which verifies the prod-replaced literal tree-shakes correctly).
 - Code that checks `typeof process !== 'undefined'` → DELETE the check. Use `import.meta.env.DEV` instead. See `flow/src/layout.ts:warnIgnoredOptions` for the reference implementation.
 
+## Typed test helpers (`@pyreon/test-utils`)
+
+Three categories of `any` / type-erasure patterns in tests have canonical typed replacements. Use the helper instead of inline casts — the helper's tests document the contract, and future regressions surface as test failures rather than silent erosion.
+
+- **`accessInternal<T>(obj)`** — typed escape hatch for white-box tests that need to reach framework-internal state. Replaces `(obj as unknown as { _internal })._internal` (11 sites converted in PRs #925 + #928).
+  ```ts
+  // Before:
+  expect((c as unknown as { _d: Set<unknown> })._d.size).toBe(1)
+  // After:
+  expect(accessInternal<{ _d: Set<unknown> }>(c)._d.size).toBe(1)
+  ```
+- **`callInternal<TKey, TReturn>(obj, method, ...args)`** — typed escape hatch for calling internal methods. Replaces the cast-then-call shape.
+  ```ts
+  // Before:
+  return (router as unknown as { _resolve(p: string): unknown })._resolve(path)
+  // After:
+  return callInternal<'_resolve', unknown>(router, '_resolve', path)
+  ```
+- **`mockAdapter<TOpts, TReturn>(impl)`** — typed wrapper for `vi.mock` callback signatures. Replaces `(opts: any) => {...}` adapter mocks.
+  ```ts
+  // Before:
+  vi.mock('@x/lib', () => ({ doThing: (opts: any) => { ... } }))
+  // After:
+  vi.mock('@x/lib', () => ({ doThing: mockAdapter<Opts, void>((opts) => { ... }) }))
+  ```
+
+**Exceptions kept**: HTML element narrowing (`as HTMLInputElement` ~149 sites — idiomatic DOM testing), deliberate SSR global deletion (`delete (document as any).body` — testing SSR fallback paths), `@ts-expect-error` (~36 sites — explicit error-path tests), type-normalization (`as unknown as VNodeChild` / `as unknown as ComponentFn<...>` — framework primitive shape casts). These are documented as legitimate per the test-environment-parity rule's "deliberate" categories.
+
+**One known load-bearing `any`** at `@pyreon/dnd`'s `src/tests/integration.test.ts`: typing the pdnd adapter mock callbacks with a non-`any` shape produces 16+ downstream typecheck errors because the assertion sites call across many opts shapes (`opts.onDragEnter`, `opts.onDrop`, etc.). The test deliberately uses `any` for dispatch-across-shapes pragmatism. **If the lint rule `pyreon/no-test-any-without-helper` ships in a future PR, add this file to its `exemptPaths`.**
+
 ## Anti-patterns this rule explicitly forbids
 
 ### 1. Mock-vnode tests as the only coverage for a contract
