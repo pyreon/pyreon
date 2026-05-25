@@ -15,7 +15,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "vl_rolldown_build && bun run scripts/sync-manifest.ts",
+    "build": "vl_rolldown_build && bun run scripts/sync-manifest.ts && bun run scripts/strip-cjs-decorators.ts",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",

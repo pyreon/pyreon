@@ -61,6 +61,45 @@ for (const f of required) {
 }
 if (process.exitCode) process.exit(1)
 
+// ── 1b. Static syntax-quality scan ────────────────────────────────────────
+// Catch the bug class where the bundler emits CJS module decorators
+// (`Object.defineProperties(exports, …)`) inside an IIFE that has no
+// `exports` parameter. That makes the entire script throw at load time
+// with `ReferenceError: exports is not defined` — silently breaking the
+// extension's content-script chain. Pre-fix this slipped past the
+// runtime check in step 3 because @pyreon/runtime-dom's installDevTools()
+// sets window.__PYREON_DEVTOOLS__ from page-context independently of the
+// extension. The static scan catches it deterministically.
+console.log('\n1b. Static syntax-quality scan (catches the IIFE-no-exports bug class)')
+import { readFileSync } from 'node:fs'
+
+const IIFE_ENTRIES = ['content-script.js', 'devtools.js', 'panel.js', 'page-hook.js']
+for (const name of IIFE_ENTRIES) {
+  const src = readFileSync(join(DIST, name), 'utf-8')
+  const head = src.slice(0, 200)
+  // The IIFE must NOT reference `exports` before declaring it.
+  // (The actual IIFE wrapper line `(function () {` has no `exports` arg
+  // in rolldown's output, so any `exports.…` / `Object.defineProperties(exports`
+  // at the top would throw at load time.)
+  if (/Object\.defineProperties\(exports,/.test(head)) {
+    fail(
+      `${name} contains CJS module decorator referencing undefined \`exports\` — script will ReferenceError on load`,
+    )
+  } else if (/^(?:.*\n){0,5}\bexports\b/m.test(head) && !/function\s*\(\s*exports\b/.test(head)) {
+    fail(
+      `${name} references \`exports\` near top of file but the IIFE doesn't declare it — likely broken at load`,
+    )
+  } else {
+    pass(`${name} clean (no undefined-exports references)`)
+  }
+}
+if (process.exitCode) {
+  console.log(
+    '\n  → run `bun run scripts/strip-cjs-decorators.ts` (auto-invoked by `bun run build`) to fix',
+  )
+  process.exit(1)
+}
+
 // ── 2. Launch Chromium with the extension loaded ──────────────────────────
 console.log('\n2. Launch Chromium with --load-extension')
 
@@ -88,6 +127,18 @@ console.log(`\n3. Open ${APP_URL} + verify page-hook injection`)
 
 const page = await context.newPage()
 
+// Listen for console errors / page errors — catches the bug class where
+// the content-script throws at load time (ReferenceError: exports is not
+// defined). Without this, the runtime check below gives a false positive
+// because the framework also sets window.__PYREON_DEVTOOLS__ from
+// page-context (via @pyreon/runtime-dom's installDevTools()).
+const consoleErrors: string[] = []
+const pageErrors: string[] = []
+page.on('console', (msg) => {
+  if (msg.type() === 'error') consoleErrors.push(msg.text())
+})
+page.on('pageerror', (err) => pageErrors.push(err.message))
+
 try {
   await page.goto(APP_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 })
   pass(`Loaded ${APP_URL}`)
@@ -100,6 +151,19 @@ try {
 
 // Wait a beat for content-script + page-hook to inject
 await page.waitForTimeout(1000)
+
+// Surface any errors from extension-script loading — these would silently
+// kill the content-script / page-hook chain even when the framework
+// independently sets __PYREON_DEVTOOLS__ from page-context.
+const extensionErrors = [...consoleErrors, ...pageErrors].filter((e) =>
+  /exports is not defined|content-script|page-hook|chrome\.runtime/.test(e),
+)
+if (extensionErrors.length > 0) {
+  fail(`Extension-script errors detected (these break the content-script chain):`)
+  for (const e of extensionErrors) info(`    ${e}`)
+} else {
+  pass('No extension-script errors during page load')
+}
 
 const hookSurface = await page.evaluate(() => {
   const dt = (window as unknown as { __PYREON_DEVTOOLS__?: Record<string, unknown> })
