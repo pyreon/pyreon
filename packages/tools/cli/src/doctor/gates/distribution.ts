@@ -3,18 +3,19 @@
  *
  * Two static invariants every published `@pyreon/*` package must hold:
  *   1. `sideEffects` field declared (bundler tree-shaking)
- *   2. `!lib/** /*.map` excluded from `files` array (no source-map ship)
+ *   2. `files` array does NOT exclude `lib/** /*.map` — source maps are
+ *      shipped so consumers get readable stack traces into framework
+ *      internals (matches every major JS library: React, Vue, Solid,
+ *      Preact, Svelte, TanStack). Stripped from production bundles by
+ *      the consumer's bundler, never reaches end users.
  *
  * Plus a live `npm pack --dry-run` probe of `@pyreon/reactivity` to
- * verify the exclusion actually works at publish time (the `files`
- * field is technically right but npm's interpretation can diverge).
+ * verify maps actually land in the tarball at publish time (the
+ * `files` field can be technically right but npm's interpretation can
+ * still diverge).
  *
  * Pure function — the standalone script `scripts/check-distribution.ts`
  * is a thin wrapper that calls this and formats the output.
- *
- * Mirrors the script logic 1:1 — no behavior change, just makes the
- * findings programmatically consumable by `pyreon doctor` aggregation
- * (PR 2).
  */
 
 import { execFileSync } from 'node:child_process'
@@ -72,6 +73,13 @@ const findPackages = (repoRoot: string): PackageInfo[] => {
  * subprocess — under CI parallel load the real probe runs 100s+,
  * tripping the per-test timeout. Returns the finding (if any) for
  * the caller to push onto the gate's findings array.
+ *
+ * Inverted contract: emits a finding when the tarball is MISSING
+ * `.map` files. Maps are now required to ship — they make framework
+ * stack traces readable. An empty `files` entry in npm output is
+ * treated as "no files reported" (likely a malformed dry-run output)
+ * and silently passes — the package-level `files` array check above
+ * is the authoritative source.
  */
 export const _detectMapsInPackOutput = (
   raw: string,
@@ -80,15 +88,19 @@ export const _detectMapsInPackOutput = (
   probePackage: string,
 ): Finding | null => {
   const result = JSON.parse(raw) as Array<{ files: Array<{ path: string }> }>
-  const tarballFiles = result[0]?.files.map((f) => f.path) ?? []
+  const tarballFiles = result[0]?.files?.map((f) => f.path) ?? []
+  // Empty / missing files entry → likely malformed output. Don't fire
+  // a false positive; the static `files`-array check above is the
+  // authoritative source of truth for this contract.
+  if (tarballFiles.length === 0) return null
   const maps = tarballFiles.filter((f) => f.endsWith('.map'))
-  if (maps.length === 0) return null
+  if (maps.length > 0) return null
   return {
     category: 'architecture',
     severity: 'error',
-    code: 'distribution/tarball-contains-map',
+    code: 'distribution/tarball-missing-maps',
     gate: 'distribution',
-    message: `${probePackage}: npm pack --dry-run reported ${maps.length} .map file(s) in the would-be-published tarball: ${maps.slice(0, 3).join(', ')}${maps.length > 3 ? ', …' : ''}`,
+    message: `${probePackage}: npm pack --dry-run reported 0 .map files in the would-be-published tarball. Source maps must ship so framework stack traces are readable — check the package's \`files\` array does not exclude \`lib/**/*.map\`.`,
     location: {
       path: join(probe.dir, 'package.json'),
       relPath: relative(cwd, join(probe.dir, 'package.json')),
@@ -111,8 +123,8 @@ export interface DistributionGateOptions {
 
   /**
    * Package to probe via `npm pack --dry-run`. Defaults to
-   * `@pyreon/reactivity` — small, stable, canonical 4-element `files`
-   * shape used by ~37 other published packages.
+   * `@pyreon/reactivity` — small, stable, canonical `files` shape
+   * used by ~37 other published packages.
    */
   probePackage?: string
 }
@@ -149,21 +161,22 @@ export const runDistributionGate = async (
       })
     }
 
-    // Rule 2: if the package ships `lib`, the `files` array must
-    // exclude source maps.
+    // Rule 2: if the package ships `lib`, the `files` array must NOT
+    // exclude source maps. Maps are shipped so consumers get readable
+    // stack traces into framework internals.
     if (Array.isArray(p.pj.files) && p.pj.files.includes('lib')) {
-      if (!p.pj.files.includes('!lib/**/*.map')) {
+      if (p.pj.files.includes('!lib/**/*.map')) {
         findings.push({
           category: 'architecture',
           severity: 'error',
-          code: 'distribution/missing-map-exclusion',
+          code: 'distribution/excludes-source-maps',
           gate: 'distribution',
-          message: `${p.name} package.json \`files\` must include \`"!lib/**/*.map"\` to exclude source maps from the published tarball.`,
+          message: `${p.name} package.json \`files\` must NOT include \`"!lib/**/*.map"\`. Source maps are shipped so framework stack traces are readable — every major JS library (React, Vue, Solid, Preact, Svelte, TanStack) ships them. Bundlers strip maps from production builds; they never reach end users.`,
           location: {
             path: join(p.dir, 'package.json'),
             relPath: relative(opts.cwd, join(p.dir, 'package.json')),
           },
-          fix: 'Add `"!lib/**/*.map"` to the `files` array',
+          fix: 'Remove `"!lib/**/*.map"` from the `files` array',
         })
       }
     }

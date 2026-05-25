@@ -10,7 +10,6 @@
   },
   "files": [
     "lib",
-    "!lib/**/*.map",
     "!lib/analysis",
     "README.md",
     "LICENSE",
