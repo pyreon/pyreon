@@ -26,8 +26,9 @@
  *   bun run scripts/scaffold-smoke.ts --keep      # don't delete cell dirs (debug)
  */
 
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
@@ -35,10 +36,22 @@ interface Cell {
   /** Stable slug used as the example dir name. */
   name: string
   /** create-pyreon-app flags. */
-  template: 'app' | 'blog' | 'dashboard'
+  template: 'app' | 'blog' | 'dashboard' | 'monorepo'
   adapter: 'vercel' | 'cloudflare' | 'netlify' | 'node' | 'bun' | 'static'
   integrations?: ('supabase' | 'email')[]
   compat?: 'react' | 'vue' | 'solid' | 'preact'
+  preset?: 'minimal' | 'standard' | 'dashboard' | 'full'
+  /**
+   * If true: scaffold into a fresh OS tmpdir and run `bun install` from
+   * INSIDE the scaffolded project. Used by the `monorepo` template
+   * because its own `workspaces` declaration would conflict with
+   * Pyreon's outer workspace discovery if scaffolded into `examples/`.
+   * The trade-off: `@pyreon/*` deps resolve from npm (real published
+   * 0.25.x) rather than local source — so a monorepo cell catches
+   * "scaffolder produces wrong shape" but NOT "Pyreon ABI broke a
+   * scaffolded app" (the flat cells cover that path).
+   */
+  isolated?: boolean
   /** Smoke assertion — receives absolute path to the scaffolded project dir. */
   smoke: (projectDir: string) => void
 }
@@ -184,6 +197,66 @@ const MATRIX: Cell[] = [
     },
   },
 
+  // monorepo + vercel — Bun workspaces shell. Exercises the recursive
+  // scaffold path (apps/web/ runs the full flat pipeline), the
+  // `@<scope>/{ui,types}` workspace deps, and the root `workspaces`
+  // declaration. Scaffolded into a temp dir + installed there so the
+  // inner workspaces don't collide with Pyreon's outer workspace
+  // discovery (`isolated: true`). Catches:
+  //   - root package.json shape (workspaces + proxy scripts)
+  //   - apps/web/package.json shape (workspace deps + adapter deps)
+  //   - shared packages exist with correct scope substitution
+  //   - root `bun run build` correctly proxies to `--filter='web' build`
+  //   - the web app actually builds with the workspace-resolved deps
+  {
+    name: 'cpa-smoke-monorepo-vercel',
+    template: 'monorepo',
+    adapter: 'vercel',
+    preset: 'standard',
+    isolated: true,
+    smoke: (dir) => {
+      // Root shape.
+      const rootPkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8')) as {
+        workspaces?: string[]
+        scripts?: Record<string, string>
+        dependencies?: Record<string, string>
+      }
+      if (!Array.isArray(rootPkg.workspaces) || rootPkg.workspaces.length === 0) {
+        throw new Error(`expected root package.json to declare workspaces[]`)
+      }
+      if (!rootPkg.scripts?.build?.includes('--filter=')) {
+        throw new Error(`expected root scripts.build to proxy via --filter`)
+      }
+      if (rootPkg.dependencies !== undefined) {
+        throw new Error(`expected root to have NO dependencies (dispatcher only)`)
+      }
+      // Shared packages.
+      assertFileExists(join(dir, 'packages/ui/package.json'))
+      assertFileExists(join(dir, 'packages/ui/src/index.ts'))
+      assertFileExists(join(dir, 'packages/types/package.json'))
+      assertFileExists(join(dir, 'packages/types/src/index.ts'))
+      // Web app: standard `app` shape + workspace deps.
+      const webPkg = JSON.parse(readFileSync(join(dir, 'apps/web/package.json'), 'utf-8')) as {
+        name?: string
+        dependencies?: Record<string, string>
+      }
+      if (webPkg.name !== 'web') {
+        throw new Error(`expected apps/web/package.json name="web", got "${webPkg.name}"`)
+      }
+      const deps = webPkg.dependencies ?? {}
+      const wsKeys = Object.keys(deps).filter((k) => deps[k] === 'workspace:^')
+      if (wsKeys.length !== 2) {
+        throw new Error(`expected exactly 2 workspace:^ deps in web; got ${wsKeys.join(', ')}`)
+      }
+      // standard preset pulled store + query + forms in.
+      assertPackageDep(join(dir, 'apps/web'), '@pyreon/store')
+      assertPackageDep(join(dir, 'apps/web'), '@pyreon/query')
+      assertPackageDep(join(dir, 'apps/web'), '@pyreon/form')
+      // The web app actually built — root `bun run build` proxied correctly.
+      assertDirNonEmpty(join(dir, 'apps/web/dist'))
+    },
+  },
+
   // app + vercel × {react,vue,solid,preact} — compat-mode build smokes.
   // Closes the "compat package shim ABI changed and broke scaffolded apps"
   // gap. The 4 compat layers (react/vue/solid/preact) each ship as
@@ -230,6 +303,9 @@ function runScaffolder(cell: Cell, cwd: string): void {
   if (cell.compat) {
     args.push('--compat', cell.compat)
   }
+  if (cell.preset) {
+    args.push('--preset', cell.preset)
+  }
 
   const result = spawnSync('bun', args, { cwd, stdio: 'inherit' })
   if (result.status !== 0) {
@@ -237,9 +313,15 @@ function runScaffolder(cell: Cell, cwd: string): void {
   }
 }
 
-function runBunInstall(_cwd: string): void {
-  // Run from the repo root so the new workspace member is picked up.
-  const result = spawnSync('bun', ['install'], { cwd: REPO_ROOT, stdio: 'inherit' })
+function runBunInstall(projectDir: string, isolated: boolean): void {
+  // Isolated cells (e.g. monorepo template) run install from inside the
+  // scaffolded project root so Bun's workspace discovery picks up the
+  // INNER workspaces declaration, not Pyreon's outer one. Non-isolated
+  // cells install from REPO_ROOT so the scaffolded example is picked up
+  // as a workspace member of Pyreon's monorepo (resolving @pyreon/* to
+  // local source).
+  const cwd = isolated ? projectDir : REPO_ROOT
+  const result = spawnSync('bun', ['install'], { cwd, stdio: 'inherit' })
   if (result.status !== 0) {
     throw new Error(`bun install exited with code ${result.status}`)
   }
@@ -260,19 +342,23 @@ interface CellResult {
 }
 
 async function runCell(cell: Cell, opts: { keep: boolean }): Promise<CellResult> {
-  const examplesDir = join(REPO_ROOT, 'examples')
-  const projectDir = join(examplesDir, cell.name)
+  // Isolated cells get a fresh OS tmpdir so their own workspaces field
+  // doesn't conflict with Pyreon's outer workspace discovery. Non-isolated
+  // cells go under examples/ so @pyreon/* deps resolve to local source.
+  const isolated = cell.isolated === true
+  const parentDir = isolated ? mkdtempSync(join(tmpdir(), 'cpa-smoke-')) : join(REPO_ROOT, 'examples')
+  const projectDir = join(parentDir, cell.name)
   const start = Date.now()
 
   // Pre-cell cleanup: a previous failed run may have left residue.
-  if (existsSync(projectDir)) {
+  if (!isolated && existsSync(projectDir)) {
     await rm(projectDir, { recursive: true, force: true })
   }
 
   try {
     console.log(`\n──── ${cell.name} ─────────────────────────────────────────`)
-    runScaffolder(cell, examplesDir)
-    runBunInstall(projectDir)
+    runScaffolder(cell, parentDir)
+    runBunInstall(projectDir, isolated)
     runBuild(projectDir)
     cell.smoke(projectDir)
 
@@ -285,8 +371,12 @@ async function runCell(cell: Cell, opts: { keep: boolean }): Promise<CellResult>
     console.log(`✗ ${cell.name} (${(durationMs / 1000).toFixed(1)}s): ${msg}`)
     return { name: cell.name, ok: false, error: msg, durationMs }
   } finally {
-    if (!opts.keep && existsSync(projectDir)) {
-      await rm(projectDir, { recursive: true, force: true })
+    if (!opts.keep) {
+      // For isolated cells, blow the entire tmpdir; for examples cells, just the project dir.
+      const cleanupTarget = isolated ? parentDir : projectDir
+      if (existsSync(cleanupTarget)) {
+        await rm(cleanupTarget, { recursive: true, force: true })
+      }
     }
   }
 }
