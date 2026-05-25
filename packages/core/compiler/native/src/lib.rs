@@ -790,6 +790,122 @@ fn try_direct_selector_ternary(
     })
 }
 
+/// Result of `try_direct_signal_method_call`: the signal reference (for
+/// `_bindDirect` first arg) and the method-call suffix (e.g. `.toFixed(2)`)
+/// applied to `v` in the updater body.
+struct SignalMethodCall {
+    signal_ref: String,
+    method_call: String,
+}
+
+/// Detect `signalRef().method(...args)` where `method` is in the pure
+/// primitive safelist and args are non-reactive. Mirrors JS backend's
+/// `tryDirectSignalMethodCall` byte-for-byte. Used by `emit_reactive_text_child`
+/// to auto-promote `<span>{count().toFixed(2)}</span>` to
+/// `_bindDirect(count, (v) => { textNode.data = v.toFixed(2) })`.
+fn try_direct_signal_method_call(
+    expr_node: &Expression,
+    ctx: &mut Ctx,
+) -> Option<SignalMethodCall> {
+    let mut inner: &Expression = expr_node;
+    if let Expression::ArrowFunctionExpression(arrow) = expr_node {
+        if arrow.expression {
+            if let Some(Statement::ExpressionStatement(stmt)) = arrow.body.statements.first() {
+                inner = &stmt.expression;
+            }
+        }
+    }
+    while let Expression::ParenthesizedExpression(p) = inner {
+        inner = &p.expression;
+    }
+    let method_call_expr = match inner {
+        Expression::CallExpression(c) => c,
+        _ => return None,
+    };
+    // Method callee must be a non-computed static member expression.
+    let method_callee = match &method_call_expr.callee {
+        Expression::StaticMemberExpression(m) => m,
+        _ => return None,
+    };
+    let method_name = method_callee.property.name.as_str();
+    if !is_pure_primitive_method(method_name) {
+        return None;
+    }
+    // Receiver must be a zero-arg call to a known signal identifier.
+    let recv = match &method_callee.object {
+        Expression::CallExpression(c) => c,
+        _ => return None,
+    };
+    if !recv.arguments.is_empty() {
+        return None;
+    }
+    let sig_name = match &recv.callee {
+        Expression::Identifier(id) => id.name.to_string(),
+        _ => return None,
+    };
+    if !is_active_signal(&sig_name, ctx) {
+        return None;
+    }
+    // Method args must not contain reactive reads.
+    for arg in &method_call_expr.arguments {
+        match arg {
+            Argument::SpreadElement(_) => return None,
+            _ => {
+                if let Some(e) = arg.as_expression() {
+                    if contains_signal_call(e, ctx) {
+                        return None;
+                    }
+                }
+            }
+        }
+    }
+    // Slice `.method(...args)` from source — prepend the dot.
+    let method_start = method_callee.property.span().start as usize;
+    let method_end = method_call_expr.span().end as usize;
+    let method_call = format!(".{}", &ctx.source[method_start..method_end]);
+    Some(SignalMethodCall {
+        signal_ref: sig_name,
+        method_call,
+    })
+}
+
+/// Number / String / Boolean prototype methods that are provably pure.
+/// MUST stay in sync with JS backend's `PURE_PRIMITIVE_METHODS`.
+fn is_pure_primitive_method(name: &str) -> bool {
+    matches!(
+        name,
+        "toFixed"
+            | "toExponential"
+            | "toPrecision"
+            | "toString"
+            | "valueOf"
+            | "toUpperCase"
+            | "toLowerCase"
+            | "toLocaleUpperCase"
+            | "toLocaleLowerCase"
+            | "trim"
+            | "trimStart"
+            | "trimEnd"
+            | "slice"
+            | "substring"
+            | "substr"
+            | "charAt"
+            | "charCodeAt"
+            | "codePointAt"
+            | "padStart"
+            | "padEnd"
+            | "repeat"
+            | "normalize"
+            | "concat"
+            | "startsWith"
+            | "endsWith"
+            | "includes"
+            | "indexOf"
+            | "lastIndexOf"
+            | "at"
+    )
+}
+
 /// Find variable declarations and parameters in a function that shadow signal names.
 fn find_shadowing_names(node: &oxc_ast::ast::Function, ctx: &Ctx) -> Vec<String> {
     let mut shadows = Vec::new();
@@ -3968,6 +4084,22 @@ fn emit_reactive_text_child(
         let d = tb.next_disp();
         tb.bind_lines
             .push(format!("const {} = _bindText({}, {})", d, signal_name, t_var));
+    } else if let Some(sel) = try_direct_selector_ternary(expr_node, ctx) {
+        // Selector-ternary auto-promotion for text children — companion
+        // to className path (PR #898). See `try_direct_selector_ternary`.
+        let d = tb.next_disp();
+        tb.bind_lines.push(format!(
+            "const {} = {}.subscribe({}, (m) => {{ {}.data = (m ? {} : {}) }})",
+            d, sel.selector_ref, sel.key_expr, t_var, sel.consequent, sel.alternate
+        ));
+    } else if let Some(sig_method) = try_direct_signal_method_call(expr_node, ctx) {
+        // Signal-method-call auto-promotion. See `try_direct_signal_method_call`.
+        tb.needs_bind_direct = true;
+        let d = tb.next_disp();
+        tb.bind_lines.push(format!(
+            "const {} = _bindDirect({}, (v) => {{ {}.data = v{} }})",
+            d, sig_method.signal_ref, t_var, sig_method.method_call
+        ));
     } else {
         tb.needs_bind = true;
         let d = tb.next_disp();

@@ -2188,6 +2188,67 @@ export function transformJSX_JS(
       }
     }
 
+    /**
+     * Detect `signalRef().method(...args)` where `method` is a pure
+     * Number/String/Boolean prototype method and `args` contain no
+     * reactive reads. Used by `emitReactiveTextChild` to promote
+     * `<span>{count().toFixed(2)}</span>` to
+     * `_bindDirect(count, (v) => { textNode.data = v.toFixed(2) })` —
+     * skipping the `withTracking` setup + signal lookup per fire.
+     *
+     * The promoted updater receives the raw signal value and calls the
+     * method on it directly. If the value isn't a primitive of the
+     * expected type, the runtime crashes the same way the original
+     * `count().toFixed(2)` would — no NEW risk introduced.
+     *
+     * Conservative — bails on every shape we can't prove safe:
+     *   - Receiver must be a single-arg-less call to a known signal
+     *     (`signalVars` membership, scope-aware via `isActiveSignal`)
+     *   - Method must be in `PURE_PRIMITIVE_METHODS` (no user-overridable
+     *     methods on arbitrary objects)
+     *   - All args must be non-reactive (no signal calls; safe under
+     *     `containsSignalCall`)
+     */
+    function tryDirectSignalMethodCall(exprNode: N): {
+      signalRef: string
+      methodCall: string
+    } | null {
+      let inner = exprNode
+      if (inner.type === 'ArrowFunctionExpression' && inner.body?.type !== 'BlockStatement') {
+        inner = inner.body
+      }
+      while (inner?.type === 'ParenthesizedExpression') inner = inner.expression
+      if (inner?.type !== 'CallExpression') return null
+      const methodCallee = inner.callee
+      if (methodCallee?.type !== 'MemberExpression') return null
+      if (methodCallee.computed) return null
+      if (methodCallee.property?.type !== 'Identifier') return null
+      const methodName = methodCallee.property.name
+      if (!PURE_PRIMITIVE_METHODS.has(methodName)) return null
+      // Receiver must be a zero-arg call to a known signal identifier.
+      const recv = methodCallee.object
+      if (recv?.type !== 'CallExpression') return null
+      if ((recv.arguments?.length ?? 0) !== 0) return null
+      const sigCallee = recv.callee
+      if (sigCallee?.type !== 'Identifier') return null
+      if (!isActiveSignal(sigCallee.name)) return null
+      // Args (to the method, not the signal) must not contain reactive reads.
+      for (const arg of inner.arguments ?? []) {
+        if (arg.type === 'SpreadElement') return null
+        if (containsSignalCall(arg)) return null
+      }
+      // Slice the `.method(...args)` suffix verbatim from source — prepend
+      // the dot since `methodCallee.property.start` lands at the method
+      // identifier itself.
+      const methodCallStart = methodCallee.property.start as number
+      const methodCallEnd = inner.end as number
+      const methodCall = `.${code.slice(methodCallStart, methodCallEnd)}`
+      return {
+        signalRef: sliceExpr(sigCallee),
+        methodCall,
+      }
+    }
+
     function unwrapAccessor(exprNode: N): { expr: string; isReactive: boolean } {
       if (exprNode.type === 'ArrowFunctionExpression' && exprNode.body?.type !== 'BlockStatement') {
         return { expr: sliceExpr(exprNode.body), isReactive: true }
@@ -2323,11 +2384,39 @@ export function transformJSX_JS(
         needsBindTextImport = true
         const d = nextDisp()
         bindLines.push(`const ${d} = _bindText(${directRef}, ${tVar})`)
-      } else {
-        needsBindImportGlobal = true
-        const d = nextDisp()
-        bindLines.push(`const ${d} = _bind(() => { ${tVar}.data = ${expr} })`)
+        return needsPlaceholder ? '<!>' : ''
       }
+      // Selector-ternary auto-promotion (companion to className path —
+      // PR #898). `<td>{() => sel(k) ? 'X' : 'Y'}</td>` becomes
+      // `sel.subscribe(k, (m) => { tVar.data = m ? 'X' : 'Y' })` — the
+      // effect-free per-key fast path. See `tryDirectSelectorTernary` for
+      // the bail catalog. Reuses the same detector as the attr path.
+      const selTernary = tryDirectSelectorTernary(exprNode)
+      if (selTernary) {
+        const d = nextDisp()
+        bindLines.push(
+          `const ${d} = ${selTernary.selectorRef}.subscribe(${selTernary.keyExpr}, (m) => { ${tVar}.data = (m ? ${selTernary.consequent} : ${selTernary.alternate}) })`,
+        )
+        return needsPlaceholder ? '<!>' : ''
+      }
+      // Signal-method-call auto-promotion: `<span>{count().toFixed(2)}</span>`
+      // becomes `_bindDirect(count, (v) => { tVar.data = v.toFixed(2) })`.
+      // Saves the `withTracking` setup + signal lookup per fire — same
+      // structural win as `_bindText` for bare signal reads, extended to
+      // common formatting patterns. See `tryDirectSignalMethodCall` for the
+      // pure-method safelist + bail catalog.
+      const sigMethod = tryDirectSignalMethodCall(exprNode)
+      if (sigMethod) {
+        needsBindDirectImport = true
+        const d = nextDisp()
+        bindLines.push(
+          `const ${d} = _bindDirect(${sigMethod.signalRef}, (v) => { ${tVar}.data = v${sigMethod.methodCall} })`,
+        )
+        return needsPlaceholder ? '<!>' : ''
+      }
+      needsBindImportGlobal = true
+      const d = nextDisp()
+      bindLines.push(`const ${d} = _bind(() => { ${tVar}.data = ${expr} })`)
       return needsPlaceholder ? '<!>' : ''
     }
 
@@ -2921,6 +3010,37 @@ const PURE_CALLS = new Set([
   'JSON.stringify', 'JSON.parse',
   'encodeURIComponent', 'decodeURIComponent', 'encodeURI', 'decodeURI',
   'Date.now',
+])
+
+/**
+ * Safelist of Number / String / Boolean prototype methods that are
+ * provably pure (no side effects, no `this` binding tricks, no user
+ * override risk at the prototype level). Used by
+ * `tryDirectSignalMethodCall` to auto-promote `signalRef().method(...)`
+ * in text-child bindings to `_bindDirect`.
+ *
+ * Methods NOT in this list (Array, Map, Set, Date instance methods)
+ * either mutate, depend on call-time state, or aren't pure under all
+ * inputs — keep the safelist narrow.
+ *
+ * Adding a method here: must be pure (same input → same output, no
+ * side effects, doesn't read external state, doesn't mutate `this`).
+ */
+const PURE_PRIMITIVE_METHODS = new Set([
+  // Number prototype
+  'toFixed', 'toExponential', 'toPrecision',
+  // Shared (Number + String + Boolean) — toString/valueOf always pure
+  'toString', 'valueOf',
+  // String prototype (immutable returns)
+  'toUpperCase', 'toLowerCase', 'toLocaleUpperCase', 'toLocaleLowerCase',
+  'trim', 'trimStart', 'trimEnd',
+  'slice', 'substring', 'substr',
+  'charAt', 'charCodeAt', 'codePointAt',
+  'padStart', 'padEnd', 'repeat',
+  'normalize', 'concat',
+  'startsWith', 'endsWith', 'includes',
+  'indexOf', 'lastIndexOf',
+  'at',
 ])
 
 function isPureStaticCall(node: N): boolean {
