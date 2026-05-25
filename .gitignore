@@ -9,6 +9,8 @@ lib
 # (`examples/cpa-pw-*/src/lib/{auth,db,posts}.ts`).
 !packages/zero/create-zero/templates/*/src/lib
 !packages/zero/create-zero/templates/*/src/lib/**
+!packages/zero/create-zero/templates/**/src/lib
+!packages/zero/create-zero/templates/**/src/lib/**
 !examples/*/src/lib
 !examples/*/src/lib/**
 analysis
