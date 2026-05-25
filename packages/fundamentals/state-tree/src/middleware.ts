@@ -7,6 +7,32 @@ import type { ActionCall, InstanceMeta, MiddlewareFn } from './types'
  * Run an action through the middleware chain registered on `meta`.
  * Each middleware receives the call descriptor and a `next` function.
  * If no middlewares, the action runs directly.
+ *
+ * **Sync + async actions are both supported.** If the underlying action
+ * function returns a `Promise`, that promise propagates verbatim through
+ * the middleware chain to the caller — `await u.fetchPosts()` works
+ * end-to-end. Signal writes inside the async body fire reactively at each
+ * `await` checkpoint (Pyreon signals are sync writes); patch listeners
+ * see each write as it happens.
+ *
+ * **Middleware that wants to observe async completion** must explicitly
+ * await `next(call)` — the dispatcher does NOT await internally because
+ * middleware that doesn't care (e.g. logging the call name on entry)
+ * should stay sync. Pattern:
+ *
+ * ```ts
+ * addMiddleware(instance, async (call, next) => {
+ *   const start = Date.now()
+ *   try {
+ *     const result = await next(call)        // observe completion
+ *     console.log(`${call.name} ok in ${Date.now() - start}ms`)
+ *     return result
+ *   } catch (err) {
+ *     console.error(`${call.name} threw`, err)
+ *     throw err
+ *   }
+ * })
+ * ```
  */
 export function runAction(
   meta: InstanceMeta,

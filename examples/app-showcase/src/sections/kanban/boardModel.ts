@@ -19,12 +19,9 @@ import type { Card, ColumnId } from './data/types'
  * The undo/redo manager wraps every action so users can press
  * Cmd/Ctrl+Z to rewind, Cmd/Ctrl+Shift+Z to replay.
  */
-export const BoardModel = model({
-  state: {
-    cards: SEED_CARDS as Card[],
-  },
-  views: () => ({}),
-  actions: (self) => ({
+export const BoardModel = model({ state: { cards: SEED_CARDS as Card[], } })
+      .views(() => ({}))
+      .actions((self) => ({
     /** Replace the entire card list (used by undo/redo + reset). */
     setCards(cards: Card[]) {
       self.cards.set(cards)
@@ -78,8 +75,7 @@ export const BoardModel = model({
     reset() {
       self.cards.set(SEED_CARDS)
     },
-  }),
-})
+  }))
 
 /** Singleton hook so every kanban component shares one board instance. */
 export const useBoard = BoardModel.asHook('kanban-board')

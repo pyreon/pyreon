@@ -1,4 +1,4 @@
-import type { Computed, Signal } from '@pyreon/reactivity'
+import type { Signal } from '@pyreon/reactivity'
 
 // ─── Model brand ──────────────────────────────────────────────────────────────
 
@@ -26,29 +26,137 @@ export type StateSignals<TState extends StateShape> = {
   readonly [K in keyof TState]: Signal<ResolveField<TState[K]>>
 }
 
-/**
- * `self` type inside actions / views:
- * strongly typed for state signals, `any` for actions and views so that
- * actions can call each other without circular type issues.
- */
-export type ModelSelf<TState extends StateShape> = StateSignals<TState> & Record<string, any>
+// ─── Schema-mode mutation helpers ────────────────────────────────────────────
 
-/** The public instance type returned by `.create()` and hooks. */
+/**
+ * Recursive partial — every property optional at every depth. Arrays
+ * and class instances replace (not merge), only plain objects deep-merge.
+ * Parallel to `@pyreon/store`'s `DeepPartial`.
+ */
+export type DeepPartial<T> = T extends ReadonlyArray<unknown>
+  ? T
+  : T extends object
+    ? { readonly [K in keyof T]?: DeepPartial<T[K]> }
+    : T
+
+/**
+ * Validated mutation helpers exposed on schema-mode model instances and on
+ * `self` inside schema-mode action / view factories. Bare names (matching
+ * `@pyreon/store`'s `SchemaStoreApi`). Schema field names CANNOT collide
+ * with these reserved names — `model({ schema })` throws at `.create()`
+ * time if your schema declares a field named `set` / `patch` /
+ * `deepPatch` / `update` / `reset`.
+ *
+ * Five helpers covering the canonical mutation shapes:
+ *
+ * - **`set(full)`** — replace the whole state atomically. Requires the
+ *   full schema shape; throws on shape mismatch.
+ * - **`patch(partial)`** — shallow merge of top-level fields. Sibling
+ *   keys at depth ≥ 2 inside an object are NOT preserved (the whole
+ *   object is replaced).
+ * - **`deepPatch(partial)`** — recursive merge of nested plain objects.
+ *   Arrays and class instances (Date, Map, Set) REPLACE; only plain
+ *   objects recurse.
+ * - **`update(key, fn)`** — transform a single top-level field via
+ *   callback. Covers add / remove / filter / map / object-key-delete
+ *   patterns in one method.
+ * - **`reset()`** — restore every signal to the parsed-initial value
+ *   captured at `.create()` time.
+ *
+ * All five validate the merged result via schema before writing to
+ * signals (or invoke `onValidationError` if configured). Direct signal
+ * writes (`self.field.set(v)`) bypass validation — the documented
+ * escape hatch.
+ */
+export interface SchemaModelHelpers<TState extends StateShape> {
+  /** Replace the whole state. Validates via schema; throws on failure. */
+  readonly set: (next: TState) => void
+  /** Shallow partial merge. Validates merged result via schema; throws on failure. */
+  readonly patch: (partial: Partial<TState>) => void
+  /**
+   * Recursively merge a partial state. Plain objects recurse; arrays /
+   * class instances REPLACE. Validates merged result via schema.
+   */
+  readonly deepPatch: (partial: DeepPartial<TState>) => void
+  /**
+   * Transform a single top-level field via callback. Validates the
+   * resulting merged state via schema. Key is constrained to `keyof
+   * TState & string`; transformer is `(current: unknown) => unknown`
+   * (cast at call site — schema-inferred narrowing is a future
+   * refinement, parallel to `@pyreon/store`'s `update`).
+   */
+  readonly update: <K extends keyof TState & string>(
+    key: K,
+    transformer: (current: unknown) => unknown,
+  ) => void
+  /** Reset every signal to the parsed-initial value captured at `.create()` time. */
+  readonly reset: () => void
+}
+
+/**
+ * Reserved key names in schema mode — schema field names cannot collide
+ * with these mutation helper names. Exposed for downstream consumers
+ * that want to validate field names at design time (e.g. linting).
+ */
+export const RESERVED_SCHEMA_HELPER_KEYS = [
+  'set',
+  'patch',
+  'deepPatch',
+  'update',
+  'reset',
+] as const
+
+/**
+ * `self` type inside actions / views. Includes state signals + all previously-
+ * accumulated views/actions (from prior `.views()` / `.actions()` chain calls)
+ * + schema helpers when schema mode is active. The `Record<string, any>` tail
+ * keeps factories able to forward-reference each other without circular type
+ * errors.
+ */
+export type ModelSelf<
+  TState extends StateShape,
+  TViews extends Record<string, unknown>,
+  TActions extends Record<string, (...args: any[]) => any>,
+  HasSchema extends boolean,
+> = StateSignals<TState> &
+  TViews &
+  TActions &
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  (HasSchema extends true ? SchemaModelHelpers<TState> : {}) &
+  Record<string, any>
+
+/**
+ * The public instance type returned by `.create()` and hooks. Includes
+ * state signals + every chained `.views()` + every chained `.actions()` +
+ * schema mutation helpers (when applicable).
+ */
 export type ModelInstance<
   TState extends StateShape,
-  TActions extends Record<string, (...args: any[]) => any>,
-  TViews extends Record<string, Signal<any> | Computed<any>>,
-> = StateSignals<TState> & TActions & TViews
+  TViews extends Record<string, unknown> = Record<never, never>,
+  TActions extends Record<string, (...args: any[]) => any> = Record<never, never>,
+  HasSchema extends boolean = false,
+> = StateSignals<TState> &
+  TViews &
+  TActions &
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  (HasSchema extends true ? SchemaModelHelpers<TState> : {})
 
 /**
  * Extract the state type from a ModelDefinition.
  * Used by Snapshot to recursively resolve nested model types.
+ *
+ * `_typeState` is a phantom type-slot stamped on every ModelDefinition by
+ * the model() factory — it carries the inferred `TState` type parameter
+ * without runtime cost. Reading via `_config.state` no longer works
+ * because `state` is optional (schema mode has no `state` field).
  */
 type ExtractModelState<T> = T extends {
   readonly __pyreonMod: true
-  readonly _config: { state: infer S extends StateShape }
+  readonly _typeState?: infer S
 }
-  ? S
+  ? S extends StateShape
+    ? S
+    : never
   : never
 
 /**

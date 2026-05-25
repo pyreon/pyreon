@@ -19,27 +19,23 @@ describe('gen-docs — state-tree snapshot', () => {
       \`\`\`typescript
       import { model, getSnapshot, applySnapshot, onPatch, applyPatch, addMiddleware } from '@pyreon/state-tree'
 
-      // Define a model — state (signals), views (derived), actions (mutations):
-      const Todo = model({
-        state: { title: '', done: false },
-        views: (self) => ({
+      // Define a model — chainable: state, then .views(), then .actions():
+      const Todo = model({ state: { title: '', done: false } })
+        .views((self) => ({
           summary: () => \`\${self.title()} [\${self.done() ? 'x' : ' '}]\`,
-        }),
-        actions: (self) => ({
+        }))
+        .actions((self) => ({
           toggle: () => self.done.set(!self.done()),
           rename: (title: string) => self.title.set(title),
-        }),
-      })
+        }))
 
-      const TodoList = model({
-        state: { todos: [] as ReturnType<typeof Todo.create>[] },
-        actions: (self) => ({
+      const TodoList = model({ state: { todos: [] as ReturnType<typeof Todo.create>[] } })
+        .actions((self) => ({
           add: (title: string) => {
             const todo = Todo.create({ title, done: false })
             self.todos.update(list => [...list, todo])
           },
-        }),
-      })
+        }))
 
       // Create instances:
       const list = TodoList.create({ todos: [] })
@@ -78,8 +74,20 @@ describe('gen-docs — state-tree snapshot', () => {
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    expect(Object.keys(record).length).toBe(6)
-    expect(record['state-tree/model']!.notes).toContain('ModelDefinition')
-    expect(record['state-tree/model']!.mistakes?.split('\n').length).toBe(3)
+    // model + SchemaModelHelpers + DeepPartial + ModelDefinition + getSnapshot
+    // + applySnapshot + onPatch + applyPatch + addMiddleware = 9
+    expect(Object.keys(record).length).toBe(9)
+    expect(record['state-tree/model']!.notes).toContain('chainable builder')
+    expect(record['state-tree/model']!.notes).toContain('schema')
+    expect(record['state-tree/model']!.notes).toContain('async')
+    expect(record['state-tree/model']!.mistakes?.split('\n').length).toBe(6)
+    expect(record['state-tree/ModelDefinition']).toBeDefined()
+    expect(record['state-tree/ModelDefinition']!.notes).toContain('chainable')
+    expect(record['state-tree/SchemaModelHelpers']).toBeDefined()
+    expect(record['state-tree/SchemaModelHelpers']!.notes).toContain('five')
+    expect(record['state-tree/SchemaModelHelpers']!.example).toContain('deepPatch')
+    expect(record['state-tree/SchemaModelHelpers']!.example).toContain('update')
+    expect(record['state-tree/DeepPartial']).toBeDefined()
+    expect(record['state-tree/DeepPartial']!.notes).toContain('Recursive partial')
   })
 })

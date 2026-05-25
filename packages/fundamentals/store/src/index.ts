@@ -45,6 +45,12 @@ export { batch, computed, effect, signal } from '@pyreon/reactivity'
 
 import { batch, signal as createSignal } from '@pyreon/reactivity'
 import type { Signal } from '@pyreon/reactivity'
+import {
+  extractParseFn,
+  formatIssues,
+  type InferSchema,
+  type SchemaIssue,
+} from '@pyreon/validation'
 
 export { setRegistryProvider as setStoreRegistryProvider } from './registry'
 
@@ -127,60 +133,14 @@ export function addStorePlugin(plugin: StorePlugin): void {
 
 // ─── Schema-driven store types (Tier A.1 + A.2) ──────────────────────────────
 
-/**
- * Generic issue produced by any schema validator. Mirrors the shape of
- * `@pyreon/validation`'s `ValidationIssue` — duck-typed here so this
- * package doesn't need a hard dependency on validation.
- */
-export interface SchemaIssue {
-  readonly path: string
-  readonly message: string
-}
-
-/** Result of a synchronous schema parse call. */
-export type SchemaParseResult<T> =
-  | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly issues: SchemaIssue[] }
-
-/**
- * Duck-typed `TypedSchemaAdapter` shape (Tier A.1) — Pyreon's existing
- * adapter pattern from `@pyreon/validation`. We don't import the type;
- * structural detection via `'_infer' in schema && typeof schema.parse === 'function'`
- * keeps `@pyreon/store` free of the validation dep.
- */
-interface PyreonAdapterShape<T extends Record<string, unknown>> {
-  readonly _infer: T
-  readonly parse?: (value: unknown) => SchemaParseResult<T>
-}
-
-/**
- * Duck-typed Standard Schema shape (Tier A.2) — cross-library spec
- * implemented by zod 3.24+, valibot 1.0+, arktype 2.0+, Effect Schema, etc.
- * Detected via `'~standard' in schema`.
- *
- * See https://standardschema.dev/ for the full spec.
- */
-interface StandardSchemaShape<T> {
-  readonly '~standard': {
-    readonly version: 1
-    readonly vendor: string
-    readonly validate: (value: unknown) =>
-      | { readonly value: T }
-      | { readonly issues: ReadonlyArray<{ readonly message: string; readonly path?: ReadonlyArray<string | number | symbol | { readonly key: PropertyKey }> }> }
-      | Promise<unknown>
-    readonly types?: { readonly input?: unknown; readonly output?: T }
-  }
-}
-
-/**
- * Extract the inferred output type from either adapter shape.
- *   Tier A.1 → `_infer`
- *   Tier A.2 → `~standard.types.output`
- */
-export type InferSchema<S> =
-  S extends { readonly _infer: infer T extends Record<string, unknown> } ? T :
-  S extends { readonly '~standard': { readonly types: { readonly output: infer O extends Record<string, unknown> } } } ? O :
-  Record<string, unknown>
+// Schema-detection types + helpers live in `@pyreon/validation`. We
+// re-export the public types so consumers of `@pyreon/store` don't have
+// to add a second import line. Same shape, identical semantics.
+export type {
+  InferSchema,
+  SchemaIssue,
+  SchemaParseResult,
+} from '@pyreon/validation'
 
 /**
  * Map a parsed-output type to a record of per-field signals — what the
@@ -296,105 +256,10 @@ const RESERVED_STORE_KEYS = new Set([
   'set',
 ])
 
-/**
- * Detect a Pyreon `TypedSchemaAdapter` (Tier A.1). The `_infer` field is
- * the brand; `parse` is the sync entry point store needs.
- */
-function isPyreonAdapter(value: unknown): value is PyreonAdapterShape<Record<string, unknown>> {
-  return (
-    value != null &&
-    typeof value === 'object' &&
-    '_infer' in value &&
-    typeof (value as { parse?: unknown }).parse === 'function'
-  )
-}
-
-/**
- * Detect a Standard Schema-compliant schema (Tier A.2). Spec:
- * https://standardschema.dev/
- */
-function isStandardSchema(value: unknown): value is StandardSchemaShape<unknown> {
-  if (value == null || typeof value !== 'object') return false
-  const std = (value as { '~standard'?: unknown })['~standard']
-  return (
-    std != null &&
-    typeof std === 'object' &&
-    typeof (std as { validate?: unknown }).validate === 'function'
-  )
-}
-
-/**
- * Extract a sync `parse` function from either adapter shape. Throws if
- * neither shape matches OR if the schema is async-only (probed at
- * `defineStore`-time by invoking parse with `initial` and checking for
- * a Promise return).
- */
-function extractParseFn<T extends Record<string, unknown>>(
-  schema: unknown,
-  initial: T,
-): (value: unknown) => SchemaParseResult<T> {
-  if (isPyreonAdapter(schema)) {
-    const parse = schema.parse
-    if (!parse) {
-      throw new Error(
-        '[Pyreon] defineStore: schema adapter is missing `parse` method. ' +
-          'Upgrade @pyreon/validation to a version that exports `parse` ' +
-          '(zod/valibot/arktype adapters all support it). The validator-only ' +
-          'shape used by @pyreon/form is not enough for schema-stores — ' +
-          'store needs the coerced parsed value, not just errors.',
-      )
-    }
-    return parse as (value: unknown) => SchemaParseResult<T>
-  }
-
-  if (isStandardSchema(schema)) {
-    return wrapStandardSchema<T>(schema, initial)
-  }
-
-  throw new Error(
-    '[Pyreon] defineStore: `schema` must be a TypedSchemaAdapter (from ' +
-      '@pyreon/validation) or a Standard Schema-compliant object (zod 3.24+, ' +
-      'valibot 1.0+, arktype 2.0+, Effect Schema, etc.). ' +
-      'See https://standardschema.dev/ for the spec.',
-  )
-}
-
-/**
- * Convert a Standard Schema instance into a `SchemaParseResult` parser.
- * Synchronous only — rejects schemas whose `validate()` returns a Promise
- * by surfacing the Promise as a non-`ok` result (caller probes for this
- * and throws at `defineStore`-time).
- */
-function wrapStandardSchema<T extends Record<string, unknown>>(
-  schema: StandardSchemaShape<unknown>,
-  _initial: T,
-): (value: unknown) => SchemaParseResult<T> {
-  return (value: unknown) => {
-    try {
-      const result = schema['~standard'].validate(value)
-      // Async escape — caller rejects via Promise-detection.
-      if (result instanceof Promise) {
-        return result as unknown as SchemaParseResult<T>
-      }
-      const r = result as { value?: unknown; issues?: ReadonlyArray<{ message: string; path?: ReadonlyArray<string | number | symbol | { key: PropertyKey }> }> }
-      if ('value' in r) {
-        return { ok: true, value: r.value as T }
-      }
-      const issues = (r.issues ?? []).map((issue) => ({
-        path: (issue.path ?? [])
-          .map((p) => (typeof p === 'object' && p !== null ? String(p.key) : String(p)))
-          .join('.'),
-        message: issue.message,
-      }))
-      return { ok: false, issues }
-    } catch (err) {
-      return {
-        ok: false,
-        issues: [{ path: '', message: err instanceof Error ? err.message : String(err) }],
-      }
-    }
-  }
-}
+// Schema-detection helpers (extractParseFn, wrapStandardSchema,
+// isPyreonAdapter, isStandardSchema, formatIssues) live in
+// `@pyreon/validation` — same shape, shared by both `@pyreon/store`
+// and `@pyreon/state-tree` schema modes. Imported above.
 
 /**
  * Detect a plain object (literal `{}` or `Object.create(null)`) — used by
@@ -427,15 +292,6 @@ function deepMerge(target: unknown, source: unknown): unknown {
       : source[key]
   }
   return out
-}
-
-/**
- * Format schema issues into a readable error message.
- */
-function formatIssues(issues: SchemaIssue[], op: 'set' | 'patch' | 'init'): string {
-  const lines = issues.slice(0, 5).map((i) => `  - ${i.path || '<root>'}: ${i.message}`)
-  const more = issues.length > 5 ? `\n  ... and ${issues.length - 5} more` : ''
-  return `[Pyreon] Schema validation failed (${op}):\n${lines.join('\n')}${more}`
 }
 
 // ─── defineStore ─────────────────────────────────────────────────────────────
@@ -519,7 +375,7 @@ function defineSchemaStore(
   const { schema, initial, setup: userSetup, onValidationError } = config
 
   // Resolve sync parse function (Tier A.1, A.2, or throw).
-  const parse = extractParseFn(schema, initial as Record<string, unknown>)
+  const parse = extractParseFn(schema)
 
   // Validate `initial` once at defineStore-time. Throws if invalid, OR
   // if the schema is async (Promise return).

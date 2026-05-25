@@ -701,6 +701,12 @@
         "@pyreon/test-utils": "workspace:^",
         "@vitest/browser-playwright": "^4.1.4",
       },
+      "peerDependencies": {
+        "@pyreon/runtime-server": "*",
+      },
+      "optionalPeers": [
+        "@pyreon/runtime-server",
+      ],
     },
     "packages/core/reactivity": {
       "name": "@pyreon/reactivity",
@@ -1040,12 +1046,17 @@
       "version": "0.25.1",
       "dependencies": {
         "@pyreon/reactivity": "workspace:^",
+        "@pyreon/validation": "workspace:^",
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.8.9",
         "@pyreon/manifest": "workspace:*",
         "@pyreon/reactivity": "workspace:^",
+        "@vitus-labs/tools-lint": "^2.4.0",
+        "arktype": "^2.2.0",
         "bun-types": "^1.3.12",
+        "valibot": "^1.2.0",
+        "zod": "^4.3.6",
       },
     },
     "packages/fundamentals/storage": {
@@ -1067,12 +1078,12 @@
       "version": "0.25.1",
       "dependencies": {
         "@pyreon/reactivity": "workspace:^",
+        "@pyreon/validation": "workspace:^",
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.8.9",
         "@pyreon/manifest": "workspace:*",
         "@pyreon/reactivity": "workspace:^",
-        "@pyreon/validation": "workspace:*",
         "@vitus-labs/tools-lint": "^2.4.0",
         "arktype": "^2.2.0",
         "bun-types": "^1.3.12",
@@ -1143,6 +1154,16 @@
         "valibot": "^1.2.0",
         "zod": "^4.3.6",
       },
+      "peerDependencies": {
+        "arktype": "*",
+        "valibot": "*",
+        "zod": "*",
+      },
+      "optionalPeers": [
+        "arktype",
+        "valibot",
+        "zod",
+      ],
     },
     "packages/fundamentals/virtual": {
       "name": "@pyreon/virtual",

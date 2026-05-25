@@ -1,6 +1,21 @@
 export { arktypeField, arktypeSchema } from './arktype'
+export {
+  extractParseFn,
+  formatIssues,
+  isPyreonAdapter,
+  isStandardSchema,
+  wrapStandardSchema,
+} from './schema'
+export type {
+  InferSchema,
+  PyreonAdapterShape,
+  SchemaIssue,
+  SchemaParseResult,
+  StandardSchemaShape,
+} from './schema'
 export type {
   FieldAdapter,
+  ParseResult,
   SchemaAdapter,
   SchemaValidateFn,
   TypedSchemaAdapter,
