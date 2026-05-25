@@ -421,6 +421,41 @@ The project scanning tools (`get_routes`, `get_components`) use the same TypeScr
 
 ---
 
+## Troubleshooting
+
+### The server starts but no tools appear in the client
+
+The MCP server speaks JSON-RPC over stdio. If the client connected successfully but `tools/list` returns empty, the server's tool registrations failed silently — usually a Node version mismatch (the server uses dynamic imports for some tools' lazy paths).
+
+- Verify the client is launching the server with a Node version ≥ 18 (check the client's MCP config / runtime).
+- Look for `[mcp]` stderr lines in the client's log directory (Claude Code: `~/Library/Logs/Claude/`, Cursor: settings → output panel → "MCP Logs").
+- Test the server in isolation: `bunx pyreon-mcp` and send a JSON-RPC `initialize` frame manually. If `initialize` succeeds but `tools/list` is empty, file an issue with the stderr output.
+
+### `get_pattern` / `get_anti_patterns` return "could not locate"
+
+Both tools read files from the host Pyreon monorepo (`docs/patterns/*.md` and `.claude/rules/anti-patterns.md` respectively). When the server runs from a CONSUMER project (not the monorepo), those files aren't reachable — the tools degrade gracefully with the "could not locate" message. This is by design: the tools always check the working directory's ancestor tree, so adding the same `.claude/rules/anti-patterns.md` to a consumer project surfaces the entries.
+
+### `audit_test_environment` / `audit_islands` report zero findings in a known-broken codebase
+
+The audit scanners walk from `process.cwd()`. If the MCP server's working directory isn't the project root, the walk may miss your `src/`. Most MCP clients spawn the server with `cwd` set to the client's open project — verify by calling `get_components` first; if THAT returns zero, the cwd is wrong.
+
+### `validate` always returns "✓ No issues found"
+
+`validate` runs two AST-based detectors (`detectReactPatterns` + `detectPyreonPatterns`). If both return empty, the snippet is clean. If you expect a detection that doesn't fire:
+
+- Confirm the snippet is syntactically valid TypeScript / TSX. The detectors silently skip parse errors.
+- Check the detector's exact pattern shape (`get_anti_patterns` shows the rule body for every detector code). E.g. `props-destructured-body` only fires inside a PascalCase JSX component body, not in a free function.
+
+### `get_changelog` returns "not found" for a known package
+
+The package lookup walks up from cwd looking for `packages/**/CHANGELOG.md`. If you renamed a package directory but kept the npm name, the walker won't find it. The tool accepts both `query` and `@pyreon/query` — try both forms.
+
+### The server hangs on first connection
+
+The MCP server doesn't make any network calls or long-running scans at startup — it should return `initialize` in <50 ms. If it hangs, the client is most likely waiting for stdout buffering to flush — make sure the client's MCP transport is configured to read line-delimited JSON-RPC, not block on a chunk size.
+
+---
+
 ## Exports Summary
 
 | Export            | Description                                           |
