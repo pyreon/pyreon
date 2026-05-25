@@ -1006,3 +1006,109 @@ describeNative('Native vs JS equivalence — selector.subscribe auto-promotion',
       export const X = (k) => <div class={() => isSel(k)}>x</div>
     `))
 })
+
+// ----------------------------------------------------------------------
+// Text-child selector ternary auto-promotion (companion to className PR
+// #898 — same detector, different emission target).
+// ----------------------------------------------------------------------
+
+describeNative('Native vs JS equivalence — text-child selector.subscribe auto-promotion', () => {
+  test('promotes `<td>{() => sel(k) ? "X" : ""}</td>` shape', () =>
+    compare(`
+      import { createSelector, signal } from '@pyreon/reactivity'
+      const selected = signal(null)
+      const isSelected = createSelector(selected)
+      export const Row = (row) => <td>{() => isSelected(row.id) ? '✓' : ''}</td>
+    `))
+
+  test('preserves deep key (item.deep.id)', () =>
+    compare(`
+      import { createSelector, signal } from '@pyreon/reactivity'
+      const sel = createSelector(signal(null))
+      export const X = (item) => <span>{() => sel(item.deep.id) ? 'A' : 'B'}</span>
+    `))
+
+  test('bails when selector ID NOT createSelector result', () =>
+    compare(`
+      import { signal } from '@pyreon/reactivity'
+      const fn = (k) => k === 1
+      export const X = (k) => <span>{() => fn(k) ? 'A' : 'B'}</span>
+    `))
+
+  test('bails when branch contains a signal call', () =>
+    compare(`
+      import { createSelector, signal } from '@pyreon/reactivity'
+      const cls = signal('x')
+      const isSel = createSelector(signal(null))
+      export const X = (k) => <span>{() => isSel(k) ? cls() : 'b'}</span>
+    `))
+})
+
+// ----------------------------------------------------------------------
+// Signal-method-call auto-promotion to `_bindDirect`.
+// ----------------------------------------------------------------------
+
+describeNative('Native vs JS equivalence — signal-method-call auto-promotion', () => {
+  test('Number.toFixed(2)', () =>
+    compare(`
+      import { signal } from '@pyreon/reactivity'
+      const count = signal(0)
+      export const X = () => <span>{count().toFixed(2)}</span>
+    `))
+
+  test('String.toUpperCase()', () =>
+    compare(`
+      import { signal } from '@pyreon/reactivity'
+      const name = signal('a')
+      export const X = () => <span>{name().toUpperCase()}</span>
+    `))
+
+  test('String.slice(0, 5)', () =>
+    compare(`
+      import { signal } from '@pyreon/reactivity'
+      const s = signal('hello world')
+      export const X = () => <span>{s().slice(0, 5)}</span>
+    `))
+
+  test('String.padStart(4, "0")', () =>
+    compare(`
+      import { signal } from '@pyreon/reactivity'
+      const n = signal('1')
+      export const X = () => <span>{n().padStart(4, "0")}</span>
+    `))
+
+  test('toString(16) (radix arg)', () =>
+    compare(`
+      import { signal } from '@pyreon/reactivity'
+      const n = signal(255)
+      export const X = () => <span>{n().toString(16)}</span>
+    `))
+
+  test('bails on non-safelist method (Array.sort)', () =>
+    compare(`
+      import { signal } from '@pyreon/reactivity'
+      const arr = signal([1, 2, 3])
+      export const X = () => <span>{arr().sort()}</span>
+    `))
+
+  test('bails when method args contain a signal call', () =>
+    compare(`
+      import { signal } from '@pyreon/reactivity'
+      const s = signal('hello')
+      const n = signal(0)
+      export const X = () => <span>{s().slice(n())}</span>
+    `))
+
+  test('bails when receiver is not a known signal', () =>
+    compare(`
+      const v = 42
+      export const X = () => <span>{v.toFixed(2)}</span>
+    `))
+
+  test('bails when method callee is computed (sig()["toFixed"](2))', () =>
+    compare(`
+      import { signal } from '@pyreon/reactivity'
+      const c = signal(0)
+      export const X = () => <span>{c()["toFixed"](2)}</span>
+    `))
+})
