@@ -37,7 +37,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@458d36d7d4f47d0dd16ca424c1d3cda0060f1360
+        uses: github/codeql-action/init@7211b7c8077ea37d8641b6271f6a365a22a5fbfa
         with:
           languages: javascript-typescript
           queries: security-extended
@@ -46,6 +46,6 @@ jobs:
           # false positives, not an attack surface). See the config file.
           config-file: ./.github/codeql/codeql-config.yml
       - name: Analyze
-        uses: github/codeql-action/analyze@458d36d7d4f47d0dd16ca424c1d3cda0060f1360
+        uses: github/codeql-action/analyze@7211b7c8077ea37d8641b6271f6a365a22a5fbfa
         with:
           category: /language:javascript-typescript
