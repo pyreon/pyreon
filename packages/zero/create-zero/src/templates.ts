@@ -2,7 +2,7 @@ import { resolve } from 'node:path'
 
 // ─── Project config ─────────────────────────────────────────────────────────
 
-export type TemplateId = 'app' | 'blog' | 'dashboard'
+export type TemplateId = 'app' | 'blog' | 'dashboard' | 'monorepo'
 
 export type RenderMode = 'ssr-stream' | 'ssr-string' | 'ssg' | 'spa'
 
@@ -304,6 +304,19 @@ export const TEMPLATES: Record<TemplateId, TemplateMeta> = {
     adapters: ['vercel', 'cloudflare', 'netlify', 'node', 'bun'],
     defaultAdapter: 'vercel',
     defaultIntegrations: ['supabase', 'email'],
+  },
+  monorepo: {
+    id: 'monorepo',
+    label: 'Monorepo',
+    hint: 'Bun workspaces — apps/web/ + packages/ui/ + packages/types/',
+    defaultMode: 'ssr-stream',
+    // Web app gets the `app` template's feature defaults — sensible starting
+    // point for the most common monorepo shape.
+    defaultFeatures: ['store', 'query', 'forms'],
+    forcesMode: false,
+    adapters: ['vercel', 'cloudflare', 'netlify', 'node', 'bun', 'static'],
+    defaultAdapter: 'vercel',
+    defaultIntegrations: [],
   },
 }
 

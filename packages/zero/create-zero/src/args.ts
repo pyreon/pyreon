@@ -41,7 +41,7 @@ export interface CliArgs {
   lint: boolean | undefined
 }
 
-const TEMPLATE_VALUES: TemplateId[] = ['app', 'blog', 'dashboard']
+const TEMPLATE_VALUES: TemplateId[] = ['app', 'blog', 'dashboard', 'monorepo']
 const ADAPTER_VALUES: AdapterId[] = [
   'vercel',
   'cloudflare',
@@ -234,7 +234,7 @@ export function helpText(invokedAs: string): string {
 Scaffold a new Pyreon Zero project.
 
 Templates:
-  --template <id>          app | blog | dashboard
+  --template <id>          app | blog | dashboard | monorepo
 
 Deployment:
   --adapter <id>           vercel | cloudflare | netlify | node | bun | static
@@ -264,5 +264,6 @@ Examples:
   ${invokedAs} my-app --preset dashboard --with-i18n --yes
   ${invokedAs} my-app --template dashboard --adapter vercel --integrations supabase,email --yes
   ${invokedAs} my-blog --template blog --adapter cloudflare --yes
+  ${invokedAs} my-monorepo --template monorepo --preset standard --yes
 `
 }

@@ -218,6 +218,110 @@ describe('scaffold — output file-set snapshots', () => {
     }
   })
 
+  it('monorepo template — root workspace + apps/web + packages/ui + packages/types', async () => {
+    const dir = freshDir()
+    try {
+      await scaffold(
+        baseConfig({
+          targetDir: dir,
+          name: 'my-mono',
+          template: 'monorepo',
+          features: ['store', 'query', 'forms'],
+        }),
+      )
+      const files = await listFiles(dir)
+      // Root-level files.
+      expect(files).toContain('package.json')
+      expect(files).toContain('tsconfig.json')
+      expect(files).toContain('README.md')
+      expect(files).toContain('.gitignore')
+      // Web app lives under apps/web/.
+      expect(files).toContain('apps/web/package.json')
+      expect(files).toContain('apps/web/vite.config.ts')
+      expect(files).toContain('apps/web/index.html')
+      expect(files).toContain('apps/web/src/entry-client.ts')
+      expect(files).toContain('apps/web/src/routes/_layout.tsx')
+      expect(files).toContain('apps/web/src/stores/app.ts') // store overlay applied
+      // Shared packages.
+      expect(files).toContain('packages/ui/package.json')
+      expect(files).toContain('packages/ui/tsconfig.json')
+      expect(files).toContain('packages/ui/src/index.ts')
+      expect(files).toContain('packages/types/package.json')
+      expect(files).toContain('packages/types/tsconfig.json')
+      expect(files).toContain('packages/types/src/index.ts')
+      // NO root-level entry-client / vite.config — the monorepo root is
+      // the dispatcher, not a code-bearing package.
+      expect(files).not.toContain('vite.config.ts')
+      expect(files).not.toContain('src/entry-client.ts')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('monorepo root package.json declares workspaces + proxy scripts', async () => {
+    const dir = freshDir()
+    try {
+      await scaffold(baseConfig({ targetDir: dir, name: 'demo', template: 'monorepo' }))
+      const { readFile } = await import('node:fs/promises')
+      const rootPkg = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8'))
+      expect(rootPkg.name).toBe('demo')
+      expect(rootPkg.workspaces).toEqual(['apps/*', 'packages/*'])
+      expect(rootPkg.scripts.dev).toBe("bun run --filter='web' dev")
+      expect(rootPkg.scripts.build).toBe("bun run --filter='web' build")
+      expect(rootPkg.scripts.typecheck).toBe("bun run --filter='*' typecheck")
+      // Root has NO dependencies — every dep is at the workspace level.
+      expect(rootPkg.dependencies).toBeUndefined()
+      expect(rootPkg.devDependencies).toBeUndefined()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('monorepo web package.json: name=web, has workspace deps', async () => {
+    const dir = freshDir()
+    try {
+      await scaffold(
+        baseConfig({
+          targetDir: dir,
+          name: 'my-mono',
+          template: 'monorepo',
+          features: ['store', 'query'],
+        }),
+      )
+      const { readFile } = await import('node:fs/promises')
+      const webPkg = JSON.parse(await readFile(join(dir, 'apps/web/package.json'), 'utf8'))
+      // Name is "web", not "my-mono" — the workspace name is the app, not the project.
+      expect(webPkg.name).toBe('web')
+      // Workspace deps for the shared packages.
+      expect(webPkg.dependencies['@my-mono/ui']).toBe('workspace:^')
+      expect(webPkg.dependencies['@my-mono/types']).toBe('workspace:^')
+      // Pyreon deps still present (full app shape).
+      expect(webPkg.dependencies['@pyreon/store']).toBeDefined()
+      expect(webPkg.dependencies['@pyreon/query']).toBeDefined()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('monorepo shared packages: scope follows the project name', async () => {
+    const dir = freshDir()
+    try {
+      await scaffold(baseConfig({ targetDir: dir, name: 'acme-co', template: 'monorepo' }))
+      const { readFile } = await import('node:fs/promises')
+      const uiPkg = JSON.parse(await readFile(join(dir, 'packages/ui/package.json'), 'utf8'))
+      const typesPkg = JSON.parse(await readFile(join(dir, 'packages/types/package.json'), 'utf8'))
+      expect(uiPkg.name).toBe('@acme-co/ui')
+      expect(typesPkg.name).toBe('@acme-co/types')
+      // UI depends on types (also workspace-relative).
+      expect(uiPkg.dependencies['@acme-co/types']).toBe('workspace:^')
+      // The ui index.ts imports the scoped types package.
+      const uiSrc = await readFile(join(dir, 'packages/ui/src/index.ts'), 'utf8')
+      expect(uiSrc).toContain("from '@acme-co/types'")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('AI tool overlays substitute the principles body', async () => {
     const dir = freshDir()
     try {
