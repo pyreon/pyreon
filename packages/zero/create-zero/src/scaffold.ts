@@ -72,16 +72,19 @@ export async function scaffold(config: ProjectConfig): Promise<void> {
 }
 
 async function scaffoldFlat(config: ProjectConfig): Promise<void> {
-  // 1. Template base.
-  await copyOverlay(templateDir(config.template), config.targetDir)
+  const projectName = basename(config.name)
+  const sharedVars = {
+    name: projectName,
+    ssrMode: SSR_MODE_MAP[config.renderMode],
+  }
+
+  // 1. Template base. Per-template files can reference `{{name}}` (README
+  //    titles, etc.) — substitution is a no-op when the placeholder is
+  //    absent so existing template files are unaffected.
+  await copyOverlay(templateDir(config.template), config.targetDir, { name: projectName })
 
   // 2. Shared base files (gitignore, env.d.ts, entry-server.ts).
-  await copyOverlay(
-    SHARED_ROOT,
-    config.targetDir,
-    { ssrMode: SSR_MODE_MAP[config.renderMode] },
-    { skipUnderscoreDirs: true },
-  )
+  await copyOverlay(SHARED_ROOT, config.targetDir, sharedVars, { skipUnderscoreDirs: true })
 
   // 3. Per-feature overlays. Each overlay's files OVERWRITE base files
   //    on conflict (e.g. store's _layout.tsx overwrites the no-store base).

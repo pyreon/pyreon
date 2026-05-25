@@ -30,7 +30,7 @@ import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 
 interface Cell {
   /** Stable slug used as the example dir name. */
@@ -54,6 +54,16 @@ interface Cell {
   isolated?: boolean
   /** Smoke assertion — receives absolute path to the scaffolded project dir. */
   smoke: (projectDir: string) => void
+  /**
+   * Optional second smoke pass: cell runs `bun run preview` against the
+   * scaffolded project, waits for the local URL to print to stdout, and
+   * fetches it. Receives the URL + the fetched response body (already
+   * verified as HTTP 200, non-empty, content-type text/html). Use to
+   * assert the page actually renders the right content — guards against
+   * "build passes but preview 404s" (the bug `zero preview` had before
+   * the dist/client outDir detection landed).
+   */
+  previewSmoke?: (url: string, body: string) => void
 }
 
 // ─── Smoke helpers ──────────────────────────────────────────────────────────
@@ -115,6 +125,8 @@ function assertPackageDep(projectDir: string, depName: string): void {
 const MATRIX: Cell[] = [
   // app + vercel — the canonical default scaffold. Catches breakage in the
   // hot path (most users will land here on `bunx create-pyreon-app my-app`).
+  // ALSO exercises `bun run preview` against the built SSR output —
+  // guards against the dist/client outDir regression in `zero preview`.
   {
     name: 'cpa-smoke-app-vercel',
     template: 'app',
@@ -123,6 +135,18 @@ const MATRIX: Cell[] = [
       assertDirNonEmpty(join(dir, 'dist'))
       assertJsonValid(join(dir, 'vercel.json'))
       assertFileContains(join(dir, 'vite.config.ts'), 'vercelAdapter')
+      // README scaffolded with project-name substitution.
+      assertFileContains(join(dir, 'README.md'), '# cpa-smoke-app-vercel')
+    },
+    previewSmoke: (_url, body) => {
+      // The scaffolded app's index.html ships with a `data-theme` attr +
+      // the favicon link — both unique markers of the standard template.
+      if (!body.includes('data-theme=')) {
+        throw new Error('preview body missing data-theme attribute')
+      }
+      if (!body.includes('/favicon.svg')) {
+        throw new Error('preview body missing /favicon.svg link')
+      }
     },
   },
 
@@ -134,6 +158,7 @@ const MATRIX: Cell[] = [
     adapter: 'static',
     smoke: (dir) => {
       assertDirNonEmpty(join(dir, 'dist'))
+      assertFileContains(join(dir, 'README.md'), '# cpa-smoke-app-static')
       // No platform-specific deploy file for static.
     },
   },
@@ -152,6 +177,16 @@ const MATRIX: Cell[] = [
       assertFileContains(join(dir, 'wrangler.toml'), 'pages_build_output_dir = "dist"')
       assertJsonValid(join(dir, '_routes.json'))
       assertFileContains(join(dir, 'vite.config.ts'), 'cloudflareAdapter')
+      // Blog README mentions RSS + content/posts/ (distinct from app's).
+      assertFileContains(join(dir, 'README.md'), 'RSS')
+      assertFileContains(join(dir, 'README.md'), 'src/content/posts')
+    },
+    // SSG mode — prerendered HTML at dist/client/index.html. previewSmoke
+    // catches the dist/client outDir bug for the static-site path too.
+    previewSmoke: (_url, body) => {
+      if (!body.includes('data-theme=')) {
+        throw new Error('preview body missing data-theme attribute')
+      }
     },
   },
 
@@ -178,6 +213,15 @@ const MATRIX: Cell[] = [
       // Env keys populated for both integrations.
       assertFileContains(join(dir, '.env.example'), 'SUPABASE_URL')
       assertFileContains(join(dir, '.env.example'), 'RESEND_API_KEY')
+      // Dashboard README documents the integration choices.
+      assertFileContains(join(dir, 'README.md'), '# cpa-smoke-dashboard-vercel-full')
+      assertFileContains(join(dir, 'README.md'), 'Auth-gated dashboard')
+    },
+    // Dashboard SSR shape — same preview-200 contract.
+    previewSmoke: (_url, body) => {
+      if (!body.includes('data-theme=')) {
+        throw new Error('preview body missing data-theme attribute')
+      }
     },
   },
 
@@ -254,7 +298,16 @@ const MATRIX: Cell[] = [
       assertPackageDep(join(dir, 'apps/web'), '@pyreon/form')
       // The web app actually built — root `bun run build` proxied correctly.
       assertDirNonEmpty(join(dir, 'apps/web/dist'))
+      // Root README explains the layout + workspace deps.
+      assertFileContains(join(dir, 'README.md'), 'Bun workspaces monorepo')
     },
+    // NOTE: no previewSmoke here. The isolated monorepo cell installs
+    // `@pyreon/zero-cli` from npm (real published 0.25.x, not local
+    // source). The `zero preview` dist/client outDir detection fix
+    // landed AFTER 0.25.1 — until the next release ships, the published
+    // CLI returns 404 from `bun run preview`. The flat cells (which use
+    // local workspace source for @pyreon/*) exercise the fix end-to-end
+    // and catch the regression.
   },
 
   // app + vercel × {react,vue,solid,preact} — compat-mode build smokes.
@@ -334,6 +387,77 @@ function runBuild(cwd: string): void {
   }
 }
 
+/**
+ * Spawn `bun run preview` against the scaffolded project, wait until the
+ * preview server prints a `Local: http://localhost:NNNN` line on stdout,
+ * fetch the URL, assert HTTP 200 + non-empty HTML, then return the
+ * `(url, body)` pair to the cell's `previewSmoke` callback. Kills the
+ * server in `finally` regardless of outcome.
+ *
+ * Guards against the regression the dist/client outDir fix addressed:
+ * before the fix, `bun run preview` on an SSR/SSG project served
+ * `dist/` (empty) and returned HTTP 404 at the homepage. After: serves
+ * `dist/client/` (populated) and returns HTTP 200 + the prerendered
+ * shell.
+ */
+async function runPreviewSmoke(
+  projectDir: string,
+  previewSmoke: (url: string, body: string) => void,
+): Promise<void> {
+  const child: ChildProcess = spawn('bun', ['run', 'preview'], {
+    cwd: projectDir,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+
+  let stdoutBuf = ''
+  child.stdout?.on('data', (d: Buffer) => {
+    stdoutBuf += d.toString()
+  })
+  child.stderr?.on('data', (d: Buffer) => {
+    stdoutBuf += d.toString()
+  })
+
+  try {
+    // Wait up to 30s for the server to print its URL.
+    const url = await waitForUrl(() => stdoutBuf, 30_000)
+
+    // Fetch + assert.
+    const response = await fetch(url, { redirect: 'manual' })
+    if (response.status !== 200) {
+      throw new Error(`preview HTTP ${response.status} from ${url} (expected 200)`)
+    }
+    const body = await response.text()
+    if (body.length === 0) {
+      throw new Error(`preview returned empty body from ${url}`)
+    }
+    const contentType = response.headers.get('content-type') ?? ''
+    if (!contentType.includes('html')) {
+      throw new Error(
+        `preview returned non-HTML content-type "${contentType}" from ${url}`,
+      )
+    }
+
+    // Cell-defined assertion (e.g. asserts specific text or marker present).
+    previewSmoke(url, body)
+  } finally {
+    child.kill('SIGTERM')
+    // Give the child a moment to exit cleanly so port is released for
+    // the next cell. SIGKILL fallback after 2s.
+    await new Promise((r) => setTimeout(r, 200))
+    if (!child.killed) child.kill('SIGKILL')
+  }
+}
+
+async function waitForUrl(read: () => string, timeoutMs: number): Promise<string> {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    const match = read().match(/Local:\s+(http:\/\/[^\s]+)/)
+    if (match) return match[1]!.replace(/\/$/, '')
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  throw new Error(`preview server did not print a URL within ${timeoutMs}ms`)
+}
+
 interface CellResult {
   name: string
   ok: boolean
@@ -361,6 +485,12 @@ async function runCell(cell: Cell, opts: { keep: boolean }): Promise<CellResult>
     runBunInstall(projectDir, isolated)
     runBuild(projectDir)
     cell.smoke(projectDir)
+
+    // Optional second pass: assert `bun run preview` actually serves the
+    // built output (catches "build passes but preview 404s" regressions).
+    if (cell.previewSmoke) {
+      await runPreviewSmoke(projectDir, cell.previewSmoke)
+    }
 
     const durationMs = Date.now() - start
     console.log(`✓ ${cell.name} (${(durationMs / 1000).toFixed(1)}s)`)
