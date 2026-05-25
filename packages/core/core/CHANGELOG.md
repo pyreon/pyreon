@@ -1,5 +1,54 @@
 # @pyreon/core
 
+## 0.25.0
+
+### Patch Changes
+
+- [#858](https://github.com/pyreon/pyreon/pull/858) [`7da5b2b`](https://github.com/pyreon/pyreon/commit/7da5b2bcbc2aebd9600cb8fdefb763ace7f78c1a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Extract `defineCrossModuleState(key, init)` helper. The 5 inlined `Symbol.for(...) ?? init; if (!g[KEY]) g[KEY] = …` blocks in `@pyreon/core`'s `lifecycle.ts` / `component.ts` / `context.ts` / `telemetry.ts` / `props.ts` (from [#855](https://github.com/pyreon/pyreon/issues/855)) collapse to one helper call per state var. Same `Symbol.for` keys preserved — byte-identical runtime behavior; the existing regression tests in `cross-module-state.test.ts` pass unchanged.
+
+  The helper lives in `@pyreon/reactivity` (the lowest layer in the dep order — standalone, every other package transitively depends on it) so EVERY package can apply the same pattern. `@pyreon/core` re-exports it for backward-compat with the previous PR. Follow-up PRs will use this to harden `@pyreon/reactivity`'s own module-level state (activeEffect, batch state, scope, tracking deps), and then `@pyreon/router`, `@pyreon/store`, `@pyreon/storage`, etc.
+
+- [#886](https://github.com/pyreon/pyreon/pull/886) [`cddc592`](https://github.com/pyreon/pyreon/commit/cddc5926f2f23d1b600d01f60fa4e72513d2b6fe) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Revert PR [#855](https://github.com/pyreon/pyreon/issues/855)'s `Symbol.for`-on-`globalThis` pattern in `@pyreon/core`'s 5 state files (`lifecycle.ts`, `component.ts`, `context.ts`, `telemetry.ts`, `props.ts`) — restore plain `let _foo = …` module-scope state (PR D of the bullet-proof cross-module-instance plan, `.claude/plans/jaunty-herding-kazoo.md`).
+
+  The new architecture (PRs A + B) makes this workaround unnecessary AND harmful:
+
+  - **Bundler prevents** (PR B = [#884](https://github.com/pyreon/pyreon/issues/884)): `@pyreon/vite-plugin` injects `resolve.dedupe` for every `@pyreon/*` package — one instance per heap by construction.
+  - **Sentinel detects** (PR A = [#883](https://github.com/pyreon/pyreon/issues/883)): every `@pyreon/*` package calls `registerSingleton(...)` at module load — anything that slips through prevention throws a fail-loud Error.
+
+  PR [#855](https://github.com/pyreon/pyreon/issues/855)'s Symbol.for pattern had real costs that the new architecture eliminates:
+
+  1. **Pollutes `globalThis`** with framework state symbols (visible to userspace, devtools, other libraries).
+  2. **Breaks SSR per-request isolation** — state is process-global, ALS-backed runtime-server has to do MORE work to compensate.
+  3. **Breaks test isolation** — `vi.resetModules()` doesn't reset `globalThis` state.
+  4. **No enforcement** — new contributors writing `let _foo = …` silently regressed the contract.
+
+  The `defineCrossModuleState` helper from [#858](https://github.com/pyreon/pyreon/issues/858) stays exported from `@pyreon/reactivity` and re-exported from `@pyreon/core` as a documented opt-in escape hatch for HMR state survival — it's no longer the framework contract.
+
+  `packages/core/core/src/tests/cross-module-state.test.ts` is deleted (asserted on `Symbol.for` keys that no longer exist).
+
+  **Ordering invariant** (per the plan): PR D MUST NOT merge until BOTH PR A ([#883](https://github.com/pyreon/pyreon/issues/883)) and PR B ([#884](https://github.com/pyreon/pyreon/issues/884)) are in `main` AND have been observed in canary for at least one week without incident. If a regression surfaces during canary, PR D simply doesn't ship — the γ workaround stays in `@pyreon/core` as a fallback while the regression is debugged.
+
+  Validation:
+
+  - `@pyreon/core` tests: 531 pass (was 538 — drop is the 7 deleted `cross-module-state.test.ts` specs that asserted on the now-removed Symbol.for keys)
+  - Full core-layer (`reactivity`, `core`, `router`, `runtime-dom`, `runtime-server`, `head`, `server`): 2,548 tests pass
+  - SSR per-request isolation via `runtime-server.setContextStackProvider()` preserved (function unchanged; just its underlying state moved from globalThis to module-scope)
+
+- [#883](https://github.com/pyreon/pyreon/pull/883) [`6075127`](https://github.com/pyreon/pyreon/commit/60751278894a6ff843c0f6f6c4894c76bcb6a720) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Singleton sentinel default-on across every `@pyreon/*` package with module-level state (PR A of the bullet-proof cross-module-instance plan, `.claude/plans/jaunty-herding-kazoo.md`).
+
+  Each package's `src/index.ts` now calls `registerSingleton('@pyreon/<name>', <version>, import.meta.url)` at module load. The first registration records a marker on `globalThis`; a second registration with a DIFFERENT normalized location triggers detection. Default mode throws an actionable Error naming both file paths and three concrete fixes (Vite `resolve.dedupe`, `npm ls`, `bun ls`). `PYREON_SINGLE_INSTANCE=warn` demotes to `console.error`; `PYREON_SINGLE_INSTANCE=silent` opts out entirely (browser extensions, micro-frontends, nested SSR via `rocketstyle-collapse`).
+
+  **HMR-aware.** Vite re-evaluates modules with the SAME path but possibly different query params (`?v=12345`, `?t=12345`, `?import`). The sentinel normalizes the location (strips query string) before comparing — same normalized location → HMR re-eval → silently allowed; different location → genuine dual-instance → throws.
+
+  **Per-package detection.** The earlier prototype put the sentinel only in `@pyreon/reactivity` — insufficient because `@pyreon/core` (and every other package) has its own module-level state that can be silently corrupted under dual-load. The full plan requires per-package registration, which this PR ships.
+
+  **Zero behavior change in correct setups.** Apps that already have a single instance of each `@pyreon/*` package (the overwhelmingly common case) see no runtime change. Apps with silently-tolerated duplicates today (sub-dep version mismatch, custom bundler config) will see their app throw at startup after upgrading with an error message naming the fix. `PYREON_SINGLE_INSTANCE=warn` is the immediate mitigation for any consumer surprised by the change.
+
+  **Test coverage.** Contract tests at `packages/core/reactivity/src/tests/singleton-sentinel.test.ts` (57 specs) exercise the sentinel directly with synthetic `file://` URLs: default-mode throw + actionable error message, HMR re-eval allowance, `PYREON_SINGLE_INSTANCE=warn` / `=silent` escape hatches, per-package coverage across all 24 registered packages, and cross-package isolation. Bisect-verified — neutralizing the throw branch fails 49 positive-case tests; restored passes all 57. The synthetic-URL approach replaces the heavier filesystem dual-load reproducer (it's the sentinel's normalized-string comparison that matters, not Node's ESM loader behaviour).
+
+- Updated dependencies [[`7da5b2b`](https://github.com/pyreon/pyreon/commit/7da5b2bcbc2aebd9600cb8fdefb763ace7f78c1a), [`bc145f3`](https://github.com/pyreon/pyreon/commit/bc145f3dd6ff8414ab3d36f7723d7f1217d19835), [`6075127`](https://github.com/pyreon/pyreon/commit/60751278894a6ff843c0f6f6c4894c76bcb6a720), [`f71fb4c`](https://github.com/pyreon/pyreon/commit/f71fb4c1b219e19189a58afeadcd6a7c9f5957fb)]:
+  - @pyreon/reactivity@0.25.0
+
 ## 0.24.6
 
 ### Patch Changes

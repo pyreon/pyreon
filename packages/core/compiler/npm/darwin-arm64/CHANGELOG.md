@@ -1,5 +1,7 @@
 # @pyreon/compiler-darwin-arm64
 
+## 0.25.0
+
 ## 0.24.6
 
 ## 0.24.5
