@@ -179,11 +179,8 @@ interface StandardSchemaShape<T> {
  */
 export type InferSchema<S> =
   S extends { readonly _infer: infer T extends Record<string, unknown> } ? T :
-  S extends { readonly '~standard': { readonly types: { readonly output: infer O } } }
-    ? (O extends Record<string, unknown> ? O : Record<string, unknown>)
-    : S extends { readonly '~standard': { readonly types?: { readonly output: infer O } } }
-      ? (O extends Record<string, unknown> ? O : Record<string, unknown>)
-      : Record<string, unknown>
+  S extends { readonly '~standard': { readonly types: { readonly output: infer O extends Record<string, unknown> } } } ? O :
+  Record<string, unknown>
 
 /**
  * Map a parsed-output type to a record of per-field signals — what the
