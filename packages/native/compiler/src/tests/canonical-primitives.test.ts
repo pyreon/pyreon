@@ -318,17 +318,28 @@ describe.skipIf(skipKotlincCondition)(
     })
 
     it('Inline with align variants typechecks across the Alignment.Vertical enum', () => {
-      for (const align of ['start', 'center', 'end'] as const) {
-        const out = tx(
-          `<Inline align="${align}" gap={2}><Text>x</Text></Inline>`,
-          'kotlin',
-        )
-        const result = validateKotlin(out)
-        if (!result.ok) {
-          throw new Error(`align="${align}" failed kotlinc:\n${result.error}`)
-        }
-        expect(result.ok).toBe(true)
+      // Consolidate all 3 align variants into ONE source -> ONE
+      // kotlinc invocation. Previously this looped (3 kotlinc cold-
+      // starts) and timed out at 20s under CI parallel-load contention.
+      const out = tx(
+        `<Stack>
+          <Inline align="start" gap={2}><Text>start</Text></Inline>
+          <Inline align="center" gap={2}><Text>center</Text></Inline>
+          <Inline align="end" gap={2}><Text>end</Text></Inline>
+        </Stack>`,
+        'kotlin',
+      )
+      const result = validateKotlin(out)
+      if (!result.ok) {
+        throw new Error(`align variants failed kotlinc:\n${result.error}\n\n--- emit ---\n${out}\n--- end ---`)
       }
+      expect(result.ok).toBe(true)
+      // Confirm all 3 variants resolved to their Alignment enum branches.
+      // Inline (Row) uses the Vertical axis for align: start->Top,
+      // center->CenterVertically, end->Bottom (Compose convention).
+      expect(out).toContain('Alignment.Top')
+      expect(out).toContain('Alignment.CenterVertically')
+      expect(out).toContain('Alignment.Bottom')
     })
   },
 )
