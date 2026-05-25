@@ -220,12 +220,21 @@ describe('startLpihPolling', () => {
 
     dispose()
     const fs = await import('node:fs/promises')
-    const before = await fs.stat(path)
 
-    // After dispose, no new writes for 200ms.
-    await new Promise((r) => setTimeout(r, 200))
+    // Drain any in-flight write: a setInterval callback already
+    // scheduled at the moment we called dispose() will STILL run (it
+    // was queued on the event loop before clearInterval). So we wait
+    // long enough for one residual write to land, then snapshot, then
+    // wait again and verify no FURTHER writes — the polling really
+    // stopped. Pre-fix the test asserted `mtime unchanged at +200ms`
+    // which flaked under parallel-load CI when the in-flight write
+    // landed past the 200ms window (observed: 94ms post-dispose drift
+    // on a busy runner).
+    await new Promise((r) => setTimeout(r, 100))
+    const before = await fs.stat(path)
+    await new Promise((r) => setTimeout(r, 250)) // > 4 poll cycles
     const after = await fs.stat(path)
-    expect(after.mtimeMs).toBe(before.mtimeMs) // mtime unchanged after dispose
+    expect(after.mtimeMs).toBe(before.mtimeMs) // mtime stable across 250ms
     void s
   })
 })
