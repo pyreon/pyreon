@@ -749,6 +749,7 @@
         "@happy-dom/global-registrator": "^20.8.9",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
+        "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^4.1.4",
         "happy-dom": "^20.8.3",
         "rolldown": "^1.0.0-rc.15",
