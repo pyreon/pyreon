@@ -189,6 +189,60 @@ function MyComponent(props) {
 }
 ```
 
+## Conditional Reads Hide Tracking — Read Both Sides
+
+A subtle property of fine-grained reactivity (shared with Solid, Preact-signals,
+MobX): **a reactive accessor subscribes only to signals it actually reads
+during the run**. Ternaries and `&&` short-circuit, so a signal read inside
+one branch is NOT tracked when the other branch is taken.
+
+```tsx
+// ✗ Subtle bug: when `touched` is false, `error()` is never read → never
+// tracked. Later, when the form validator sets the error, the accessor
+// does NOT re-run because it wasn't subscribed to `error`.
+<div class="field-error">
+  {() => fields.title.touched() ? fields.title.error() ?? '' : ''}
+</div>
+```
+
+**The trap fires when the conditional flips alongside the dependent signal**.
+In the form case above, both `touched` and `error` flip together on submit:
+the validator marks every field touched AND sets errors in one batch. The
+accessor re-runs because `touched` changed, but at re-run time `error` is
+*still* `undefined` (the validator hasn't finished). When `error.set('...')`
+fires later, the accessor doesn't re-subscribe — the bug is silent.
+
+```tsx
+// ✓ Read both signals before the conditional, so the effect subscribes
+// to both from the first render.
+<div class="field-error">
+  {() => {
+    const touched = fields.title.touched()
+    const err = fields.title.error()
+    return touched ? err ?? '' : ''
+  }}
+</div>
+```
+
+The fix is mechanical: extract every signal read to a `const` at the top
+of the accessor, then build the result. The `unused-vars` lint rule does
+NOT flag this — the const is "used" by being read.
+
+**Heuristic for spotting it**: look at every reactive accessor with a
+conditional that involves a signal call. If the call appears in ONLY the
+truthy or falsy branch (not both, and not above the conditional), it's a
+candidate. Both `cond ? sig() : other` and `cond && sig()` have this
+shape.
+
+**When this matters most**: form field errors (touched + error flip
+together), tab content (active + tab.data flip together), accordion
+panels (open + data flip together). Anything where two signals change
+in the same batch AND one gates display of the other.
+
+> 💡 **Discovered by**: HN-clone audit #942 W11. Documented now so other
+> users don't burn the same 15 minutes of "the signal IS set, why isn't
+> the DOM updating".
+
 ## Quick Reference
 
 | Expression | Reactive? | Why |

@@ -90,15 +90,72 @@ let coreModule: typeof import('echarts/core') | null = null
 let corePromise: Promise<typeof import('echarts/core')> | null = null
 
 /**
+ * Detect the canonical "tslib alias is missing" symptom and re-throw with
+ * an actionable error message. ECharts' upstream code imports tslib for
+ * TypeScript helpers (`__extends`, `__assign`, etc.); tslib's `modules/index.js`
+ * ESM entry destructures named helpers from a `__toESM(require_tslib())`
+ * default — the helpers live as top-level vars on the CJS factory, NOT on
+ * the default export, so the destructure reads `undefined` and ECharts
+ * throws `TypeError: Cannot destructure property "__extends" of "undefined"`
+ * on first chart mount. Without the `chartsViteAlias()` alias in the
+ * consumer's vite.config, every chart silently renders as an empty div
+ * (W12 from #942 — invisible failure, ~25 min of "why aren't my charts
+ * rendering"). Documented in CLAUDE.md but easy to miss.
+ *
+ * Heuristic: any error whose message mentions `__extends`, `__assign`,
+ * `__rest`, or one of the other tslib helpers AND happens during the
+ * ECharts core import is treated as a missing-alias bug.
+ */
+const TSLIB_HELPER_RE =
+  /__(extends|assign|rest|spreadArrays|spreadArray|values|read|generator|awaiter|decorate)\b/
+
+/**
+ * @internal — exported for testing only.
+ *
+ * Returns the error to throw given a raw error. Either re-wraps with the
+ * alias hint (if a tslib helper name is in the message) or returns the
+ * original error unchanged. Returning rather than throwing makes the
+ * tslib-detection test trivial (compare wrapped vs original).
+ */
+export function _wrapTslibError(err: unknown): Error {
+  const message = err instanceof Error ? err.message : String(err)
+  if (TSLIB_HELPER_RE.test(message)) {
+    const hint = new Error(
+      `[@pyreon/charts] Failed to load ECharts because the tslib alias is missing. ` +
+        `Add it to your vite.config:\n\n` +
+        `  import { chartsViteAlias } from '@pyreon/charts/vite'\n` +
+        `  export default {\n` +
+        `    resolve: { alias: { ...chartsViteAlias() } },\n` +
+        `    // ...\n` +
+        `  }\n\n` +
+        `Original error: ${message}`,
+    )
+    if (err instanceof Error && err.stack) hint.stack = err.stack
+    return hint
+  }
+  return err instanceof Error ? err : new Error(message)
+}
+
+function rethrowWithAliasHint(err: unknown): never {
+  throw _wrapTslibError(err)
+}
+
+/**
  * Lazily load echarts/core. Cached after first call.
  */
 export async function getCore(): Promise<typeof import('echarts/core')> {
   if (coreModule) return coreModule
   if (!corePromise) {
-    corePromise = import('echarts/core').then((m) => {
-      coreModule = m
-      return m
-    })
+    corePromise = import('echarts/core')
+      .then((m) => {
+        coreModule = m
+        return m
+      })
+      .catch((err) => {
+        // Clear cached rejection so a fixed alias can retry.
+        corePromise = null
+        rethrowWithAliasHint(err)
+      })
   }
   return corePromise
 }
