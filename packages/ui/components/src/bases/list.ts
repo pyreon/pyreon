@@ -1,14 +1,20 @@
 import { List } from '@pyreon/elements'
 import type { MaybeNull, ObjectValue, SimpleValue } from '@pyreon/elements'
 import rocketstyle from '@pyreon/rocketstyle'
+import type { MakeItResponsiveStyles } from '@pyreon/unistyle'
 import { makeItResponsive, styles, value } from '@pyreon/unistyle'
 
 // Re-export Iterator types needed for list type inference
 export type { MaybeNull, ObjectValue, SimpleValue }
 
-type ListStyles = Parameters<typeof makeItResponsive>[0]['styles']
+// Typed theme shape for the list-specific styles callback. After
+// `MakeItResponsiveStyles`'s default tightened from `any` to
+// `Partial<Record<string, unknown>>`, un-typed callers see `unknown` per
+// key — so arithmetic on `t.gap` / `t.indent` fails to typecheck. Pass an
+// explicit shape so the body can divide them without casts.
+type ListTheme = { gap?: number; indent?: number }
 
-const listStyles: ListStyles = ({ theme: t, css, rootSize }) => css`
+const listStyles: MakeItResponsiveStyles<ListTheme> = ({ theme: t, css, rootSize }) => css`
   ${t.gap && `margin: ${value(t.gap / 2, rootSize)} !important;`};
   ${t.indent && `padding: ${value(t.indent / 2, rootSize)} !important;`};
 `

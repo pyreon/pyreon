@@ -7,7 +7,16 @@ import type { ComponentFn } from '@pyreon/core'
 import type { BreakpointKeys, config, render } from '@pyreon/ui-core'
 import type { MakeItResponsiveStyles } from '@pyreon/unistyle'
 
-export type ResponsiveStylesCallback = MakeItResponsiveStyles
+// Each Element-layer styled component (Wrapper, Content, Text) supplies a
+// `ThemeProps` shape describing its per-breakpoint resolved theme. Pass it
+// as the generic argument so the callback's `theme` parameter is strictly
+// typed (`t.alignX === 'block'` etc.) without per-callback casts. The
+// default `Partial<Record<string, unknown>>` reflects the underlying
+// `MakeItResponsiveStyles` default — un-typed callers see `unknown` per
+// key, which forces narrowing.
+export type ResponsiveStylesCallback<
+  T extends Partial<Record<string, unknown>> = Partial<Record<string, unknown>>,
+> = MakeItResponsiveStyles<T>
 
 type ExtractNullableKeys<T> = {
   [P in keyof T as T[P] extends null | undefined ? never : P]: T[P]

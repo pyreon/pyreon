@@ -30,14 +30,20 @@ export const ALIGN_CONTENT_DIRECTION = {
   reverseRows: 'column-reverse',
 } as const
 
+// Each field is optional — the function body's first check
+// (`if (...!direction || !alignX || !alignY) return null`) already treats
+// any falsy/undefined input as a no-op. Aligning the type with the runtime
+// contract lets typed-theme callers (e.g. `MakeItResponsiveStyles<ThemeProps>`
+// where ThemeProps fields are optional to match the per-breakpoint resolved
+// scalar shape) pass values through without redundant casts.
 export type AlignContent = ({
   direction,
   alignX,
   alignY,
 }: {
-  direction: AlignContentDirectionKeys
-  alignX: AlignContentAlignXKeys
-  alignY: AlignContentAlignYKeys
+  direction?: AlignContentDirectionKeys | undefined
+  alignX?: AlignContentAlignXKeys | undefined
+  alignY?: AlignContentAlignYKeys | undefined
 }) => string | null
 
 const alignContent: AlignContent = (attrs) => {

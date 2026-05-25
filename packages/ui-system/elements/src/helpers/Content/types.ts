@@ -38,12 +38,17 @@ export interface StyledProps {
   $contentType: Props['contentType']
 }
 
-export type ThemeProps = Pick<Props, 'contentType'> & {
+// All fields optional — at the styles-callback boundary the responsive
+// engine passes per-breakpoint resolved scalars, and the Content component
+// forwards `own.X` props which are all `<X> | undefined`. The callback
+// body already guards each key with truthy / `&&` checks.
+export type ThemeProps = Partial<{
+  contentType: Props['contentType']
   parentDirection: ContentDirection
   direction: ContentDirection
   alignX: ContentAlignX
   alignY: ContentAlignY
-  equalCols?: ContentBoolean
-  gap?: ContentSimpleValue
-  extraStyles?: Css
-}
+  equalCols: ContentBoolean
+  gap: ContentSimpleValue
+  extraStyles: Css
+}>
