@@ -38,7 +38,8 @@
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
-    "@pyreon/typescript": "workspace:^"
+    "@pyreon/typescript": "workspace:^",
+    "@pyreon/vitest-config": "workspace:*"
   },
   "dependencies": {
     "@pyreon/reactivity": "workspace:^"

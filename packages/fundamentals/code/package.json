@@ -62,6 +62,7 @@
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
+    "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^4.1.4",
     "@vitus-labs/tools-lint": "^2.4.0"
   },

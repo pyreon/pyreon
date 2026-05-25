@@ -55,6 +55,7 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/vitest-config": "workspace:*",
     "zod": "^4.3.6"
   }
 }
