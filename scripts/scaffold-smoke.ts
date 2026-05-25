@@ -450,12 +450,28 @@ async function runPreviewSmoke(
 
 async function waitForUrl(read: () => string, timeoutMs: number): Promise<string> {
   const start = Date.now()
+  // Strip ANSI escape codes before matching — Vite's printUrls() emits
+  // them in TTY mode and CI's non-TTY context can intermix them in ways
+  // that fool a naive `Local:\s+` regex.
+  const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, '')
+  const localRe = /Local:\s*(http:\/\/[^\s]+)/
+  // Bare-URL fallback for environments where the "Local:" prefix
+  // doesn't land in the parsed buffer for some reason (line buffering,
+  // exotic terminal contexts) — any printed http://localhost URL will do.
+  const bareRe = /(http:\/\/(?:localhost|127\.0\.0\.1):\d+\b)/
   while (Date.now() - start < timeoutMs) {
-    const match = read().match(/Local:\s+(http:\/\/[^\s]+)/)
+    const clean = stripAnsi(read())
+    const match = clean.match(localRe) ?? clean.match(bareRe)
     if (match) return match[1]!.replace(/\/$/, '')
     await new Promise((r) => setTimeout(r, 100))
   }
-  throw new Error(`preview server did not print a URL within ${timeoutMs}ms`)
+  // Surface the captured output to make CI failures self-diagnosing.
+  // Trim to the last 2KB so the log isn't drowned.
+  const captured = read()
+  const tail = captured.length > 2048 ? captured.slice(-2048) : captured
+  throw new Error(
+    `preview server did not print a URL within ${timeoutMs}ms. Captured output (tail):\n${tail || '(empty)'}`,
+  )
 }
 
 interface CellResult {
