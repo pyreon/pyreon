@@ -1,0 +1,9 @@
+# SwiftPM build artifacts — never committed.
+#
+# `swift build` regenerates these per-machine from Package.swift + the
+# Sources/ tree. Same convention as @pyreon/native-runtime-swift.
+.build/
+.swiftpm/
+*.xcodeproj/
+Package.resolved
+DerivedData/

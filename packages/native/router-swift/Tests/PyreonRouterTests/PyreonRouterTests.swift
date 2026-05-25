@@ -1,0 +1,131 @@
+// Smoke tests for the PyreonRouter Swift package scaffold.
+//
+// These exercise the imperative router surface (push / replace / back /
+// reset / params) — pure-model tests, no SwiftUI rendering required.
+// Per the @pyreon/native-runtime-swift convention, View-level rendering
+// tests defer to per-feature PRs that introduce real route handling.
+
+import XCTest
+@testable import PyreonRouter
+
+@available(iOS 17.0, macOS 14.0, *)
+final class PyreonRouterTests: XCTestCase {
+    /// Fresh router starts with an empty path stack — NavigationStack's
+    /// root view is whatever the host passes as its content.
+    func testInitialStackIsEmpty() throws {
+        let router = PyreonRouter()
+        XCTAssertEqual(router.path, [])
+        XCTAssertEqual(router.currentPath, "/")
+    }
+
+    /// `push(_:)` appends to the stack and updates `currentPath`.
+    func testPushAppendsToStack() throws {
+        let router = PyreonRouter()
+        router.push("/users")
+        XCTAssertEqual(router.path, ["/users"])
+        XCTAssertEqual(router.currentPath, "/users")
+
+        router.push("/users/123")
+        XCTAssertEqual(router.path, ["/users", "/users/123"])
+        XCTAssertEqual(router.currentPath, "/users/123")
+    }
+
+    /// `replace(_:)` overwrites the top-of-stack. Used for redirects
+    /// where the source page shouldn't be in the back history (login
+    /// → dashboard transitions).
+    func testReplaceOverwritesTopOfStack() throws {
+        let router = PyreonRouter(initialPath: ["/login"])
+        router.replace("/dashboard")
+        XCTAssertEqual(router.path, ["/dashboard"])
+        XCTAssertEqual(router.currentPath, "/dashboard")
+    }
+
+    /// `replace(_:)` on an empty stack acts like `push(_:)` — the
+    /// host's root view is replaced by the new top-of-stack. Matches
+    /// the web side's behaviour.
+    func testReplaceOnEmptyStackPushes() throws {
+        let router = PyreonRouter()
+        router.replace("/home")
+        XCTAssertEqual(router.path, ["/home"])
+    }
+
+    /// `back()` pops the top-of-stack. NavigationStack handles the
+    /// animation; the model just shrinks.
+    func testBackPopsTopOfStack() throws {
+        let router = PyreonRouter(initialPath: ["/home", "/users", "/users/123"])
+        router.back()
+        XCTAssertEqual(router.path, ["/home", "/users"])
+        XCTAssertEqual(router.currentPath, "/users")
+    }
+
+    /// `back()` on an empty stack is a no-op — there's nothing to
+    /// pop back to (NavigationStack root view).
+    func testBackOnEmptyStackIsNoOp() throws {
+        let router = PyreonRouter()
+        router.back()
+        XCTAssertEqual(router.path, [])
+    }
+
+    /// `reset()` clears the entire stack — navigates back to the root
+    /// view. Used for "logout / forget everything" flows.
+    func testResetClearsStack() throws {
+        let router = PyreonRouter(initialPath: ["/a", "/b", "/c"])
+        router.reset()
+        XCTAssertEqual(router.path, [])
+        XCTAssertEqual(router.currentPath, "/")
+    }
+
+    /// Initial-path constructor accepts a pre-populated stack — useful
+    /// for deep-link restoration where the app boots into a non-root path.
+    func testInitialPathPopulatesStack() throws {
+        let router = PyreonRouter(initialPath: ["/users/123/posts"])
+        XCTAssertEqual(router.path, ["/users/123/posts"])
+        XCTAssertEqual(router.currentPath, "/users/123/posts")
+    }
+
+    /// `params` is mutable so the route-matching layer (Phase C2+)
+    /// can write to it as routes change. Phase C1 just verifies the
+    /// dictionary is reachable + readable.
+    func testParamsIsReadableAndWritable() throws {
+        let router = PyreonRouter()
+        XCTAssertEqual(router.params, [:])
+
+        router.params["id"] = "123"
+        XCTAssertEqual(router.params["id"], "123")
+    }
+
+    /// `useNavigate(router:)` returns a closure that wraps `push(_:)`.
+    /// Equivalent to the web side's `const navigate = useNavigate()`.
+    func testUseNavigateClosure() throws {
+        let router = PyreonRouter()
+        let navigate = useNavigate(router: router)
+        navigate("/profile")
+        XCTAssertEqual(router.currentPath, "/profile")
+    }
+
+    /// `useNavigate(router: nil)` returns a no-op closure (no router
+    /// in scope). Matches the web side's safe-no-op behaviour when a
+    /// `useNavigate()` call escapes its provider tree.
+    func testUseNavigateWithoutRouterIsNoOp() throws {
+        let navigate = useNavigate(router: nil)
+        navigate("/anywhere") // Should not crash.
+    }
+
+    /// `useParams(router:)` reads the active router's `params` dict.
+    /// Returns the live dictionary, not a snapshot — so updates to
+    /// `router.params` are visible.
+    func testUseParamsReadsRouter() throws {
+        let router = PyreonRouter()
+        router.params = ["id": "42", "filter": "active"]
+        let params = useParams(router: router)
+        XCTAssertEqual(params["id"], "42")
+        XCTAssertEqual(params["filter"], "active")
+    }
+
+    /// `useParams(router: nil)` returns empty dict — defensive default
+    /// for missing-provider case.
+    func testUseParamsWithoutRouterIsEmpty() throws {
+        let params = useParams(router: nil)
+        XCTAssertEqual(params, [:])
+    }
+}

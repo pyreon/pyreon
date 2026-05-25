@@ -1,0 +1,13 @@
+{
+  "name": "@pyreon/native-router-swift",
+  "version": "0.0.0",
+  "private": true,
+  "description": "PRIVATE / EXPERIMENTAL — SwiftPM package implementing @pyreon/router's API surface (RouterProvider / RouterView / Link / useNavigate / useParams) on top of SwiftUI's NavigationStack. Phase C1 of the PMTC multiplatform router story.",
+  "license": "MIT",
+  "scripts": {
+    "build": "if [ \"$(uname -s)\" = Darwin ] && command -v swift >/dev/null 2>&1; then swift build; else echo '[native-router-swift] non-Darwin or no swift on PATH; skipping build (SwiftUI is Darwin-only)'; fi",
+    "test": "if [ \"$(uname -s)\" = Darwin ] && command -v swift >/dev/null 2>&1; then swift test; else echo '[native-router-swift] non-Darwin or no swift on PATH; skipping tests (SwiftUI is Darwin-only)'; fi",
+    "lint": "echo '[native-router-swift] SwiftLint not yet integrated; skipping lint'",
+    "typecheck": "if [ \"$(uname -s)\" = Darwin ] && command -v swift >/dev/null 2>&1; then swift build; else echo '[native-router-swift] non-Darwin or no swift on PATH; skipping typecheck (SwiftUI is Darwin-only)'; fi"
+  }
+}
