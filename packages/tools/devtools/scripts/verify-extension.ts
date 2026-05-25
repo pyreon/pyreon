@@ -228,12 +228,19 @@ const reactiveResult = await page.evaluate(async () => {
       reactive: {
         activate: () => void
         deactivate: () => void
-        getGraph: () => { nodes: unknown[]; edges: unknown[] }
+        getGraph: () => {
+          nodes: Array<{ loc?: { file: string; line: number; col: number } }>
+          edges: unknown[]
+        }
         getFires: () => unknown[]
       }
     }
   }).__PYREON_DEVTOOLS__
 
+  // ACTIVATE AFTER MOUNT — same workflow as a real user opening the
+  // devtools panel after the app already finished mounting. This is the
+  // bug shape PR #913 fixed (graph empty pre-fix) and PR #918 extended
+  // (loc populated for pre-existing signals post-fix).
   dt.reactive.activate()
   const initial = dt.reactive.getGraph()
 
@@ -243,12 +250,19 @@ const reactiveResult = await page.evaluate(async () => {
   const afterDelay = dt.reactive.getGraph()
   const fires = dt.reactive.getFires()
 
+  // Locked at FIRST READ of `getGraph()` — `_resolveLoc` parses the
+  // deferred Error on first access and memoizes onto rec.loc. Count
+  // post-resolution to assert PR #918's deferred-parse contract holds
+  // end-to-end against a real-app shape.
+  const withLoc = afterDelay.nodes.filter((n) => n.loc).length
+
   dt.reactive.deactivate()
   return {
     initialNodeCount: initial.nodes.length,
     initialEdgeCount: initial.edges.length,
     afterDelayNodeCount: afterDelay.nodes.length,
     afterDelayEdgeCount: afterDelay.edges.length,
+    nodesWithLoc: withLoc,
     fireCount: fires.length,
     sampleFire: fires[0] ?? null,
   }
@@ -259,6 +273,10 @@ info(`  after 500ms: ${reactiveResult.afterDelayNodeCount} nodes, ${reactiveResu
 info(`  fires captured: ${reactiveResult.fireCount}`)
 if (reactiveResult.sampleFire) {
   info(`  sample fire: ${JSON.stringify(reactiveResult.sampleFire).slice(0, 120)}`)
+}
+if (reactiveResult.afterDelayNodeCount > 0) {
+  const pct = (reactiveResult.nodesWithLoc / reactiveResult.afterDelayNodeCount) * 100
+  info(`  nodes with loc resolved: ${reactiveResult.nodesWithLoc}/${reactiveResult.afterDelayNodeCount} (${pct.toFixed(1)}%)`)
 }
 
 // Hard assertion (closes the bug class behind PR #900's first false-positive
@@ -275,6 +293,30 @@ if (reactiveResult.afterDelayNodeCount > 0) {
       'Always-on registration in __DEV__ should expose pre-existing signals as soon as activate() fires. ' +
       'Check `_rdRegister` is no longer gated on `!_active`, and that `@pyreon/reactivity`\'s lib/ is freshly built.',
   )
+}
+
+// LPIH coverage assertion (closes the post-#918 caveat at the CI-gate
+// level): the deferred-parse design means `_captureCallerLocation` is
+// always-on in __DEV__, so signals/computeds/effects created BEFORE
+// activate() still get loc populated when `getReactiveGraph()` is read.
+// Threshold is 50% (not 100%) because some test/fixture code paths may
+// fall outside both the build-time injection AND a parseable stack
+// (synthetic Function constructors, eval frames, etc.). Real-app probes
+// against perf-dashboard show 100% coverage; the 50% floor gives
+// real-world tolerance while still catching a regression where capture
+// reverts to the `_active`-gated form (in which case post-mount-activate
+// returns 0% loc coverage and this fails loud).
+if (reactiveResult.afterDelayNodeCount > 0) {
+  const pct = (reactiveResult.nodesWithLoc / reactiveResult.afterDelayNodeCount) * 100
+  if (pct >= 50) {
+    pass(`LPIH loc resolved for pre-existing signals: ${reactiveResult.nodesWithLoc}/${reactiveResult.afterDelayNodeCount} (${pct.toFixed(1)}%)`)
+  } else {
+    fail(
+      `  Only ${pct.toFixed(1)}% of pre-existing signals have loc populated — expected ≥50%. ` +
+        'This is the LPIH-caveat regression from PR #918. Check `_captureCallerLocation` is ' +
+        'no longer gated on `!_active`, and that `_resolveLoc(rec)` is called from `getReactiveGraph()`.',
+    )
+  }
 }
 
 // ── 5. Component tree ──────────────────────────────────────────────────────
