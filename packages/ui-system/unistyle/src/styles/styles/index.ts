@@ -21,7 +21,7 @@ export type Styles = ({
   theme: InnerTheme
   css: Css
   rootSize?: number | undefined
-  globalTheme?: Record<string, any> | undefined
+  globalTheme?: Record<string, unknown> | undefined
 }) => ReturnType<Css>
 
 // ─── Tier 1: Key → descriptor-index lookup ──────────────────────────────────

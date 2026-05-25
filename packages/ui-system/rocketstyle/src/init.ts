@@ -71,13 +71,20 @@ const validateInit = (name: string, component: unknown, dimensions: Dimensions) 
   }
 }
 
+// The impl-level `component: unknown` and `rocketComponent as unknown as ...`
+// casts bridge the outer `Rocketstyle` generic contract (5 type-parameters,
+// captures `C extends ElementType`) to the internal `rocketComponent`'s
+// `Configuration<C, D>` shape. The outer cast on line 93 (`as unknown as
+// Rocketstyle`) is the authoritative type; the impl just has to be runtime-
+// correct. Previously this used `any` here, which silently exempted these
+// call sites from `noImplicitAny` audits — `unknown` is more honest.
 const rocketstyle = (({ dimensions = defaultDimensions, useBooleans = false } = {}) =>
-  ({ name, component }: { name: string; component: any }) => {
+  ({ name, component }: { name: string; component: unknown }) => {
     if (process.env.NODE_ENV !== 'production') {
       validateInit(name, component, dimensions)
     }
 
-    return (rocketComponent as any)({
+    return (rocketComponent as unknown as (opts: Record<string, unknown>) => unknown)({
       name,
       component,
       useBooleans,

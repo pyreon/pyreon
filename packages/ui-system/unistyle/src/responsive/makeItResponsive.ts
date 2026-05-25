@@ -47,6 +47,13 @@ type Theme = Partial<{
 }> &
   CustomTheme
 
+// The generic default stays `any` (not `unknown`) to preserve back-compat
+// for callers that use the alias without specifying a theme type — e.g.
+// elements' `ResponsiveStylesCallback = MakeItResponsiveStyles`, which
+// then destructures `t.direction`, `t.alignX`, etc. Tightening the default
+// to `unknown` would force casts at every key access in those callbacks.
+// Callers that DO supply a generic (coolgrid's `MakeItResponsiveStyles<
+// Pick<StyledTypes, 'width' | 'extraStyles'>>`) get the full strict shape.
 export type MakeItResponsiveStyles<T extends Partial<Record<string, any>> = any> = ({
   theme,
   css,
@@ -56,8 +63,12 @@ export type MakeItResponsiveStyles<T extends Partial<Record<string, any>> = any>
   theme: T
   css: Css
   rootSize?: number | undefined
-  globalTheme?: Record<string, any> | undefined
-}) => ReturnType<typeof css> | string | any
+  globalTheme?: Record<string, unknown> | undefined
+  // The trailing `| any` collapsed the whole union to `any`. Every styles
+  // callback in the system returns either a `cssFn` template result
+  // (`ReturnType<typeof css>`) or an empty string for "no styles" — the
+  // tightened union captures both shapes exactly.
+}) => ReturnType<typeof css> | string
 
 export type MakeItResponsive = ({
   theme,
@@ -68,10 +79,16 @@ export type MakeItResponsive = ({
 }: {
   theme?: CustomTheme
   key?: string
-  css: any
+  css: Css
   styles: MakeItResponsiveStyles
   normalize?: boolean
-}) => (props: { theme?: Theme; [prop: string]: any }) => any
+  // Inner props (the `key`-indexed read) carries arbitrary entries the
+  // outer styled component spreads — `unknown` is honest at this boundary
+  // (callers narrow via the `key` lookup at line 112). The function body
+  // returns `''`, a `css`-tagged result, a memoized `unknown[]` (cached
+  // per-breakpoint render array), or a fresh `unknown[]` from the
+  // `bps.map(...)` path.
+}) => (props: { theme?: Theme; [prop: string]: unknown }) => ReturnType<Css> | string | unknown[]
 
 /**
  * Per-internal-theme cache:
@@ -109,7 +126,13 @@ const themeCache = new WeakMap<object, ThemeCacheEntry>()
 const makeItResponsive: MakeItResponsive =
   ({ theme: customTheme, key = '', css, styles, normalize = true }) =>
   ({ theme = {}, ...props }) => {
-    const internalTheme = customTheme || props[key]
+    // `props[key]` carries a styled-component-injected theme prop whose
+    // shape is determined by the styles callback's generic — opaque from
+    // here. The outer `MakeItResponsive` props index signature is
+    // `[prop: string]: unknown` (tightened from `any`); cast to the shape
+    // the downstream pipeline expects so the rest of the body retains
+    // strict typing without per-call casts.
+    const internalTheme = (customTheme || props[key]) as Record<string, unknown>
 
     // if no theme is defined, return empty object
     if (isEmpty(internalTheme)) return ''

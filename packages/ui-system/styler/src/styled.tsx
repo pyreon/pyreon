@@ -15,7 +15,7 @@
  * through without transformation, so `&:hover`, `&::before`, etc. work
  * as-is in browsers supporting CSS Nesting (all modern browsers).
  */
-import type { ComponentFn, VNode } from '@pyreon/core'
+import type { ComponentFn, Ref, VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { computed, renderEffect, runUntracked } from '@pyreon/reactivity'
 import { buildProps } from './forward'
@@ -233,8 +233,13 @@ const createStyledComponent = (
     const isReactiveRS = typeof $rs === 'function'
     const isReactiveState = typeof $rsState === 'function'
 
-    // Helper: resolve CSS + cache result
-    const doResolve = (rs: any, rsState: any, t: any): string => {
+    // Helper: resolve CSS + cache result.
+    // `rs` and `rsState` are opaque from styler's perspective (the styler can't
+    // import rocketstyle types — that would be a circular dep). The body
+    // narrows them via `typeof === 'object'` guards before using as WeakMap
+    // keys. `t` is the resolved theme object — opaque shape from styler's
+    // perspective (consumers augment `DefaultTheme` via declaration merging).
+    const doResolve = (rs: unknown, rsState: unknown, t: unknown): string => {
       // Tier 2 cache: skip resolve if same object identity seen before
       if (rs && typeof rs === 'object' && rsState && typeof rsState === 'object') {
         const inner = classCache.get(rs)
@@ -332,7 +337,7 @@ const createStyledComponent = (
         el = node
         if (originalRef) {
           if (typeof originalRef === 'function') originalRef(node)
-          else if (originalRef && typeof originalRef === 'object') (originalRef as any).current = node
+          else if (typeof originalRef === 'object') (originalRef as Ref<Element>).current = node
         }
       }
 
@@ -377,7 +382,7 @@ const styledFactory = (tag: Tag, options?: StyledOptions) => {
  * - `styled.div` → shorthand via Proxy (no options)
  */
 // Cache template functions per tag to avoid closure allocation on every Proxy get
-const proxyCache = new Map<string, (...args: any[]) => any>()
+const proxyCache = new Map<string, TagTemplateFn>()
 
 /**
  * Generic tagged template function returned by `styled(tag)` and `styled.tag`.
@@ -494,8 +499,13 @@ export const styled: StyledFunction = new Proxy(styledFactory as any, {
     // styled.div`...`, styled.span`...`, etc.
     let fn = proxyCache.get(prop)
     if (!fn) {
-      fn = (strings: TemplateStringsArray, ...values: Interpolation[]) =>
-        createStyledComponent(prop, strings, values)
+      // The arrow's `Interpolation[]` arg shape can't be expressed as the
+      // generic `<P>(strings, ...values: Interpolation<P>[])` of TagTemplateFn
+      // (no generic arrow inside a Proxy handler), but the call signature is
+      // structurally compatible — the inner `createStyledComponent` accepts
+      // any-P interpolations. Cast bridges the variance at the assignment.
+      fn = ((strings: TemplateStringsArray, ...values: Interpolation[]) =>
+        createStyledComponent(prop, strings, values)) as TagTemplateFn
       proxyCache.set(prop, fn)
     }
     return fn
