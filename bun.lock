@@ -1293,6 +1293,10 @@
       "name": "@pyreon/native-router-kotlin",
       "version": "0.0.0",
     },
+    "packages/native/router-swift": {
+      "name": "@pyreon/native-router-swift",
+      "version": "0.0.0",
+    },
     "packages/native/runtime-kotlin": {
       "name": "@pyreon/native-runtime-kotlin",
       "version": "0.0.0",
@@ -2501,6 +2505,8 @@
     "@pyreon/native-compiler": ["@pyreon/native-compiler@workspace:packages/native/compiler"],
 
     "@pyreon/native-router-kotlin": ["@pyreon/native-router-kotlin@workspace:packages/native/router-kotlin"],
+
+    "@pyreon/native-router-swift": ["@pyreon/native-router-swift@workspace:packages/native/router-swift"],
 
     "@pyreon/native-runtime-kotlin": ["@pyreon/native-runtime-kotlin@workspace:packages/native/runtime-kotlin"],
 
