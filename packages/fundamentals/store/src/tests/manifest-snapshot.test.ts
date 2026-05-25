@@ -82,14 +82,20 @@ describe('gen-docs — store snapshot', () => {
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
     // Enriched to MCP density (manifest-depth PR): defineStore,
-    // StoreApi (new — was a get_api 404 despite 3 seeAlso refs),
-    // addStorePlugin, setStoreRegistryProvider, resetStore,
-    // resetAllStores = 6.
-    expect(Object.keys(record).length).toBe(6)
+    // defineStore + defineStore (schema mode) + SchemaStoreApi +
+    // SchemaStoreConfig + SchemaStoreContext + StoreApi + addStorePlugin +
+    // setStoreRegistryProvider + resetStore + resetAllStores = 10.
+    expect(Object.keys(record).length).toBe(10)
     expect(record['store/defineStore']!.notes).toContain('singleton')
     expect(record['store/defineStore']!.mistakes?.split('\n').length).toBe(7)
     // The previously-missing StoreApi entry now resolves (no 404).
     expect(record['store/StoreApi']).toBeDefined()
     expect(record['store/StoreApi']!.mistakes).toContain('SILENT no-op')
+    // Schema-mode entries
+    expect(record['store/defineStore (schema mode)']).toBeDefined()
+    expect(record['store/defineStore (schema mode)']!.notes).toContain('Schema-driven')
+    expect(record['store/SchemaStoreApi']).toBeDefined()
+    expect(record['store/SchemaStoreConfig']).toBeDefined()
+    expect(record['store/SchemaStoreContext']).toBeDefined()
   })
 })

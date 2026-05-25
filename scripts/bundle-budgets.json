@@ -41,7 +41,7 @@
   "@pyreon/solid-compat": 4864,
   "@pyreon/state-tree": 2048,
   "@pyreon/storage": 3328,
-  "@pyreon/store": 1792,
+  "@pyreon/store": 3584,
   "@pyreon/storybook": 256,
   "@pyreon/styler": 6912,
   "@pyreon/svelte-compat": 2816,

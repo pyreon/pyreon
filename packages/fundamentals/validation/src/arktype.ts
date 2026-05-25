@@ -1,5 +1,5 @@
 import type { SchemaValidateFn, ValidateFn, ValidationError } from '@pyreon/form'
-import type { TypedSchemaAdapter, ValidationIssue } from './types'
+import type { ParseResult, TypedSchemaAdapter, ValidationIssue } from './types'
 import { issuesToRecord } from './utils'
 
 /**
@@ -72,9 +72,27 @@ export function arktypeSchema<TValues extends Record<string, unknown>>(
     }
   }
 
+  // Sync parse path for @pyreon/store's schema-driven defineStore.
+  // ArkType invocation IS already synchronous — its non-error result IS
+  // the coerced output value. Same try/catch defensive pattern as
+  // validator above.
+  const parse = (value: unknown): ParseResult<TValues> => {
+    try {
+      const result = schema(value)
+      if (!isArkErrors(result)) return { ok: true, value: result as TValues }
+      return { ok: false, issues: arkIssuesToGeneric(result) }
+    } catch (err) {
+      return {
+        ok: false,
+        issues: [{ path: '', message: err instanceof Error ? err.message : String(err) }],
+      }
+    }
+  }
+
   return {
     _infer: undefined as any,
     validator,
+    parse,
   }
 }
 
