@@ -156,7 +156,18 @@ export function createI18n(options: I18nOptions): I18nInstance {
   if (options.messages) {
     for (const [loc, dict] of Object.entries(options.messages)) {
       const nsMap = new Map<string, TranslationDictionary>()
-      nsMap.set(defaultNamespace, dict)
+      // Apply the same flat-key expansion that `addMessages` uses, so
+      // the initial `messages` option supports flat `'nav.top': 'top'`
+      // keys consistently with later `addMessages` calls. Without this,
+      // `createI18n({ messages: { en: { 'nav.top': 'top' } } })` would
+      // store the dot-keyed string verbatim and `i18n.t('nav.top')`
+      // would split on `.`, navigate `dict['nav']` (undefined), and
+      // fall back to returning the key as-is. The bug was invisible
+      // because `addMessages` does this conversion (line 315) — so any
+      // user passing flat keys via the runtime API worked, but anyone
+      // using the canonical `createI18n` initialization saw "key
+      // returned as fallback" mystery behavior with no warning.
+      nsMap.set(defaultNamespace, nestFlatKeys(dict))
       store.set(loc, nsMap)
     }
   }

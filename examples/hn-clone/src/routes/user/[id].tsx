@@ -12,9 +12,7 @@ export default function UserPage() {
     queryFn: () => fetchUser(id()),
   }))
 
-  useHead({
-    title: () => `${id()} | Hacker News (Pyreon)`,
-  })
+  useHead(() => ({ title: `${id()} | Hacker News (Pyreon)` }))
 
   return (
     <section class="user-detail">

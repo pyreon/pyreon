@@ -3,8 +3,17 @@ import zero from '@pyreon/zero/server'
 import { nodeAdapter } from '@pyreon/zero/server'
 import { fontPlugin } from '@pyreon/zero/font'
 import { seoPlugin } from '@pyreon/zero/seo'
+import { chartsViteAlias } from '@pyreon/charts/vite'
 
 export default {
+  // @pyreon/charts requires tslib aliased to its ESM build (CLAUDE.md
+  // documents this — ECharts' tslib import destructures named helpers
+  // from a CJS factory whose top-level vars aren't on the default
+  // export, so without the alias `__extends` resolves to `undefined`
+  // and the page throws on first chart mount).
+  resolve: {
+    alias: { ...chartsViteAlias() },
+  },
   plugins: [
     pyreon(),
     zero({ mode: 'ssg', adapter: nodeAdapter() }),
