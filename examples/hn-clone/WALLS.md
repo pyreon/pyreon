@@ -332,6 +332,154 @@ architectural friction I'd flag.
 
 ---
 
+---
+
+### W9 — `createI18n({ messages })` silently drops flat dotted keys
+
+**Severity**: HIGH (silent — every `t('nav.top')` returned its key)
+**Phase**: Extension audit (using more libraries)
+**Hit at**: Added `useI18n()` to my layout, defined messages with flat
+dotted keys (`'nav.top'`, `'search.results_one'`) using the canonical
+`createI18n({ locale, messages: { en: {...} } })` shape. EVERY `t('nav.top')`
+call returned `'nav.top'` literally — no warnings, no errors, no missing-key
+report.
+
+**Root cause** (after digging into source): `addMessages('en', flatDict)`
+runs `nestFlatKeys` to expand `{ 'nav.top': 'top' }` → `{ nav: { top: 'top' } }`
+so `t('nav.top')` can split on `.` and walk in. But the INITIAL-messages
+loop in `createI18n` stored the dict VERBATIM without nesting. So:
+
+- `createI18n({ messages: { en: { 'nav.top': 'top' } } })` → key stored as
+  `messages.en.default.["nav.top"]` (NOT nested).
+- `t('nav.top')` → splits to `['nav', 'top']` → looks for `messages.en.default.nav.top`
+  → not found → returns key verbatim.
+
+The bug shipped from package inception. The reason it stayed hidden: every
+existing test used either `addMessages()` (the runtime API, which DID nest)
+or nested-object initial messages (`{ en: { nav: { top: 'top' } } }`) —
+nobody hit the canonical "flat keys at construction" shape.
+
+**Fix shipped**: `packages/fundamentals/i18n/src/create-i18n.ts` line 162
+now applies `nestFlatKeys(dict)` before storing. 4 regression tests added
+to `tests/hardening.test.ts` (F6 describe block). 159/159 i18n tests pass.
+
+**General lesson**: documented API conventions (flat dotted keys + plural
+`_one`/`_other` suffixes) need contract tests against the documented
+initialization shapes, not just the runtime APIs that fan in to the same
+internal state.
+
+---
+
+### W10 — `validateOn: 'blur'` with a schema doesn't validate on blur
+
+**Severity**: MEDIUM (works on submit, but the option name lies)
+**Phase**: Building the /submit form
+**Hit at**: `useForm({ schema: zodSchema(s), validateOn: 'blur' })` — typed
+"xy" into a `min(8)` field, blurred. NO error appeared. The schema only ran
+on submit click.
+
+**Root cause** (after reading `use-form.ts`): `setTouched()` calls
+`validateField(value)` which only invokes the per-field `validators?.[name]`
+function — NOT the form-level `schema`. The schema fires exclusively in
+`validate()`, which is called from `handleSubmit()`.
+
+So a schema-only form with `validateOn: 'blur'` is effectively `'submit'`-only.
+To get blur-time validation users must either:
+- Provide per-field validators (manually extract from schema), OR
+- Wrap each field's `onBlur` with `setTouched() + form.validate()` (validates
+  the entire form, not just the blurred field).
+
+**Fix suggestions**:
+- `useForm` could extract per-field validators from a schema adapter when the
+  adapter exposes them (Zod's `schema.shape[name]` works, Valibot's
+  `entries[name]` works).
+- The `validateOn` JSDoc should document the schema-vs-validators distinction.
+- A dev-mode warning when `validateOn` is set but neither per-field validators
+  nor schema-with-per-field-extraction exists would help users notice.
+
+---
+
+### W11 — Ternary short-circuit silently breaks signal tracking
+
+**Severity**: MEDIUM (fine-grained reactivity property; affects any conditional read)
+**Phase**: Building the /submit field-error display
+**Hit at**: `{() => fields.title.touched() ? fields.title.error() ?? '' : ''}`
+— after submit click, `touched` was true and `error` was set to a real string
+(verified via `window.__form`), but the DOM `<div class="field-error">` stayed
+empty.
+
+**Root cause**: Pyreon's reactive accessors track signals that are READ during
+the run. On first render, `touched` is false, so the ternary short-circuits
+to `''` and `fields.title.error()` is NEVER called → never subscribed. When
+`touched` flips to true, the effect re-runs and now reads `error()` — but at
+that moment, the schema validator is still pending; `error` is still
+`undefined`. The validator's eventual `error.set('...')` doesn't trigger a
+re-run because the effect didn't actually subscribe to `error` until the run
+where it was first read.
+
+In a TYPICAL flow (user types → blurs → validates synchronously), the effect
+runs through both branches before the error settles, so tracking happens
+implicitly. With ASYNC schema validation + a submit that touches all fields
+in a batch, the timing fails.
+
+**Fix in my code**: read both signals into consts BEFORE the ternary, so the
+effect subscribes to both unconditionally:
+```ts
+{() => {
+  const touched = fields.title.touched()
+  const err = fields.title.error()
+  return touched ? err ?? '' : ''
+}}
+```
+
+This is documented behavior (matches Solid, Preact-signals) but it's a
+recurring footgun. Real-world it cost me ~15 minutes of "the signal IS set,
+why isn't the DOM updating" debugging.
+
+**Fix suggestions**:
+- Could be detected by the Reactivity Lens (`@pyreon/compiler:analyzeReactivity`)
+  — flag ternary expressions where one branch reads a signal that's NOT read
+  in the other branch.
+- A lint rule `pyreon/no-conditional-signal-read-in-accessor` could fire on
+  the AST shape `() => cond ? sig() : noSigCall`.
+- Docs: a dedicated "Conditional reactivity" subsection in
+  `docs/docs/reactivity.md` with this exact example.
+
+---
+
+### W12 — `@pyreon/charts` consumer apps need tslib alias (documented but easy to miss)
+
+**Severity**: LOW (documented in CLAUDE.md, but invisible until first chart mounts)
+**Phase**: Building /stats page
+**Hit at**: Used `<Chart options={() => ...} />` from `@pyreon/charts`. 4
+chart cards rendered, but 0 `<canvas>` elements inside. No error thrown,
+no warning logged.
+
+**Root cause** (after re-reading CLAUDE.md): ECharts imports `tslib` for
+TypeScript helpers (`__extends`, etc.). tslib's CJS factory destructures named
+helpers from `__toESM(require_tslib())`'s default — which fails because the
+helpers are top-level vars, not on the default export. ECharts then throws
+`TypeError: Cannot destructure property "__extends"` on first chart mount,
+but Pyreon's error boundary or the chart wrapper swallows it (related to W4).
+
+**Fix in my code**: added `chartsViteAlias()` to `vite.config.ts`:
+```ts
+import { chartsViteAlias } from '@pyreon/charts/vite'
+export default {
+  resolve: { alias: { ...chartsViteAlias() } },
+  plugins: [pyreon(), zero(...)],
+}
+```
+
+**Fix suggestions**:
+- `@pyreon/charts` could throw a CLEAR error on first chart mount when the
+  alias isn't configured (`if (typeof __extends === 'undefined') throw new Error('[@pyreon/charts] tslib alias missing — add chartsViteAlias() to vite.config.ts')`).
+- `pyreon doctor` could detect `@pyreon/charts` in deps + missing tslib alias
+  in vite config and emit a warning.
+- The scaffold's `--features charts` could auto-write the alias into vite.config.
+
+---
+
 ## Summary
 
 After building this HN clone in roughly 2 hours, here's the honest picture:
@@ -357,23 +505,34 @@ After building this HN clone in roughly 2 hours, here's the honest picture:
 ### What was friction (high-priority fixes)
 
 1. **W4 — error boundary swallows actual errors** (BLOCKER). Single
-   biggest DX hit. Dev-mode should expose the actual stack.
-2. **W1 — scaffold dangling refs + silent SSR failure** (HIGH). First
+   biggest DX hit. Dev-mode should expose the actual stack. **FIXED** in
+   the PR that produced this WALLS doc (`_error.tsx` template now exposes
+   the error in DEV).
+2. **W9 — `createI18n({ messages })` drops flat keys** (HIGH). Every
+   `t('nav.top')` returned its key verbatim until the source was fixed.
+   **FIXED** in `packages/fundamentals/i18n/src/create-i18n.ts`.
+3. **W1 — scaffold dangling refs + silent SSR failure** (HIGH). First
    `dev` returns empty body with no error logged anywhere.
-3. **W8 — SSG + useQuery = shell-only prerender** (HIGH). Content sites
+4. **W8 — SSG + useQuery = shell-only prerender** (HIGH). Content sites
    silently ship "Loading…" to crawlers.
-4. **W2 — `mode: ssg` in dev is client-only, no warning** (HIGH). Cost
+5. **W2 — `mode: ssg` in dev is client-only, no warning** (HIGH). Cost
    me 25 minutes thinking SSR was broken.
 
 ### What was friction (medium / nice-to-have)
 
-5. **W5 — `useTypedSearchParams` API shape** (MEDIUM). Tuple-returning
+6. **W10 — `validateOn: 'blur'` with schema doesn't validate on blur**
+   (MEDIUM). The option name lies; schema fires only on submit.
+7. **W11 — ternary short-circuit hides signal tracking** (MEDIUM).
+   Recurring fine-grained-reactivity footgun, worth a lint rule.
+8. **W5 — `useTypedSearchParams` API shape** (MEDIUM). Tuple-returning
    API in a signal-first framework feels alien.
-6. **W6 — framework warns about its OWN code** (LOW). Erodes warning
+9. **W6 — framework warns about its OWN code** (LOW). Erodes warning
    signal-to-noise.
-7. **W7 — SSG build output duplication + confusing log** (MEDIUM).
-8. **W3 — file deletions need restart** (LOW). Common Vite-level issue.
-9. **W0 — bootstrap silent** (LOW). One-time.
+10. **W7 — SSG build output duplication + confusing log** (MEDIUM).
+11. **W3 — file deletions need restart** (LOW). Common Vite-level issue.
+12. **W0 — bootstrap silent** (LOW). One-time.
+13. **W12 — `@pyreon/charts` needs tslib alias** (LOW). Documented,
+    but invisible without the doc; should fail loud.
 
 ### Architectural recommendations (if T4.2 informs the roadmap)
 
