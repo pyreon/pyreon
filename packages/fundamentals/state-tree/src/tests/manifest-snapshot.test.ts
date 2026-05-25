@@ -74,13 +74,20 @@ describe('gen-docs — state-tree snapshot', () => {
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    // model + ModelDefinition + getSnapshot + applySnapshot + onPatch + applyPatch + addMiddleware = 7
-    expect(Object.keys(record).length).toBe(7)
+    // model + SchemaModelHelpers + DeepPartial + ModelDefinition + getSnapshot
+    // + applySnapshot + onPatch + applyPatch + addMiddleware = 9
+    expect(Object.keys(record).length).toBe(9)
     expect(record['state-tree/model']!.notes).toContain('chainable builder')
     expect(record['state-tree/model']!.notes).toContain('schema')
     expect(record['state-tree/model']!.notes).toContain('async')
     expect(record['state-tree/model']!.mistakes?.split('\n').length).toBe(6)
     expect(record['state-tree/ModelDefinition']).toBeDefined()
     expect(record['state-tree/ModelDefinition']!.notes).toContain('chainable')
+    expect(record['state-tree/SchemaModelHelpers']).toBeDefined()
+    expect(record['state-tree/SchemaModelHelpers']!.notes).toContain('five')
+    expect(record['state-tree/SchemaModelHelpers']!.example).toContain('$deepPatch')
+    expect(record['state-tree/SchemaModelHelpers']!.example).toContain('$update')
+    expect(record['state-tree/DeepPartial']).toBeDefined()
+    expect(record['state-tree/DeepPartial']!.notes).toContain('Recursive partial')
   })
 })

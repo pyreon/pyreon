@@ -29,16 +29,66 @@ export type StateSignals<TState extends StateShape> = {
 // ─── Schema-mode mutation helpers ────────────────────────────────────────────
 
 /**
+ * Recursive partial — every property optional at every depth. Arrays
+ * and class instances replace (not merge), only plain objects deep-merge.
+ * Parallel to `@pyreon/store`'s `DeepPartial`.
+ */
+export type DeepPartial<T> = T extends ReadonlyArray<unknown>
+  ? T
+  : T extends object
+    ? { readonly [K in keyof T]?: DeepPartial<T[K]> }
+    : T
+
+/**
  * Validated mutation helpers exposed on schema-mode model instances and on
  * `self` inside schema-mode action / view factories. `$`-prefixed to avoid
- * colliding with user schema field names — `name`, `set`, `patch`, `reset`
- * are all plausible field names in a real schema.
+ * colliding with user schema field names — `name`, `set`, `patch`, `reset`,
+ * `update` are all plausible field names in a real schema.
+ *
+ * Four helpers covering the canonical mutation shapes (parallel to
+ * `@pyreon/store`'s `SchemaStoreApi`):
+ *
+ * - **`$set(full)`** — replace the whole state atomically. Requires the
+ *   full schema shape; throws on shape mismatch.
+ * - **`$patch(partial)`** — shallow merge of top-level fields. Sibling
+ *   keys at depth ≥ 2 inside an object are NOT preserved (the whole
+ *   object is replaced).
+ * - **`$deepPatch(partial)`** — recursive merge of nested plain objects.
+ *   Arrays and class instances (Date, Map, Set) REPLACE; only plain
+ *   objects recurse. Use this when you want to update a nested key
+ *   without spreading the parent.
+ * - **`$update(key, fn)`** — transform a single top-level field via
+ *   callback. Covers add / remove / filter / map / object-key-delete
+ *   patterns in one method.
+ * - **`$reset()`** — restore every signal to the parsed-initial value
+ *   captured at `.create()` time.
+ *
+ * All four validate the merged result via schema before writing to
+ * signals (or invoke `onValidationError` if configured). Direct signal
+ * writes (`self.field.set(v)`) bypass validation — the documented
+ * escape hatch.
  */
 export interface SchemaModelHelpers<TState extends StateShape> {
   /** Replace the whole state. Validates via schema; throws on failure. */
   readonly $set: (next: TState) => void
   /** Shallow partial merge. Validates merged result via schema; throws on failure. */
   readonly $patch: (partial: Partial<TState>) => void
+  /**
+   * Recursively merge a partial state. Plain objects recurse; arrays /
+   * class instances REPLACE. Validates merged result via schema.
+   */
+  readonly $deepPatch: (partial: DeepPartial<TState>) => void
+  /**
+   * Transform a single top-level field via callback. Validates the
+   * resulting merged state via schema. Key is constrained to `keyof
+   * TState & string`; transformer is `(current: unknown) => unknown`
+   * (cast at call site — schema-inferred narrowing is a future
+   * refinement, parallel to `@pyreon/store`'s `update`).
+   */
+  readonly $update: <K extends keyof TState & string>(
+    key: K,
+    transformer: (current: unknown) => unknown,
+  ) => void
   /** Reset every signal to the parsed-initial value captured at `.create()` time. */
   readonly $reset: () => void
 }

@@ -107,7 +107,47 @@ u.$reset()                // back to initial`,
         'Using `model({ state, views, actions })` — that single-config form was REMOVED. Chain `.views()` / `.actions()` instead',
         'Defining views/actions referencing each other across MULTIPLE `.actions()` blocks but expecting tight typing — `self` in each block is loosely typed at the tail (`Record<string, any>`) so cross-block calls work; the cost is weak inference for cross-block helpers',
       ],
-      seeAlso: ['ModelDefinition', 'getSnapshot', 'applySnapshot', 'onPatch', 'addMiddleware'],
+      seeAlso: ['ModelDefinition', 'SchemaModelHelpers', 'getSnapshot', 'applySnapshot', 'onPatch', 'addMiddleware'],
+    },
+    {
+      name: 'SchemaModelHelpers',
+      kind: 'type',
+      signature:
+        'interface SchemaModelHelpers<TState> { $set, $patch, $deepPatch, $update<K>, $reset }',
+      summary:
+        'The five schema-validated mutation helpers exposed on every schema-mode model instance AND on `self` inside schema-mode action/view factories. `$`-prefixed so they never collide with user schema field names (`name`, `set`, `patch`, etc.). All five validate the merged result through the schema before writing to signals (or invoke `onValidationError` if configured). Direct signal writes (`self.field.set(v)`) bypass validation — the documented escape hatch. Parallel to `@pyreon/store`\'s `SchemaStoreApi`.',
+      example: `// All five helpers — pick by mutation shape:
+u.$set({ name: 'Bob', age: 40, prefs: { theme: 'dark', density: 'cozy' } })   // full replace
+u.$patch({ name: 'Bob' })                                                       // shallow merge
+u.$deepPatch({ prefs: { theme: 'dark' } })                                      // recursive merge — density survives
+u.$update('items', items => items.filter(x => x.id !== 1))                      // transform one field
+u.$reset()                                                                       // restore parsed initial`,
+      mistakes: [
+        '`$patch({ prefs: { theme } })` REPLACES the whole `prefs` object (shallow merge); use `$deepPatch` to keep `density` intact',
+        '`$deepPatch` REPLACES arrays / class instances (Date, Map, Set) — only plain objects recurse',
+        '`$update`\'s transformer is `(unknown) => unknown` — cast at the call site for typed inference (key is constrained to `keyof TState & string`)',
+        'Using `$update` for multi-field changes — it transforms ONE top-level field at a time; use `$patch` / `$deepPatch` / `$set` for multi-field',
+      ],
+      seeAlso: ['model', 'DeepPartial'],
+    },
+    {
+      name: 'DeepPartial',
+      kind: 'type',
+      signature:
+        'type DeepPartial<T> = T extends ReadonlyArray<unknown> ? T : T extends object ? { readonly [K in keyof T]?: DeepPartial<T[K]> } : T',
+      summary:
+        'Recursive partial — every property optional at every depth. Used by `SchemaModelHelpers.$deepPatch` as the partial-shape constraint. Arrays and primitives pass through unchanged (because `$deepPatch` REPLACES them); only plain objects get the recursive optional treatment, matching the runtime merge semantics. Parallel to `@pyreon/store`\'s `DeepPartial`.',
+      example: `// State { count: number; prefs: { theme: string; density: string } }
+// DeepPartial admits:
+$deepPatch({ count: 5 })                                  // primitive field
+$deepPatch({ prefs: { theme: 'dark' } })                  // partial nested object — density survives
+$deepPatch({ prefs: { theme: 'dark', density: 'cozy' } }) // full nested object
+// Arrays REPLACE — DeepPartial<T[]> = T[], must pass full array shape`,
+      mistakes: [
+        '`DeepPartial<T[]>` is `T[]` (no element-level optionality) — arrays REPLACE in `$deepPatch`. To mutate array contents, use `$update`',
+        'Class instances (Date, Map, Set) keep their full shape under `DeepPartial` — they are NOT plain objects and replace wholesale',
+      ],
+      seeAlso: ['SchemaModelHelpers', 'model'],
     },
     {
       name: 'ModelDefinition',

@@ -19,6 +19,43 @@ function isModelDef(v: unknown): v is AnyModelDef {
   return (v as Record<string, unknown>)[MODEL_BRAND] === true
 }
 
+// ─── Plain-object detection + deep merge (used by schema-mode $deepPatch) ────
+
+/**
+ * Detect a plain object (literal `{}` or `Object.create(null)`) — used by
+ * `deepMerge` to decide whether to recurse or replace. Arrays, class
+ * instances, Maps, Sets, Dates, Promises etc. are NOT plain objects and
+ * REPLACE rather than merge.
+ */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value == null || typeof value !== 'object') return false
+  const proto = Object.getPrototypeOf(value)
+  return proto === null || proto === Object.prototype
+}
+
+/**
+ * Recursively merge `source` into `target` for plain-object branches.
+ * Returns a NEW object — never mutates inputs. Used by `$deepPatch`.
+ *
+ * - Plain object × plain object → recurse
+ * - Anything else (array, class instance, primitive, null, undefined) →
+ *   `source` value wins (replace semantics). Matches Vue 3 `reactive` /
+ *   Lodash `_.merge` (without array-index merging) — the convention
+ *   users expect for "deep-update this nested thing." Parallel to
+ *   `@pyreon/store`'s `deepMerge`.
+ */
+function deepMerge(target: unknown, source: unknown): unknown {
+  if (!isPlainObject(target) || !isPlainObject(source)) return source
+  const out: Record<string, unknown> = { ...target }
+  for (const key of Object.keys(source)) {
+    out[key] =
+      isPlainObject(target[key]) && isPlainObject(source[key])
+        ? deepMerge(target[key], source[key])
+        : source[key]
+  }
+  return out
+}
+
 // ─── createInstance ───────────────────────────────────────────────────────────
 
 /**
@@ -242,6 +279,31 @@ export function createInstance(
       const valid = validateOrFail(merged, '$patch')
       if (valid === undefined) return
       writeAll(valid)
+    }
+
+    instance.$deepPatch = (partial: Record<string, unknown>) => {
+      // Recursive plain-object merge. Arrays / class instances REPLACE.
+      // Parallel to @pyreon/store's `deepPatch`.
+      const merged = deepMerge(readCurrent(), partial) as Record<string, unknown>
+      const valid = validateOrFail(merged, '$deepPatch')
+      if (valid === undefined) return
+      writeAll(valid)
+    }
+
+    instance.$update = (key: string, transformer: (current: unknown) => unknown) => {
+      // Transform a single top-level field. Read → transform → validate
+      // merged state → write only that key. Parallel to @pyreon/store's
+      // `update<K extends keyof T & string>(...)`.
+      const current = readCurrent()
+      const next = transformer(current[key])
+      const merged = { ...current, [key]: next }
+      const valid = validateOrFail(merged, '$update')
+      if (valid === undefined) return
+      // Write only the changed key (other keys already validated equal).
+      const sig = instance[key] as Signal<unknown>
+      if (!Object.is(sig.peek(), valid[key])) {
+        sig.set(valid[key])
+      }
     }
 
     instance.$reset = () => {

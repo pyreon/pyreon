@@ -371,3 +371,232 @@ describe('schema-mode model — chainable views/actions', () => {
     expect(u.name()).toBe('Alice')
   })
 })
+
+// ─── $deepPatch — recursive plain-object merge ──────────────────────────────
+
+describe('schema-mode model — $deepPatch (nested merge)', () => {
+  const Schema = zodSchema(
+    z.object({
+      count: z.number(),
+      prefs: z.object({
+        theme: z.enum(['light', 'dark']),
+        density: z.enum(['compact', 'cozy']),
+      }),
+      items: z.array(z.object({ id: z.number(), label: z.string() })),
+    }),
+  )
+  const initial = {
+    count: 0,
+    prefs: { theme: 'light' as const, density: 'cozy' as const },
+    items: [{ id: 1, label: 'one' }],
+  }
+
+  it('deep-merges nested plain objects (preserves untouched sibling keys)', () => {
+    const M = model({ schema: Schema, initial })
+    const m = M.create() as ReturnType<typeof M.create> & {
+      prefs: { (): typeof initial.prefs }
+      $deepPatch: (p: { prefs?: { theme?: string } }) => void
+    }
+    m.$deepPatch({ prefs: { theme: 'dark' } })
+    // `density` survives even though only `theme` was patched.
+    expect(m.prefs()).toEqual({ theme: 'dark', density: 'cozy' })
+  })
+
+  it('REPLACES arrays (does not merge by index)', () => {
+    const M = model({ schema: Schema, initial })
+    const m = M.create() as ReturnType<typeof M.create> & {
+      items: { (): typeof initial.items }
+      $deepPatch: (p: { items?: typeof initial.items }) => void
+    }
+    m.$deepPatch({ items: [{ id: 99, label: 'replaced' }] })
+    expect(m.items()).toEqual([{ id: 99, label: 'replaced' }])
+  })
+
+  it('validates merged result + throws on schema failure', () => {
+    const M = model({ schema: Schema, initial })
+    const m = M.create() as ReturnType<typeof M.create> & {
+      $deepPatch: (p: { prefs?: { theme?: string } }) => void
+    }
+    expect(() =>
+      m.$deepPatch({ prefs: { theme: 'midnight' as 'light' | 'dark' } }),
+    ).toThrow(/Schema validation failed.*\$deepPatch/)
+  })
+
+  it('REPLACES class instances (Date) — does not recurse into prototype-bearing objects', () => {
+    const DateSchema = zodSchema(z.object({ when: z.date(), tag: z.string() }))
+    const M = model({
+      schema: DateSchema,
+      initial: { when: new Date('2020-01-01'), tag: 'a' },
+    })
+    const m = M.create() as ReturnType<typeof M.create> & {
+      when: { (): Date }
+      $deepPatch: (p: { when?: Date }) => void
+    }
+    const newDate = new Date('2030-06-15')
+    m.$deepPatch({ when: newDate })
+    expect(m.when().toISOString()).toBe(newDate.toISOString())
+  })
+
+  it('onValidationError suppresses throw + leaves state intact', () => {
+    const errors: { op: string }[] = []
+    const M = model({
+      schema: Schema,
+      initial,
+      onValidationError: (_issues, op) => {
+        errors.push({ op })
+      },
+    })
+    const m = M.create() as ReturnType<typeof M.create> & {
+      prefs: { (): typeof initial.prefs }
+      $deepPatch: (p: { prefs?: { theme?: string } }) => void
+    }
+    m.$deepPatch({ prefs: { theme: 'midnight' as 'light' | 'dark' } })
+    expect(errors.length).toBe(1)
+    expect(errors[0]!.op).toBe('$deepPatch')
+    expect(m.prefs()).toEqual({ theme: 'light', density: 'cozy' })
+  })
+})
+
+// ─── $update — single-field transformer ─────────────────────────────────────
+
+describe('schema-mode model — $update (single-field transformer)', () => {
+  const Schema = zodSchema(
+    z.object({
+      count: z.number().nonnegative(),
+      items: z.array(z.object({ id: z.number(), label: z.string() })),
+      prefs: z.object({ theme: z.string(), density: z.string() }),
+    }),
+  )
+  const initial = {
+    count: 0,
+    items: [
+      { id: 1, label: 'one' },
+      { id: 2, label: 'two' },
+    ],
+    prefs: { theme: 'light', density: 'cozy' },
+  }
+
+  it('transforms a primitive via callback', () => {
+    const M = model({ schema: Schema, initial })
+    const m = M.create() as ReturnType<typeof M.create> & {
+      count: { (): number }
+      $update: (
+        key: 'count' | 'items' | 'prefs',
+        fn: (current: unknown) => unknown,
+      ) => void
+    }
+    m.$update('count', (n) => (n as number) + 1)
+    expect(m.count()).toBe(1)
+  })
+
+  it('filters an array (covers "remove item")', () => {
+    const M = model({ schema: Schema, initial })
+    const m = M.create() as ReturnType<typeof M.create> & {
+      items: { (): typeof initial.items }
+      $update: (
+        key: 'count' | 'items' | 'prefs',
+        fn: (current: unknown) => unknown,
+      ) => void
+    }
+    m.$update('items', (items) =>
+      (items as typeof initial.items).filter((x) => x.id !== 1),
+    )
+    expect(m.items()).toEqual([{ id: 2, label: 'two' }])
+  })
+
+  it('appends to an array (covers "add item")', () => {
+    const M = model({ schema: Schema, initial })
+    const m = M.create() as ReturnType<typeof M.create> & {
+      items: { (): typeof initial.items }
+      $update: (
+        key: 'count' | 'items' | 'prefs',
+        fn: (current: unknown) => unknown,
+      ) => void
+    }
+    m.$update('items', (items) => [
+      ...(items as typeof initial.items),
+      { id: 3, label: 'three' },
+    ])
+    expect(m.items()).toHaveLength(3)
+    expect(m.items()[2]).toEqual({ id: 3, label: 'three' })
+  })
+
+  it('transforms a nested object (covers "object key edit")', () => {
+    const M = model({ schema: Schema, initial })
+    const m = M.create() as ReturnType<typeof M.create> & {
+      prefs: { (): typeof initial.prefs }
+      $update: (
+        key: 'count' | 'items' | 'prefs',
+        fn: (current: unknown) => unknown,
+      ) => void
+    }
+    m.$update('prefs', (prefs) => ({
+      ...(prefs as typeof initial.prefs),
+      theme: 'dark',
+    }))
+    expect(m.prefs()).toEqual({ theme: 'dark', density: 'cozy' })
+  })
+
+  it('validates the transformed result + throws on schema failure', () => {
+    const M = model({ schema: Schema, initial })
+    const m = M.create() as ReturnType<typeof M.create> & {
+      $update: (
+        key: 'count' | 'items' | 'prefs',
+        fn: (current: unknown) => unknown,
+      ) => void
+    }
+    // count is z.number().nonnegative() — negative violates the schema
+    expect(() => m.$update('count', () => -1)).toThrow(
+      /Schema validation failed.*\$update/,
+    )
+  })
+
+  it('onValidationError suppresses throw + state unchanged', () => {
+    const errors: { op: string }[] = []
+    const M = model({
+      schema: Schema,
+      initial,
+      onValidationError: (_issues, op) => {
+        errors.push({ op })
+      },
+    })
+    const m = M.create() as ReturnType<typeof M.create> & {
+      count: { (): number }
+      $update: (
+        key: 'count' | 'items' | 'prefs',
+        fn: (current: unknown) => unknown,
+      ) => void
+    }
+    m.$update('count', () => -1)
+    expect(errors.length).toBe(1)
+    expect(errors[0]!.op).toBe('$update')
+    expect(m.count()).toBe(0)
+  })
+
+  it('$update inside an async action awaits + validates each step', async () => {
+    const M = model({ schema: Schema, initial }).actions((self) => ({
+      async asyncIncrement() {
+        await Promise.resolve()
+        ;(
+          self.$update as (
+            key: 'count',
+            fn: (c: unknown) => unknown,
+          ) => void
+        )('count', (n) => (n as number) + 1)
+        await Promise.resolve()
+        ;(
+          self.$update as (
+            key: 'count',
+            fn: (c: unknown) => unknown,
+          ) => void
+        )('count', (n) => (n as number) + 1)
+      },
+    }))
+    const m = M.create() as ReturnType<typeof M.create> & {
+      count: { (): number }
+      asyncIncrement: () => Promise<void>
+    }
+    await m.asyncIncrement()
+    expect(m.count()).toBe(2)
+  })
+})

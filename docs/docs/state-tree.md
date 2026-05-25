@@ -200,6 +200,8 @@ u.name()      // "Alice"
 u.greeting()  // "Hi, Alice"
 u.$set({ name: 'Bob', age: 40, prefs: { theme: 'light' } })   // full replace, validated
 u.$patch({ age: 41 })                                          // shallow merge, validated
+u.$deepPatch({ prefs: { theme: 'dark' } })                     // recursive merge — keeps other prefs keys
+u.$update('age', n => (n as number) + 1)                       // transform one field, validated
 u.name.set('')   // direct signal write — bypasses validation (escape hatch)
 u.$reset()       // restore parsed initial
 ```
@@ -213,12 +215,37 @@ const User = model({
 })
 ```
 
+### Mutation method comparison
+
+Schema mode exposes five validated mutation methods. Pick by mutation shape:
+
+| Method | Shape | Merge depth | Use when |
+| --- | --- | --- | --- |
+| `$set(full)` | full state | n/a (replaces) | resetting to a known full shape |
+| `$patch(partial)` | top-level partial | shallow (depth-1) | replacing one or more top-level fields |
+| `$deepPatch(partial)` | recursive partial | deep (plain objects only) | updating nested fields without spreading the parent |
+| `$update(key, fn)` | one field | n/a (transformer-controlled) | array filter/append, object key edit, primitive math |
+| `$reset()` | (none) | n/a | restore the parsed-initial captured at `.create()` time |
+
+All five validate the merged result against the schema and throw on failure (or invoke `onValidationError` if configured). Direct signal writes (`self.field.set(v)`) bypass validation by design — the documented escape hatch.
+
+```ts
+// Real-world mix:
+u.$patch({ name: 'Bob' })                          // simple top-level edit
+u.$deepPatch({ prefs: { theme: 'dark' } })         // density survives
+u.$update('items', items => items.filter(x => x.id !== id))  // array remove
+u.$update('items', items => [...items, newItem])             // array append
+u.$update('prefs', p => ({ ...p, theme: 'dark' }))           // alt to $deepPatch
+```
+
 **Validation rules** mirror `@pyreon/store` schema mode exactly:
 
-- `$set(full)` / `$patch(partial)` validate every write. Invalid input throws (or invokes `onValidationError` if provided). State stays at its previous value on failure.
+- All five `$*` methods validate every write. Invalid input throws (or invokes `onValidationError` if provided). State stays at its previous value on failure.
 - Initial is validated once at `model({ schema, initial })` time. Invalid initial throws immediately. Schema defaults + transforms apply — the PARSED value is written to signals.
 - Async validators are unsupported — schemas whose validator returns a Promise are rejected at definition time. Use `@pyreon/form` for async refinements.
-- Schema field names cannot collide with `$set` / `$patch` / `$reset` / `self` proxy keys — defineStore throws at construction with a clear message.
+- Schema field names cannot collide with `$set` / `$patch` / `$deepPatch` / `$update` / `$reset` / `self` proxy keys — `model()` throws at construction with a clear message.
+- `$deepPatch` REPLACES arrays and class instances (Date, Map, Set) — only plain objects recurse.
+- `$update`'s key is constrained to `keyof TState & string` at the type level; the transformer signature is `(unknown) => unknown` (cast at call site for typed inference — a future refinement will narrow this automatically).
 
 ```ts
 // Validation error handling — suppress throw, log instead

@@ -27,11 +27,13 @@ export { addMiddleware } from './middleware'
 
 export type {
   ActionCall,
+  DeepPartial,
   MiddlewareFn,
   ModelInstance,
   ModelSelf,
   Patch,
   PatchListener,
+  SchemaModelHelpers,
   Snapshot,
   StateShape,
 } from './types'
