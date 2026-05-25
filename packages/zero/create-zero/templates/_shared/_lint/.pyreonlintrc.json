@@ -1,0 +1,4 @@
+{
+  "$schema": "node_modules/@pyreon/lint/schema/pyreonlintrc.schema.json",
+  "preset": "recommended"
+}

@@ -27,7 +27,8 @@
   "scripts": {
     "build": "vl_rolldown_build",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint ."
+    "lint": "oxlint .",
+    "test": "vitest run"
   },
   "dependencies": {
     "@clack/prompts": "^1.2.0"
