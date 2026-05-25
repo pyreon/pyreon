@@ -889,7 +889,16 @@ function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
 
 function emitKotlinAction(handler: ExprIR, indent: number): string {
   if (handler.kind === 'arrow') {
-    return `{ ${emitKotlinExpr(handler.body, indent)} }`
+    // Preserve arrow parameter names in the Kotlin lambda.
+    // `(t) => draft.set(t)` → `{ t -> draft = t }` (NOT
+    // `{ draft = t }` which leaves `t` unresolved). Kotlin lambdas
+    // expose the single param as `it` by default; named params via
+    // `name -> body`. Multi-param: `(a, b) -> body`.
+    if (handler.params.length === 0) {
+      return `{ ${emitKotlinExpr(handler.body, indent)} }`
+    }
+    const paramList = handler.params.map(kotlinIdent).join(', ')
+    return `{ ${paramList} -> ${emitKotlinExpr(handler.body, indent)} }`
   }
   // Resolve to a function-typed identifier (bare OR props-member),
   // mirroring emit-swift.ts:resolveFunctionHandler. Closes the
@@ -1041,7 +1050,10 @@ function emitKotlinLayoutModifier(
   }
   const radius = readStaticAttrKotlin(e, 'radius')
   if (typeof radius === 'string') {
-    parts.push(`.clip(androidx.compose.foundation.shape.RoundedCornerShape(${resolveRadius(radius)}.dp))`)
+    // Bare `RoundedCornerShape` — consumer imports from
+    // androidx.compose.foundation.shape. Same convention as Color +
+    // @Serializable.
+    parts.push(`.clip(RoundedCornerShape(${resolveRadius(radius)}.dp))`)
   }
   if (parts.length === 0) return ''
   return `Modifier${parts.join('')}`
