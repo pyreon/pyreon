@@ -1,5 +1,93 @@
 # @pyreon/elements
 
+## 0.25.1
+
+### Patch Changes
+
+- [#901](https://github.com/pyreon/pyreon/pull/901) [`c862965`](https://github.com/pyreon/pyreon/commit/c8629652a94ca7d1e8622cd2de5b4ac009874dbf) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Bundle-size shrink across browser-shipped packages — **~7 KB gzipped saved** total. A typical Pyreon app shipping `runtime-dom + reactivity + core + router` is now **~5.7 KB lighter**.
+
+  ## Wins (gzipped, measured at the production-define bundle level)
+
+  | Package               | Before | After | Saved                      |
+  | --------------------- | ------ | ----- | -------------------------- |
+  | `@pyreon/runtime-dom` | 12,655 | 9,719 | **−2,936 B (−23%)**        |
+  | `@pyreon/reactivity`  | 7,870  | 6,328 | **−1,542 B (−20%)**        |
+  | `@pyreon/core`        | 4,972  | 4,191 | **−781 B (−16%)**          |
+  | `@pyreon/router`      | 10,148 | 9,582 | **−566 B (−6%)**           |
+  | `@pyreon/rocketstyle` | 4,390  | 3,992 | **−398 B (−9%)**           |
+  | `@pyreon/styler`      | 5,624  | 5,453 | **−171 B (−3%)**           |
+  | `@pyreon/server`      | 3,575  | 3,431 | **−144 B (−4%)**           |
+  | `@pyreon/attrs`       | 1,017  | 915   | **−102 B (−10%)**          |
+  | (8 more)              | ...    | ...   | smaller wins (1–98 B each) |
+
+  17 packages shrunk total. Net **−7,153 B** gzipped across the published Pyreon footprint.
+
+  ## Two complementary fixes
+
+  **1. `check-bundle-budgets.ts` now measures the PRODUCTION-stripped size.** The script's `Bun.build` invocation was missing `define: { 'process.env.NODE_ENV': '"production"' }`. As a result, the budget measurement INCLUDED every `if (process.env.NODE_ENV !== 'production') console.warn(...)` string from `lib/` — overstating the real consumer bundle by 5–20% per package and forcing budget bumps for dev-only diagnostic growth that never reaches end users. Real consumers (Vite/Webpack/esbuild) all set this define at their build time; the measurement now matches what they actually ship.
+
+  **2. Removed the `const __DEV__ = process.env.NODE_ENV !== 'production'` alias** from 22 files across 7 browser-shipped packages, in favor of the bare gate `if (process.env.NODE_ENV !== 'production')` at the use site. The alias pattern is recognized by `dev-guard-warnings` lint rule but is silently worse for downstream bundle size — Bun.build and several esbuild configurations don't propagate the const-folded value through the alias even when the production define is set. The bare gate folds reliably at the use site because the bundler replaces the expression with a literal `false` directly. This is the bundler-agnostic library convention used by React, Vue, Preact, Solid.
+
+  Pure internal optimization — no API change, no behavior change. DEV mode behavior unchanged (warnings still fire identically in development). The migration is locked in by `pyreon/no-process-dev-gate` lint rule and the regenerated `scripts/bundle-budgets.json` floor.
+
+  ## QA
+
+  - All 1,378 compiler tests + 680 runtime-dom tests + 521 router tests + 168 server tests + 998 zero tests pass (storage test failures are pre-existing on main, unrelated to this PR)
+  - Whole-repo `bun run lint` + `typecheck` clean
+  - `gen-docs --check` clean
+  - `bench:fair` (real-Chromium across 8 frameworks): Pyreon at top of tied cluster on 4 of 7 tests (create-1k, replace-all, partial-update, create-10k), tied in cluster on the other 3 — no regression
+  - One pre-existing test (`dev-gate-treeshake.test.ts non-Vite consumer runtime correctness`) updated to reflect the new bare-gate contract: esbuild's `platform: 'browser'` default replacement (`process.env.NODE_ENV = "development"`) folds the bare gate AND the minifier strips the warn body — strictly better than the old `__DEV__` alias pattern the test was guarding
+
+- [#905](https://github.com/pyreon/pyreon/pull/905) [`fcd1187`](https://github.com/pyreon/pyreon/commit/fcd118734c5feb90317c00236f5e492f7caaedb7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `Element` slot resolution now recognises bare-function components (user-authored, no framework marker) via naming convention — fixes `[Pyreon] onMount() called outside component setup` warnings for components passed via the `beforeContent={Header}` / `afterContent={Header}` / `content={Header}` shorthand when the component body uses lifecycle hooks.
+
+  ## The bug
+
+  PR [#839](https://github.com/pyreon/pyreon/issues/839) (0.24.3) introduced `resolveSlot` with marker-based discrimination — `IS_ROCKETSTYLE` / `PYREON__COMPONENT` / `pkgName`. Bare user components without any marker (the common React-migration shape `const Header = () => <div/>; Header.displayName = 'MyHeader'`) hit the fallback "reactive accessor" path: called bare via `value()` without establishing a `runWithHooks` setup window. Any hook inside the body (`useWindowResize`, `onMount`, `provide`, etc.) fired the warning because `_current` was null at call time.
+
+  The warning was dev-mode-SSR only — CSR's mount pipeline + SSG production builds correctly establish setup windows via the standard component-mounting path, so functional behavior was unaffected. But dev consoles got actionable noise pointing at the user's correct-looking call site instead of the framework's missing setup-window wrap.
+
+  ## The fix
+
+  `isPyreonComponent` gained a **Tier 2 naming-convention check** that runs after the existing marker checks:
+
+  - **`displayName` is set** → component (explicit author intent)
+  - **`.name` starts with an uppercase A–Z letter** → component (matches JSX's own component-vs-host discriminator)
+  - Anonymous arrows (`name === ''`), `export default` shortcuts (`name === 'default'`), camelCase helpers (`getContent`, `renderHeader`) — all fall through to the bare-call accessor path so existing reactive-accessor patterns work unchanged.
+
+  Components matching Tier 2 now route through `h(value, null)` and mount via the standard `runWithHooks`-based path. Hooks inside the body register correctly, warnings never fire.
+
+  ## Why this is safe for reactive-accessor users
+
+  The naming convention is the same rule JSX itself uses to differentiate component vs host element (`<MyComp/>` is a component; `<mycomp/>` is a host tag). A PascalCase function paired with `beforeContent={Fn}` shorthand is canonically a component reference — every framework example in the docs follows this. Anonymous arrows `() => signal() ? <A/> : <B/>` are canonically reactive accessors, and they're untouched by Tier 2.
+
+  The escape hatch for users who insist on PascalCase-named reactive accessors: pass them as an anonymous wrapper — `beforeContent={() => MyAccessor()}` — or rename to camelCase.
+
+  ## Test coverage
+
+  - **11 unit tests** in `isPyreonComponent.test.ts`: Tier 1 markers (4 specs), Tier 2 displayName/PascalCase (5 specs), accessor fall-through guards (6 specs covering anonymous, camelCase, `default`, empty-name, digit-prefixed, unicode-letter-prefixed), Tier 1 + Tier 2 coexistence (2 specs)
+  - **5 behavioral regression tests** in `slot-bare-component-with-hooks.test.tsx` matching the bokisch.com bug shape: PascalCase bare component routes via `h()`, `displayName`-only routes via `h()`, bare component using `onMount` produces NO "outside component setup" warning, anonymous accessor still takes bare-call path, camelCase helper still takes bare-call path
+  - **Bisect-verified-with-restore**: reverting Tier 2 → 8 tests fail (5 unit + 3 behavioral); restored → all 496 elements tests pass
+
+  ## Reference
+
+  Reported via consumer (bokisch.com `migrate-to-pyreon` branch, `@pyreon/elements@0.25.0`). The final residue after the 0.24.4 (cross-package shared instance) + 0.25.0 (canonical-lib entry collapse) fixes that closed the broader dev-404 warning storm.
+
+- [#902](https://github.com/pyreon/pyreon/pull/902) [`b87fbac`](https://github.com/pyreon/pyreon/commit/b87fbaced0cbeb7304bdc1d358040818e4b1491e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Ship source maps in published tarballs.
+
+  Every `@pyreon/*` package now ships its `.js.map` and `.d.ts.map` files. The previous `!lib/**/*.map` exclusion in each package's `files` array left every emitted JS file pointing at a `//# sourceMappingURL=*.map` that wasn't actually published — causing Vite (and other bundlers) to log a "Failed to load source map" warning per file on every cold dev start. Real bug in shipped tarballs, not just dev-noise theory.
+
+  The fix is shipping the maps. They make framework stack traces readable: `at mountChild (node_modules/@pyreon/runtime-dom/src/nodes.ts:147)` instead of `at e (node_modules/@pyreon/runtime-dom/lib/index.js:1:42857)`. This matters most when a user hits a framework bug, opens devtools, or sees an unreadable production error from a server-side render. Sentry / Bugsnag / Rollbar can also translate framework frames using the shipped maps; without them, the framework's part of every captured stack stays opaque.
+
+  Cost: ~350KB-1MB per package in `node_modules`. Bundlers (Vite, Webpack, Rollup, esbuild) strip source maps from production builds automatically; they never reach end users. Every comparable library (React, Vue, Solid, Preact, Svelte, TanStack) does this.
+
+  No API changes. The `check-distribution` CI gate inverts to enforce the new contract (maps must be present, not absent).
+
+- Updated dependencies [[`c862965`](https://github.com/pyreon/pyreon/commit/c8629652a94ca7d1e8622cd2de5b4ac009874dbf), [`b87fbac`](https://github.com/pyreon/pyreon/commit/b87fbaced0cbeb7304bdc1d358040818e4b1491e)]:
+  - @pyreon/reactivity@0.25.1
+  - @pyreon/core@0.25.1
+  - @pyreon/unistyle@0.25.1
+  - @pyreon/ui-core@0.25.1
+
 ## 0.25.0
 
 ### Patch Changes
