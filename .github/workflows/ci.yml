@@ -105,7 +105,7 @@ jobs:
     name: Typecheck
     needs: install
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -131,7 +131,17 @@ jobs:
             exit 0
           fi
           set -f
-          bun run $FILTER typecheck
+          # --sequential caps simultaneous memory at the largest single
+          # tsc invocation (~775 MB for app-showcase, ~583 MB for
+          # fundamentals-playground) instead of summing across 60+
+          # parallel tsc processes. Bun's default `--filter` mode runs
+          # every matched package concurrently with NO concurrency
+          # limit, so 7+ heavy tsc invocations would sum to ~3 GB+
+          # simultaneously and OOM-kill the runner (exit 143). Sequential
+          # adds ~2.5x wall-clock (~3.5min → ~8min) but stays well under
+          # the 10min job timeout and eliminates the OOM-flake. See
+          # PR #XXX for measurements + root cause analysis.
+          bun run $FILTER --sequential typecheck
 
   lint:
     name: Lint
