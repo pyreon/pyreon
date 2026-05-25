@@ -55,3 +55,7 @@ QUICK_REFERENCE.md
 # Claude worktrees (local development only)
 .claude/worktrees/
 .claude/scheduled_tasks.lock
+
+# Doc-example typecheck cache (scripts/check-doc-examples.ts) — extracts
+# fenced code blocks here, then runs `tsc --noEmit`. Regenerated every run.
+.cache/

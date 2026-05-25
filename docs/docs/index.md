@@ -155,25 +155,24 @@ yarn add @pyreon/core @pyreon/reactivity @pyreon/runtime-dom @pyreon/vite-plugin
 Create a component:
 
 ```tsx
+// @check
 import { signal, computed } from '@pyreon/reactivity'
-import { defineComponent, Show } from '@pyreon/core'
+import { Show } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 
 const count = signal(0)
 const doubled = computed(() => count() * 2)
 
-const App = defineComponent(() => {
-  return () => (
-    <div>
-      <button onClick={() => count(count() + 1)}>
-        Count: {count()} (doubled: {doubled()})
-      </button>
-      <Show when={() => count() > 5}>
-        <p>Count is greater than 5!</p>
-      </Show>
-    </div>
-  )
-})
+const App = () => (
+  <div>
+    <button onClick={() => count.set(count() + 1)}>
+      Count: {count()} (doubled: {doubled()})
+    </button>
+    <Show when={() => count() > 5}>
+      <p>Count is greater than 5!</p>
+    </Show>
+  </div>
+)
 
 mount(App, document.getElementById('app')!)
 ```

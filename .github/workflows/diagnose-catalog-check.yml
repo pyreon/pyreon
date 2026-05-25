@@ -1,0 +1,49 @@
+name: Diagnose Catalog
+
+# Verifies that PRs touching framework error-surface code paths
+# (`runtime-dom`, `runtime-server`, `core`, `compiler`, `router`) grow
+# the `ERROR_PATTERNS` catalog in
+# `packages/core/compiler/src/react-intercept.ts` — or carry a
+# `skip-diagnose-catalog` label.
+#
+# Rationale: `pyreon doctor diagnose` + the MCP `diagnose` tool both
+# pattern-match user-facing error strings to surface fix suggestions.
+# Every bug fix in a framework subsystem is an opportunity to teach
+# the catalog; without this gate, the catalog stops growing while the
+# framework's surface expands, and `diagnose` returns "no match"
+# increasingly often.
+#
+# See `scripts/check-diagnose-catalog.ts` for the policy logic.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: diagnose-catalog-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Diagnose Catalog
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+
+      - name: Verify catalog growth (or skip-label)
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HAS_SKIP_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'skip-diagnose-catalog') }}
+        run: bun scripts/check-diagnose-catalog.ts
