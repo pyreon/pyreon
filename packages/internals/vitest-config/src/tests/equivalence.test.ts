@@ -207,4 +207,30 @@ describe('defineNodeConfig — invariants', () => {
     })
     expect(cfg.test?.environment).toBe('node')
   })
+
+  it('includeIndexInCoverage drops src/**/index.ts from coverage.exclude', () => {
+    const withFlag = defineNodeConfig({
+      category: 'core',
+      includeIndexInCoverage: true,
+    })
+    const withoutFlag = defineNodeConfig({ category: 'core' })
+
+    const coveredExclude = (withFlag.test?.coverage as { exclude: string[] })
+      .exclude
+    const defaultExclude = (
+      withoutFlag.test?.coverage as { exclude: string[] }
+    ).exclude
+
+    expect(defaultExclude).toContain('src/**/index.ts')
+    expect(coveredExclude).not.toContain('src/**/index.ts')
+    // Other defaults preserved.
+    expect(coveredExclude).toContain('src/**/*.test.ts')
+    expect(coveredExclude).toContain('src/bin/**')
+  })
+
+  it('includeIndexInCoverage default (undefined) keeps src/**/index.ts excluded', () => {
+    const cfg = defineNodeConfig({ category: 'core' })
+    const cov = cfg.test?.coverage as { exclude: string[] }
+    expect(cov.exclude).toContain('src/**/index.ts')
+  })
 })
