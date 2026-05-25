@@ -232,7 +232,8 @@ The runtime packages exist:
 
 ## Reference
 
-- Full architectural spec with file paths, code references, design rationale: [`.claude/plans/multiplatform-architecture.md`](https://github.com/pyreon/pyreon/blob/main/.claude/plans/multiplatform-architecture.md)
-- Compiler source: `packages/native/compiler/src/`
+- Compiler source: `packages/native/compiler/src/` — `emit-swift.ts` / `emit-kotlin.ts` per-target emit; `canonical-primitives.ts` shared name maps + token resolution
 - Native runtime packages: `packages/native/runtime-swift/`, `packages/native/runtime-kotlin/`
+- Web runtime: `packages/core/primitives/src/web/` — 6 proof-of-concept primitives
 - Example apps: `examples/native-todomvc-ios/`, `examples/native-todomvc-android/` (web example coming Phase D)
+- CLAUDE.md "PMTC Multi-Target Architecture" section — agent-context summary of the layered model + roadmap
