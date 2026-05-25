@@ -1,0 +1,13 @@
+{
+  "name": "@pyreon/native-router-kotlin",
+  "version": "0.0.0",
+  "private": true,
+  "description": "PRIVATE / EXPERIMENTAL — Kotlin runtime implementing @pyreon/router's API surface (RouterProvider / RouterView / PyreonLink / useNavigate / useParams) for Android Compose. Parallel to @pyreon/native-router-swift. Phase C2 of the PMTC multiplatform router story.",
+  "license": "MIT",
+  "scripts": {
+    "build": "if command -v kotlinc >/dev/null 2>&1; then bun scripts/verify-kotlin.ts; else echo '[native-router-kotlin] kotlinc not on PATH; skipping build (Android stack required)'; fi",
+    "test": "if command -v kotlinc >/dev/null 2>&1; then bun scripts/verify-kotlin.ts; else echo '[native-router-kotlin] kotlinc not on PATH; skipping test (Android stack required)'; fi",
+    "lint": "echo '[native-router-kotlin] Kotlin lint (detekt/ktlint) not yet integrated; skipping lint'",
+    "typecheck": "if [ \"$CI\" = \"true\" ]; then echo '[native-router-kotlin] skipping typecheck in CI — kotlinc cold-start + parallel-load timeouts; covered by scripts/verify-kotlin.ts which runs locally per-PR'; elif command -v kotlinc >/dev/null 2>&1; then bun scripts/verify-kotlin.ts --typecheck-only; else echo '[native-router-kotlin] kotlinc not on PATH; skipping typecheck'; fi"
+  }
+}

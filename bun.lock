@@ -1289,6 +1289,10 @@
         "vitest": "^4.1.4",
       },
     },
+    "packages/native/router-kotlin": {
+      "name": "@pyreon/native-router-kotlin",
+      "version": "0.0.0",
+    },
     "packages/native/runtime-kotlin": {
       "name": "@pyreon/native-runtime-kotlin",
       "version": "0.0.0",
@@ -2495,6 +2499,8 @@
     "@pyreon/native-cli": ["@pyreon/native-cli@workspace:packages/native/cli"],
 
     "@pyreon/native-compiler": ["@pyreon/native-compiler@workspace:packages/native/compiler"],
+
+    "@pyreon/native-router-kotlin": ["@pyreon/native-router-kotlin@workspace:packages/native/router-kotlin"],
 
     "@pyreon/native-runtime-kotlin": ["@pyreon/native-runtime-kotlin@workspace:packages/native/runtime-kotlin"],
 
