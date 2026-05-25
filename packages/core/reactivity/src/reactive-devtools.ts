@@ -22,11 +22,14 @@
  *     return empty when no client has called `activateReactiveDevtools()`.
  *     A devtools panel reads through these; nothing leaks to non-attached
  *     consumers.
- *   - **`_captureCallerLocation` STAYS gated on `_active`** — stack
- *     parsing (`new Error().stack`) is the expensive part (~2.2µs/call).
- *     Pre-activate signals lack a captured loc; build-time-injected loc
- *     (via `@pyreon/vite-plugin`'s `injectSignalLocations`) is always on
- *     and free, so most dev signals get loc anyway.
+ *   - **`_captureCallerLocation` is also always-on in `__DEV__`** so
+ *     signals/computeds/effects created BEFORE a devtools client
+ *     attaches still get loc captured (LPIH editor inlay-hint surfaces
+ *     work uniformly). Cost is a single `new Error()` + small regex per
+ *     call (~2.2µs in V8), invisible against mount times. Most user
+ *     signals pay 0µs anyway because `@pyreon/vite-plugin`'s
+ *     `injectSignalLocations` rewrites `signal(0)` → `signal(0, { __sourceLocation })`
+ *     at build time and the caller short-circuits to the injected value.
  *   - **No retention / no leak.** Nodes are held via `WeakRef` and
  *     pruned by a `FinalizationRegistry`. The registry never pins a
  *     signal/computed/effect alive. Edges + the fire ring buffer hold
@@ -268,8 +271,21 @@ export function isReactiveDevtoolsActive(): boolean {
 
 /**
  * Parse the user's call site from `new Error().stack`. Returns undefined
- * when devtools isn't active (zero-cost early-return — no Error allocated)
- * OR when the stack format isn't recognized.
+ * when the stack format isn't recognized. Always-on in `__DEV__` (the
+ * caller-side `process.env.NODE_ENV` gate tree-shakes it in production).
+ *
+ * **Cost**: a single `new Error()` allocation + a small regex against
+ * one line of `.stack` per call (~2.2µs in V8). For typical apps (~hundreds
+ * of signals) that's ~1ms of total startup overhead — invisible against
+ * mount times. Most user signals pay 0µs anyway: `@pyreon/vite-plugin`'s
+ * `injectSignalLocations` rewrites `signal(0)` → `signal(0, { __sourceLocation })`
+ * at build time, and the caller short-circuits to that injected value
+ * before invoking this helper.
+ *
+ * Always-on (no `_active` gate) so signals/computeds/effects created
+ * BEFORE a devtools client attaches still get loc captured — the LPIH
+ * editor inlay-hint surfaces ("🔥 signal fired N×") work uniformly for
+ * the activate-after-creation user workflow.
  *
  * `skipFrames` is the number of caller-frames to skip past _captureCallerLocation
  * itself. The framework's hot-path callers (signal / computedLazy / effect)
@@ -284,7 +300,6 @@ export function isReactiveDevtoolsActive(): boolean {
  * @internal
  */
 export function _captureCallerLocation(skipFrames: number): SourceLocation | undefined {
-  if (!_active) return undefined
   const err = new Error()
   const raw = err.stack
   if (!raw) return undefined

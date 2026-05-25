@@ -66,20 +66,38 @@ describe('LPIH — stack-line parser', () => {
   })
 })
 
-describe('LPIH — zero-cost when inactive', () => {
-  it('_captureCallerLocation returns undefined when inactive', () => {
-    expect(_captureCallerLocation(0)).toBeUndefined()
-    expect(_captureCallerLocation(5)).toBeUndefined()
+describe('LPIH — always-on capture in __DEV__ (no _active gate)', () => {
+  it('_captureCallerLocation returns a real location even when inactive', () => {
+    // Contract change (post-#913 followup): always-on in __DEV__ so
+    // signals/computeds/effects created BEFORE a devtools client attaches
+    // still get loc captured — the LPIH editor inlay-hint surfaces work
+    // uniformly for the activate-after-creation user workflow.
+    const loc = _captureCallerLocation(0)
+    expect(loc).toBeDefined()
+    expect(loc?.file).toContain('lpih-source-location.test.ts')
   })
 
-  it('node creation does not allocate Error when inactive', () => {
-    // Indirect proof: capture happens INSIDE the active guard.
-    // No throw, no stack, no observable cost in the path.
+  it('REGRESSION: late activate exposes loc on pre-existing signals', () => {
+    // The activate-after-creation user workflow + LPIH compose: a signal
+    // created BEFORE the panel opens still surfaces its source line at
+    // activate-time because capture is always-on in __DEV__. Pre-fix
+    // (#913) this returned undefined for every pre-activate signal.
+    const s = signal(0, { name: '$pre' })
+    void s
+    activateReactiveDevtools()
+    const node = getReactiveGraph().nodes.find((n) => n.name === '$pre')
+    expect(node?.loc).toBeDefined()
+    expect(node?.loc?.file).toContain('lpih-source-location.test.ts')
+  })
+
+  it('output stays gated: graph returns empty until activate()', () => {
+    // The read-gate contract is unchanged — non-attached consumers see
+    // nothing even though the registry IS populated with loc info.
     const s = signal(0)
     s.set(1)
     const c = computed(() => s() + 1)
     c()
-    // No nodes registered because inactive.
+    // No nodes EXPOSED because inactive (output gate).
     expect(getReactiveGraph().nodes).toEqual([])
   })
 })
