@@ -781,11 +781,31 @@ jobs:
   # template TS errors / missing deps / wrong API names that lint+
   # typecheck on the scaffolder package can't see, because templates
   # aren't in any tsconfig include path.
-  scaffold-smoke:
-    name: Scaffold Smoke
+  #
+  # P1d — sharded as a matrix (6 cells in parallel) so wall-clock
+  # ≈ slowest single cell instead of the sum. Pre-shard the job ran 6
+  # cells sequentially in one runner (~215s); post-shard each runs in
+  # its own ~50-110s job (per-cell `bun install` from repo root is the
+  # dominant cost) with no cross-cell contention.
+  #
+  # `scaffold-smoke-aggregate` mirrors the e2e aggregator pattern: a
+  # stable required check name regardless of which cells ran (matches
+  # branch-protection's expectations even if a cell gets renamed).
+  scaffold-smoke-cell:
+    name: Scaffold Smoke (${{ matrix.cell }})
     needs: install
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        cell:
+          - cpa-smoke-app-vercel
+          - cpa-smoke-app-static
+          - cpa-smoke-blog-cloudflare
+          - cpa-smoke-dashboard-vercel-full
+          - cpa-smoke-dashboard-node-supabase
+          - cpa-smoke-monorepo-vercel
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -803,7 +823,30 @@ jobs:
         with:
           path: packages/*/*/lib
           key: ${{ env.BOOTSTRAP_KEY }}
-      - run: bun run scaffold-smoke
+      # scaffold-smoke.ts accepts a positional cell filter:
+      #   `bun scripts/scaffold-smoke.ts cpa-smoke-app-vercel` runs only that cell.
+      - name: Run scaffold-smoke cell
+        run: bun scripts/scaffold-smoke.ts ${{ matrix.cell }}
+
+  # Stable required-check aggregator. Mirrors the `e2e` job's pattern
+  # — branch protection requires this check by name; matrix cells are
+  # the individual reports + failure surface.
+  scaffold-smoke:
+    name: Scaffold Smoke
+    needs: scaffold-smoke-cell
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Aggregate scaffold-smoke matrix
+        run: |
+          RESULT="${{ needs.scaffold-smoke-cell.result }}"
+          if [ "$RESULT" = "success" ]; then
+            echo "All scaffold-smoke cells passed."
+            exit 0
+          fi
+          echo "::error::One or more scaffold-smoke cells failed (result=$RESULT)"
+          exit 1
 
   docs-sync:
     name: Docs Sync
