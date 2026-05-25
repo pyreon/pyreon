@@ -9,7 +9,10 @@
  *   2. Copy `templates/_shared/` base (`.gitignore`, `env.d.ts`,
  *      `src/entry-server.ts` with `{{ssrMode}}` substitution). Underscore-
  *      prefixed sub-dirs are skipped — they're per-selection overlays.
- *   3. Apply feature overlays (`templates/_features/<feature>/`).
+ *   3. Apply feature overlays (`templates/_features/<feature>/`). Each
+ *      feature can have a `_<template>/` sub-overlay applied only when
+ *      that template is chosen (e.g. `store/_app/` ships an
+ *      app-template-shaped layout that doesn't overwrite dashboard's).
  *   4. Apply adapter overlay (`templates/_shared/_adapters/<adapter>/`).
  *   5. Apply integration overlays (`templates/_shared/_integrations/<int>/`).
  *   6. Apply AI tooling overlays (`templates/_shared/_ai/<tool>/`).
@@ -27,9 +30,9 @@
  *     two shared packages.
  */
 
-import { basename, join, resolve } from 'node:path'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
+import { basename, join, resolve } from 'node:path'
 import { adapterFor } from './adapters'
 import { applyAiTools } from './ai-tools'
 import { generatePackageJson } from './generators/package-json'
@@ -82,8 +85,18 @@ async function scaffoldFlat(config: ProjectConfig): Promise<void> {
 
   // 3. Per-feature overlays. Each overlay's files OVERWRITE base files
   //    on conflict (e.g. store's _layout.tsx overwrites the no-store base).
+  //    Underscore-prefixed sub-dirs (`_<template>/`) are skipped from the
+  //    main copy; they're applied below ONLY when their name matches the
+  //    chosen template. This lets one feature have template-conditional
+  //    shape — e.g. store's app-template-shaped layout in `store/_app/`
+  //    doesn't overwrite the dashboard's marketing layout.
   for (const feature of config.features) {
-    await copyOverlay(join(FEATURES_ROOT, feature), config.targetDir)
+    const featureDir = join(FEATURES_ROOT, feature)
+    await copyOverlay(featureDir, config.targetDir, {}, { skipUnderscoreDirs: true })
+    const templateOverlay = join(featureDir, `_${config.template}`)
+    if (existsSync(templateOverlay)) {
+      await copyOverlay(templateOverlay, config.targetDir)
+    }
   }
 
   // 4. Adapter overlay.
