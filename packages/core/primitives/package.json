@@ -1,0 +1,57 @@
+{
+  "name": "@pyreon/primitives",
+  "version": "0.0.0",
+  "description": "Canonical multi-platform UI primitives — semantic vocabulary that compiles to DOM (web), SwiftUI (iOS), and Compose (Android). The Pyreon Multi-Target story.",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core/primitives#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyreon/pyreon.git",
+    "directory": "packages/core/primitives"
+  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint .",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^20.8.9",
+    "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/test-utils": "workspace:^",
+    "@vitest/browser-playwright": "^4.1.4",
+    "happy-dom": "^20.8.3",
+    "rolldown": "^1.0.0-rc.15"
+  }
+}

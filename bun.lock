@@ -733,6 +733,22 @@
         "@pyreon/runtime-server",
       ],
     },
+    "packages/core/primitives": {
+      "name": "@pyreon/primitives",
+      "version": "0.0.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+      },
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.8.9",
+        "@pyreon/runtime-dom": "workspace:^",
+        "@pyreon/test-utils": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
+        "happy-dom": "^20.8.3",
+        "rolldown": "^1.0.0-rc.15",
+      },
+    },
     "packages/core/reactivity": {
       "name": "@pyreon/reactivity",
       "version": "0.25.1",
@@ -2491,6 +2507,8 @@
     "@pyreon/playground": ["@pyreon/playground@workspace:examples/playground"],
 
     "@pyreon/preact-compat": ["@pyreon/preact-compat@workspace:packages/tools/preact-compat"],
+
+    "@pyreon/primitives": ["@pyreon/primitives@workspace:packages/core/primitives"],
 
     "@pyreon/query": ["@pyreon/query@workspace:packages/fundamentals/query"],
 
