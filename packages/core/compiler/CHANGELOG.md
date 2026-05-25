@@ -1,5 +1,127 @@
 # @pyreon/compiler
 
+## 0.25.0
+
+### Minor Changes
+
+- [#898](https://github.com/pyreon/pyreon/pull/898) [`32ca446`](https://github.com/pyreon/pyreon/commit/32ca44676723f196cf7cde48f78d49c67a8d34d0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/compiler` auto-promotes `selector(key) ? a : b` ternaries in className/attr bindings to the effect-free `selector.subscribe(key, m => ...)` fast path.
+
+  ## What
+
+  ```tsx
+  // Author writes the canonical idiomatic shape:
+  const isSelected = createSelector(selectedId);
+  <For each={rows} by={(r) => r.id}>
+    {(row) => <tr class={() => (isSelected(row.id) ? "selected" : "")}>...</tr>}
+  </For>;
+  ```
+
+  Compiles to:
+
+  ```js
+  const __d0 = isSelected.subscribe(row.id, (m) => {
+    __root.className = m ? "selected" : "";
+  });
+  ```
+
+  Instead of the previous (still-correct, slower):
+
+  ```js
+  const __d0 = _bind(() => {
+    __root.className = isSelected(row.id) ? "selected" : "";
+  });
+  ```
+
+  ## Per-row alloc
+
+  |                  | Old `_bind(() => …)`                                                                              | New `isSelected.subscribe(...)`       |
+  | ---------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------- |
+  | Allocations      | `deps[]` + `run` closure + `dispose` closure + `{dispose}` wrapper + `trackedFn` closure = **~5** | 1 Set.add + 1 dispose closure = **2** |
+  | Effect machinery | full `renderEffect` setup                                                                         | none                                  |
+  | Per-fire cost    | `withTracking` + selector lookup + Object.is + ternary                                            | direct call with pre-resolved boolean |
+
+  The perf win from `@pyreon/reactivity` `0.13.0`'s `.subscribe` API now accrues to every existing app that writes the canonical `<For>` + `createSelector` pattern — no API change, no migration.
+
+  ## Bail catalog (conservative — uncertain ⇒ no promotion)
+
+  Falls back to the existing `_bind(...)` shape when:
+
+  - The selector identifier is NOT a known `createSelector()` result (tracked at module scope; function-scope `const` declarations follow the same rules as `signal()` auto-call)
+  - The selector call has 0 or 2+ arguments (not the standard shape)
+  - The key expression contains a reactive read (would freeze the key at first mount)
+  - Either branch contains a reactive read (the promoted updater only re-fires on selection change)
+  - The expression is NOT a ternary (handled by the existing pipeline)
+
+  Plain member access in the key (`row.id`, `item.deep.path.id`) is preserved literally — `row` is a stable `<For>` callback parameter, safe to use as a subscription key.
+
+  ## Dual-backend parity
+
+  Implemented byte-for-byte in BOTH the JS path (`packages/core/compiler/src/jsx.ts`) and the Rust native path (`packages/core/compiler/native/src/lib.rs`). 9 new cross-backend equivalence specs cover the promotion-positive shapes + the full bail catalog; production users on the Rust binary (3.7-8.9× faster compiler) get the win immediately.
+
+  ## Test coverage
+
+  - 12 JS-path specs in `selector-subscribe-promote.test.ts`: canonical shape, bare (no-arrow) form, dispose binding shape, every bail in the catalog, deep key expressions, setAttribute-style attrs (aria-current, data-\*).
+  - 9 cross-backend equivalence specs in `native-equivalence.test.ts`: bisect-verified-with-restore (disabling the Rust emission branch fails 4 of 9 with the exact `_bind(...)` vs `.subscribe(...)` drift).
+  - Real-corpus: `examples/benchmark/src/impl/pyreon.tsx`'s `class={() => isSelected(row.id) ? 'selected' : ''}` confirmed to auto-promote through both backends, byte-identical output.
+
+  ## Backwards-compatible
+
+  Pure compiler optimization. No runtime API change. Apps that don't use `createSelector` see no behavior change. Apps that DO use it see lower per-row allocation + the existing `selector.subscribe(...)` API surface (added in `@pyreon/reactivity` `0.13.0`) ships with full runtime semantics — promoted code is equivalent to the hand-written form.
+
+- [#899](https://github.com/pyreon/pyreon/pull/899) [`9f19029`](https://github.com/pyreon/pyreon/commit/9f190298828b4204a617d30d5b7ae4fedd2b3eb1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/compiler` extends the text-child binding fast paths with two additive auto-promotions:
+
+  ## 1. Text-child selector ternary (companion to className path — PR [#898](https://github.com/pyreon/pyreon/issues/898))
+
+  ```tsx
+  // Author writes the canonical text-child shape:
+  <td>{() => (isSelected(row.id) ? "✓" : "")}</td>
+  ```
+
+  Compiles to `isSelected.subscribe(row.id, (m) => { __t.data = (m ? '✓' : '') })` — the effect-free fast path. Identical bail catalog to the className auto-promotion (only fires when receiver is a known `createSelector()` result, exactly 1 argument, no reactive reads in key or branches).
+
+  ## 2. Signal-method-call in text bindings
+
+  ```tsx
+  // Currency / percentage / case-formatting patterns:
+  <span>{count().toFixed(2)}</span>
+  <h2>{title().toUpperCase()}</h2>
+  <code>{n().toString(16)}</code>
+  ```
+
+  Compile to `_bindDirect(count, (v) => { __t.data = v.toFixed(2) })` — skipping the `withTracking` setup + signal lookup per fire. Same structural shape as `_bindText` for bare signal reads, extended to common formatting patterns.
+
+  The detector requires:
+
+  - Receiver is a zero-arg call to a known signal (tracked via `signalVars`)
+  - Method is in the pure-primitive safelist (Number / String / Boolean prototype methods proven side-effect-free: `toFixed`, `toExponential`, `toPrecision`, `toString`, `valueOf`, `toUpperCase`, `toLowerCase`, `trim*`, `slice`, `substring`, `substr`, `charAt`, `charCodeAt`, `codePointAt`, `padStart`, `padEnd`, `repeat`, `normalize`, `concat`, `startsWith`, `endsWith`, `includes`, `indexOf`, `lastIndexOf`, `at`)
+  - Method args contain no reactive reads (would otherwise miss subscriptions)
+  - Method callee is not computed (`sig()["toFixed"](2)` — too dynamic to prove safe)
+
+  ## Per-binding alloc reduction
+
+  |             | Old `_bind(() => …)`                       | New `.subscribe` / `_bindDirect`    |
+  | ----------- | ------------------------------------------ | ----------------------------------- |
+  | Allocations | full `renderEffect` machinery (~5)         | direct subscription (~2)            |
+  | Per-fire    | `withTracking` + signal lookup + Object.is | direct call with pre-resolved value |
+
+  Structural — measured at the runtime layer in [#897](https://github.com/pyreon/pyreon/issues/897); not visible at `bench:fair` scale (below ~500µs noise floor) but real.
+
+  ## Dual-backend parity
+
+  Both detectors implemented byte-for-byte in JS path (`packages/core/compiler/src/jsx.ts`) and Rust native (`packages/core/compiler/native/src/lib.rs`). 13 new cross-backend equivalence specs lock the parity.
+
+  ## Test coverage
+
+  - 12 JS-path specs in `text-child-selector-promote.test.ts` (canonical shape + bail catalog + deep keys)
+  - 16 JS-path specs in `signal-method-promote.test.ts` (Number/String/Boolean methods + bail catalog + integration with other detectors)
+  - 13 cross-backend equivalence specs in `native-equivalence.test.ts` (4 selector + 9 method-call)
+  - Bisect-verified-with-restore at THREE layers (Rust selector branch, Rust method-call branch, JS path)
+  - Real-corpus scan: 417 example `.tsx` files, 0 false positives, 0 crashes, 0 byte-divergences (vs main) introduced
+
+  ## Backwards-compatible
+
+  Pure compiler optimization. No runtime API change. Patterns not matched by either detector continue to compile to `_bind(...)` exactly as before.
+
 ## 0.24.6
 
 ## 0.24.5

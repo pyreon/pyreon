@@ -1,5 +1,12 @@
 # @pyreon/lint
 
+## 0.25.0
+
+### Patch Changes
+
+- Updated dependencies [[`32ca446`](https://github.com/pyreon/pyreon/commit/32ca44676723f196cf7cde48f78d49c67a8d34d0), [`9f19029`](https://github.com/pyreon/pyreon/commit/9f190298828b4204a617d30d5b7ae4fedd2b3eb1)]:
+  - @pyreon/compiler@0.25.0
+
 ## 0.24.6
 
 ### Patch Changes

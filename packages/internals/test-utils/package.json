@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/test-utils",
-  "version": "0.13.11",
+  "version": "0.13.12",
   "private": true,
   "description": "Internal testing utilities for Pyreon UI system components",
   "license": "MIT",
