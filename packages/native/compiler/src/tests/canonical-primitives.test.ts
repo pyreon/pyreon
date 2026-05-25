@@ -244,3 +244,102 @@ describe('Phase B — composition smoke', () => {
     expect(out).toContain('Button(onClick = { fn() })')
   })
 })
+
+// ============================================================================
+// kotlinc validation — typecheck-clean against extended stubs.
+//
+// Phase B emit references symbols (Modifier, Arrangement, Alignment, Box,
+// Color, RoundedCornerShape, PasswordVisualTransformation, .dp extension)
+// that needed stub additions. This block validates the FULL canonical-
+// primitive emit surface against `kotlinc + extended stubs` — proves
+// the new emit is well-typed AND the new stubs cover everything the
+// emit references.
+//
+// Skipped gracefully when kotlinc is absent (typical local macOS dev
+// without the Kotlin toolchain). Runs in CI's Validate emitted Swift +
+// Kotlin job.
+// ============================================================================
+
+import { isKotlincAvailable, validateKotlin } from '../validate'
+
+const skipKotlincCondition =
+  process.env.PYREON_SKIP_NATIVE_VALIDATE === '1' ||
+  (!isKotlincAvailable() && process.env.PYREON_REQUIRE_NATIVE_VALIDATE !== '1')
+
+describe.skipIf(skipKotlincCondition)(
+  'Phase B — canonical-primitive Kotlin emit typechecks via kotlinc + extended stubs',
+  () => {
+    it('exercises every wired primitive (Stack/Inline/Press/Field/Button) + every layout-modifier prop in one source', () => {
+      // ONE component exercising every primitive + every Phase B
+      // canonical prop. If kotlinc accepts this, the entire Phase B
+      // emit surface is well-typed against the extended K4 stubs.
+      const out = tx(
+        `<Stack gap={2} padding={4} background="primary" radius="md" align="center">
+          <Text size="lg" weight="bold" color="surface">Title</Text>
+          <Inline gap={1} align="center" justify="between">
+            <Text>Inline text</Text>
+            <Button onPress={fn} variant="primary">Save</Button>
+          </Inline>
+          <Press onPress={fn} padding={2}>
+            <Text>Custom-chromed area</Text>
+          </Press>
+          <Field
+            value={draft}
+            onChangeText={(t) => draft.set(t)}
+            placeholder="Type"
+            onSubmit={fn}
+          />
+          <Field
+            value={draft}
+            onChangeText={(t) => draft.set(t)}
+            kind="password"
+            placeholder="Password"
+          />
+        </Stack>`,
+        'kotlin',
+      )
+
+      const result = validateKotlin(out)
+      if (!result.ok) {
+        throw new Error(
+          `Phase B kotlinc validation FAILED:\n${result.error}\n\n--- emit ---\n${out}\n--- end ---`,
+        )
+      }
+      expect(result.ok).toBe(true)
+    })
+
+    it('Stack with align="start" / "end" + Modifier chain (background + radius) typechecks', () => {
+      const out = tx(
+        `<Stack align="start" background="surface" radius="lg" padding={3}><Text>x</Text></Stack>`,
+        'kotlin',
+      )
+      const result = validateKotlin(out)
+      expect(result.ok).toBe(true)
+    })
+
+    it('Inline with align variants typechecks across the Alignment.Vertical enum', () => {
+      // Consolidate all 3 align variants into ONE source -> ONE
+      // kotlinc invocation. Previously this looped (3 kotlinc cold-
+      // starts) and timed out at 20s under CI parallel-load contention.
+      const out = tx(
+        `<Stack>
+          <Inline align="start" gap={2}><Text>start</Text></Inline>
+          <Inline align="center" gap={2}><Text>center</Text></Inline>
+          <Inline align="end" gap={2}><Text>end</Text></Inline>
+        </Stack>`,
+        'kotlin',
+      )
+      const result = validateKotlin(out)
+      if (!result.ok) {
+        throw new Error(`align variants failed kotlinc:\n${result.error}\n\n--- emit ---\n${out}\n--- end ---`)
+      }
+      expect(result.ok).toBe(true)
+      // Confirm all 3 variants resolved to their Alignment enum branches.
+      // Inline (Row) uses the Vertical axis for align: start->Top,
+      // center->CenterVertically, end->Bottom (Compose convention).
+      expect(out).toContain('Alignment.Top')
+      expect(out).toContain('Alignment.CenterVertically')
+      expect(out).toContain('Alignment.Bottom')
+    })
+  },
+)
