@@ -44,6 +44,16 @@ export interface DefineNodeConfigOptions {
    */
   coverageExclude?: string[]
   /**
+   * Set to `true` for packages whose logic lives in `src/index.ts`
+   * (not just re-exports). The default coverage-exclude list always
+   * contains `src/**\/index.ts` and `mergeConfig` arrays append-only,
+   * so this option post-filters the exclude list to drop that pattern.
+   *
+   * Known consumer: `@pyreon/runtime-server` — `renderToString` and
+   * the full SSR pipeline live in `src/index.ts`.
+   */
+  includeIndexInCoverage?: boolean
+  /**
    * Vitest `setupFiles` — forwarded verbatim to `createVitestConfig`.
    */
   setupFiles?: string[]
@@ -92,6 +102,18 @@ export function defineNodeConfig(
     ...(opts.setupFiles && { setupFiles: opts.setupFiles }),
     ...(opts.coverageExclude && { coverageExclude: opts.coverageExclude }),
   })
+
+  // Post-filter: drop `src/**/index.ts` from coverage.exclude when the
+  // user has logic in their index file. mergeConfig is append-only on
+  // arrays, so this is the only way to REMOVE a default exclude.
+  if (opts.includeIndexInCoverage) {
+    const coverage = base.test?.coverage as { exclude?: string[] } | undefined
+    if (coverage?.exclude) {
+      coverage.exclude = coverage.exclude.filter(
+        (p) => p !== 'src/**/index.ts',
+      )
+    }
+  }
 
   let merged = mergeConfig(sharedConfig, base)
   if (opts.excludeBrowserTests) {
