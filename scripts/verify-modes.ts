@@ -568,6 +568,50 @@ const MATRIX: Cell[] = [
     },
   },
 
+  // native-todomvc-web — Phase D of the PMTC multiplatform story.
+  // Exercises the `@pyreon/primitives` web runtime end-to-end via a
+  // canonical-vocab TodoMVC (Stack/Inline/Field/Button/Text + For/Show
+  // + a transitional <Checkbox> shim). Sibling of the native iOS +
+  // Android example apps; this cell proves the SAME canonical primitive
+  // vocabulary that compiles to SwiftUI + Compose on native targets
+  // ALSO renders on web via real DOM. Bisect-verifiable: break any
+  // @pyreon/primitives web impl OR remove the canonical-vocab import
+  // and the build fails or the produced HTML loses the testid + the
+  // primitive-rendered text content.
+  {
+    example: 'native-todomvc-web',
+    mode: 'spa',
+    useExampleConfig: true,
+    smoke: (dist) => {
+      // Bare Vite SPA build (not zero) — index.html stays as-emitted
+      // by vite + the bundled JS does the runtime mount.
+      const indexPath = join(dist, 'index.html')
+      assertFileContains(indexPath, 'id="app"')
+      assertFileContains(indexPath, 'data-testid="app-root"')
+      // The bundled JS chunk carries the canonical-vocab call sites +
+      // the TodoApp source content. Walk dist/assets/ for the JS bundle
+      // and assert both the testid baked into the source AND the
+      // user-visible strings emit (proves the JSX wasn't stripped /
+      // optimized-into-nothing).
+      const assetsDir = join(dist, 'assets')
+      const jsFiles = readdirSync(assetsDir).filter((f) => f.endsWith('.js'))
+      const bundles = jsFiles.map((f) => readFileSync(join(assetsDir, f), 'utf8'))
+      const allBundled = bundles.join('\n')
+      // testid baked into TodoApp.tsx (the root <Stack data-testid="todo-app">)
+      if (!allBundled.includes('todo-app')) {
+        throw new Error(
+          `[native-todomvc-web × spa] expected bundle to contain testid "todo-app" — got ${jsFiles.length} js file(s) totaling ${allBundled.length} chars`,
+        )
+      }
+      // user-facing string baked into the Field's placeholder prop
+      if (!allBundled.includes('What needs to be done')) {
+        throw new Error(
+          `[native-todomvc-web × spa] expected bundle to contain placeholder "What needs to be done" — got ${jsFiles.length} js file(s)`,
+        )
+      }
+    },
+  },
+
   // playground — minimal three-route Pyreon shell. Smallest viable
   // app exercising the routing + layout chain.
   {
