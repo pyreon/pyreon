@@ -47,6 +47,7 @@
     "prepublishOnly": "bun run build"
   },
   "devDependencies": {
-    "@pyreon/manifest": "workspace:*"
+    "@pyreon/manifest": "workspace:*",
+    "@pyreon/vitest-config": "workspace:*"
   }
 }

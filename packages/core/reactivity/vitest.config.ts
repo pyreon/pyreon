@@ -1,5 +1,3 @@
-import { createVitestConfig } from '@vitus-labs/tools-vitest'
-import { mergeConfig } from 'vite'
-import { sharedConfig } from '../../../vitest.shared'
+import { defineNodeConfig } from '@pyreon/vitest-config'
 
-export default mergeConfig(createVitestConfig(), sharedConfig)
+export default defineNodeConfig({ category: 'core' })
