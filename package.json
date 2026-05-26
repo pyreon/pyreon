@@ -46,6 +46,7 @@
     "test:e2e:zero-hmr": "bunx playwright test --config=playwright.zero-hmr.config.ts",
     "test:e2e:cpa": "bunx playwright test --config=playwright.cpa.config.ts",
     "test:e2e:perf-dashboard": "bunx playwright test --config=playwright.perf-dashboard.config.ts",
+    "test:e2e:native-todomvc-web": "bunx playwright test --config=playwright.native-todomvc-web.config.ts",
     "visual-test:capture": "bunx playwright test --project=visual",
     "visual-test:diff": "bun scripts/visual-test/diff.ts",
     "visual-test:report": "bun scripts/visual-test/report.ts",
