@@ -25,6 +25,7 @@ import { transform } from '../index'
 function tx(jsxBody: string, target: 'swift' | 'kotlin'): string {
   const source = `
     import { signal } from '@pyreon/reactivity'
+    declare const router: unknown
     export function App() {
       const draft = signal<string>('')
       const done = signal<boolean>(false)
@@ -260,6 +261,55 @@ describe('Phase B — <Toggle> emit (canonical binary toggle; Compose Switch vs 
     // auto-derives the write-back if onChange is missing.
     const out = tx(`<Toggle value={done} />`, 'kotlin')
     expect(out).toContain('Switch(checked = done, onCheckedChange = { done = it })')
+  })
+})
+
+describe('Phase C3 — router primitive emit (<Link> + <RouterProvider> + <RouterView>)', () => {
+  // Phase C1/C2 (#929, #930) shipped the runtime symbols
+  // (PyreonLink/RouterProvider/RouterView on both Swift + Kotlin).
+  // This phase wires the PMTC compiler to recognize the JSX tags +
+  // emit the matching platform code.
+
+  it('Swift: <Link to="/users">View</Link> → PyreonLink("/users") { Text("View") }', () => {
+    const out = tx(`<Link to="/users">View</Link>`, 'swift')
+    expect(out).toContain('PyreonLink("/users")')
+    expect(out).toContain('Text("View")')
+  })
+
+  it('Kotlin: <Link to="/users">View</Link> → PyreonLink + clickable Box wrapper', () => {
+    const out = tx(`<Link to="/users">View</Link>`, 'kotlin')
+    expect(out).toContain('PyreonLink("/users")')
+    expect(out).toContain('navigate ->')
+    expect(out).toContain('Box(modifier = Modifier.clickable { navigate() })')
+    expect(out).toContain('Text(text = "View")')
+  })
+
+  it('Swift: <RouterView /> → RouterView()', () => {
+    const out = tx(`<RouterView />`, 'swift')
+    expect(out).toContain('RouterView()')
+  })
+
+  it('Kotlin: <RouterView /> → RouterView()', () => {
+    const out = tx(`<RouterView />`, 'kotlin')
+    expect(out).toContain('RouterView()')
+  })
+
+  it('Swift: <RouterProvider router={r}><RouterView /></RouterProvider> → nested', () => {
+    const out = tx(
+      `<RouterProvider router={router}><RouterView /></RouterProvider>`,
+      'swift',
+    )
+    expect(out).toContain('RouterProvider(router: router)')
+    expect(out).toContain('RouterView()')
+  })
+
+  it('Kotlin: <RouterProvider router={r}><RouterView /></RouterProvider> → nested', () => {
+    const out = tx(
+      `<RouterProvider router={router}><RouterView /></RouterProvider>`,
+      'kotlin',
+    )
+    expect(out).toContain('RouterProvider(router)')
+    expect(out).toContain('RouterView()')
   })
 })
 
