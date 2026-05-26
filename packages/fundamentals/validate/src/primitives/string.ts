@@ -322,6 +322,33 @@ export class StringSchema extends SchemaBase<string> {
     this._invalidateCompile()
     return this
   }
+
+  // ─── String transforms ─────────────────────────────────────────────
+  // These differ from `.transform(fn)` in that they're declarative — the
+  // op carries no closure, so the compiler can recognise + reorder them
+  // (e.g. push `trim` before `min` so `'  hi  '.length >= 2` works the
+  // way users expect). For v1 we just apply them as inline transforms.
+
+  /** Lowercase the input. Runs after type-check, before further checks. */
+  toLowerCase(): this {
+    this._ops.push({ kind: 'transform', fn: (v) => (typeof v === 'string' ? v.toLowerCase() : v) })
+    this._invalidateCompile()
+    return this
+  }
+
+  /** Uppercase the input. */
+  toUpperCase(): this {
+    this._ops.push({ kind: 'transform', fn: (v) => (typeof v === 'string' ? v.toUpperCase() : v) })
+    this._invalidateCompile()
+    return this
+  }
+
+  /** Trim whitespace from both ends. */
+  trim(): this {
+    this._ops.push({ kind: 'transform', fn: (v) => (typeof v === 'string' ? v.trim() : v) })
+    this._invalidateCompile()
+    return this
+  }
 }
 
 /**

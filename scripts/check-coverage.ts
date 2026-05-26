@@ -99,12 +99,6 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     reason:
       'CLI scaffolder. PR1/PR2/PR3 added 31 structural tests covering parseArgs + resolveFeatures + the full scaffold pipeline via real-disk snapshots (actual statements 89.04%, branches 81.39%, functions 70.45%). Uncovered branches are per-adapter file copies, binary-file path in template-engine, env.example append, and compat-shim deps — exercised at the bin level but not snapshot-locked. args.ts + prompts.ts + index.ts excluded since they need a TTY mock; resolveFeatures is the testable core and IS covered via features.test.ts.',
   },
-  '@pyreon/validate': {
-    currentStatements: 80,
-    currentBranches: 75,
-    reason:
-      'Validator v1 — 113 tests at actual 83.58% statements / 78.2% branches / 83.21% functions. Uncovered surface: a few `Op` kinds declared in `core/ops.ts` for deferred check methods (`toLowerCase` / `toUpperCase` / `trim` that need chain methods + tests in PR #3) and the `pipe` function-comp helper exported but barely tested in v1 (method chaining is the primary surface; pipe gets full coverage when tuple/record/union land in PR #3 alongside the descriptor-object action pattern). Raised back to floor + this exemption removed in PR #3.',
-  },
   '@pyreon/kinetic': {
     currentStatements: 88,
     currentBranches: 80,
