@@ -245,6 +245,74 @@ function assertDynProbeCollapsed(distDir: string): void {
   }
 }
 
+/**
+ * Cross-package collapse gate — asserts REAL `@pyreon/ui-components`
+ * Button (not a synthesized probe) ALSO collapses when used as a
+ * cross-package consumer in the ui-showcase ButtonDemo route.
+ *
+ * The existing `assertProbeCollapsed` exercises a DEDICATED single-purpose
+ * probe route (`rs-collapse-probe.tsx` with one literal-prop Button +
+ * "Save" text). This assertion closes the OPEN-WORK doc's remaining P0
+ * follow-up: prove the collapse pipeline works against REAL published-
+ * package Button consumers, not just the synthesized probe.
+ *
+ * ButtonDemo (`examples/ui-showcase/src/demos/ButtonDemo.tsx`) ships
+ * 4 literal-prop state-variant Buttons (`Primary` / `Secondary` /
+ * `Danger` / `Success` — no onClick, no dynamic children — every one
+ * SHOULD collapse) alongside Buttons that bail (those with onClick=
+ * handlers). The compiler's per-site detection correctly partitions
+ * them; this assertion verifies all 4 state buttons emit the
+ * collapse-exclusive fingerprint (BAKED template-literal children with
+ * the styler class hash inline).
+ *
+ * Minification-stable fingerprints: looks for `${label}</span></button>`
+ * embedded in a template literal (backtick context) which is what
+ * `_tpl()` emits when the route chunk is collapsed. The plain Button
+ * label `Primary` appears in BOTH the bailed AND collapsed forms but
+ * the `</span></button>` suffix only co-occurs in baked _tpl templates.
+ *
+ * Bisect-verifiable: flip `pyreon({ collapse: false })` (or break the
+ * detection) → REAL Button consumers fall back to the normal 5-layer
+ * mount → none of these labels appear as baked template strings →
+ * assertion fails per-label.
+ */
+function assertCrossPackageButtonCollapsed(distDir: string): void {
+  const assetsDir = join(distDir, 'assets')
+  if (!existsSync(assetsDir)) throw new Error(`expected ${assetsDir} to exist`)
+  const buttonChunk = readdirSync(assetsDir).find(
+    (f) => /^button-[A-Za-z0-9_-]+\.js$/.test(f),
+  )
+  if (!buttonChunk) {
+    throw new Error(
+      `expected a \`button-*.js\` route chunk under ${assetsDir} ` +
+        `(the fs-router lazy chunk for /button → ButtonDemo). ` +
+        `Got: ${readdirSync(assetsDir)
+          .filter((f) => f.endsWith('.js'))
+          .join(', ')}`,
+    )
+  }
+  const src = readFileSync(join(assetsDir, buttonChunk), 'utf-8')
+  // 4 state variants — each MUST appear as a baked template literal.
+  const labels = ['Primary', 'Secondary', 'Danger', 'Success'] as const
+  const results = labels.map((label) => ({
+    label,
+    baked: src.includes(`${label}</span></button>`),
+  }))
+  const missing = results.filter((r) => !r.baked)
+  if (missing.length > 0) {
+    const preview = src.length > 600 ? `${src.slice(0, 600)}…` : src
+    throw new Error(
+      `expected REAL cross-package @pyreon/ui-components Buttons in ` +
+        `${buttonChunk} to be COLLAPSED — missing baked-template fingerprints ` +
+        `for: ${missing.map((m) => m.label).join(', ')}. A collapsed cross- ` +
+        `package Button emits a class-stripped \`<button>…<label></span></button>\` ` +
+        `template with the styler class hash inline; failure means the compiler ` +
+        `falls back to the 5-layer wrapper mount for cross-package consumers ` +
+        `instead of the single _tpl cloneNode (44x perf regression). Got:\n${preview}`,
+    )
+  }
+}
+
 function assertProbeCollapsed(distDir: string): void {
   const assetsDir = join(distDir, 'assets')
   if (!existsSync(assetsDir)) throw new Error(`expected ${assetsDir} to exist`)
@@ -565,6 +633,14 @@ const MATRIX: Cell[] = [
       // fails ONLY this assertion while `assertProbeCollapsed` keeps
       // passing.
       assertDynProbeCollapsed(dist)
+      // P0 cross-package real-app gate — verifies the REAL
+      // @pyreon/ui-components Button (not the dedicated probe) ALSO
+      // collapses when consumed in the ui-showcase ButtonDemo route.
+      // The probe routes prove the per-site emit shape; this proves
+      // the pipeline works against published-package consumers end-
+      // to-end. Closes the OPEN-WORK doc's last P0 follow-up item.
+      // Same build cost (single vite build serves all 3 assertions).
+      assertCrossPackageButtonCollapsed(dist)
     },
   },
 
