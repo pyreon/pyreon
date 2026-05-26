@@ -51,6 +51,7 @@
     "visual-test:report": "bun scripts/visual-test/report.ts",
     "visual-test:update": "bun scripts/visual-test/update.ts",
     "coverage": "bun scripts/check-coverage.ts",
+    "coverage:floor": "bun scripts/check-coverage.ts --floor-only",
     "test:coverage": "bun scripts/check-coverage.ts",
     "audit-leak-classes": "bun scripts/audit-leak-classes.ts",
     "audit-types": "bun scripts/audit-types.ts",
