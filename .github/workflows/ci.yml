@@ -119,6 +119,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-pyreon
       - name: Run typecheck
         run: |
@@ -140,33 +141,18 @@ jobs:
           # PR #XXX for measurements + root cause analysis.
           bun run $FILTER --sequential typecheck
 
-  # P2a — Lint (oxlint only): independent of Install (no node_modules needed).
-  # Runs in parallel with Install, so a typo / lint failure surfaces in ~15s
-  # instead of waiting ~3.5 min for Install + the lint job to start.
   lint:
     name: Lint
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
-      - name: Run lint
-        run: bun run lint
-
-  # P2a — `lint:browser-smoke` (`scripts/check-browser-smoke.ts`) imports
-  # `../packages/tools/lint/src/runner` (workspace-resolved via the node_modules
-  # symlink farm). Must keep `needs: install`.
-  lint-browser-smoke:
-    name: Lint (browser-smoke)
     needs: install
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-pyreon
         with:
           restore-bootstrap: 'false'
+      - name: Run lint
+        run: bun run lint
       - name: Enforce pyreon/require-browser-smoke-test
         run: bun run lint:browser-smoke
 
@@ -183,6 +169,7 @@ jobs:
       # in vitest.setup.ts) that ubuntu's stale Node masks. Pinning to
       # active-LTS Node 24 makes the CI env reflect what modern consumers
       # use, so bugs surface in CI instead of only at pre-push.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-pyreon
         with:
           node-version: '24'
@@ -218,6 +205,7 @@ jobs:
     steps:
       # Pin Node (see Test job above for rationale). No bootstrap needed —
       # browser tests run against src/ via the bun condition.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-pyreon
         with:
           node-version: '24'
@@ -248,6 +236,7 @@ jobs:
     steps:
       # Composite handles checkout + bun + node + NM/bootstrap cache restore;
       # rust toolchain + cargo caches stay manual (specific ordering needs).
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-pyreon
         with:
           node-version: '24'
@@ -355,6 +344,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.e2e-decide.outputs.matrix) }}
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-pyreon
       - name: Cache Playwright browsers
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
@@ -446,6 +436,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-pyreon
       - name: Run build
         run: |
@@ -467,6 +458,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-pyreon
       - run: bun run coverage
 
@@ -488,6 +480,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-pyreon
         with:
           restore-bootstrap: 'false'
@@ -510,6 +503,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-pyreon
       - name: Verify each package main-entry within budget
         run: bun run check-bundle-budgets
@@ -529,6 +523,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-pyreon
       - name: Check sideEffects + source-map exclusion
         run: bun run check-distribution
@@ -574,6 +569,7 @@ jobs:
       # the restored node_modules symlink farm. The composite restores
       # node_modules by default. No bootstrap restore needed (script reads
       # manifest.ts via the bun condition → src/, not lib/).
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-pyreon
         with:
           restore-bootstrap: 'false'
@@ -612,6 +608,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-pyreon
       - run: bun run verify-modes
 
@@ -648,6 +645,7 @@ jobs:
           - cpa-smoke-dashboard-node-supabase
           - cpa-smoke-monorepo-vercel
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-pyreon
       # scaffold-smoke.ts accepts a positional cell filter:
       #   `bun scripts/scaffold-smoke.ts cpa-smoke-app-vercel` runs only that cell.
@@ -724,6 +722,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-pyreon
       - name: Check for untrusted dependencies
         run: bun pm untrusted
@@ -739,6 +738,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-pyreon
       - name: Run core benchmarks
         run: bun run bench:all > bench-results.json
