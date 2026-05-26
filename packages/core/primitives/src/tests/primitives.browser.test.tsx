@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
-import { Button, Field, Inline, Press, Stack, Text } from '../index'
+import { Button, Field, Inline, Press, Stack, Text, Toggle } from '../index'
 
 describe('<Stack> — web', () => {
   it('renders a flex column div with token-resolved gap + padding', () => {
@@ -305,6 +305,63 @@ describe('<Field> — web', () => {
     unmount()
   })
 
+  it('value as getter (Pyreon compiler `_rp` shape) — signal write reflects to input.value (CRITICAL — real #951 gap #2 repro)', async () => {
+    // CRITICAL regression test. The prior #955 contract tests passed
+    // `value: signal` DIRECTLY — they never exercised the
+    // production-emit shape where Pyreon's compiler wraps signal-
+    // shaped props as `_rp(() => signal())` thunks, then
+    // `makeReactiveProps` (in mount.ts) converts them to GETTER
+    // descriptors on props.
+    //
+    // The bug: Field.tsx's setup-time read `const innerGetValue =
+    // unwrapValue(props.value)` would fire the getter ONCE, capturing
+    // the CURRENT value as a string. Subsequent signal writes never
+    // re-fired the renderEffect because the link to the signal was
+    // broken at the property-read step.
+    //
+    // This test simulates the production prop shape by defining the
+    // `value` prop as a GETTER (via Object.defineProperty), not a
+    // plain assignment. If Field reads `props.value` at setup time
+    // (the bug), the test FAILS — the input doesn't clear after the
+    // signal-driven set('').
+    const draft = signal('initial')
+    // Build the props object with a getter for `value` — mirrors what
+    // `makeReactiveProps` produces from a compiler `_rp(() => signal())`.
+    const fieldProps = {
+      onChangeText: (next: string) => draft.set(next),
+    } as Record<string, unknown>
+    Object.defineProperty(fieldProps, 'value', {
+      get: () => draft(),
+      enumerable: true,
+      configurable: true,
+    })
+    const { container, unmount } = mountInBrowser(
+      // h() preserves the descriptor when we pass an object built this way.
+      h(Field, fieldProps as never),
+    )
+    const input = container.firstElementChild as HTMLInputElement
+    expect(input.value).toBe('initial')
+
+    // Signal write that the bug used to swallow.
+    draft.set('')
+    await flush()
+    expect(draft()).toBe('')
+    // CRITICAL: this assertion is what fails when Field reads
+    // `props.value` at setup time (the pre-fix bug). It passes only
+    // when Field defers the read into the reactive thunk.
+    expect(input.value).toBe('')
+
+    // Round-trip: simulated user typing → signal-driven clear.
+    input.value = 'after typing'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await flush()
+    expect(draft()).toBe('after typing')
+    draft.set('')
+    await flush()
+    expect(input.value).toBe('')
+    unmount()
+  })
+
   it('signal write reflects to input.value PROPERTY (the #951 gap #2 regression)', async () => {
     // Repro of the gap documented in #951's e2e spec: `draft.set('')`
     // after submit didn't clear the input. The cause is real-Chromium-
@@ -416,6 +473,41 @@ describe('composition smoke — primitives compose like normal JSX', () => {
     const button = inline.children[1] as HTMLButtonElement
     expect(button.tagName).toBe('BUTTON')
     expect(button.textContent).toBe('OK')
+    unmount()
+  })
+})
+
+describe('<Toggle> — web', () => {
+  it('value as getter (Pyreon compiler `_rp` shape) — signal write reflects to input.checked (#951 gap #2 sibling fix)', async () => {
+    // Same reactive-prop-read bug as Field — Toggle was reading
+    // `props.value` at setup time, capturing the boolean, breaking
+    // signal tracking. Fixed by deferring the read into the thunk.
+    // This test simulates the production prop shape (getter from
+    // makeReactiveProps) and asserts the binding round-trips.
+    const checked = signal(false)
+    const props = {
+      onChange: (next: boolean) => checked.set(next),
+    } as Record<string, unknown>
+    Object.defineProperty(props, 'value', {
+      get: () => checked(),
+      enumerable: true,
+      configurable: true,
+    })
+    const { container, unmount } = mountInBrowser(h(Toggle, props as never))
+    const input = container.firstElementChild as HTMLInputElement
+    expect(input.type).toBe('checkbox')
+    expect(input.checked).toBe(false)
+
+    // Signal-driven flip — input.checked must follow.
+    checked.set(true)
+    await flush()
+    expect(input.checked).toBe(true)
+
+    // Simulated user click → onChange → signal flips back
+    input.checked = false
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+    await flush()
+    expect(checked()).toBe(false)
     unmount()
   })
 })

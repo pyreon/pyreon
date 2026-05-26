@@ -55,7 +55,7 @@ test.describe('native-todomvc-web — Phase D runtime contract', () => {
     await expect(page.getByText('0 remaining')).toBeVisible()
   })
 
-  test('<Field onChangeText> + onSubmit (Enter) adds a todo', async ({
+  test('<Field onChangeText> + onSubmit (Enter) adds a todo + clears the input', async ({
     page,
   }) => {
     await page.goto('/')
@@ -63,20 +63,14 @@ test.describe('native-todomvc-web — Phase D runtime contract', () => {
     await field.fill('Buy milk')
     await field.press('Enter')
     // Todo appears via <For each={visible}>; "1 remaining" via remaining
-    // computed. The field NOT auto-clearing after submit IS a real gap
-    // in the Playwright-shape flow — #955 documented this as "false
-    // positive" based on real-Chromium UNIT tests that passed, but
-    // the e2e Playwright shape reproduces the failure (input retains
-    // 'Buy milk' after draft.set('') runs). The unit test uses
-    // `dispatchEvent(new InputEvent('input', ...))` synthetically;
-    // Playwright's `field.fill(...)` drives the keyboard differently,
-    // and the renderEffect that should re-write `input.value = ''`
-    // after the signal flip doesn't take effect in that shape.
-    // Investigation tracked separately; the assertion stays disabled
-    // until the real fix lands. The OTHER specs work around by using
-    // `field.fill('')` before typing subsequent todos.
+    // computed; field clears via addTodo's draft.set('') — the
+    // reactive binding on <Field value={draft}> propagates the cleared
+    // signal back to the input.value property. Root cause + fix locked
+    // in this PR's regression test (`value as getter (Pyreon compiler
+    // _rp shape)` spec in primitives.browser.test.tsx).
     await expect(page.getByText('Buy milk')).toBeVisible()
     await expect(page.getByText('1 remaining')).toBeVisible()
+    await expect(field).toHaveValue('')
   })
 
   test('<Checkbox> toggles done state via onChange (the DOM shim)', async ({
@@ -102,10 +96,8 @@ test.describe('native-todomvc-web — Phase D runtime contract', () => {
     const field = page.getByPlaceholder('What needs to be done?')
     await field.fill('Active task')
     await field.press('Enter')
-    // Field doesn't auto-clear in the Playwright shape — manually
-    // clear before typing the next. See known gap in the add-todo
-    // spec above.
-    await field.fill('')
+    // Field auto-clears after submit (the reactive binding closes the
+    // loop). Just type the next todo directly.
     await field.fill('Done task')
     await field.press('Enter')
     // Mark second todo done.
@@ -141,7 +133,6 @@ test.describe('native-todomvc-web — Phase D runtime contract', () => {
     const field = page.getByPlaceholder('What needs to be done?')
     await field.fill('Keep me')
     await field.press('Enter')
-    await field.fill('')
     await field.fill('Remove me')
     await field.press('Enter')
 
