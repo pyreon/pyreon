@@ -1,11 +1,16 @@
 // PMTC TodoMVC reference — the canonical "non-trivial but not contrived"
-// app, used by every UI framework as a baseline. See
-// `.claude/plans/native-platforms-todomvc-walkthrough.md` for the full
-// breakdown of what this exercises vs the 7 starter fixtures + the
-// 8 named compositional gaps.
+// app, used by every UI framework as a baseline.
 //
 // This file is the SOURCE — what `pyreon-native build` consumes. The
 // generated Swift / Kotlin lands in `generated/`.
+//
+// Uses canonical @pyreon/primitives vocabulary:
+// - `<Stack>` / `<Inline>` (was `<VStack>` / `<HStack>`)
+// - `<Field value onChangeText onSubmit>` (was `<TextField value onInput onKeyDown>`)
+// - `<Button onPress>` (was `<Button onClick>`)
+// `<Checkbox>` keeps its legacy SwiftUI-flavored name until canonical
+// `<Toggle>` ships per-target emit (deferred — Compose `Switch` vs
+// SwiftUI `Toggle` semantic split needs a separate emit fn).
 
 import { signal, computed } from '@pyreon/reactivity'
 // `@pyreon/storage` — cross-platform persistence (Phase 0+: still
@@ -53,11 +58,11 @@ export function TodoApp() {
   }
 
   return (
-    <VStack>
-      <TextField
+    <Stack>
+      <Field
         value={draft}
-        onInput={(e) => draft.set(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && addTodo()}
+        onChangeText={(t) => draft.set(t)}
+        onSubmit={addTodo}
         placeholder="What needs to be done?"
       />
 
@@ -71,25 +76,25 @@ export function TodoApp() {
         )}
       </For>
 
-      <HStack>
+      <Inline>
         <Text>{remaining} remaining</Text>
-        <Button onClick={() => filter.set('all')}>All</Button>
-        <Button onClick={() => filter.set('active')}>Active</Button>
-        <Button onClick={() => filter.set('completed')}>Completed</Button>
+        <Button onPress={() => filter.set('all')}>All</Button>
+        <Button onPress={() => filter.set('active')}>Active</Button>
+        <Button onPress={() => filter.set('completed')}>Completed</Button>
         <Show when={hasCompleted}>
-          <Button onClick={clearCompleted}>Clear completed</Button>
+          <Button onPress={clearCompleted}>Clear completed</Button>
         </Show>
-      </HStack>
-    </VStack>
+      </Inline>
+    </Stack>
   )
 }
 
 export function TodoRow(props: { todo: Todo; onToggle: () => void; onRemove: () => void }) {
   return (
-    <HStack>
+    <Inline>
       <Checkbox checked={props.todo.done} onChange={props.onToggle} />
       <Text>{props.todo.text}</Text>
-      <Button onClick={props.onRemove}>Remove</Button>
-    </HStack>
+      <Button onPress={props.onRemove}>Remove</Button>
+    </Inline>
   )
 }
