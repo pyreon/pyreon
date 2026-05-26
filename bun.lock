@@ -494,6 +494,23 @@
         "@pyreon/native-cli": "workspace:*",
       },
     },
+    "examples/native-todomvc-web": {
+      "name": "@pyreon/example-native-todomvc-web",
+      "version": "0.0.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/primitives": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/storage": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/vite-plugin": "workspace:*",
+        "@types/bun": "^1.3.11",
+        "typescript": "^6.0.2",
+        "vite": "^8.0.0",
+      },
+    },
     "examples/perf-dashboard": {
       "name": "@pyreon/example-perf-dashboard",
       "version": "0.1.12",
@@ -2560,6 +2577,8 @@
     "@pyreon/example-native-todomvc-android": ["@pyreon/example-native-todomvc-android@workspace:examples/native-todomvc-android"],
 
     "@pyreon/example-native-todomvc-ios": ["@pyreon/example-native-todomvc-ios@workspace:examples/native-todomvc-ios"],
+
+    "@pyreon/example-native-todomvc-web": ["@pyreon/example-native-todomvc-web@workspace:examples/native-todomvc-web"],
 
     "@pyreon/example-perf-dashboard": ["@pyreon/example-perf-dashboard@workspace:examples/perf-dashboard"],
 
