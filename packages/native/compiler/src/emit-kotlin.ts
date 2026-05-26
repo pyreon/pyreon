@@ -1241,28 +1241,40 @@ function emitKotlinToggle(
     (a): a is Extract<AttrIR, { kind: 'attr' }> =>
       a.kind === 'attr' && a.name === 'value',
   )
-  // value must name a signal in scope (canonical contract — mirrors
-  // emitKotlinField).
-  if (
-    !valueAttr ||
-    valueAttr.value.kind !== 'identifier' ||
-    !_signalNames.has(valueAttr.value.name)
-  ) {
+  if (!valueAttr) {
     return emitKotlinGeneric(e, indent)
   }
-  const sig = kotlinIdent(valueAttr.value.name)
+  // Two shapes mirroring `emitSwiftToggle`:
+  //
+  // 1. `value={signal}` — bare identifier matching a signal in scope.
+  //    onChange optional; auto-derives write-back to the signal.
+  //
+  // 2. `value={expr}` — non-signal expression (member access, function
+  //    call). Used for parent-owns-state patterns like
+  //    `<Toggle value={props.todo.done} onChange={onToggle} />` in a
+  //    TodoRow component. Requires `onChange` to handle writes
+  //    (Compose `Switch` has no binding-projection equivalent —
+  //    onCheckedChange is mandatory). Unblocks Checkbox→Toggle
+  //    migration for the parent-owns-state shape.
   const onChange = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> =>
       a.kind === 'event' && a.name === 'change',
   )
-  const args: string[] = [`checked = ${sig}`]
+  const isSignalShape =
+    valueAttr.value.kind === 'identifier' &&
+    _signalNames.has(valueAttr.value.name)
+  const checkedExpr = isSignalShape
+    ? kotlinIdent((valueAttr.value as Extract<typeof valueAttr.value, { kind: 'identifier' }>).name)
+    : emitKotlinExpr(valueAttr.value, indent)
+  if (!isSignalShape && !onChange) {
+    return emitKotlinGeneric(e, indent)
+  }
+  const args: string[] = [`checked = ${checkedExpr}`]
   if (onChange) {
     args.push(`onCheckedChange = ${emitKotlinAction(onChange.handler, indent + 2)}`)
   } else {
-    // Fallback: auto-derive write-back to the signal — Compose
-    // requires onCheckedChange to be a function. Mirrors the field
-    // emit's auto-derive shape.
-    args.push(`onCheckedChange = { ${sig} = it }`)
+    // Signal shape with no onChange — auto-derive write-back.
+    args.push(`onCheckedChange = { ${checkedExpr} = it }`)
   }
   const disabled = readStaticAttrKotlin(e, 'disabled')
   if (disabled === true) {

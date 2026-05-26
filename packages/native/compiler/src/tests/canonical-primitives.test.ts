@@ -36,6 +36,21 @@ function tx(jsxBody: string, target: 'swift' | 'kotlin'): string {
   return transform(source, { target }).code
 }
 
+// Phase E2 variant — adds `todo` + `onToggle` props so non-signal-value
+// `<Toggle>` tests can reference `props.todo.done` AND `props.onToggle`
+// from inside the component scope. Function-typed props register in
+// `_functionNames`, so `props.onToggle` in handler position emits as
+// `onToggle()` (the call form, not a bare reference).
+function txWithTodoProps(jsxBody: string, target: 'swift' | 'kotlin'): string {
+  const source = `
+    import { signal } from '@pyreon/reactivity'
+    export function App(props: { todo: { done: boolean }; onToggle: () => void }) {
+      return ${jsxBody}
+    }
+  `
+  return transform(source, { target }).code
+}
+
 describe('Phase B — <Stack> emit', () => {
   it('Swift: <Stack> → VStack { ... }', () => {
     const out = tx(`<Stack><Text>hi</Text></Stack>`, 'swift')
@@ -261,6 +276,43 @@ describe('Phase B — <Toggle> emit (canonical binary toggle; Compose Switch vs 
     // auto-derives the write-back if onChange is missing.
     const out = tx(`<Toggle value={done} />`, 'kotlin')
     expect(out).toContain('Switch(checked = done, onCheckedChange = { done = it })')
+  })
+
+  // Phase E2 — non-signal value support for parent-owns-state pattern
+  // (unblocks <Checkbox> → <Toggle> migration in TodoMVC TodoRow).
+  //
+  // Compiler's props-rewrite drops `props.X` to bare `X` in emit, so
+  // SwiftUI/Compose see `todo.done` + `onToggle()` (props become struct
+  // fields on the View / Composable function-param list).
+
+  it('Swift: <Toggle value={props.todo.done} onChange={props.onToggle}> → custom Binding', () => {
+    const out = txWithTodoProps(
+      `<Toggle value={props.todo.done} onChange={props.onToggle} />`,
+      'swift',
+    )
+    expect(out).toContain('Toggle("", isOn: Binding(')
+    expect(out).toContain('get: { todo.done }')
+    expect(out).toContain('set: { _ in')
+    expect(out).toContain('onToggle()')
+  })
+
+  it('Kotlin: <Toggle value={props.todo.done} onChange={props.onToggle}> → Switch(checked = expr)', () => {
+    const out = txWithTodoProps(
+      `<Toggle value={props.todo.done} onChange={props.onToggle} />`,
+      'kotlin',
+    )
+    expect(out).toContain('Switch(checked = todo.done')
+    expect(out).toContain('onCheckedChange =')
+    expect(out).toContain('onToggle()')
+  })
+
+  it('Swift: non-signal value WITHOUT onChange → falls through (cant write)', () => {
+    // Without onChange there's no way to handle writes; the custom
+    // Binding shape is invalid. Fall through to generic emit to
+    // surface the problem clearly.
+    const out = txWithTodoProps(`<Toggle value={props.todo.done} />`, 'swift')
+    // Generic emit produces the literal tag name with attrs.
+    expect(out).not.toContain('Toggle("", isOn: Binding')
   })
 })
 
