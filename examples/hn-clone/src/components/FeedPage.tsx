@@ -5,6 +5,7 @@ import { useTypedSearchParams } from '@pyreon/router'
 import StoryRow from './StoryRow'
 import type { FeedKind } from '../lib/api'
 import { fetchFeed } from '../lib/api'
+import { usePrefs } from '../lib/prefs'
 
 export interface FeedPageProps {
   kind: FeedKind
@@ -19,6 +20,7 @@ export default function FeedPage(props: FeedPageProps) {
 
   const [search] = useTypedSearchParams({ page: 'number' })
   const page = () => Math.max(1, search().page || 1)
+  const prefs = usePrefs()
 
   const query = useQuery(() => ({
     queryKey: ['feed', props.kind, page()],
@@ -26,7 +28,7 @@ export default function FeedPage(props: FeedPageProps) {
   }))
 
   return (
-    <section class="feed">
+    <section class={() => `feed feed-density-${prefs.store.density()}`} data-testid="feed">
       {() => {
         if (query.isPending()) return <div class="feed-state">Loading…</div>
         if (query.isError())

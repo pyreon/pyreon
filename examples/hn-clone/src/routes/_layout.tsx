@@ -7,6 +7,12 @@ import { useOnline, useToggle, useEventListener } from '@pyreon/hooks'
 import { useHotkey } from '@pyreon/hotkeys'
 import { createPermissions, PermissionsProvider } from '@pyreon/permissions'
 import { i18n, type Locale } from '../lib/i18n'
+import { installBookmarksPersistence } from '../lib/bookmarks'
+
+// Wire bookmarks → localStorage at module load. Must run before any
+// route mounts so bookmarks added from /item/:id reach storage even if
+// the user never opens /bookmarks during the session.
+installBookmarksPersistence()
 
 /**
  * Mock permissions — pretend the visitor is logged-in as a regular user.
@@ -216,6 +222,15 @@ function Nav(_props: NavProps) {
           </Link>
           <Link href="/stats" prefetch="hover" activeClass="nav-active">
             {() => t('nav.stats')}
+          </Link>
+          <Link href="/leaderboard" prefetch="hover" activeClass="nav-active">
+            {() => t('nav.leaderboard')}
+          </Link>
+          <Link href="/prefs" prefetch="hover" activeClass="nav-active">
+            {() => t('nav.prefs')}
+          </Link>
+          <Link href="/todos" prefetch="hover" activeClass="nav-active">
+            {() => t('nav.todos')}
           </Link>
           <Link href="/shortcuts" prefetch="hover" activeClass="nav-active">
             {() => t('nav.shortcuts')}

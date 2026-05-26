@@ -1,50 +1,37 @@
 import { useHead } from '@pyreon/head'
 import { useI18n } from '@pyreon/i18n'
-import { useStorage } from '@pyreon/storage'
 import { toast } from '@pyreon/toast'
 import { Link } from '@pyreon/zero/link'
-import { effect, computed } from '@pyreon/reactivity'
-import { onMount } from '@pyreon/core'
+import { computed } from '@pyreon/reactivity'
 import { useSortable } from '@pyreon/dnd'
+import { createDocument, download } from '@pyreon/document'
 import { useBookmarksModel, type Bookmark } from '../lib/bookmarks'
 
 /**
  * Bookmarks page — exercises:
  *  - `@pyreon/state-tree` (BookmarksModel — schema-mode with chainable views/actions)
- *  - `@pyreon/storage`    (useStorage → localStorage with cross-tab sync)
  *  - `@pyreon/toast`      (notification on remove/clear)
  *  - `@pyreon/dnd`        (useSortable — pointer-drag reorder of the list)
- *  - `effect()` from reactivity to mirror state-tree → storage
+ *  - `@pyreon/document`   (export bookmarks to PDF / Markdown via builder)
  *
- * Persistence strategy: the BookmarksModel is the source of truth in
- * memory; we mirror its `items` to localStorage via `useStorage` and
- * rehydrate on mount. Cross-tab sync comes for free from `useStorage`.
+ * Persistence is installed app-wide via `installBookmarksPersistence()`
+ * in `_layout.tsx` so bookmarks added on `/item/:id` reach localStorage
+ * regardless of which route the user is currently on. See
+ * `../lib/bookmarks.ts` for the storage + cross-tab sync code.
  *
  * Reorder strategy: `useSortable` emits a freshly-ordered array via
  * `onReorder`; we feed it back into the state-tree via `model.reorder()`
  * which preserves bookmark identity via the IDs.
+ *
+ * Export strategy: `@pyreon/document` builds a structured document via
+ * the chainable `createDocument()` API, then `download()` dispatches to
+ * the right renderer based on extension (`.pdf` → PDF, `.md` → markdown).
  */
 export default function BookmarksPage() {
   const { t } = useI18n()
   useHead(() => ({ title: `${t('nav.bookmarks')} — Hacker News (Pyreon)` }))
 
   const model = useBookmarksModel()
-  const stored = useStorage<Bookmark[]>('hn-bookmarks', [])
-
-  // Rehydrate the state-tree from storage at mount time (read once).
-  onMount(() => {
-    const initial = stored.peek()
-    if (initial.length > 0 && (model.items() as Bookmark[]).length === 0) {
-      model.set({ items: initial })
-    }
-  })
-
-  // Mirror state-tree changes back to storage. `effect()` re-runs whenever
-  // any reactive read in its body changes — here it tracks model.items().
-  effect(() => {
-    const items = model.items() as Bookmark[]
-    stored.set(items)
-  })
 
   // useSortable expects a signal of items + a `by` key extractor.
   // We adapt the state-tree's items() to a computed-signal shape.
@@ -58,6 +45,34 @@ export default function BookmarksPage() {
       toast.info('Bookmarks reordered')
     },
   })
+
+  // ── PDF / Markdown export via @pyreon/document ───────────────────────────
+  const exportBookmarks = async (filename: string) => {
+    const list = items()
+    if (list.length === 0) {
+      toast.error('No bookmarks to export')
+      return
+    }
+    try {
+      const doc = createDocument({ title: 'My HN Bookmarks' })
+        .heading('My HN Bookmarks')
+        .text(`Exported ${new Date().toLocaleString()} — ${list.length} stories`)
+        .divider()
+      for (const [i, b] of list.entries()) {
+        doc.heading(`${i + 1}. ${b.title}`, { level: 3 })
+        if (b.url) doc.link(b.url, { href: b.url })
+        doc.text(
+          `${b.domain ? `Domain: ${b.domain} · ` : ''}Added ${new Date(
+            b.addedAt,
+          ).toLocaleDateString()}`,
+        )
+      }
+      await download(doc.build(), filename)
+      toast.success(`Exported to ${filename}`)
+    } catch (err) {
+      toast.error(`Export failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
 
   return (
     <section class="bookmarks-page">
@@ -80,6 +95,29 @@ export default function BookmarksPage() {
             >
               clear all
             </button>
+          ) : null
+        }}
+        {() => {
+          const count = model.count() as number
+          return count > 0 ? (
+            <>
+              <button
+                type="button"
+                class="link-btn"
+                onClick={() => exportBookmarks('bookmarks.md')}
+                data-testid="export-md"
+              >
+                export .md
+              </button>
+              <button
+                type="button"
+                class="link-btn"
+                onClick={() => exportBookmarks('bookmarks.pdf')}
+                data-testid="export-pdf"
+              >
+                export .pdf
+              </button>
+            </>
           ) : null
         }}
       </header>
