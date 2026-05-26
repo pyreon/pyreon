@@ -8,9 +8,9 @@
 // - `<Stack>` / `<Inline>` (was `<VStack>` / `<HStack>`)
 // - `<Field value onChangeText onSubmit>` (was `<TextField value onInput onKeyDown>`)
 // - `<Button onPress>` (was `<Button onClick>`)
-// `<Checkbox>` keeps its legacy SwiftUI-flavored name until canonical
-// `<Toggle>` ships per-target emit (deferred — Compose `Switch` vs
-// SwiftUI `Toggle` semantic split needs a separate emit fn).
+// - `<Toggle value onChange>` (was `<Checkbox checked onChange>`) — non-signal
+//   value path (PR #970) routes through SwiftUI `Binding(get:set:)` for the
+//   parent-owns-state pattern used by TodoRow.
 
 import { signal, computed } from '@pyreon/reactivity'
 // `@pyreon/storage` — cross-platform persistence (Phase 0+: still
@@ -92,7 +92,7 @@ export function TodoApp() {
 export function TodoRow(props: { todo: Todo; onToggle: () => void; onRemove: () => void }) {
   return (
     <Inline>
-      <Checkbox checked={props.todo.done} onChange={props.onToggle} />
+      <Toggle value={props.todo.done} onChange={props.onToggle} />
       <Text>{props.todo.text}</Text>
       <Button onPress={props.onRemove}>Remove</Button>
     </Inline>

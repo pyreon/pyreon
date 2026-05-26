@@ -9,7 +9,7 @@
 
 ## What this proves
 
-`@pyreon/primitives`' 6 implemented web primitives (`Stack`, `Inline`, `Text`, `Button`, `Press`, `Field`) plus Pyreon's `<For>` / `<Show>` control flow render a non-trivial app (TodoMVC) end-to-end with reactive signals + persistent storage. The `verify-modes` cell `native-todomvc-web × spa` asserts the production build emits expected HTML content.
+`@pyreon/primitives`' 7 implemented web primitives (`Stack`, `Inline`, `Text`, `Button`, `Press`, `Field`, `Toggle`) plus Pyreon's `<For>` / `<Show>` control flow render a non-trivial app (TodoMVC) end-to-end with reactive signals + persistent storage. The `verify-modes` cell `native-todomvc-web × spa` asserts the production build emits expected HTML content.
 
 ## Build / dev
 
@@ -27,7 +27,6 @@ bun run preview  # serve dist/ via vite preview
 | `index.html` | Bootstrap shell — mounts `#app` + loads `entry-client.tsx`. |
 | `src/entry-client.tsx` | `@pyreon/runtime-dom` mount call. |
 | `src/TodoApp.tsx` | TodoMVC implementation using canonical `@pyreon/primitives` JSX vocab + explicit imports. |
-| `src/shims/Checkbox.tsx` | Transitional `<Checkbox>` shim (see below). |
 
 ## Why a separate `TodoApp.tsx` vs the literal same file as native?
 
@@ -37,23 +36,20 @@ The native sources kept zero `@pyreon/primitives` imports to keep their surface 
 
 **The "literally same .tsx file across all three targets" claim is a Phase D2 follow-up** — it requires a `@pyreon/vite-plugin` JSX-auto-import pass that injects `import { Stack, ... } from '@pyreon/primitives'` for every bare canonical-tag reference. Until that ships, web has its own copy with the imports added. The logic is identical; the only delta is the import header.
 
-## The `<Checkbox>` shim
+## Canonical `<Toggle>` — semantic split across platforms
 
-`<Checkbox>` is the last legacy SwiftUI-flavored tag in the TodoMVC source. The canonical replacement (`<Toggle>`) is semantically split across platforms:
+`<Toggle>` is the canonical binary-toggle primitive. The PMTC compiler emits the right native widget per target:
 
 - Web: `<input type="checkbox">`
-- SwiftUI: `Toggle`
-- Compose: `Switch` (NOT `Toggle`)
+- iOS (SwiftUI): `Toggle("", isOn: ...)` — signal binding-projection OR custom `Binding(get:set:)` for parent-owns-state (the TodoRow pattern)
+- Android (Compose): `Switch(checked = ..., onCheckedChange = ...)` (NOT `Toggle` — Compose uses `Switch` for the binary toggle)
 
-So canonical `<Toggle>` needs its own per-target emit function in `@pyreon/compiler-native` — separate scope from Phase D. Until it ships, native TodoMVC uses the legacy `<Checkbox>` JSX tag (resolved by the native compiler to platform-native via its legacy emit), and this web sibling provides the matching DOM rendering via [`src/shims/Checkbox.tsx`](src/shims/Checkbox.tsx).
-
-When canonical `<Toggle>` ships, all three siblings migrate together and the shim deletes.
+The non-signal value path (PR #970) routes through SwiftUI's `Binding(get:set:)` so parent-owns-state shapes (TodoRow reading `props.todo.done` + calling `props.onToggle`) work without converting the parent state to a signal.
 
 ## What's NOT in Phase D
 
 - **Real-Chromium e2e gate** (Playwright spec asserting click → DOM updates). Verify-modes catches the build emits content; the runtime click contract is a follow-up.
 - **JSX-auto-import vite plugin** that would let the web sibling share the literal same `.tsx` file as native. Documented above.
-- **Canonical `<Toggle>` per-target emit** — separate arc covering Compose `Switch` vs SwiftUI `Toggle` semantic mapping.
 - **Native counter-ios `<Press>` migration** — the existing native counter scaffold doesn't use canonical primitives yet.
 
 ## Privacy

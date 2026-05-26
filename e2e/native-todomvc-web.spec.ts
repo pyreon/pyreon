@@ -11,7 +11,7 @@ import { expect, test } from '@playwright/test'
  *
  *   - <Stack> / <Inline>      — layout containers render structural DOM
  *   - <Field onChangeText onSubmit> — input + Enter-to-submit add a todo
- *   - <Checkbox>              — DOM shim toggles done state via onChange
+ *   - <Toggle value onChange> — canonical primitive toggles done state
  *   - <Button onPress>        — filter switches drive the visible signal
  *   - <For each by>           — keyed list reconciles per-todo
  *   - <Show when>             — `Clear completed` gates on hasCompleted
@@ -73,7 +73,7 @@ test.describe('native-todomvc-web — Phase D runtime contract', () => {
     await expect(field).toHaveValue('')
   })
 
-  test('<Checkbox> toggles done state via onChange (the DOM shim)', async ({
+  test('<Toggle value onChange> toggles done state (canonical primitive)', async ({
     page,
   }) => {
     await page.goto('/')
@@ -81,10 +81,10 @@ test.describe('native-todomvc-web — Phase D runtime contract', () => {
     await field.fill('Walk dog')
     await field.press('Enter')
     await expect(page.getByText('1 remaining')).toBeVisible()
-    // The <Checkbox> shim renders as <input type="checkbox">.
-    const cb = page.locator('input[type="checkbox"]')
-    await expect(cb).toHaveCount(1)
-    await cb.click()
+    // <Toggle> compiles to `<input type="checkbox">` on web.
+    const toggle = page.locator('input[type="checkbox"]')
+    await expect(toggle).toHaveCount(1)
+    await toggle.click()
     // Toggling done reduces remaining count via the remaining computed.
     await expect(page.getByText('0 remaining')).toBeVisible()
   })

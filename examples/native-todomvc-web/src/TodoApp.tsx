@@ -33,8 +33,7 @@
 import { signal, computed } from '@pyreon/reactivity'
 import { useStorage } from '@pyreon/storage'
 import { For, Show } from '@pyreon/core'
-import { Stack, Inline, Text, Button, Field } from '@pyreon/primitives'
-import { Checkbox } from './shims/Checkbox'
+import { Stack, Inline, Text, Button, Field, Toggle } from '@pyreon/primitives'
 
 type Todo = { id: number; text: string; done: boolean }
 type Filter = 'all' | 'active' | 'completed'
@@ -114,7 +113,7 @@ function TodoRow(props: {
 }) {
   return (
     <Inline gap={2} align="center">
-      <Checkbox checked={props.todo.done} onChange={props.onToggle} />
+      <Toggle value={props.todo.done} onChange={props.onToggle} />
       <Text>{props.todo.text}</Text>
       <Button onPress={props.onRemove}>Remove</Button>
     </Inline>
