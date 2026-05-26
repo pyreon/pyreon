@@ -290,6 +290,7 @@ export function defineFeature<TValues extends Record<string, unknown>>(
         ...initialValues,
         ...options?.initialValues,
       } as TValues
+      const client = useQueryClient()
 
       const form = _useForm<TValues>({
         initialValues: mergedInitial,
@@ -300,8 +301,23 @@ export function defineFeature<TValues extends Record<string, unknown>>(
             let result: unknown
             if (mode === 'edit' && options?.id !== undefined) {
               result = await http.update<TValues>(api, options.id, values)
+              // Invalidate the list AND the per-id query — mirrors
+              // useUpdate()'s mutation behaviour so any list/detail
+              // view auto-refetches after the form's submit succeeds.
+              client.invalidateQueries({
+                queryKey: queryKeyBase as unknown as QueryKey,
+              })
+              client.invalidateQueries({ queryKey: [name, options.id] })
             } else {
               result = await http.create<TValues>(api, values)
+              // Invalidate the list query — without this, the list view
+              // doesn't refetch after the form creates a new item and
+              // the UI silently doesn't show the new entry until reload.
+              // Mirrors useCreate()'s mutation onSuccess behaviour so
+              // feature.useForm has parity with feature.useCreate.
+              client.invalidateQueries({
+                queryKey: queryKeyBase as unknown as QueryKey,
+              })
             }
             options?.onSuccess?.(result)
           } catch (err) {

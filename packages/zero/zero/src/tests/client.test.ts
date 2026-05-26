@@ -21,9 +21,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const replaceMock = vi.fn(() => Promise.resolve())
 const currentRouteMock = vi.fn(() => ({ path: '/users/42' }))
+const currentPathMock = vi.fn(() => '/users/42')
 const routerStub = {
   replace: replaceMock,
   currentRoute: currentRouteMock,
+  // `_currentPath` is the router's internal base-stripped path+search signal.
+  // startClient uses this when present (W13 from #960) to preserve query
+  // strings on SPA cold-start without double-prepending the base prefix.
+  _currentPath: currentPathMock,
 }
 const hydrateLoaderDataMock = vi.fn()
 
@@ -59,6 +64,10 @@ beforeEach(() => {
   delete (window as unknown as Record<string, unknown>).__PYREON_LOADER_DATA__
   replaceMock.mockClear()
   hydrateLoaderDataMock.mockClear()
+  currentPathMock.mockClear()
+  // The current mock returns '/users/42' from _currentPath; just rebind
+  // for clarity in case a later test wants to override.
+  currentPathMock.mockReturnValue('/users/42')
 })
 
 afterEach(() => {

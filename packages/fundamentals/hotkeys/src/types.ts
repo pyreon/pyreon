@@ -36,8 +36,19 @@ export interface HotkeyOptions {
 export interface HotkeyEntry {
   /** The original shortcut string (e.g. 'ctrl+s') */
   shortcut: string
-  /** Parsed key combination */
+  /**
+   * Parsed key combination — for SEQUENTIAL combos (`'g t'`) this is the
+   * FIRST combo in the sequence; `sequence` carries the remaining combos.
+   * Non-sequential combos have empty `sequence`.
+   */
   combo: KeyCombo
+  /**
+   * Remaining combos for sequential shortcuts (`'g t'` → [{ key: 't' }]).
+   * Empty for single-combo hotkeys. Each subsequent keystroke must match
+   * `sequence[0]`, then `sequence[1]`, etc., within `SEQUENCE_TIMEOUT_MS`.
+   * Defaults to empty.
+   */
+  sequence: KeyCombo[]
   /** The callback to invoke */
   handler: (event: KeyboardEvent) => void
   /** Options */
