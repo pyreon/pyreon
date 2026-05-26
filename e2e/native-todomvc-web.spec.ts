@@ -43,13 +43,14 @@ test.describe('native-todomvc-web — Phase D runtime contract', () => {
   }) => {
     const response = await page.goto('/')
     expect(response?.status()).toBe(200)
-    // Bootstrap shell carries the testid from index.html (NOT from a
-    // primitive — primitives don't forward data-* yet; see "known gaps"
-    // below).
+    // Bootstrap shell carries one testid from index.html.
     await expect(page.getByTestId('app-root')).toBeVisible()
+    // Root <Stack data-testid="todo-app"> forwards through to the DOM via
+    // @pyreon/primitives' HtmlPassthroughProps (#953 closed the
+    // data-* forwarding gap).
+    await expect(page.getByTestId('todo-app')).toBeVisible()
     // Field's placeholder string + remaining counter render via the
-    // @pyreon/primitives runtime — visible-text assertions sidestep
-    // the data-testid forwarding gap on primitive-rendered nodes.
+    // @pyreon/primitives runtime.
     await expect(page.getByPlaceholder('What needs to be done?')).toBeVisible()
     await expect(page.getByText('0 remaining')).toBeVisible()
   })
@@ -62,10 +63,18 @@ test.describe('native-todomvc-web — Phase D runtime contract', () => {
     await field.fill('Buy milk')
     await field.press('Enter')
     // Todo appears via <For each={visible}>; "1 remaining" via remaining
-    // computed. The field NOT clearing on submit is a known
-    // <Field>-controlled-input gap (signal updates the value attr but
-    // the input's property doesn't follow) — DOM-level fix tracked
-    // separately; don't gate this spec on it.
+    // computed. The field NOT auto-clearing after submit IS a real gap
+    // in the Playwright-shape flow — #955 documented this as "false
+    // positive" based on real-Chromium UNIT tests that passed, but
+    // the e2e Playwright shape reproduces the failure (input retains
+    // 'Buy milk' after draft.set('') runs). The unit test uses
+    // `dispatchEvent(new InputEvent('input', ...))` synthetically;
+    // Playwright's `field.fill(...)` drives the keyboard differently,
+    // and the renderEffect that should re-write `input.value = ''`
+    // after the signal flip doesn't take effect in that shape.
+    // Investigation tracked separately; the assertion stays disabled
+    // until the real fix lands. The OTHER specs work around by using
+    // `field.fill('')` before typing subsequent todos.
     await expect(page.getByText('Buy milk')).toBeVisible()
     await expect(page.getByText('1 remaining')).toBeVisible()
   })
@@ -93,8 +102,9 @@ test.describe('native-todomvc-web — Phase D runtime contract', () => {
     const field = page.getByPlaceholder('What needs to be done?')
     await field.fill('Active task')
     await field.press('Enter')
-    // Field doesn't auto-clear (see known gap above); manually clear
-    // before typing the next.
+    // Field doesn't auto-clear in the Playwright shape — manually
+    // clear before typing the next. See known gap in the add-todo
+    // spec above.
     await field.fill('')
     await field.fill('Done task')
     await field.press('Enter')
