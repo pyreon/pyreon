@@ -155,8 +155,26 @@ jobs:
           # PR #XXX for measurements + root cause analysis.
           bun run $FILTER --sequential typecheck
 
+  # P2a — Lint (oxlint only): independent of Install (no node_modules needed).
+  # Runs in parallel with Install, so a typo / lint failure surfaces in ~15s
+  # instead of waiting ~3.5 min for Install + the lint job to start.
   lint:
     name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+      - name: Run lint
+        run: bun run lint
+
+  # P2a — `lint:browser-smoke` (`scripts/check-browser-smoke.ts`) imports
+  # `../packages/tools/lint/src/runner` (workspace-resolved via the node_modules
+  # symlink farm). Must keep `needs: install`.
+  lint-browser-smoke:
+    name: Lint (browser-smoke)
     needs: install
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -173,8 +191,6 @@ jobs:
             examples/*/node_modules
             docs/node_modules
           key: ${{ env.NM_KEY }}
-      - name: Run lint
-        run: bun run lint
       - name: Enforce pyreon/require-browser-smoke-test
         run: bun run lint:browser-smoke
 
