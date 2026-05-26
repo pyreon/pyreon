@@ -58,6 +58,12 @@
  * ```
  */
 
+// ─── v1 validator (new) ────────────────────────────────────────────────
+
+export * from './v1'
+
+// ─── DX layer (from PR #952 — works with Pyreon's own validator + any other StdSchema lib) ──
+
 export { formatError, formatErrors, formatErrorsByPath } from './format'
 export { getMeta, resolveMetaField, withField } from './meta'
 export {

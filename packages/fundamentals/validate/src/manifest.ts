@@ -2,11 +2,11 @@ import { defineManifest } from '@pyreon/manifest'
 
 export default defineManifest({
   name: '@pyreon/validate',
-  title: 'Standard Schema DX overlay',
+  title: 'Pyreon validator + Standard Schema DX',
   tagline:
-    'Pyreon-flavoured layer on top of Standard Schema — field metadata, reactive parse, i18n-aware error formatting',
+    "Pyreon's own validation library — chainable + function-comp hybrid API, Standard Schema-native, with built-in field metadata, reactive parse, and i18n-aware error formatting",
   description:
-    "Tiny DX overlay over Standard Schema (https://standardschema.dev) — the cross-library protocol implemented natively by Zod 3.24+, Valibot 1.0+, ArkType 2.0+, and any future StdSchema-compliant validator. Adds the three things the spec deliberately omits + Pyreon-native bridges: `withField` for label/hint/placeholder/i18n metadata attached to any schema; `parseReactive` for signal-driven re-validation as a `Computed<ParseResult>`; `formatErrors` for i18n-key-aware error rendering. Pyreon does NOT ship its own validator runtime — use Zod, Valibot, ArkType, or any future spec-compliant lib; `@pyreon/validate` makes it Pyreon-flavoured.",
+    "Pyreon-owned validator library implementing Standard Schema (https://standardschema.dev) natively. Hybrid API: chainable methods (`s.string().email().min(3)`) AND function composition (`pipe(string(), email(), min(3))`) — same schemas, different ergonomic surface. The chainable path doesn't pay class-overhead per parse: each schema's ops compile to a single closure on first call. Includes built-in DX helpers (`withField` / `parseReactive` / `formatErrors`) that ALSO work on top of any other Standard Schema validator (Zod 3.24+, Valibot 1.0+, ArkType 2.0+) — backward-compatible with existing schema code. v1 surface: string/number/boolean/literal/enum primitives + object/array composition + optional/nullable/nullish/default/transform/refine/brand/describe modifiers + 20+ built-in checks. tuple / record / union / discriminate / intersection / date / bigint / .pick / .omit / compiler-emit deferred to follow-up PRs.",
   category: 'universal',
   longExample: `import { z } from 'zod'
 import { signal } from '@pyreon/reactivity'

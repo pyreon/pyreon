@@ -14,7 +14,7 @@ import manifest from '../manifest'
 describe('gen-docs — validate snapshot', () => {
   it('renders to llms.txt bullet', () => {
     expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(
-      `"- @pyreon/validate — Pyreon-flavoured layer on top of Standard Schema — field metadata, reactive parse, i18n-aware error formatting. The protocol deliberately omits a metadata channel — that's the gap \`withField\` fills. The protocol also doesn't carry i18n keys — \`formatErrors\` adds that layer."`,
+      `"- @pyreon/validate — Pyreon's own validation library — chainable + function-comp hybrid API, Standard Schema-native, with built-in field metadata, reactive parse, and i18n-aware error formatting. The protocol deliberately omits a metadata channel — that's the gap \`withField\` fills. The protocol also doesn't carry i18n keys — \`formatErrors\` adds that layer."`,
     )
   })
 

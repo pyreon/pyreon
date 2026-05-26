@@ -38,6 +38,7 @@
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
     "@pyreon/reactivity": "workspace:^",
+    "@pyreon/validation": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
     "@vitus-labs/tools-lint": "^2.4.0",
     "arktype": "^2.2.0",
