@@ -853,10 +853,11 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Inline') return emitSwiftStack(e, indent, /*defaultDirection*/ 'row')
   if (tag === 'Press') return emitSwiftPress(e, indent)
   if (tag === 'Field') return emitSwiftField(e, indent)
-  // 10 other canonical primitives (Layer, Scroll, Spacer, Heading,
-  // Image, Icon, Link, Toggle, Modal) DON'T have dedicated emit
-  // functions yet — they fall through to generic emit, which produces
-  // the LITERAL tag name in output (not typecheck-clean against the
+  if (tag === 'Toggle') return emitSwiftToggle(e, indent)
+  // 9 other canonical primitives (Layer, Scroll, Spacer, Heading,
+  // Image, Icon, Link, Modal) DON'T have dedicated emit functions
+  // yet — they fall through to generic emit, which produces the
+  // LITERAL tag name in output (not typecheck-clean against the
   // real platform). Ship as real apps demand each.
   // Generic SwiftUI View by tag name.
   return emitSwiftGeneric(e, indent)
@@ -1334,6 +1335,50 @@ function emitSwiftField(
   if (onSubmit) {
     result += `\n${' '.repeat(indent + 2)}.onSubmit ${emitSwiftAction(onSubmit.handler, indent + 2)}`
   }
+  const disabled = readStaticAttr(e, 'disabled')
+  if (disabled === true) {
+    result += `\n${' '.repeat(indent + 2)}.disabled(true)`
+  }
+  result += emitSwiftLayoutModifiers(e)
+  return result
+}
+
+/**
+ * Emit `<Toggle value={signal} onChange={fn}>` as SwiftUI's
+ * `Toggle("", isOn: $signal)` with a two-way binding to the signal.
+ *
+ * Canonical contract: `value` MUST name a signal in scope (matches the
+ * `<Field value={signal}>` shape). The two-way binding via SwiftUI's
+ * `$signal` projection writes back automatically, so the user-supplied
+ * `onChange` handler is REDUNDANT on Swift — drop it and emit the
+ * binding directly. (Compose Switch needs `onCheckedChange` explicitly
+ * because Kotlin doesn't have property-wrapper bindings; per-target
+ * idiom split, mirrors the Field emit pattern.)
+ *
+ * `disabled` translates to `.disabled(true)` modifier. Layout
+ * modifiers from `padding` / `radius` / `background` token props
+ * chain via `emitSwiftLayoutModifiers`.
+ */
+function emitSwiftToggle(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const valueAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> =>
+      a.kind === 'attr' && a.name === 'value',
+  )
+  // value must name a signal in scope (canonical contract — mirrors
+  // emitSwiftField). Anything else falls through to generic emit to
+  // avoid silently producing broken Swift.
+  if (
+    !valueAttr ||
+    valueAttr.value.kind !== 'identifier' ||
+    !_signalNames.has(valueAttr.value.name)
+  ) {
+    return emitSwiftGeneric(e, indent)
+  }
+  const sig = swiftIdent(valueAttr.value.name)
+  let result = `Toggle("", isOn: $${sig})`
   const disabled = readStaticAttr(e, 'disabled')
   if (disabled === true) {
     result += `\n${' '.repeat(indent + 2)}.disabled(true)`

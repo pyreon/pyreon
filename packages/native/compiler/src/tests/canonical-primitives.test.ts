@@ -27,6 +27,7 @@ function tx(jsxBody: string, target: 'swift' | 'kotlin'): string {
     import { signal } from '@pyreon/reactivity'
     export function App() {
       const draft = signal<string>('')
+      const done = signal<boolean>(false)
       const fn = () => {}
       return ${jsxBody}
     }
@@ -218,6 +219,47 @@ describe('Phase B — <Button onPress> (canonical event name)', () => {
   it('Kotlin: <Button onClick={fn}> (legacy) also works', () => {
     const out = tx(`<Button onClick={fn}>Save</Button>`, 'kotlin')
     expect(out).toContain('Button(onClick = { fn() })')
+  })
+})
+
+describe('Phase B — <Toggle> emit (canonical binary toggle; Compose Switch vs SwiftUI Toggle)', () => {
+  it('Swift: <Toggle value={done}> → Toggle("", isOn: $done)', () => {
+    const out = tx(`<Toggle value={done} onChange={(b) => done.set(b)} />`, 'swift')
+    expect(out).toContain('Toggle("", isOn: $done)')
+  })
+
+  it('Swift: <Toggle disabled> → .disabled(true) modifier', () => {
+    const out = tx(
+      `<Toggle value={done} onChange={(b) => done.set(b)} disabled />`,
+      'swift',
+    )
+    expect(out).toContain('Toggle("", isOn: $done)')
+    expect(out).toContain('.disabled(true)')
+  })
+
+  it('Kotlin: <Toggle value={done} onChange={...}> → Switch(checked = done, onCheckedChange = ...)', () => {
+    // Compose has no `Toggle` component — the canonical-primitives name
+    // map routes Toggle → Switch (Compose Material's binary toggle).
+    const out = tx(`<Toggle value={done} onChange={(b) => done.set(b)} />`, 'kotlin')
+    expect(out).toContain('Switch(checked = done')
+    expect(out).toContain('onCheckedChange = { b -> done = b }')
+  })
+
+  it('Kotlin: <Toggle disabled> → enabled = false', () => {
+    const out = tx(
+      `<Toggle value={done} onChange={(b) => done.set(b)} disabled />`,
+      'kotlin',
+    )
+    expect(out).toContain('Switch(checked = done')
+    expect(out).toContain('enabled = false')
+  })
+
+  it('Kotlin: <Toggle value={done}> with no onChange — emits fallback write-back', () => {
+    // Compose requires onCheckedChange to be a function; canonical
+    // <Toggle> normally pairs value + onChange, but defensive emit
+    // auto-derives the write-back if onChange is missing.
+    const out = tx(`<Toggle value={done} />`, 'kotlin')
+    expect(out).toContain('Switch(checked = done, onCheckedChange = { done = it })')
   })
 })
 

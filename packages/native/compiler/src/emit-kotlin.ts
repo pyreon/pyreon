@@ -770,7 +770,8 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Inline') return emitKotlinStack(e, indent, /*defaultDirection*/ 'row')
   if (tag === 'Press') return emitKotlinPress(e, indent)
   if (tag === 'Field') return emitKotlinField(e, indent)
-  // 10 other canonical primitives fall through to generic emit until
+  if (tag === 'Toggle') return emitKotlinToggle(e, indent)
+  // 9 other canonical primitives fall through to generic emit until
   // real apps demand each (see emit-swift.ts comment).
   return emitKotlinGeneric(e, indent)
 }
@@ -1210,6 +1211,61 @@ function emitKotlinField(
     args.push('enabled = false')
   }
   return `TextField(${args.join(', ')})`
+}
+
+/**
+ * Emit `<Toggle value={signal} onChange={fn}>` as Compose
+ * `Switch(checked = signal, onCheckedChange = { fn })`. Mirror of
+ * `emitSwiftToggle` for Android.
+ *
+ * Compose's `Switch` is the Material binary-toggle component (NOT
+ * `Toggle` — Compose has no `Toggle`). Per the canonical-primitives
+ * name map (`Toggle: 'Switch'`), this is the idiomatic Android
+ * equivalent.
+ *
+ * Unlike Swift (which uses `$signal` binding-projection so the
+ * `onChange` handler is redundant), Compose requires the
+ * `onCheckedChange` callback explicitly because Kotlin has no
+ * property-wrapper bindings — the handler must write back to the
+ * signal manually. The user-supplied `onChange` is threaded through
+ * with arrow-param preservation (#920).
+ */
+function emitKotlinToggle(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const valueAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> =>
+      a.kind === 'attr' && a.name === 'value',
+  )
+  // value must name a signal in scope (canonical contract — mirrors
+  // emitKotlinField).
+  if (
+    !valueAttr ||
+    valueAttr.value.kind !== 'identifier' ||
+    !_signalNames.has(valueAttr.value.name)
+  ) {
+    return emitKotlinGeneric(e, indent)
+  }
+  const sig = kotlinIdent(valueAttr.value.name)
+  const onChange = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'change',
+  )
+  const args: string[] = [`checked = ${sig}`]
+  if (onChange) {
+    args.push(`onCheckedChange = ${emitKotlinAction(onChange.handler, indent + 2)}`)
+  } else {
+    // Fallback: auto-derive write-back to the signal — Compose
+    // requires onCheckedChange to be a function. Mirrors the field
+    // emit's auto-derive shape.
+    args.push(`onCheckedChange = { ${sig} = it }`)
+  }
+  const disabled = readStaticAttrKotlin(e, 'disabled')
+  if (disabled === true) {
+    args.push('enabled = false')
+  }
+  return `Switch(${args.join(', ')})`
 }
 
 // `isCanonicalPrimitive` is imported but referenced only via the
