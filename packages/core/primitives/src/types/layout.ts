@@ -4,7 +4,14 @@
 // contract. Implementations (web in src/web/; iOS/Android via PMTC
 // compiler) honor the same prop shape.
 
-import type { Align, BaseLayoutProps, ChildrenProp, Justify, Space } from './shared'
+import type {
+  Align,
+  BaseLayoutProps,
+  ChildrenProp,
+  HtmlPassthroughProps,
+  Justify,
+  Space,
+} from './shared'
 
 /**
  * `<Stack>` — the canonical flex container. The primary layout
@@ -19,7 +26,10 @@ import type { Align, BaseLayoutProps, ChildrenProp, Justify, Space } from './sha
  * - iOS: `VStack` / `HStack`
  * - Android: `Column` / `Row`
  */
-export interface StackProps extends BaseLayoutProps, ChildrenProp {
+export interface StackProps
+  extends BaseLayoutProps,
+    ChildrenProp,
+    HtmlPassthroughProps {
   direction?: 'column' | 'row'
   /** Cross-axis alignment of children (flex `alignItems`). */
   align?: Align
@@ -41,7 +51,10 @@ export interface StackProps extends BaseLayoutProps, ChildrenProp {
  * - iOS: `HStack`
  * - Android: `Row`
  */
-export interface InlineProps extends BaseLayoutProps, ChildrenProp {
+export interface InlineProps
+  extends BaseLayoutProps,
+    ChildrenProp,
+    HtmlPassthroughProps {
   align?: Align
   justify?: Justify
   gap?: Space
@@ -57,7 +70,10 @@ export interface InlineProps extends BaseLayoutProps, ChildrenProp {
  * - iOS: `ZStack`
  * - Android: `Box`
  */
-export interface LayerProps extends BaseLayoutProps, ChildrenProp {
+export interface LayerProps
+  extends BaseLayoutProps,
+    ChildrenProp,
+    HtmlPassthroughProps {
   align?: Align
 }
 
@@ -69,7 +85,10 @@ export interface LayerProps extends BaseLayoutProps, ChildrenProp {
  * - iOS: `ScrollView`
  * - Android: `Column(verticalScroll)` / `Row(horizontalScroll)`
  */
-export interface ScrollProps extends BaseLayoutProps, ChildrenProp {
+export interface ScrollProps
+  extends BaseLayoutProps,
+    ChildrenProp,
+    HtmlPassthroughProps {
   axis?: 'vertical' | 'horizontal'
 }
 
@@ -82,6 +101,6 @@ export interface ScrollProps extends BaseLayoutProps, ChildrenProp {
  * - iOS: `Spacer()`
  * - Android: `Spacer(modifier=Modifier.weight(1f))`
  */
-export interface SpacerProps {
-  // No props in v1. Future arc may add `size` for fixed-space variants.
+export interface SpacerProps extends HtmlPassthroughProps {
+  // No layout props in v1. Future arc may add `size` for fixed-space variants.
 }

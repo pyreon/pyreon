@@ -4,6 +4,7 @@ import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
 import type { FieldProps } from '../types/input'
+import { collectPassthroughAttrs, mergePassthroughStyle } from './passthrough'
 
 /**
  * Map canonical `kind` to HTML input `type`. `kind="number"` is a
@@ -78,8 +79,9 @@ export const Field = (props: FieldProps): VNode => {
   // a function — that's the auto-call compiler behavior. We pass the
   // unwrapped thunk via the getter pattern.
   const attrs: Record<string, unknown> = {
+    ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
     type,
-    style,
+    style: mergePassthroughStyle(style, props.style),
     value: getValue,
     onInput,
   }

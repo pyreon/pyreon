@@ -1,6 +1,6 @@
 // Interaction primitive type definitions — Button / Press / Link.
 
-import type { ChildrenProp } from './shared'
+import type { ChildrenProp, HtmlPassthroughProps } from './shared'
 
 /**
  * `<Button>` — styled call-to-action button. Picks up platform-native
@@ -11,7 +11,7 @@ import type { ChildrenProp } from './shared'
  * - iOS: `Button(action: ...) { ... }`
  * - Android: `Button(onClick = ...) { ... }`
  */
-export interface ButtonProps extends ChildrenProp {
+export interface ButtonProps extends ChildrenProp, HtmlPassthroughProps {
   onPress: () => void
   disabled?: boolean
   /** Button visual variant. Default `primary`. */
@@ -28,7 +28,7 @@ export interface ButtonProps extends ChildrenProp {
  * - iOS: `Button { ... }` no chrome
  * - Android: `Box(modifier=Modifier.clickable(onClick=...))`
  */
-export interface PressProps extends ChildrenProp {
+export interface PressProps extends ChildrenProp, HtmlPassthroughProps {
   onPress: () => void
   onLongPress?: () => void
   disabled?: boolean
@@ -44,7 +44,7 @@ export interface PressProps extends ChildrenProp {
  * - iOS: `NavigationLink(destination: ...)`
  * - Android: `Box(modifier=Modifier.clickable { navController.navigate(...) })`
  */
-export interface LinkProps extends ChildrenProp {
+export interface LinkProps extends ChildrenProp, HtmlPassthroughProps {
   to: string
   /** Equivalent to `<a target="_blank">` on web; opens in external app on native. */
   external?: boolean

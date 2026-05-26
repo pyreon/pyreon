@@ -3,6 +3,7 @@
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import type { TextProps } from '../types/content'
+import { collectPassthroughAttrs, mergePassthroughStyle } from './passthrough'
 import { resolveColor } from './tokens'
 
 const SIZE_PX: Record<string, string> = {
@@ -43,5 +44,12 @@ export const Text = (props: TextProps): VNode => {
     style['text-overflow'] = 'ellipsis'
     style['white-space'] = 'nowrap'
   }
-  return h('span', { style }, props.children)
+  return h(
+    'span',
+    {
+      ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
+      style: mergePassthroughStyle(style, props.style),
+    },
+    props.children,
+  )
 }

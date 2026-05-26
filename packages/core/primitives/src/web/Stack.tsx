@@ -3,6 +3,7 @@
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import type { StackProps } from '../types/layout'
+import { collectPassthroughAttrs, mergePassthroughStyle } from './passthrough'
 import { resolveAlign, resolveColor, resolveJustify, resolveRadius, resolveSpace } from './tokens'
 
 /**
@@ -61,10 +62,12 @@ export function buildStackStyle(
  * children, etc.) work natively.
  */
 export const Stack = (props: StackProps): VNode => {
+  const computed = buildStackStyle(props, 'column')
   return h(
     'div',
     {
-      style: buildStackStyle(props, 'column'),
+      ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
+      style: mergePassthroughStyle(computed, props.style),
     },
     props.children,
   )

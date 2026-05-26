@@ -542,3 +542,133 @@ describe('<Field> happy-dom unit', () => {
     unmount()
   })
 })
+
+describe('HTML pass-through attrs (data-* / aria-* / id / class / style)', () => {
+  // Phase D follow-up — surfaced by #951's native-todomvc-web e2e gate:
+  // primitives were dropping consumer's `data-testid`, `aria-*`, `id`,
+  // `class` because render fns only forwarded hardcoded keys. Fix:
+  // every primitive routes through `collectPassthroughAttrs` +
+  // `mergePassthroughStyle`.
+
+  it('<Stack data-testid> reaches the rendered DOM', () => {
+    const { container, unmount } = mountTest(
+      h(Stack, { 'data-testid': 'my-stack', children: 'hi' }),
+    )
+    const root = container.firstElementChild as HTMLElement
+    expect(root.getAttribute('data-testid')).toBe('my-stack')
+    unmount()
+  })
+
+  it('<Stack aria-label + id + class> all forward', () => {
+    const { container, unmount } = mountTest(
+      h(Stack, {
+        'aria-label': 'menu',
+        id: 'main-menu',
+        class: 'shadow-lg',
+        children: 'hi',
+      }),
+    )
+    const root = container.firstElementChild as HTMLElement
+    expect(root.getAttribute('aria-label')).toBe('menu')
+    expect(root.id).toBe('main-menu')
+    expect(root.getAttribute('class')).toBe('shadow-lg')
+    unmount()
+  })
+
+  it('<Inline data-testid> reaches the rendered DOM', () => {
+    const { container, unmount } = mountTest(
+      h(Inline, { 'data-testid': 'my-inline', children: 'hi' }),
+    )
+    const root = container.firstElementChild as HTMLElement
+    expect(root.getAttribute('data-testid')).toBe('my-inline')
+    unmount()
+  })
+
+  it('<Text data-testid> reaches the rendered DOM', () => {
+    const { container, unmount } = mountTest(
+      h(Text, { 'data-testid': 'my-text', children: 'hi' }),
+    )
+    const root = container.firstElementChild as HTMLElement
+    expect(root.tagName).toBe('SPAN')
+    expect(root.getAttribute('data-testid')).toBe('my-text')
+    unmount()
+  })
+
+  it('<Button data-testid + aria-pressed> reach the rendered DOM', () => {
+    const { container, unmount } = mountTest(
+      h(Button, {
+        'data-testid': 'my-btn',
+        'aria-pressed': 'true',
+        onPress: () => {},
+        children: 'Click',
+      }),
+    )
+    const btn = container.firstElementChild as HTMLButtonElement
+    expect(btn.tagName).toBe('BUTTON')
+    expect(btn.getAttribute('data-testid')).toBe('my-btn')
+    expect(btn.getAttribute('aria-pressed')).toBe('true')
+    unmount()
+  })
+
+  it('<Press data-testid> reaches the rendered DOM (preserving role=button)', () => {
+    const { container, unmount } = mountTest(
+      h(Press, {
+        'data-testid': 'my-press',
+        onPress: () => {},
+        children: 'Press me',
+      }),
+    )
+    const root = container.firstElementChild as HTMLElement
+    expect(root.getAttribute('data-testid')).toBe('my-press')
+    // Existing semantics preserved.
+    expect(root.getAttribute('role')).toBe('button')
+    unmount()
+  })
+
+  it('<Field data-testid + aria-describedby> reach the rendered DOM', () => {
+    const v = signal('')
+    const { container, unmount } = mountTest(
+      h(Field, {
+        'data-testid': 'my-field',
+        'aria-describedby': 'hint',
+        value: v,
+        onChangeText: (next: string) => v.set(next),
+      }),
+    )
+    const input = container.firstElementChild as HTMLInputElement
+    expect(input.tagName).toBe('INPUT')
+    expect(input.getAttribute('data-testid')).toBe('my-field')
+    expect(input.getAttribute('aria-describedby')).toBe('hint')
+    unmount()
+  })
+
+  it('consumer `style` object MERGES with the primitive computed style; consumer wins on conflict', () => {
+    const { container, unmount } = mountTest(
+      h(Stack, {
+        gap: 2,
+        // Conflict on `gap` — consumer wins. New `color` key adds.
+        style: { gap: '99px', color: 'red' },
+        children: 'hi',
+      }),
+    )
+    const root = container.firstElementChild as HTMLElement
+    expect(root.style.color).toBe('red')
+    expect(root.style.gap).toBe('99px')
+    unmount()
+  })
+
+  it('consumer `style` string concatenates onto the computed style', () => {
+    const { container, unmount } = mountTest(
+      h(Stack, {
+        gap: 2,
+        style: 'color: blue',
+        children: 'hi',
+      }),
+    )
+    const root = container.firstElementChild as HTMLElement
+    expect(root.style.color).toBe('blue')
+    // Primitive's computed gap survives (string append).
+    expect(root.style.gap).toBe('8px')
+    unmount()
+  })
+})
