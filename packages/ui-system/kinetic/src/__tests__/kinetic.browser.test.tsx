@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { _rp, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
+import { queryOptional } from '@pyreon/test-utils'
 import kinetic from '../kinetic'
 import { nextFrame, mergeClassNames } from '../utils'
 import Transition from '../Transition'
@@ -168,7 +169,7 @@ describe('@pyreon/kinetic browser smoke', () => {
       </Transition>,
     )
     // Pre-fix: container.querySelector returns null (children were dropped).
-    const el = container.querySelector('[data-id="reveal-target"]') as HTMLElement | null
+    const el = queryOptional<HTMLElement>(container, '[data-id="reveal-target"]')
     expect(el).not.toBeNull()
     expect(el!.textContent).toBe('scroll-reveal content')
     // enterFrom is the fallback hidden-state class (scroll-reveal pattern
@@ -189,7 +190,7 @@ describe('@pyreon/kinetic browser smoke', () => {
         <div data-id="reveal-target">content</div>
       </Transition>,
     )
-    const el = () => container.querySelector('[data-id="reveal-target"]') as HTMLElement | null
+    const el = () => queryOptional<HTMLElement>(container, '[data-id="reveal-target"]')
     // Starts hidden.
     expect(el()!.classList.contains('hide-state')).toBe(true)
     // Flip show → true; applyEnter runs in the watch effect on the SAME
@@ -234,7 +235,7 @@ describe('@pyreon/kinetic browser smoke', () => {
       h(Reveal, { show, 'data-id': 'reveal-target' }, h('p', null, 'scroll-reveal content')),
     )
     // Pre-fix: container.querySelector returns null (children dropped).
-    const el = container.querySelector('[data-id="reveal-target"]') as HTMLElement | null
+    const el = queryOptional<HTMLElement>(container, '[data-id="reveal-target"]')
     expect(el).not.toBeNull()
     expect(el!.textContent).toContain('scroll-reveal content')
     // enterFrom is the fallback hidden-state class (scroll-reveal pattern
@@ -253,7 +254,7 @@ describe('@pyreon/kinetic browser smoke', () => {
     const { container, unmount } = mountInBrowser(
       h(Reveal, { show, 'data-id': 'reveal-target' }, h('p', null, 'content')),
     )
-    const el = () => container.querySelector('[data-id="reveal-target"]') as HTMLElement | null
+    const el = () => queryOptional<HTMLElement>(container, '[data-id="reveal-target"]')
     expect(el()!.classList.contains('hide-state')).toBe(true)
 
     show.set(true)
@@ -289,7 +290,7 @@ describe('@pyreon/kinetic browser smoke', () => {
         h('li', { key: 'c' }, 'third item'),
       ]),
     )
-    const list = container.querySelector('[data-id="stagger-list"]') as HTMLElement | null
+    const list = queryOptional<HTMLElement>(container, '[data-id="stagger-list"]')
     expect(list).not.toBeNull()
     const items = list!.querySelectorAll('li')
     expect(items.length).toBe(3)
@@ -314,8 +315,8 @@ describe('@pyreon/kinetic browser smoke', () => {
         h('div', { 'data-id': 'inner' }, 'accordion content'),
       ),
     )
-    const wrapper = container.querySelector('[data-id="accordion"]') as HTMLElement | null
-    const inner = container.querySelector('[data-id="inner"]') as HTMLElement | null
+    const wrapper = queryOptional<HTMLElement>(container, '[data-id="accordion"]')
+    const inner = queryOptional<HTMLElement>(container, '[data-id="inner"]')
     expect(wrapper).not.toBeNull()
     expect(inner).not.toBeNull() // ← was null pre-fix (Show dropped it)
     expect(inner!.textContent).toBe('accordion content')

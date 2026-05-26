@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hash } from '../hash'
 import { createSheet, StyleSheet } from '../sheet'
+import { query } from '@pyreon/test-utils'
 
 describe('StyleSheet -- advanced features', () => {
   describe('getClassName (pure hash computation)', () => {
@@ -129,7 +130,7 @@ describe('StyleSheet -- advanced features', () => {
       s.insertGlobal('body{margin:0}div{padding:0}')
 
       // Verify rules were actually inserted into the CSSOM
-      const styleEl = document.querySelector('style[data-pyreon-styler]') as HTMLStyleElement
+      const styleEl = query<HTMLStyleElement>(document, 'style[data-pyreon-styler]')
       const cssSheet = styleEl.sheet as CSSStyleSheet
       const ruleTexts = Array.from(cssSheet.cssRules).map((r) => r.cssText)
       expect(ruleTexts.some((r) => r.includes('margin'))).toBe(true)
@@ -140,7 +141,7 @@ describe('StyleSheet -- advanced features', () => {
       const s = createSheet()
       s.insertGlobal('body{margin:0}div{padding:0}')
 
-      const styleEl = document.querySelector('style[data-pyreon-styler]') as HTMLStyleElement
+      const styleEl = query<HTMLStyleElement>(document, 'style[data-pyreon-styler]')
       const cssSheet = styleEl.sheet as CSSStyleSheet
       const countBefore = cssSheet.cssRules.length
 
@@ -153,7 +154,7 @@ describe('StyleSheet -- advanced features', () => {
       const s = createSheet()
       s.insertGlobal('body{margin:0}@media (min-width:768px){body{font-size:18px}}')
 
-      const styleEl = document.querySelector('style[data-pyreon-styler]') as HTMLStyleElement
+      const styleEl = query<HTMLStyleElement>(document, 'style[data-pyreon-styler]')
       const cssSheet = styleEl.sheet as CSSStyleSheet
       const ruleTexts = Array.from(cssSheet.cssRules).map((r) => r.cssText)
       expect(ruleTexts.some((r) => r.includes('margin'))).toBe(true)
@@ -375,7 +376,7 @@ describe('StyleSheet -- advanced features', () => {
       const s = createSheet()
 
       // Access the internal sheet and make insertRule throw
-      const styleEl = document.querySelector('style[data-pyreon-styler]') as HTMLStyleElement
+      const styleEl = query<HTMLStyleElement>(document, 'style[data-pyreon-styler]')
       const realSheet = styleEl.sheet
       if (!realSheet) throw new Error('Expected sheet to exist')
       const origInsertRule = realSheet.insertRule.bind(realSheet)
@@ -408,7 +409,7 @@ describe('StyleSheet -- advanced features', () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
       const s = createSheet()
 
-      const styleEl = document.querySelector('style[data-pyreon-styler]') as HTMLStyleElement
+      const styleEl = query<HTMLStyleElement>(document, 'style[data-pyreon-styler]')
       const realSheet = styleEl.sheet
       if (!realSheet) throw new Error('Expected sheet to exist')
       const origInsertRule = realSheet.insertRule.bind(realSheet)

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createSheet } from '../sheet'
+import { query, queryOptional } from '@pyreon/test-utils'
 
 describe('memory growth', () => {
   describe('bounded cache prevents unbounded growth (DOM mode)', () => {
@@ -109,12 +110,12 @@ describe('memory growth', () => {
       const s = createSheet({ maxCacheSize: maxSize })
 
       for (let i = 0; i < maxSize; i++) s.insert(`a-${i}: ${i};`)
-      const el = document.querySelector('style[data-pyreon-styler]') as HTMLStyleElement
+      const el = queryOptional<HTMLStyleElement>(document, 'style[data-pyreon-styler]')
       expect(el?.sheet).toBeTruthy()
 
       for (let i = 0; i < maxSize * 5; i++) s.insert(`b-${i}: ${i};`)
 
-      const after = el.sheet!.cssRules.length
+      const after = el!.sheet!.cssRules.length
       // Pre-fix: `after` ≈ maxSize*6 (+@layer decl) — every unique insert
       // appended a rule, none ever deleted. Post-fix: eviction calls
       // deleteRule in lockstep, so the live rule count stays within
@@ -134,7 +135,7 @@ describe('memory growth', () => {
       // className and exactly one live DOM rule each.
       for (let i = 0; i < 5; i++) expect(s.insert(`keep-${i}: v;`)).toBe(recent[i])
 
-      const el = document.querySelector('style[data-pyreon-styler]') as HTMLStyleElement
+      const el = query<HTMLStyleElement>(document, 'style[data-pyreon-styler]')
       let keepRules = 0
       for (let i = 0; i < el.sheet!.cssRules.length; i++) {
         const r = el.sheet!.cssRules[i]

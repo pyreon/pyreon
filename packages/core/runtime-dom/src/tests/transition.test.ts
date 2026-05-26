@@ -1,6 +1,7 @@
 import type { ComponentFn } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { query, queryOptional } from '@pyreon/test-utils'
 import {
   KeepAlive as _KeepAlive,
   Transition as _Transition,
@@ -61,7 +62,7 @@ describe('Transition', () => {
     // Wait for microtask (queueMicrotask in handleVisibilityChange)
     await new Promise<void>((r) => setTimeout(r, 20))
 
-    const target = el.querySelector('.target') as HTMLElement
+    const target = query<HTMLElement>(el, '.target')
     expect(target).not.toBeNull()
     // After the enter animation starts, the element should have enter classes
     // Classes will be in transition — at minimum the element should exist
@@ -115,7 +116,7 @@ describe('Transition', () => {
     expect(onBeforeEnter).toHaveBeenCalled()
 
     // Trigger the transitionend to complete the enter
-    const target = el.querySelector('.lifecycle') as HTMLElement
+    const target = queryOptional<HTMLElement>(el, '.lifecycle')
     if (target) {
       target.dispatchEvent(new Event('transitionend'))
       // Poll for the assertion instead of fixed sleep. Fixed setTimeout
@@ -169,7 +170,7 @@ describe('Transition', () => {
     expect(onBeforeLeave).toHaveBeenCalled()
 
     // Trigger transitionend to complete leave
-    const target = el.querySelector('.leave-target') as HTMLElement
+    const target = queryOptional<HTMLElement>(el, '.leave-target')
     if (target) {
       target.dispatchEvent(new Event('transitionend'))
       await new Promise<void>((r) => setTimeout(r, 20))
@@ -264,7 +265,7 @@ describe('Transition', () => {
     show.set(true)
     await new Promise<void>((r) => setTimeout(r, 30))
 
-    const target = el.querySelector('.anim-target') as HTMLElement
+    const target = queryOptional<HTMLElement>(el, '.anim-target')
     if (target) {
       // Fire animationend instead of transitionend
       target.dispatchEvent(new Event('animationend'))
@@ -487,7 +488,7 @@ describe('KeepAlive', () => {
     await new Promise<void>((r) => setTimeout(r, 20))
 
     // The container div should have display: none, but the child should still be in DOM
-    const wrapperDiv = el.querySelector('[style]') as HTMLElement
+    const wrapperDiv = queryOptional<HTMLElement>(el, '[style]')
     if (wrapperDiv) {
       expect(wrapperDiv.style.display).toBe('none')
     }

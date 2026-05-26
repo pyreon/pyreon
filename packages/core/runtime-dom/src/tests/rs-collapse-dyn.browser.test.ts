@@ -1,5 +1,6 @@
 import { signal } from '@pyreon/reactivity'
 import { flush } from '@pyreon/test-utils/browser'
+import { query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import { _rsCollapseDyn, mount } from '../index'
 
@@ -94,12 +95,12 @@ describe('_rsCollapseDyn (real browser)', () => {
       ),
     )
     await flush()
-    const before = root.querySelector('button') as HTMLElement
+    const before = query(root, 'button')
     expect(before.className).toBe('rd2-v0-light')
 
     cond.set(true) // valueIndex 0 → 1
     await flush()
-    const after = root.querySelector('button') as HTMLElement
+    const after = query(root, 'button')
     expect(after).toBe(before) // node identity preserved ⇒ reactive patch, not remount
     expect(after.className).toBe('rd2-v1-light')
     expect(getComputedStyle(after).color).toBe('rgb(30, 30, 30)')
@@ -121,12 +122,12 @@ describe('_rsCollapseDyn (real browser)', () => {
       ),
     )
     await flush()
-    const before = root.querySelector('button') as HTMLElement
+    const before = query(root, 'button')
     expect(before.className).toBe('rd3-v1-light')
 
     isDark.set(true)
     await flush()
-    const after = root.querySelector('button') as HTMLElement
+    const after = query(root, 'button')
     expect(after).toBe(before)
     expect(after.className).toBe('rd3-v1-dark')
     expect(getComputedStyle(after).color).toBe('rgb(80, 80, 80)')
@@ -151,7 +152,7 @@ describe('_rsCollapseDyn (real browser)', () => {
       ),
     )
     await flush()
-    const btn = root.querySelector('button') as HTMLElement
+    const btn = query(root, 'button')
 
     // (v=0, dark=0) → index 0
     expect(btn.className).toBe('rd4-v0-light')
@@ -193,7 +194,7 @@ describe('_rsCollapseDyn (real browser)', () => {
       ),
     )
     await flush()
-    const btn = root.querySelector('button') as HTMLElement
+    const btn = query(root, 'button')
     expect(btn.className).toBe('') // not 'undefined', not crashed
     expect(btn.textContent).toBe('Bad')
   })
@@ -254,7 +255,7 @@ describe('_rsCollapseDyn (real browser)', () => {
     expect(calls).toBeGreaterThanOrEqual(4)
     expect(calls).toBeLessThanOrEqual(5)
     // Cleanly land on the right class regardless.
-    expect((root.querySelector('button') as HTMLElement).className).toBe('rdcc-v0-light')
+    expect((query(root, 'button')).className).toBe('rdcc-v0-light')
     void root
   })
 
@@ -273,7 +274,7 @@ describe('_rsCollapseDyn (real browser)', () => {
         () => (cond() ? 1 : 0),
         () => isDark(),
         (el) => {
-          const span = el.querySelector('span') as HTMLElement
+          const span = query(el, 'span')
           span.textContent = 'child'
           return () => {
             childDisposed = true
@@ -282,7 +283,7 @@ describe('_rsCollapseDyn (real browser)', () => {
       ),
     )
     await flush()
-    expect((root.querySelector('span') as HTMLElement).textContent).toBe('child')
+    expect((query(root, 'span')).textContent).toBe('child')
 
     // Disposing the host (via cleanup) must also fire the child binder's
     // disposer — the runtime composes them.
@@ -305,7 +306,7 @@ describe('_rsCollapseDyn (real browser)', () => {
       ),
     )
     await flush()
-    const i = root.querySelector('i') as HTMLElement
+    const i = query(root, 'i')
     expect(i.className).toBe('rd7-only-light')
 
     isDark.set(true)

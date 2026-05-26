@@ -46,7 +46,7 @@
  */
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { initTestConfig, mountAndExpectOnce, mountReactive } from '@pyreon/test-utils'
+import { initTestConfig, mountAndExpectOnce, mountReactive, queryOptional } from '@pyreon/test-utils'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import DocButton from '../primitives/DocButton'
@@ -404,7 +404,7 @@ describe('data-driven primitives — DocTable mounts cleanly', () => {
     const { container, cleanup: c } = mountReactive(
       h(DocTable as any, { columns: [{ header: 'X' }], rows: [['y']] }),
     )
-    const table = container.querySelector('table') as HTMLTableElement | null
+    const table = queryOptional(container, 'table')
     expect(table).not.toBeNull()
     // The native `rows` is a read-only HTMLCollection of <tr>. We
     // shouldn't have polluted it with our prop array. (If we had,

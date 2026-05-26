@@ -16,6 +16,7 @@ import {
   Portal,
 } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { query } from '@pyreon/test-utils'
 import { installDevTools, registerComponent, unregisterComponent } from '../devtools'
 import {
   Transition as _Transition,
@@ -933,7 +934,7 @@ describe('props.ts — uncovered branches', () => {
     // Two reactive props => two cleanups that chain
     const unmount = mount(h('div', { class: () => cls(), title: () => title() }), el)
 
-    const div = el.querySelector('div') as HTMLElement
+    const div = query(el, 'div')
     expect(div.className).toBe('a')
     expect(div.title).toBe('t')
 
@@ -989,7 +990,7 @@ describe('props.ts — uncovered branches', () => {
       el,
     )
 
-    const div = el.querySelector('div') as HTMLElement
+    const div = query(el, 'div')
     expect(div.className).toBe('a')
     expect(div.title).toBe('b')
     expect(div.getAttribute('data-x')).toBe('c')

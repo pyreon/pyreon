@@ -1,6 +1,7 @@
 import type { ComponentFn } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { query } from '@pyreon/test-utils'
 import { Transition as _Transition, mount } from '../index'
 
 const Transition = _Transition as unknown as ComponentFn<Record<string, unknown>>
@@ -40,7 +41,7 @@ describe('Transition — safety-timer leak (regression)', () => {
     show.set(true)
     await vi.advanceTimersByTimeAsync(20)
 
-    const target = el.querySelector('.enter-leak') as HTMLElement
+    const target = query<HTMLElement>(el, '.enter-leak')
     expect(target).not.toBeNull()
 
     target.dispatchEvent(new Event('transitionend'))
@@ -69,7 +70,7 @@ describe('Transition — safety-timer leak (regression)', () => {
     show.set(false)
     await vi.advanceTimersByTimeAsync(20)
 
-    const target = el.querySelector('.leave-leak') as HTMLElement
+    const target = query<HTMLElement>(el, '.leave-leak')
     expect(target).not.toBeNull()
 
     target.dispatchEvent(new Event('transitionend'))

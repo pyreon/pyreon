@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { hash } from '../hash'
 import { createSheet, StyleSheet } from '../sheet'
+import { query } from '@pyreon/test-utils'
 
 /**
  * Tests for the @media/@supports/@container splitting behavior.
@@ -190,7 +191,7 @@ describe('StyleSheet -- at-rule splitting', () => {
       s.insert('color: red; @media (min-width: 768px){color: blue;}')
 
       // Find the style element
-      const styleEl = document.querySelector('style[data-pyreon-styler]') as HTMLStyleElement
+      const styleEl = query<HTMLStyleElement>(document, 'style[data-pyreon-styler]')
       expect(styleEl).not.toBeNull()
       const sheet = styleEl.sheet
       if (!sheet) throw new Error('expected sheet')
@@ -217,7 +218,7 @@ describe('StyleSheet -- at-rule splitting', () => {
       const s = createSheet()
       const className = s.insert('color: red; @media (min-width: 768px){color: blue;}')
 
-      const styleEl = document.querySelector('style[data-pyreon-styler]') as HTMLStyleElement
+      const styleEl = query<HTMLStyleElement>(document, 'style[data-pyreon-styler]')
       const sheet = styleEl.sheet
       if (!sheet) throw new Error('expected sheet')
       const singleSelector = `.${className}`

@@ -1,6 +1,7 @@
 import { h } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
+import { query } from '@pyreon/test-utils'
 import { SwitchBase } from './index'
 
 /**
@@ -27,7 +28,7 @@ describe('@pyreon/ui-primitives — browser smoke', () => {
         children: 'toggle me',
       }),
     )
-    const sw = container.querySelector('#smoke-switch') as HTMLButtonElement
+    const sw = query<HTMLButtonElement>(container, '#smoke-switch')
     expect(sw).not.toBeNull()
     expect(sw.tagName).toBe('BUTTON')
     expect(sw.getAttribute('role')).toBe('switch')

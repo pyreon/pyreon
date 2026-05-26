@@ -20,7 +20,7 @@
  * mutations.
  */
 import { h } from '@pyreon/core'
-import { mountReactive } from '@pyreon/test-utils'
+import { mountReactive, query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Flow } from '../components/flow-component'
 import { createFlow } from '../flow'
@@ -343,7 +343,7 @@ describe('node component reactivity (F2)', () => {
     )
     cleanups.push(cleanup)
 
-    const wrapper = container.querySelector('[data-nodeid="a"]') as HTMLElement
+    const wrapper = query<HTMLElement>(container, '[data-nodeid="a"]')
     expect(wrapper).not.toBeNull()
     // Initially no selection class.
     expect(wrapper.className).not.toContain('selected')
