@@ -113,33 +113,110 @@ jobs:
   # Every downstream job: checkout → setup-bun → restore run_id caches.
   # No bun install needed — caches are guaranteed fresh from Install job.
 
-  typecheck:
-    name: Typecheck
+  # ── Typecheck: per-category matrix (P3b) ─────────────────────────────
+  # Sharded by `packages/<category>/` (8 cells in parallel). Each cell
+  # narrows the affected-filter to its own slice via
+  # `scripts/affected.ts --category=<name>`; cells with no affected
+  # packages in their category skip gracefully (empty filter = no-op).
+  # Aggregator `typecheck` job (next) keeps the stable `Typecheck`
+  # required check name for branch protection.
+  #
+  # Why shard: pre-P3b Typecheck ran `bun run $FILTER --sequential
+  # typecheck` against EVERY affected package on one runner (~270s
+  # median for full-suite runs because we must run sequentially to
+  # avoid 7+ heavy tsc invocations OOM-killing the 7GB runner). Sharding
+  # parallelizes across runners — per-cell wall-clock = ~max-of-category
+  # (90-120s typical) instead of the full sum. Critical-path drop
+  # ~150-180s.
+  #
+  # Why 8 cells (not 5 as the plan first sketched): every `packages/*`
+  # category is its own cell — including `internals` (4 pkgs), `ui` (3
+  # private), `native` (6, newer ios/android stuff). The matrix infra
+  # cost is per-cell startup overhead (~30s composite restore); going
+  # 5→8 cells adds ~3 runners but each finishes in ~30-60s anyway
+  # because every cell carries fewer packages. Smaller cells also fit
+  # under the 10min job timeout with comfortable margin on the OOM-
+  # sensitive `--sequential` path.
+  typecheck-cell:
+    name: typecheck (${{ matrix.category }})
     needs: install
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        category: [core, fundamentals, internals, native, tools, ui, ui-system, zero]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # affected.ts needs the merge-base to compute a real diff;
+          # the install job uses fetch-depth: 0 for the same reason.
+          fetch-depth: 0
       - uses: ./.github/actions/setup-pyreon
-      - name: Run typecheck
+      - name: Run typecheck (${{ matrix.category }})
         run: |
-          FILTER="${{ needs.install.outputs.affected-filter }}"
+          # Recompute the filter per-cell with --category narrowing.
+          # We DON'T reuse install.outputs.affected-filter because it
+          # spans every category; per-cell we need only this slice.
+          # The script's closure is still computed against the full dep
+          # graph (a @pyreon/core change still expands to every
+          # dependent), but the final emit drops anything outside
+          # packages/${cat}/.
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}" --depth=1 || true
+            FILTER=$(bun run scripts/affected.ts \
+              --base=origin/${{ github.base_ref }} \
+              --category=${{ matrix.category }})
+            # Root-file change in a PR returns --filter=* from the
+            # script (the only safe escalation when blast radius is
+            # unknowable). At the cell level we translate that to the
+            # category-scoped glob so each cell runs its OWN full
+            # slice — otherwise every cell would run every package and
+            # we'd lose the shard entirely.
+            if [ "$FILTER" = "--filter=*" ]; then
+              FILTER="--filter=./packages/${{ matrix.category }}/*"
+            fi
+          else
+            # push:main + merge_group always run the full slice for
+            # this category — the gate that protects main never
+            # trusts the narrowing.
+            FILTER="--filter=./packages/${{ matrix.category }}/*"
+          fi
           if [ -z "$FILTER" ]; then
-            echo "No affected packages — skipping."
+            echo "No affected packages in this category — skipping."
             exit 0
           fi
+          echo "Cell filter: $FILTER"
           set -f
-          # --sequential caps simultaneous memory at the largest single
-          # tsc invocation (~775 MB for app-showcase, ~583 MB for
-          # fundamentals-playground) instead of summing across 60+
-          # parallel tsc processes. Bun's default `--filter` mode runs
-          # every matched package concurrently with NO concurrency
-          # limit, so 7+ heavy tsc invocations would sum to ~3 GB+
-          # simultaneously and OOM-kill the runner (exit 143). Sequential
-          # adds ~2.5x wall-clock (~3.5min → ~8min) but stays well under
-          # the 10min job timeout and eliminates the OOM-flake. See
-          # PR #XXX for measurements + root cause analysis.
+          # --sequential caps simultaneous memory at the largest
+          # single tsc invocation (~775 MB for app-showcase, ~583 MB
+          # for fundamentals-playground). Examples are NOT in any
+          # `packages/*` cell, so per-category memory is much lower —
+          # but `--sequential` still pays off here as defense-in-depth
+          # against future heavy tsc invocations creeping into a
+          # category.
           bun run $FILTER --sequential typecheck
+
+  typecheck:
+    name: Typecheck
+    needs: typecheck-cell
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Aggregate typecheck matrix result
+        run: |
+          RESULT='${{ needs.typecheck-cell.result }}'
+          echo "typecheck-cell=$RESULT"
+          # `success` = every cell passed (or skipped via empty filter,
+          # which exits 0). `skipped` only happens if all cells got
+          # `if:` filtered, which we don't do. Anything else = fail.
+          if [ "$RESULT" = "success" ]; then
+            echo "All typecheck cells passed."
+            exit 0
+          fi
+          echo "::error::One or more typecheck cells failed ($RESULT)"
+          exit 1
 
   lint:
     name: Lint
@@ -156,11 +233,20 @@ jobs:
       - name: Enforce pyreon/require-browser-smoke-test
         run: bun run lint:browser-smoke
 
-  test:
-    name: Test
+  # ── Test: per-category matrix (P3b) ──────────────────────────────────
+  # Same shard shape as `typecheck-cell` above (8 cells, per-category).
+  # Aggregator `test` job (next) keeps the stable `Test` required check
+  # name for branch protection. See `typecheck-cell` comment for shard
+  # rationale.
+  test-cell:
+    name: test (${{ matrix.category }})
     needs: install
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        category: [core, fundamentals, internals, native, tools, ui, ui-system, zero]
     steps:
       # Pin Node — vitest's `#!/usr/bin/env node` shebang means tests
       # run under whatever Node is on PATH. Without this, ubuntu-latest's
@@ -170,21 +256,35 @@ jobs:
       # active-LTS Node 24 makes the CI env reflect what modern consumers
       # use, so bugs surface in CI instead of only at pre-push.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup-pyreon
         with:
           node-version: '24'
-      - name: Run tests
+      - name: Run tests (${{ matrix.category }})
         run: |
-          FILTER="${{ needs.install.outputs.affected-filter }}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}" --depth=1 || true
+            FILTER=$(bun run scripts/affected.ts \
+              --base=origin/${{ github.base_ref }} \
+              --category=${{ matrix.category }})
+            if [ "$FILTER" = "--filter=*" ]; then
+              FILTER="--filter=./packages/${{ matrix.category }}/*"
+            fi
+          else
+            FILTER="--filter=./packages/${{ matrix.category }}/*"
+          fi
           if [ -z "$FILTER" ]; then
-            echo "No affected packages — skipping."
+            echo "No affected packages in this category — skipping."
             exit 0
           fi
+          echo "Cell filter: $FILTER"
           set -f
-          # Some affected packages (most examples — playground, ssr-showcase,
-          # benchmark, etc.) genuinely have no `test` script. When the affected
-          # filter is *only* such packages, bun errors with "No packages matched
-          # the filter" and exits 1. Tolerate that case — fail on real test
+          # Some affected packages genuinely have no `test` script (rare
+          # under packages/* — most are zero-cli kind of shape — but
+          # possible). When the affected filter matches only such
+          # packages, bun errors with "No packages matched the filter"
+          # and exits 1. Tolerate that case — fail on real test
           # failures only.
           set +e
           OUTPUT=$(bun run $FILTER test 2>&1)
@@ -196,6 +296,24 @@ jobs:
             exit 0
           fi
           exit $EXIT
+
+  test:
+    name: Test
+    needs: test-cell
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Aggregate test matrix result
+        run: |
+          RESULT='${{ needs.test-cell.result }}'
+          echo "test-cell=$RESULT"
+          if [ "$RESULT" = "success" ]; then
+            echo "All test cells passed."
+            exit 0
+          fi
+          echo "::error::One or more test cells failed ($RESULT)"
+          exit 1
 
   test-browser:
     name: Test (browser)

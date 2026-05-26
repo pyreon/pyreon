@@ -35,29 +35,39 @@
  * `README.md` at root edited), emit an empty string. CI jobs must treat
  * empty as "skip gracefully" (succeed without running anything).
  *
+ * ## Category filter (P3b — sharding)
+ *
+ * `--category=<name>` restricts the OUTPUT to packages under
+ * `packages/<name>/*`. The transitive closure is still computed against the
+ * full workspace graph (so a `@pyreon/core` change still expands to every
+ * dependent), but the final emit drops anything outside the named category.
+ * Returns an empty string if no affected package matches the category
+ * (cell's `bun run` then skips gracefully — same contract as the no-changes
+ * empty case).
+ *
+ * `--category=*` ALSO returns the full-suite signal verbatim: a root-file
+ * change emits `--filter=*` regardless of category — every cell runs the
+ * full suite for its own category. Without that propagation, a workflow
+ * change would silently skip every shard cell because no per-package
+ * `--filter=` flag would land in any one cell's output.
+ *
  * ## Usage
  *
  *   bun run scripts/affected.ts                    # base = origin/main
  *   bun run scripts/affected.ts --base=HEAD~3      # custom base
  *   bun run scripts/affected.ts --base=origin/dev
+ *   bun run scripts/affected.ts --category=core    # only @pyreon/* under packages/core/
  */
 
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dirname, '..')
 
-// ── Args ───────────────────────────────────────────────────────────────────
-
-let base = 'origin/main'
-for (const arg of process.argv.slice(2)) {
-  if (arg.startsWith('--base=')) base = arg.slice('--base='.length)
-}
-
 // ── Root-level file patterns that force the full suite ─────────────────────
 
-function isRootFile(path: string): boolean {
+export function isRootFile(path: string): boolean {
   if (path === 'package.json') return true
   if (path === 'bun.lock') return true
   if (path === 'vitest.shared.ts') return true
@@ -70,7 +80,7 @@ function isRootFile(path: string): boolean {
 
 // ── Workspace discovery ────────────────────────────────────────────────────
 
-interface Workspace {
+export interface Workspace {
   name: string
   dir: string // absolute
   deps: string[] // @pyreon/* names
@@ -97,11 +107,11 @@ function collectPyreonDeps(pkg: ReturnType<typeof readPkg>): string[] {
   return out
 }
 
-function discoverWorkspaces(): Workspace[] {
+export function discoverWorkspaces(root: string = ROOT): Workspace[] {
   const result: Workspace[] = []
 
   // packages/<category>/<pkg>
-  const packagesRoot = join(ROOT, 'packages')
+  const packagesRoot = join(root, 'packages')
   if (existsSync(packagesRoot)) {
     for (const category of readdirSync(packagesRoot)) {
       const categoryPath = join(packagesRoot, category)
@@ -118,7 +128,7 @@ function discoverWorkspaces(): Workspace[] {
   }
 
   // examples/<example>
-  const examplesRoot = join(ROOT, 'examples')
+  const examplesRoot = join(root, 'examples')
   if (existsSync(examplesRoot)) {
     for (const ex of readdirSync(examplesRoot)) {
       const exPath = join(examplesRoot, ex)
@@ -131,11 +141,11 @@ function discoverWorkspaces(): Workspace[] {
   }
 
   // docs
-  const docsPkg = join(ROOT, 'docs', 'package.json')
+  const docsPkg = join(root, 'docs', 'package.json')
   if (existsSync(docsPkg)) {
     const json = readPkg(docsPkg)
     if (json.name)
-      result.push({ name: json.name, dir: join(ROOT, 'docs'), deps: collectPyreonDeps(json) })
+      result.push({ name: json.name, dir: join(root, 'docs'), deps: collectPyreonDeps(json) })
   }
 
   return result
@@ -143,18 +153,22 @@ function discoverWorkspaces(): Workspace[] {
 
 // ── Path → owning workspace ────────────────────────────────────────────────
 
-function findOwningWorkspace(filePath: string, workspaces: Workspace[]): Workspace | undefined {
-  const abs = resolve(ROOT, filePath)
-  // Walk up looking for package.json; first match that corresponds to a known
-  // workspace wins. This handles nested files inside packages/<cat>/<pkg>/...
+export function findOwningWorkspace(
+  filePath: string,
+  workspaces: Workspace[],
+  root: string = ROOT,
+): Workspace | undefined {
+  const abs = resolve(root, filePath)
+  // Walk up matching dirs against the discovered workspace set; first hit
+  // wins. This handles nested files inside packages/<cat>/<pkg>/... AND
+  // nested test fixtures (their own package.json never appears in the
+  // workspace set, so we keep walking past them). Pure structural lookup —
+  // no filesystem stat — so synthetic fake-root inputs in unit tests work
+  // identically to real-repo input.
   let dir = dirname(abs)
-  while (dir.startsWith(ROOT) && dir !== ROOT) {
-    if (existsSync(join(dir, 'package.json'))) {
-      const ws = workspaces.find((w) => w.dir === dir)
-      if (ws) return ws
-      // package.json exists but isn't a tracked workspace — keep walking up
-      // (covers nested fixtures with their own package.json).
-    }
+  while (dir.startsWith(root) && dir !== root) {
+    const ws = workspaces.find((w) => w.dir === dir)
+    if (ws) return ws
     dir = dirname(dir)
   }
   return undefined
@@ -162,7 +176,10 @@ function findOwningWorkspace(filePath: string, workspaces: Workspace[]): Workspa
 
 // ── Reverse-dep graph + BFS ────────────────────────────────────────────────
 
-function transitiveDependents(seeds: Set<string>, workspaces: Workspace[]): Set<string> {
+export function transitiveDependents(
+  seeds: Set<string>,
+  workspaces: Workspace[],
+): Set<string> {
   // Build reverse graph: dep -> [dependents]
   const reverse = new Map<string, Set<string>>()
   for (const ws of workspaces) {
@@ -192,55 +209,125 @@ function transitiveDependents(seeds: Set<string>, workspaces: Workspace[]): Set<
   return closure
 }
 
-// ── Main ───────────────────────────────────────────────────────────────────
+// ── Category filter ────────────────────────────────────────────────────────
+// Restricts a workspace name set to those whose `dir` sits under
+// `<root>/packages/<category>/`. Used by the P3b shard cells so each
+// matrix cell only runs the slice of the affected set that lives in its
+// category. Cells whose category has no affected packages get an empty
+// result and skip gracefully.
+//
+// Note: `examples/` and `docs/` workspaces never belong to a category —
+// they fall outside `packages/`. The shard cells deliberately don't
+// cover examples (most have no `test` script) or docs; the existing
+// full-suite jobs / verify-modes / docs-sync cover those.
 
-function main(): void {
-  let diffOut: string
-  try {
-    diffOut = execSync(`git diff --name-only ${base}...HEAD`, {
-      cwd: ROOT,
-      encoding: 'utf-8',
-    })
-  } catch {
-    // Diff failed (bad base ref, shallow clone, etc.) — be safe, run all.
-    process.stdout.write('--filter=*')
-    return
+export function filterByCategory(
+  names: Set<string>,
+  workspaces: Workspace[],
+  category: string,
+  root: string = ROOT,
+): Set<string> {
+  const prefix = join(root, 'packages', category) + '/'
+  const byName = new Map<string, Workspace>()
+  for (const ws of workspaces) byName.set(ws.name, ws)
+
+  const out = new Set<string>()
+  for (const name of names) {
+    const ws = byName.get(name)
+    if (!ws) continue
+    if (ws.dir.startsWith(prefix)) out.add(name)
   }
+  return out
+}
 
-  const changed = diffOut.split('\n').filter(Boolean)
-  if (changed.length === 0) {
-    process.stdout.write('')
-    return
-  }
+// ── Pure compute ───────────────────────────────────────────────────────────
+// Decoupled from git/IO so unit tests can drive it directly. Returns the
+// FLAGS string the script prints (`--filter=X --filter=Y` / `--filter=*`
+// / empty). The category filter applies to the final emit, never to the
+// closure computation (a category-`core` change still EXPANDS to every
+// `@pyreon/*` consumer; the cell just narrows the EMIT to category-local
+// names so each cell runs only its own slice in parallel).
 
-  // Root-file safety net first.
+export function computeAffectedFlags(opts: {
+  changed: string[] | null
+  workspaces: Workspace[]
+  category?: string | undefined
+  root?: string | undefined
+}): string {
+  const { changed, workspaces, category } = opts
+  const root = opts.root ?? ROOT
+
+  // Diff failed (bad base / shallow clone) — full suite (per-category if asked).
+  if (changed === null) return '--filter=*'
+
+  // No changes → no-op everywhere.
+  if (changed.length === 0) return ''
+
+  // Root-file safety net first. Even with a category filter, a root file
+  // change escalates EVERY cell to its full slice — the only way to keep
+  // the cell skip path safe (a workflow change that affects nothing per-
+  // package would otherwise silently skip every shard cell).
   for (const path of changed) {
-    if (isRootFile(path)) {
-      process.stdout.write('--filter=*')
-      return
-    }
+    if (isRootFile(path)) return '--filter=*'
   }
 
-  const workspaces = discoverWorkspaces()
+  // Seed set from owning workspaces.
   const seeds = new Set<string>()
   for (const path of changed) {
-    const ws = findOwningWorkspace(path, workspaces)
+    const ws = findOwningWorkspace(path, workspaces, root)
     if (ws) seeds.add(ws.name)
   }
 
-  if (seeds.size === 0) {
-    // No workspace-owned files changed (e.g. only top-level docs/README.md).
-    process.stdout.write('')
-    return
+  if (seeds.size === 0) return ''
+
+  let closure = transitiveDependents(seeds, workspaces)
+
+  if (category) {
+    closure = filterByCategory(closure, workspaces, category, root)
+    if (closure.size === 0) return ''
   }
 
-  const closure = transitiveDependents(seeds, workspaces)
   // Emit unquoted flags — quoting is the shell's job, and embedding literal
   // single quotes here breaks GitHub Actions step outputs (the quotes are
   // preserved verbatim and bun receives `--filter='@pyreon/x'` literally,
   // matching no packages).
-  const flags = [...closure].sort().map((name) => `--filter=${name}`)
-  process.stdout.write(flags.join(' '))
+  return [...closure].sort().map((name) => `--filter=${name}`).join(' ')
+}
+
+// ── Main ───────────────────────────────────────────────────────────────────
+
+function main(): void {
+  let base = 'origin/main'
+  let category: string | undefined
+  for (const arg of process.argv.slice(2)) {
+    if (arg.startsWith('--base=')) base = arg.slice('--base='.length)
+    else if (arg.startsWith('--category=')) category = arg.slice('--category='.length)
+  }
+
+  let changed: string[] | null
+  try {
+    // execFileSync (not execSync) — argv array, no shell interpretation.
+    // CodeQL's "indirect uncontrolled command line" rule flags string-
+    // interpolated execSync calls even when the value comes from our own
+    // CI; defense-in-depth here removes the entire class of shell-injection
+    // concerns (`--base="; rm -rf / #"` is just an unknown ref to git now,
+    // not executable shell). Same fix shape applies to scripts/e2e-affected.ts
+    // — tracked as a follow-up to keep this PR scoped to the typecheck/test
+    // shard work.
+    const diffOut = execFileSync(
+      'git',
+      ['diff', '--name-only', `${base}...HEAD`],
+      { cwd: ROOT, encoding: 'utf-8' },
+    )
+    changed = diffOut.split('\n').filter(Boolean)
+  } catch {
+    // Diff failed (bad base ref, shallow clone, etc.) — be safe, run all.
+    changed = null
+  }
+
+  const workspaces = discoverWorkspaces()
+  const flags = computeAffectedFlags({ changed, workspaces, category })
+  process.stdout.write(flags)
 }
 
 main()
