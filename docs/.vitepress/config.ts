@@ -175,6 +175,7 @@ export default defineConfig({
             { text: 'State Tree', link: '/docs/state-tree' },
             { text: 'Form', link: '/docs/form' },
             { text: 'Validation', link: '/docs/validation' },
+            { text: 'Validate (Standard Schema DX)', link: '/docs/validate' },
             { text: 'I18n', link: '/docs/i18n' },
             { text: 'Query', link: '/docs/query' },
             { text: 'Table', link: '/docs/table' },

@@ -194,7 +194,8 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/store`       | Global state management — composition stores returning `StoreApi<T>`                                                                                 |
 | `@pyreon/state-tree`  | Structured reactive state tree — models, snapshots, patches, middleware                                                                              |
 | `@pyreon/form`        | Signal-based form management — composable `field()` definitions, `useField('name')` from context, `<Form>/<Submit>` components, arrays, validation   |
-| `@pyreon/validation`  | Schema adapters for forms (Zod, Valibot, ArkType)                                                                                                    |
+| `@pyreon/validation`  | Schema adapters for forms (Zod, Valibot, ArkType) + Standard Schema duck-typing                                                                      |
+| `@pyreon/validate`    | DX overlay on Standard Schema — `withField` metadata, `parseReactive` signal-driven validation, `formatErrors` i18n bridge. Works with any spec-compliant validator. |
 | `@pyreon/query`       | Pyreon adapter for TanStack Query                                                                                                                    |
 | `@pyreon/table`       | Pyreon adapter for TanStack Table                                                                                                                    |
 | `@pyreon/virtual`     | Pyreon adapter for TanStack Virtual                                                                                                                  |
@@ -335,6 +336,21 @@ Layer 0: signal() / computed() / effect() — runs identically; PMTC maps to @St
 - `zodSchema()` / `zodField()` — duck-typed Zod adapter (works with v3 and v4)
 - `valibotSchema(schema, safeParseFn)` / `valibotField()` — Valibot standalone-function style
 - `arktypeSchema()` / `arktypeField()` — ArkType sync adapter
+- `wrapStandardSchema()` / `isStandardSchema()` / `extractParseFn()` — generic Standard Schema duck-typing (any spec-compliant validator including Zod 3.24+, Valibot 1.0+, ArkType 2.0+, Effect Schema, typia)
+
+### @pyreon/validate
+
+Tiny (~1-2KB gz) DX overlay on top of [Standard Schema](https://standardschema.dev). Pyreon does NOT ship its own validator runtime — `@pyreon/validate` adds the three things the spec deliberately omits, plus Pyreon-native reactive + i18n bridges. Works with any spec-compliant validator.
+
+- `withField(schema, meta)` — attach `FieldMeta` (label / hint / placeholder / i18n keys / autoFocus / autoComplete / defaultValue) to any Standard Schema. The returned schema is the SAME REFERENCE — Pyreon mutates a Symbol-keyed non-enumerable slot. Mutation (not cloning) is required because ArkType's `Type` instances are callable functions whose `~standard.validate` does `this(input)` — a shallow clone is not callable and breaks that contract. Symbol-keyed non-enumerable mutation is invisible to `JSON.stringify` / `for…in` / `Object.keys` / structured clone / library-internal comparators. Re-wrapping merges (later keys win).
+- `getMeta(schema)` — read attached metadata. Accepts both objects AND functions (callable schemas).
+- `resolveMetaField(schema, field, t?)` — read a single field through optional i18n. `t('auth.email.label')` wins over `meta.label` when it resolves to a non-key string.
+- `parseReactive(schema, source)` — returns `Computed<ParseResult>` that re-validates on signal changes. Sync.
+- `parseReactiveAsync` — async variant for schemas with async refinements. Caller handles staleness via `watch`.
+- `watchValid(schema, source, cb)` — fires only on validity flips, not every error change. Returns unsubscribe.
+- `formatError` / `formatErrors` / `formatErrorsByPath` — resolve issues to strings via the `t` from `useI18n()`. Pyreon issues carry optional `{ key, params, fallback }`; bare StdSchema issues fall through to `message` (no overhead, no special-casing). `formatErrorsByPath` builds a per-field map keyed by issue path — compatible with `@pyreon/form`'s `Errors` shape.
+- **No new validator runtime** — use Zod / Valibot / ArkType / typia / any future Standard Schema-compliant validator. Existing `zodSchema()` / `valibotSchema()` / `arktypeSchema()` adapters in `@pyreon/validation` remain unchanged.
+- **Compiler-emit follow-up** — a separate PR adds `@pyreon/compiler:analyzeValidate()` to emit typia-class specialized validators per schema at build time, working against any Standard Schema validator. v1 parse speed is the underlying lib's speed.
 
 ### @pyreon/feature
 
@@ -993,7 +1009,7 @@ One source of truth per package — `packages/<category>/<pkg>/src/manifest.ts` 
 
 ## Docs Website
 
-VitePress documentation site at `docs/` — part of the monorepo workspace. 83 doc pages covering all packages. Interactive `<Playground>` component embeds live code editors with sandboxed preview on 10+ pages (reactivity, core, runtime-dom, store, rx, form, machine, hooks, permissions, i18n, toast, storage, url-state). Code runs via ESM CDN imports in a sandboxed iframe with dark mode support.
+VitePress documentation site at `docs/` — part of the monorepo workspace. 84 doc pages covering all packages. Interactive `<Playground>` component embeds live code editors with sandboxed preview on 10+ pages (reactivity, core, runtime-dom, store, rx, form, machine, hooks, permissions, i18n, toast, storage, url-state). Code runs via ESM CDN imports in a sandboxed iframe with dark mode support.
 
 ```bash
 cd docs && bun run dev       # local dev server
