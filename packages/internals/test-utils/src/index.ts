@@ -3,6 +3,8 @@ export { BaseComponent, ThemeCapture } from './components'
 // Context helpers
 export type { TestThemeOptions } from './context'
 export { buildThemeContextMap, withThemeContext } from './context'
+// DOM query helpers (typed replacement for `querySelector(...) as HTMLXxxElement`)
+export { query, queryAll, queryOptional } from './dom-query'
 // Framework-internal accessors (typed escape hatch for white-box tests)
 export { accessInternal, callInternal } from './internals'
 // vi.mock adapter helpers (typed wrappers for external lib callback shapes)
