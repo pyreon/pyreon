@@ -46,7 +46,7 @@
  */
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { initTestConfig, mountAndExpectOnce, mountReactive, query, queryOptional } from '@pyreon/test-utils'
+import { initTestConfig, mountAndExpectOnce, mountReactive, queryOptional } from '@pyreon/test-utils'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import DocButton from '../primitives/DocButton'
