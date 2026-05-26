@@ -180,15 +180,15 @@ describe('TodoMVC gap-tracking baseline', () => {
     expect(out.code).toContain('text: $draft')
   })
 
-  it('G1 — TextField two-way binding emits Compose `onValueChange` on Kotlin', () => {
-    // CLOSED by this PR. Same pattern as Swift — when `value={x}`
-    // names a known signal, the Kotlin emit becomes
-    // `TextField(value = x, onValueChange = { x = it })` so a
-    // Compose host with `var x by remember { mutableStateOf("") }`
-    // wires up bidirectionally with no boilerplate.
+  it('G1 — Field two-way binding emits Compose `onValueChange` on Kotlin', () => {
+    // CLOSED. Source migrated to canonical <Field value onChangeText={(t) =>
+    // draft.set(t)}> vocab. The canonical Field emit threads the user-
+    // provided arrow callback verbatim with arrow-param preservation
+    // (#920) — so the shape is `onValueChange = { t -> draft = t }`,
+    // not the legacy <TextField> auto-derived `{ draft = it }`.
     const out = transform(source, { target: 'kotlin' })
     expect(out.code).toContain('TextField(value = draft')
-    expect(out.code).toContain('onValueChange = { draft = it }')
+    expect(out.code).toContain('onValueChange = { t -> draft = t }')
   })
 
   it('G2 — onKeyDown=Enter handler emits `.onSubmit { ... }` on Swift', () => {
