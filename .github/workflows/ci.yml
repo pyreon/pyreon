@@ -60,7 +60,16 @@ jobs:
             examples/*/node_modules
             docs/node_modules
           key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-      - run: bun install --frozen-lockfile
+      # P3c — skip the postinstall lib/ build. The Install job now does
+      # ONLY `bun install --frozen-lockfile` (~60s) so lib-free downstream
+      # jobs (typecheck, lint, test, coverage, audit-types, etc.) unblock
+      # ~150s sooner. The separate `bootstrap` job below runs the build
+      # and gates lib-needing jobs (build, verify-modes, e2e-*,
+      # check-bundle-budgets, scaffold-smoke, check-distribution).
+      # PYREON_BOOTSTRAP_SKIP=1 makes bootstrap.ts a no-op (exit 0 before
+      # any work). Local-dev installs deliberately keep the build because
+      # devs want `bun run dev` to work immediately.
+      - run: PYREON_BOOTSTRAP_SKIP=1 bun install --frozen-lockfile
       # Save under run_id so downstream jobs get an exact match (no stale data)
       - name: Save node_modules for this run
         uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
@@ -82,21 +91,6 @@ jobs:
             examples/*/node_modules
             docs/node_modules
           key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-      # bun install above ran the postinstall bootstrap, which built lib/
-      # fresh from current source. We DON'T restore a previous lib/ here —
-      # cross-run lib/ caching was the source of "stale chunk hash" build
-      # failures: rolldown's chunk filenames are content-hashed, and even
-      # a stale lib/ that nominally matches the current source might
-      # reference chunk filenames that no longer exist (e.g., dropped
-      # files in the cache, divergent chunk-split decisions between runs).
-      # Save under the per-run key so downstream jobs in THIS run get the
-      # exact lib/ that THIS run's bootstrap produced — no cross-run
-      # corruption.
-      - name: Save bootstrap for this run
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: packages/*/*/lib
-          key: ${{ env.BOOTSTRAP_KEY }}
       # Compute affected filter once — shared via output to all downstream jobs
       - name: Compute affected filter
         id: affected
@@ -108,6 +102,55 @@ jobs:
           else
             echo "filter=--filter=*" >> $GITHUB_OUTPUT
           fi
+
+  # ── Bootstrap (P3c): builds lib/ separately from Install ──────────────
+  # Restores node_modules from the Install job (per-run cache), runs
+  # `bun scripts/bootstrap.ts` (which does the workspace-wide build of
+  # lib/*), saves the lib/ cache for lib-needing downstream jobs.
+  #
+  # ## Why split this off
+  #
+  # Pre-P3c, Install ran `bun install` + the postinstall bootstrap in
+  # one ~210s job. Every downstream job — INCLUDING lib-free ones like
+  # typecheck, lint, test — waited the full 210s to start. The build
+  # step (~150s) accounts for ~70% of that wait.
+  #
+  # Post-P3c, Install does ONLY `bun install` (~60s). Lib-free jobs
+  # need only `install`, so they start ~150s sooner. Lib-needing jobs
+  # need `bootstrap` (which itself needs `install`), so their start
+  # time is roughly unchanged (~210s = 60s install + 150s bootstrap)
+  # but the critical path for the COMMON case (PRs only need a subset
+  # of lib-needing jobs) is dominated by the now-faster lib-free path.
+  #
+  # ## Cross-run lib/ caching deliberately disabled
+  #
+  # We DON'T restore a previous-run lib/ here for the same reason the
+  # pre-P3c Install job didn't: rolldown's chunk filenames are
+  # content-hashed, and a stale lib/ that nominally matches current
+  # source might reference chunk filenames that no longer exist
+  # (dropped files, divergent chunk-split decisions between runs).
+  # Save under the per-run key only so downstream jobs in THIS run get
+  # exactly the lib/ that THIS run's bootstrap produced.
+  bootstrap:
+    name: Bootstrap
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      # Composite restores node_modules (default) from Install's per-run
+      # cache. We disable bootstrap restore because the cache doesn't
+      # exist yet — THIS job populates it.
+      - uses: ./.github/actions/setup-pyreon
+        with:
+          restore-bootstrap: 'false'
+      - name: Build lib/
+        run: bun scripts/bootstrap.ts
+      - name: Save bootstrap for this run
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: packages/*/*/lib
+          key: ${{ env.BOOTSTRAP_KEY }}
 
   # ── Shared setup anchor (YAML anchor not supported, so we repeat) ───────
   # Every downstream job: checkout → setup-bun → restore run_id caches.
@@ -153,6 +196,12 @@ jobs:
           # the install job uses fetch-depth: 0 for the same reason.
           fetch-depth: 0
       - uses: ./.github/actions/setup-pyreon
+        with:
+          # P3c — typecheck reads src/ via the bun customCondition (root
+          # tsconfig.json line 8); lib/ is not needed. Skipping the
+          # bootstrap restore lets typecheck start as soon as Install
+          # finishes (~60s) instead of waiting for Bootstrap (~210s).
+          restore-bootstrap: 'false'
       - name: Run typecheck (${{ matrix.category }})
         run: |
           # Recompute the filter per-cell with --category narrowing.
@@ -261,6 +310,11 @@ jobs:
       - uses: ./.github/actions/setup-pyreon
         with:
           node-version: '24'
+          # P3c — vitest resolves @pyreon/* via the `bun` condition
+          # (packages/internals/vitest-config/src/node.ts:conditions),
+          # so tests run against src/, not lib/. Skipping the bootstrap
+          # restore lets test cells start as soon as Install finishes.
+          restore-bootstrap: 'false'
       - name: Run tests (${{ matrix.category }})
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -358,6 +412,10 @@ jobs:
       - uses: ./.github/actions/setup-pyreon
         with:
           node-version: '24'
+          # P3c — @pyreon/compiler tests resolve via the bun condition
+          # (its own src/), and the rust binary is built in this job
+          # below. Other packages' lib/ is not needed.
+          restore-bootstrap: 'false'
       - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master — pinned (OpenSSF Pinned-Dependencies)
         with:
           toolchain: stable
@@ -453,7 +511,9 @@ jobs:
 
   e2e-suite:
     name: e2e (${{ matrix.name }})
-    needs: [install, e2e-decide]
+    # P3c — e2e suites boot example apps via `vite preview` / `vite build`
+    # which resolves @pyreon/* via the node condition → lib/. Needs Bootstrap.
+    needs: [bootstrap, e2e-decide]
     if: needs.e2e-decide.outputs.has == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -550,7 +610,9 @@ jobs:
 
   build:
     name: Build
-    needs: install
+    # P3c — `vite build` of examples resolves @pyreon/* via the node
+    # condition → lib/. Needs Bootstrap.
+    needs: bootstrap
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -614,6 +676,9 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-pyreon
+        with:
+          # P3c — vitest's bun condition reads src/, not lib/.
+          restore-bootstrap: 'false'
       - name: Run full per-package coverage
         run: bun run coverage
 
@@ -654,7 +719,9 @@ jobs:
   # See scripts/check-bundle-budgets.ts.
   check-bundle-budgets:
     name: Check Bundle Budgets
-    needs: install
+    # P3c — bundles `lib/index.js` of every published package via Bun.build.
+    # Needs Bootstrap.
+    needs: bootstrap
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -674,7 +741,9 @@ jobs:
   # See scripts/check-distribution.ts.
   check-distribution:
     name: Check Distribution
-    needs: install
+    # P3c — `npm pack --dry-run` probe reads lib/ via the `files` array.
+    # Needs Bootstrap.
+    needs: bootstrap
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -759,7 +828,8 @@ jobs:
   # for the matrix definition.
   verify-modes:
     name: Verify Modes
-    needs: install
+    # P3c — `vite build` of every example × mode cell. Needs Bootstrap.
+    needs: bootstrap
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -786,7 +856,10 @@ jobs:
   # branch-protection's expectations even if a cell gets renamed).
   scaffold-smoke-cell:
     name: Scaffold Smoke (${{ matrix.cell }})
-    needs: install
+    # P3c — each cell runs `bun install` + `vite build` of the scaffolded app.
+    # Needs Bootstrap so the workspace lib/ is resolvable when the app pulls
+    # in @pyreon/* via the node condition.
+    needs: bootstrap
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -879,6 +952,9 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-pyreon
+        with:
+          # P3c — `bun pm untrusted` + lockfile diff only need NM, not lib/.
+          restore-bootstrap: 'false'
       - name: Check for untrusted dependencies
         run: bun pm untrusted
         continue-on-error: true
@@ -889,7 +965,9 @@ jobs:
   benchmark:
     name: Benchmark
     if: github.event_name == 'push'
-    needs: install
+    # P3c — benchmarks measure realistic perf against the BUILT artifacts,
+    # not src/. Needs Bootstrap.
+    needs: bootstrap
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
