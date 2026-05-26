@@ -809,6 +809,77 @@ const form4 = useForm({
 >
 > **Duck typing**: The Zod adapter is duck-typed against `.safeParse()` — it works with both Zod v3 and v4 without version detection. If a future Zod version changes the safeParse return shape, the adapter will need updating.
 
+## @pyreon/validate — Standard Schema DX overlay
+
+Tiny DX overlay over Standard Schema (https://standardschema.dev) — the cross-library protocol implemented natively by Zod 3.24+, Valibot 1.0+, ArkType 2.0+, and any future StdSchema-compliant validator. Adds the three things the spec deliberately omits + Pyreon-native bridges: `withField` for label/hint/placeholder/i18n metadata attached to any schema; `parseReactive` for signal-driven re-validation as a `Computed<ParseResult>`; `formatErrors` for i18n-key-aware error rendering. Pyreon does NOT ship its own validator runtime — use Zod, Valibot, ArkType, or any future spec-compliant lib; `@pyreon/validate` makes it Pyreon-flavoured.
+
+```typescript
+import { z } from 'zod'
+import { signal } from '@pyreon/reactivity'
+import { useI18n } from '@pyreon/i18n'
+import {
+  withField,
+  getMeta,
+  parseReactive,
+  watchValid,
+  formatErrors,
+} from '@pyreon/validate'
+
+// 1. Attach Pyreon field metadata to any Standard Schema.
+const emailSchema = withField(z.string().email(), {
+  label: 'Email address',
+  placeholder: 'you@example.com',
+  hint: 'We never share your email',
+  i18nLabel: 'auth.email.label',
+  i18nHint: 'auth.email.hint',
+  autoComplete: 'email',
+})
+
+// emailSchema is STILL a Zod schema — every Zod method works:
+emailSchema.parse('foo@bar.com')          // → 'foo@bar.com'
+emailSchema['~standard'].validate('bad')  // → { issues: [...] }
+
+// Read the metadata back:
+getMeta(emailSchema)
+// → { label: 'Email address', placeholder: ..., i18nLabel: ..., ... }
+
+// 2. Reactively parse a signal-backed input.
+const $email = signal('')
+const $result = parseReactive(emailSchema, $email)
+
+effect(() => {
+  const r = $result()
+  if (r.issues) console.warn('invalid:', r.issues)
+  else console.log('parsed:', r.value)
+})
+
+$email.set('foo@bar.com')   // → $result fires, valid
+
+// 3. Watch for validity flips (no fire on error-message change).
+const stop = watchValid(emailSchema, $email, (valid) => {
+  submitButton.disabled = !valid
+})
+
+// 4. i18n bridge — resolve issue keys to translated strings.
+const { t } = useI18n()
+const messages = formatErrors($result().issues ?? [], t)
+// → translated strings via t(issue.key, issue.params), with fallback to issue.fallback or issue.message
+
+// 5. Works with ANY Standard Schema validator — drop-in swap to Valibot:
+import * as v from 'valibot'
+const sameSchema = withField(v.pipe(v.string(), v.email()), { label: 'Email' })
+const $sameResult = parseReactive(sameSchema, $email)
+
+```
+
+> **Standard Schema is parse-only**: The protocol deliberately omits a metadata channel — that's the gap `withField` fills. The protocol also doesn't carry i18n keys — `formatErrors` adds that layer.
+>
+> **withField mutates in place**: ArkType's Type instances are callable functions whose `~standard.validate` does `this(input)` — `this` must be the callable schema itself. An Object.create() clone is not callable and breaks ArkType. Symbol-keyed non-enumerable mutation is invisible to JSON / for…in / Object.keys / library-internal comparators. Safe.
+>
+> **No validator runtime**: Pyreon-validate does NOT ship a validator. Use Zod / Valibot / ArkType / typia / any Standard Schema-compliant lib — Pyreon-validate makes it Pyreon-flavoured.
+>
+> **Compiler-emit is a follow-up**: A future PR adds `@pyreon/compiler:analyzeValidate()` to emit typia-class specialized validators per schema at build time. v1 ships at the underlying lib's speed (Valibot/ArkType are already 3-5× faster than Zod; the compiler PR closes the gap for Zod schemas too).
+
 ## @pyreon/feature — Schema-Driven CRUD
 
 Schema-driven feature factory for Pyreon. Define a feature schema and API config once, and `defineFeature` auto-generates reactive hooks for listing, fetching, searching, creating, updating, deleting, form management, table configuration, and store access. Composes `@pyreon/query`, `@pyreon/form`, `@pyreon/validation`, `@pyreon/store`, and `@pyreon/table` under the hood.
