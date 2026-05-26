@@ -1203,6 +1203,31 @@ const ERROR_PATTERNS: ErrorPattern[] = [
       related: "Use typeof window !== 'undefined' checks or onMount() for client-only code.",
     }),
   },
+  {
+    // W16 — Transition wrapped in Portal/Show queued applyEnter before the
+    // child ref was assigned, so el.classList.remove threw. Closed in PR
+    // #960 by retrying for up to 16 microtasks. Catch the rarer residual
+    // shape (e.g. ref never resolves) and explain the fix.
+    pattern: /Cannot read propert(?:y|ies) of null \(reading 'classList'\)/,
+    diagnose: () => ({
+      cause:
+        "A <Transition> tried to read .classList on a null element. Usually the ref to the animated child element wasn't assigned by the time applyEnter/applyLeave ran — e.g. the child is itself an async-mounted component, or the Transition wraps something other than a single DOM element.",
+      fix: 'Transition must wrap a single DOM element directly (not a component VNode). If you need a component, wrap the component\'s root DOM element in Transition externally, or expose the ref via forwardRef.',
+      fixCode:
+        '// ✗ Component child — Transition can\'t inject ref\n<Transition show={open}>\n  <MyComponent />\n</Transition>\n\n// ✓ DOM element child\n<Transition show={open}>\n  <div class="modal">...</div>\n</Transition>',
+    }),
+  },
+  {
+    // W14 — hotkeys sequential combos. Catch the rare case where a user
+    // sees the warning about an empty shortcut string.
+    pattern: /\[@pyreon\/hotkeys\] empty shortcut/,
+    diagnose: () => ({
+      cause:
+        'registerHotkey() / useHotkey() was called with an empty or whitespace-only shortcut string.',
+      fix: 'Provide a non-empty key combo. Sequential combos use whitespace: useHotkey("g t", ...). Modifier combos use +: useHotkey("ctrl+s", ...).',
+      fixCode: "useHotkey('g t', () => router.push('/top'))",
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */

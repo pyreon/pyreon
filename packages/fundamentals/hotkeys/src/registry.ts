@@ -18,6 +18,41 @@ const activeScopes = signal<Set<string>>(new Set(['global']))
 let listenerAttached = false
 let keydownHandler: ((event: KeyboardEvent) => void) | null = null
 
+// ─── Sequence state ──────────────────────────────────────────────────────────
+
+/**
+ * Active sequence-tracking state. When a user presses a key that matches the
+ * FIRST combo of one-or-more sequential hotkeys (`'g t'`, `'g n'`, etc.), we
+ * remember the matched prefix and wait for the next keystroke. If it matches
+ * the next combo in any pending sequence, we keep narrowing. A full match
+ * fires the handler; a non-match clears the pending state. The state also
+ * times out after `SEQUENCE_TIMEOUT_MS` so a stranded prefix doesn't trap
+ * the next single-key shortcut.
+ */
+interface PendingSequence {
+  /** The entry whose remaining keys we're tracking. */
+  entry: HotkeyEntry
+  /** Index of the NEXT combo we expect to match in `entry.sequence`. */
+  next: number
+}
+
+const SEQUENCE_TIMEOUT_MS = 1000
+let pending: PendingSequence[] = []
+let pendingTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearPending(): void {
+  pending = []
+  if (pendingTimer) {
+    clearTimeout(pendingTimer)
+    pendingTimer = null
+  }
+}
+
+function armSequenceTimeout(): void {
+  if (pendingTimer) clearTimeout(pendingTimer)
+  pendingTimer = setTimeout(clearPending, SEQUENCE_TIMEOUT_MS)
+}
+
 // ─── Input detection ─────────────────────────────────────────────────────────
 
 const INPUT_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
@@ -40,6 +75,45 @@ function attachListener(): void {
   keydownHandler = (event) => {
     const scopes = activeScopes.peek()
 
+    // ─── Stage 1: advance any pending sequences ──────────────────────────
+    // If we're mid-sequence, the user's next keystroke must match the
+    // NEXT combo of at least one pending entry. Non-matches drop that
+    // pending entry; a full match (last combo) fires the handler and
+    // clears all pending state. If anything advanced, return early so
+    // single-key shortcuts (like 't' alone) don't ALSO fire on this
+    // keystroke — sequence ownership of the keystroke beats fresh
+    // single-combo matches.
+    if (pending.length > 0) {
+      const surviving: PendingSequence[] = []
+      let fired = false
+      for (const p of pending) {
+        const expected = p.entry.sequence[p.next]
+        if (!expected) continue // defensive — shouldn't happen
+        if (!matchesCombo(event, expected)) continue
+        // Advance
+        if (p.next + 1 === p.entry.sequence.length) {
+          // Full match — fire
+          if (p.entry.options.preventDefault) event.preventDefault()
+          if (p.entry.options.stopPropagation) event.stopPropagation()
+          p.entry.handler(event)
+          fired = true
+        } else {
+          surviving.push({ entry: p.entry, next: p.next + 1 })
+        }
+      }
+      if (fired || surviving.length > 0) {
+        pending = surviving
+        if (surviving.length > 0) armSequenceTimeout()
+        else clearPending()
+        return
+      }
+      // No pending sequence matched — fall through to fresh dispatch
+      // but clear the stale pending state.
+      clearPending()
+    }
+
+    // ─── Stage 2: fresh dispatch ────────────────────────────────────────
+    const newPending: PendingSequence[] = []
     for (const entry of entries) {
       // Check scope
       if (!scopes.has(entry.options.scope)) continue
@@ -54,13 +128,26 @@ function attachListener(): void {
       // Check input focus
       if (!entry.options.enableOnInputs && isInputFocused(event)) continue
 
-      // Check key match
+      // Check FIRST combo match
       if (!matchesCombo(event, entry.combo)) continue
 
-      // Match found
-      if (entry.options.preventDefault) event.preventDefault()
-      if (entry.options.stopPropagation) event.stopPropagation()
-      entry.handler(event)
+      if (entry.sequence.length === 0) {
+        // Single-combo hotkey — fire immediately
+        if (entry.options.preventDefault) event.preventDefault()
+        if (entry.options.stopPropagation) event.stopPropagation()
+        entry.handler(event)
+      } else {
+        // Sequential hotkey — record as pending; consume the keystroke
+        // (preventDefault so 'g' doesn't trigger a browser shortcut)
+        // but DON'T fire the handler yet.
+        if (entry.options.preventDefault) event.preventDefault()
+        newPending.push({ entry, next: 0 })
+      }
+    }
+
+    if (newPending.length > 0) {
+      pending = newPending
+      armSequenceTimeout()
     }
   }
 
@@ -93,9 +180,31 @@ export function registerHotkey(
 ): () => void {
   attachListener()
 
+  // Sequential combo support: space-separated combos like `'g t'` are
+  // treated as ordered sequences — user presses `g`, then `t` within
+  // `SEQUENCE_TIMEOUT_MS`, the handler fires. Each sub-combo is parsed
+  // through the existing `parseShortcut` (so `'ctrl+k p'` works: `ctrl+k`
+  // followed by `p`). Single-combo shortcuts have `sequence: []` and
+  // behave identically to the pre-sequence code path.
+  const subShortcuts = shortcut
+    .split(/\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (subShortcuts.length === 0) {
+    throw new Error(`[@pyreon/hotkeys] empty shortcut: ${JSON.stringify(shortcut)}`)
+  }
+  const combos = subShortcuts.map(parseShortcut)
+  const firstCombo = combos[0]
+  if (!firstCombo) {
+    // Unreachable given the length check above, but keeps TS happy.
+    throw new Error(`[@pyreon/hotkeys] invalid shortcut: ${JSON.stringify(shortcut)}`)
+  }
+  const rest = combos.slice(1)
+
   const entry: HotkeyEntry = {
     shortcut,
-    combo: parseShortcut(shortcut),
+    combo: firstCombo,
+    sequence: rest,
     handler,
     options: {
       scope: options?.scope ?? 'global',
@@ -172,5 +281,6 @@ export function getRegisteredHotkeys(): ReadonlyArray<{
 export function _resetHotkeys(): void {
   entries.length = 0
   activeScopes.set(new Set(['global']))
+  clearPending()
   detachListener()
 }

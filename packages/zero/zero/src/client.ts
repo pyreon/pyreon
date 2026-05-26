@@ -121,7 +121,29 @@ export function startClient(options: StartClientOptions) {
   // (SSR disabled for this route but loader defined). Run loaders anyway so
   // the client catches up.
   if (!hasSSRLoaderData) {
-    const currentPath = router.currentRoute().path
+    // PATH + query string + hash — `router.currentRoute().path` is JUST
+    // the pathname (search/hash stripped by `resolveRoute`). Passing
+    // only the pathname makes `router.replace` write the bare URL via
+    // `history.replaceState`, silently dropping query params present on
+    // the initial-load URL. Any `useUrlState` / `useTypedSearchParams`
+    // consumer reading `window.location.search` later sees an empty
+    // string and falls back to defaults — direct-link sharing of
+    // `/search?q=react` was structurally broken on cold-start (W13 from
+    // #942 follow-up audit).
+    //
+    // We use the router's internal `_currentPath` signal because it
+    // already holds the BASE-STRIPPED pathname + search assembled by
+    // `getInitialLocation()`. Reading `window.location.pathname`
+    // directly would include the base prefix (e.g. `/blog/` for a
+    // subpath deploy), which `router.replace` then re-prepends inside
+    // `syncBrowserUrl` — producing a double-prefix URL like
+    // `/blog//blog/about`. Using `_currentPath` keeps the base handling
+    // centralised in the router.
+    const internalCurrentPath = (router as unknown as { _currentPath?: () => string })._currentPath
+    const currentPath =
+      typeof internalCurrentPath === 'function'
+        ? internalCurrentPath()
+        : router.currentRoute().path
     router.replace(currentPath).catch((err: unknown) => {
       // Loader failures are already reported via the route's error handling
       // pipeline. We swallow the promise rejection here to prevent unhandled

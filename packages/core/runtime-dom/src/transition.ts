@@ -171,10 +171,30 @@ export function Transition(props: TransitionProps): VNodeChild {
     })
   }
 
+  // Defer applyEnter until the ref is actually populated. The ref is
+  // assigned by the mount pipeline when the child element commits to
+  // the DOM. With straightforward DOM children that happens within a
+  // single microtask — but when Transition is nested inside `<Portal>`,
+  // `<Show>`, or other reactive wrappers, the child commit can be one
+  // or more microtasks behind. Retrying for a few microtasks covers
+  // both shapes without timing assumptions. A `null`-passing
+  // applyEnter would crash with `Cannot read properties of null
+  // (reading 'classList')` — same bug class as the W14 follow-up audit.
+  const MAX_REF_RETRIES = 16
+  const safeApplyEnter = (retries = MAX_REF_RETRIES) => {
+    const el = ref.current
+    if (el) {
+      applyEnter(el)
+      return
+    }
+    if (retries <= 0) return // give up silently — element never mounted
+    queueMicrotask(() => safeApplyEnter(retries - 1))
+  }
+
   const handleVisibilityChange = (visible: boolean) => {
     if (visible) {
       if (!isMounted.peek()) isMounted.set(true)
-      queueMicrotask(() => applyEnter(ref.current as HTMLElement))
+      queueMicrotask(() => safeApplyEnter())
       return
     }
     if (!isMounted.peek()) return
@@ -196,7 +216,7 @@ export function Transition(props: TransitionProps): VNodeChild {
     if (!initialized) {
       initialized = true
       if (visible && props.appear) {
-        queueMicrotask(() => applyEnter(ref.current as HTMLElement))
+        queueMicrotask(() => safeApplyEnter())
       }
       return
     }
