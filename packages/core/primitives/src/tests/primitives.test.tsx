@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { signal } from '@pyreon/reactivity'
-import { Button, Field, Inline, Press, Stack, Text } from '../index'
+import { Button, Field, Inline, Press, Stack, Text, Toggle } from '../index'
 
 function mountTest(vnode: ReturnType<typeof h>): {
   container: HTMLDivElement
@@ -539,6 +539,66 @@ describe('<Field> happy-dom unit', () => {
     const input = container.firstElementChild as HTMLInputElement
     expect(input.disabled).toBe(true)
     expect(input.style.opacity).toBe('0.5')
+    unmount()
+  })
+})
+
+describe('<Toggle> happy-dom unit', () => {
+  it('renders an <input type=checkbox> wired to a signal', () => {
+    const v = signal(false)
+    const { container, unmount } = mountTest(
+      h(Toggle, { value: v, onChange: (next: boolean) => v.set(next) }),
+    )
+    const input = container.firstElementChild as HTMLInputElement
+    expect(input.tagName).toBe('INPUT')
+    expect(input.type).toBe('checkbox')
+    expect(input.checked).toBe(false)
+    unmount()
+  })
+
+  it('initial value=true → input.checked=true', () => {
+    const v = signal(true)
+    const { container, unmount } = mountTest(
+      h(Toggle, { value: v, onChange: (next: boolean) => v.set(next) }),
+    )
+    const input = container.firstElementChild as HTMLInputElement
+    expect(input.checked).toBe(true)
+    unmount()
+  })
+
+  it('change event fires onChange with the new boolean', () => {
+    const v = signal(false)
+    let observed: boolean | undefined
+    const { container, unmount } = mountTest(
+      h(Toggle, {
+        value: v,
+        onChange: (next: boolean) => {
+          observed = next
+          v.set(next)
+        },
+      }),
+    )
+    const input = container.firstElementChild as HTMLInputElement
+    input.checked = true
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+    expect(observed).toBe(true)
+    expect(v()).toBe(true)
+    unmount()
+  })
+
+  it('disabled disables the input + dims the style', () => {
+    const v = signal(false)
+    const { container, unmount } = mountTest(
+      h(Toggle, {
+        value: v,
+        onChange: (next: boolean) => v.set(next),
+        disabled: true,
+      }),
+    )
+    const input = container.firstElementChild as HTMLInputElement
+    expect(input.disabled).toBe(true)
+    expect(input.style.opacity).toBe('0.5')
+    expect(input.style.cursor).toBe('not-allowed')
     unmount()
   })
 })
