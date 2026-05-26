@@ -452,15 +452,52 @@ jobs:
           set -f
           bun run --filter='./examples/*' build
 
+  # ── Coverage gate — split into floor (PR-fast) + full (push/merge_group) ──
+  # P3a — pre-fix, Coverage ran the full per-package test suite with
+  # --coverage instrumentation on EVERY PR (~200s). The actual coverage
+  # numbers only matter when blocking main from regressing; the *floor*
+  # config invariant (every package's vitest.config.ts threshold ≥ FLOOR
+  # + drift detection on BELOW_FLOOR_EXEMPTIONS entries) is what's
+  # actionable to a PR author at edit time. Splitting:
+  #
+  #  • `Coverage` (this job): floor-only, always runs, ~5s. Same name
+  #    as before so branch protection keeps working — PRs now get a
+  #    fast structural check instead of waiting 200s for actual
+  #    numbers most PRs don't change.
+  #  • `Coverage (Full)` (below): full test execution with coverage,
+  #    runs on push:main + merge_group only. Main is never allowed to
+  #    regress; merge_group acts as the final pre-merge safety check.
+  #
+  # Trade-off: a PR that drops a package's actual coverage from 92% to
+  # 88% (still above the 90% floor of its vitest.config.ts threshold)
+  # passes `Coverage` but fails `Coverage (Full)` at merge-queue time
+  # — that's the documented safety policy. To opt INTO full coverage
+  # on a specific PR, push the merge_group event manually or add a
+  # `full-coverage` label (label-gating is a follow-up, not in this PR).
   coverage:
     name: Coverage
     needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: ./.github/actions/setup-pyreon
+        with:
+          restore-bootstrap: 'false' # floor check reads vitest.config.ts only
+      - name: Coverage floor + exemption drift check
+        run: bun run coverage:floor
+
+  coverage-full:
+    name: Coverage (Full)
+    needs: install
+    if: github.event_name == 'push' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-pyreon
-      - run: bun run coverage
+      - name: Run full per-package coverage
+        run: bun run coverage
 
   # ── Audit Types: typed-but-unimplemented detector ─────────────────────
   # Runs `audit-types --all --strict` against the high-risk packages

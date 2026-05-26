@@ -2,11 +2,24 @@
  * Coverage threshold checker.
  * Runs test coverage for all packages and reports failures.
  *
- * Usage: bun scripts/check-coverage.ts
+ * Usage:
+ *   bun scripts/check-coverage.ts              # full coverage (slow, ~200s)
+ *   bun scripts/check-coverage.ts --floor-only # config check only (~5s)
  *
  * Reads coverage thresholds from each package's vitest.config.ts.
  * If no threshold is configured, uses the default (90% statements).
  * Supports parallel execution and CI-friendly output.
+ *
+ * ## --floor-only mode (P3a)
+ *
+ * Runs `enforceFloor()` and exits. No test execution. Used as the
+ * PR-time fast gate (~5s) — proves the floor / exemption invariant holds
+ * but does NOT detect actual coverage regressions in a PR's changes.
+ *
+ * The full run (no flag) is the canonical safety net, executed on
+ * `push: main` and `merge_group` only — main is never allowed to
+ * regress, but PRs get fast feedback instead of paying the 200s+ cost
+ * on every iteration.
  *
  * ## Coverage floor (PR #323 + PR #324)
  *
@@ -348,6 +361,7 @@ function enforceFloor(packages: PackageInfo[]): string[] {
 // ─── Main ──────────────────────────────────────────────────────────────────
 
 const isCI = !!process.env.CI
+const isFloorOnly = process.argv.includes('--floor-only')
 const packages = collectPackages()
 
 // Enforce the floor BEFORE running coverage so misconfigured
@@ -365,6 +379,18 @@ if (floorErrors.length > 0) {
       'scripts/check-coverage.ts for the canonical list.\n',
   )
   process.exit(1)
+}
+
+// P3a — floor-only mode: pure config gate, no test execution. Used as
+// the PR-time fast path; full coverage runs on push:main + merge_group.
+if (isFloorOnly) {
+  console.log(
+    `\n✅ Floor-config check passed (${packages.length} packages, ` +
+      `MINIMUM_FLOOR=${MINIMUM_FLOOR}% / MINIMUM_BRANCH_FLOOR=${MINIMUM_BRANCH_FLOOR}%, ` +
+      `${Object.keys(BELOW_FLOOR_EXEMPTIONS).length} exemptions current).\n` +
+      `Full coverage runs on push:main + merge_group.\n`,
+  )
+  process.exit(0)
 }
 
 console.log(`\nRunning coverage for ${packages.length} packages (${CONCURRENCY} parallel)...\n`)
