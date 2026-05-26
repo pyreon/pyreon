@@ -1,0 +1,82 @@
+name: Setup Pyreon
+description: |
+  Composite action for the common downstream-job preamble: checkout +
+  setup-bun (pinned via .bun-version) + restore node_modules cache (per-
+  run, populated by Install) + restore bootstrap lib/ cache (per-run,
+  populated by Install).
+
+  Replaces a 4-step preamble that was duplicated across 19 jobs in
+  ci.yml. Removes the maintenance burden of keeping cache keys / paths /
+  action SHAs in lockstep across every job; a single edit here propagates
+  to all consumers.
+
+  P2b of the CI speedup plan (.claude/plans/keen-imagining-cherny.md).
+
+  ## Inputs
+
+  - `restore-node-modules` (default 'true'): restore the per-run
+    node_modules cache. Disable for jobs that only need bun + checkout
+    (e.g. oxlint, secrets-scan).
+  - `restore-bootstrap` (default 'true'): restore the per-run lib/ cache
+    (rolldown-built package outputs). Disable for jobs that don't read
+    lib/ (e.g. typecheck against src/ via the bun condition).
+  - `fetch-depth` (default '1'): git fetch depth. Override to '0' for
+    jobs needing full history (Install computes affected against base ref,
+    secrets-scan scans across history, ssg-related jobs need full git log).
+  - `node-version` (default ''): if non-empty, install Node via
+    actions/setup-node at the given version. Used by test / test-browser /
+    test-rust-binary which exercise the dev-mode CLI path under modern
+    active-LTS Node.
+
+inputs:
+  restore-node-modules:
+    description: Restore the per-run node_modules cache (default true).
+    required: false
+    default: 'true'
+  restore-bootstrap:
+    description: Restore the per-run bootstrap lib/ cache (default true).
+    required: false
+    default: 'true'
+  fetch-depth:
+    description: Git fetch depth (default '1' shallow; '0' for full history).
+    required: false
+    default: '1'
+  node-version:
+    description: If non-empty, also install Node via setup-node at this version.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        fetch-depth: ${{ inputs.fetch-depth }}
+    - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      with:
+        bun-version-file: .bun-version
+    - if: inputs.node-version != ''
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      with:
+        node-version: ${{ inputs.node-version }}
+    # NM_KEY env var must be set in the calling workflow (ci.yml does this
+    # at env: scope so every job inherits it; same shape as the pre-P2b
+    # design). Composite actions cannot read calling workflow's env: scope
+    # directly via `${{ env.X }}` — but the steps inside DO inherit it
+    # because each step is shell-evaluated under the workflow's env.
+    - name: Restore node_modules
+      if: inputs.restore-node-modules == 'true'
+      uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      with:
+        path: |
+          node_modules
+          packages/*/*/node_modules
+          examples/*/node_modules
+          docs/node_modules
+        key: ${{ env.NM_KEY }}
+    - name: Restore bootstrap (lib/)
+      if: inputs.restore-bootstrap == 'true'
+      uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      with:
+        path: packages/*/*/lib
+        key: ${{ env.BOOTSTRAP_KEY }}
