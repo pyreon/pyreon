@@ -1,5 +1,6 @@
 import { signal } from '@pyreon/reactivity'
 import { flush } from '@pyreon/test-utils/browser'
+import { query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import { _rsCollapseH, mount } from '../index'
 
@@ -56,7 +57,7 @@ describe('_rsCollapseH (real browser) — PR 2 partial-collapse runtime', () => 
       }),
     )
     await flush()
-    const btn = root.querySelector('button') as HTMLButtonElement
+    const btn = query(root, 'button')
     expect(btn).not.toBeNull()
     expect(btn.className).toBe('rsh-l')
     expect(btn.textContent).toBe('Save')
@@ -80,14 +81,14 @@ describe('_rsCollapseH (real browser) — PR 2 partial-collapse runtime', () => 
       }),
     )
     await flush()
-    const before = root.querySelector('button') as HTMLButtonElement
+    const before = query(root, 'button')
     expect(before.className).toBe('rsh-l2')
     before.click()
     expect(clicks).toBe(1)
 
     isDark.set(true)
     await flush()
-    const after = root.querySelector('button') as HTMLButtonElement
+    const after = query(root, 'button')
     expect(after).toBe(before) // node identity preserved ⇒ reactive, not remount
     expect(after.className).toBe('rsh-d2')
     // The load-bearing partial-collapse contract: the reactive class
@@ -116,7 +117,7 @@ describe('_rsCollapseH (real browser) — PR 2 partial-collapse runtime', () => 
       }),
     )
     await flush()
-    const btn = root.querySelector('button') as HTMLButtonElement
+    const btn = query(root, 'button')
     btn.click()
     btn.dispatchEvent(new PointerEvent('pointerenter', { bubbles: false }))
     expect(clicks).toBe(1)
@@ -138,7 +139,7 @@ describe('_rsCollapseH (real browser) — PR 2 partial-collapse runtime', () => 
       root,
     )
     await flush()
-    const btn = root.querySelector('button') as HTMLButtonElement
+    const btn = query(root, 'button')
     btn.click()
     expect(clicks).toBe(1)
 

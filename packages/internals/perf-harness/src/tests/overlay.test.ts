@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { _count, _disable, _enable, _reset } from '../counters'
 import { mountOverlay } from '../overlay'
+import { query } from '@pyreon/test-utils'
 
 beforeEach(() => {
   _reset()
@@ -36,7 +37,7 @@ describe('mountOverlay', () => {
     // Let rAF-driven render tick once.
     await new Promise<void>((r) => requestAnimationFrame(() => r()))
 
-    const root = (document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement)
+    const root = (query<HTMLElement>(document, '[data-pyreon-perf-overlay-host]'))
       .shadowRoot!
     const rows = Array.from(root.querySelectorAll('tbody tr'))
     const names = rows.map((r) => r.querySelector('.name')?.textContent)
@@ -48,21 +49,21 @@ describe('mountOverlay', () => {
     _count('styler.resolve', 3)
     const handle = mountOverlay()
     await new Promise<void>((r) => requestAnimationFrame(() => r()))
-    const root = (document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement)
+    const root = (query<HTMLElement>(document, '[data-pyreon-perf-overlay-host]'))
       .shadowRoot!
-    ;(root.querySelector('.btn-reset') as HTMLButtonElement).click()
+    ;(query<HTMLButtonElement>(root, '.btn-reset')).click()
     await new Promise<void>((r) => requestAnimationFrame(() => r()))
     expect(root.querySelectorAll('tbody tr').length).toBe(0)
-    expect((root.querySelector('.empty') as HTMLElement).style.display).toBe('block')
+    expect((query<HTMLElement>(root, '.empty')).style.display).toBe('block')
     handle.destroy()
   })
 
   it('close button hides without destroying', async () => {
     const handle = mountOverlay()
     await new Promise<void>((r) => requestAnimationFrame(() => r()))
-    const root = (document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement)
+    const root = (query<HTMLElement>(document, '[data-pyreon-perf-overlay-host]'))
       .shadowRoot!
-    ;(root.querySelector('.btn-close') as HTMLButtonElement).click()
+    ;(query<HTMLButtonElement>(root, '.btn-close')).click()
     expect(handle.isVisible()).toBe(false)
     handle.show()
     expect(handle.isVisible()).toBe(true)
@@ -84,7 +85,7 @@ describe('mountOverlay', () => {
     _count('router.navigate', 1)
     const handle = mountOverlay()
     await new Promise<void>((r) => requestAnimationFrame(() => r()))
-    const root = (document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement)
+    const root = (query<HTMLElement>(document, '[data-pyreon-perf-overlay-host]'))
       .shadowRoot!
     const chips = Array.from(root.querySelectorAll('.chip')) as HTMLButtonElement[]
     const routerChip = chips.find((c) => c.textContent === 'router')!
@@ -108,9 +109,9 @@ describe('mountOverlay', () => {
     const handle = mountOverlay()
     await new Promise<void>((r) => requestAnimationFrame(() => r()))
     const root = (
-      document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement
+      query<HTMLElement>(document, '[data-pyreon-perf-overlay-host]')
     ).shadowRoot!
-    const btn = root.querySelector('.btn-record') as HTMLButtonElement
+    const btn = query<HTMLButtonElement>(root, '.btn-record')
 
     // First click → recording state
     btn.click()
@@ -129,9 +130,9 @@ describe('mountOverlay', () => {
     const handle = mountOverlay()
     await new Promise<void>((r) => requestAnimationFrame(() => r()))
     const root = (
-      document.querySelector('[data-pyreon-perf-overlay-host]') as HTMLElement
+      query<HTMLElement>(document, '[data-pyreon-perf-overlay-host]')
     ).shadowRoot!
-    const btn = root.querySelector('.btn-record') as HTMLButtonElement
+    const btn = query<HTMLButtonElement>(root, '.btn-record')
 
     btn.click() // start recording
     expect(btn.textContent).toBe('● recording')

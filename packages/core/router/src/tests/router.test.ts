@@ -1,6 +1,6 @@
 import { h, popContext } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
-import { accessInternal, callInternal } from '@pyreon/test-utils'
+import { accessInternal, callInternal, query } from '@pyreon/test-utils'
 import type { ResolvedRoute, RouteRecord } from '../index'
 import { isNotFoundError, NotFoundBoundary, notFound } from '../not-found'
 import { getRedirectInfo, redirect } from '../redirect'
@@ -1512,7 +1512,7 @@ describe('RouterLink', () => {
     ]
     const router = createRouter({ routes: prefetchRoutes, url: '/' })
     mount(h(RouterProvider, { router }, h(RouterLink, { to: '/data' }, 'Data')), el)
-    const anchor = el.querySelector('a') as HTMLAnchorElement
+    const anchor = query(el, 'a')
     expect(anchor).not.toBeNull()
     // applyProp converts onMouseEnter -> addEventListener("mouseEnter", ...) via:
     //   key[2].toLowerCase() + key.slice(3) = "m" + "ouseEnter" = "mouseEnter"
@@ -2084,7 +2084,7 @@ describe('prefetch error handling', () => {
     ]
     const router = createRouter({ routes: failRoutes, url: '/' })
     mount(h(RouterProvider, { router }, h(RouterLink, { to: '/fail' }, 'Fail')), el)
-    const anchor = el.querySelector('a') as HTMLAnchorElement
+    const anchor = query(el, 'a')
     anchor.dispatchEvent(new Event('mouseenter'))
     await new Promise<void>((r) => setTimeout(r, 100))
     expect(loaderCallCount).toBe(1)
@@ -3159,7 +3159,7 @@ describe('RouterLink handleMouseEnter without router', () => {
     setActiveRouter(null)
     for (let i = 0; i < 50; i++) popContext()
     mount(h(RouterLink, { to: '/test' }), el)
-    const anchor = el.querySelector('a') as HTMLAnchorElement
+    const anchor = query(el, 'a')
     // Dispatch mouseEnter — handleMouseEnter should return early since no router
     expect(() => anchor.dispatchEvent(new Event('mouseenter'))).not.toThrow()
   })
@@ -3184,7 +3184,7 @@ describe('RouterLink prefetch deduplication', () => {
     ]
     const router = createRouter({ routes: prefetchRoutes, url: '/' })
     mount(h(RouterProvider, { router }, h(RouterLink, { to: '/dedup' }, 'Dedup')), el)
-    const anchor = el.querySelector('a') as HTMLAnchorElement
+    const anchor = query(el, 'a')
     // First hover
     anchor.dispatchEvent(new Event('mouseenter'))
     await new Promise<void>((r) => setTimeout(r, 100))

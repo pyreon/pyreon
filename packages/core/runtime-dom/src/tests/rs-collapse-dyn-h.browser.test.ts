@@ -1,5 +1,6 @@
 import { signal } from '@pyreon/reactivity'
 import { flush } from '@pyreon/test-utils/browser'
+import { query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import { _rsCollapseDynH, mount } from '../index'
 
@@ -75,7 +76,7 @@ describe('_rsCollapseDynH (real browser)', () => {
       ),
     )
     await flush()
-    const btn = root.querySelector('button') as HTMLElement
+    const btn = query(root, 'button')
     expect(btn.className).toBe('rdh1-v0-light')
     btn.click()
     expect(clicks).toBe(1)
@@ -99,13 +100,13 @@ describe('_rsCollapseDynH (real browser)', () => {
       ),
     )
     await flush()
-    const before = root.querySelector('button') as HTMLElement
+    const before = query(root, 'button')
     before.click()
     expect(clicks).toBe(1)
 
     cond.set(true)
     await flush()
-    const after = root.querySelector('button') as HTMLElement
+    const after = query(root, 'button')
     expect(after).toBe(before) // node identity preserved
     expect(after.className).toBe('rdh2-v1-light')
 
@@ -132,12 +133,12 @@ describe('_rsCollapseDynH (real browser)', () => {
       ),
     )
     await flush()
-    const before = root.querySelector('button') as HTMLElement
+    const before = query(root, 'button')
     expect(before.className).toBe('rdh3-v1-light')
 
     isDark.set(true)
     await flush()
-    const after = root.querySelector('button') as HTMLElement
+    const after = query(root, 'button')
     expect(after).toBe(before)
     expect(after.className).toBe('rdh3-v1-dark')
     after.click()
@@ -162,7 +163,7 @@ describe('_rsCollapseDynH (real browser)', () => {
       ),
     )
     await flush()
-    const btn = root.querySelector('button') as HTMLElement
+    const btn = query(root, 'button')
 
     expect(btn.className).toBe('rdh4-v0-light')
     btn.click()
@@ -201,7 +202,7 @@ describe('_rsCollapseDynH (real browser)', () => {
       ),
     )
     await flush()
-    const btn = root.querySelector('button') as HTMLElement
+    const btn = query(root, 'button')
     btn.click()
     btn.dispatchEvent(new PointerEvent('pointerenter'))
     expect(clicks).toBe(1)
@@ -232,7 +233,7 @@ describe('_rsCollapseDynH (real browser)', () => {
       ),
     )
     await flush()
-    const btn = root.querySelector('button') as HTMLElement
+    const btn = query(root, 'button')
     expect(btn.className).toBe('') // graceful
     btn.click()
     expect(clicks).toBe(1) // handler unaffected
@@ -252,7 +253,7 @@ describe('_rsCollapseDynH (real browser)', () => {
         () => isDark(),
         { onClick: () => clicks++ },
         (el) => {
-          const span = el.querySelector('span') as HTMLElement
+          const span = query(el, 'span')
           span.textContent = 'child'
           return () => {
             childDisposed = true
@@ -261,8 +262,8 @@ describe('_rsCollapseDynH (real browser)', () => {
       ),
     )
     await flush()
-    expect((root.querySelector('span') as HTMLElement).textContent).toBe('child')
-    ;(root.querySelector('button') as HTMLElement).click()
+    expect((query(root, 'span')).textContent).toBe('child')
+    ;(query(root, 'button')).click()
     expect(clicks).toBe(1)
 
     // Disposing the host (via cleanup) must fire ALL three disposers:
@@ -290,7 +291,7 @@ describe('_rsCollapseDynH (real browser)', () => {
       ),
     )
     await flush()
-    const btn = root.querySelector('button') as HTMLElement
+    const btn = query(root, 'button')
     expect(btn.className).toBe('rdh8-v0-light')
 
     cond.set(true)

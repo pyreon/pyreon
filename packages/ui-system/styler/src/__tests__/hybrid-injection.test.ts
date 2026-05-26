@@ -9,6 +9,7 @@
  */
 
 import type { VNode } from '@pyreon/core'
+import { queryOptional } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createGlobalStyle } from '../globalStyle'
 import { sheet } from '../sheet'
@@ -16,7 +17,7 @@ import { styled } from '../styled'
 
 /** Helper: collect all CSS rule texts from the shared <style data-pyreon-styler> sheet. */
 const getSheetRules = (): string[] => {
-  const el = document.querySelector('style[data-pyreon-styler]') as HTMLStyleElement | null
+  const el = queryOptional<HTMLStyleElement>(document, 'style[data-pyreon-styler]')
   if (!el?.sheet) return []
   return Array.from(el.sheet.cssRules).map((r) => r.cssText)
 }

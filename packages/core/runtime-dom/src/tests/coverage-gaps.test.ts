@@ -14,6 +14,7 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { createRef, defineComponent, For, Fragment, h, onMount, onUnmount } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { query, queryOptional } from '@pyreon/test-utils'
 import {
   installDevTools,
   onOverlayClick,
@@ -253,7 +254,7 @@ describe('KeepAlive — edge cases', () => {
 
     // Hide
     active.set(false)
-    const wrapper = el.querySelector('div') as HTMLElement
+    const wrapper = queryOptional(el, 'div')
     expect(wrapper?.style.display).toBe('none')
 
     // Show again — same element, not remounted
@@ -552,7 +553,7 @@ describe('props.ts — Sanitizer API branch', () => {
   test('style as object applies via Object.assign', () => {
     const el = container()
     mount(h('div', { style: { color: 'red', fontSize: '14px' } }), el)
-    const div = el.querySelector('div') as HTMLElement
+    const div = query(el, 'div')
     expect(div.style.color).toBe('red')
     expect(div.style.fontSize).toBe('14px')
     el.remove()
@@ -1621,7 +1622,7 @@ describe('devtools — direct handler calls', () => {
     // Call handler directly
     onOverlayMouseMove(new MouseEvent('mousemove', { clientX: 75, clientY: 125 }))
 
-    const tooltipEl = document.querySelector("[style*='ui-monospace']") as HTMLElement
+    const tooltipEl = queryOptional<HTMLElement>(document, "[style*='ui-monospace']")
     // tooltip top should be rect.top - 30 = 70, NOT repositioned below
     if (tooltipEl) expect(tooltipEl.style.top).toBe('70px')
 
@@ -2563,7 +2564,7 @@ describe('Transition — safety timer and cancel branches', () => {
     await new Promise<void>((r) => requestAnimationFrame(() => r()))
     await new Promise<void>((r) => requestAnimationFrame(() => r()))
 
-    const target = el.querySelector('#timer-test') as HTMLElement
+    const target = queryOptional<HTMLElement>(el, '#timer-test')
     if (target) {
       // Fire transitionend — this should cancel the safety timer
       target.dispatchEvent(new Event('transitionend'))
@@ -2589,7 +2590,7 @@ describe('Transition — safety timer and cancel branches', () => {
       el,
     )
 
-    const target = el.querySelector('#leave-anim') as HTMLElement
+    const target = query<HTMLElement>(el, '#leave-anim')
 
     // Start leave
     visible.set(false)
@@ -2662,7 +2663,7 @@ describe('Transition — safetyTimer false branches via real 5.1s waits', () => 
     expect(afterEnterCount).toBe(1)
 
     // Dispatch transitionend — done() called again with safetyTimer === null → FALSE branch
-    const target = el.querySelector('#st-enter') as HTMLElement
+    const target = queryOptional<HTMLElement>(el, '#st-enter')
     if (target) target.dispatchEvent(new Event('transitionend'))
 
     el.remove()
@@ -2693,7 +2694,7 @@ describe('Transition — safetyTimer false branches via real 5.1s waits', () => 
     expect(afterLeaveCount).toBe(1)
 
     // animationend with null safetyTimer → FALSE branch
-    const target = el.querySelector('#st-leave') as HTMLElement
+    const target = queryOptional<HTMLElement>(el, '#st-leave')
     if (target) target.dispatchEvent(new Event('animationend'))
 
     el.remove()
@@ -2895,7 +2896,7 @@ describe('Transition — visibility edge cases (lines 179, 183, 185)', () => {
     await new Promise<void>((r) => requestAnimationFrame(() => r()))
     await new Promise<void>((r) => requestAnimationFrame(() => r()))
 
-    const target = el.querySelector('#cancel-test') as HTMLElement
+    const target = queryOptional<HTMLElement>(el, '#cancel-test')
     // Fire transitionend — clears safety timer to null
     if (target) target.dispatchEvent(new Event('transitionend'))
 
@@ -2919,7 +2920,7 @@ describe('Transition — visibility edge cases (lines 179, 183, 185)', () => {
 
     await new Promise<void>((r) => queueMicrotask(r))
 
-    const target = el.querySelector('#leave-cancel') as HTMLElement
+    const target = query<HTMLElement>(el, '#leave-cancel')
 
     // Start leave
     visible.set(false)

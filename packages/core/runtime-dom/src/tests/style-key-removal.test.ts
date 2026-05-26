@@ -1,5 +1,6 @@
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { query } from '@pyreon/test-utils'
 import { mount } from '../index'
 
 describe('reactive style object — stale keys are removed', () => {
@@ -19,7 +20,7 @@ describe('reactive style object — stale keys are removed', () => {
 
     mount(h('div', { style: () => style() }), container)
 
-    const el = container.querySelector('div') as HTMLDivElement
+    const el = query(container, 'div')
     expect(el.style.color).toBe('red')
     expect(el.style.fontSize).toBe('14px')
 
@@ -35,7 +36,7 @@ describe('reactive style object — stale keys are removed', () => {
 
     mount(h('div', { style: () => style() }), container)
 
-    const el = container.querySelector('div') as HTMLDivElement
+    const el = query(container, 'div')
     expect(el.style.color).toBe('blue')
     expect(el.style.padding).toBe('10px')
 
@@ -53,7 +54,7 @@ describe('reactive style object — stale keys are removed', () => {
 
     mount(h('div', { style: () => style() }), container)
 
-    const el = container.querySelector('div') as HTMLDivElement
+    const el = query(container, 'div')
     expect(el.style.color).toBe('green')
     expect(el.style.margin).toBe('2px')
 
@@ -68,7 +69,7 @@ describe('reactive style object — stale keys are removed', () => {
 
     mount(h('div', { style: () => style() }), container)
 
-    const el = container.querySelector('div') as HTMLDivElement
+    const el = query(container, 'div')
     expect(el.style.color).toBe('red')
 
     // Swap to string form — cssText replaces everything.

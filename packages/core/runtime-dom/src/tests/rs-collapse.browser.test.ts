@@ -1,5 +1,6 @@
 import { signal } from '@pyreon/reactivity'
 import { flush } from '@pyreon/test-utils/browser'
+import { query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import { _rsCollapse, mount } from '../index'
 
@@ -56,19 +57,19 @@ describe('_rsCollapse (real browser)', () => {
       _rsCollapse('<button>X</button>', 'rsc-l2', 'rsc-d2', () => isDark()),
     )
     await flush()
-    const before = root.querySelector('button') as HTMLElement
+    const before = query(root, 'button')
     expect(before.className).toBe('rsc-l2')
 
     isDark.set(true)
     await flush()
-    const after = root.querySelector('button') as HTMLElement
+    const after = query(root, 'button')
     expect(after).toBe(before) // node identity preserved ⇒ reactive, not remount
     expect(after.className).toBe('rsc-d2')
     expect(getComputedStyle(after).color).toBe('rgb(40, 50, 60)')
 
     isDark.set(false)
     await flush()
-    expect((root.querySelector('button') as HTMLElement).className).toBe('rsc-l2')
+    expect((query(root, 'button')).className).toBe('rsc-l2')
   })
 
   it('children bind runs alongside the class bind and disposes cleanly', async () => {
@@ -83,7 +84,7 @@ describe('_rsCollapse (real browser)', () => {
         'rsc-cd',
         () => isDark(),
         (el) => {
-          const span = el.querySelector('span') as HTMLElement
+          const span = query(el, 'span')
           const stop = (() => {
             // minimal reactive child without pulling the compiler in
             let raf = 0
@@ -102,8 +103,8 @@ describe('_rsCollapse (real browser)', () => {
       ),
     )
     await flush()
-    expect((root.querySelector('span') as HTMLElement).textContent).toBe('one')
-    expect((root.querySelector('button') as HTMLElement).className).toBe('rsc-c')
+    expect((query(root, 'span')).textContent).toBe('one')
+    expect((query(root, 'button')).className).toBe('rsc-c')
     // dispose via afterEach → child cleanup must fire
     for (const u of cleanup.splice(0)) u()
     expect(childDisposed).toBe(true)
@@ -115,14 +116,14 @@ describe('_rsCollapse (real browser)', () => {
     const r1 = mountInto(_rsCollapse('<button>dup</button>', 'rsc-s', 'rsc-sd', () => isDark()))
     const r2 = mountInto(_rsCollapse('<button>dup</button>', 'rsc-s', 'rsc-sd', () => isDark()))
     await flush()
-    const b1 = r1.querySelector('button') as HTMLElement
-    const b2 = r2.querySelector('button') as HTMLElement
+    const b1 = query(r1, 'button')
+    const b2 = query(r2, 'button')
     expect(b1).not.toBe(b2) // distinct cloned nodes from the shared template
     expect(b1.className).toBe('rsc-s')
     expect(b2.className).toBe('rsc-s')
     isDark.set(true)
     await flush()
-    expect((r1.querySelector('button') as HTMLElement).className).toBe('rsc-sd')
-    expect((r2.querySelector('button') as HTMLElement).className).toBe('rsc-sd')
+    expect((query(r1, 'button')).className).toBe('rsc-sd')
+    expect((query(r2, 'button')).className).toBe('rsc-sd')
   })
 })

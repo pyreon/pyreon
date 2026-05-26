@@ -18,6 +18,7 @@ import {
   Switch,
 } from '@pyreon/core'
 import { cell, signal } from '@pyreon/reactivity'
+import { query, queryOptional } from '@pyreon/test-utils'
 import { installDevTools, registerComponent, unregisterComponent } from '../devtools'
 import {
   KeepAlive as _KeepAlive,
@@ -738,7 +739,7 @@ describe('ErrorBoundary', () => {
     expect(el.querySelector('#recovered')).toBeNull()
 
     // Click retry — reset() fires, shouldThrow is false, children re-render
-    ;(el.querySelector('#retry') as HTMLButtonElement).click()
+    ;(query<HTMLButtonElement>(el, '#retry')).click()
 
     expect(el.querySelector('#recovered')?.textContent).toBe('back')
     expect(el.querySelector('#retry')).toBeNull()
@@ -773,7 +774,7 @@ describe('ErrorBoundary', () => {
     )
 
     expect(el.querySelector('#fix')).not.toBeNull()
-    ;(el.querySelector('#fix') as HTMLButtonElement).click()
+    ;(query<HTMLButtonElement>(el, '#fix')).click()
     expect(el.querySelector('#signal-ok')?.textContent).toBe('fixed')
   })
 
@@ -1016,7 +1017,7 @@ describe('mount — props (extended)', () => {
   test('style as string sets cssText', () => {
     const el = container()
     mount(h('div', { style: 'color: red; font-size: 14px' }), el)
-    const div = el.querySelector('div') as HTMLElement
+    const div = query(el, 'div')
     expect(div.style.color).toBe('red')
     expect(div.style.fontSize).toBe('14px')
   })
@@ -1024,7 +1025,7 @@ describe('mount — props (extended)', () => {
   test('style as object sets individual properties', () => {
     const el = container()
     mount(h('div', { style: { color: 'blue', marginTop: '10px' } }), el)
-    const div = el.querySelector('div') as HTMLElement
+    const div = query(el, 'div')
     expect(div.style.color).toBe('blue')
     expect(div.style.marginTop).toBe('10px')
   })
@@ -1032,7 +1033,7 @@ describe('mount — props (extended)', () => {
   test('style object auto-appends px to numeric values', () => {
     const el = container()
     mount(h('div', { style: { height: 100, marginTop: 20, opacity: 0.5, zIndex: 10 } }), el)
-    const div = el.querySelector('div') as HTMLElement
+    const div = query(el, 'div')
     expect(div.style.height).toBe('100px')
     expect(div.style.marginTop).toBe('20px')
     expect(div.style.opacity).toBe('0.5')
@@ -1042,7 +1043,7 @@ describe('mount — props (extended)', () => {
   test('style object handles CSS custom properties', () => {
     const el = container()
     mount(h('div', { style: { '--my-color': 'red' } }), el)
-    const div = el.querySelector('div') as HTMLElement
+    const div = query(el, 'div')
     expect(div.style.getPropertyValue('--my-color')).toBe('red')
   })
 
@@ -1061,14 +1062,14 @@ describe('mount — props (extended)', () => {
   test('boolean attribute true sets empty attr', () => {
     const el = container()
     mount(h('input', { disabled: true }), el)
-    const input = el.querySelector('input') as HTMLInputElement
+    const input = query(el, 'input')
     expect(input.disabled).toBe(true)
   })
 
   test('boolean attribute false removes attr', () => {
     const el = container()
     mount(h('input', { disabled: false }), el)
-    const input = el.querySelector('input') as HTMLInputElement
+    const input = query(el, 'input')
     expect(input.disabled).toBe(false)
   })
 
@@ -1111,7 +1112,7 @@ describe('mount — props (extended)', () => {
       ),
       el,
     )
-    const div = el.querySelector('div') as HTMLElement
+    const div = query(el, 'div')
     div.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
     div.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
     expect(mouseDown).toBe(true)
@@ -1143,7 +1144,7 @@ describe('mount — props (extended)', () => {
   test('sanitizes javascript: in href', () => {
     const el = container()
     mount(h('a', { href: 'javascript:alert(1)' }), el)
-    const a = el.querySelector('a') as HTMLAnchorElement
+    const a = query(el, 'a')
     // Should not have the dangerous href set
     expect(a.getAttribute('href')).not.toBe('javascript:alert(1)')
   })
@@ -1151,28 +1152,28 @@ describe('mount — props (extended)', () => {
   test('sanitizes data: in src', () => {
     const el = container()
     mount(h('img', { src: 'data:text/html,<script>alert(1)</script>' }), el)
-    const img = el.querySelector('img') as HTMLImageElement
+    const img = query(el, 'img')
     expect(img.getAttribute('src')).not.toBe('data:text/html,<script>alert(1)</script>')
   })
 
   test('allows safe href values', () => {
     const el = container()
     mount(h('a', { href: 'https://example.com' }), el)
-    const a = el.querySelector('a') as HTMLAnchorElement
+    const a = query(el, 'a')
     expect(a.href).toContain('https://example.com')
   })
 
   test('innerHTML sets content', () => {
     const el = container()
     mount(h('div', { innerHTML: '<b>bold</b>' }), el)
-    const div = el.querySelector('div') as HTMLElement
+    const div = query(el, 'div')
     expect(div.innerHTML).toBe('<b>bold</b>')
   })
 
   test('dangerouslySetInnerHTML sets __html content', () => {
     const el = container()
     mount(h('div', { dangerouslySetInnerHTML: { __html: '<em>raw</em>' } }), el)
-    const div = el.querySelector('div') as HTMLElement
+    const div = query(el, 'div')
     expect(div.innerHTML).toBe('<em>raw</em>')
   })
 
@@ -1180,7 +1181,7 @@ describe('mount — props (extended)', () => {
     const el = container()
     const color = signal('red')
     mount(h('div', { style: () => `color: ${color()}` }), el)
-    const div = el.querySelector('div') as HTMLElement
+    const div = query(el, 'div')
     expect(div.style.color).toBe('red')
     color.set('blue')
     expect(div.style.color).toBe('blue')
@@ -1189,14 +1190,14 @@ describe('mount — props (extended)', () => {
   test('DOM property (value) set via prop', () => {
     const el = container()
     mount(h('input', { value: 'hello' }), el)
-    const input = el.querySelector('input') as HTMLInputElement
+    const input = query(el, 'input')
     expect(input.value).toBe('hello')
   })
 
   test('data-* attributes set correctly', () => {
     const el = container()
     mount(h('div', { 'data-testid': 'foo', 'data-count': '42' }), el)
-    const div = el.querySelector('div') as HTMLElement
+    const div = query(el, 'div')
     expect(div.getAttribute('data-testid')).toBe('foo')
     expect(div.getAttribute('data-count')).toBe('42')
   })
@@ -1771,7 +1772,7 @@ describe('KeepAlive', () => {
     await new Promise<void>((r) => queueMicrotask(r))
     expect(el.querySelector('#ka-default')).not.toBeNull()
     // Container should be visible (display not set to none)
-    const wrapper = el.querySelector('div[style]') as HTMLElement | null
+    const wrapper = queryOptional<HTMLElement>(el, 'div[style]')
     // If wrapper exists, display should not be none
     if (wrapper) expect(wrapper.style.display).not.toBe('none')
   })
@@ -2545,7 +2546,7 @@ describe('props — additional coverage', () => {
     const el = container()
     const title = signal('hello')
     mount(h('div', { title: () => title() }), el)
-    const div = el.querySelector('div') as HTMLElement
+    const div = query(el, 'div')
     expect(div.title).toBe('hello')
     title.set('world')
     expect(div.title).toBe('world')
@@ -2554,7 +2555,7 @@ describe('props — additional coverage', () => {
   test('null value removes attribute', () => {
     const el = container()
     mount(h('div', { 'data-x': 'initial' }), el)
-    const div = el.querySelector('div') as HTMLElement
+    const div = query(el, 'div')
     expect(div.getAttribute('data-x')).toBe('initial')
   })
 
@@ -2562,7 +2563,7 @@ describe('props — additional coverage', () => {
     const el = container()
     const ref = createRef<HTMLDivElement>()
     mount(h('div', { key: 'k', ref, 'data-test': 'yes' }), el)
-    const div = el.querySelector('div') as HTMLElement
+    const div = query(el, 'div')
     // key should not be an attribute
     expect(div.hasAttribute('key')).toBe(false)
     // ref should not be an attribute
@@ -2574,21 +2575,21 @@ describe('props — additional coverage', () => {
   test('sanitizes javascript: in action attribute', () => {
     const el = container()
     mount(h('form', { action: 'javascript:void(0)' }), el)
-    const form = el.querySelector('form') as HTMLFormElement
+    const form = query(el, 'form')
     expect(form.getAttribute('action')).not.toBe('javascript:void(0)')
   })
 
   test('sanitizes data: in formaction', () => {
     const el = container()
     mount(h('button', { formaction: 'data:text/html,<script>alert(1)</script>' }), el)
-    const btn = el.querySelector('button') as HTMLButtonElement
+    const btn = query(el, 'button')
     expect(btn.getAttribute('formaction')).not.toBe('data:text/html,<script>alert(1)</script>')
   })
 
   test('sanitizes javascript: with leading whitespace', () => {
     const el = container()
     mount(h('a', { href: '  javascript:alert(1)' }), el)
-    const a = el.querySelector('a') as HTMLAnchorElement
+    const a = query(el, 'a')
     expect(a.getAttribute('href')).not.toBe('  javascript:alert(1)')
   })
 
@@ -2644,14 +2645,14 @@ describe('props — additional coverage', () => {
   test('DOM property for known properties like value', () => {
     const el = container()
     mount(h('input', { value: 'test', type: 'text' }), el)
-    const input = el.querySelector('input') as HTMLInputElement
+    const input = query(el, 'input')
     expect(input.value).toBe('test')
   })
 
   test('setAttribute fallback for unknown attributes', () => {
     const el = container()
     mount(h('div', { 'aria-label': 'test label' }), el)
-    const div = el.querySelector('div') as HTMLElement
+    const div = query(el, 'div')
     expect(div.getAttribute('aria-label')).toBe('test label')
   })
 })
