@@ -65,9 +65,10 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/storybook`      | Storybook renderer — mount, render, and interact with Pyreon components                                                                                 |
 | `@pyreon/typescript`     | TypeScript config presets: base, app (noEmit), lib (declarations)                                                                                       |
 | `@pyreon/lint`           | Pyreon-specific linter — 84 rules, 18 categories (incl. opt-in best-practices: frontend/query/rx/i18n/storage + router/form), config files, watch mode, AST cache, LSP server |
-| `@pyreon/test-utils`     | Testing utilities — initTestConfig, withThemeContext, getComputedTheme, renderProps, resolveRocketstyle, mountReactive, mountAndExpectOnce              |
+| `@pyreon/test-utils`     | Testing utilities — initTestConfig, withThemeContext, getComputedTheme, renderProps, resolveRocketstyle, mountReactive, mountAndExpectOnce, accessInternal, callInternal, mockAdapter |
 | `@pyreon/manifest`       | Private: type + `defineManifest` helper for per-package manifests that feed the doc + MCP generators (T2.1)                                             |
 | `@pyreon/perf-harness`   | Private: dev-time counter registry + snapshot/diff/record API. Framework packages emit via `globalThis.__pyreon_count__?.(name)` — zero import coupling |
+| `@pyreon/vitest-config`  | Private: `defineNodeConfig` / `defineBrowserConfig` — single canonical shape for every package's vitest config. Enforces merge order + per-category coverage defaults by construction. Locked in by `pyreon/vitest-config-uses-shared` lint rule. See `packages/internals/vitest-config/README.md`. |
 
 ### UI System (Component Library)
 

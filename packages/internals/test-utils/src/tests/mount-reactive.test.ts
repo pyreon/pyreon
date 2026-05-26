@@ -252,9 +252,8 @@ describe('buildDomErrorMessage', () => {
 
   it('includes a working code snippet the consumer can copy-paste', () => {
     const msg = buildDomErrorMessage('any')
-    expect(msg).toContain("import { mergeConfig } from 'vite'")
-    expect(msg).toContain("import { defineConfig } from 'vitest/config'")
-    expect(msg).toContain("import { sharedConfig } from '../../../vitest.shared'")
-    expect(msg).toContain('export default mergeConfig(')
+    expect(msg).toContain("import { defineNodeConfig } from '@pyreon/vitest-config'")
+    expect(msg).toContain('export default defineNodeConfig(')
+    expect(msg).toContain("environment: 'happy-dom'")
   })
 })

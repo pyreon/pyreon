@@ -222,14 +222,10 @@ export function buildDomErrorMessage(helperName: string): string {
   return (
     `[@pyreon/test-utils] ${helperName}() requires a DOM environment. ` +
     `Set \`environment: 'happy-dom'\` in your package's vitest.config.ts:\n\n` +
-    `  import { mergeConfig } from 'vite'\n` +
-    `  import { defineConfig } from 'vitest/config'\n` +
-    `  import { sharedConfig } from '../../../vitest.shared'\n\n` +
-    `  export default mergeConfig(\n` +
-    `    sharedConfig,\n` +
-    `    defineConfig({\n` +
-    `      test: { globals: true, environment: 'happy-dom' },\n` +
-    `    }),\n` +
-    `  )\n`
+    `  import { defineNodeConfig } from '@pyreon/vitest-config'\n\n` +
+    `  export default defineNodeConfig({\n` +
+    `    category: 'fundamentals',\n` +
+    `    environment: 'happy-dom',\n` +
+    `  })\n`
   )
 }
