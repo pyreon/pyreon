@@ -1234,6 +1234,23 @@
         "@vitus-labs/tools-lint": "^2.4.0",
       },
     },
+    "packages/fundamentals/validate": {
+      "name": "@pyreon/validate",
+      "version": "0.25.1",
+      "dependencies": {
+        "@pyreon/reactivity": "workspace:^",
+      },
+      "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/validation": "workspace:^",
+        "@pyreon/vitest-config": "workspace:*",
+        "@vitus-labs/tools-lint": "^2.4.0",
+        "arktype": "^2.2.0",
+        "valibot": "^1.2.0",
+        "zod": "^4.3.6",
+      },
+    },
     "packages/fundamentals/validation": {
       "name": "@pyreon/validation",
       "version": "0.25.1",
@@ -2684,6 +2701,8 @@
     "@pyreon/unistyle": ["@pyreon/unistyle@workspace:packages/ui-system/unistyle"],
 
     "@pyreon/url-state": ["@pyreon/url-state@workspace:packages/fundamentals/url-state"],
+
+    "@pyreon/validate": ["@pyreon/validate@workspace:packages/fundamentals/validate"],
 
     "@pyreon/validation": ["@pyreon/validation@workspace:packages/fundamentals/validation"],
 

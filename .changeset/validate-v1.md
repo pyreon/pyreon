@@ -1,5 +1,5 @@
 ---
-'@pyreon/validate': major
+'@pyreon/validate': minor
 ---
 
 feat(validate): Pyreon's own validator library — Standard Schema-native, hybrid chainable + function-comp API
