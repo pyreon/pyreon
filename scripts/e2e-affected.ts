@@ -181,6 +181,19 @@ const SUITES: Suite[] = [
       'e2e/cpa',
     ],
   },
+  {
+    name: 'native-todomvc-web',
+    script: 'test:e2e:native-todomvc-web',
+    triggers: [
+      ...RENDER_CORE,
+      // The web example exercises @pyreon/primitives' DOM impls end-to-end —
+      // any change to a web primitive (Stack/Inline/Field/Button/Press/Text)
+      // can break the spec.
+      'packages/core/primitives/',
+      'examples/native-todomvc-web/',
+      'e2e/native-todomvc-web',
+    ],
+  },
 ]
 
 export { SUITES }
