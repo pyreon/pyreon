@@ -36,12 +36,15 @@ import type {
 export type ReactiveSource<T> = Signal<T> | (() => T)
 
 /**
- * Resolve a `ReactiveSource<T>` to its current value. Calling `()` on
- * a `Signal<T>` returns the value AND registers a reactive dependency
- * — same for plain accessors. Symmetric for both shapes.
+ * Resolve a `ReactiveSource<T>` to its current value. Both shapes are
+ * already callable — `Signal<T>` is `(): T` (with `.set` / `.peek` / …
+ * methods attached) and a plain accessor is `() => T`. Calling either
+ * returns the value AND registers a reactive dependency. The union
+ * `Signal<T> | (() => T)` is therefore call-compatible; no typeof
+ * branching needed.
  */
 function read<T>(source: ReactiveSource<T>): T {
-  return typeof source === 'function' ? source() : (source as Signal<T>)()
+  return source()
 }
 
 /**
