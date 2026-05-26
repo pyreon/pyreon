@@ -16,6 +16,9 @@
       "bun": "./src/browser/index.ts",
       "import": "./src/browser/index.ts",
       "types": "./src/browser/index.ts"
+    },
+    "./globals": {
+      "types": "./src/globals.d.ts"
     }
   },
   "scripts": {
