@@ -2,7 +2,6 @@
 
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import type { Signal } from '@pyreon/reactivity'
 import type { FieldProps } from '../types/input'
 import { collectPassthroughAttrs, mergePassthroughStyle } from './passthrough'
 
@@ -22,19 +21,6 @@ const KIND_TO_TYPE: Record<string, string> = {
 }
 
 /**
- * Unwrap a `ValueOrSignal<T>` to a callable thunk. The Pyreon compiler
- * already auto-rewraps bare signal references in JSX (see
- * "Reactive vs Static — The Core Rule" in CLAUDE.md), but at the
- * runtime layer we also support plain values + signal-typed objects.
- */
-function unwrapValue<T>(value: T | Signal<T> | (() => T)): () => T {
-  if (typeof value === 'function') return value as () => T
-  // Signals are callable functions in Pyreon — caught by typeof
-  // above. Plain values fall here.
-  return () => value as T
-}
-
-/**
  * `<Field>` — text input.
  *
  * Compiles to:
@@ -43,7 +29,25 @@ function unwrapValue<T>(value: T | Signal<T> | (() => T)): () => T {
  * - Android (via PMTC): `TextField` with `KeyboardOptions`
  */
 export const Field = (props: FieldProps): VNode => {
-  const getValue = unwrapValue(props.value)
+  // CRITICAL: do NOT read `props.value` at setup time. Pyreon's compiler
+  // emits signal-shaped props as `_rp(() => signal())` thunks, which
+  // `makeReactiveProps` converts to property GETTERS. Reading
+  // `props.value` ONCE at setup fires the getter and captures the
+  // CURRENT signal value — breaking the reactive chain (renderEffect
+  // never tracks because the read happened OUTSIDE the effect scope).
+  //
+  // Instead, defer the read into a thunk that the renderEffect runs
+  // every cycle. Reading `props.value` from INSIDE the effect scope
+  // tracks the signal via Pyreon's `_activeEffect` mechanism, so
+  // subsequent signal writes refire the effect → write back to
+  // `input.value`. Without this fix, `signal.set('')` after the user
+  // types via Playwright's `field.fill()` doesn't clear the input
+  // (#951 gap #2).
+  const getValue = (): string => {
+    const v = props.value
+    if (typeof v === 'function') return (v as () => string)()
+    return v as string
+  }
   const kind = props.kind ?? 'text'
   const type = KIND_TO_TYPE[kind] ?? 'text'
 

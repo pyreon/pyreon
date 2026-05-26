@@ -2,18 +2,8 @@
 
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import type { Signal } from '@pyreon/reactivity'
 import type { ToggleProps } from '../types/input'
 import { collectPassthroughAttrs, mergePassthroughStyle } from './passthrough'
-
-/**
- * Unwrap a `ValueOrSignal<T>` to a callable thunk. Same shape Field
- * uses — accepts plain values, signals, or accessor functions.
- */
-function unwrapValue<T>(value: T | Signal<T> | (() => T)): () => T {
-  if (typeof value === 'function') return value as () => T
-  return () => value as T
-}
 
 /**
  * `<Toggle>` — boolean toggle.
@@ -31,7 +21,15 @@ function unwrapValue<T>(value: T | Signal<T> | (() => T)): () => T {
  * with a custom rendering layer.
  */
 export const Toggle = (props: ToggleProps): VNode => {
-  const getValue = unwrapValue(props.value)
+  // Same reactive-prop-read pattern as Field — defer the `props.value`
+  // read into the thunk so the reactive binding tracks correctly when
+  // the compiler emits the prop as a `_rp(() => signal())` getter.
+  // See Field.tsx for the full reasoning.
+  const getValue = (): boolean => {
+    const v = props.value
+    if (typeof v === 'function') return (v as () => boolean)()
+    return v as boolean
+  }
   const onChange = (e: Event) => {
     const target = e.target as HTMLInputElement
     props.onChange(target.checked)
