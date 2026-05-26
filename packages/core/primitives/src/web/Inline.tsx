@@ -3,6 +3,7 @@
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import type { InlineProps } from '../types/layout'
+import { collectPassthroughAttrs, mergePassthroughStyle } from './passthrough'
 import { buildStackStyle } from './Stack'
 
 /**
@@ -20,10 +21,15 @@ import { buildStackStyle } from './Stack'
  */
 export const Inline = (props: InlineProps): VNode => {
   // Spoof a Stack with direction="row" — same shape, just default override.
+  const computed = buildStackStyle(
+    { ...props, direction: 'row' },
+    'row',
+  )
   return h(
     'div',
     {
-      style: buildStackStyle({ ...props, direction: 'row' }, 'row'),
+      ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
+      style: mergePassthroughStyle(computed, props.style),
     },
     props.children,
   )

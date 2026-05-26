@@ -87,3 +87,37 @@ export interface BaseLayoutProps {
 export interface ChildrenProp {
   children?: VNodeChild
 }
+
+/**
+ * Standard HTML pass-through attrs every primitive accepts. The web
+ * impls forward these to the rendered DOM node verbatim; native
+ * targets ignore them at PMTC emit time (the iOS/Android compilers
+ * accept the type-level keys but don't propagate `data-*` to SwiftUI
+ * / Compose — those platforms have their own a11y / testing IDs).
+ *
+ * **Why this layer exists**: real apps need `data-testid` for e2e
+ * tests, `aria-*` for accessibility, `id` for label/for hookups,
+ * and `class` for shadow-DOM / styling escape hatches. Without
+ * passthrough, every primitive's render fn would need an explicit
+ * prop for each — primitive vocabulary becomes a HTML re-spec.
+ * The passthrough keeps the canonical surface minimal AND lets real
+ * apps use standard HTML hooks unmodified.
+ *
+ * Phase D2's e2e gate (PR #951) is the consumer that surfaced this
+ * gap; the gate's `data-testid="todo-app"` was silently dropped by
+ * the previous primitive impls.
+ */
+export interface HtmlPassthroughProps {
+  // Mapped key types make TS accept ANY `data-`/`aria-`-prefixed key
+  // without needing each one enumerated. Values match the HTML
+  // attribute model (string | number | boolean | undefined).
+  [key: `data-${string}`]: string | number | boolean | undefined
+  [key: `aria-${string}`]: string | number | boolean | undefined
+  id?: string
+  /** Standard HTML class. Use `cx(...)` from `@pyreon/core` to compose. */
+  class?: string
+  /** Inline style override — merged AFTER the primitive's computed style
+   * so consumer overrides win. Tokens-first APIs (padding, gap, etc.) are
+   * the preferred path; `style` is the escape hatch for one-off CSS. */
+  style?: string | Record<string, string>
+}

@@ -3,6 +3,7 @@
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import type { ButtonProps } from '../types/interaction'
+import { collectPassthroughAttrs, mergePassthroughStyle } from './passthrough'
 
 /**
  * Variant-to-color mapping. Inline style only — no CSS-in-JS.
@@ -72,8 +73,9 @@ export const Button = (props: ButtonProps): VNode => {
     style.cursor = 'not-allowed'
   }
   const attrs: Record<string, unknown> = {
+    ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
     type: 'button',
-    style,
+    style: mergePassthroughStyle(style, props.style),
     // onPress is the canonical event; on web it maps to onClick.
     onClick: props.disabled ? undefined : props.onPress,
   }

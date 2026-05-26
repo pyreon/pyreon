@@ -1,6 +1,6 @@
 // Input primitive type definitions — Field / Toggle / Modal.
 
-import type { ChildrenProp, ValueOrSignal } from './shared'
+import type { ChildrenProp, HtmlPassthroughProps, ValueOrSignal } from './shared'
 
 /**
  * `<Field>` — text input. The `kind` prop selects the keyboard +
@@ -12,7 +12,7 @@ import type { ChildrenProp, ValueOrSignal } from './shared'
  * - iOS: `TextField` / `SecureField` (kind="password")
  * - Android: `TextField` with `KeyboardOptions`
  */
-export interface FieldProps {
+export interface FieldProps extends HtmlPassthroughProps {
   value: ValueOrSignal<string>
   onChangeText: (next: string) => void
   kind?: 'text' | 'number' | 'password' | 'email' | 'search' | 'tel' | 'url'
@@ -30,7 +30,7 @@ export interface FieldProps {
  * - iOS: `Toggle("", isOn: ...)`
  * - Android: `Switch(checked=..., onCheckedChange=...)`
  */
-export interface ToggleProps {
+export interface ToggleProps extends HtmlPassthroughProps {
   value: ValueOrSignal<boolean>
   onChange: (next: boolean) => void
   disabled?: boolean
@@ -44,7 +44,7 @@ export interface ToggleProps {
  * - iOS: `.sheet(isPresented: ...) { ... }`
  * - Android: `Dialog(onDismissRequest = ...) { ... }`
  */
-export interface ModalProps extends ChildrenProp {
+export interface ModalProps extends ChildrenProp, HtmlPassthroughProps {
   open: ValueOrSignal<boolean>
   onClose: () => void
 }

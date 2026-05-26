@@ -3,6 +3,7 @@
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import type { PressProps } from '../types/interaction'
+import { collectPassthroughAttrs, mergePassthroughStyle } from './passthrough'
 
 /**
  * `<Press>` — un-styled press wrapper for custom-chromed interactive
@@ -56,15 +57,17 @@ export const Press = (props: PressProps): VNode => {
       }
     : undefined
 
+  const computedStyle: Record<string, string> = {
+    cursor: props.disabled ? 'not-allowed' : 'pointer',
+    'user-select': 'none',
+  }
   const attrs: Record<string, unknown> = {
+    ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
     role: 'button',
     tabIndex: props.disabled ? -1 : 0,
     // ARIA attrs are strings, not booleans — set "true" explicitly.
     'aria-disabled': props.disabled ? 'true' : undefined,
-    style: {
-      cursor: props.disabled ? 'not-allowed' : 'pointer',
-      'user-select': 'none',
-    },
+    style: mergePassthroughStyle(computedStyle, props.style),
     onClick,
     onKeyDown,
   }
