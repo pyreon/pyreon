@@ -206,6 +206,141 @@ describe('<Field> — web', () => {
     unmount()
   })
 
+  it('addTodo-style flow with keyboard events (Playwright shape)', async () => {
+    // Closer to Playwright's fill() — uses keyboard events. If the
+    // signal→input.value chain breaks anywhere here, this is where
+    // it surfaces.
+    const draft = signal('')
+    const addTodo = () => draft.set('')
+    const { container, unmount } = mountInBrowser(
+      h(Field, {
+        value: draft,
+        onChangeText: (next: string) => draft.set(next),
+        onSubmit: addTodo,
+      }),
+    )
+    const input = container.firstElementChild as HTMLInputElement
+    input.focus()
+
+    // Type using keydown + InputEvent (Playwright's actual sequence).
+    const typeChar = async (ch: string) => {
+      // Browser sets input.value before firing input event.
+      input.value = input.value + ch
+      input.dispatchEvent(
+        new InputEvent('input', {
+          inputType: 'insertText',
+          data: ch,
+          bubbles: true,
+        }),
+      )
+      await flush()
+    }
+    for (const ch of 'hello') await typeChar(ch)
+    expect(draft()).toBe('hello')
+    expect(input.value).toBe('hello')
+
+    // Press Enter via keyboard event.
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Enter',
+        code: 'Enter',
+        keyCode: 13,
+        bubbles: true,
+        cancelable: true,
+      }),
+    )
+    await flush()
+    expect(draft()).toBe('')
+    // The CRITICAL assertion — the input.value property must reflect ''.
+    expect(input.value).toBe('')
+    unmount()
+  })
+
+  it('addTodo-style flow: type → onSubmit fires → draft.set("") clears the input', async () => {
+    // This mirrors the EXACT flow from native-todomvc-web's TodoApp:
+    //   - user types into the field (each char → onInput → draft.set)
+    //   - user presses Enter → onSubmit → addTodo()
+    //   - addTodo's last line: draft.set('')
+    // The input should clear. PR #951's e2e claimed it doesn't — this
+    // repro asserts the real-Chromium contract. If it FAILS, there's a
+    // real bug in Pyreon's reactive-prop update path for <input value>.
+    const draft = signal('')
+    let submitCount = 0
+    const addTodo = () => {
+      submitCount++
+      // Clear the draft (matches the TodoApp flow).
+      draft.set('')
+    }
+    const { container, unmount } = mountInBrowser(
+      h(Field, {
+        value: draft,
+        onChangeText: (next: string) => draft.set(next),
+        onSubmit: addTodo,
+      }),
+    )
+    const input = container.firstElementChild as HTMLInputElement
+    expect(input.value).toBe('')
+
+    // Simulate typing 'Buy milk' character by character (Playwright's
+    // field.fill() does this internally — each char fires input event).
+    for (const ch of 'Buy milk') {
+      input.value = input.value + ch
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      await flush()
+    }
+    expect(draft()).toBe('Buy milk')
+    expect(input.value).toBe('Buy milk')
+
+    // Press Enter — onSubmit fires → addTodo → draft.set('').
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+    )
+    await flush()
+    expect(submitCount).toBe(1)
+    expect(draft()).toBe('')
+    // The reactive binding on `value` must propagate '' back to the
+    // input.value PROPERTY. The #951 e2e claimed this fails; this assertion
+    // is the canonical test of the contract.
+    expect(input.value).toBe('')
+    unmount()
+  })
+
+  it('signal write reflects to input.value PROPERTY (the #951 gap #2 regression)', async () => {
+    // Repro of the gap documented in #951's e2e spec: `draft.set('')`
+    // after submit didn't clear the input. The cause is real-Chromium-
+    // specific (happy-dom passes this assertion silently). Lock the
+    // contract here so any regression in @pyreon/runtime-dom's prop
+    // forwarding for <input value> surfaces immediately.
+    const value = signal('initial')
+    const { container, unmount } = mountInBrowser(
+      h(Field, {
+        value,
+        onChangeText: (next: string) => value.set(next),
+      }),
+    )
+    const input = container.firstElementChild as HTMLInputElement
+    expect(input.value).toBe('initial')
+
+    // Programmatic signal write — equivalent to addTodo()'s draft.set('')
+    // after a submit. The reactive binding on `value` must propagate
+    // back to the input's .value PROPERTY (NOT just the attribute —
+    // for controlled-input semantics, the property is the live value).
+    value.set('')
+    await flush()
+    expect(input.value).toBe('')
+
+    // Another write after a typed character to prove the chain still
+    // works after both directions have fired.
+    input.value = 'mid-cycle'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await flush()
+    expect(value()).toBe('mid-cycle')
+    value.set('reset')
+    await flush()
+    expect(input.value).toBe('reset')
+    unmount()
+  })
+
   it('kind="email" maps to <input type="email">', () => {
     const value = signal('')
     const { container, unmount } = mountInBrowser(
