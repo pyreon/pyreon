@@ -65,7 +65,7 @@ jobs:
         # for installing swiftc on Linux runners (the Swift project
         # ships official Linux toolchains). Pinned via the env var so
         # bumping is a one-line change.
-        uses: swift-actions/setup-swift@v2
+        uses: swift-actions/setup-swift@v3
         with:
           swift-version: ${{ env.SWIFT_VERSION }}
 
