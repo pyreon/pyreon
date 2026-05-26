@@ -365,6 +365,149 @@ describe('Phase C3 — router primitive emit (<Link> + <RouterProvider> + <Route
   })
 })
 
+// Phase C4 — call-site interception for `@pyreon/router` hooks
+// (createRouter / useNavigate / useParams). Pre-C4 these were silently
+// dropped at parse time → the body referenced undeclared identifiers.
+
+// Test fixture for Phase C4 — imports the three router entry points so
+// the parser's call-name match has the call sites to recognize.
+function txRouter(componentBody: string, target: 'swift' | 'kotlin'): string {
+  const source = `
+    import { createRouter, useNavigate, useParams } from '@pyreon/router'
+    export function App() {
+      ${componentBody}
+    }
+  `
+  return transform(source, { target }).code
+}
+
+describe('Phase C4 — createRouter / useNavigate / useParams call interception', () => {
+  // createRouter: `const router = createRouter({...})` → @State / remember.
+
+  it('Swift: const router = createRouter({...}) → @State private var router = PyreonRouter()', () => {
+    const out = txRouter(
+      `const router = createRouter({ routes: [] }); return <RouterView />`,
+      'swift',
+    )
+    expect(out).toContain('@State private var router = PyreonRouter()')
+    expect(out).not.toContain('createRouter(')
+  })
+
+  it('Kotlin: const router = createRouter({...}) → val router = remember { PyreonRouter() }', () => {
+    const out = txRouter(
+      `const router = createRouter({ routes: [] }); return <RouterView />`,
+      'kotlin',
+    )
+    expect(out).toContain('val router = remember { PyreonRouter() }')
+    expect(out).not.toContain('createRouter(')
+  })
+
+  // useNavigate: returns a (String) -> Void callable.
+
+  it('Swift: const navigate = useNavigate() → computed property + @Environment injection', () => {
+    const out = txRouter(
+      `const navigate = useNavigate(); return <Button onPress={() => navigate('/x')}>Go</Button>`,
+      'swift',
+    )
+    expect(out).toContain('@Environment(\\.pyreonRouter) private var pyreonRouter')
+    expect(out).toContain('private var navigate: (String) -> Void { useNavigate(router: pyreonRouter) }')
+    // Call site emits with parens (function-typed binding).
+    expect(out).toContain('navigate("/x")')
+  })
+
+  it('Kotlin: const navigate = useNavigate() → val navigate = useNavigate() (no transform)', () => {
+    const out = txRouter(
+      `const navigate = useNavigate(); return <Button onPress={() => navigate('/x')}>Go</Button>`,
+      'kotlin',
+    )
+    expect(out).toContain('val navigate = useNavigate()')
+    expect(out).toContain('navigate("/x")')
+    // Compose hook reads LocalPyreonRouter via CompositionLocal — no
+    // explicit router arg.
+    expect(out).not.toContain('useNavigate(router')
+  })
+
+  // useParams: returns a [String: String] map (Swift) / Map<String, String> (Kotlin).
+
+  it('Swift: const params = useParams() → computed property returning [String: String]', () => {
+    // Member access on `params` is deferred to a follow-up (member emit
+    // for computed dict subscripts needs the parser to recognize
+    // `params["id"]` as a subscript, not a field access). This test
+    // covers the declaration emit + @Environment injection only.
+    const out = txRouter(
+      `const params = useParams(); return <Text>{params}</Text>`,
+      'swift',
+    )
+    expect(out).toContain('@Environment(\\.pyreonRouter) private var pyreonRouter')
+    expect(out).toContain('private var params: [String: String] { useParams(router: pyreonRouter) }')
+  })
+
+  it('Kotlin: const params = useParams() → val params = useParams()', () => {
+    const out = txRouter(
+      `const params = useParams(); return <Text>{params}</Text>`,
+      'kotlin',
+    )
+    expect(out).toContain('val params = useParams()')
+    expect(out).not.toContain('useParams(router')
+  })
+
+  // Combined shape — all three hooks in one component (the canonical
+  // multi-route app pattern). Verifies decls compose correctly + the
+  // shared @Environment injection doesn't fire twice.
+
+  it('Swift: composed router app — createRouter + useNavigate + useParams', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({ routes: [] })
+      const navigate = useNavigate()
+      const params = useParams()
+      return (
+        <RouterProvider router={router}>
+          <Button onPress={() => navigate('/dashboard')}>Go</Button>
+        </RouterProvider>
+      )
+      `,
+      'swift',
+    )
+    // Single @Environment injection regardless of hook count.
+    expect(out.match(/@Environment\(\\\.pyreonRouter\)/g)?.length).toBe(1)
+    expect(out).toContain('@State private var router = PyreonRouter()')
+    expect(out).toContain('private var navigate: (String) -> Void')
+    expect(out).toContain('private var params: [String: String]')
+    expect(out).toContain('RouterProvider(router: router)')
+    expect(out).toContain('navigate("/dashboard")')
+  })
+
+  it('Kotlin: composed router app — createRouter + useNavigate + useParams', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({ routes: [] })
+      const navigate = useNavigate()
+      const params = useParams()
+      return (
+        <RouterProvider router={router}>
+          <Button onPress={() => navigate('/dashboard')}>Go</Button>
+        </RouterProvider>
+      )
+      `,
+      'kotlin',
+    )
+    expect(out).toContain('val router = remember { PyreonRouter() }')
+    expect(out).toContain('val navigate = useNavigate()')
+    expect(out).toContain('val params = useParams()')
+    expect(out).toContain('RouterProvider(router)')
+    expect(out).toContain('navigate("/dashboard")')
+  })
+
+  // No-router component — @Environment must NOT be injected.
+
+  it('Swift: component without router hooks → no @Environment injection', () => {
+    const out = txRouter(`return <Text>Hello</Text>`, 'swift')
+    expect(out).not.toContain('@Environment(\\.pyreonRouter)')
+    expect(out).not.toContain('pyreonRouter')
+  })
+})
+
 describe('Phase B — composition smoke', () => {
   it('Swift: Stack > Inline > Text + Button renders correctly', () => {
     const out = tx(

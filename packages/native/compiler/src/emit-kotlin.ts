@@ -179,6 +179,19 @@ function emitKotlinComponent(c: ComponentIR): string {
     // properties read without parens — same disambiguation as Swift.
     if (d.kind === 'signal' || d.kind === 'computed') _signalNames.add(d.name)
     if (d.kind === 'function') _functionNames.add(d.name)
+    // C4: `const router = createRouter(...)` is a remembered router
+    // instance — name reads bare (no parens) like a signal. Add to
+    // `_signalNames` so JSX `<RouterProvider router={router}>` emits
+    // the property reference correctly.
+    if (d.kind === 'router') _signalNames.add(d.name)
+    // C4: `const navigate = useNavigate()` returns a `(String) -> Unit`
+    // closure — register under `_functionNames` so call sites
+    // (`navigate("/dashboard")`) emit with parens. `useParams()`
+    // returns a Map, which uses `[...]` subscript syntax — NOT a
+    // function call, so it stays out of `_functionNames`.
+    if (d.kind === 'router-hook' && d.hook === 'navigate') {
+      _functionNames.add(d.name)
+    }
   }
   const ctx: KotlinCtx = { synthesizedDataClasses: [], componentName: c.name }
   // First pass: walk decls, synthesizing data classes for anonymous object
@@ -292,6 +305,25 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   }
   if (d.kind === 'function') {
     return emitKotlinFunction(d, ctx)
+  }
+  // C4: router instance — `const router = createRouter({...})` →
+  // `val router = remember { PyreonRouter() }`. Compose's `remember`
+  // hoists the instance across recompositions; PyreonRouter holds
+  // path stack + params as MutableState fields so changes propagate
+  // through CompositionLocal to RouterProvider / RouterView.
+  // The createRouter() routes config is dropped — routes are wired
+  // by the host via `NavHost { composable("/path") { ... } }`.
+  if (d.kind === 'router') {
+    return `val ${kotlinIdent(d.name)} = remember { PyreonRouter() }`
+  }
+  // C4: router hook — `const navigate = useNavigate()` → as-is.
+  // Compose's `useNavigate()` is a `@Composable` function that reads
+  // `LocalPyreonRouter.current` directly via CompositionLocal — no
+  // explicit router arg needed (unlike Swift). `useParams()` follows
+  // the same shape.
+  if (d.kind === 'router-hook') {
+    const fn = d.hook === 'navigate' ? 'useNavigate' : 'useParams'
+    return `val ${kotlinIdent(d.name)} = ${fn}()`
   }
   // computed → derivedStateOf, accessed via the `by` delegate.
   // Phase 2 follow-up: multi-statement body emits as a block lambda

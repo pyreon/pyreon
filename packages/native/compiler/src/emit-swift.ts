@@ -92,6 +92,15 @@ let _signalNames: Set<string> = new Set()
  * `call(callee=identifier, args=[])` in the IR.
  */
 let _functionNames: Set<string> = new Set()
+/**
+ * Per-component: set to true when the component declares any router
+ * hook (`useNavigate()` / `useParams()`). When set, the View struct
+ * gains `@Environment(\.pyreonRouter) private var pyreonRouter:
+ * PyreonRouter?` so the hook calls can pass the active router through
+ * to the runtime functions (which take `router:` as a parameter —
+ * SwiftUI Environment isn't readable from free functions directly).
+ */
+let _usesRouter = false
 
 export function emitSwift(
   components: ComponentIR[],
@@ -209,6 +218,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   // call-emit keeps parens for `addTodo()` (function call) and drops
   // them only for `count()` (signal read).
   _functionNames = new Set()
+  // C4: reset router-usage tracking. Set during decl-pass if any
+  // useNavigate/useParams binding is present.
+  _usesRouter = false
   // Phase 2 follow-up: also track props whose type is a function
   // (`onToggle: () -> Void`). Inside the component body, references
   // to these props are CALL SITES that need explicit `()` —
@@ -228,6 +240,21 @@ function emitSwiftComponent(c: ComponentIR): string {
     // with G1; could rename to `_propertyNames` in a follow-up cleanup.)
     if (d.kind === 'signal' || d.kind === 'computed') _signalNames.add(d.name)
     if (d.kind === 'function') _functionNames.add(d.name)
+    // C4: router-instance decls (`const r = createRouter({...})`) map to
+    // `@State` properties, so the identifier reads bare like a signal —
+    // add to `_signalNames` so `router` in JSX (e.g. `<RouterProvider
+    // router={router}>`) emits as a property reference, not a call.
+    if (d.kind === 'router') _signalNames.add(d.name)
+    // C4: router-hook decls (`const navigate = useNavigate()`). The
+    // resulting binding IS a function value (returns `(String) -> Void`
+    // / `[String: String]`), so register it under `_functionNames`
+    // for the navigate-style call sites. `useParams()` returns a map,
+    // not a function — keep it OUT of `_functionNames` so `params["id"]`
+    // emits as a subscript without surprise parens.
+    if (d.kind === 'router-hook') {
+      _usesRouter = true
+      if (d.hook === 'navigate') _functionNames.add(d.name)
+    }
   }
   const lines: string[] = []
   // `swiftIdent` backtick-escapes Swift-reserved keywords. Pyreon
@@ -242,6 +269,17 @@ function emitSwiftComponent(c: ComponentIR): string {
   for (const p of c.props) {
     lines.push(`  let ${swiftIdent(p.name)}: ${swiftType(p.type)}`)
   }
+  // C4: when the component uses router hooks (useNavigate/useParams),
+  // inject the SwiftUI Environment property so the hook call sites can
+  // pass the active router to the runtime `useNavigate(router:)` /
+  // `useParams(router:)` functions. Without this, SwiftUI's Environment
+  // isn't readable from free functions — the runtime APIs take router
+  // as an explicit arg.
+  if (_usesRouter) {
+    lines.push(
+      `  @Environment(\\.pyreonRouter) private var pyreonRouter: PyreonRouter?`,
+    )
+  }
   for (const d of c.decls) {
     lines.push(`  ${emitSwiftDecl(d, inferCtx)}`)
   }
@@ -253,6 +291,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   _signalEnumTypes = new Map()
   _signalNames = new Set()
   _functionNames = new Set()
+  _usesRouter = false
   return lines.join('\n')
 }
 
@@ -304,6 +343,32 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
   }
   if (d.kind === 'function') {
     return emitSwiftFunction(d)
+  }
+  // C4: router instance — `const router = createRouter({...})` →
+  // `@State private var router = PyreonRouter()`. SwiftUI's `@State`
+  // is the canonical wrapper for view-owned mutable state; the
+  // PyreonRouter class is @Observable so changes to its `path` stack
+  // propagate to NavigationStack(path:) via SwiftUI's Observation
+  // framework. The createRouter() routes config is dropped — routes
+  // are wired by the host via `.navigationDestination(for:)`.
+  if (d.kind === 'router') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonRouter()`
+  }
+  // C4: router hook — `const navigate = useNavigate()` →
+  // `private var navigate: (String) -> Void { useNavigate(router:
+  // pyreonRouter) }`. MUST be a computed property (not stored `let`):
+  // SwiftUI @Environment properties aren't readable at struct-init
+  // time (when stored let-initializers run), only at body-resolution
+  // time. Computed properties are called on every body access AFTER
+  // @Environment is set — the canonical SwiftUI pattern for
+  // env-dependent derivations. `useParams()` follows the same shape;
+  // return types are per the runtime's signature ((String) -> Void
+  // for navigate, [String: String] for params).
+  if (d.kind === 'router-hook') {
+    const fn = d.hook === 'navigate' ? 'useNavigate' : 'useParams'
+    const returnType =
+      d.hook === 'navigate' ? '(String) -> Void' : '[String: String]'
+    return `private var ${swiftIdent(d.name)}: ${returnType} { ${fn}(router: pyreonRouter) }`
   }
   // computed — infer the return type from the expression body so we
   // can emit a typed computed property. Falls back to `Any` for cases
