@@ -854,6 +854,9 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Press') return emitSwiftPress(e, indent)
   if (tag === 'Field') return emitSwiftField(e, indent)
   if (tag === 'Toggle') return emitSwiftToggle(e, indent)
+  if (tag === 'Link') return emitSwiftLink(e, indent)
+  if (tag === 'RouterProvider') return emitSwiftRouterProvider(e, indent)
+  if (tag === 'RouterView') return emitSwiftRouterView(e, indent)
   // 9 other canonical primitives (Layer, Scroll, Spacer, Heading,
   // Image, Icon, Link, Modal) DON'T have dedicated emit functions
   // yet — they fall through to generic emit, which produces the
@@ -1385,6 +1388,73 @@ function emitSwiftToggle(
   }
   result += emitSwiftLayoutModifiers(e)
   return result
+}
+
+/**
+ * Emit `<Link to="/path">label</Link>` as the runtime-swift
+ * `PyreonLink("/path") { Text("label") }`. Maps to
+ * `@pyreon/native-router-swift`'s `PyreonLink` (NOT SwiftUI's `Link`
+ * which is for external URLs).
+ *
+ * The `to` prop must be a string literal or string-typed expression.
+ * Children render inside the closure body.
+ */
+function emitSwiftLink(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const toAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> =>
+      a.kind === 'attr' && a.name === 'to',
+  )
+  if (!toAttr) {
+    // No `to` prop — fall through to generic emit (preserves current
+    // behaviour; user gets a clear kind of error from the compiler).
+    return emitSwiftGeneric(e, indent)
+  }
+  const toExpr = emitSwiftExpr(toAttr.value, indent)
+  const pad = ' '.repeat(indent + 2)
+  if (e.children.length === 0) {
+    return `PyreonLink(${toExpr}) { }`
+  }
+  const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+  return `PyreonLink(${toExpr}) {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * Emit `<RouterProvider router={r}>...</RouterProvider>` as the
+ * runtime-swift `RouterProvider(router: r) { ... }`. Wraps content
+ * in the trailing-closure form.
+ */
+function emitSwiftRouterProvider(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const routerAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> =>
+      a.kind === 'attr' && a.name === 'router',
+  )
+  if (!routerAttr) {
+    return emitSwiftGeneric(e, indent)
+  }
+  const routerExpr = emitSwiftExpr(routerAttr.value, indent)
+  const pad = ' '.repeat(indent + 2)
+  if (e.children.length === 0) {
+    return `RouterProvider(router: ${routerExpr}) { }`
+  }
+  const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+  return `RouterProvider(router: ${routerExpr}) {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * Emit `<RouterView />` as the runtime-swift `RouterView()`. No props
+ * in Phase C1; future Phase C3 may add route-definition surface here.
+ */
+function emitSwiftRouterView(
+  _e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  _indent: number,
+): string {
+  return `RouterView()`
 }
 
 // `isCanonicalPrimitive` is imported but referenced only via the

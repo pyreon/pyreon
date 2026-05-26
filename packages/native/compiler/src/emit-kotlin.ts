@@ -771,7 +771,10 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Press') return emitKotlinPress(e, indent)
   if (tag === 'Field') return emitKotlinField(e, indent)
   if (tag === 'Toggle') return emitKotlinToggle(e, indent)
-  // 9 other canonical primitives fall through to generic emit until
+  if (tag === 'Link') return emitKotlinLink(e, indent)
+  if (tag === 'RouterProvider') return emitKotlinRouterProvider(e, indent)
+  if (tag === 'RouterView') return emitKotlinRouterView(e, indent)
+  // 8 other canonical primitives fall through to generic emit until
   // real apps demand each (see emit-swift.ts comment).
   return emitKotlinGeneric(e, indent)
 }
@@ -1266,6 +1269,73 @@ function emitKotlinToggle(
     args.push('enabled = false')
   }
   return `Switch(${args.join(', ')})`
+}
+
+/**
+ * Emit `<Link to="/path">label</Link>` as the runtime-kotlin
+ * `PyreonLink("/path") { navigate -> Box(modifier=Modifier.clickable
+ * { navigate() }) { ... } }`. Maps to `@pyreon/native-router-kotlin`'s
+ * `PyreonLink` with the caller-wraps-clickable shape.
+ *
+ * The `to` prop must be a string literal or string-typed expression.
+ * Children are wrapped in a clickable Box that triggers the navigate
+ * action (the canonical-link UX). Apps that want different chrome
+ * (Material Surface, etc.) can call PyreonLink directly with custom
+ * content, bypassing the compiler emit.
+ */
+function emitKotlinLink(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const toAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> =>
+      a.kind === 'attr' && a.name === 'to',
+  )
+  if (!toAttr) {
+    return emitKotlinGeneric(e, indent)
+  }
+  const toExpr = emitKotlinExpr(toAttr.value, indent)
+  const pad = ' '.repeat(indent + 2)
+  const inner = ' '.repeat(indent + 4)
+  if (e.children.length === 0) {
+    return `PyreonLink(${toExpr}) { navigate ->\n${pad}Box(modifier = Modifier.clickable { navigate() }) { }\n${' '.repeat(indent)}}`
+  }
+  const contentLines = e.children.map((c) => inner + emitKotlinChild(c, indent + 4)).join('\n')
+  return `PyreonLink(${toExpr}) { navigate ->\n${pad}Box(modifier = Modifier.clickable { navigate() }) {\n${contentLines}\n${pad}}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * Emit `<RouterProvider router={r}>...</RouterProvider>` as the
+ * runtime-kotlin `RouterProvider(r) { ... }`.
+ */
+function emitKotlinRouterProvider(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const routerAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> =>
+      a.kind === 'attr' && a.name === 'router',
+  )
+  if (!routerAttr) {
+    return emitKotlinGeneric(e, indent)
+  }
+  const routerExpr = emitKotlinExpr(routerAttr.value, indent)
+  const pad = ' '.repeat(indent + 2)
+  if (e.children.length === 0) {
+    return `RouterProvider(${routerExpr}) { }`
+  }
+  const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+  return `RouterProvider(${routerExpr}) {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * Emit `<RouterView />` as the runtime-kotlin `RouterView()`.
+ */
+function emitKotlinRouterView(
+  _e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  _indent: number,
+): string {
+  return `RouterView()`
 }
 
 // `isCanonicalPrimitive` is imported but referenced only via the
