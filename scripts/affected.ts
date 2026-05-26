@@ -59,7 +59,7 @@
  *   bun run scripts/affected.ts --category=core    # only @pyreon/* under packages/core/
  */
 
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 
@@ -306,10 +306,19 @@ function main(): void {
 
   let changed: string[] | null
   try {
-    const diffOut = execSync(`git diff --name-only ${base}...HEAD`, {
-      cwd: ROOT,
-      encoding: 'utf-8',
-    })
+    // execFileSync (not execSync) — argv array, no shell interpretation.
+    // CodeQL's "indirect uncontrolled command line" rule flags string-
+    // interpolated execSync calls even when the value comes from our own
+    // CI; defense-in-depth here removes the entire class of shell-injection
+    // concerns (`--base="; rm -rf / #"` is just an unknown ref to git now,
+    // not executable shell). Same fix shape applies to scripts/e2e-affected.ts
+    // — tracked as a follow-up to keep this PR scoped to the typecheck/test
+    // shard work.
+    const diffOut = execFileSync(
+      'git',
+      ['diff', '--name-only', `${base}...HEAD`],
+      { cwd: ROOT, encoding: 'utf-8' },
+    )
     changed = diffOut.split('\n').filter(Boolean)
   } catch {
     // Diff failed (bad base ref, shallow clone, etc.) — be safe, run all.
