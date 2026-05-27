@@ -43,7 +43,7 @@
  *   bun run scripts/e2e-affected.ts --base=HEAD~5 --list     # debug
  */
 
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 
 // ── Suite catalogue ────────────────────────────────────────────────────────
 // `name` is the matrix label + check name; `script` is the package.json
@@ -262,10 +262,18 @@ function main(): void {
     changed = null // ignored when all=true
   } else {
     try {
-      const out = execSync(`git diff --name-only ${base}...HEAD`, {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-      })
+      // execFileSync (not execSync) — argv array, no shell interpretation.
+      // CodeQL's "indirect uncontrolled command line" rule flags string-
+      // interpolated execSync calls even when the value comes from our own
+      // CI; defense-in-depth here removes the shell-injection class
+      // entirely (`--base="; rm -rf / #"` becomes just an unknown ref to
+      // git, not executable shell). Same fix applied to scripts/affected.ts
+      // (PR #968 follow-up); landed alongside the concurrency fix in this PR.
+      const out = execFileSync(
+        'git',
+        ['diff', '--name-only', `${base}...HEAD`],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+      )
       changed = out.split('\n').filter(Boolean)
     } catch {
       changed = null // can't diff → selectSuites returns ALL (safe)
