@@ -80,6 +80,8 @@ export {
   RouterContext,
   useBlocker,
   useIsActive,
+  useNavigate,
+  useParams,
   useRoute,
   useRouter,
   useMiddlewareData,
