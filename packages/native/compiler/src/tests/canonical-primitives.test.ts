@@ -921,8 +921,16 @@ describe('Phase C5.2 — Swift emit: .navigationDestination(for:)', () => {
 // Phase C5.3 — Kotlin emit wires the parsed routes into a real
 // NavHost { composable(...) } block inside the RouterProvider.
 
-describe('Phase C5.3 — Kotlin emit: NavHost { composable(...) }', () => {
-  it('single literal-path route emits composable("/") { _ -> Component() }', () => {
+describe('Phase R1.2 — Kotlin emit: when-dispatch on router.currentPath', () => {
+  // R1.2 replaced the C5.3 NavHost-based emit with a simpler when-on-
+  // currentPath dispatch. Three reasons documented in emit-kotlin.ts:
+  //   1. NavHost's navController was disconnected from router.path —
+  //      router.push() didn't drive nav updates
+  //   2. NavHost.navigate("/unknown") throws at runtime
+  //   3. NavHost requires androidx.navigation.compose (Android SDK dep)
+  // The when-dispatch shape solves all three and is symmetric to Swift.
+
+  it('emits when-dispatch on router.currentPath for a single literal route', () => {
     const out = txRouter(
       `
       const router = createRouter({
@@ -932,14 +940,16 @@ describe('Phase C5.3 — Kotlin emit: NavHost { composable(...) }', () => {
       `,
       'kotlin',
     )
-    expect(out).toContain('val navController = rememberNavController()')
-    expect(out).toContain('NavHost(navController = navController, startDestination = "/")')
-    // Literal-path routes use `_ ->` trailing-closure form so the single
-    // composable() overload (1-arg) covers both literal + :param shapes.
-    expect(out).toContain('composable("/") { _ -> HomePage() }')
+    expect(out).toContain('val currentPath = router.currentPath')
+    expect(out).toContain('when {')
+    expect(out).toContain('currentPath == "/" -> HomePage()')
+    // No NavHost / composable() — clean break from the C5.3 shape.
+    expect(out).not.toContain('NavHost')
+    expect(out).not.toContain('composable(')
+    expect(out).not.toContain('navController')
   })
 
-  it(':param route emits composable("/{id}") { entry -> ... } with params map extraction', () => {
+  it(':param route routes through PyreonRouter.matchPath helper', () => {
     const out = txRouter(
       `
       const router = createRouter({
@@ -952,28 +962,26 @@ describe('Phase C5.3 — Kotlin emit: NavHost { composable(...) }', () => {
       `,
       'kotlin',
     )
-    // Pyreon's :id → Compose's {id}.
-    expect(out).toContain('composable("/users/{id}")')
-    expect(out).toContain('entry ->')
-    expect(out).toContain('val params = entry.arguments?.let')
+    // Literal preserved.
+    expect(out).toContain('currentPath == "/" -> HomePage()')
+    // Pattern routes through the runtime helper (same shape as Swift).
+    expect(out).toContain('PyreonRouter.matchPath(currentPath, "/users/:id") != null ->')
+    expect(out).toContain('val params = PyreonRouter.matchPath(currentPath, "/users/:id") ?: emptyMap()')
     expect(out).toContain('UserPage(params = params)')
   })
 
-  it('startDestination uses the first route path', () => {
+  it('no-match fallback renders Text with the unmatched path', () => {
     const out = txRouter(
       `
       const router = createRouter({
-        routes: [
-          { path: '/about', component: AboutPage },
-          { path: '/', component: HomePage },
-        ],
+        routes: [{ path: '/', component: HomePage }],
       })
       return <RouterProvider router={router}><RouterView /></RouterProvider>
       `,
       'kotlin',
     )
-    // First route in the array sets startDestination.
-    expect(out).toContain('startDestination = "/about"')
+    // else branch handles unmatched paths gracefully (no IllegalArgumentException).
+    expect(out).toContain('else -> Text(text = "Pyreon Router: no route for ${currentPath}")')
   })
 
   it('falls back to scaffold-only when router-decl has no routes (C4 back-compat)', () => {
@@ -986,11 +994,11 @@ describe('Phase C5.3 — Kotlin emit: NavHost { composable(...) }', () => {
     )
     expect(out).toContain('val router = remember { PyreonRouter() }')
     expect(out).toContain('RouterProvider(router)')
-    expect(out).not.toContain('NavHost')
-    expect(out).not.toContain('composable(')
+    expect(out).not.toContain('when {')
+    expect(out).not.toContain('currentPath')
   })
 
-  it('multiple routes generate one composable() per route', () => {
+  it('multiple routes generate one when-branch per route', () => {
     const out = txRouter(
       `
       const router = createRouter({
@@ -1004,9 +1012,9 @@ describe('Phase C5.3 — Kotlin emit: NavHost { composable(...) }', () => {
       `,
       'kotlin',
     )
-    expect(out).toContain('composable("/") { _ -> HomePage() }')
-    expect(out).toContain('composable("/about") { _ -> AboutPage() }')
-    expect(out).toContain('composable("/settings") { _ -> SettingsPage() }')
+    expect(out).toContain('currentPath == "/" -> HomePage()')
+    expect(out).toContain('currentPath == "/about" -> AboutPage()')
+    expect(out).toContain('currentPath == "/settings" -> SettingsPage()')
   })
 })
 
