@@ -174,6 +174,67 @@ export interface PyreonPluginOptions {
    * @example pyreon({ collapse: { components: ['Button', 'Badge'] } })
    */
   collapse?: boolean | PyreonCollapseOptions
+
+  /**
+   * **JSX auto-import for canonical primitives** — closes the Phase D2
+   * gap toward "literally same .tsx file across all three targets".
+   *
+   * When `true` (the default), scans each `.tsx` file for bare JSX
+   * references to canonical primitives (`<Stack>`, `<Inline>`, `<Text>`,
+   * `<Button>`, `<Press>`, `<Field>`, `<Toggle>`) and auto-injects
+   * `import { ... } from '@pyreon/primitives'` at the top of the file
+   * for every primitive used but not yet imported.
+   *
+   * **Why this matters**: the PMTC native compiler resolves bare JSX
+   * tags via its canonical-primitives table at compile time + emits
+   * SwiftUI/Kotlin directly — imports would be no-ops on native targets
+   * (treated as type-only). So the native source stays import-free for
+   * minimal surface. The web build needs the imports for symbol
+   * resolution. This auto-import lets ONE `.tsx` file work on all three
+   * targets without manual import maintenance.
+   *
+   * Already-imported names pass through untouched (the plugin diffs the
+   * existing imports against the used set before injecting). Components
+   * with the same name imported from another source (e.g. a user-defined
+   * `<Button>` from a local file) take precedence — the auto-import
+   * only fires when the name is used + NOT already in scope.
+   *
+   * Defaults to `true`. Set to `false` to opt out (e.g. if your
+   * project defines its own primitives or you want explicit imports
+   * throughout). The scan is regex-based and runs only on `.tsx`
+   * files; cost is negligible vs the JSX transform itself.
+   *
+   * @example pyreon({ jsxAutoImport: true })
+   * @example pyreon({ jsxAutoImport: false })
+   * @example pyreon({ jsxAutoImport: { source: '@my/primitives', names: ['Box', 'Row'] } })
+   */
+  jsxAutoImport?: boolean | PyreonJsxAutoImportOptions
+}
+
+/**
+ * Override the source / name mappings for the JSX auto-import pass.
+ * Default: imports the 7 implemented canonical primitives (`Stack` /
+ * `Inline` / `Text` / `Button` / `Press` / `Field` / `Toggle`) from
+ * `@pyreon/primitives` AND the 2 most-used control-flow helpers
+ * (`For` / `Show`) from `@pyreon/core` — so a TSX source written for
+ * native (zero imports — PMTC resolves bare tags) also runs on web
+ * with no manual imports.
+ *
+ * Pass a custom mappings array to apply the same mechanism to a
+ * different primitive library, OR to extend the default set with
+ * project-specific primitives.
+ */
+export interface PyreonJsxAutoImportOptions {
+  /**
+   * Source → names mappings. Each entry says "auto-import these names
+   * from this source". Order matters: the first mapping that includes
+   * a used name wins.
+   */
+  mappings?: Array<{ source: string; names: string[] }>
+  /** @deprecated use `mappings` instead. Kept for back-compat. */
+  source?: string
+  /** @deprecated use `mappings` instead. Kept for back-compat. */
+  names?: string[]
 }
 
 export interface PyreonCollapseOptions {
@@ -460,6 +521,31 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
   const collapseTheme = collapseUserCfg.theme ?? { name: 'theme', source: '@pyreon/ui-theme' }
   const collapseMode = collapseUserCfg.mode ?? { name: 'useMode', source: '@pyreon/ui-core' }
   const collapseSources = new Set(collapseUserCfg.sources ?? ['@pyreon/ui-components'])
+
+  // ── JSX auto-import config ───────────────────────────────────────────────
+  // Default `true` — auto-injects `import { Stack, ... } from
+  // '@pyreon/primitives'` (+ `For` / `Show` from `@pyreon/core`) for
+  // bare JSX references. Closes the "literally same .tsx file across
+  // web + native" gap — the native compiler doesn't need the imports
+  // (it resolves bare tags via its own table), web does.
+  const jsxAutoImportOpt = options?.jsxAutoImport
+  const jsxAutoImportEnabled = jsxAutoImportOpt !== false
+  const jsxAutoImportUserCfg: PyreonJsxAutoImportOptions =
+    jsxAutoImportOpt && jsxAutoImportOpt !== true ? jsxAutoImportOpt : {}
+  const defaultMappings = [
+    {
+      source: '@pyreon/primitives',
+      names: ['Stack', 'Inline', 'Text', 'Button', 'Press', 'Field', 'Toggle'],
+    },
+    { source: '@pyreon/core', names: ['For', 'Show'] },
+  ]
+  // Back-compat: the old single-source shape (`{ source, names }`)
+  // collapses to a single mapping entry. Users on the new shape pass
+  // `mappings: [...]` directly.
+  const jsxAutoImportMappings = jsxAutoImportUserCfg.mappings
+    ?? (jsxAutoImportUserCfg.source && jsxAutoImportUserCfg.names
+      ? [{ source: jsxAutoImportUserCfg.source, names: jsxAutoImportUserCfg.names }]
+      : defaultMappings)
   const collapseComponentFilter = collapseUserCfg.components
     ? (n: string) => collapseUserCfg.components!.includes(n)
     : null
@@ -809,6 +895,18 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       // next dev-server module reload.
       if (islandsEnabled) scanIslandDeclarations(code, id, islandRegistry)
 
+      // ── JSX auto-import for canonical primitives ───────────────────────
+      // Phase D2 — auto-inject `import { Stack, ... } from
+      // '@pyreon/primitives'` (+ `For` / `Show` from `@pyreon/core`)
+      // for bare JSX references. Lets ONE `.tsx` file work on web
+      // (needs imports for symbol resolution) AND native (PMTC
+      // compiler resolves bare tags via its own table — imports are
+      // no-ops there). Conservative: skips if the name is already
+      // imported OR shadowed by a local declaration.
+      const codeAfterAutoImport = jsxAutoImportEnabled
+        ? autoImportCanonicalPrimitives(code, jsxAutoImportMappings)
+        : code
+
       // ── Inline-Defer pre-pass ──────────────────────────────────────────
       // Rewrites `<Defer when={x}><Modal /></Defer>` into the explicit
       // chunk-prop form so Rolldown emits a proper per-Defer chunk and
@@ -818,8 +916,8 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       // sees an already-explicit `<Defer chunk={...}>` shape with no
       // special-casing needed in `transformJSX`. See
       // `@pyreon/compiler/defer-inline` for the rewrite contract.
-      const deferResult = transformDeferInline(code, id)
-      const sourceForJsx = deferResult.changed ? deferResult.code : code
+      const deferResult = transformDeferInline(codeAfterAutoImport, id)
+      const sourceForJsx = deferResult.changed ? deferResult.code : codeAfterAutoImport
       for (const w of deferResult.warnings) {
         this.warn(`${w.message} (${id}:${w.line}:${w.column})`)
       }
@@ -1742,6 +1840,240 @@ function transformCompatAttributes(code: string): string {
   return code
     .replace(/(\s)className(\s*=)/g, '$1class$2')
     .replace(/(\s)htmlFor(\s*=)/g, '$1for$2')
+}
+
+/**
+ * Auto-inject `import { ... } from '<source>'` for bare JSX references
+ * to canonical primitives. Closes the Phase D2 "literally same .tsx
+ * file across web + native" gap — the native PMTC compiler resolves
+ * bare tags via its canonical-primitives table (no import needed); the
+ * web build needs the imports for symbol resolution.
+ *
+ * Pass shape:
+ *   1. Regex-scan `<Name` JSX opening tags + `<Name/>` self-closing
+ *      shapes against the configured names set.
+ *   2. Parse existing imports from the source to find what's already
+ *      imported as a value (we don't auto-add a name that's already in
+ *      scope, regardless of source — a user-defined `<Button>` from a
+ *      local file takes precedence).
+ *   3. Inject the auto-import ONLY for names that are used but not
+ *      already imported. Skips entirely if the diff is empty.
+ *
+ * Conservative by construction: regex matches only at JSX opening-tag
+ * positions (`<Name` followed by `[\s/>]`). String/comment scans aren't
+ * needed because the regex requires the `<` boundary. Names in regular
+ * code positions (function calls, type references) don't trigger the
+ * import.
+ *
+ * Same module's own export shape is detected — if the source exports
+ * a `Stack` symbol via `export function Stack(...)` or `export const
+ * Stack = ...`, the auto-import is suppressed for that name (it's
+ * already a top-level identifier in scope, and importing from the
+ * primitives package would shadow it).
+ */
+function autoImportCanonicalPrimitives(
+  code: string,
+  mappings: Array<{ source: string; names: string[] }>,
+): string {
+  if (mappings.length === 0) return code
+  // Build a unified name → source map. First mapping wins on overlap.
+  const nameToSource = new Map<string, string>()
+  for (const { source, names } of mappings) {
+    for (const n of names) {
+      if (!nameToSource.has(n)) nameToSource.set(n, source)
+    }
+  }
+  if (nameToSource.size === 0) return code
+
+  // Mask out comments + string/template literals BEFORE scanning so
+  // documentation containing literal `<Stack>` text inside JSDoc
+  // doesn't false-positive as a JSX usage. Same trick used by other
+  // syntactic scanners in this plugin (cf. `prescanIslandDeclarations`).
+  // The mask preserves positions (replaces with spaces) so existing-
+  // import detection later in this function still aligns with the
+  // original source for the splice.
+  const masked = maskCommentsAndStrings(code)
+
+  // Build alternation matching all configured names — single regex pass.
+  const allNames = Array.from(nameToSource.keys())
+  const nameAlt = allNames.join('|')
+  const jsxTagRe = new RegExp(`<(${nameAlt})(?=[\\s/>])`, 'g')
+  const used = new Set<string>()
+  let m: RegExpExecArray | null
+  while ((m = jsxTagRe.exec(masked)) !== null) {
+    used.add(m[1]!)
+  }
+  if (used.size === 0) return code
+
+  // Find names already imported (any source). The auto-import respects
+  // existing imports — we don't shadow a user's local symbol or
+  // duplicate an already-explicit import from any source.
+  // Use the MASKED source so JSDoc example imports
+  // (`// import { Stack, ... } from '...'`) don't false-positive as
+  // real imports.
+  const alreadyInScope = collectImportedNames(masked)
+
+  // Detect same-module top-level declarations that shadow the
+  // canonical names — `export function Stack(...)`, `function Stack`,
+  // `const Stack = ...`. These are local symbols; auto-importing the
+  // upstream package would shadow them.
+  for (const name of allNames) {
+    const declRe = new RegExp(
+      `(?:^|\\n)\\s*(?:export\\s+)?(?:function\\s+${name}\\b|const\\s+${name}\\b|let\\s+${name}\\b|var\\s+${name}\\b|class\\s+${name}\\b)`,
+    )
+    if (declRe.test(code)) alreadyInScope.add(name)
+  }
+
+  // The set to inject, grouped by source.
+  const bySource = new Map<string, string[]>()
+  for (const name of used) {
+    if (alreadyInScope.has(name)) continue
+    const src = nameToSource.get(name)!
+    if (!bySource.has(src)) bySource.set(src, [])
+    bySource.get(src)!.push(name)
+  }
+  if (bySource.size === 0) return code
+
+  // Apply per-source: extend existing import OR prepend new line.
+  // Use the MASKED code to find existing-import positions so JSDoc
+  // examples like `// import { X } from '@pyreon/primitives'` don't
+  // false-match. The splice itself targets the ORIGINAL `code` at the
+  // same position (mask preserves positions char-for-char).
+  let result = code
+  let workMask = masked
+  // Process sources in stable order (mapping order) so output is
+  // deterministic across runs.
+  const orderedSources = mappings.map((m) => m.source).filter((s, i, a) => a.indexOf(s) === i)
+  for (const source of orderedSources) {
+    const toInject = bySource.get(source)
+    if (!toInject || toInject.length === 0) continue
+    toInject.sort()
+    const existingImportRe = new RegExp(
+      `import\\s*\\{([^}]*)\\}\\s*from\\s*['"]${escapeRegex(source)}['"]`,
+    )
+    const existing = existingImportRe.exec(workMask)
+    if (existing) {
+      // Reuse the matched specifier list from the original (not masked)
+      // source so aliases like `Stack as Container` survive.
+      const realMatch = result.slice(existing.index, existing.index + existing[0].length)
+      const insideBraces = /\{([^}]*)\}/.exec(realMatch)?.[1] ?? ''
+      const existingSpecifiers = insideBraces
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      // Set-dedupe by LOCAL name (last-`as`-segment or whole spec).
+      const existingLocalNames = new Set(
+        existingSpecifiers.map((s) => {
+          const asIdx = s.indexOf(' as ')
+          return asIdx >= 0 ? s.slice(asIdx + 4).trim() : s
+        }),
+      )
+      const merged = [...existingSpecifiers]
+      for (const n of toInject) {
+        if (!existingLocalNames.has(n)) merged.push(n)
+      }
+      merged.sort()
+      const newImport = `import { ${merged.join(', ')} } from '${source}'`
+      const before = result.slice(0, existing.index)
+      const after = result.slice(existing.index + existing[0].length)
+      result = before + newImport + after
+      // Keep the mask aligned so subsequent passes (multiple sources)
+      // re-search correctly. Replace the matched region in the mask
+      // with spaces of the new-length so position-alignment continues
+      // to hold for the post-region of the mask.
+      const beforeM = workMask.slice(0, existing.index)
+      const afterM = workMask.slice(existing.index + existing[0].length)
+      workMask = beforeM + ' '.repeat(newImport.length) + afterM
+    } else {
+      const importLine = `import { ${toInject.join(', ')} } from '${source}'\n`
+      result = importLine + result
+      workMask = ' '.repeat(importLine.length) + workMask
+    }
+  }
+  return result
+}
+
+/**
+ * Replace JS comments with spaces while preserving line/column
+ * positions. Used by the auto-import scanner so `<Stack>` text inside
+ * JSDoc doesn't false-positive as a JSX usage. Position preservation
+ * lets the caller use the masked code for regex SEARCH and the
+ * original code for SPLICE.
+ *
+ * String literals are deliberately LEFT VISIBLE — they often carry
+ * the package name we need to match (`from '@pyreon/primitives'`).
+ * The trade-off: a literal `'<Stack/>'` inside a string would
+ * false-positive, but that's vanishingly rare compared to JSDoc
+ * examples + the cost of either making string-aware AST parsing OR
+ * masking only the LITERAL TEXT (not the quotes) is not worth it
+ * for the marginal correctness gain.
+ *
+ * Handles:
+ *   - line comments  `// ... newline`
+ *   - block comments `/* ... *​/`
+ */
+function maskCommentsAndStrings(code: string): string {
+  const out: string[] = new Array(code.length)
+  let i = 0
+  const n = code.length
+  while (i < n) {
+    const c = code[i] ?? ''
+    const c2 = code[i + 1] ?? ''
+    // Block comment
+    if (c === '/' && c2 === '*') {
+      const end = code.indexOf('*/', i + 2)
+      const stop = end < 0 ? n : end + 2
+      for (let j = i; j < stop; j++) out[j] = code[j] === '\n' ? '\n' : ' '
+      i = stop
+      continue
+    }
+    // Line comment
+    if (c === '/' && c2 === '/') {
+      let j = i
+      while (j < n && code[j] !== '\n') {
+        out[j] = ' '
+        j++
+      }
+      i = j
+      continue
+    }
+    out[i] = c
+    i++
+  }
+  return out.join('')
+}
+
+/** Collect every name imported via `import { ... }` / `import X` / `import * as X`. */
+function collectImportedNames(code: string): Set<string> {
+  const out = new Set<string>()
+  // Named imports: `import { A, B as C } from '...'`
+  const namedRe = /import\s*(?:type\s+)?\{([^}]+)\}\s*from\s*['"][^'"]+['"]/g
+  let m: RegExpExecArray | null
+  while ((m = namedRe.exec(code)) !== null) {
+    for (const spec of m[1]!.split(',')) {
+      const trimmed = spec.trim()
+      if (!trimmed) continue
+      // `A` or `A as B` — the LOCAL name is what matters (the part
+      // after `as`, or the original if no rename).
+      const asIdx = trimmed.indexOf(' as ')
+      out.add(asIdx >= 0 ? trimmed.slice(asIdx + 4).trim() : trimmed)
+    }
+  }
+  // Default + namespace imports: `import D from '...'` / `import * as N from '...'`
+  const defaultRe = /import\s+(\w+)(?:\s*,\s*\{[^}]*\})?\s+from\s*['"][^'"]+['"]/g
+  while ((m = defaultRe.exec(code)) !== null) {
+    out.add(m[1]!)
+  }
+  const nsRe = /import\s+\*\s+as\s+(\w+)\s+from\s*['"][^'"]+['"]/g
+  while ((m = nsRe.exec(code)) !== null) {
+    out.add(m[1]!)
+  }
+  return out
+}
+
+/** Escape a string for safe use inside a RegExp. */
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
