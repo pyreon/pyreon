@@ -16,9 +16,6 @@ import { describe, expect, it } from 'vitest'
 import pyreonPlugin from '../index'
 import type { Plugin } from 'vite'
 
-const SOURCE = '@pyreon/primitives'
-const NAMES = new Set(['Stack', 'Inline', 'Text', 'Button', 'Press', 'Field', 'Toggle'])
-
 // Run a Vite plugin's `transform` hook directly. The plugin's `config`
 // hook isn't strictly necessary for the auto-import scan, but its
 // `transform` hook isn't typed for direct invocation in TS. The cast
