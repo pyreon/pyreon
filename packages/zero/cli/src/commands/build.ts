@@ -97,25 +97,33 @@ async function runBuild(root: string | undefined, options: BuildOptions) {
   const projectRoot = resolve(root ?? '.')
   const start = performance.now()
 
+  // Load zero config FIRST so we know whether SPA mode applies (which
+  // skips the server build — SPA apps have no `entry-server.ts`).
+  const configPath = join(projectRoot, 'vite.config.ts')
+  const zeroConfig = await loadZeroConfig(configPath)
+  const renderMode = (zeroConfig?.mode as string) ?? options.mode ?? 'ssr'
+
   // Client build
   await viteBuild({
     root: projectRoot,
     build: { outDir: 'dist/client', ssrManifest: true },
   })
 
-  // Server build
-  await viteBuild({
-    root: projectRoot,
-    build: {
-      outDir: 'dist/server',
-      ssr: 'src/entry-server.ts',
-      rollupOptions: { input: 'src/entry-server.ts' },
-    },
-  })
-
-  const configPath = join(projectRoot, 'vite.config.ts')
-  const zeroConfig = await loadZeroConfig(configPath)
-  const renderMode = (zeroConfig?.mode as string) ?? options.mode ?? 'ssr'
+  // Server build — skipped for SPA mode (no entry-server.ts), and skipped
+  // for any mode when the file doesn't exist (defensive — lets SPA apps
+  // not declare the mode explicitly).
+  const serverEntryPath = join(projectRoot, 'src/entry-server.ts')
+  const hasServerEntry = existsSync(serverEntryPath)
+  if (renderMode !== 'spa' && hasServerEntry) {
+    await viteBuild({
+      root: projectRoot,
+      build: {
+        outDir: 'dist/server',
+        ssr: 'src/entry-server.ts',
+        rollupOptions: { input: 'src/entry-server.ts' },
+      },
+    })
+  }
 
   if (renderMode === 'ssg' || renderMode === 'isr') {
     await prerenderIfNeeded(projectRoot, zeroConfig)
