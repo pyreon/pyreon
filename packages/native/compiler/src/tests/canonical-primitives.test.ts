@@ -371,9 +371,15 @@ describe('Phase C3 — router primitive emit (<Link> + <RouterProvider> + <Route
 
 // Test fixture for Phase C4 — imports the three router entry points so
 // the parser's call-name match has the call sites to recognize.
+// Phase C5 expands the ambient declarations to cover the route-config
+// component references (HomePage / UserPage / etc.).
 function txRouter(componentBody: string, target: 'swift' | 'kotlin'): string {
   const source = `
     import { createRouter, useNavigate, useParams } from '@pyreon/router'
+    declare const HomePage: any
+    declare const UserPage: any
+    declare const AboutPage: any
+    declare const SettingsPage: any
     export function App() {
       ${componentBody}
     }
@@ -671,10 +677,11 @@ describe('Phase C5.1 — route extraction from createRouter({routes:[…]})', ()
     expect(routerDecl?.routes).toBeUndefined()
   })
 
-  it('emit unchanged in C5.1 — Swift still produces scaffold-only @State + PyreonRouter()', async () => {
-    // C5.1 is parser-only; the emit consumes routes in C5.2/C5.3.
-    // This test locks the SAME emit shape as C4 even though the IR
-    // now carries routes — proving the additive nature of C5.1.
+  it('decl emit unchanged — @State + PyreonRouter() shape stays even with routes IR', async () => {
+    // The C5.1 decl-emit shape (`@State private var router = PyreonRouter()`)
+    // is unchanged — routes are EXTRA state on the IR, not a different
+    // declaration shape. The navigationDestination block emitted by
+    // C5.2 lives at the <RouterProvider> JSX site, not at the decl.
     const out = txRouter(
       `
       const router = createRouter({
@@ -686,7 +693,99 @@ describe('Phase C5.1 — route extraction from createRouter({routes:[…]})', ()
     )
     expect(out).toContain('@State private var router = PyreonRouter()')
     expect(out).toContain('RouterProvider(router: router)')
-    // The .navigationDestination block lands in C5.2 — not yet.
+  })
+})
+
+// Phase C5.2 — Swift emit wires the parsed routes into a real
+// `.navigationDestination(for: String.self)` block inside the
+// RouterProvider content closure.
+
+describe('Phase C5.2 — Swift emit: .navigationDestination(for:)', () => {
+  it('single literal-path route emits an `if path == "/"` branch', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [{ path: '/', component: HomePage }],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    expect(out).toContain('.navigationDestination(for: String.self) { path in')
+    expect(out).toContain('if path == "/" {')
+    expect(out).toContain('HomePage()')
+  })
+
+  it(':param route emits PyreonRouter.matchPath with params: arg', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/', component: HomePage },
+          { path: '/users/:id', component: UserPage },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    expect(out).toContain('if path == "/" {')
+    expect(out).toContain('HomePage()')
+    expect(out).toContain('else if let params = PyreonRouter.matchPath(path, "/users/:id") {')
+    expect(out).toContain('UserPage(params: params)')
+  })
+
+  it('multiple routes chain with `else if` after the first branch', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/', component: HomePage },
+          { path: '/about', component: AboutPage },
+          { path: '/settings', component: SettingsPage },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    // First branch uses `if`; subsequent ones use `else if`.
+    expect(out).toContain('if path == "/" {')
+    expect(out).toContain('else if path == "/about" {')
+    expect(out).toContain('else if path == "/settings" {')
+  })
+
+  it('falls back to scaffold-only when router-decl has no routes (C4 back-compat)', () => {
+    const out = txRouter(
+      `
+      const router = createRouter()
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    expect(out).toContain('@State private var router = PyreonRouter()')
+    expect(out).toContain('RouterProvider(router: router)')
+    expect(out).not.toContain('.navigationDestination')
+  })
+
+  it('falls back when router-attr is a non-identifier expression (foreign router)', () => {
+    // When the router comes from outside the component scope (e.g. a
+    // prop), the compiler can't resolve routes — emit stays scaffold.
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [{ path: '/', component: HomePage }],
+      })
+      const foreign: any = router
+      return <RouterProvider router={foreign}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    // The router attr value `foreign` is an identifier, but it's not
+    // a router-decl, so no routes are looked up. (We're testing the
+    // foreign-name path — the unmatched identifier gracefully falls
+    // back rather than crashing.)
+    expect(out).toContain('RouterProvider(router: foreign)')
     expect(out).not.toContain('.navigationDestination')
   })
 })

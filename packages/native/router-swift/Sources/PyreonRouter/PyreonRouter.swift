@@ -83,4 +83,37 @@ public final class PyreonRouter {
     public func reset() {
         self.path.removeAll()
     }
+
+    /// Phase C5.2 — match an incoming path against a pattern, extracting
+    /// named params. Returns the params dict on match, nil on miss.
+    ///
+    /// Mirrors `@pyreon/router`'s `match.ts` algorithm for `:name`
+    /// segments. The compiler emits calls to this helper from inside
+    /// the `.navigationDestination(for:)` block when a route's path
+    /// contains a `:param` segment.
+    ///
+    /// Examples:
+    ///   matchPath("/users/123", "/users/:id")     → ["id": "123"]
+    ///   matchPath("/posts/abc/edit", "/posts/:slug/edit") → ["slug": "abc"]
+    ///   matchPath("/users/123", "/posts/:id")     → nil
+    ///
+    /// Phase 0 semantics:
+    ///   - exact segment count (no wildcard / catch-all)
+    ///   - param names captured by trimming the leading ":"
+    ///   - empty path segments treated as literals
+    public static func matchPath(_ path: String, _ pattern: String) -> [String: String]? {
+        let pathParts = path.split(separator: "/", omittingEmptySubsequences: false)
+        let patternParts = pattern.split(separator: "/", omittingEmptySubsequences: false)
+        guard pathParts.count == patternParts.count else { return nil }
+        var params: [String: String] = [:]
+        for (pathSeg, patternSeg) in zip(pathParts, patternParts) {
+            if patternSeg.hasPrefix(":") {
+                let name = String(patternSeg.dropFirst())
+                params[name] = String(pathSeg)
+            } else if pathSeg != patternSeg {
+                return nil
+            }
+        }
+        return params
+    }
 }
