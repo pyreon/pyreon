@@ -48,7 +48,7 @@
  *   source touched since its last build.
  */
 
-import { execSync } from 'node:child_process'
+import { execFileSync, execSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 
@@ -407,7 +407,12 @@ if (stillDirty.length > 0 && !forceFail) {
   stillDirty = []
   for (const pkg of retried) {
     try {
-      execSync(`bun run --filter='${pkg.name}' build`, {
+      // execFileSync (argv array) — pkg.name comes from workspace
+      // package.json (semi-trusted, but a hypothetical malicious
+      // `"name": "@x'; rm -rf / '#"` in any installed dep's package.json
+      // would otherwise execute). Defensive consistency with the rest
+      // of the script's git/bun invocations.
+      execFileSync('bun', ['run', `--filter=${pkg.name}`, 'build'], {
         cwd: ROOT,
         stdio: 'inherit',
         timeout: 120_000, // 2 min per package on retry

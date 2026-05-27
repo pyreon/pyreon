@@ -7,9 +7,23 @@ on:
     branches: [main]
   merge_group:
 
+# Cancel superseded PR runs (next push to the same PR cancels in-flight
+# checks) but NEVER cancel `push: main` runs — those are the safety-net
+# gates (`Coverage (Full)`, `Benchmark`, every required check on main)
+# and must always run to completion. Pre-fix, `cancel-in-progress: true`
+# on a per-ref group cancelled main-push runs every time a PR landed
+# (PRs land faster than CI completes), so `Coverage (Full)` + `Benchmark`
+# never produced results on main — verified empirically across the last
+# 20+ main pushes (all cancelled).
+#
+# - PR: per-ref group, cancellable. Same behaviour as before.
+# - push: per-run-id group → unique per push, cancellation never fires.
+# - merge_group: per-ref group, cancellable, but GitHub assigns a unique
+#   ref per merge attempt, so cancellation never fires in practice
+#   either.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.ref }}-${{ github.event_name == 'push' && github.run_id || '' }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 permissions:
   contents: read
