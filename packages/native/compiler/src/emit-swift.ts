@@ -1665,6 +1665,21 @@ function emitSwiftNavigationDestination(
       )
     }
   }
+  // C5.4 — no-match fallback. SwiftUI's `.navigationDestination(for:)`
+  // closure returns `some View`; without an `else` branch on the
+  // if/else-if chain it'd be a syntax error (no default View when
+  // no condition matches). Emit a minimal "404" Text so apps fail
+  // visibly instead of silently rendering nothing. The text uses
+  // SwiftUI string interpolation to surface the unmatched path —
+  // helpful for the dev who pushed an unexpected URL.
+  //
+  // Apps that want a richer 404 page can override at the host level
+  // (post-PMTC) — future Phase C5.5 ships an opt-in fallback prop.
+  branches.push(
+    `${pad}else {`,
+    `${innerPad}Text("Pyreon Router: no route for \\(path)")`,
+    `${pad}}`,
+  )
   const body = branches.join('\n')
   const modifierIndent = ' '.repeat(indent - 2)
   return `\n${modifierIndent}.navigationDestination(for: String.self) { path in\n${body}\n${modifierIndent}}`
