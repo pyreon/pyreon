@@ -221,7 +221,12 @@ describe.skipIf(skipCondition)('K-FINAL — real TodoMVC emit typechecks via kot
     // structural anchors point straight at the right K* fix.
     expect(out.code).toContain('if (filter == Filter.active)') // K1
     expect(out.code).toContain('return@derivedStateOf xs') // K2
-    expect(out.code).toMatch(/Column \{[\s\S]+TextField/) // K3
+    // K3: Column { ... TextField ... } — supports both bare `Column {`
+    // (legacy) AND `Column(arg = ...) {` (Phase B canonical-primitive
+    // emit with gap/align/data-testid). The arg list may contain nested
+    // parens (Arrangement.spacedBy(8.dp), Modifier.testTag("x")) so
+    // match any non-brace chars between `Column` and the body brace.
+    expect(out.code).toMatch(/Column[^{]*\{[\s\S]+TextField/) // K3
     expect(out.code).toContain('@Serializable') // foundational @Serializable annotation
 
     // End-to-end: pass the full emit through kotlinc with the K4 stubs.

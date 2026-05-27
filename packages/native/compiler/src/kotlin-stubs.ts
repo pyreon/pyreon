@@ -324,6 +324,10 @@ object Modifier {
   fun clip(shape: Shape): Modifier = this
   @Suppress("UNUSED_PARAMETER")
   fun clickable(onClick: () -> Unit): Modifier = this
+  // E3.1 — testTag for data-testid passthrough. Real Compose ships
+  // it from androidx.compose.ui.platform; same call shape.
+  @Suppress("UNUSED_PARAMETER")
+  fun testTag(tag: String): Modifier = this
 }
 
 // Arrangement — gap / placement on the main axis. The Phase B emit

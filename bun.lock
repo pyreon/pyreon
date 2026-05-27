@@ -497,7 +497,11 @@
       "name": "@pyreon/example-native-todomvc-ios",
       "version": "0.0.0",
       "devDependencies": {
+        "@pyreon/core": "workspace:*",
         "@pyreon/native-cli": "workspace:*",
+        "@pyreon/primitives": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/storage": "workspace:*",
       },
     },
     "examples/native-todomvc-web": {

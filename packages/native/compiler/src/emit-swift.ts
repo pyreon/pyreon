@@ -1284,6 +1284,14 @@ function emitSwiftLayoutModifiers(
   if (typeof radius === 'string') {
     parts.push(`.cornerRadius(${resolveRadius(radius)})`)
   }
+  // E3.1 — `data-testid` becomes SwiftUI's `.accessibilityIdentifier()`
+  // so the same string the web e2e selects on (`getByTestId`) is also
+  // reachable to XCUITest. Other `data-*` attrs are silently dropped
+  // (consistent with HTML where they're untyped author data).
+  const testid = readStaticAttr(e, 'data-testid')
+  if (typeof testid === 'string') {
+    parts.push(`.accessibilityIdentifier(${JSON.stringify(testid)})`)
+  }
   return parts.join('')
 }
 
