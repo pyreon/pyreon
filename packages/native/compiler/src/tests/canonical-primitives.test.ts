@@ -788,6 +788,60 @@ describe('Phase C5.2 — Swift emit: .navigationDestination(for:)', () => {
     expect(out).toContain('RouterProvider(router: foreign)')
     expect(out).not.toContain('.navigationDestination')
   })
+
+  // Phase C5.4 — no-match fallback. SwiftUI's navigationDestination
+  // closure returns `some View` and needs a default View when no
+  // condition matches. Without an else branch the emit was a syntax
+  // error AND apps silently rendered nothing for unmatched paths.
+
+  it('C5.4 — single literal route emits else { Text("404") } fallback', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [{ path: '/', component: HomePage }],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    // Else branch after the literal-path if.
+    expect(out).toContain('if path == "/" {')
+    expect(out).toContain('else {')
+    expect(out).toContain('Text("Pyreon Router: no route for \\(path)")')
+  })
+
+  it('C5.4 — :param route emits else fallback at end of if/else if chain', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/', component: HomePage },
+          { path: '/users/:id', component: UserPage },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    expect(out).toContain('if path == "/" {')
+    expect(out).toContain('else if let params = PyreonRouter.matchPath(path, "/users/:id")')
+    expect(out).toContain('else {')
+    expect(out).toContain('Text("Pyreon Router: no route for \\(path)")')
+  })
+
+  it('C5.4 — fallback does NOT fire when routes are absent (C4 scaffold)', () => {
+    // The scaffold-only emit doesn't include a navigationDestination
+    // at all, so the fallback Text must not appear either.
+    const out = txRouter(
+      `
+      const router = createRouter()
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    expect(out).not.toContain('.navigationDestination')
+    expect(out).not.toContain('Pyreon Router: no route')
+  })
 })
 
 // Phase C5.3 — Kotlin emit wires the parsed routes into a real
