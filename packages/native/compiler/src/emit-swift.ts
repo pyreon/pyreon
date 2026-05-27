@@ -101,6 +101,20 @@ let _functionNames: Set<string> = new Set()
  * SwiftUI Environment isn't readable from free functions directly).
  */
 let _usesRouter = false
+/**
+ * C5.2: per-component map from router-decl name → its routes array.
+ * Populated at the start of each `emitSwiftComponent` from the
+ * `kind: 'router'` decls that carry routes. `emitSwiftRouterProvider`
+ * reads this to emit the `.navigationDestination(for:)` block — the
+ * router-attr value gives the name (e.g. `router={appRouter}`); we
+ * look up `_routerRoutes.get('appRouter')` to find the route list.
+ *
+ * Empty for routerless components AND for C4-style scaffold routers
+ * (no `routes` config in source). In both cases the existing
+ * RouterProvider emit shape (bare content closure) is preserved —
+ * additive, back-compat.
+ */
+let _routerRoutes: Map<string, import('./types').RouteIR[]> = new Map()
 
 export function emitSwift(
   components: ComponentIR[],
@@ -221,6 +235,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   // C4: reset router-usage tracking. Set during decl-pass if any
   // useNavigate/useParams binding is present.
   _usesRouter = false
+  // C5.2: reset router-routes map. Populated during decl-pass for
+  // each `kind: 'router'` decl with a non-undefined routes array.
+  _routerRoutes = new Map()
   // Phase 2 follow-up: also track props whose type is a function
   // (`onToggle: () -> Void`). Inside the component body, references
   // to these props are CALL SITES that need explicit `()` —
@@ -244,7 +261,12 @@ function emitSwiftComponent(c: ComponentIR): string {
     // `@State` properties, so the identifier reads bare like a signal —
     // add to `_signalNames` so `router` in JSX (e.g. `<RouterProvider
     // router={router}>`) emits as a property reference, not a call.
-    if (d.kind === 'router') _signalNames.add(d.name)
+    // C5.2: also stash the routes list (if parsed) so the matching
+    // <RouterProvider> emit can produce a navigationDestination block.
+    if (d.kind === 'router') {
+      _signalNames.add(d.name)
+      if (d.routes !== undefined) _routerRoutes.set(d.name, d.routes)
+    }
     // C4: router-hook decls (`const navigate = useNavigate()`). The
     // resulting binding IS a function value (returns `(String) -> Void`
     // / `[String: String]`), so register it under `_functionNames`
@@ -292,6 +314,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   _signalNames = new Set()
   _functionNames = new Set()
   _usesRouter = false
+  _routerRoutes = new Map()
   return lines.join('\n')
 }
 
@@ -1532,6 +1555,31 @@ function emitSwiftLink(
  * Emit `<RouterProvider router={r}>...</RouterProvider>` as the
  * runtime-swift `RouterProvider(router: r) { ... }`. Wraps content
  * in the trailing-closure form.
+ *
+ * C5.2 extension — when the router-attr value names a `kind: 'router'`
+ * decl that carries a `routes` array (parsed in C5.1 from
+ * `createRouter({ routes: [...] })`), the content closure ALSO gets a
+ * `.navigationDestination(for: String.self)` modifier emitting per-route
+ * component dispatch:
+ *
+ *   RouterProvider(router: router) {
+ *     RouterView()
+ *       .navigationDestination(for: String.self) { path in
+ *         if path == "/" { HomePage() }
+ *         else if let params = PyreonRouter.matchPath(path, "/users/:id") {
+ *           UserPage(params: params)
+ *         }
+ *       }
+ *   }
+ *
+ * Literal-path routes emit a direct `==` comparison. Param-bearing
+ * routes (`:id`) route through the runtime helper `PyreonRouter.matchPath`
+ * which returns `[String: String]?` — captured params are passed to the
+ * matched component as a `params:` arg.
+ *
+ * Falls back to the C3 bare-content shape (no navigationDestination)
+ * when routes can't be resolved — back-compat with C4 scaffold OR
+ * apps that pass a router from outside the component scope.
  */
 function emitSwiftRouterProvider(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
@@ -1546,11 +1594,72 @@ function emitSwiftRouterProvider(
   }
   const routerExpr = emitSwiftExpr(routerAttr.value, indent)
   const pad = ' '.repeat(indent + 2)
+
+  // C5.2: look up the named router-decl's routes (if any). Falls back
+  // to the C3 bare-content emit when the router-attr is a non-identifier
+  // expression OR when the named decl has no routes (C4 scaffold form).
+  let routesBlock = ''
+  if (routerAttr.value.kind === 'identifier') {
+    const routes = _routerRoutes.get(routerAttr.value.name)
+    if (routes !== undefined && routes.length > 0) {
+      routesBlock = emitSwiftNavigationDestination(routes, indent + 4)
+    }
+  }
+
   if (e.children.length === 0) {
     return `RouterProvider(router: ${routerExpr}) { }`
   }
   const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+  // When routes are known, append the navigationDestination modifier
+  // to the LAST content line (typically a `<RouterView />` emitting
+  // `RouterView()`). SwiftUI's view-modifier chain attaches to whichever
+  // view it follows; landing it on the closing view of the content
+  // closure is the canonical pattern.
+  if (routesBlock !== '') {
+    return `RouterProvider(router: ${routerExpr}) {\n${contentLines}${routesBlock}\n${' '.repeat(indent)}}`
+  }
   return `RouterProvider(router: ${routerExpr}) {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * C5.2 — emit a `.navigationDestination(for: String.self) { path in ... }`
+ * modifier body for the given routes. Literal paths produce direct
+ * comparisons; pattern paths (`:id`) route through `PyreonRouter.matchPath`.
+ */
+function emitSwiftNavigationDestination(
+  routes: import('./types').RouteIR[],
+  indent: number,
+): string {
+  const pad = ' '.repeat(indent)
+  const innerPad = ' '.repeat(indent + 2)
+  const branches: string[] = []
+  for (let i = 0; i < routes.length; i++) {
+    const route = routes[i]!
+    const isFirst = i === 0
+    const componentExpr = emitSwiftExpr(route.component, indent + 2)
+    const isPattern = route.path.includes(':')
+    if (isPattern) {
+      // Param-bearing route — runtime matchPath helper returns the
+      // params dict OR nil. The component receives `params: [String: String]`.
+      const keyword = isFirst ? 'if' : 'else if'
+      branches.push(
+        `${pad}${keyword} let params = PyreonRouter.matchPath(path, ${JSON.stringify(route.path)}) {`,
+        `${innerPad}${componentExpr}(params: params)`,
+        `${pad}}`,
+      )
+    } else {
+      // Literal route — direct path comparison.
+      const keyword = isFirst ? 'if' : 'else if'
+      branches.push(
+        `${pad}${keyword} path == ${JSON.stringify(route.path)} {`,
+        `${innerPad}${componentExpr}()`,
+        `${pad}}`,
+      )
+    }
+  }
+  const body = branches.join('\n')
+  const modifierIndent = ' '.repeat(indent - 2)
+  return `\n${modifierIndent}.navigationDestination(for: String.self) { path in\n${body}\n${modifierIndent}}`
 }
 
 /**
