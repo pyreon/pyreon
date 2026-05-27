@@ -82,18 +82,9 @@ export default function BoardColumn(props: BoardColumnProps) {
       </div>
 
       <div class="column-cards">
-        {/*
-         * W21 from kanban audit — Inner <For each> with an indirect read
-         * through the column-level `computed()` (i.e. `column()?.cards`)
-         * DOES NOT propagate board updates to keyed children. Reading the
-         * state-tree directly inside the For accessor works.
-         */}
         <For
           each={() => {
-            const cards =
-              (board.columns() as Column[]).find(
-                (c) => c.id === props.columnId,
-              )?.cards ?? []
+            const cards = column()?.cards ?? []
             const term = getTerm().trim().toLowerCase()
             if (!term) return cards
             return cards.filter((c) =>

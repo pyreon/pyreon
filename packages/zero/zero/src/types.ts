@@ -190,6 +190,19 @@ export interface ZeroConfig {
   /** Vite config overrides. */
   vite?: Record<string, unknown>
 
+  /**
+   * Path to the client-side entry module that mounts the app. Auto-
+   * injected as `<script type="module" src="${entryClient}">` before
+   * the `<!--pyreon-scripts-->` placeholder in `index.html` so users
+   * don't have to manually wire it (W19 from kanban audit).
+   *
+   * Default: `/src/entry-client.ts`. Set to `false` to disable auto-
+   * injection (the user is responsible for adding a `<script>` tag).
+   * Auto-injection is also skipped if the html already contains a
+   * `<script type="module"` referencing this path.
+   */
+  entryClient?: string | false
+
   /** SSR options. */
   ssr?: {
     /** Streaming mode. Default: "string" */

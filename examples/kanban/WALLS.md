@@ -9,75 +9,96 @@ Goal: pick a domain (kanban board) that exercises a different DND shape
 Walls **W1-W17** are from the hn-clone audit (`examples/hn-clone/WALLS.md`).
 This file covers **W18-W23**.
 
+## Status
+
+| Wall | Severity | Status in this PR |
+| --- | --- | --- |
+| W18 | medium | **Fixed** — `useSortable({ groupId, onCrossListDrop, onCrossListReceive })` opt-in |
+| W19 | low | **Fixed** — Zero plugin auto-injects entry script (`config.entryClient`) |
+| W20 | low | **Covered by existing rule** `pyreon/no-map-in-jsx` (test extended for the reactive-accessor shape) |
+| W21 | medium | **Fixed by W23 patch** — bisect-verified in `w21-for-computed-indirection.browser.test.ts` |
+| W22 | medium | **Documented** — For JSDoc + ForProps.children JSDoc carry the canonical fix pattern |
+| W23 | P0 | **Fixed** — `runUntracked` suspends `_innerEffectCollector` (root-cause fix in `tracking.ts`) |
+
 ---
 
-## W18 — `useSortable` is single-list-only
+## W18 — `useSortable` is single-list-only — FIXED
 
 **Symptom.** Card dragged out of one column couldn't drop into another column.
 The drop indicator never appeared on the target column's cards.
 
 **Cause.** `useSortable` (from `@pyreon/dnd`) assigns each instance a
 per-mount `SORT_ID` and its built-in `canDrop` rejects drops whose source's
-`SORT_ID` doesn't match the destination's. This makes every sortable list a
-private universe — fine for "reorder these stories" (hn-clone-style), wrong
-for "move cards between columns" (Trello/Notion/Linear-style).
+`SORT_ID` doesn't match the destination's.
 
-**Workaround in this example.** Drop down to `useDraggable` + `useDroppable`
-directly. Each card is BOTH draggable AND droppable (for inter-card reorder
-within the same column); each column is droppable (for column-edge append).
-Cross-column drag is just `board.moveCard(cardId, toColumnId)` in the drop
-handler.
+**Fix in this PR.** `useSortable` now accepts an optional `groupId` —
+two instances with the same `groupId` share a drop universe. The source
+calls back `onCrossListDrop(item)` to remove; the destination calls back
+`onCrossListReceive(item, index)` to insert. No `groupId` keeps the
+per-instance isolation (backward compat).
 
-**Framework gap.** `useSortable` should accept a `groupId` option that lets
-multiple sortable instances participate in a shared drop universe (the
-standard pragmatic-drag-and-drop / dnd-kit / react-beautiful-dnd shape).
-With `groupId` matched, `canDrop` would gate on `data.kind` only, not
-`SORT_ID`. Doc note in `@pyreon/dnd` README that the single-list constraint
-exists today.
+```tsx
+const a = useSortable({
+  items: colA, by: c => c.id, onReorder: setColA,
+  groupId: 'kanban',
+  onCrossListDrop: item => setColA(colA().filter(c => c.id !== item.id)),
+})
+const b = useSortable({
+  items: colB, by: c => c.id, onReorder: setColB,
+  groupId: 'kanban',
+  onCrossListReceive: (item, index) => {
+    const next = [...colB.peek()]
+    next.splice(index, 0, item)
+    setColB(next)
+  },
+})
+```
 
-**Fix scope.** Single-PR change in `@pyreon/dnd`: extend `useSortable`'s
-`canDrop` to accept a sibling group via an optional `groupId` argument.
+Reference: `packages/fundamentals/dnd/src/use-sortable.ts`. Tests:
+`integration.test.ts` — 2 new specs (cross-list drop accepts + cross-list
+isolation when groupId omitted).
 
 ---
 
-## W19 — Zero SPA `<!--pyreon-scripts-->` doesn't auto-inject `entry-client.ts`
+## W19 — Zero SPA `<!--pyreon-scripts-->` doesn't auto-inject `entry-client.ts` — FIXED
 
 **Symptom.** Fresh `examples/kanban` page rendered blank. SSR shell loaded
 fine; no client JS executed.
 
-**Cause.** Zero's SPA-mode HTML template has a `<!--pyreon-scripts-->`
-placeholder. It's documented as "Zero will inject the right scripts here."
-At build/dev time Zero emits the styler stylesheet but does NOT auto-inject
-`<script type="module" src="/src/entry-client.ts"></script>`.
+**Cause.** Zero's SPA-mode HTML template's `<!--pyreon-scripts-->`
+placeholder was only used for loader-data inline script — Zero did NOT
+auto-inject `<script type="module" src="/src/entry-client.ts">`.
 
-**Workaround.** Manually add `<script type="module" src="/src/entry-client.ts"></script>`
-to `index.html` right after `<!--pyreon-scripts-->`. (This matches what
-`examples/hn-clone/index.html` does — once you see it there, it's obvious;
-not documented anywhere.)
+**Fix in this PR.** `@pyreon/zero`'s vite plugin now has a
+`transformIndexHtml: { order: 'pre', handler }` hook that auto-injects
+the entry-client script BEFORE the `<!--pyreon-scripts-->` placeholder.
 
-**Framework gap.** Either:
-- Zero's vite plugin transforms `<!--pyreon-scripts-->` into the full set of
-  required tags (entry-client + styler hook + HMR runtime), OR
-- `index.html` is generated rather than user-authored, OR
-- The placeholder is renamed and documented as "manual entry-client required."
+Configurable via `zero({ entryClient: '/src/main.ts' })` or disable with
+`zero({ entryClient: false })`. Default is `/src/entry-client.ts`.
 
-**Fix scope.** `@pyreon/zero` vite plugin's `transformIndexHtml`: detect the
-placeholder, inject `<script type="module" src="/${entryClient}"></script>`
-where entryClient defaults to `src/entry-client.ts`.
+The injection is idempotent — skipped when the html already references
+the entry script (so existing apps with the manual tag continue to work).
+
+Reference: `packages/zero/zero/src/vite-plugin.ts` `transformIndexHtml`.
+Tests: `packages/zero/zero/src/tests/auto-inject-entry-client.test.ts`
+(5 specs: injection, custom path, opt-out, idempotent, no-op without placeholder).
 
 ---
 
-## W20 — `.map()` inside a reactive accessor remounts on every change
+## W20 — `.map()` inside a reactive accessor remounts on every change — COVERED
 
 **Symptom.** Initial wiring used `<div class="kanban-board">{() => filteredColumns().map(c => <BoardColumn column={c} />)}</div>`. Every keystroke
 in the search field re-mounted ALL columns + cards.
 
 **Cause.** Same root cause as `<For>`'s entire reason for existence —
 `.map()` returns a fresh array on every accessor invocation, so the
-runtime tears down and re-mounts every child. Not a bug, but it's an easy
-mistake when prototyping.
+runtime tears down and re-mounts every child.
 
-**Workaround.** Use `<For each={fn} by={fn}>` — proper keyed reconciliation.
+**Status.** The `pyreon/no-map-in-jsx` lint rule already catches this
+shape. This PR extends the rule's test suite with the W20-specific
+reactive-accessor shape (`{() => items().map(...)}` — the kanban
+anti-pattern). Use `<For each={fn} by={fn}>` for proper keyed
+reconciliation.
 
 **Framework gap.** Lint rule for `.map(...VNode)` inside JSX accessor
 expressions in components (with the `<For>` `each`/`by` suggestion). The
@@ -107,18 +128,24 @@ accessor (no intermediate computed) works correctly.
 >
 ```
 
-**Framework gap.** Likely related to how the compiler auto-calls signal
-declarations + how `mountFor`'s effect re-tracks via `source()`. The
-indirection through a `computed()` declared in the SAME function should
-work — both forms should track equally.
+**Status: FIXED by the W23 patch.** When the W21 shape occurs INSIDE a
+`<For>`-mounted component (the actual kanban scenario — `<BoardColumn>`
+inside an outer `<For>` over column IDs, with a column-level
+`computed()` for its own data), the bug was actually W23 — the outer
+For's re-run was disposing the inner `computed`'s subscribers via the
+inner-effect collector mishap.
 
-**Fix scope.** Investigate `mountFor`'s effect tracking + the compiler's
-auto-call pass for `column` references inside For's `each` accessor
-arguments.
+Bisect-verified at unit + integration layers. The standalone "For with
+sibling computed" shape (without an outer For mutating its source)
+always worked — the bug only manifested under the kanban shape (For
+inside For, outer source mutates).
+
+Reference: `packages/core/runtime-dom/src/tests/w21-for-computed-indirection.browser.test.ts`
+covers BOTH shapes (top-level + nested-in-For).
 
 ---
 
-## W22 — `<For>` keyed reuse doesn't propagate prop updates to existing children
+## W22 — `<For>` keyed reuse doesn't propagate prop updates to existing children — DOCUMENTED
 
 **Symptom.** Initial wiring was `<For>{(col) => <BoardColumn column={col} />}</For>`
 — passing the full `Column` object as a prop. After `addCard()`, the new
@@ -129,31 +156,22 @@ identity it had at first mount.
 **Cause.** `mountFor` reuses cached entries when the `by` key matches
 (`if (cache.has(key)) continue`). The component receives its prop at first
 mount and never sees the parent's updated prop afterwards. This is the
-documented Pyreon pattern for keyed-list children — but it's not obvious
-on first encounter, and the failure mode is silent (renders OLD data).
+canonical Pyreon pattern for keyed-list children — "components run once"
+means the child callback's `item` parameter is captured at first mount,
+not a live accessor.
 
-**Workaround in this example.** Pass only the ID; child looks up its own
-data from the global store:
+**Status: DOCUMENTED in this PR.** Both `For`'s docstring and
+`ForProps.children` JSDoc now carry a prominent warning + the canonical
+fix pattern (pass ID, child reads its own data from store inside reactive
+JSX accessors). Reference: `packages/core/core/src/for.ts`.
 
-```tsx
-<For each={() => columnIds()} by={(id) => id}>
-  {(id) => <BoardColumn columnId={id} />}
-</For>
-```
-
-Inside `BoardColumn`, read `board.columns()` directly using `props.columnId`.
-
-**Framework gap.** Either:
-- Document this pattern prominently in `@pyreon/core` `<For>` reference, with
-  a worked example of the foot-gun and the ID-passing fix, OR
-- `mountFor` updates the cached entry's prop reference on key match (the
-  React/Solid behaviour), OR
-- Add a lint rule for "passing object prop to `<For>` keyed child that's
-  derived from the same source the For tracks."
-
-**Fix scope.** Doc-only is the minimum; runtime prop-update on key match is
-the cleanest UX fix but breaks the current "components run once" mental
-model.
+**Why doc-only.** Runtime prop-update on key match WOULD fix the
+symptom but breaks Pyreon's "components run once" mental model AND
+the perf advantage of For (skip render when key matches). The Solid-
+canonical solution (pass `() => T` accessor to the child) is a breaking
+API change that's deferred to a future major. The current canonical
+pattern (ID-passing) is performant, idiomatic, and now documented at
+the source.
 
 ---
 
@@ -224,10 +242,9 @@ single delete on a fresh load (whichever happens first), but breaks on the
 SECOND state-tree mutation. Subsequent mutations work data-wise (the
 state-tree IS updated, the URL IS synced) but the DOM stops re-rendering.
 
-**Therefore the kanban example ships as a "walls demo," not a working
-app.** The filter input is left visible to exercise `useUrlState`
-end-to-end (URL updates work fine), but card filtering is unwired pending
-W23.
+**With the fix landed, the kanban example is a working app** —
+multi-mutation sequences work, filter propagates through child columns
+correctly.
 
 **Root cause.** `effect.ts` maintains a thread-local
 `_innerEffectCollector` array. When an `effect()` runs, it sets the
@@ -276,16 +293,15 @@ in the regression at the lowest layer.
 - W23 was a SHOWSTOPPER for any Pyreon app that wants a Trello/Notion/
   Linear/spreadsheet/task-list UX. **Fixed in this PR.**
 
-## Recommended next steps (post-fix)
+## What this PR ships
 
-1. ~~Fix W23~~ ✅ (this PR — `runUntracked` now suspends inner-effect
-   collector alongside activeEffect).
-2. Add a doc note to `<For>` reference for W22: "Children passed by-key
-   see prop updates only on first mount; structure children to read
-   their own data from the store."
-3. Add a lint rule for `.map(...VNode)` in reactive children (W20).
-4. Extend `useSortable` with a `groupId` option (W18).
-5. Auto-inject the entry script in Zero's `<!--pyreon-scripts-->` (W19).
+1. ✅ W18 — `useSortable({ groupId })` for cross-list drops
+2. ✅ W19 — Zero plugin auto-injects entry-client script
+3. ✅ W20 — verified `pyreon/no-map-in-jsx` covers it (test extended)
+4. ✅ W21 — fixed by W23 patch (bisect-verified)
+5. ✅ W22 — documented in For JSDoc at the source
+6. ✅ W23 — root-cause fix in `runUntracked` (the P0 reactivity bug)
 
-Audit time: ~6h. Walls surfaced: 6 (W18-W23). Framework bugs fixed: 1
-(W23). The audit is doing its job.
+Audit time: ~9h. Walls surfaced: 6 (W18-W23). Framework bugs fixed: 1
+P0 (W23) + 2 ergonomics (W18, W19). Doc-only closures: 1 (W22).
+Confirmed coverage: 1 (W20).

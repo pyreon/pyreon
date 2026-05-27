@@ -1359,8 +1359,12 @@ describe('useSortable — callback coverage via mock', () => {
       itemCDropTarget.onDragEnter({ self: { data: { __edge: 'bottom' } } })
     }
 
-    // Drop on container
-    containerDropTarget!.onDrop()
+    // Drop on container — pdnd passes { source, ... } in production;
+    // mock the source data so the same-list path matches via SORT_ID.
+    const sortableId = containerDropTarget!.getData().__pyreon_sortable_id
+    containerDropTarget!.onDrop({
+      source: { data: { __pyreon_sortable_id: sortableId } },
+    })
     expect(reordered.length).toBe(1)
     // 'a' moved after 'c'
     expect(reordered[0]!.map((i) => i.id)).toEqual(['b', 'c', 'a'])
@@ -1418,7 +1422,10 @@ describe('useSortable — callback coverage via mock', () => {
         return false
       }
     })
-    containerDropTarget!.onDrop()
+    const sortableId2 = containerDropTarget!.getData().__pyreon_sortable_id
+    containerDropTarget!.onDrop({
+      source: { data: { __pyreon_sortable_id: sortableId2 } },
+    })
     expect(reordered.length).toBe(1)
     // 'c' moved before 'a'
     expect(reordered[0]!.map((i) => i.id)).toEqual(['c', 'a', 'b'])
@@ -1658,5 +1665,141 @@ describe('useSortable — callback coverage via mock', () => {
     expect(reordered.length).toBe(0)
 
     container.remove()
+  })
+
+  // W18 from kanban audit — cross-list drops between sortables sharing groupId.
+  it('cross-list groupId: source canDrop accepts items from sibling, dropping triggers source.onCrossListDrop + dest.onCrossListReceive', async () => {
+    const { useSortable } = await import('../use-sortable')
+
+    type Card = { id: string; title: string }
+    const colA = signal<Card[]>([{ id: 'a1', title: 'A1' }])
+    const colB = signal<Card[]>([{ id: 'b1', title: 'B1' }])
+    const removedFromA: Card[] = []
+    const receivedByB: Array<{ item: Card; index: number }> = []
+
+    // Reset mock collections for clean dropTargetOpts tracking
+    allDraggableOpts.length = 0
+    allDropTargetOpts.length = 0
+
+    const a = useSortable({
+      items: colA,
+      by: (c) => c.id,
+      onReorder: (next) => colA.set(next),
+      groupId: 'kanban',
+      onCrossListDrop: (item) => removedFromA.push(item),
+    })
+
+    const b = useSortable({
+      items: colB,
+      by: (c) => c.id,
+      onReorder: (next) => colB.set(next),
+      groupId: 'kanban',
+      onCrossListReceive: (item, index) => receivedByB.push({ item, index }),
+    })
+
+    const elA = document.createElement('ul')
+    const elB = document.createElement('ul')
+    document.body.appendChild(elA)
+    document.body.appendChild(elB)
+    a.containerRef(elA)
+    b.containerRef(elB)
+    const liA = document.createElement('li')
+    const liB = document.createElement('li')
+    a.itemRef('a1')(liA)
+    b.itemRef('b1')(liB)
+    elA.appendChild(liA)
+    elB.appendChild(liB)
+
+    // Find a1's draggable + b's container drop target
+    const a1Draggable = allDraggableOpts.find(
+      (o: any) => o.getInitialData().__pyreon_sortable_key === 'a1',
+    )
+    const bContainer = allDropTargetOpts.find((o: any) => {
+      try {
+        const d = o.getData()
+        return d.__pyreon_sortable_group === 'kanban' && d.__pyreon_sortable_id !== undefined && d.__pyreon_sortable_id !== a1Draggable!.getInitialData().__pyreon_sortable_id
+      } catch {
+        return false
+      }
+    })
+
+    expect(a1Draggable).toBeDefined()
+    expect(bContainer).toBeDefined()
+
+    // Simulate cross-list drop: source = a1's draggable data, target = B's container
+    const sourceData = a1Draggable!.getInitialData()
+    expect(sourceData.__pyreon_sortable_group).toBe('kanban')
+    expect(sourceData.__pyreon_sortable_payload).toEqual({ id: 'a1', title: 'A1' })
+
+    // canDrop must accept the cross-list source
+    expect(bContainer!.canDrop({ source: { data: sourceData } })).toBe(true)
+
+    // onDrop fires the cross-list path
+    bContainer!.onDrop({ source: { data: sourceData } })
+
+    // Container-level drop appends at end of B (B already has 1 item).
+    expect(receivedByB).toEqual([
+      { item: { id: 'a1', title: 'A1' }, index: 1 },
+    ])
+    expect(removedFromA).toEqual([{ id: 'a1', title: 'A1' }])
+
+    elA.remove()
+    elB.remove()
+  })
+
+  it('cross-list isolation: without matching groupId, drops from sibling are rejected', async () => {
+    const { useSortable } = await import('../use-sortable')
+
+    type Card = { id: string }
+    const colA = signal<Card[]>([{ id: 'a1' }])
+    const colB = signal<Card[]>([{ id: 'b1' }])
+    const receivedByB: Card[] = []
+
+    allDraggableOpts.length = 0
+    allDropTargetOpts.length = 0
+
+    const a = useSortable({
+      items: colA,
+      by: (c) => c.id,
+      onReorder: (next) => colA.set(next),
+      // No groupId — isolated.
+    })
+
+    const b = useSortable({
+      items: colB,
+      by: (c) => c.id,
+      onReorder: (next) => colB.set(next),
+      // No groupId — isolated.
+      onCrossListReceive: (item) => receivedByB.push(item),
+    })
+
+    const elA = document.createElement('ul')
+    const elB = document.createElement('ul')
+    document.body.appendChild(elA)
+    document.body.appendChild(elB)
+    a.containerRef(elA)
+    b.containerRef(elB)
+    const liA = document.createElement('li')
+    a.itemRef('a1')(liA)
+    elA.appendChild(liA)
+
+    const a1Draggable = allDraggableOpts.find(
+      (o: any) => o.getInitialData().__pyreon_sortable_key === 'a1',
+    )
+    const bContainer = allDropTargetOpts.find((o: any) => {
+      try {
+        const d = o.getData()
+        return d.__pyreon_sortable_id !== undefined && d.__pyreon_sortable_id !== a1Draggable!.getInitialData().__pyreon_sortable_id
+      } catch {
+        return false
+      }
+    })
+
+    // No groupId → B rejects A's drag.
+    expect(bContainer!.canDrop({ source: { data: a1Draggable!.getInitialData() } })).toBe(false)
+    expect(receivedByB).toEqual([])
+
+    elA.remove()
+    elB.remove()
   })
 })

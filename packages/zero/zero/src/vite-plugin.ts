@@ -173,6 +173,33 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 			routesDir = `${root}/src/routes`;
 		},
 
+		/**
+		 * W19 from kanban audit — auto-inject the client entry script
+		 * before `<!--pyreon-scripts-->` so users don't have to remember
+		 * to add `<script type="module" src="/src/entry-client.ts">` to
+		 * `index.html` by hand.
+		 *
+		 * Skipped when:
+		 * - `config.entryClient === false` (explicit opt-out)
+		 * - html doesn't contain `<!--pyreon-scripts-->` (not a Zero-shaped template)
+		 * - html already contains a `<script type="module"` referencing the entry
+		 */
+		transformIndexHtml: {
+			order: 'pre',
+			handler(html) {
+				if (config.entryClient === false) return html;
+				const entry = config.entryClient ?? '/src/entry-client.ts';
+				if (!html.includes('<!--pyreon-scripts-->')) return html;
+				if (html.includes(`src="${entry}"`)) return html;
+				if (html.includes(`src='${entry}'`)) return html;
+				const tag = `<script type="module" src="${entry}"></script>`;
+				return html.replace(
+					'<!--pyreon-scripts-->',
+					`${tag}\n    <!--pyreon-scripts-->`,
+				);
+			},
+		},
+
 		resolveId(id) {
 			if (id === VIRTUAL_ROUTES_ID) return RESOLVED_VIRTUAL_ROUTES_ID;
 			if (id === VIRTUAL_MIDDLEWARE_ID) return RESOLVED_VIRTUAL_MIDDLEWARE_ID;
