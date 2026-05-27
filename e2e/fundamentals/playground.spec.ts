@@ -19,6 +19,7 @@ const TAB_PATHS = [
   '/state-tree',
   '/form',
   '/validation',
+  '/validate',
   '/i18n',
   '/query',
   '/table',
@@ -26,10 +27,16 @@ const TAB_PATHS = [
   '/charts',
   '/code',
   '/document',
+  '/flow',
   '/storage',
+  '/url-state',
+  '/hooks',
   '/hotkeys',
   '/permissions',
   '/machine',
+  '/rx',
+  '/toast',
+  '/dnd',
 ] as const
 
 test.describe('Playground', () => {
