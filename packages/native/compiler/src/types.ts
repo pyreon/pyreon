@@ -86,19 +86,23 @@ export type DeclIR =
     }
   /**
    * Router instance declaration via `createRouter({ routes: [...] })`
-   * from `@pyreon/router`. The routes config is dropped at native emit
-   * time — the native router runtimes (`@pyreon/native-router-swift` /
-   * `-kotlin`) carry route resolution via `.navigationDestination(for:)`
-   * (SwiftUI) and `NavHost` composables (Compose) wired up by the host
-   * app. Phase C4 ships the SCAFFOLD: emit a bare `PyreonRouter()`
-   * instance whose declaration form is target-idiomatic:
+   * from `@pyreon/router`. Phase C4 shipped the SCAFFOLD (bare instance
+   * emit); Phase C5 ADDS optional `routes: RouteIR[]` so the emitter
+   * can produce per-target route definitions:
    *   Swift   →  @State private var router = PyreonRouter()
+   *              + `.navigationDestination(for: String.self)` block
+   *                inside the `<RouterProvider>` content closure
    *   Kotlin  →  val router = remember { PyreonRouter() }
+   *              + `NavHost { composable("/path") { Component() } }`
+   *                block replacing the bare RouterProvider content
    *
-   * The host-side route wiring lands as a separate per-target
-   * `.navigationDestination(for:)` / `NavHost(routes = …)` follow-up.
+   * `routes` is undefined when the parser couldn't extract a literal
+   * routes array (e.g. `createRouter()`, `createRouter(opts)` with a
+   * non-literal config, or an object literal that doesn't match the
+   * expected `{ routes: [{ path, component }, ...] }` shape). In that
+   * case the emit falls back to the C4 bare-instance shape — back-compat.
    */
-  | { kind: 'router'; name: string }
+  | { kind: 'router'; name: string; routes?: RouteIR[] }
   /**
    * Router hook binding via `useNavigate()` or `useParams()` from
    * `@pyreon/router`. Phase C4 maps these directly to the native
@@ -113,6 +117,33 @@ export type DeclIR =
    * `useParams()` follows the same shape.
    */
   | { kind: 'router-hook'; name: string; hook: 'navigate' | 'params' }
+
+/**
+ * Phase C5 — one route entry parsed from `createRouter({ routes: [...] })`.
+ * Mirrors the web-side `RouteRecord<TPath>` shape from `@pyreon/router`,
+ * intentionally narrowed to PATH + COMPONENT for v1.
+ *
+ * `path` is captured as the string-literal pattern (`/`, `/users/:id`).
+ * The native emit walks it character-by-character — literal segments
+ * become exact `==` comparisons (Swift) / fixed strings (Compose); `:name`
+ * segments become param-capture slots.
+ *
+ * `component` is an `ExprIR` so it can carry any reachable component
+ * expression — bare identifier (`HomePage`), property access
+ * (`pages.Home`), or even a call. Phase 0 supports identifier and
+ * member shapes; other shapes fall back to literal emit (the verbatim
+ * source string).
+ *
+ * Deferred to future arcs: loader, guards, meta, middleware, children
+ * (nested layouts), name. Phase C5 ships the route-resolution
+ * minimum — the rest extends when a real app needs it.
+ */
+export interface RouteIR {
+  /** Literal path pattern, e.g. `/` or `/users/:id`. */
+  path: string
+  /** Component to render for this route. */
+  component: ExprIR
+}
 
 /**
  * Statement IR — sequence of operations inside a function body. The
