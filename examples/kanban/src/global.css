@@ -1,0 +1,280 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f4f5f7;
+  color: #172b4d;
+  font-size: 14px;
+}
+
+.kanban-app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.kanban-header {
+  background: #fff;
+  border-bottom: 1px solid #dfe1e6;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.kanban-header h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.kanban-header .stats {
+  margin-left: auto;
+  font-size: 12px;
+  color: #5e6c84;
+}
+
+.kanban-search {
+  padding: 6px 10px;
+  border: 1px solid #dfe1e6;
+  border-radius: 4px;
+  width: 240px;
+  font-size: 13px;
+}
+
+.kanban-board {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  overflow-x: auto;
+  align-items: flex-start;
+}
+
+.column {
+  flex: 0 0 280px;
+  background: #ebecf0;
+  border-radius: 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 100px);
+}
+
+.column-header {
+  display: flex;
+  align-items: center;
+  padding: 4px 6px 8px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.column-count {
+  margin-left: auto;
+  font-weight: 400;
+  color: #5e6c84;
+  font-size: 12px;
+}
+
+.column-cards {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 40px;
+  padding: 4px;
+  overflow-y: auto;
+}
+
+.card {
+  background: #fff;
+  padding: 8px 12px;
+  border-radius: 4px;
+  box-shadow: 0 1px 0 rgba(9, 30, 66, 0.25);
+  cursor: grab;
+  user-select: none;
+  font-size: 13px;
+  position: relative;
+}
+
+.card[data-active='true'] {
+  opacity: 0.5;
+}
+
+.card[data-over-edge='top'] {
+  border-top: 2px solid #0079bf;
+}
+
+.card[data-over-edge='bottom'] {
+  border-bottom: 2px solid #0079bf;
+}
+
+.card[data-over-edge='before'] {
+  border-top: 2px solid #0079bf;
+}
+
+.card[data-over-edge='after'] {
+  border-bottom: 2px solid #0079bf;
+}
+
+.card-title {
+  margin: 0;
+  word-break: break-word;
+}
+
+.card-meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #5e6c84;
+}
+
+.card-priority {
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.priority-high {
+  background: #ffd5d2;
+  color: #c9372c;
+}
+.priority-medium {
+  background: #fce0a8;
+  color: #946f00;
+}
+.priority-low {
+  background: #d3f1a7;
+  color: #4c9221;
+}
+
+.card-actions {
+  display: none;
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  gap: 4px;
+}
+
+.card:hover .card-actions {
+  display: flex;
+}
+
+.card-actions button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 11px;
+  color: #5e6c84;
+  border-radius: 2px;
+}
+
+.card-actions button:hover {
+  background: rgba(9, 30, 66, 0.08);
+}
+
+.add-card-btn,
+.column-add-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #5e6c84;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.add-card-btn:hover,
+.column-add-btn:hover {
+  background: rgba(9, 30, 66, 0.08);
+}
+
+.add-card-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+}
+
+.add-card-form textarea {
+  border: none;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+  min-height: 60px;
+  box-shadow: 0 1px 0 rgba(9, 30, 66, 0.25);
+}
+
+.add-card-form .actions {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-primary {
+  background: #0079bf;
+  color: #fff;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.btn-primary:hover {
+  background: #026aa7;
+}
+
+.btn-primary:disabled {
+  background: #b3bac5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: #5e6c84;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.btn-secondary:hover {
+  color: #172b4d;
+}
+
+.add-column-btn {
+  flex: 0 0 280px;
+  background: rgba(255, 255, 255, 0.4);
+  border: none;
+  border-radius: 6px;
+  padding: 12px;
+  cursor: pointer;
+  color: #fff;
+  text-align: left;
+  font-size: 13px;
+  color: #44546f;
+}
+
+.add-column-btn:hover {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.field-error {
+  color: #c9372c;
+  font-size: 12px;
+  margin-top: 2px;
+}

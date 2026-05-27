@@ -11,8 +11,21 @@ import type { DropEdge, UseSortableOptions, UseSortableResult } from './types'
 
 const SORT_KEY = '__pyreon_sortable_key'
 const SORT_ID = '__pyreon_sortable_id'
+const SORT_GROUP = '__pyreon_sortable_group'
+const SORT_PAYLOAD = '__pyreon_sortable_payload'
 
 let _sortableCounter = 0
+
+// Module-level registry of live sortable instances — used to dispatch
+// cross-list drop notifications from the destination back to the source
+// (W18 from kanban audit). Keyed by sortableId.
+const _sortableRegistry = new Map<
+  string,
+  {
+    groupId: string | undefined
+    onCrossListDrop: ((item: unknown) => void) | undefined
+  }
+>()
 
 /**
  * Sortable list with signal-driven state, auto-scroll, and edge detection.
@@ -23,6 +36,11 @@ let _sortableCounter = 0
  * - Closest-edge detection (drop above/below or left/right)
  * - Axis constraint (vertical/horizontal)
  * - Keyboard reordering (Alt+Arrow keys)
+ * - Optional cross-list `groupId` for Trello/Notion/Linear board layouts
+ *   (W18 from kanban audit) — share the same `groupId` between two
+ *   sortable instances and items can be dragged between them. The
+ *   source's `onCrossListDrop(item)` removes; the destination's
+ *   `onCrossListReceive(item, index)` inserts.
  *
  * @example
  * ```tsx
@@ -70,6 +88,14 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
   const overId = signal<string | number | null>(null)
   const overEdge = signal<DropEdge | null>(null)
   const axis = options.axis ?? 'vertical'
+  const groupId = options.groupId
+
+  // Register so siblings in the same group can call our onCrossListDrop
+  // when they receive one of our items.
+  _sortableRegistry.set(sortableId, {
+    groupId,
+    onCrossListDrop: options.onCrossListDrop as ((item: unknown) => void) | undefined,
+  })
 
   // Shared (container-level) pdnd cleanups — drained once on unmount.
   const cleanups: (() => void)[] = []
@@ -109,6 +135,14 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
     options.onReorder(reordered)
   }
 
+  /** Returns true when `source` belongs to this sortable or to a sibling
+   *  in the same `groupId`. */
+  function acceptsSource(source: { data: Record<string, unknown> }): boolean {
+    if (source.data[SORT_ID] === sortableId) return true
+    if (groupId && source.data[SORT_GROUP] === groupId) return true
+    return false
+  }
+
   function containerRef(el: HTMLElement | null) {
     // Pyreon's runtime calls refs with `null` on unmount; the per-element
     // pdnd cleanups are already registered via `onCleanup` below, so we
@@ -118,18 +152,40 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
     cleanups.push(
       autoScrollForElements({
         element: el,
-        canScroll: ({ source }) => source.data[SORT_ID] === sortableId,
+        canScroll: ({ source }) => acceptsSource(source),
       }),
     )
 
-    // Container is a drop target for reorder finalization
+    // Container is a drop target for reorder finalization OR for
+    // appending a cross-list item at the end of this column.
     cleanups.push(
       dropTargetForElements({
         element: el,
-        getData: () => ({ [SORT_ID]: sortableId }),
-        canDrop: ({ source }) => source.data[SORT_ID] === sortableId,
-        onDrop: () => {
-          performReorder()
+        getData: () => ({ [SORT_ID]: sortableId, [SORT_GROUP]: groupId }),
+        canDrop: ({ source }) => acceptsSource(source),
+        onDrop: ({ source }) => {
+          // Item-level dropTarget for cross-list drops marks the source
+          // data as handled — container skips so we don't insert twice.
+          const handled = (source.data as Record<string, unknown>)
+            .__pyreon_sortable_handled
+          if (source.data[SORT_ID] === sortableId) {
+            // Same-list drop on container edge → reorder finalization.
+            performReorder()
+          } else if (
+            !handled &&
+            groupId &&
+            source.data[SORT_GROUP] === groupId &&
+            options.onCrossListReceive
+          ) {
+            // Cross-list drop on the container itself (not on an item) →
+            // append to the end of this column.
+            const item = source.data[SORT_PAYLOAD] as T
+            const sourceSortableId = source.data[SORT_ID] as string
+            const targetIndex = options.items().length
+            options.onCrossListReceive(item, targetIndex)
+            const sourceInstance = _sortableRegistry.get(sourceSortableId)
+            sourceInstance?.onCrossListDrop?.(item)
+          }
           activeId.set(null)
           overId.set(null)
           overEdge.set(null)
@@ -210,10 +266,20 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
       const cleanup = combine(
         draggable({
           element: el,
-          getInitialData: () => ({
-            [SORT_KEY]: key,
-            [SORT_ID]: sortableId,
-          }),
+          getInitialData: () => {
+            const currentItems = options.items()
+            const item = currentItems.find((i) => options.by(i) === key)
+            return {
+              [SORT_KEY]: key,
+              [SORT_ID]: sortableId,
+              [SORT_GROUP]: groupId,
+              // Carry the actual item value when groupId is set so a
+              // sibling sortable's onDrop can receive it without a
+              // separate registry lookup. Plain reference (pdnd doesn't
+              // serialize) — safe within a single document.
+              [SORT_PAYLOAD]: groupId ? item : undefined,
+            }
+          },
           onDragStart: () => activeId.set(key),
           onDrop: () => {
             queueMicrotask(() => {
@@ -227,10 +293,10 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
           element: el,
           getData: ({ input, element }) =>
             attachClosestEdge(
-              { [SORT_KEY]: key, [SORT_ID]: sortableId },
+              { [SORT_KEY]: key, [SORT_ID]: sortableId, [SORT_GROUP]: groupId },
               { input, element, allowedEdges },
             ),
-          canDrop: ({ source }) => source.data[SORT_ID] === sortableId,
+          canDrop: ({ source }) => acceptsSource(source),
           onDragEnter: ({ self }) => {
             overId.set(key)
             overEdge.set(extractClosestEdge(self.data) as DropEdge | null)
@@ -244,6 +310,39 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
               overEdge.set(null)
             }
           },
+          onDrop: ({ source, self }) => {
+            // Same-list drops are handled by the container's onDrop via
+            // performReorder. Item-level onDrop fires for cross-list
+            // shapes — insert at THIS item's index, then propagate to
+            // the source to remove.
+            if (source.data[SORT_ID] === sortableId) return
+            if (
+              !groupId ||
+              source.data[SORT_GROUP] !== groupId ||
+              !options.onCrossListReceive
+            ) {
+              return
+            }
+            const item = source.data[SORT_PAYLOAD] as T
+            const edge = extractClosestEdge(self.data) as DropEdge | null
+            const currentItems = options.items()
+            const targetIndex = currentItems.findIndex(
+              (i) => options.by(i) === key,
+            )
+            if (targetIndex === -1) return
+            const insertAt =
+              edge === 'bottom' || edge === 'right'
+                ? targetIndex + 1
+                : Math.max(0, targetIndex)
+            options.onCrossListReceive(item, insertAt)
+            const sourceSortableId = source.data[SORT_ID] as string
+            const sourceInstance = _sortableRegistry.get(sourceSortableId)
+            sourceInstance?.onCrossListDrop?.(item)
+            // Mark so the container's onDrop (which also fires) skips
+            // re-inserting at the end of the list.
+            ;(source.data as Record<string, unknown>).__pyreon_sortable_handled =
+              true
+          },
         }),
       )
 
@@ -256,6 +355,7 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
     cleanups.length = 0
     for (const cleanup of itemCleanups.values()) cleanup()
     itemCleanups.clear()
+    _sortableRegistry.delete(sortableId)
     activeId.set(null)
     overId.set(null)
     overEdge.set(null)

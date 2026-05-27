@@ -1,0 +1,41 @@
+{
+  "name": "kanban",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "zero dev",
+    "build": "zero build",
+    "preview": "zero preview",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/dnd": "workspace:*",
+    "@pyreon/form": "workspace:*",
+    "@pyreon/head": "workspace:*",
+    "@pyreon/hooks": "workspace:*",
+    "@pyreon/i18n": "workspace:*",
+    "@pyreon/permissions": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/router": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/runtime-server": "workspace:*",
+    "@pyreon/rx": "workspace:*",
+    "@pyreon/state-tree": "workspace:*",
+    "@pyreon/storage": "workspace:*",
+    "@pyreon/toast": "workspace:*",
+    "@pyreon/url-state": "workspace:*",
+    "@pyreon/validation": "workspace:*",
+    "@pyreon/zero": "workspace:*",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@pyreon/typescript": "workspace:*",
+    "@pyreon/vite-plugin": "workspace:*",
+    "@pyreon/zero-cli": "workspace:*",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.3"
+  }
+}

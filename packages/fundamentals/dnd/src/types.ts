@@ -67,6 +67,33 @@ export interface UseSortableOptions<T> {
   onReorder: (items: T[]) => void
   /** Sort axis. Default: "vertical". */
   axis?: 'vertical' | 'horizontal'
+  /**
+   * Opt-in cross-list drop universe. When two `useSortable` instances
+   * declare the same `groupId`, drags between them are accepted (drops
+   * from list A onto list B fire). When omitted (the default), each
+   * sortable is a private universe — drops from other sortables are
+   * rejected. Use `groupId` for Trello / Notion / Linear board layouts
+   * (W18 from kanban audit).
+   *
+   * The callback `onCrossListDrop` is invoked on the SOURCE sortable
+   * when an item is dragged out to a sibling group sortable. Wire it
+   * to remove the item from the source list. The DESTINATION sortable
+   * receives `onCrossListReceive` with the moved item + index.
+   */
+  groupId?: string
+  /**
+   * Called on the SOURCE sortable when one of its items is dropped on
+   * a sibling sortable in the same `groupId`. Only invoked when
+   * `groupId` is set.
+   */
+  onCrossListDrop?: (item: T) => void
+  /**
+   * Called on the DESTINATION sortable when an item from a sibling
+   * sortable in the same `groupId` is dropped on it. Receives the
+   * moved item and the target insert index. Only invoked when
+   * `groupId` is set.
+   */
+  onCrossListReceive?: (item: T, targetIndex: number) => void
 }
 
 export interface UseSortableResult {

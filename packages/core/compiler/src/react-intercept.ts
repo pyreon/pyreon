@@ -1228,6 +1228,36 @@ const ERROR_PATTERNS: ErrorPattern[] = [
       fixCode: "useHotkey('g t', () => router.push('/top'))",
     }),
   },
+  {
+    // W19 (kanban audit) — user runs `zero build` against an SPA-only
+    // project that has no `src/entry-server.ts`. As of v0.25.2 the CLI
+    // skips the server build for `mode: 'spa'` AND when entry-server.ts
+    // is absent; this pattern catches older zero-cli versions or apps
+    // that declare a non-SPA mode without the matching entry file.
+    pattern: /\[UNRESOLVED_ENTRY\][^\n]*src\/entry-server\.ts/,
+    diagnose: () => ({
+      cause:
+        "`zero build` is doing an SSR build pass but `src/entry-server.ts` doesn't exist.",
+      fix: "If your app is SPA-only: declare `zero({ mode: 'spa' })` in vite.config.ts AND upgrade `@pyreon/zero-cli` to ≥0.25.2 (where the SSR build pass is skipped for SPA mode). If your app needs SSR/SSG: add `src/entry-server.ts` exporting `createServer(...)` from `@pyreon/zero/server`.",
+      fixCode:
+        "// vite.config.ts\nimport zero from '@pyreon/zero/server'\nexport default {\n  plugins: [zero({ mode: 'spa' })],\n}",
+    }),
+  },
+  {
+    // W18 (kanban audit) — user pairs only one half of the cross-list
+    // dnd contract. `groupId` is the opt-in; the destination must
+    // provide `onCrossListReceive`, the source must provide
+    // `onCrossListDrop`. Without one half, items appear duplicated
+    // (no source removal) or disappear (no destination insert).
+    pattern: /\[@pyreon\/dnd\] useSortable cross-list/,
+    diagnose: () => ({
+      cause:
+        'A useSortable with groupId received a cross-list drop but missed either onCrossListReceive (destination inserts) or onCrossListDrop (source removes).',
+      fix: 'Pair both callbacks across the two sortables that share a groupId. Destination inserts; source removes.',
+      fixCode:
+        "const a = useSortable({\n  items: colA, by: c => c.id, onReorder: setColA,\n  groupId: 'kanban',\n  onCrossListDrop: item => setColA(colA().filter(c => c.id !== item.id)),\n})\nconst b = useSortable({\n  items: colB, by: c => c.id, onReorder: setColB,\n  groupId: 'kanban',\n  onCrossListReceive: (item, i) => {\n    const next = [...colB.peek()]\n    next.splice(i, 0, item)\n    setColB(next)\n  },\n})",
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */

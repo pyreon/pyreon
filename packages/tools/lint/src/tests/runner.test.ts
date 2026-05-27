@@ -454,6 +454,17 @@ describe('JSX rules', () => {
     expect(diags.length).toBe(1)
   })
 
+  it('pyreon/no-map-in-jsx: flags .map() inside reactive accessor (W20 kanban shape)', () => {
+    // The exact pattern that surfaced as W20 in the kanban audit — a
+    // signal accessor `{() => items().map(...)}` silently remounts every
+    // child on each accessor re-evaluation. The lint rule must catch
+    // this shape, not just the direct `{items.map(...)}` shape.
+    const source = `const App = () => <ul>{() => items().map(i => <li>{i}</li>)}</ul>`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-map-in-jsx')
+    expect(diags.length).toBe(1)
+  })
+
   it('pyreon/use-by-not-key: flags key on <For>', () => {
     const source = `const App = () => <For each={items} key={r => r.id}>{r => <li />}</For>`
     const result = lintSource(source)

@@ -1,6 +1,13 @@
 import { _captureCallerLocation, _rdRecordFire, _rdRegister } from './reactive-devtools'
 import { getCurrentScope } from './scope'
-import { _restoreActiveEffect, _setActiveEffect, setDepsCollector, withTracking } from './tracking'
+import {
+  _restoreActiveEffect,
+  _setActiveEffect,
+  getInnerEffectCollector,
+  setDepsCollector,
+  setInnerEffectCollector,
+  withTracking,
+} from './tracking'
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
@@ -86,11 +93,12 @@ export function onCleanup(fn: () => void): void {
   }
 }
 
-// Thread-local collector for nested effects — captures effect() calls made
-// inside another effect's fn() body so the parent can dispose them on
-// re-run / disposal. Without this, inner effects leak across outer
-// lifecycle boundaries (caught by cleanup-nested.test.ts).
-let _innerEffectCollector: Effect[] | null = null
+// Inner-effect collector state is owned by tracking.ts (see
+// `getInnerEffectCollector` / `setInnerEffectCollector`) so `runUntracked`
+// can suspend it in lock-step with `activeEffect`. effect.ts only manipulates
+// it through the imported getter/setter — keeps the auto-cleanup chain
+// disconnected from work that explicitly opted out of the outer reactive
+// context (W23 from kanban audit, PR #982).
 
 // Global error handler — called for unhandled errors thrown inside effects.
 // Defaults to console.error so silent failures are never swallowed.
@@ -238,9 +246,9 @@ export function effect(
     // Start a new inner-effect collection window. Effects created during
     // fn() will push themselves into this array and be disposed on the
     // next re-run or on dispose.
-    const outerCollector = _innerEffectCollector
+    const outerCollector = getInnerEffectCollector() as Effect[] | null
     const myInners: Effect[] = []
-    _innerEffectCollector = myInners
+    setInnerEffectCollector(myInners)
     try {
       cleanupLocalDeps(deps, run)
       setDepsCollector(deps)
@@ -265,7 +273,7 @@ export function effect(
       setDepsCollector(null)
       _errorHandler(err)
     } finally {
-      _innerEffectCollector = outerCollector
+      setInnerEffectCollector(outerCollector)
     }
     if (myInners.length > 0) innerEffects = myInners
     // Notify scope after each reactive re-run (not the initial synchronous run)
@@ -299,9 +307,14 @@ export function effect(
   }
 
   // If we're inside another effect's run, register with it so the outer
-  // disposes this inner automatically.
-  if (_innerEffectCollector !== null) {
-    _innerEffectCollector.push(e)
+  // disposes this inner automatically. The collector is `null` inside
+  // `runUntracked` (see tracking.ts) — work that explicitly opted out of
+  // the outer reactive context falls through to scope.add instead, so
+  // child component effects mounted inside `mountFor`'s `runUntracked`
+  // wrap aren't auto-disposed on the For's next re-run (W23).
+  const collector = getInnerEffectCollector() as Effect[] | null
+  if (collector !== null) {
+    collector.push(e)
   } else {
     // Otherwise auto-register with the active EffectScope (if any)
     getCurrentScope()?.add(e)
