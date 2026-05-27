@@ -42,6 +42,17 @@ let _activeEnumType: string | undefined
 let _signalNames: Set<string> = new Set()
 /** G2: every function decl name (Parser-A). Mirrors emit-swift's set. */
 let _functionNames: Set<string> = new Set()
+/**
+ * C5.3: per-component map from router-decl name → its routes array.
+ * Populated at the start of each `emitKotlinComponent` from the
+ * `kind: 'router'` decls that carry routes. `emitKotlinRouterProvider`
+ * reads this to emit the `NavHost { composable(...) }` block.
+ *
+ * Mirrors emit-swift.ts's `_routerRoutes`. Empty for routerless
+ * components AND for C4-style scaffold routers (no `routes` config
+ * in source) — both fall back to the existing bare-content emit.
+ */
+let _routerRoutes: Map<string, import('./types').RouteIR[]> = new Map()
 
 export function emitKotlin(
   components: ComponentIR[],
@@ -166,6 +177,8 @@ function emitKotlinComponent(c: ComponentIR): string {
   _signalEnumTypes = new Map()
   _signalNames = new Set()
   _functionNames = new Set()
+  // C5.3: reset router-routes map (mirrors Swift emit's same state).
+  _routerRoutes = new Map()
   // Phase 2 follow-up — track function-typed props so handler emit
   // calls them inside closures. Mirrors emit-swift.ts.
   for (const p of c.props) {
@@ -183,7 +196,12 @@ function emitKotlinComponent(c: ComponentIR): string {
     // instance — name reads bare (no parens) like a signal. Add to
     // `_signalNames` so JSX `<RouterProvider router={router}>` emits
     // the property reference correctly.
-    if (d.kind === 'router') _signalNames.add(d.name)
+    // C5.3: also stash the routes list (if parsed) so RouterProvider
+    // emit can produce a NavHost { composable(...) } block.
+    if (d.kind === 'router') {
+      _signalNames.add(d.name)
+      if (d.routes !== undefined) _routerRoutes.set(d.name, d.routes)
+    }
     // C4: `const navigate = useNavigate()` returns a `(String) -> Unit`
     // closure — register under `_functionNames` so call sites
     // (`navigate("/dashboard")`) emit with parens. `useParams()`
@@ -224,6 +242,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _activePropsParamName = undefined
   _signalNames = new Set()
   _functionNames = new Set()
+  _routerRoutes = new Map()
   return lines.join('\n')
 }
 
@@ -1351,6 +1370,31 @@ function emitKotlinLink(
 /**
  * Emit `<RouterProvider router={r}>...</RouterProvider>` as the
  * runtime-kotlin `RouterProvider(r) { ... }`.
+ *
+ * C5.3 extension — when the router-attr names a `kind: 'router'` decl
+ * carrying a `routes` array, the content block is wrapped in a Compose
+ * `NavHost { composable(...) }` per-route dispatch:
+ *
+ *   RouterProvider(router) {
+ *     val navController = rememberNavController()
+ *     NavHost(navController = navController, startDestination = "/") {
+ *       composable("/") { HomePage() }
+ *       composable("/users/{id}") { entry ->
+ *         val params = entry.arguments?.let { args ->
+ *           args.keySet().associateWith { key -> args.getString(key) ?: "" }
+ *         } ?: emptyMap()
+ *         UserPage(params = params)
+ *       }
+ *     }
+ *   }
+ *
+ * Path patterns convert from Pyreon's `:id` syntax to Compose's `{id}`
+ * syntax in-place; Compose's own NavHost extracts named args, which
+ * the emit wraps into a `Map<String, String>` for the matched
+ * component's `params:` arg.
+ *
+ * Falls back to the bare-content emit when routes aren't resolvable
+ * (back-compat with C4 scaffold + foreign-router-attr shapes).
  */
 function emitKotlinRouterProvider(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
@@ -1365,11 +1409,82 @@ function emitKotlinRouterProvider(
   }
   const routerExpr = emitKotlinExpr(routerAttr.value, indent)
   const pad = ' '.repeat(indent + 2)
+
+  // C5.3: look up the named router-decl's routes. Same fallback rules
+  // as Swift emit — non-identifier router-attr or no routes → bare emit.
+  let routesBlock = ''
+  if (routerAttr.value.kind === 'identifier') {
+    const routes = _routerRoutes.get(routerAttr.value.name)
+    if (routes !== undefined && routes.length > 0) {
+      routesBlock = emitKotlinNavHost(routes, indent + 2)
+    }
+  }
+
   if (e.children.length === 0) {
     return `RouterProvider(${routerExpr}) { }`
   }
   const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+  // When routes are resolved, the NavHost block REPLACES the bare
+  // content. The user's <RouterView /> typically just marks the spot
+  // where routed content goes; with NavHost it's not needed (NavHost
+  // IS the router-content host on Compose).
+  if (routesBlock !== '') {
+    return `RouterProvider(${routerExpr}) {\n${routesBlock}\n${' '.repeat(indent)}}`
+  }
   return `RouterProvider(${routerExpr}) {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * C5.3 — emit a Compose `NavHost { composable(...) }` block for the
+ * given routes. Pyreon's `/users/:id` pattern converts to Compose's
+ * `/users/{id}` syntax; the emitted body extracts the matched args
+ * into a `params: Map<String, String>` arg for the matched component.
+ */
+function emitKotlinNavHost(
+  routes: import('./types').RouteIR[],
+  indent: number,
+): string {
+  const pad = ' '.repeat(indent)
+  const innerPad = ' '.repeat(indent + 2)
+  const deepPad = ' '.repeat(indent + 4)
+  const start = routes[0]?.path ?? '/'
+  const lines: string[] = []
+  lines.push(`${pad}val navController = rememberNavController()`)
+  lines.push(
+    `${pad}NavHost(navController = navController, startDestination = ${JSON.stringify(start)}) {`,
+  )
+  for (const route of routes) {
+    const composePath = pyreonPathToCompose(route.path)
+    const componentExpr = emitKotlinExpr(route.component, indent + 4)
+    const isPattern = route.path.includes(':')
+    if (isPattern) {
+      lines.push(`${innerPad}composable(${JSON.stringify(composePath)}) { entry ->`)
+      lines.push(
+        `${deepPad}val params = entry.arguments?.let { args -> args.keySet().associateWith { key -> args.getString(key) ?: "" } } ?: emptyMap()`,
+      )
+      lines.push(`${deepPad}${componentExpr}(params = params)`)
+      lines.push(`${innerPad}}`)
+    } else {
+      // Use the 1-arg form (`_ ->`) even for literal-path routes so
+      // there's only ONE composable() overload to stub for kotlinc.
+      // Real androidx.navigation:navigation-compose has the same
+      // single-overload shape; the underscore params it cleanly.
+      lines.push(
+        `${innerPad}composable(${JSON.stringify(composePath)}) { _ -> ${componentExpr}() }`,
+      )
+    }
+  }
+  lines.push(`${pad}}`)
+  return lines.join('\n')
+}
+
+/**
+ * Convert a Pyreon route pattern (`/users/:id`) to Compose's NavHost
+ * pattern syntax (`/users/{id}`). Compose nav-compose uses brace-named
+ * segments; the conversion is a regex replace of `:name` → `{name}`.
+ */
+function pyreonPathToCompose(path: string): string {
+  return path.replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, '{$1}')
 }
 
 /**

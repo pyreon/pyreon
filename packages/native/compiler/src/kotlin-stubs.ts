@@ -383,4 +383,54 @@ class RoundedCornerShape(corner: Dp) : Shape
 // PasswordVisualTransformation — Compose Material's visual-mask
 // for password-field text. Phase B Field emit uses it for kind="password".
 class PasswordVisualTransformation
+
+// --- Phase C5.3: nav-compose stubs for NavHost emit ---
+//
+// Real Compose ships androidx.navigation.compose with NavHost,
+// composable(), NavController, rememberNavController(), NavBackStackEntry,
+// Bundle args. These stubs are the minimum surface PMTC emits when a
+// route table is detected on createRouter({ routes: [...] }):
+//
+//   val navController = rememberNavController()
+//   NavHost(navController, startDestination = "/") {
+//     composable("/") { HomePage() }
+//     composable("/users/{id}") { entry ->
+//       val params = entry.arguments?.let { args ->
+//         args.keySet().associateWith { key -> args.getString(key) ?: "" }
+//       } ?: emptyMap()
+//       UserPage(params = params)
+//     }
+//   }
+//
+// The stubs let kotlinc resolve the symbols + types; real apps depend
+// on androidx.navigation:navigation-compose for runtime behaviour.
+
+class Bundle {
+  fun keySet(): Set<String> = emptySet()
+  fun getString(key: String): String? = null
+}
+
+class NavBackStackEntry {
+  val arguments: Bundle? = Bundle()
+}
+
+class NavController
+class NavGraphBuilder {
+  @Suppress("UNUSED_PARAMETER")
+  fun composable(route: String, content: @Composable (NavBackStackEntry) -> Unit) { }
+}
+
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun NavHost(navController: NavController, startDestination: String, builder: NavGraphBuilder.() -> Unit) {
+  // Stub: real NavHost wires the back stack + per-route content
+  // composables. Phase C5.3 emit only needs the symbol resolvable.
+}
+
+@Composable
+fun rememberNavController(): NavController = NavController()
+
+// PMTC's C5.3 emit always passes the 1-arg trailing closure form
+// (entry-> for :param routes, _-> for literal routes). Single overload —
+// no extension needed; matches real androidx.navigation:navigation-compose.
 `
