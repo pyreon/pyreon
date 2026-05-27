@@ -227,6 +227,23 @@ fun Checkbox(
   // Type-check-only stub.
 }
 
+// --- Phase E2: Switch (Compose Material binary toggle) ---
+//
+// Canonical Toggle emits to Switch(checked, onCheckedChange) on
+// Compose. Switch is the Material-spec name for the binary toggle
+// widget (NOT Toggle — Compose has no Toggle composable; that name
+// is SwiftUI-only). Same surface as Checkbox plus the enabled arg
+// for the canonical disabled prop. Type-check-only stub.
+
+@Composable
+fun Switch(
+  checked: Boolean,
+  onCheckedChange: ((Boolean) -> Unit)? = null,
+  enabled: Boolean = true,
+) {
+  // Type-check-only stub.
+}
+
 // --- Phase 2.5: @pyreon/native-runtime-kotlin's rememberPyreonStorage ---
 //
 // The compiler emit now calls rememberPyreonStorage<T>(key, default)

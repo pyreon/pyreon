@@ -131,7 +131,10 @@ describe('TodoMVC compile baseline', () => {
         let onRemove: () -> Void
         var body: some View {
           HStack {
-            Image(systemName: todo.done ? "checkmark.square.fill" : "square")
+            Toggle("", isOn: Binding(
+                get: { todo.done },
+                set: { _ in onToggle() }
+              ))
             Text("\\(todo.text)")
             Button("Remove") { onRemove() }
           }
@@ -605,19 +608,23 @@ describe('TodoMVC gap-tracking baseline', () => {
     expect(out.code).toContain('TodoRow(todo = t, onToggle = { toggle(t.id) }, onRemove = { remove(t.id) })')
   })
 
-  it('Phase 2 — <Checkbox checked={x}> emits SwiftUI `Image(systemName: ...)` (last typecheck blocker)', () => {
-    // Closes the LAST remaining typecheck error in the TodoMVC Swift
-    // emit. Pyreon's `<Checkbox>` is a source-side convention; SwiftUI
-    // doesn't ship a non-interactive Checkbox primitive. The closest
-    // typecheck-clean read-only display is `Image(systemName: ...)`
-    // with a conditional system symbol.
-    //
-    // After this PR, `swiftc -typecheck` on the actual TodoMVC emit
-    // returns ZERO errors — the symbolic "TodoMVC compiles cleanly to
-    // Swift" milestone for the in-compiler scope.
+  it('Phase E2 — <Toggle value={props.todo.done} onChange={props.onToggle}> emits SwiftUI custom Binding', () => {
+    // The TodoMVC TodoRow uses parent-owns-state: the row reads
+    // `props.todo.done` (NON-SIGNAL — it's a plain field on a
+    // parent-passed object) and writes via `props.onToggle()` (a
+    // callback prop). SwiftUI's `Toggle("", isOn: ...)` requires a
+    // `Binding<Bool>` for the `isOn` arg; for non-signal sources the
+    // canonical idiom is a custom `Binding(get:set:)` that reads the
+    // expression and routes writes through the callback. Closes the
+    // PMTC Phase E2 migration from the legacy `<Checkbox>` source
+    // tag (which emitted a read-only `Image(systemName: ...)` —
+    // typecheck-clean but functionally a no-op).
     const out = transform(source, { target: 'swift' })
-    expect(out.code).toContain('Image(systemName: todo.done ? "checkmark.square.fill" : "square")')
+    expect(out.code).toContain('Toggle("", isOn: Binding(')
+    expect(out.code).toContain('get: { todo.done }')
+    expect(out.code).toContain('set: { _ in onToggle() }')
     expect(out.code).not.toContain('Checkbox(')
+    expect(out.code).not.toContain('Image(systemName: todo.done')
   })
 
   it('Phase 2 — function-typed prop / decl handlers call inside trailing closures', () => {
