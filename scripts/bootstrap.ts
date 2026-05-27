@@ -162,6 +162,23 @@ function maxFileMtime(dir: string): number {
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
+// Full-skip escape hatch — used by the CI `install` job under the P3c
+// split. CI's install step is split into a fast `Install` job (just
+// `bun install`) + a separate `Bootstrap` job (runs this script
+// without the skip). Setting PYREON_BOOTSTRAP_SKIP=1 makes the
+// postinstall a no-op so the install job finishes in ~60s instead of
+// ~210s, unblocking lib-free downstream jobs (typecheck, lint, test,
+// etc.) ~150s sooner. The Bootstrap job runs the build separately,
+// gating the lib-needing downstream jobs. NOT for local use (you
+// want lib/ built after `bun install` for example builds to work).
+if (process.env.PYREON_BOOTSTRAP_SKIP === '1') {
+  // oxlint-disable-next-line no-console
+  console.log(
+    '[bootstrap] Skipped (PYREON_BOOTSTRAP_SKIP=1). lib/ must be built separately.',
+  )
+  process.exit(0)
+}
+
 const packages = findBuildablePackages()
 
 // Three failure modes that require a rebuild:
