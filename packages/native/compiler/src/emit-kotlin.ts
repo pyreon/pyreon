@@ -1418,13 +1418,16 @@ function emitKotlinRouterProvider(
   const routerExpr = emitKotlinExpr(routerAttr.value, indent)
   const pad = ' '.repeat(indent + 2)
 
-  // C5.3: look up the named router-decl's routes. Same fallback rules
-  // as Swift emit — non-identifier router-attr or no routes → bare emit.
+  // C5.3 → R1.2: look up the named router-decl's routes. Same
+  // fallback rules as Swift emit — non-identifier router-attr or
+  // no routes → bare emit. R1.2 switched from NavHost to a
+  // `when`-on-currentPath dispatch — simpler, no nav-compose dep,
+  // closes the state-disconnect bug + no-match throw.
   let routesBlock = ''
   if (routerAttr.value.kind === 'identifier') {
     const routes = _routerRoutes.get(routerAttr.value.name)
     if (routes !== undefined && routes.length > 0) {
-      routesBlock = emitKotlinNavHost(routes, indent + 2)
+      routesBlock = emitKotlinRouteDispatch(routes, indent + 2)
     }
   }
 
@@ -1443,56 +1446,74 @@ function emitKotlinRouterProvider(
 }
 
 /**
- * C5.3 — emit a Compose `NavHost { composable(...) }` block for the
- * given routes. Pyreon's `/users/:id` pattern converts to Compose's
- * `/users/{id}` syntax; the emitted body extracts the matched args
- * into a `params: Map<String, String>` arg for the matched component.
+ * R1.2 — emit a Compose `when`-dispatch block for the given routes.
+ *
+ * Replaces the C5.3 NavHost-based emit. NavHost had three real problems:
+ *   1. **State disconnect** — NavHost has its OWN navController; calling
+ *      `router.push("/x")` updated `router.path` but NOT the navController,
+ *      so navigation didn't drive UI updates.
+ *   2. **No-match throw** — NavHost.navigate("/unknown") throws
+ *      IllegalArgumentException at runtime.
+ *   3. **AndroidX dep** — NavHost requires androidx.navigation.compose,
+ *      pulling an Android-SDK dependency into emitted code.
+ *
+ * The when-dispatch shape solves all three:
+ *   - Directly observes `router.currentPath` → Compose recomposes on
+ *     any router.push/back/replace; no nav state to sync
+ *   - Else-branch handles no-match gracefully (renders a 404 Text)
+ *   - Uses only stable Compose primitives (no nav-compose dep)
+ *   - Symmetric to Swift's emit (if/else if + else fallback) — same
+ *     architecture across both native targets
+ *
+ * Emit shape:
+ *   val currentPath = router.currentPath
+ *   when {
+ *     currentPath == "/" -> HomePage()
+ *     currentPath == "/about" -> AboutPage()
+ *     PyreonRouter.matchPath(currentPath, "/users/:id") != null -> {
+ *       val params = PyreonRouter.matchPath(currentPath, "/users/:id") ?: emptyMap()
+ *       UserPage(params = params)
+ *     }
+ *     else -> Text("Pyreon Router: no route for \${currentPath}")
+ *   }
  */
-function emitKotlinNavHost(
+function emitKotlinRouteDispatch(
   routes: import('./types').RouteIR[],
   indent: number,
 ): string {
   const pad = ' '.repeat(indent)
   const innerPad = ' '.repeat(indent + 2)
-  const deepPad = ' '.repeat(indent + 4)
-  const start = routes[0]?.path ?? '/'
   const lines: string[] = []
-  lines.push(`${pad}val navController = rememberNavController()`)
-  lines.push(
-    `${pad}NavHost(navController = navController, startDestination = ${JSON.stringify(start)}) {`,
-  )
+  lines.push(`${pad}val currentPath = router.currentPath`)
+  lines.push(`${pad}when {`)
   for (const route of routes) {
-    const composePath = pyreonPathToCompose(route.path)
     const componentExpr = emitKotlinExpr(route.component, indent + 4)
     const isPattern = route.path.includes(':')
     if (isPattern) {
-      lines.push(`${innerPad}composable(${JSON.stringify(composePath)}) { entry ->`)
+      // Param-bearing route: matchPath returns Map<String, String> or null.
+      // Use `null != PyreonRouter.matchPath(...)` as the condition, then
+      // re-call inside the body to capture params (the matchPath helper
+      // is pure + cheap; double-call is fine. Alternative: `also` block
+      // pattern would be DRYer but kotlinc-stub-incompatible.)
       lines.push(
-        `${deepPad}val params = entry.arguments?.let { args -> args.keySet().associateWith { key -> args.getString(key) ?: "" } } ?: emptyMap()`,
+        `${innerPad}PyreonRouter.matchPath(currentPath, ${JSON.stringify(route.path)}) != null -> {`,
       )
-      lines.push(`${deepPad}${componentExpr}(params = params)`)
+      lines.push(
+        `${innerPad}  val params = PyreonRouter.matchPath(currentPath, ${JSON.stringify(route.path)}) ?: emptyMap()`,
+      )
+      lines.push(`${innerPad}  ${componentExpr}(params = params)`)
       lines.push(`${innerPad}}`)
     } else {
-      // Use the 1-arg form (`_ ->`) even for literal-path routes so
-      // there's only ONE composable() overload to stub for kotlinc.
-      // Real androidx.navigation:navigation-compose has the same
-      // single-overload shape; the underscore params it cleanly.
+      // Literal route — direct == comparison.
       lines.push(
-        `${innerPad}composable(${JSON.stringify(composePath)}) { _ -> ${componentExpr}() }`,
+        `${innerPad}currentPath == ${JSON.stringify(route.path)} -> ${componentExpr}()`,
       )
     }
   }
+  // R1.2 fallback — symmetric to Swift's else { Text("...") }.
+  lines.push(`${innerPad}else -> Text(text = "Pyreon Router: no route for \${currentPath}")`)
   lines.push(`${pad}}`)
   return lines.join('\n')
-}
-
-/**
- * Convert a Pyreon route pattern (`/users/:id`) to Compose's NavHost
- * pattern syntax (`/users/{id}`). Compose nav-compose uses brace-named
- * segments; the conversion is a regex replace of `:name` → `{name}`.
- */
-function pyreonPathToCompose(path: string): string {
-  return path.replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, '{$1}')
 }
 
 /**

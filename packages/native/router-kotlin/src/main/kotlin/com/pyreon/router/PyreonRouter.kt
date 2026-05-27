@@ -103,4 +103,41 @@ public class PyreonRouter(initialPath: List<String> = emptyList()) {
     public fun reset() {
         this.path.value = emptyList()
     }
+
+    public companion object {
+        /**
+         * R1.2 — match an incoming path against a pattern, extracting
+         * named params. Returns the params map on match, null on miss.
+         *
+         * Mirrors @pyreon/router's `match.ts` algorithm AND the Swift
+         * runtime's `PyreonRouter.matchPath`. The compiler emits calls
+         * to this helper from inside the `when`-dispatch block when
+         * a route's path contains a `:param` segment.
+         *
+         * Examples:
+         *   matchPath("/users/123", "/users/:id")     → mapOf("id" to "123")
+         *   matchPath("/posts/abc/edit", "/posts/:slug/edit") → mapOf("slug" to "abc")
+         *   matchPath("/users/123", "/posts/:id")     → null
+         *
+         * Phase 0 semantics: exact segment count, named param capture,
+         * literal segments compared as-is. No wildcards / catch-alls.
+         */
+        public fun matchPath(path: String, pattern: String): Map<String, String>? {
+            val pathParts = path.split("/")
+            val patternParts = pattern.split("/")
+            if (pathParts.size != patternParts.size) return null
+            val params = mutableMapOf<String, String>()
+            for (i in pathParts.indices) {
+                val pathSeg = pathParts[i]
+                val patternSeg = patternParts[i]
+                if (patternSeg.startsWith(":")) {
+                    val name = patternSeg.substring(1)
+                    params[name] = pathSeg
+                } else if (pathSeg != patternSeg) {
+                    return null
+                }
+            }
+            return params
+        }
+    }
 }
