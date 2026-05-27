@@ -518,6 +518,33 @@
         "@pyreon/native-cli": "workspace:*",
       },
     },
+    "examples/native-router-demo-ios": {
+      "name": "@pyreon/example-native-router-demo-ios",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/primitives": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/router": "workspace:*",
+      },
+    },
+    "examples/native-router-demo-web": {
+      "name": "@pyreon/example-native-router-demo-web",
+      "version": "0.0.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/primitives": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/router": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/vite-plugin": "workspace:*",
+        "@types/bun": "^1.3.11",
+        "typescript": "^6.0.2",
+        "vite": "^8.0.0",
+      },
+    },
     "examples/native-todomvc-android": {
       "name": "@pyreon/example-native-todomvc-android",
       "version": "0.0.0",
@@ -2632,6 +2659,10 @@
     "@pyreon/example-app-showcase": ["@pyreon/example-app-showcase@workspace:examples/app-showcase"],
 
     "@pyreon/example-native-counter-ios": ["@pyreon/example-native-counter-ios@workspace:examples/native-counter-ios"],
+
+    "@pyreon/example-native-router-demo-ios": ["@pyreon/example-native-router-demo-ios@workspace:examples/native-router-demo-ios"],
+
+    "@pyreon/example-native-router-demo-web": ["@pyreon/example-native-router-demo-web@workspace:examples/native-router-demo-web"],
 
     "@pyreon/example-native-todomvc-android": ["@pyreon/example-native-todomvc-android@workspace:examples/native-todomvc-android"],
 

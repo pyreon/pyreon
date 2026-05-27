@@ -74,6 +74,48 @@ export function useRoute<TPath extends string = string>(): () => ResolvedRoute<
 }
 
 /**
+ * Programmatic navigation hook. Returns a callable that pushes the
+ * given path onto the active router's stack — mirrors the canonical
+ * `useNavigate()` shape exposed by `@pyreon/native-router-swift` and
+ * `@pyreon/native-router-kotlin`, so the SAME `.tsx` source can call
+ * `useNavigate()` on all three targets.
+ *
+ * @example
+ * const navigate = useNavigate()
+ * navigate('/dashboard')
+ */
+export function useNavigate(): (path: string) => void {
+  const router = useContext(RouterContext) ?? _activeRouter
+  if (!router)
+    throw new Error(
+      '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
+    )
+  return (path: string) => router.push(path)
+}
+
+/**
+ * Read path parameters for the current route. Returns a snapshot map
+ * of `{ paramName: value }` extracted from the matched route pattern.
+ * Mirrors the canonical `useParams()` shape on native runtimes for
+ * cross-target source parity.
+ *
+ * The generic `T` lets callers type the params shape they expect (e.g.
+ * `useParams<{ id: string }>()`); at runtime it's still a string map.
+ *
+ * @example
+ * const params = useParams<{ id: string }>()
+ * console.log(params.id)
+ */
+export function useParams<T extends Record<string, string> = Record<string, string>>(): T {
+  const router = useContext(RouterContext) ?? _activeRouter
+  if (!router)
+    throw new Error(
+      '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
+    )
+  return router.currentRoute().params as T
+}
+
+/**
  * In-component guard: called before the component's route is left.
  * Return `false` to cancel, a string to redirect, or `undefined`/`true` to proceed.
  * Automatically removed on component unmount.
