@@ -1360,6 +1360,52 @@ oxfmt --check .                       # check formatting
 Every package and example must have `"lint": "oxlint ."` and `"typecheck": "tsc --noEmit"` in scripts.
 Examples use `noEmit: true` in tsconfig (not `rootDir`) since they include vite.config.ts.
 
+### CI architecture (post-speedup, 2026-05)
+
+PR pipeline wall-clock: **~8.3 min** (was ~13 min pre-speedup). Five-PR plan landed via PRs #948 / #954 / #964 / #968 / #972; the architecture is non-obvious in a few places — if you're about to edit `.github/workflows/ci.yml` read this first.
+
+**Job-DAG shape**:
+
+```text
+Install (~25s, bun install only — postinstall bootstrap SKIPPED via PYREON_BOOTSTRAP_SKIP=1)
+├── lib-free jobs (start at T+25s, save ~150s critical-path):
+│     typecheck-cell (8-cell matrix) → Typecheck (aggregator)
+│     lint, audit-types, coverage (floor), check-doc-claims,
+│     check-manifest-depth, docs-sync, audit, test-rust-binary,
+│     e2e-decide
+│
+└── Bootstrap (~208s, runs scripts/bootstrap.ts to build lib/)
+      └── lib-needing jobs (start at T+233s):
+            test-cell (8-cell matrix) → Test (aggregator)
+            test-browser, coverage-full
+            build, verify-modes, check-bundle-budgets,
+            check-distribution, scaffold-smoke-cell, benchmark
+            e2e-suite (matrix, also needs e2e-decide)
+```
+
+**Why lib-free vs lib-needing.** TypeScript's root tsconfig sets `customConditions: ["bun"]` and vitest sets `resolve.conditions: ['bun']` — both resolve `@pyreon/*` to `src/*.ts` (not `lib/*.js`). So typecheck / lint / vitest-driven tests don't need `lib/` built. **Exception**: tests that ASSERT ON `lib/` as an artifact (`@pyreon/charts/src/tests/bundle-size.test.ts` measures lib/ bytes) OR boot a nested Vite SSR build at test time (`@pyreon/vite-plugin/src/tests/rocketstyle-collapse.test.ts` — Vite's config-loader is hardcoded to the node condition) DO need `lib/`. The `test-cell` matrix gates on `bootstrap` for that reason — both classes of test live under `packages/*/tests/`, can't be cheaply detected at workflow-config time, so the whole `test` job waits.
+
+**Matrix shards** (P3b): `typecheck-cell` and `test-cell` are 8-cell matrices over `packages/*` categories (`core` / `fundamentals` / `internals` / `native` / `tools` / `ui` / `ui-system` / `zero`). Each cell narrows the affected-filter via `scripts/affected.ts --category=<name>` — cells with no affected packages skip gracefully. Aggregator jobs `Typecheck` / `Test` keep the original required-check names for branch protection. Same pattern as the pre-existing `e2e-suite` (decide → matrix → aggregator) and `scaffold-smoke-cell` (6-cell matrix from P1d).
+
+**Composite action** (P2b): `.github/actions/setup-pyreon/action.yml` handles the 4-step preamble (setup-bun + optional setup-node + restore node_modules + restore bootstrap). 16 jobs use it. Critical contract: the caller MUST run `actions/checkout` BEFORE the composite (local composite actions need `action.yml` on disk before the runner can invoke them). Inputs: `restore-node-modules` (default true), `restore-bootstrap` (default true; set `'false'` on lib-free jobs to skip the ~5s restore), `node-version` (default empty; set `'24'` for vitest-driven jobs).
+
+**Coverage split** (P3a): `Coverage` runs `coverage:floor` on every PR (~5s — pure config-threshold gate against `vitest.config.ts`); `Coverage (Full)` runs the full per-package coverage suite on `push:main` + `merge_group` only (the actual safety net against `main` regression). Documented trade-off: a PR that drops a package's actual coverage from 92% to 88% (still above the 90% floor) passes `Coverage` but fails `Coverage (Full)` at merge-queue time.
+
+**`scripts/affected.ts`** computes the per-PR `--filter=<pkg>` list by walking changed files, mapping to owning workspaces, and BFS'ing the reverse-dep graph. Pure functions (`computeAffectedFlags`, `filterByCategory`, `findOwningWorkspace`, `transitiveDependents`, `isRootFile`, `discoverWorkspaces`) exported for unit testing — see `packages/internals/test-utils/src/tests/affected.test.ts` (17 specs). Root-file changes (workflow / lockfile / scripts / root tsconfig) escalate to `--filter=*`; per-category cells then translate that to `--filter=./packages/<cat>/*`.
+
+**`scripts/bootstrap.ts` env-var matrix**:
+
+- `PYREON_BOOTSTRAP_SKIP=1` — early-exit no-op. CI's `Install` job uses this; never set locally (devs want `lib/` built so `bun run dev` works immediately).
+- `PYREON_BOOTSTRAP_SKIP_NATIVE=1` — skip the Rust napi build. Used by bootstrap exit-code subprocess tests (the cold-cache cargo build can't fit a 60s test timeout).
+- `PYREON_BOOTSTRAP_SOFT=1` — swallow postcondition failure on postinstall (escape hatch when a transient lib-build failure blocks `bun install`; consumer must re-run bootstrap manually before any production build).
+- `PYREON_BOOTSTRAP_FORCE_FAIL=1` — test-only; jumps straight to the failure path for exit-code verification.
+
+**Pre-push hook** (Phase E1): runs `lint` + affected `typecheck` + affected `test` locally on `git push`. Bypass: `PYREON_SKIP_PRE_PUSH=1 git push` or `--no-verify`. See `.claude/rules/workflow.md` → "Pre-push hook".
+
+**Remaining critical path** = `Install` (25s) → `Bootstrap` (208s) → `Scaffold Smoke` (~210s per cell, parallel after Bootstrap) ≈ ~7-8 min minimum. Bootstrap can't be skipped (it builds the workspace `lib/` outputs that the lib-needing chain reads); Scaffold Smoke runs a fresh `bun install` per cell which is genuinely slow. Larger runners (Phase 4) would help further but trade dollars for wall-clock.
+
+**Don't undo by accident**: when adding a new job to `ci.yml`, ask "does this read `packages/*/lib/`?" — if yes, `needs: bootstrap`; if no, `needs: install` + `restore-bootstrap: 'false'` on the composite. Getting that wrong is a one-line revert when CI fails; getting it CONFIDENTLY wrong (flipping a lib-needing job to `needs: install` and not noticing it passed for the wrong reason because the test didn't exercise the bug) is the more expensive failure mode.
+
 ## pyreon doctor — unified project health audit
 
 `pyreon doctor` is the single entry point for every gate Pyreon ships. PR 1 (#570) extracted a `Finding[]` / `GateResult` shape from the standalone scripts; PR 2 (#XXX) added the aggregator, 0-100 score formula, and beautiful CLI output. Modeled after [react.doctor](https://www.react.doctor/) — banner + per-category bars + top-N findings.
