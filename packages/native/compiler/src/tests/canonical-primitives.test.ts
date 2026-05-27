@@ -790,6 +790,98 @@ describe('Phase C5.2 — Swift emit: .navigationDestination(for:)', () => {
   })
 })
 
+// Phase C5.3 — Kotlin emit wires the parsed routes into a real
+// NavHost { composable(...) } block inside the RouterProvider.
+
+describe('Phase C5.3 — Kotlin emit: NavHost { composable(...) }', () => {
+  it('single literal-path route emits composable("/") { _ -> Component() }', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [{ path: '/', component: HomePage }],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'kotlin',
+    )
+    expect(out).toContain('val navController = rememberNavController()')
+    expect(out).toContain('NavHost(navController = navController, startDestination = "/")')
+    // Literal-path routes use `_ ->` trailing-closure form so the single
+    // composable() overload (1-arg) covers both literal + :param shapes.
+    expect(out).toContain('composable("/") { _ -> HomePage() }')
+  })
+
+  it(':param route emits composable("/{id}") { entry -> ... } with params map extraction', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/', component: HomePage },
+          { path: '/users/:id', component: UserPage },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'kotlin',
+    )
+    // Pyreon's :id → Compose's {id}.
+    expect(out).toContain('composable("/users/{id}")')
+    expect(out).toContain('entry ->')
+    expect(out).toContain('val params = entry.arguments?.let')
+    expect(out).toContain('UserPage(params = params)')
+  })
+
+  it('startDestination uses the first route path', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/about', component: AboutPage },
+          { path: '/', component: HomePage },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'kotlin',
+    )
+    // First route in the array sets startDestination.
+    expect(out).toContain('startDestination = "/about"')
+  })
+
+  it('falls back to scaffold-only when router-decl has no routes (C4 back-compat)', () => {
+    const out = txRouter(
+      `
+      const router = createRouter()
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'kotlin',
+    )
+    expect(out).toContain('val router = remember { PyreonRouter() }')
+    expect(out).toContain('RouterProvider(router)')
+    expect(out).not.toContain('NavHost')
+    expect(out).not.toContain('composable(')
+  })
+
+  it('multiple routes generate one composable() per route', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/', component: HomePage },
+          { path: '/about', component: AboutPage },
+          { path: '/settings', component: SettingsPage },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'kotlin',
+    )
+    expect(out).toContain('composable("/") { _ -> HomePage() }')
+    expect(out).toContain('composable("/about") { _ -> AboutPage() }')
+    expect(out).toContain('composable("/settings") { _ -> SettingsPage() }')
+  })
+})
+
 describe('Phase B — composition smoke', () => {
   it('Swift: Stack > Inline > Text + Button renders correctly', () => {
     const out = tx(
