@@ -842,6 +842,80 @@ describe('Phase C5.2 — Swift emit: .navigationDestination(for:)', () => {
     expect(out).not.toContain('.navigationDestination')
     expect(out).not.toContain('Pyreon Router: no route')
   })
+
+  // R1.1 — iOS blank-startup bug fix. The current emit places
+  // RouterView() (= EmptyView() in the native runtime) as the
+  // NavigationStack body; navigationDestination only fires for
+  // PUSHED paths. App launches blank. R1.1 replaces RouterView()
+  // with the HOME route's component invocation when routes are
+  // present, so the initial view IS the home page.
+
+  it('R1.1 — RouterView inside routed RouterProvider emits home component', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/', component: HomePage },
+          { path: '/about', component: AboutPage },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    // The NavigationStack content starts with HomePage() (NOT RouterView()).
+    // Both literal-path routes still appear in the navigationDestination
+    // chain (for pushed paths AND back-to-`/` via push).
+    expect(out).toMatch(/RouterProvider\(router: router\) \{\s*\n\s*HomePage\(\)/)
+    // navigationDestination still has the home + about branches.
+    expect(out).toContain('if path == "/" {')
+    expect(out).toContain('else if path == "/about" {')
+  })
+
+  it('R1.1 — picks first non-:param route when no literal `/` is present', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/users/:id', component: UserPage },
+          { path: '/about', component: AboutPage },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    // No literal `/`; first non-pattern is `/about` → AboutPage is home.
+    expect(out).toMatch(/RouterProvider\(router: router\) \{\s*\n\s*AboutPage\(\)/)
+  })
+
+  it('R1.1 — falls back to RouterView() when no usable home route', () => {
+    // Param-only routes can't be home routes (no source for params at
+    // launch). Emit keeps the bare RouterView() — no worse than pre-R1.1.
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/users/:id', component: UserPage },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    expect(out).toContain('RouterView()')
+  })
+
+  it('R1.1 — bare RouterView outside routed RouterProvider stays bare', () => {
+    // R1.1 is scoped to routes-bearing RouterProviders; bare RouterView
+    // calls (no surrounding RouterProvider with routes) emit unchanged.
+    const out = txRouter(
+      `return <RouterView />`,
+      'swift',
+    )
+    expect(out).toContain('RouterView()')
+    expect(out).not.toMatch(/RouterView\(\) [^\n]+ HomePage/)
+  })
 })
 
 // Phase C5.3 — Kotlin emit wires the parsed routes into a real

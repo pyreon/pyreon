@@ -115,6 +115,19 @@ let _usesRouter = false
  * additive, back-compat.
  */
 let _routerRoutes: Map<string, import('./types').RouteIR[]> = new Map()
+/**
+ * R1.1 — when emitting the content of a `<RouterProvider router={r}>` whose
+ * router-decl carries routes, the inner `<RouterView />` becomes the
+ * NavigationStack initial body. SwiftUI's NavigationStack renders its
+ * body content as the INITIAL view; `.navigationDestination` only fires
+ * for PUSHED paths. Without this rewrite the body is `RouterView()` =
+ * `EmptyView()` → iOS apps launch BLANK.
+ *
+ * Set per-RouterProvider emit. `emitSwiftRouterView` reads it: if non-null,
+ * emit the home-route component's invocation instead of `RouterView()`.
+ * Cleared after the children are emitted.
+ */
+let _activeHomeRouteSwift: string | null = null
 
 export function emitSwift(
   components: ComponentIR[],
@@ -1607,26 +1620,72 @@ function emitSwiftRouterProvider(
   // to the C3 bare-content emit when the router-attr is a non-identifier
   // expression OR when the named decl has no routes (C4 scaffold form).
   let routesBlock = ''
+  let routes: import('./types').RouteIR[] | undefined
   if (routerAttr.value.kind === 'identifier') {
-    const routes = _routerRoutes.get(routerAttr.value.name)
+    routes = _routerRoutes.get(routerAttr.value.name)
     if (routes !== undefined && routes.length > 0) {
       routesBlock = emitSwiftNavigationDestination(routes, indent + 4)
     }
   }
 
+  // R1.1 — when routes are present, pick the HOME route (literal `/` if
+  // present, else first non-pattern route, else first route as last
+  // resort). The inner `<RouterView />` will emit as that component's
+  // invocation instead of bare `RouterView()`, so NavigationStack's
+  // initial body renders the home page at app launch. Without this, the
+  // body is EmptyView() and iOS apps launch BLANK.
+  const prevHomeRoute = _activeHomeRouteSwift
+  if (routes !== undefined && routes.length > 0) {
+    const homeRoute = pickHomeRoute(routes)
+    if (homeRoute !== undefined) {
+      // Param-bearing home routes don't make sense (need params at launch
+      // with no source); pickHomeRoute prefers literal paths so this is
+      // typically `HomePage()` — bare call, no args.
+      _activeHomeRouteSwift = `${emitSwiftExpr(homeRoute.component, indent + 2)}()`
+    }
+  }
+
+  let result: string
   if (e.children.length === 0) {
-    return `RouterProvider(router: ${routerExpr}) { }`
+    result = `RouterProvider(router: ${routerExpr}) { }`
+  } else {
+    const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+    // When routes are known, append the navigationDestination modifier
+    // to the LAST content line (typically a `<RouterView />` emitting
+    // the home component now per R1.1). SwiftUI's view-modifier chain
+    // attaches to whichever view it follows.
+    if (routesBlock !== '') {
+      result = `RouterProvider(router: ${routerExpr}) {\n${contentLines}${routesBlock}\n${' '.repeat(indent)}}`
+    } else {
+      result = `RouterProvider(router: ${routerExpr}) {\n${contentLines}\n${' '.repeat(indent)}}`
+    }
   }
-  const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
-  // When routes are known, append the navigationDestination modifier
-  // to the LAST content line (typically a `<RouterView />` emitting
-  // `RouterView()`). SwiftUI's view-modifier chain attaches to whichever
-  // view it follows; landing it on the closing view of the content
-  // closure is the canonical pattern.
-  if (routesBlock !== '') {
-    return `RouterProvider(router: ${routerExpr}) {\n${contentLines}${routesBlock}\n${' '.repeat(indent)}}`
-  }
-  return `RouterProvider(router: ${routerExpr}) {\n${contentLines}\n${' '.repeat(indent)}}`
+  _activeHomeRouteSwift = prevHomeRoute
+  return result
+}
+
+/**
+ * R1.1 — choose the HOME route for the NavigationStack initial body.
+ *
+ * Preference order:
+ *   1. Literal `/` route (the canonical home)
+ *   2. First non-`:param` route (some apps use `/home` instead of `/`)
+ *   3. None — return undefined; `<RouterView />` falls back to its
+ *      C5-era `RouterView()` emit (still wrong, but no worse than before)
+ *
+ * Param-bearing routes can't be home routes (would need params at
+ * launch with no source). Apps that have ONLY param-bearing routes
+ * are unusual; they get the EmptyView fallback until they add a
+ * literal home route.
+ */
+function pickHomeRoute(
+  routes: import('./types').RouteIR[],
+): import('./types').RouteIR | undefined {
+  const literalRoot = routes.find((r) => r.path === '/')
+  if (literalRoot !== undefined) return literalRoot
+  const firstNonPattern = routes.find((r) => !r.path.includes(':'))
+  if (firstNonPattern !== undefined) return firstNonPattern
+  return undefined
 }
 
 /**
@@ -1686,13 +1745,26 @@ function emitSwiftNavigationDestination(
 }
 
 /**
- * Emit `<RouterView />` as the runtime-swift `RouterView()`. No props
- * in Phase C1; future Phase C3 may add route-definition surface here.
+ * Emit `<RouterView />` as the runtime-swift `RouterView()`.
+ *
+ * R1.1 — when emitted INSIDE a `<RouterProvider router={r}>` whose
+ * router-decl carries routes, the home route's component takes the
+ * place of `RouterView()`. This makes NavigationStack's initial body
+ * the home page; `.navigationDestination` still handles pushed paths.
+ * Closes the iOS blank-startup bug.
+ *
+ * Outside a routes-bearing RouterProvider (foreign router, scaffold-
+ * shape, or simply not inside one), the C1 scaffold shape persists.
+ * The native runtime's `RouterView` is `EmptyView()` there — same as
+ * pre-R1.1 — because there's no route table to dispatch from.
  */
 function emitSwiftRouterView(
   _e: Extract<ExprIR, { kind: 'jsx-element' }>,
   _indent: number,
 ): string {
+  if (_activeHomeRouteSwift !== null) {
+    return _activeHomeRouteSwift
+  }
   return `RouterView()`
 }
 
