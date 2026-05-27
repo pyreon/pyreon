@@ -397,6 +397,25 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     const expr: ExprIR = parseExpr(body, ctx)
     return { kind: 'computed', name, expr }
   }
+  // C4 — `@pyreon/router` hook recognition. Three shapes:
+  //
+  //   const router   = createRouter({ routes: [...] })
+  //   const navigate = useNavigate()
+  //   const params   = useParams()
+  //
+  // Per-target emit lives in emitSwiftDecl / emitKotlinDecl. The routes
+  // config arg to createRouter is intentionally DROPPED at parse time
+  // — native runtimes wire routes via .navigationDestination(for:) /
+  // NavHost(routes), separately from the router instance itself.
+  if (calleeName === 'createRouter') {
+    return { kind: 'router', name }
+  }
+  if (calleeName === 'useNavigate') {
+    return { kind: 'router-hook', name, hook: 'navigate' }
+  }
+  if (calleeName === 'useParams') {
+    return { kind: 'router-hook', name, hook: 'params' }
+  }
   return null
 }
 

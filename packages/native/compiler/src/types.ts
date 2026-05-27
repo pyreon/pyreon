@@ -84,6 +84,35 @@ export type DeclIR =
       returnType: TypeIR
       body: StatementIR[]
     }
+  /**
+   * Router instance declaration via `createRouter({ routes: [...] })`
+   * from `@pyreon/router`. The routes config is dropped at native emit
+   * time — the native router runtimes (`@pyreon/native-router-swift` /
+   * `-kotlin`) carry route resolution via `.navigationDestination(for:)`
+   * (SwiftUI) and `NavHost` composables (Compose) wired up by the host
+   * app. Phase C4 ships the SCAFFOLD: emit a bare `PyreonRouter()`
+   * instance whose declaration form is target-idiomatic:
+   *   Swift   →  @State private var router = PyreonRouter()
+   *   Kotlin  →  val router = remember { PyreonRouter() }
+   *
+   * The host-side route wiring lands as a separate per-target
+   * `.navigationDestination(for:)` / `NavHost(routes = …)` follow-up.
+   */
+  | { kind: 'router'; name: string }
+  /**
+   * Router hook binding via `useNavigate()` or `useParams()` from
+   * `@pyreon/router`. Phase C4 maps these directly to the native
+   * runtimes' identically-named hooks:
+   *   Swift   →  let navigate = useNavigate(router: pyreonRouter)
+   *              (the View struct gains `@Environment(\.pyreonRouter)
+   *               private var pyreonRouter` automatically)
+   *   Kotlin  →  val navigate = useNavigate()
+   *              (Compose function reads LocalPyreonRouter.current
+   *               directly via CompositionLocal — no transform needed)
+   *
+   * `useParams()` follows the same shape.
+   */
+  | { kind: 'router-hook'; name: string; hook: 'navigate' | 'params' }
 
 /**
  * Statement IR — sequence of operations inside a function body. The
