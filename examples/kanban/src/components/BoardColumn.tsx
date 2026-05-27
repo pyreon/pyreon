@@ -3,6 +3,7 @@ import { useDroppable } from '@pyreon/dnd'
 import { computed, signal } from '@pyreon/reactivity'
 import { toast } from '@pyreon/toast'
 import { useBoardModel, type Column, type Priority } from '../lib/board'
+import { useFilterTerm } from '../lib/filter-context'
 import CardItem from './CardItem'
 
 interface BoardColumnProps {
@@ -24,6 +25,7 @@ interface BoardColumnProps {
  */
 export default function BoardColumn(props: BoardColumnProps) {
   const board = useBoardModel()
+  const getTerm = useFilterTerm()
   let columnEl: HTMLElement | null = null
 
   // Reactive column data — re-derives when the board state-tree updates.
@@ -87,10 +89,17 @@ export default function BoardColumn(props: BoardColumnProps) {
          * state-tree directly inside the For accessor works.
          */}
         <For
-          each={() =>
-            (board.columns() as Column[]).find((c) => c.id === props.columnId)
-              ?.cards ?? []
-          }
+          each={() => {
+            const cards =
+              (board.columns() as Column[]).find(
+                (c) => c.id === props.columnId,
+              )?.cards ?? []
+            const term = getTerm().trim().toLowerCase()
+            if (!term) return cards
+            return cards.filter((c) =>
+              c.title.toLowerCase().includes(term),
+            )
+          }}
           by={(c) => c.id}
         >
           {(card) => <CardItem cardId={card.id} columnId={props.columnId} />}

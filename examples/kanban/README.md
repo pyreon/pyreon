@@ -1,35 +1,31 @@
 # Kanban (audit example)
 
-**Status: walls-finder, not a working app.** This example was built as the
-second user-shape audit (T4.2 from the open-work plan, following hn-clone
-as T4.1) to surface framework gaps in a Trello/Notion/Linear-shaped UX —
-specifically cross-column drag-and-drop and per-row state-tree mutations.
+A working kanban board built from scratch as the second user-shape audit
+(T4.2 from the open-work plan, following hn-clone as T4.1).
 
-See [`WALLS.md`](./WALLS.md) for the 6 walls surfaced (W18-W23). The
-highest-severity finding is **W23** — a reactivity bug where child effects
-inside a `<For>`-mounted component lose all signal subscriptions after the
-For's source signal fires.
-
-[`W23-repro.md`](./W23-repro.md) has a minimal repro outline.
+The audit surfaced **6 walls** (W18-W23); the highest-severity finding was
+**W23** — a real reactivity bug in `runUntracked` where child effects of
+`<For>`-mounted components silently lost their signal subscriptions after
+the For's source signal first re-fired. **W23 is fixed in this PR**
+(`packages/core/reactivity/src/tracking.ts`). See
+[`WALLS.md`](./WALLS.md) for the full catalog.
 
 ## What works
 
-- Initial render — 4 default cards across 3 default columns.
+- Initial render — 4 default cards across 3 columns.
+- Add / delete / move cards (reactively reflected in DOM).
+- Multi-mutation sequences (the W23 bug shape) — verified by e2e: add 3 +
+  delete 3 + filter + reload all green.
+- URL-synced + debounced search filter — every column filters its own
+  state-tree-sourced card list.
 - Cross-tab persistence via `@pyreon/storage` (`localStorage`).
-- URL-synced search input via `@pyreon/url-state` (URL updates correctly).
-- Add column (writes to `board.columns`, persists across reload).
-- Single add OR single delete on a fresh page load.
+- Add / reorder columns. Toast notifications on column add.
 
-## What doesn't work (yet)
+## What's incomplete
 
-- Multiple sequential state-tree mutations (W23). After the first
-  add-card OR delete-card, the For's effect inside each `BoardColumn`
-  loses its subscription. Subsequent writes still update the store +
-  localStorage, but the DOM stops reconciling.
-- Search filter (W23) — input is wired to the URL but card filtering is
-  disabled pending the W23 fix.
-- Cross-column DND (not yet verified end-to-end; was scheduled after the
-  W23 investigation absorbed the budget).
+- Cross-column DND (`@pyreon/dnd` is wired with `useDraggable` + `useDroppable`
+  — see W18 for why not `useSortable` — but the e2e cross-column drag spec
+  hasn't been written yet).
 
 ## Packages exercised
 

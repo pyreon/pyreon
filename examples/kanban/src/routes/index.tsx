@@ -1,32 +1,24 @@
 import { useHead } from '@pyreon/head'
-import { For } from '@pyreon/core'
+import { For, provide } from '@pyreon/core'
 import { signal, computed } from '@pyreon/reactivity'
+import { useDebouncedValue } from '@pyreon/hooks'
 import { useUrlState } from '@pyreon/url-state'
 import { toast } from '@pyreon/toast'
 import { useBoardModel, type Column } from '../lib/board'
 import BoardColumn from '../components/BoardColumn'
+import { FilterTermCtx } from '../lib/filter-context'
 
-/**
- * Kanban board — top-level page.
- *
- * Filter UX status: the search input is wired to `?q=` via `useUrlState`
- * (shareable URL state, the canonical pattern), but DOES NOT propagate
- * to the per-column card lists. W23 from kanban audit: effects defined
- * inside <For>-mounted components lose subscription to UNRELATED shared
- * signals after the For's source signal notifies once. Until W23 is
- * fixed, the input is left visible to exercise `useUrlState` end-to-end
- * (URL updates correctly, debouncing works) but no card filtering is
- * applied. See WALLS.md for the minimal repro.
- */
 export default function BoardPage() {
   useHead({ title: 'Kanban — Pyreon' })
 
   const board = useBoardModel()
 
-  // URL-synced search term — exercises `@pyreon/url-state` end-to-end.
-  // Cards aren't filtered yet (W23). Once W23 is fixed, debounce + filter
-  // wiring goes back here.
+  // URL-synced + debounced search term — shared with every column via
+  // reactive context so each BoardColumn applies the filter to its own
+  // state-tree-sourced card list.
   const q = useUrlState('q', '')
+  const debouncedQ = useDebouncedValue(q, 200)
+  provide(FilterTermCtx, () => debouncedQ())
 
   const columnIds = computed<string[]>(() =>
     (board.columns() as Column[]).map((c) => c.id),
@@ -51,7 +43,7 @@ export default function BoardPage() {
         <input
           type="search"
           class="kanban-search"
-          placeholder="Filter cards… (UX preview — W23)"
+          placeholder="Filter cards…"
           value={() => q()}
           onInput={(e) => q.set((e.currentTarget as HTMLInputElement).value)}
           data-testid="board-search"

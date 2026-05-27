@@ -127,13 +127,44 @@ export function _restoreActiveEffect(): void {
   _prevEffect = null
 }
 
-/** Read signals without subscribing. Alias: `untrack`. */
+// Thread-local collector for nested effects — captures effect() calls made
+// inside another effect's fn() body so the parent can dispose them on
+// re-run / disposal. Lives here (not in effect.ts) so `runUntracked` can
+// suspend it in lock-step with `activeEffect` — the semantic is "fully
+// isolate this work from the outer reactive context, including the
+// nested-effect auto-cleanup chain."
+//
+// Without suspending the collector in `runUntracked`, child component
+// effects created inside `mountFor`'s `runUntracked` wrap (around
+// child mounts) would be auto-registered as inner effects of the For's
+// effect — and disposed on the For's NEXT re-run. That's W23 from the
+// kanban audit (PR #982): after the For source signal first re-fires,
+// child component effects silently lose every subscription they had.
+//
+// Untyped here (`unknown[]`) to avoid a circular dep with effect.ts. The
+// consumer is effect.ts which knows the real `Effect[]` shape.
+let _innerEffectCollector: unknown[] | null = null
+
+export function getInnerEffectCollector(): unknown[] | null {
+  return _innerEffectCollector
+}
+
+export function setInnerEffectCollector(c: unknown[] | null): void {
+  _innerEffectCollector = c
+}
+
+/** Read signals without subscribing AND prevent auto-registration of new
+ * effects with the surrounding outer effect's inner-effect collector.
+ * Alias: `untrack`. */
 export function runUntracked<T>(fn: () => T): T {
-  const prev = activeEffect
+  const prevActive = activeEffect
+  const prevCollector = _innerEffectCollector
   activeEffect = null
+  _innerEffectCollector = null
   try {
     return fn()
   } finally {
-    activeEffect = prev
+    activeEffect = prevActive
+    _innerEffectCollector = prevCollector
   }
 }

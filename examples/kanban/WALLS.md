@@ -159,8 +159,12 @@ model.
 
 ## W23 — Effects in `<For>` child components lose ALL subscriptions after the first re-run from the For's source signal
 
-**This is the highest-severity wall hit in this audit.** It is reproducible
-in this example today, with a 30-line repro outside DOM mounting.
+**Status: FIXED in this PR.** Root-cause patch: `runUntracked` now
+suspends `_innerEffectCollector` in lock-step with `activeEffect`. See
+"Fix" section below.
+
+**This was the highest-severity wall hit in this audit.** Reproduced
+with a 30-line test (`packages/core/runtime-dom/src/tests/w23-child-effect-loss.browser.test.tsx`).
 
 **Symptom.** In `BoardColumn`:
 
@@ -225,41 +229,63 @@ app.** The filter input is left visible to exercise `useUrlState`
 end-to-end (URL updates work fine), but card filtering is unwired pending
 W23.
 
-**Framework gap.** This is a real reactivity bug. Needs:
-- A minimal repro outside the example (TBD — see `reproducer.test.tsx`).
-- Bisect against PR #490 + earlier `mountFor` work to confirm which
-  change introduced the regression.
-- Fix that preserves both directions: child effects must not leak UP, but
-  must also not lose their EXISTING subscriptions when the parent For's
-  effect re-runs.
+**Root cause.** `effect.ts` maintains a thread-local
+`_innerEffectCollector` array. When an `effect()` runs, it sets the
+collector to its own `myInners` and any nested `effect()` calls during
+its body get auto-registered there. On the outer effect's NEXT re-run,
+`runCleanup()` disposes EVERY entry in `innerEffects` — which is
+correct for legitimately-nested effects but WRONG for effects created
+during work that explicitly opted out of the outer tracking context
+via `runUntracked`.
 
-**Fix scope.** Likely changes to `mountFor` and/or `runUntracked` to
-ensure child effects' subscription sets survive parent re-runs.
+`mountFor` wraps its child mount work in `runUntracked` to prevent
+NEW signal-subscription leaks upward (PR #490). But `runUntracked` in
+`tracking.ts` only suspended `activeEffect`, not `_innerEffectCollector`
+— so child component effects mounted under the `runUntracked` wrap
+were still auto-registered as inner effects of the For's outer effect.
+On the next mutation of the For's source signal, those child effects
+got disposed.
+
+**Fix.** `_innerEffectCollector` was moved from `effect.ts` to
+`tracking.ts` (the "tracking context" namespace) and `runUntracked` now
+suspends BOTH `activeEffect` AND the collector. effect.ts accesses the
+collector through `getInnerEffectCollector` / `setInnerEffectCollector`
+getter/setter functions. Reference:
+`packages/core/reactivity/src/{tracking,effect}.ts`.
+
+**Bisect-verified** at the unit + integration layers:
+- Unit test `runtime-dom/src/tests/w23-child-effect-loss.browser.test.tsx`
+  fails with `runUntracked` reverted to only-suspend-`activeEffect`.
+- Real-Chromium kanban smoke (`bun /tmp/kanban-full-e2e.mjs`) — multi-
+  mutation sequence (3 adds + 3 deletes + filter + reload) — all green
+  with the fix, broken without it.
+
+**Test coverage.** The unit test asserts the contract directly: a row
+effect inside a `<For>` mounted component must retain its subscription
+to an external signal across the For's source-signal re-fires. Locks
+in the regression at the lowest layer.
 
 ---
 
 ## What this audit confirms
 
-- Hn-clone-style read-only feeds with `<For>` don't surface W23 because
+- Hn-clone-style read-only feeds with `<For>` didn't surface W23 because
   their source signal (`stories()`) is set once and never re-fires.
-- The bug class only surfaces with **per-row mutations of the For's
-  source signal** — which is exactly the kanban shape (add/delete/move
-  cards trigger `board.update('columns', ...)`).
-- This is a SHOWSTOPPER for any Pyreon app that wants a Trello/Notion/
-  Linear/spreadsheet/task-list UX where rows mutate frequently.
+- W23 surfaced under **per-row mutations of the For's source signal** —
+  the kanban shape (add/delete/move cards rewriting `board.columns()`).
+- W23 was a SHOWSTOPPER for any Pyreon app that wants a Trello/Notion/
+  Linear/spreadsheet/task-list UX. **Fixed in this PR.**
 
-## Recommended next steps
+## Recommended next steps (post-fix)
 
-1. Land this example as a wall-finder, NOT as a working app. The value is
-   the W18-W23 catalog.
-2. Open a P0 issue against W23. Write `e2e/repro/for-child-effect-loss.spec.ts`
-   that bisect-verifies the bug.
-3. Add a doc note to `<For>` reference: "Children passed by-key see prop
-   updates only on first mount (W22); structure children to read their
-   own data from the store."
-4. Add a lint rule for `.map(...VNode)` in reactive children (W20).
-5. Extend `useSortable` with a `groupId` option (W18).
-6. Auto-inject the entry script in Zero's `<!--pyreon-scripts-->` (W19).
+1. ~~Fix W23~~ ✅ (this PR — `runUntracked` now suspends inner-effect
+   collector alongside activeEffect).
+2. Add a doc note to `<For>` reference for W22: "Children passed by-key
+   see prop updates only on first mount; structure children to read
+   their own data from the store."
+3. Add a lint rule for `.map(...VNode)` in reactive children (W20).
+4. Extend `useSortable` with a `groupId` option (W18).
+5. Auto-inject the entry script in Zero's `<!--pyreon-scripts-->` (W19).
 
-Audit time: ~4h. Walls surfaced: 6 (W18-W23). Real framework bug count: 1
+Audit time: ~6h. Walls surfaced: 6 (W18-W23). Framework bugs fixed: 1
 (W23). The audit is doing its job.
