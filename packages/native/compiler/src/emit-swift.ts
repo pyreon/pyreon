@@ -1370,21 +1370,63 @@ function emitSwiftToggle(
     (a): a is Extract<AttrIR, { kind: 'attr' }> =>
       a.kind === 'attr' && a.name === 'value',
   )
-  // value must name a signal in scope (canonical contract — mirrors
-  // emitSwiftField). Anything else falls through to generic emit to
-  // avoid silently producing broken Swift.
-  if (
-    !valueAttr ||
-    valueAttr.value.kind !== 'identifier' ||
-    !_signalNames.has(valueAttr.value.name)
-  ) {
+  if (!valueAttr) {
     return emitSwiftGeneric(e, indent)
   }
-  const sig = swiftIdent(valueAttr.value.name)
-  let result = `Toggle("", isOn: $${sig})`
+
+  // Two shapes:
+  //
+  // 1. `value={signal}` — bare identifier matching a signal in scope.
+  //    Emit as SwiftUI's two-way binding-projection (`$signal`).
+  //    Idiomatic + minimal; the user-supplied `onChange` is redundant
+  //    because the binding writes back automatically.
+  //
+  // 2. `value={expr}` — any other expression (member access, function
+  //    call, complex expr). Used for parent-owns-state patterns like
+  //    `<Toggle value={props.todo.done} onChange={onToggle} />` in a
+  //    TodoRow component. Emit as a SwiftUI custom `Binding` that
+  //    reads via the expression + writes via the `onChange` handler.
+  //    This unblocks <Checkbox> → <Toggle> migration for the common
+  //    parent-owns-state shape.
+  if (
+    valueAttr.value.kind === 'identifier' &&
+    _signalNames.has(valueAttr.value.name)
+  ) {
+    // Shape 1 — signal binding projection.
+    const sig = swiftIdent(valueAttr.value.name)
+    let result = `Toggle("", isOn: $${sig})`
+    const disabled = readStaticAttr(e, 'disabled')
+    if (disabled === true) {
+      result += `\n${' '.repeat(indent + 2)}.disabled(true)`
+    }
+    result += emitSwiftLayoutModifiers(e)
+    return result
+  }
+
+  // Shape 2 — custom Binding. Requires `onChange` to handle writes.
+  const onChange = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'change',
+  )
+  if (!onChange) {
+    // No onChange handler — can't write back. Fall through to generic.
+    return emitSwiftGeneric(e, indent)
+  }
+  const valueExpr = emitSwiftExpr(valueAttr.value, indent)
+  // emitSwiftAction returns a `{ body }` closure — extract the body
+  // so we can embed it inside `Binding(set: { _ in body })`.
+  const writeClosure = emitSwiftAction(onChange.handler, indent + 4)
+  const writeBody = writeClosure.replace(/^\{\s*/, '').replace(/\s*\}$/, '')
+  const pad = ' '.repeat(indent + 2)
+  const inner = ' '.repeat(indent + 4)
+  let result =
+    `Toggle("", isOn: Binding(\n` +
+    `${inner}get: { ${valueExpr} },\n` +
+    `${inner}set: { _ in ${writeBody} }\n` +
+    `${pad}))`
   const disabled = readStaticAttr(e, 'disabled')
   if (disabled === true) {
-    result += `\n${' '.repeat(indent + 2)}.disabled(true)`
+    result += `\n${pad}.disabled(true)`
   }
   result += emitSwiftLayoutModifiers(e)
   return result
