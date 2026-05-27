@@ -10,6 +10,7 @@ import { noCrossLayerImport } from './architecture/no-cross-layer-import'
 import { noDeepImport } from './architecture/no-deep-import'
 import { noErrorWithoutPrefix } from './architecture/no-error-without-prefix'
 import { noProcessDevGate } from './architecture/no-process-dev-gate'
+import { noQuerySelectorCastInTest } from './architecture/no-querySelector-cast-in-test'
 import { requireBrowserSmokeTest } from './architecture/require-browser-smoke-test'
 import { vitestConfigUsesShared } from './architecture/vitest-config-uses-shared'
 import { noSignalInFormInitialValues } from './form/no-signal-in-form-initial-values'
@@ -156,6 +157,7 @@ export const allRules: Rule[] = [
   devGuardWarnings,
   noErrorWithoutPrefix,
   noProcessDevGate,
+  noQuerySelectorCastInTest,
   requireBrowserSmokeTest,
   vitestConfigUsesShared,
   // Store (3)
@@ -259,6 +261,7 @@ export {
   noPeekInTracked,
   noProcessDevGate,
   noPropsDestructure,
+  noQuerySelectorCastInTest,
   noSignalCallWrite,
   requireBrowserSmokeTest,
   vitestConfigUsesShared,
