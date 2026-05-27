@@ -287,9 +287,22 @@ jobs:
   # Aggregator `test` job (next) keeps the stable `Test` required check
   # name for branch protection. See `typecheck-cell` comment for shard
   # rationale.
+  #
+  # P3c re-classification: needs `bootstrap`, not `install`. Most tests
+  # use the bun condition → src/, but TWO classes of test legitimately
+  # need lib/: bundle-size tests (`@pyreon/charts/src/tests/bundle-size`)
+  # measure the BUILT lib/ in bytes, and tests that boot a nested Vite
+  # SSR build at test time (`@pyreon/vite-plugin/src/tests/rocketstyle-
+  # collapse`) hit Vite's hardcoded node-condition resolver which
+  # requires lib/ for @pyreon/vite-plugin itself. Both surfaced as
+  # `test (tools)` + `test (fundamentals)` failures on the first P3c
+  # CI run; flipping back to `bootstrap` is the safe fix. Lib-free
+  # tests still benefit indirectly — they run faster within the cell
+  # because Install is now ~60s instead of ~210s, freeing the runner
+  # pool sooner for everything downstream.
   test-cell:
     name: test (${{ matrix.category }})
-    needs: install
+    needs: bootstrap
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -310,11 +323,8 @@ jobs:
       - uses: ./.github/actions/setup-pyreon
         with:
           node-version: '24'
-          # P3c — vitest resolves @pyreon/* via the `bun` condition
-          # (packages/internals/vitest-config/src/node.ts:conditions),
-          # so tests run against src/, not lib/. Skipping the bootstrap
-          # restore lets test cells start as soon as Install finishes.
-          restore-bootstrap: 'false'
+          # P3c — needs lib/ for bundle-size tests + nested-Vite-SSR
+          # tests; default `restore-bootstrap: 'true'` is correct.
       - name: Run tests (${{ matrix.category }})
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -371,17 +381,17 @@ jobs:
 
   test-browser:
     name: Test (browser)
-    needs: install
+    # P3c — same risk class as `test-cell`: any browser test that asserts
+    # on built artifacts (lib/) needs Bootstrap. Conservatively gate on
+    # bootstrap rather than chase per-test audits.
+    needs: bootstrap
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      # Pin Node (see Test job above for rationale). No bootstrap needed —
-      # browser tests run against src/ via the bun condition.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-pyreon
         with:
           node-version: '24'
-          restore-bootstrap: 'false'
       - name: Cache Playwright browsers
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
@@ -669,16 +679,15 @@ jobs:
 
   coverage-full:
     name: Coverage (Full)
-    needs: install
+    # P3c — runs the full test suite, same lib/-requiring tests as
+    # `test-cell`. Needs Bootstrap.
+    needs: bootstrap
     if: github.event_name == 'push' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/setup-pyreon
-        with:
-          # P3c — vitest's bun condition reads src/, not lib/.
-          restore-bootstrap: 'false'
       - name: Run full per-package coverage
         run: bun run coverage
 
