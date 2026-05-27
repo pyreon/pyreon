@@ -508,6 +508,189 @@ describe('Phase C4 — createRouter / useNavigate / useParams call interception'
   })
 })
 
+// Phase C5.1 — parser extracts the routes config from createRouter()
+// so downstream Swift/Kotlin emit (C5.2/C5.3) can produce real
+// navigationDestination / NavHost blocks. Tests target the parser
+// directly via parsePyreon to verify the captured IR shape; emit
+// behavior is unchanged in C5.1 (still scaffold-only).
+
+describe('Phase C5.1 — route extraction from createRouter({routes:[…]})', () => {
+  // parsePyreon is the parser entry point; the test asserts the
+  // captured DeclIR.routes for the `router` decl.
+  async function parse(source: string) {
+    const { parsePyreon } = await import('../parse')
+    return parsePyreon(source)
+  }
+
+  const SOURCE_HEAD = `
+    import { createRouter } from '@pyreon/router'
+    declare const HomePage: any
+    declare const UserPage: any
+    declare const SettingsPage: any
+  `
+
+  it('extracts a single literal-path route', async () => {
+    const result = await parse(`
+      ${SOURCE_HEAD}
+      export function App() {
+        const router = createRouter({
+          routes: [{ path: '/', component: HomePage }],
+        })
+        return <RouterView />
+      }
+    `)
+    const decls = result.components[0]?.decls ?? []
+    const routerDecl = decls.find((d) => d.kind === 'router')
+    expect(routerDecl?.routes).toHaveLength(1)
+    expect(routerDecl?.routes?.[0]?.path).toBe('/')
+    expect(routerDecl?.routes?.[0]?.component).toEqual({
+      kind: 'identifier',
+      name: 'HomePage',
+    })
+  })
+
+  it('extracts multiple routes including a :param pattern', async () => {
+    const result = await parse(`
+      ${SOURCE_HEAD}
+      export function App() {
+        const router = createRouter({
+          routes: [
+            { path: '/', component: HomePage },
+            { path: '/users/:id', component: UserPage },
+            { path: '/settings', component: SettingsPage },
+          ],
+        })
+        return <RouterView />
+      }
+    `)
+    const routerDecl = result.components[0]?.decls.find((d) => d.kind === 'router')
+    expect(routerDecl?.routes).toHaveLength(3)
+    expect(routerDecl?.routes?.map((r) => r.path)).toEqual([
+      '/',
+      '/users/:id',
+      '/settings',
+    ])
+  })
+
+  it('bails (routes undefined) when arg is missing — back-compat with C4 scaffold', async () => {
+    const result = await parse(`
+      import { createRouter } from '@pyreon/router'
+      export function App() {
+        const router = createRouter()
+        return <RouterView />
+      }
+    `)
+    const routerDecl = result.components[0]?.decls.find((d) => d.kind === 'router')
+    // C4 scaffold shape preserved when routes can't be extracted.
+    expect(routerDecl?.kind).toBe('router')
+    expect(routerDecl?.routes).toBeUndefined()
+  })
+
+  it('bails when routes is non-literal (e.g. identifier reference)', async () => {
+    const result = await parse(`
+      import { createRouter } from '@pyreon/router'
+      declare const myRoutes: any
+      export function App() {
+        const router = createRouter({ routes: myRoutes })
+        return <RouterView />
+      }
+    `)
+    const routerDecl = result.components[0]?.decls.find((d) => d.kind === 'router')
+    expect(routerDecl?.routes).toBeUndefined()
+  })
+
+  it('bails when any route entry is malformed (missing path or component)', async () => {
+    const result = await parse(`
+      ${SOURCE_HEAD}
+      export function App() {
+        const router = createRouter({
+          routes: [
+            { path: '/', component: HomePage },
+            { path: '/broken' },
+          ],
+        })
+        return <RouterView />
+      }
+    `)
+    const routerDecl = result.components[0]?.decls.find((d) => d.kind === 'router')
+    // Whole-or-nothing — partial extraction would mislead the emit.
+    expect(routerDecl?.routes).toBeUndefined()
+  })
+
+  it('captures member-expression component references (e.g. pages.Home)', async () => {
+    const result = await parse(`
+      import { createRouter } from '@pyreon/router'
+      declare const pages: { Home: any; User: any }
+      export function App() {
+        const router = createRouter({
+          routes: [
+            { path: '/', component: pages.Home },
+            { path: '/users/:id', component: pages.User },
+          ],
+        })
+        return <RouterView />
+      }
+    `)
+    const routerDecl = result.components[0]?.decls.find((d) => d.kind === 'router')
+    expect(routerDecl?.routes).toHaveLength(2)
+    expect(routerDecl?.routes?.[0]?.component.kind).toBe('member')
+    expect(routerDecl?.routes?.[1]?.component.kind).toBe('member')
+  })
+
+  it('ignores unrecognised RouteRecord fields (name, meta, loader, etc.)', async () => {
+    const result = await parse(`
+      ${SOURCE_HEAD}
+      export function App() {
+        const router = createRouter({
+          routes: [
+            { path: '/', component: HomePage, name: 'home', meta: { auth: false } },
+          ],
+        })
+        return <RouterView />
+      }
+    `)
+    const routerDecl = result.components[0]?.decls.find((d) => d.kind === 'router')
+    expect(routerDecl?.routes).toHaveLength(1)
+    // Only path + component captured; name/meta dropped for v1.
+    expect(routerDecl?.routes?.[0]).toEqual({
+      path: '/',
+      component: { kind: 'identifier', name: 'HomePage' },
+    })
+  })
+
+  it('bails when first arg is not an object literal (e.g. a function call)', async () => {
+    const result = await parse(`
+      import { createRouter } from '@pyreon/router'
+      declare const makeOpts: () => any
+      export function App() {
+        const router = createRouter(makeOpts())
+        return <RouterView />
+      }
+    `)
+    const routerDecl = result.components[0]?.decls.find((d) => d.kind === 'router')
+    expect(routerDecl?.routes).toBeUndefined()
+  })
+
+  it('emit unchanged in C5.1 — Swift still produces scaffold-only @State + PyreonRouter()', async () => {
+    // C5.1 is parser-only; the emit consumes routes in C5.2/C5.3.
+    // This test locks the SAME emit shape as C4 even though the IR
+    // now carries routes — proving the additive nature of C5.1.
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [{ path: '/', component: HomePage }],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    expect(out).toContain('@State private var router = PyreonRouter()')
+    expect(out).toContain('RouterProvider(router: router)')
+    // The .navigationDestination block lands in C5.2 — not yet.
+    expect(out).not.toContain('.navigationDestination')
+  })
+})
+
 describe('Phase B — composition smoke', () => {
   it('Swift: Stack > Inline > Text + Button renders correctly', () => {
     const out = tx(

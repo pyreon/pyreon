@@ -14,6 +14,7 @@ import type {
   ExprIR,
   ModuleDeclIR,
   ParseResult,
+  RouteIR,
   StatementIR,
   StructIR,
   TypeIR,
@@ -403,12 +404,17 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   //   const navigate = useNavigate()
   //   const params   = useParams()
   //
-  // Per-target emit lives in emitSwiftDecl / emitKotlinDecl. The routes
-  // config arg to createRouter is intentionally DROPPED at parse time
-  // — native runtimes wire routes via .navigationDestination(for:) /
-  // NavHost(routes), separately from the router instance itself.
+  // Per-target emit lives in emitSwiftDecl / emitKotlinDecl. C5 extends
+  // the createRouter case to extract the `routes` config array — the
+  // native emit then produces real `.navigationDestination(for:)` /
+  // `NavHost { composable(...) }` blocks instead of scaffold-only
+  // instances. Conservative bail: a missing / non-literal / wrong-shape
+  // routes arg → undefined `routes` → emit falls back to C4 bare-instance.
   if (calleeName === 'createRouter') {
-    return { kind: 'router', name }
+    const routes = tryExtractRoutes(init.arguments?.[0], ctx)
+    return routes !== null
+      ? { kind: 'router', name, routes }
+      : { kind: 'router', name }
   }
   if (calleeName === 'useNavigate') {
     return { kind: 'router-hook', name, hook: 'navigate' }
@@ -417,6 +423,72 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     return { kind: 'router-hook', name, hook: 'params' }
   }
   return null
+}
+
+/**
+ * Phase C5 — extract the `routes: [...]` array from the first arg of a
+ * `createRouter({...})` call. Returns null when the shape is anything
+ * other than the canonical literal-config form, so the caller falls
+ * back to the C4 bare-instance emit (back-compat).
+ *
+ * Recognised shape:
+ *   createRouter({
+ *     routes: [
+ *       { path: '/', component: Home },
+ *       { path: '/users/:id', component: User },
+ *     ]
+ *   })
+ *
+ * Bail conditions (return null):
+ *   - first arg missing or not an ObjectExpression
+ *   - `routes` property missing or not an ArrayExpression
+ *   - any array element not an ObjectExpression
+ *   - any element missing `path` (string literal) or `component` (expr)
+ *
+ * Bail is conservative — uncertain shapes drop ALL routes, keeping the
+ * scaffold emit. The compiler never emits a partial route table.
+ */
+function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | null {
+  if (!arg || arg.type !== 'ObjectExpression') return null
+  const props = arg.properties as AnyNode[] | undefined
+  if (!props) return null
+  const routesProp = props.find(
+    (p) =>
+      p?.type === 'Property' &&
+      p?.key?.type === 'Identifier' &&
+      p?.key?.name === 'routes',
+  )
+  if (!routesProp) return null
+  const arr = routesProp.value
+  if (!arr || arr.type !== 'ArrayExpression') return null
+  const out: RouteIR[] = []
+  for (const el of (arr.elements as AnyNode[] | undefined) ?? []) {
+    if (!el || el.type !== 'ObjectExpression') return null
+    const elProps = el.properties as AnyNode[] | undefined
+    if (!elProps) return null
+    let path: string | undefined
+    let component: ExprIR | undefined
+    for (const p of elProps) {
+      if (p?.type !== 'Property') continue
+      const key = p.key?.name as string | undefined
+      if (key === 'path') {
+        const v = p.value
+        if (
+          (v?.type === 'Literal' || v?.type === 'StringLiteral') &&
+          typeof v.value === 'string'
+        ) {
+          path = v.value
+        }
+      } else if (key === 'component') {
+        component = parseExpr(p.value, ctx)
+      }
+      // Other RouteRecord fields (name, meta, loader, etc.) are
+      // intentionally ignored — Phase C5 ships path + component only.
+    }
+    if (path === undefined || component === undefined) return null
+    out.push({ path, component })
+  }
+  return out
 }
 
 /**
