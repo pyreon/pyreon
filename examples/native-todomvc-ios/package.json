@@ -12,6 +12,10 @@
     "typecheck": "echo '[native-todomvc-ios] no TS typecheck surface'"
   },
   "devDependencies": {
-    "@pyreon/native-cli": "workspace:*"
+    "@pyreon/core": "workspace:*",
+    "@pyreon/native-cli": "workspace:*",
+    "@pyreon/primitives": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/storage": "workspace:*"
   }
 }

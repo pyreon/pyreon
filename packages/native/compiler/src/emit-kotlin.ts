@@ -1110,6 +1110,14 @@ function emitKotlinLayoutModifier(
     // @Serializable.
     parts.push(`.clip(RoundedCornerShape(${resolveRadius(radius)}.dp))`)
   }
+  // E3.1 — `data-testid` becomes Compose's `Modifier.testTag()` (from
+  // androidx.compose.ui.platform). Same string the web e2e selects
+  // on (`getByTestId`) reaches Android UIAutomator / Espresso via
+  // testTag. Other `data-*` attrs are silently dropped.
+  const testid = readStaticAttrKotlin(e, 'data-testid')
+  if (typeof testid === 'string') {
+    parts.push(`.testTag(${JSON.stringify(testid)})`)
+  }
   if (parts.length === 0) return ''
   return `Modifier${parts.join('')}`
 }

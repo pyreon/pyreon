@@ -106,13 +106,13 @@ describe('TodoMVC compile baseline', () => {
           todos = todos.filter({ t in !t.done })
         }
         var body: some View {
-          VStack {
+          VStack(spacing: 8) {
             TextField("What needs to be done?", text: $draft)
               .onSubmit { addTodo() }
             ForEach(visible, id: \\.id) { t in
               TodoRow(todo: t, onToggle: { toggle(t.id) }, onRemove: { remove(t.id) })
             }
-            HStack {
+            HStack(alignment: .center, spacing: 8) {
               Text("\\(remaining) remaining")
               Button("All") { filter = .all }
               Button("Active") { filter = .active }
@@ -121,7 +121,7 @@ describe('TodoMVC compile baseline', () => {
                 Button("Clear completed") { clearCompleted() }
               }
             }
-          }
+          }.accessibilityIdentifier("todo-app")
         }
       }
 
@@ -130,7 +130,7 @@ describe('TodoMVC compile baseline', () => {
         let onToggle: () -> Void
         let onRemove: () -> Void
         var body: some View {
-          HStack {
+          HStack(alignment: .center, spacing: 8) {
             Toggle("", isOn: Binding(
                 get: { todo.done },
                 set: { _ in onToggle() }
@@ -529,9 +529,13 @@ describe('TodoMVC gap-tracking baseline', () => {
     // correct, SwiftUI's primitive names.
     const out = transform(source, { target: 'kotlin' })
     // Column wraps the whole component body (top-level layout).
-    expect(out.code).toMatch(/Column \{[\s\S]+TextField/)
+    // Supports both bare `Column {` AND `Column(arg = ...) {` shapes
+    // (the canonical-primitive emit adds gap/align/testTag args, which
+    // can themselves contain nested parens like Arrangement.spacedBy(8.dp)).
+    expect(out.code).toMatch(/Column[^{]*\{[\s\S]+TextField/)
     // Row wraps the filter button bar AND the TodoRow's inner layout.
-    const rowMatches = out.code.match(/Row \{/g) ?? []
+    // Match `Row {` OR `Row(args) {` — non-greedy body-brace anchor.
+    const rowMatches = out.code.match(/\bRow[^{\n]*\{/g) ?? []
     expect(rowMatches.length).toBeGreaterThanOrEqual(2)
     // Negative assertions — the SwiftUI names must NOT leak through.
     expect(out.code).not.toContain('VStack {')
