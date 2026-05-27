@@ -688,6 +688,60 @@ const MATRIX: Cell[] = [
     },
   },
 
+  // native-router-demo-web — Phase R1.5 build-shape gate. Sibling of
+  // native-todomvc-web's smoke cell; this one proves the multiplatform
+  // *routing* story builds correctly. The web entry-client imports
+  // RouterApp directly from native-router-demo-ios/src/RouterApp.tsx
+  // (path identity), so this cell exercises both:
+  //   - the @pyreon/router web runtime (createRouter, RouterProvider,
+  //     RouterView, useNavigate, useParams)
+  //   - the @pyreon/vite-plugin's JSX-auto-import resolution against
+  //     bare `<Stack>` / `<Inline>` / `<Text>` / `<Button>` references
+  //     in the iOS source
+  // Bisect-verifiable: break the auto-import resolution or remove a
+  // primitive's web impl and the build fails OR the bundled JS loses
+  // the testid + the user-visible page-name strings.
+  {
+    example: 'native-router-demo-web',
+    mode: 'spa',
+    useExampleConfig: true,
+    smoke: (dist) => {
+      const indexPath = join(dist, 'index.html')
+      assertFileContains(indexPath, 'id="app"')
+      assertFileContains(indexPath, 'data-testid="app-root"')
+      const assetsDir = join(dist, 'assets')
+      const jsFiles = readdirSync(assetsDir).filter((f) => f.endsWith('.js'))
+      const bundles = jsFiles.map((f) => readFileSync(join(assetsDir, f), 'utf8'))
+      const allBundled = bundles.join('\n')
+      // testid baked into HomePage's root Stack
+      if (!allBundled.includes('home-page')) {
+        throw new Error(
+          `[native-router-demo-web × spa] expected bundle to contain testid "home-page" — got ${jsFiles.length} js file(s)`,
+        )
+      }
+      // testid baked into UserPage's root Stack (the :param route's
+      // component) — proves the param-bearing route was bundled too
+      if (!allBundled.includes('user-page')) {
+        throw new Error(
+          `[native-router-demo-web × spa] expected bundle to contain testid "user-page" — got ${jsFiles.length} js file(s)`,
+        )
+      }
+      // Page-name strings — proves the JSX text wasn't stripped /
+      // optimized-into-nothing and that all three route components
+      // ended up in the same bundle (no accidental route-splitting).
+      if (!allBundled.includes('Welcome to the Pyreon multiplatform router demo')) {
+        throw new Error(
+          `[native-router-demo-web × spa] expected bundle to contain HomePage's welcome text — got ${jsFiles.length} js file(s)`,
+        )
+      }
+      if (!allBundled.includes('Profile for user')) {
+        throw new Error(
+          `[native-router-demo-web × spa] expected bundle to contain UserPage's profile text — got ${jsFiles.length} js file(s)`,
+        )
+      }
+    },
+  },
+
   // playground — minimal three-route Pyreon shell. Smallest viable
   // app exercising the routing + layout chain.
   {

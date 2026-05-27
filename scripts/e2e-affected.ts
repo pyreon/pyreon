@@ -194,6 +194,22 @@ const SUITES: Suite[] = [
       'e2e/native-todomvc-web',
     ],
   },
+  {
+    name: 'native-router-demo-web',
+    script: 'test:e2e:native-router-demo-web',
+    triggers: [
+      ...RENDER_CORE,
+      // The router demo exercises @pyreon/router's runtime + primitives'
+      // DOM impls — any router or primitive change can break it. The
+      // iOS source lives at native-router-demo-ios but is consumed by
+      // web; both example dirs trigger.
+      'packages/core/primitives/',
+      'packages/core/router/',
+      'examples/native-router-demo-ios/',
+      'examples/native-router-demo-web/',
+      'e2e/native-router-demo-web',
+    ],
+  },
 ]
 
 export { SUITES }
