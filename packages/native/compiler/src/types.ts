@@ -177,6 +177,20 @@ export interface RouteIR {
    * target route's component; see the interface doc for resolution rules.
    */
   redirect?: string
+  /**
+   * Phase 3 — per-route boolean guard from `beforeEnter: () => <boolExpr>`.
+   * The native emit wraps the matched component in an inline conditional:
+   * `if (<guard>) { Component() } else { <fallback> }` — the dispatch runs
+   * at navigation time, so the guard is checked before the route renders
+   * (faithful to `beforeEnter`'s "before the route activates" semantic).
+   * On failure the branch renders the router's catch-all fallback (the
+   * wildcard component if one exists, else the no-route placeholder).
+   *
+   * v1 captures only an arrow with an EXPRESSION body (`() => isAuthed()`);
+   * block-body guards and `throw redirect()` / async guards are a later arc
+   * (they leave `guard` undefined → the route emits unguarded).
+   */
+  guard?: ExprIR
 }
 
 /**

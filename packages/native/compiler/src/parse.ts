@@ -488,6 +488,7 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
     let path: string | undefined
     let component: ExprIR | undefined
     let redirect: string | undefined
+    let guard: ExprIR | undefined
     for (const p of elProps) {
       if (p?.type !== 'Property') continue
       const key = p.key?.name as string | undefined
@@ -512,6 +513,15 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
         ) {
           redirect = v.value
         }
+      } else if (key === 'beforeEnter') {
+        // Phase 3 — boolean guard. Only an arrow with an EXPRESSION body
+        // (`() => isAuthed()`) is captured; the body becomes the inline
+        // dispatch condition. Block-body / async / throw-redirect guards
+        // leave `guard` undefined → the route emits unguarded.
+        const v = p.value
+        if (v?.type === 'ArrowFunctionExpression' && v.body && v.body.type !== 'BlockStatement') {
+          guard = parseExpr(v.body, ctx)
+        }
       }
       // Other RouteRecord fields (name, meta, loader, etc.) are
       // intentionally ignored — the rest extends when a real app needs it.
@@ -524,6 +534,7 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
     const route: RouteIR = { path }
     if (component !== undefined) route.component = component
     if (redirect !== undefined) route.redirect = redirect
+    if (guard !== undefined) route.guard = guard
     out.push(route)
   }
   return out
