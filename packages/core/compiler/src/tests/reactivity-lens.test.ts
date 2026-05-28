@@ -115,15 +115,25 @@ describe('reactivity-lens — drift gate (positive claim = codegen record)', () 
 describe('reactivity-lens — footgun merge (existing detectPyreonPatterns)', () => {
   it('param-destructured props surface a footgun finding with the detector code', () => {
     // detectPyreonPatterns catches the PARAMETER-destructure shape
-    // `({ name })`. The body-scope `const {x}=props` shape is the static
-    // layer's known cliff (doc-only anti-pattern, no reliable AST detector)
-    // — the lens's structural `static-text`/`reactive` signals are what
-    // compensate for that downstream. This asserts the merge surfaces
-    // whatever the existing detector finds, faithfully.
+    // `({ name })` (code `props-destructured`). The lens merges those
+    // footguns faithfully alongside its structural codegen kinds.
     const src = `function C({ name }){ return <div>{name}</div> }`
     const fg = find(src, 'footgun')
     expect(fg.length).toBeGreaterThanOrEqual(1)
     expect(fg.some((f) => f.code === 'props-destructured')).toBe(true)
+  })
+
+  it('body-scope `const {x} = props` surfaces props-destructured-body via the merge', () => {
+    // The body-scope shape was once the static layer's "doc-only cliff",
+    // but `props-destructured-body` shipped (#618) as a reliable
+    // TS-compiler-API detector (PascalCase JSX component + bare `= props`
+    // first-param + top-of-body destructure, no descent into nested fns).
+    // Because `analyzeReactivity` merges `detectPyreonPatterns`, the lens
+    // surfaces it too — this locks that merge so the editor's body-scope
+    // footgun can't silently regress.
+    const src = `function Card(props){ const { title } = props; return <div>{title}</div> }`
+    const fg = find(src, 'footgun')
+    expect(fg.some((f) => f.code === 'props-destructured-body')).toBe(true)
   })
 
   it('findings are sorted by (line, column)', () => {
