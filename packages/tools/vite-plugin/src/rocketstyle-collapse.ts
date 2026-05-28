@@ -22,6 +22,7 @@
  * output is not.
  */
 import { withSilent } from '@pyreon/reactivity'
+import type { StaticChild } from '@pyreon/compiler'
 import type { InlineConfig, ViteDevServer } from 'vite'
 
 // Inline FNV-1a (same algorithm as @pyreon/styler/hash) — avoids pulling
@@ -62,8 +63,14 @@ export interface ResolveInput {
   component: CollapseImportSpec
   /** Literal dimension/HTML props, e.g. `{ state: 'primary', size: 'md' }`. */
   props: Record<string, string>
-  /** Static text children (empty ⇒ no children). */
+  /** Static text children (empty ⇒ no children). For element-child sites
+   * this is the `serializeStaticChildren` key-string (cache discriminator
+   * only — the actual children come from `childTree`). */
   childrenText: string
+  /** Element-child sites only: the recursively-static child subtree.
+   * When present, the resolver rebuilds it via `h()` and renders the real
+   * child VNodes instead of `childrenText` as a string (PR 2). */
+  childTree?: StaticChild[]
   config: CollapseConfig
 }
 
@@ -162,12 +169,30 @@ export async function createCollapseResolver(projectRoot: string): Promise<Colla
     )
   }
 
+  /**
+   * Rebuild real child VNodes from a static child subtree via `h()`.
+   * `tag` is a lowercase DOM string (component children never reach
+   * here — the detector bails on them), `props` are string literals,
+   * and children are text strings or nested static elements. The
+   * resulting VNodes render byte-faithfully to a real mount because the
+   * tree was produced with the compiler's own JSX-text normalization.
+   */
+  function buildChildVNodes(
+    tree: StaticChild[],
+    h: (t: unknown, p: unknown, ...c: unknown[]) => unknown,
+  ): unknown[] {
+    return tree.map((c) =>
+      typeof c === 'string' ? c : h(c.tag, c.props, ...buildChildVNodes(c.children, h)),
+    )
+  }
+
   return {
     async resolve(input) {
       const ck = JSON.stringify([
         input.component,
         input.props,
         input.childrenText,
+        input.childTree ?? null,
         input.config.provider,
         input.config.theme,
       ])
@@ -190,7 +215,16 @@ export async function createCollapseResolver(projectRoot: string): Promise<Colla
           cache.set(ck, null)
           return null
         }
-        const childArgs = input.childrenText ? [input.childrenText] : []
+        // Element-child sites carry a structured `childTree` — rebuild
+        // the real child VNodes via `h()` so the SSR render bakes the
+        // full subtree HTML (byte-faithful to a real mount because the
+        // tree was normalized with the compiler's own `cleanJsxText`).
+        // Full / dynamic sites use `childrenText` as a plain string.
+        const childArgs: unknown[] = input.childTree
+          ? buildChildVNodes(input.childTree, h)
+          : input.childrenText
+            ? [input.childrenText]
+            : []
         const node = (mode: string) =>
           h(Provider, { theme: themeVal, mode }, h(Component, input.props, ...childArgs))
         const lightHtml = await renderToString(node('light'))
