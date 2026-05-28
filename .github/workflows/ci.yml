@@ -741,6 +741,30 @@ jobs:
       - name: Audit typed-but-unimplemented surfaces (strict)
         run: bun run audit-types --all --strict
 
+  # ── Pyreon Lint Gate: the framework's OWN lint rules as a CI check ────
+  # Runs `pyreon doctor --only lint --ci` over first-party
+  # `packages/*/src` (the doctor lint gate's scope — examples, e2e, docs,
+  # scripts, and test files are excluded; `.pyreonlintrc.json` exemptPaths
+  # apply). Fails on ERROR-severity findings only; warnings + infos stay
+  # advisory. This is the gate that would have caught the compat
+  # `no-process-dev-gate` bug before it shipped — Pyreon's own rules
+  # previously ran NOWHERE in CI (only `oxlint .` + `lint:browser-smoke`
+  # did). Lib-free: the CLI + @pyreon/lint resolve via the `bun` condition
+  # → src, so no bootstrap build is needed (needs: install only).
+  # See packages/tools/cli/src/doctor/gates/lint.ts.
+  pyreon-lint-gate:
+    name: Pyreon Lint Gate
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: ./.github/actions/setup-pyreon
+        with:
+          restore-bootstrap: 'false'
+      - name: Run Pyreon lint rules over framework source (error-gating)
+        run: bun run lint:pyreon
+
   # ── Check bundle budgets: per-package main-entry size gate ────────────
   # Bundles each package's `lib/index.js` (workspace + peer-deps
   # externalized, dynamic-import chunks split out) and asserts the

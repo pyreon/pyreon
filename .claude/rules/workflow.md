@@ -109,7 +109,7 @@ in a clone where someone has them wired up).
 
 ## Validation Checklist — Before EVERY Push
 
-1. `bun run lint` — zero errors
+1. `bun run lint` — zero errors. Also run `bun run lint:pyreon` (Pyreon's OWN rules over first-party `packages/*/src` via `pyreon doctor --only lint --ci`) — this is the `Pyreon Lint Gate` CI check; zero errors.
 2. `bun run typecheck` — zero errors (MCP pre-existing TS2589 is known)
 3. `bun run test` — all tests pass
 4. `bun run gen-docs --check` — no manifest/api-reference drift (catches the "I edited the generated file directly" mistake)
