@@ -92,8 +92,11 @@ fun <T> derivedStateOf(block: () -> T): State<T> = MutableState(block())
 @Composable
 fun <T> remember(calculation: () -> T): T = calculation()
 
+// Text — style/color args added for Heading emit (P2.2). Defaults keep
+// the bare Text(text = "...") call sites (from Text emit) valid.
 @Composable
-fun Text(text: String) {}
+@Suppress("UNUSED_PARAMETER")
+fun Text(text: String, style: TextStyle = TextStyle(), color: Color? = null) {}
 
 @Composable
 fun Button(onClick: () -> Unit, content: @Composable () -> Unit) {
@@ -338,6 +341,14 @@ object Modifier {
   fun horizontalScroll(state: ScrollState): Modifier = this
   @Suppress("UNUSED_PARAMETER")
   fun weight(weight: Float): Modifier = this
+  // --- Phase P2.2 content: <Icon>/<Image> sizing. Real Compose ships
+  // size/width/height from androidx.compose.foundation.layout.
+  @Suppress("UNUSED_PARAMETER")
+  fun size(size: Dp): Modifier = this
+  @Suppress("UNUSED_PARAMETER")
+  fun width(width: Dp): Modifier = this
+  @Suppress("UNUSED_PARAMETER")
+  fun height(height: Dp): Modifier = this
 }
 
 // ScrollState + rememberScrollState — <Scroll> emit's scroll position
@@ -352,6 +363,54 @@ fun rememberScrollState(): ScrollState = ScrollState()
 @Composable
 @Suppress("UNUSED_PARAMETER")
 fun Spacer(modifier: Modifier = Modifier) {}
+
+// --- Phase P2.2 content: <Heading> / <Icon> / <Image> ---
+
+// TextStyle + MaterialTheme.typography — <Heading> emit's per-level
+// typography role. Real Compose: androidx.compose.ui.text.TextStyle +
+// androidx.compose.material3.MaterialTheme.typography (Material3 scale).
+class TextStyle
+object MaterialTheme {
+  object typography {
+    val headlineLarge: TextStyle = TextStyle()
+    val headlineMedium: TextStyle = TextStyle()
+    val headlineSmall: TextStyle = TextStyle()
+    val titleLarge: TextStyle = TextStyle()
+    val titleMedium: TextStyle = TextStyle()
+    val titleSmall: TextStyle = TextStyle()
+  }
+}
+
+// ImageVector + pyreonIcon — <Icon> emit resolves a platform-agnostic
+// name to a Material ImageVector via the @pyreon/native-runtime-kotlin
+// helper (Compose has no string-keyed icon API in core; same precedent
+// as rememberPyreonStorage). Real ImageVector: androidx.compose.ui.graphics.vector.
+class ImageVector
+@Suppress("UNUSED_PARAMETER")
+fun pyreonIcon(name: String): ImageVector = ImageVector()
+
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun Icon(
+  imageVector: ImageVector,
+  contentDescription: String?,
+  tint: Color? = null,
+  modifier: Modifier = Modifier,
+) {}
+
+// AsyncImage — <Image> emit's remote-image composable (Coil). Real:
+// coil.compose.AsyncImage(model, contentDescription, modifier, …).
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun AsyncImage(model: Any?, contentDescription: String?, modifier: Modifier = Modifier) {}
+
+// Dialog — <Modal> emit's overlay composable (conditionally composed
+// behind an if (open) guard). Real Compose: androidx.compose.ui.window.Dialog.
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun Dialog(onDismissRequest: () -> Unit, content: @Composable () -> Unit) {
+  content()
+}
 
 // Arrangement — gap / placement on the main axis. The Phase B emit
 // uses Arrangement.spacedBy for canonical gap={N} prop, plus

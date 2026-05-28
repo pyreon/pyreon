@@ -822,6 +822,10 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Layer') return emitKotlinLayer(e, indent)
   if (tag === 'Scroll') return emitKotlinScroll(e, indent)
   if (tag === 'Spacer') return emitKotlinSpacer(e)
+  if (tag === 'Heading') return emitKotlinHeading(e, indent)
+  if (tag === 'Icon') return emitKotlinIcon(e, indent)
+  if (tag === 'Image') return emitKotlinImage(e, indent)
+  if (tag === 'Modal') return emitKotlinModal(e, indent)
   if (tag === 'Press') return emitKotlinPress(e, indent)
   if (tag === 'Field') return emitKotlinField(e, indent)
   if (tag === 'Toggle') return emitKotlinToggle(e, indent)
@@ -1181,6 +1185,125 @@ function emitKotlinStack(
 }
 
 /**
+ * Map a canonical `<Heading level>` to a Compose Material3 typography
+ * role. Mirrors the web scale (32/24/20/18/16/14px) + the Swift font
+ * roles onto Material's headline/title scale.
+ */
+const HEADING_TYPOGRAPHY: Record<1 | 2 | 3 | 4 | 5 | 6, string> = {
+  1: 'headlineLarge',
+  2: 'headlineMedium',
+  3: 'headlineSmall',
+  4: 'titleLarge',
+  5: 'titleMedium',
+  6: 'titleSmall',
+}
+
+/**
+ * Build the Compose `Text(...)` text-arg string from a primitive's
+ * children — static text or `${expr}` interpolation. Shared by
+ * `<Text>` and `<Heading>` emit.
+ */
+function kotlinTextArg(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  if (e.children.length === 0) return '""'
+  if (e.children.length === 1 && e.children[0]!.kind === 'text') {
+    return JSON.stringify(e.children[0]!.value)
+  }
+  const parts: string[] = []
+  for (const c of e.children) {
+    if (c.kind === 'text') parts.push(escapeKotlinInterp(c.value))
+    else parts.push(`\${${emitKotlinExpr(c.expr, indent)}}`)
+  }
+  return `"${parts.join('')}"`
+}
+
+/**
+ * Emit `<Heading level={N}>text</Heading>` as Compose
+ * `Text(text = ..., style = MaterialTheme.typography.headlineLarge|…)`.
+ * `level` → Material3 typography role; `color` → `color =` arg.
+ */
+function emitKotlinHeading(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const levelRaw = readStaticAttrKotlin(e, 'level')
+  const level = (typeof levelRaw === 'number' ? levelRaw : 1) as 1 | 2 | 3 | 4 | 5 | 6
+  const args = [
+    `text = ${kotlinTextArg(e, indent)}`,
+    `style = MaterialTheme.typography.${HEADING_TYPOGRAPHY[level] ?? 'headlineLarge'}`,
+  ]
+  const color = readStaticAttrKotlin(e, 'color')
+  if (typeof color === 'string') args.push(`color = ${resolveColor(color, 'kotlin')}`)
+  return `Text(${args.join(', ')})`
+}
+
+const ICON_SIZE_DP: Record<string, number> = { sm: 16, md: 20, lg: 24 }
+
+/**
+ * Emit `<Icon name="..." />` as Compose
+ * `Icon(imageVector = pyreonIcon("name"), contentDescription = "name", …)`.
+ *
+ * `pyreonIcon(name)` (from `@pyreon/native-runtime-kotlin`, stubbed for
+ * typecheck) resolves the platform-agnostic name to a Material
+ * `ImageVector` — the Compose analog of the web sprite-by-name + the
+ * `rememberPyreonStorage` helper precedent (Compose has no string-keyed
+ * icon API in core, unlike SwiftUI's `Image(systemName:)`). `size` →
+ * `Modifier.size`, `color` → `tint`.
+ */
+function emitKotlinIcon(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const name = readStaticAttrKotlin(e, 'name')
+  if (typeof name !== 'string') {
+    return emitKotlinGeneric(e, indent)
+  }
+  const args = [
+    `imageVector = pyreonIcon(${JSON.stringify(name)})`,
+    `contentDescription = ${JSON.stringify(name)}`,
+  ]
+  const color = readStaticAttrKotlin(e, 'color')
+  if (typeof color === 'string') args.push(`tint = ${resolveColor(color, 'kotlin')}`)
+  const size = readStaticAttrKotlin(e, 'size')
+  if (typeof size === 'string') {
+    args.push(`modifier = Modifier.size(${ICON_SIZE_DP[size] ?? 20}.dp)`)
+  }
+  return `Icon(${args.join(', ')})`
+}
+
+/**
+ * Emit `<Image src alt width? height?>` as Compose
+ * `AsyncImage(model = "src", contentDescription = "alt", …)` (Coil).
+ * Numeric `width`/`height` → `Modifier.width/height(N.dp)` (string web
+ * units skipped). `fit` deferred (needs `contentScale` — type-level
+ * prop accepted, silent no-op, mirrors Swift). Non-literal `src` →
+ * generic fallthrough.
+ */
+function emitKotlinImage(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const src = readStaticAttrKotlin(e, 'src')
+  if (typeof src !== 'string') {
+    return emitKotlinGeneric(e, indent)
+  }
+  const alt = readStaticAttrKotlin(e, 'alt')
+  const args = [
+    `model = ${JSON.stringify(src)}`,
+    `contentDescription = ${JSON.stringify(typeof alt === 'string' ? alt : '')}`,
+  ]
+  const width = readStaticAttrKotlin(e, 'width')
+  const height = readStaticAttrKotlin(e, 'height')
+  const modParts: string[] = []
+  if (typeof width === 'number') modParts.push(`.width(${width}.dp)`)
+  if (typeof height === 'number') modParts.push(`.height(${height}.dp)`)
+  if (modParts.length > 0) args.push(`modifier = Modifier${modParts.join('')}`)
+  return `AsyncImage(${args.join(', ')})`
+}
+
+/**
  * Map a canonical 1-D `align` to a Compose `Box` 2-D `contentAlignment`.
  * Mirrors the Swift `ZStack(alignment:)` mapping — the web `<Layer>`
  * maps `align` to grid `place-items` (both axes), so start → top-start,
@@ -1258,6 +1381,52 @@ function emitKotlinSpacer(
   const layoutMod = emitKotlinLayoutModifier(e)
   const modifier = `Modifier.weight(1f)${layoutMod === '' ? '' : layoutMod.replace(/^Modifier/, '')}`
   return `Spacer(modifier = ${modifier})`
+}
+
+/**
+ * Emit `<Modal open={...} onClose={...}>content</Modal>` as a Compose
+ * `Dialog`, conditionally composed behind an `if (open)` guard.
+ *
+ * Unlike SwiftUI's `.sheet(isPresented:)` (a modifier with two-way
+ * binding), Compose shows a dialog by COMPOSING it conditionally and
+ * relies on `onDismissRequest` to change the state that gates it — so
+ * there is no signal-vs-expr split here: `open` becomes the `if`
+ * condition (via `emitKotlinSignalRead`, same as `<Show when>`), and
+ * `onClose` becomes `onDismissRequest` (the consumer flips `open`).
+ * `Dialog` provides the scrim + back-press dismissal natively.
+ *
+ * `open` missing → generic fallthrough.
+ */
+function emitKotlinModal(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const openAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> =>
+      a.kind === 'attr' && a.name === 'open',
+  )
+  if (!openAttr) {
+    return emitKotlinGeneric(e, indent)
+  }
+  const cond = emitKotlinSignalRead(openAttr.value)
+  const onClose = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'close',
+  )
+  const onDismiss = onClose ? emitKotlinAction(onClose.handler, indent + 2) : '{}'
+  const dialogPad = ' '.repeat(indent + 2)
+  if (e.children.length === 0) {
+    return `if (${cond}) {\n${dialogPad}Dialog(onDismissRequest = ${onDismiss}) {}\n${' '.repeat(indent)}}`
+  }
+  const contentPad = ' '.repeat(indent + 4)
+  const contentLines = e.children.map((c) => contentPad + emitKotlinChild(c, indent + 4)).join('\n')
+  return (
+    `if (${cond}) {\n` +
+    `${dialogPad}Dialog(onDismissRequest = ${onDismiss}) {\n` +
+    `${contentLines}\n` +
+    `${dialogPad}}\n` +
+    `${' '.repeat(indent)}}`
+  )
 }
 
 /**
