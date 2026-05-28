@@ -44,7 +44,7 @@
   },
   "dependencies": {
     "magic-string": "^0.30.21",
-    "oxc-parser": "^0.129.0"
+    "oxc-parser": "^0.133.0"
   },
   "optionalDependencies": {
     "@pyreon/compiler-darwin-arm64": "workspace:^",
