@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { signal } from '@pyreon/reactivity'
+import { RouterProvider, createRouter } from '@pyreon/router'
 import {
   Button,
   Field,
@@ -25,6 +26,7 @@ import {
   Image,
   Inline,
   Layer,
+  Link,
   Modal,
   Press,
   Scroll,
@@ -33,6 +35,29 @@ import {
   Text,
   Toggle,
 } from '../index'
+
+/** Mount a node inside a minimal RouterProvider (for `<Link>` internal). */
+function mountWithRouter(node: ReturnType<typeof h>): {
+  container: HTMLDivElement
+  unmount: () => void
+} {
+  const router = createRouter({
+    routes: [
+      { path: '/', component: () => h('div', null, 'home') },
+      { path: '/about', component: () => h('div', null, 'about') },
+    ],
+  })
+  const container = document.createElement('div')
+  document.body.appendChild(container)
+  const unmount = mount(h(RouterProvider, { router }, node), container)
+  return {
+    container,
+    unmount: () => {
+      unmount()
+      document.body.removeChild(container)
+    },
+  }
+}
 
 function mountTest(vnode: ReturnType<typeof h>): {
   container: HTMLDivElement
@@ -539,6 +564,60 @@ describe('<Press> happy-dom unit', () => {
     await new Promise((r) => setTimeout(r, 600))
     expect(long).toBe(0)
     unmount()
+  })
+})
+
+describe('<Link> happy-dom unit', () => {
+  it('internal link renders an <a href> via RouterLink (inside a RouterProvider)', () => {
+    const { container, unmount } = mountWithRouter(h(Link, { to: '/about' }, 'About'))
+    const a = container.querySelector('a') as HTMLAnchorElement
+    expect(a).not.toBe(null)
+    // Default router mode is hash, so the href is hash-prefixed.
+    expect(a.getAttribute('href')).toBe('#/about')
+    expect(a.textContent).toBe('About')
+    // Internal link is NOT a new-tab external anchor.
+    expect(a.getAttribute('target')).toBe(null)
+    unmount()
+  })
+
+  it('external link renders a plain <a target=_blank rel=noopener noreferrer> (no router needed)', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const unmount = mount(
+      h(Link, { to: 'https://example.com', external: true }, 'Site'),
+      container,
+    )
+    const a = container.querySelector('a') as HTMLAnchorElement
+    expect(a.getAttribute('href')).toBe('https://example.com')
+    expect(a.getAttribute('target')).toBe('_blank')
+    expect(a.getAttribute('rel')).toBe('noopener noreferrer')
+    expect(a.textContent).toBe('Site')
+    unmount()
+    document.body.removeChild(container)
+  })
+
+  it('internal link forwards data-* passthrough + style onto the anchor', () => {
+    const { container, unmount } = mountWithRouter(
+      h(Link, { to: '/about', 'data-testid': 'nav-about', style: { color: 'red' } }, 'About'),
+    )
+    const a = container.querySelector('a') as HTMLAnchorElement
+    expect(a.getAttribute('data-testid')).toBe('nav-about')
+    expect(a.style.color).toBe('red')
+    unmount()
+  })
+
+  it('external link forwards data-* passthrough onto the anchor', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const unmount = mount(
+      h(Link, { to: 'https://x.com', external: true, 'data-testid': 'ext' }, 'X'),
+      container,
+    )
+    expect(
+      (container.querySelector('a') as HTMLAnchorElement).getAttribute('data-testid'),
+    ).toBe('ext')
+    unmount()
+    document.body.removeChild(container)
   })
 })
 
