@@ -9,7 +9,21 @@ import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
-import { Button, Field, Inline, Layer, Press, Scroll, Spacer, Stack, Text, Toggle } from '../index'
+import {
+  Button,
+  Field,
+  Heading,
+  Icon,
+  Image,
+  Inline,
+  Layer,
+  Press,
+  Scroll,
+  Spacer,
+  Stack,
+  Text,
+  Toggle,
+} from '../index'
 
 describe('<Stack> — web', () => {
   it('renders a flex column div with token-resolved gap + padding', () => {
@@ -440,6 +454,82 @@ describe('<Field> — web', () => {
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
     await flush()
     expect(submitted).toBe(1)
+    unmount()
+  })
+})
+
+describe('<Heading> — web', () => {
+  it('renders a semantic <h2> with the scale font-size + bold weight', () => {
+    const { container, unmount } = mountInBrowser(
+      h(Heading, { level: 2, color: 'primary' }, 'Section'),
+    )
+    const root = container.firstElementChild as HTMLHeadingElement
+    expect(root.tagName).toBe('H2')
+    expect(root.textContent).toBe('Section')
+    const cs = getComputedStyle(root)
+    expect(cs.fontSize).toBe('24px')
+    expect(cs.fontWeight).toBe('700')
+    expect(cs.color).toBe('rgb(37, 99, 235)')
+    unmount()
+  })
+})
+
+describe('<Image> — web', () => {
+  it('renders an <img> with src/alt + object-fit + resolved dimensions', () => {
+    const { container, unmount } = mountInBrowser(
+      h(Image, {
+        src: 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==',
+        alt: 'pixel',
+        fit: 'contain',
+        width: 64,
+        height: 64,
+      }),
+    )
+    const img = container.firstElementChild as HTMLImageElement
+    expect(img.tagName).toBe('IMG')
+    expect(img.alt).toBe('pixel')
+    // object-fit is the real-browser-verified bit (computed value).
+    expect(getComputedStyle(img).objectFit).toBe('contain')
+    // Dimensions: assert the resolved inline style (deterministic across
+    // headless rendering — computed width can be clamped by the
+    // broken/placeholder-image box in some Chromium builds).
+    expect(img.style.width).toBe('64px')
+    expect(img.style.height).toBe('64px')
+    unmount()
+  })
+})
+
+describe('<Icon> — web', () => {
+  it('references an SVG sprite symbol the app provides + inherits text color', () => {
+    // App-provided sprite — the documented zero-bundle pattern.
+    const sprite = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    sprite.style.display = 'none'
+    sprite.innerHTML =
+      '<symbol id="check" viewBox="0 0 16 16"><path d="M2 8l4 4 8-8" /></symbol>'
+    document.body.appendChild(sprite)
+
+    const { container, unmount } = mountInBrowser(
+      // currentColor inheritance: parent sets a known color.
+      h(
+        'div',
+        { style: 'color: rgb(220, 38, 38)' },
+        h(Icon, { name: 'check', size: 'lg', 'aria-label': 'done' }),
+      ),
+    )
+    const svg = container.querySelector('svg') as SVGElement
+    const use = svg.firstElementChild as SVGUseElement
+    expect(use.tagName.toLowerCase()).toBe('use')
+    expect(use.getAttribute('href')).toBe('#check')
+    const cs = getComputedStyle(svg)
+    expect(cs.width).toBe('24px')
+    expect(cs.height).toBe('24px')
+    // fill: currentColor resolves to the inherited red.
+    expect(cs.fill).toBe('rgb(220, 38, 38)')
+    // Meaningful icon (aria-label) is NOT aria-hidden.
+    expect(svg.getAttribute('aria-hidden')).toBe(null)
+    expect(svg.getAttribute('aria-label')).toBe('done')
+
+    document.body.removeChild(sprite)
     unmount()
   })
 })
