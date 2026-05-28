@@ -858,18 +858,22 @@ describe('custom renderers', () => {
     expect(result).toBe('CUSTOM:document')
   })
 
-  it('unregisterRenderer removes a format', () => {
+  it('unregisterRenderer removes a format', async () => {
     registerRenderer('temp', {
       async render() {
         return 'x'
       },
     })
     unregisterRenderer('temp')
-    expect(render(Document({ children: 'x' }), 'temp')).rejects.toThrow('No renderer registered')
+    await expect(render(Document({ children: 'x' }), 'temp')).rejects.toThrow(
+      'No renderer registered',
+    )
   })
 
-  it('throws for unknown format', () => {
-    expect(render(Document({ children: 'x' }), 'unknown')).rejects.toThrow('No renderer registered')
+  it('throws for unknown format', async () => {
+    await expect(render(Document({ children: 'x' }), 'unknown')).rejects.toThrow(
+      'No renderer registered',
+    )
   })
 
   it('lazy renderer is cached after first use', async () => {
