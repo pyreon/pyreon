@@ -41,7 +41,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseSync } from 'oxc-parser'
-import { scanCollapsibleSites } from '../jsx'
+import { collectStaticChildren, scanCollapsibleSites } from '../jsx'
 
 const COLLAPSIBLE_SOURCES = new Set(['@pyreon/ui-components'])
 
@@ -91,6 +91,13 @@ interface SiteClass {
    * by the dynamic-prop collapse PR sequence (PRs #765-#767 plus the
    * handler-combined follow-up). */
   dynamicTernaryAddressable: boolean
+  /** element-child only: true iff EVERY element child is recursively
+   * static (DOM tag, literal props, no handlers, static text/element
+   * children all the way down) — i.e. `collectStaticChildren` succeeds.
+   * Counts the subset a future element-child collapse pass (PR 2) could
+   * bake into the `_rsCollapse` template. The go/no-go number for that
+   * investment — measurement-only here. */
+  elementChildStaticAddressable?: boolean
 }
 
 const isPascal = (t: string): boolean =>
@@ -194,12 +201,19 @@ function classifySite(node: any): SiteClass {
   // No spread / boolean / dynamic attr. Bail can now only come from children.
   for (const c of kids) {
     if (c.type === 'JSXText') continue
-    if (c.type === 'JSXElement' || c.type === 'JSXFragment')
+    if (c.type === 'JSXElement' || c.type === 'JSXFragment') {
+      // Element-child bail. Is the WHOLE child list recursively static
+      // (so a future pass could bake the subtree)? `collectStaticChildren`
+      // returns null if ANY child is non-static (component, handler,
+      // `{expr}`, fragment, …) — exactly the addressable predicate.
+      const elementChildStaticAddressable = collectStaticChildren(node) !== null
       return {
         bucket: 'element-child',
         partialAddressable: false,
         dynamicTernaryAddressable: false,
+        elementChildStaticAddressable,
       }
+    }
     return {
       bucket: 'expression-child',
       partialAddressable: false,
@@ -225,6 +239,7 @@ describe('proposal #1 — collapse-tail bail-reason census (measurement, not a b
     let candidates = 0
     let partialAddressable = 0
     let dynamicTernaryAddressable = 0
+    let elementChildStaticAddressable = 0
     let myCollapsible = 0
     let scannerCollapsible = 0
 
@@ -249,6 +264,7 @@ describe('proposal #1 — collapse-tail bail-reason census (measurement, not a b
             if (c.bucket === 'collapsible') myCollapsible++
             if (c.partialAddressable) partialAddressable++
             if (c.dynamicTernaryAddressable) dynamicTernaryAddressable++
+            if (c.elementChildStaticAddressable) elementChildStaticAddressable++
           }
         }
         for (const k in node) {
@@ -282,6 +298,10 @@ describe('proposal #1 — collapse-tail bail-reason census (measurement, not a b
         `     (dynamic-prop bails where EXACTLY ONE attr is a ternary-of-two-string-literals,`,
         `      every other non-literal attr is on* (handlers compose via _rsCollapseDynH),`,
         `      static children — dynamic-prop sequence #765-#767 + handler-combined follow-up)`,
+        `  ── element-child STATIC-ADDRESSABLE: ${elementChildStaticAddressable} (${pct(elementChildStaticAddressable)} of all sites)`,
+        `     (element-child bails where EVERY element child is recursively static`,
+        `      — DOM tag, literal props, no handlers, static text/element subtree.`,
+        `      The go/no-go surface for element-child collapse PR 2. Measurement-only.)`,
         '',
       ].join('\n'),
     )
@@ -326,5 +346,20 @@ describe('proposal #1 — collapse-tail bail-reason census (measurement, not a b
     // matching sites in the corpus); just lock that the counter is
     // wired and consistent with the bucket.
     expect(dynamicTernaryAddressable).toBeLessThanOrEqual(tally['dynamic-prop'])
+
+    // ── Element-child static-addressable (PR 1 measurement) ─────────────────
+    // The static-addressable subset is BY DEFINITION ≤ the element-child
+    // bucket (every addressable site is an element-child bail). Locks the
+    // counter is wired + consistent.
+    expect(elementChildStaticAddressable).toBeLessThanOrEqual(tally['element-child'])
+    // Bisect-verify lock (documented in the PR body): the corpus DOES
+    // contain ≥1 recursively-static element-child site (e.g. a Button
+    // wrapping a static <span>/<svg>). When `detectStaticElementChild` /
+    // `collectStaticChildren` is stubbed to always bail, this drops to 0
+    // and the assertion fails — proving the measurement is load-bearing
+    // on the detector, not passing for the wrong reason. If the corpus
+    // ever legitimately has zero such sites this would need revisiting,
+    // but the measured count at PR time is > 0.
+    expect(elementChildStaticAddressable).toBeGreaterThan(0)
   })
 })

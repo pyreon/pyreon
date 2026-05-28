@@ -476,6 +476,119 @@ function detectCollapsibleShape(
   return { props, childrenText: childrenText.trim() }
 }
 
+// ─── Element-child collapse — recursively-static child detection ─────────────
+//
+// P0 element-child collapse (open-work #1 frontier). `detectCollapsibleShape`
+// bails on ANY element child. This detector recognises the SAFE subset:
+// element children whose ENTIRE subtree is provably static, so the SSR
+// resolver can bake the full subtree into the `_rsCollapse` template with
+// nothing reactive lost. Conservative by construction — a child carrying
+// ANY reactivity (component tag, `{expr}` prop, `on*` handler, `{expr}`
+// child) is a hard bail.
+//
+// PR 1 (this) is measurement-only: the detector + a deterministic
+// serializer feed the bail census so we can size the addressable surface
+// before wiring the resolver (PR 2). Nothing here is yet called by the
+// emit path.
+
+/** A statically-bakeable child element subtree. */
+export interface StaticChildNode {
+  /** Lowercase DOM tag (component children are never static). */
+  tag: string
+  /** String-literal attributes only. */
+  props: Record<string, string>
+  /** Child text segments + nested static elements, in source order. */
+  children: StaticChild[]
+}
+
+export type StaticChild = string | StaticChildNode
+
+/**
+ * Recursively check a single JSX child element for static-bakeability.
+ * Returns a `StaticChildNode` tree or `null` (bail).
+ *
+ * Accepts iff ALL hold, recursively:
+ *   - lowercase (DOM) tag — NOT a component
+ *   - every attribute is a string literal (no spread, boolean, `{expr}`,
+ *     or `on*` handler — a child handler can't survive baking)
+ *   - children are static text OR recursively-static elements
+ */
+export function detectStaticElementChild(node: N): StaticChildNode | null {
+  if (node?.type !== 'JSXElement') return null
+  const tag = jsxTagName(node)
+  // Component (uppercase first char) → has its own reactivity → bail.
+  if (!tag || tag.charAt(0) !== tag.charAt(0).toLowerCase()) return null
+
+  const props: Record<string, string> = {}
+  for (const attr of jsxAttrs(node)) {
+    if (attr.type !== 'JSXAttribute') return null // spread → bail
+    const nm = attr.name?.type === 'JSXIdentifier' ? attr.name.name : null
+    if (!nm) return null
+    // No handlers on a baked child — a static clone can't carry them.
+    if (/^on[A-Z]/.test(nm)) return null
+    const v = attr.value
+    if (!v) return null // boolean attr → bail
+    const isStr =
+      v.type === 'StringLiteral' || (v.type === 'Literal' && typeof v.value === 'string')
+    if (!isStr) return null // `{expr}` / dynamic → bail
+    props[nm] = String(v.value)
+  }
+
+  const children = collectStaticChildren(node)
+  if (children === null) return null
+  return { tag, props, children }
+}
+
+/**
+ * Process a parent element's children into a `StaticChild[]` list, or
+ * `null` if ANY child is non-static. Text segments are kept verbatim
+ * (whitespace-trimmed, empties dropped); element children recurse via
+ * `detectStaticElementChild`.
+ */
+export function collectStaticChildren(parent: N): StaticChild[] | null {
+  const out: StaticChild[] = []
+  for (const c of jsxChildren(parent)) {
+    if (c.type === 'JSXText') {
+      const t = ((c.value ?? '') as string).trim()
+      if (t) out.push(t)
+      continue
+    }
+    if (c.type === 'JSXElement') {
+      const child = detectStaticElementChild(c)
+      if (!child) return null
+      out.push(child)
+      continue
+    }
+    // JSXExpressionContainer / JSXFragment / JSXSpreadChild → bail.
+    return null
+  }
+  return out
+}
+
+/**
+ * Deterministic serialization of a static child list — used as the
+ * `childrenText` argument to {@link rocketstyleCollapseKey} for
+ * element-child sites. Two structurally-different subtrees MUST produce
+ * different strings so collapse keys never collide. Uses control-char
+ * delimiters (matching `rocketstyleCollapseKey`'s own `\u0000` / `\u0001`
+ * convention) that can't appear in JSX source.
+ */
+export function serializeStaticChildren(children: StaticChild[]): string {
+  const parts: string[] = []
+  for (const c of children) {
+    if (typeof c === 'string') {
+      parts.push(`t\u0002${c}`)
+    } else {
+      const propStr = Object.keys(c.props)
+        .sort()
+        .map((k) => `${k}=${c.props[k]}`)
+        .join('\u0001')
+      parts.push(`e\u0002${c.tag}\u0003${propStr}\u0004${serializeStaticChildren(c.children)}`)
+    }
+  }
+  return parts.join('\u0005')
+}
+
 /** A residual event handler peeled off a partially-collapsible site. */
 export interface CollapsibleHandler {
   /** JSX attribute name, e.g. `onClick`. */
