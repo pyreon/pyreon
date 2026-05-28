@@ -55,7 +55,6 @@ import { hydrateRoot, mount as pyreonMount } from '@pyreon/runtime-dom'
 import { getCurrentCtx, getHookIndex } from './jsx-runtime'
 
 // Dev-mode counter sink — see packages/internals/perf-harness for contract.
-const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 // ─── Type exports (Solid API surface) ───────────────────────────────────────
@@ -699,7 +698,8 @@ export function createResource<T, S = true>(
               // happening (and being handled correctly). Zero on a
               // refetch-heavy load means either no races or — bug —
               // the version check was lost.
-              if (__DEV__) _countSink.__pyreon_count__?.('solid-compat.createResource.staleDiscarded')
+              if (process.env.NODE_ENV !== 'production')
+                _countSink.__pyreon_count__?.('solid-compat.createResource.staleDiscarded')
               return
             }
             latestValue = val
@@ -710,7 +710,8 @@ export function createResource<T, S = true>(
           (err) => {
             // Discard stale rejection — a refetch ran while we awaited.
             if (myVersion !== fetchVersion) {
-              if (__DEV__) _countSink.__pyreon_count__?.('solid-compat.createResource.staleDiscarded')
+              if (process.env.NODE_ENV !== 'production')
+                _countSink.__pyreon_count__?.('solid-compat.createResource.staleDiscarded')
               return
             }
             fetchPromise = null
@@ -893,7 +894,8 @@ export function createStore<T extends object>(
         // the sweep is doing its job. Zero count past the threshold
         // = either sweep didn't fire OR every read path still has
         // a tracked subscriber (correctness preserved, no leak).
-        if (__DEV__) _countSink.__pyreon_count__?.('solid-compat.createStore.signalEvicted')
+        if (process.env.NODE_ENV !== 'production')
+          _countSink.__pyreon_count__?.('solid-compat.createStore.signalEvicted')
         signals.delete(path)
       }
     }

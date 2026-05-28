@@ -48,7 +48,6 @@ import { mount as pyreonMount } from '@pyreon/runtime-dom'
 import { getCurrentCtx, getHookIndex, jsx } from './jsx-runtime'
 
 // Dev-mode counter sink — see packages/internals/perf-harness for contract.
-const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 // ─── Store types (Svelte API surface) ───────────────────────────────────────
@@ -199,7 +198,8 @@ export function writable<T>(value?: T, start: StartStopNotifier<T> = noop): Writ
             // array). Zero on a render-heavy workload = either no
             // cached subscriptions OR — bug — the includes() guard
             // suppressed a valid re-push.
-            if (__DEV__) _countSink.__pyreon_count__?.('svelte-compat.subscribe.cachedRePush')
+            if (process.env.NODE_ENV !== 'production')
+              _countSink.__pyreon_count__?.('svelte-compat.subscribe.cachedRePush')
           }
           return cached.unsub
         }
