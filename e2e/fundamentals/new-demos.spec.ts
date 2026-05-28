@@ -113,23 +113,144 @@ test.describe('Validate demo — Standard Schema + parseReactive', () => {
   })
 })
 
-test.describe('DnD demo — sortable list mounts with all items', () => {
+const DND_SEED_ORDER =
+  'Read the docs → Build a demo → Open a PR → Celebrate → Refactor'
+
+test.describe('DnD demo — useSortable reorder', () => {
   test('5 items render in initial order', async ({ page }) => {
     await page.goto('/dnd')
     await expect(page.locator('[data-testid^=dnd-item-]')).toHaveCount(5)
-    await expect(page.locator('[data-testid=dnd-order]')).toContainText('Read the docs')
-    await expect(page.locator('[data-testid=dnd-order]')).toContainText('Celebrate')
+    await expect(page.locator('[data-testid=dnd-order]')).toHaveText(
+      DND_SEED_ORDER,
+    )
   })
 
-  test('reset restores initial order after manipulation', async ({ page }) => {
-    await page.goto('/dnd')
-    // Direct DnD reorder is hard to drive deterministically in headless
-    // chromium (pragmatic-drag-and-drop's pointer-based detection has
-    // subtle timing requirements — see app-showcase-flow.spec.ts for
-    // the synthetic-event pattern). The reset button is the always-
-    // available structural check that the sortable wiring round-trips.
-    const order = await page.locator('[data-testid=dnd-order]').textContent()
-    expect(order).toContain('→')
+  test('dragging item 1 below item 3 reorders the list off its seed', async ({
+    page,
+  }) => {
+    await page.goto('/dnd', { waitUntil: 'domcontentloaded' })
+    await expect(page.locator('[data-testid=dnd-order]')).toHaveText(
+      DND_SEED_ORDER,
+    )
+    // `useSortable` sets `aria-roledescription="sortable item"` in the SAME
+    // synchronous path as the pragmatic-drag-and-drop `draggable()` call
+    // (packages/fundamentals/dnd/src/use-sortable.ts:262), so its presence
+    // is a reliable proxy for "drop listeners are wired". Without this wait
+    // the dispatch below races hydration and silently no-ops on slower CI.
+    await page
+      .locator('[data-testid=dnd-list] li[aria-roledescription="sortable item"]')
+      .first()
+      .waitFor()
+
+    // Playwright's mouse.down/move/up does NOT trigger the HTML5 drag
+    // lifecycle (dragstart/enter/over/drop) — those need a `dataTransfer`
+    // the synthesized mouse events don't carry. Dispatch the real DragEvent
+    // sequence with one shared DataTransfer, mirroring app-showcase-dnd.spec.
+    // Drag item-1 ("Read the docs") onto item-3's bottom edge ("Open a PR").
+    await page.evaluate(() => {
+      const list = document.querySelector(
+        '[data-testid="dnd-list"]',
+      ) as HTMLElement | null
+      if (!list) throw new Error('dnd-list missing')
+      const item1 = list.querySelector(
+        '[data-testid="dnd-item-1"]',
+      ) as HTMLElement | null
+      const item3 = list.querySelector(
+        '[data-testid="dnd-item-3"]',
+      ) as HTMLElement | null
+      if (!item1 || !item3) throw new Error('drag items missing')
+
+      const dataTransfer = new DataTransfer()
+      const fire = (
+        target: Element,
+        type: string,
+        related?: { x: number; y: number },
+      ) => {
+        const rect = (target as HTMLElement).getBoundingClientRect()
+        target.dispatchEvent(
+          new DragEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            dataTransfer,
+            clientX: related?.x ?? rect.left + rect.width / 2,
+            clientY: related?.y ?? rect.top + rect.height / 2,
+          }),
+        )
+      }
+
+      const r3 = item3.getBoundingClientRect()
+      fire(item1, 'dragstart')
+      fire(item3, 'dragenter', { x: r3.left + r3.width / 2, y: r3.bottom - 4 })
+      fire(item3, 'dragover', { x: r3.left + r3.width / 2, y: r3.bottom - 4 })
+      fire(list, 'drop')
+      fire(item1, 'dragend')
+    })
+
+    // pragmatic-drag-and-drop commits drops on a microtask/rAF, so poll
+    // rather than read synchronously. Whether item-1 lands at position 2
+    // or 3 depends on closest-edge math; the test asserts only that the
+    // seed order was disturbed (a real reorder fired end-to-end).
+    await expect(page.locator('[data-testid=dnd-order]')).not.toHaveText(
+      DND_SEED_ORDER,
+    )
+    // All 5 items survive the reorder (no drop / clone leak).
+    await expect(page.locator('[data-testid^=dnd-item-]')).toHaveCount(5)
+  })
+
+  test('reset restores the seed order after a reorder', async ({ page }) => {
+    await page.goto('/dnd', { waitUntil: 'domcontentloaded' })
+    await page
+      .locator('[data-testid=dnd-list] li[aria-roledescription="sortable item"]')
+      .first()
+      .waitFor()
+
+    // Reorder first (same dispatch as above), then assert reset returns
+    // the list to its seed — proving the onReorder signal write AND the
+    // reset path both round-trip.
+    await page.evaluate(() => {
+      const list = document.querySelector(
+        '[data-testid="dnd-list"]',
+      ) as HTMLElement | null
+      if (!list) throw new Error('dnd-list missing')
+      const item1 = list.querySelector(
+        '[data-testid="dnd-item-1"]',
+      ) as HTMLElement | null
+      const item3 = list.querySelector(
+        '[data-testid="dnd-item-3"]',
+      ) as HTMLElement | null
+      if (!item1 || !item3) throw new Error('drag items missing')
+      const dt = new DataTransfer()
+      const fire = (
+        t: Element,
+        type: string,
+        rel?: { x: number; y: number },
+      ) => {
+        const r = (t as HTMLElement).getBoundingClientRect()
+        t.dispatchEvent(
+          new DragEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            dataTransfer: dt,
+            clientX: rel?.x ?? r.left + r.width / 2,
+            clientY: rel?.y ?? r.top + r.height / 2,
+          }),
+        )
+      }
+      const r3 = item3.getBoundingClientRect()
+      fire(item1, 'dragstart')
+      fire(item3, 'dragenter', { x: r3.left + r3.width / 2, y: r3.bottom - 4 })
+      fire(item3, 'dragover', { x: r3.left + r3.width / 2, y: r3.bottom - 4 })
+      fire(list, 'drop')
+      fire(item1, 'dragend')
+    })
+
+    await expect(page.locator('[data-testid=dnd-order]')).not.toHaveText(
+      DND_SEED_ORDER,
+    )
+    await page.getByRole('button', { name: 'Reset order' }).click()
+    await expect(page.locator('[data-testid=dnd-order]')).toHaveText(
+      DND_SEED_ORDER,
+    )
   })
 })
 
