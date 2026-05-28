@@ -1,6 +1,6 @@
 # Pyreon — Open Work, 2026 Q3
 
-**Last consolidated**: 2026-05-05
+**Last consolidated**: 2026-05-28 (compiler-followups batch #1019/#1020/#1022 reclassified as shipped)
 **Replaces**: `ecosystem-improvements-2026-q2.md` (90% shipped, the rest captured below), `architectural-experiments-2026-q2.md` (Phase 0 + E1/E2/E5 shipped, the rest captured below), `compiler-pass-rocketstyle-collapse.md` (full RFC inlined into P0 below). Single source of truth for **what's still open and what to pick next**.
 
 ---
@@ -12,7 +12,8 @@ So future work isn't picked twice. From the three superseded plans:
 - **Tier 0 (ecosystem)** — all bugs fixed (`typeof process` cleanup, compiler stack overflow, worktree build).
 - **Tier 1 (test parity)** — browser-smoke harness + lint enforcement, mock-vnode audit cleared (HIGH 24→0, MEDIUM 3→0), `pyreon/no-process-dev-gate` lint rule live.
 - **Tier 2 (doc pipeline core)** — manifest-driven `llms.txt` / `llms-full.txt` / MCP `api-reference.ts` for every published package (PR #319). `gen-docs --check` + `Docs Sync` CI job in place.
-- **Tier 2.5 (MCP overhaul)** — 9 of 12 sub-tiers shipped: `validate` Pyreon detectors (T2.5.2), `get_pattern` (T2.5.3), `get_anti_patterns` (T2.5.4), `audit_test_environment` (T2.5.7), `get_changelog` (T2.5.8), and the manifest-generated api-reference (T2.5.1). `validate_dev_gate` (T2.5.6) was absorbed into the broader `validate` detector and dropped from scope.
+- **Tier 2.5 (MCP overhaul) — CLOSED except T2.5.10 telemetry**: `validate` Pyreon detectors (T2.5.2), `get_pattern` (T2.5.3), `get_anti_patterns` (T2.5.4), `audit_test_environment` (T2.5.7), `get_changelog` (T2.5.8), manifest-generated api-reference (T2.5.1), `diagnose` catalog gate (T2.5.5), `mcp_overview` (T2.5.9), 22 integration tests (T2.5.11), `docs/docs/mcp.md` (T2.5.12). `validate_dev_gate` (T2.5.6) was absorbed into the broader `validate` detector and dropped from scope. Only telemetry (T2.5.10) remains open — see P1.
+- **Compiler-followups batch (2026-05-28)** — `oxc-parser`/`oxc-transform` `0.129 → 0.133` (#1019); Reactivity-Lens body-scope `const {x}=props` footgun-merge regression lock + stale-roadmap correction (#1020); collapse multi-axis-ternary frontier measured (0% surface) + 86.0% ceiling locked in `collapse-bail-census.test.ts` (#1022).
 - **Tier 3 (architecture)** — rocketstyle `.attrs()` hoisting (T3.1, PR #321/#322), reference patterns directory (T3.2 — exceeded scope, 14 patterns vs 8 planned), catalog meta-pattern as workflow rule (T3.3).
 - **Process** — bisect-verify rule (P1), test-environment-parity rule (P2), symptom-vs-cause rule (P3), feedback-memory rule (P4) — all in `.claude/rules/`.
 - **Architectural experiments** — Phase 0 infrastructure (bench-fair, perf-dashboard, perf:record/diff CI). E1 (DEFER), E2 (GRADUATE → spawned Plan 3), E5 (GRADUATE with caveats). E2's runtime follow-up B (`_rsMemo`, dimension memo) shipped — 45% wall-clock improvement.
@@ -256,7 +257,7 @@ The experiment framework defined 13 experiments (E1-E13) with GRADUATE/KILL/DEFE
 
 Within-major tooling drift is kept current automatically (`bun update` — last done #688; CI actions #675). The following are **beyond-range and deliberately NOT auto-bumped** — all are `0.x` tooling deps where a minor is "may-break" per semver and the blast radius lands in a sensitive subsystem. Each needs its own reviewed PR with the named validation; a blind `bun update --latest` bundling them would be an unmergeable, high-risk mega-diff.
 
-- **`oxc-parser` / `oxc-transform` `0.129 → 0.132`** — powers all 67 `@pyreon/lint` rules' AST, the `@pyreon/compiler` JS path, and the audit AST walkers (test-audit / island-audit / bundle-budgets). oxc `0.x` minors routinely change AST node shapes. *Safe path*: dedicated PR, bump both together, run the full `@pyreon/lint` + `@pyreon/compiler` suites + re-validate the audit tools; bisect any rule that shifts.
+- ~~**`oxc-parser` / `oxc-transform` `0.129 → 0.132`**~~ — **DONE (#1019, bumped to `0.133`)**. Validated: full `@pyreon/lint` (750) + `@pyreon/compiler` (1414) + native-compiler (388) suites + bundle-budgets, all green. The deferral process worked as designed (dedicated PR, full re-validation).
 - **`oxfmt` `0.43 → 0.51`** (8 minors) — a formatter bump can reformat the entire repo. *Safe path*: its own PR = bump + `oxfmt --write .` + review the whole-repo reformat as the diff; never a rider on another change.
 - **`@changesets/changelog-github` `0.6 → 0.7`** — release-pipeline changelog formatter; the release pipeline was fragile this cycle (0.18.0 / 0.19.0 incidents, fixed in #644/#645/#650/#690). Low value (changelog cosmetics), real risk to a load-bearing subsystem. *Safe path*: bump only alongside a deliberate release-tooling review, off-cycle.
 
