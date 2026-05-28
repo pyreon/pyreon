@@ -1,4 +1,4 @@
-// Happy-DOM unit tests for the 6 web primitives.
+// Happy-DOM unit tests for the implemented web primitives.
 //
 // Browser-specific assertions (real getComputedStyle, real event
 // sequencing) live in `primitives.browser.test.tsx`; THIS file covers
@@ -17,7 +17,21 @@ import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { signal } from '@pyreon/reactivity'
-import { Button, Field, Inline, Press, Stack, Text, Toggle } from '../index'
+import {
+  Button,
+  Field,
+  Heading,
+  Icon,
+  Image,
+  Inline,
+  Layer,
+  Press,
+  Scroll,
+  Spacer,
+  Stack,
+  Text,
+  Toggle,
+} from '../index'
 
 function mountTest(vnode: ReturnType<typeof h>): {
   container: HTMLDivElement
@@ -213,6 +227,138 @@ describe('<Text> happy-dom unit', () => {
     expect(s.overflow).toBe('hidden')
     expect(s.textOverflow).toBe('ellipsis')
     expect(s.whiteSpace).toBe('nowrap')
+    unmount()
+  })
+})
+
+describe('<Heading> happy-dom unit', () => {
+  it('default level 1 → <h1> with bold weight + scale font-size', () => {
+    const { container, unmount } = mountTest(h(Heading, null, 'Title'))
+    const root = container.firstElementChild as HTMLHeadingElement
+    expect(root.tagName).toBe('H1')
+    expect(root.textContent).toBe('Title')
+    expect(root.style.fontSize).toBe('32px')
+    expect(root.style.fontWeight).toBe('700')
+    unmount()
+  })
+
+  it('level prop picks the matching <hN> element + scale size', () => {
+    for (const [level, px] of [
+      [2, '24px'],
+      [3, '20px'],
+      [4, '18px'],
+      [5, '16px'],
+      [6, '14px'],
+    ] as const) {
+      const { container, unmount } = mountTest(h(Heading, { level }, 'x'))
+      const root = container.firstElementChild as HTMLHeadingElement
+      expect(root.tagName).toBe(`H${level}`)
+      expect(root.style.fontSize).toBe(px)
+      unmount()
+    }
+  })
+
+  it('color token → style.color', () => {
+    const { container, unmount } = mountTest(h(Heading, { color: 'primary' }, 'x'))
+    expect((container.firstElementChild as HTMLHeadingElement).style.color).toMatch(
+      /rgb\(37,\s*99,\s*235\)|#2563eb/i,
+    )
+    unmount()
+  })
+
+  it('resets default heading margin to 0', () => {
+    const { container, unmount } = mountTest(h(Heading, null, 'x'))
+    expect((container.firstElementChild as HTMLHeadingElement).style.margin).toBe('0px')
+    unmount()
+  })
+})
+
+describe('<Image> happy-dom unit', () => {
+  it('renders an <img> with src + alt + default object-fit:cover', () => {
+    const { container, unmount } = mountTest(
+      h(Image, { src: '/a.png', alt: 'a photo' }),
+    )
+    const img = container.firstElementChild as HTMLImageElement
+    expect(img.tagName).toBe('IMG')
+    expect(img.getAttribute('src')).toBe('/a.png')
+    expect(img.getAttribute('alt')).toBe('a photo')
+    expect(img.style.objectFit).toBe('cover')
+    unmount()
+  })
+
+  it('fit prop maps to object-fit', () => {
+    const { container, unmount } = mountTest(
+      h(Image, { src: '/a.png', alt: '', fit: 'contain' }),
+    )
+    expect((container.firstElementChild as HTMLImageElement).style.objectFit).toBe('contain')
+    unmount()
+  })
+
+  it('numeric width/height → px; string passes through', () => {
+    const { container, unmount } = mountTest(
+      h(Image, { src: '/a.png', alt: '', width: 200, height: '50%' }),
+    )
+    const img = container.firstElementChild as HTMLImageElement
+    expect(img.style.width).toBe('200px')
+    expect(img.style.height).toBe('50%')
+    unmount()
+  })
+
+  it('renders no children (void element)', () => {
+    const { container, unmount } = mountTest(h(Image, { src: '/a.png', alt: 'x' }))
+    expect((container.firstElementChild as HTMLImageElement).children.length).toBe(0)
+    unmount()
+  })
+})
+
+describe('<Icon> happy-dom unit', () => {
+  it('renders an <svg> with a <use href="#name"> sprite reference', () => {
+    const { container, unmount } = mountTest(h(Icon, { name: 'check' }))
+    const svg = container.firstElementChild as SVGElement
+    expect(svg.tagName.toLowerCase()).toBe('svg')
+    const use = svg.firstElementChild as SVGUseElement
+    expect(use.tagName.toLowerCase()).toBe('use')
+    expect(use.getAttribute('href')).toBe('#check')
+    unmount()
+  })
+
+  it('default size md → 20px square; fill currentColor', () => {
+    const { container, unmount } = mountTest(h(Icon, { name: 'x' }))
+    const svg = container.firstElementChild as SVGElement
+    expect(svg.style.width).toBe('20px')
+    expect(svg.style.height).toBe('20px')
+    expect(svg.style.fill).toBe('currentColor')
+    unmount()
+  })
+
+  it('size sm/lg map to 16px/24px', () => {
+    const sm = mountTest(h(Icon, { name: 'x', size: 'sm' }))
+    expect((sm.container.firstElementChild as SVGElement).style.width).toBe('16px')
+    sm.unmount()
+    const lg = mountTest(h(Icon, { name: 'x', size: 'lg' }))
+    expect((lg.container.firstElementChild as SVGElement).style.width).toBe('24px')
+    lg.unmount()
+  })
+
+  it('color token → fill', () => {
+    const { container, unmount } = mountTest(h(Icon, { name: 'x', color: 'danger' }))
+    expect((container.firstElementChild as SVGElement).style.fill).toMatch(
+      /rgb\(220,\s*38,\s*38\)|#dc2626/i,
+    )
+    unmount()
+  })
+
+  it('decorative by default → aria-hidden="true"', () => {
+    const { container, unmount } = mountTest(h(Icon, { name: 'x' }))
+    expect((container.firstElementChild as SVGElement).getAttribute('aria-hidden')).toBe('true')
+    unmount()
+  })
+
+  it('consumer aria-label drops the aria-hidden default (meaningful icon)', () => {
+    const { container, unmount } = mountTest(h(Icon, { name: 'x', 'aria-label': 'Success' }))
+    const svg = container.firstElementChild as SVGElement
+    expect(svg.getAttribute('aria-hidden')).toBe(null)
+    expect(svg.getAttribute('aria-label')).toBe('Success')
     unmount()
   })
 })
@@ -603,6 +749,135 @@ describe('<Toggle> happy-dom unit', () => {
   })
 })
 
+describe('<Layer> happy-dom unit', () => {
+  it('renders a <div> with position:relative + display:grid', () => {
+    const { container, unmount } = mountTest(h(Layer, null, h('span', null, 'a')))
+    const root = container.firstElementChild as HTMLDivElement
+    expect(root.tagName).toBe('DIV')
+    expect(root.style.position).toBe('relative')
+    expect(root.style.display).toBe('grid')
+    unmount()
+  })
+
+  it('align maps directly to grid place-items (native grid keyword)', () => {
+    const { container, unmount } = mountTest(
+      h(Layer, { align: 'center' }, h('span', null, 'a')),
+    )
+    expect((container.firstElementChild as HTMLDivElement).style.placeItems).toBe('center')
+    unmount()
+  })
+
+  it('no align prop → no place-items emitted', () => {
+    const { container, unmount } = mountTest(h(Layer, null, h('span', null, 'a')))
+    expect((container.firstElementChild as HTMLDivElement).style.placeItems).toBe('')
+    unmount()
+  })
+
+  it('BaseLayoutProps (padding/background/radius) apply', () => {
+    const { container, unmount } = mountTest(
+      h(Layer, { padding: 'md', background: 'surface', radius: 'lg' }, h('span', null, 'a')),
+    )
+    const s = (container.firstElementChild as HTMLDivElement).style
+    expect(s.padding).toBe('12px')
+    expect(s.borderRadius).toBe('16px')
+    expect(s.backgroundColor).toMatch(/rgb\(255,\s*255,\s*255\)|#ffffff/i)
+    unmount()
+  })
+
+  it('children pass through into the grid container', () => {
+    const { container, unmount } = mountTest(
+      h(Layer, null, h('span', null, 'base'), h('span', null, 'overlay')),
+    )
+    const root = container.firstElementChild as HTMLDivElement
+    expect(root.children.length).toBe(2)
+    expect(root.children[0]!.textContent).toBe('base')
+    expect(root.children[1]!.textContent).toBe('overlay')
+    unmount()
+  })
+})
+
+describe('<Scroll> happy-dom unit', () => {
+  it('vertical by default → overflow-y:auto, overflow-x:hidden', () => {
+    const { container, unmount } = mountTest(h(Scroll, null, h('span', null, 'a')))
+    const s = (container.firstElementChild as HTMLDivElement).style
+    expect(s.overflowY).toBe('auto')
+    expect(s.overflowX).toBe('hidden')
+    unmount()
+  })
+
+  it('axis="horizontal" → overflow-x:auto, overflow-y:hidden', () => {
+    const { container, unmount } = mountTest(
+      h(Scroll, { axis: 'horizontal' }, h('span', null, 'a')),
+    )
+    const s = (container.firstElementChild as HTMLDivElement).style
+    expect(s.overflowX).toBe('auto')
+    expect(s.overflowY).toBe('hidden')
+    unmount()
+  })
+
+  it('BaseLayoutProps (padding/margin) apply', () => {
+    const { container, unmount } = mountTest(
+      h(Scroll, { padding: 2, marginY: 3 }, h('span', null, 'a')),
+    )
+    const s = (container.firstElementChild as HTMLDivElement).style
+    expect(s.padding).toBe('8px')
+    expect(s.marginTop).toBe('12px')
+    expect(s.marginBottom).toBe('12px')
+    unmount()
+  })
+
+  it('children render into the scroll container', () => {
+    const { container, unmount } = mountTest(
+      h(Scroll, null, h('span', null, 'a'), h('span', null, 'b')),
+    )
+    const root = container.firstElementChild as HTMLDivElement
+    expect(root.children.length).toBe(2)
+    unmount()
+  })
+
+  it('full BaseLayoutProps surface (per-axis padding/margin + uniform margin)', () => {
+    const { container, unmount } = mountTest(
+      h(
+        Scroll,
+        { paddingX: 2, paddingY: 3, margin: 1, marginX: 4 },
+        h('span', null, 'a'),
+      ),
+    )
+    const s = (container.firstElementChild as HTMLDivElement).style
+    expect(s.paddingLeft).toBe('8px')
+    expect(s.paddingRight).toBe('8px')
+    expect(s.paddingTop).toBe('12px')
+    expect(s.paddingBottom).toBe('12px')
+    // Uniform `margin` is applied first, then `marginX` overrides L/R —
+    // the browser collapses both into the `4px 16px` shorthand (top/bottom
+    // 4px, left/right 16px). Exercises both helper branches.
+    expect(s.marginLeft).toBe('16px')
+    expect(s.marginRight).toBe('16px')
+    expect(s.marginTop).toBe('4px')
+    expect(s.marginBottom).toBe('4px')
+    unmount()
+  })
+})
+
+describe('<Spacer> happy-dom unit', () => {
+  it('renders a <div> with flex: 1 1 auto', () => {
+    const { container, unmount } = mountTest(h(Spacer, null))
+    const root = container.firstElementChild as HTMLDivElement
+    expect(root.tagName).toBe('DIV')
+    // happy-dom expands the `flex` shorthand into longhands.
+    expect(root.style.flexGrow).toBe('1')
+    expect(root.style.flexShrink).toBe('1')
+    expect(root.style.flexBasis).toBe('auto')
+    unmount()
+  })
+
+  it('renders no children (self-closing)', () => {
+    const { container, unmount } = mountTest(h(Spacer, null))
+    expect((container.firstElementChild as HTMLDivElement).children.length).toBe(0)
+    unmount()
+  })
+})
+
 describe('HTML pass-through attrs (data-* / aria-* / id / class / style)', () => {
   // Phase D follow-up — surfaced by #951's native-todomvc-web e2e gate:
   // primitives were dropping consumer's `data-testid`, `aria-*`, `id`,
@@ -699,6 +974,68 @@ describe('HTML pass-through attrs (data-* / aria-* / id / class / style)', () =>
     expect(input.tagName).toBe('INPUT')
     expect(input.getAttribute('data-testid')).toBe('my-field')
     expect(input.getAttribute('aria-describedby')).toBe('hint')
+    unmount()
+  })
+
+  it('<Heading data-testid + id> reach the rendered DOM', () => {
+    const { container, unmount } = mountTest(
+      h(Heading, { 'data-testid': 'my-h', id: 'sec', children: 'Hi' }),
+    )
+    const root = container.firstElementChild as HTMLElement
+    expect(root.tagName).toBe('H1')
+    expect(root.getAttribute('data-testid')).toBe('my-h')
+    expect(root.id).toBe('sec')
+    unmount()
+  })
+
+  it('<Image data-testid + aria-label> reach the rendered DOM', () => {
+    const { container, unmount } = mountTest(
+      h(Image, { 'data-testid': 'my-img', 'aria-label': 'hero', src: '/h.png', alt: 'hero' }),
+    )
+    const img = container.firstElementChild as HTMLImageElement
+    expect(img.getAttribute('data-testid')).toBe('my-img')
+    expect(img.getAttribute('aria-label')).toBe('hero')
+    unmount()
+  })
+
+  it('<Icon data-testid> reaches the rendered DOM', () => {
+    const { container, unmount } = mountTest(
+      h(Icon, { 'data-testid': 'my-icon', name: 'star' }),
+    )
+    expect((container.firstElementChild as SVGElement).getAttribute('data-testid')).toBe(
+      'my-icon',
+    )
+    unmount()
+  })
+
+  it('<Layer data-testid> reaches the rendered DOM', () => {
+    const { container, unmount } = mountTest(
+      h(Layer, { 'data-testid': 'my-layer', children: 'hi' }),
+    )
+    expect((container.firstElementChild as HTMLElement).getAttribute('data-testid')).toBe(
+      'my-layer',
+    )
+    unmount()
+  })
+
+  it('<Scroll data-testid> reaches the rendered DOM', () => {
+    const { container, unmount } = mountTest(
+      h(Scroll, { 'data-testid': 'my-scroll', children: 'hi' }),
+    )
+    expect((container.firstElementChild as HTMLElement).getAttribute('data-testid')).toBe(
+      'my-scroll',
+    )
+    unmount()
+  })
+
+  it('<Spacer data-testid + style override> forward', () => {
+    const { container, unmount } = mountTest(
+      h(Spacer, { 'data-testid': 'my-spacer', style: { 'flex-grow': '0' } }),
+    )
+    const root = container.firstElementChild as HTMLElement
+    expect(root.getAttribute('data-testid')).toBe('my-spacer')
+    // Consumer override wins on conflict.
+    expect(root.style.flexGrow).toBe('0')
     unmount()
   })
 

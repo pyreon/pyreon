@@ -1,4 +1,4 @@
-// Real-Chromium browser smoke tests for the 6 proof-of-concept primitives.
+// Real-Chromium browser smoke tests for the implemented web primitives.
 //
 // Validates that each primitive renders the expected DOM shape AND
 // the token-resolved inline styles materialize as real computed
@@ -9,7 +9,21 @@ import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
-import { Button, Field, Inline, Press, Stack, Text, Toggle } from '../index'
+import {
+  Button,
+  Field,
+  Heading,
+  Icon,
+  Image,
+  Inline,
+  Layer,
+  Press,
+  Scroll,
+  Spacer,
+  Stack,
+  Text,
+  Toggle,
+} from '../index'
 
 describe('<Stack> — web', () => {
   it('renders a flex column div with token-resolved gap + padding', () => {
@@ -440,6 +454,167 @@ describe('<Field> — web', () => {
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
     await flush()
     expect(submitted).toBe(1)
+    unmount()
+  })
+})
+
+describe('<Heading> — web', () => {
+  it('renders a semantic <h2> with the scale font-size + bold weight', () => {
+    const { container, unmount } = mountInBrowser(
+      h(Heading, { level: 2, color: 'primary' }, 'Section'),
+    )
+    const root = container.firstElementChild as HTMLHeadingElement
+    expect(root.tagName).toBe('H2')
+    expect(root.textContent).toBe('Section')
+    const cs = getComputedStyle(root)
+    expect(cs.fontSize).toBe('24px')
+    expect(cs.fontWeight).toBe('700')
+    expect(cs.color).toBe('rgb(37, 99, 235)')
+    unmount()
+  })
+})
+
+describe('<Image> — web', () => {
+  it('renders an <img> with src/alt + object-fit + resolved dimensions', () => {
+    const { container, unmount } = mountInBrowser(
+      h(Image, {
+        src: 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==',
+        alt: 'pixel',
+        fit: 'contain',
+        width: 64,
+        height: 64,
+      }),
+    )
+    const img = container.firstElementChild as HTMLImageElement
+    expect(img.tagName).toBe('IMG')
+    expect(img.alt).toBe('pixel')
+    // object-fit is the real-browser-verified bit (computed value).
+    expect(getComputedStyle(img).objectFit).toBe('contain')
+    // Dimensions: assert the resolved inline style (deterministic across
+    // headless rendering — computed width can be clamped by the
+    // broken/placeholder-image box in some Chromium builds).
+    expect(img.style.width).toBe('64px')
+    expect(img.style.height).toBe('64px')
+    unmount()
+  })
+})
+
+describe('<Icon> — web', () => {
+  it('references an SVG sprite symbol the app provides + inherits text color', () => {
+    // App-provided sprite — the documented zero-bundle pattern.
+    const sprite = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    sprite.style.display = 'none'
+    sprite.innerHTML =
+      '<symbol id="check" viewBox="0 0 16 16"><path d="M2 8l4 4 8-8" /></symbol>'
+    document.body.appendChild(sprite)
+
+    const { container, unmount } = mountInBrowser(
+      // currentColor inheritance: parent sets a known color.
+      h(
+        'div',
+        { style: 'color: rgb(220, 38, 38)' },
+        h(Icon, { name: 'check', size: 'lg', 'aria-label': 'done' }),
+      ),
+    )
+    const svg = container.querySelector('svg') as SVGElement
+    const use = svg.firstElementChild as SVGUseElement
+    expect(use.tagName.toLowerCase()).toBe('use')
+    expect(use.getAttribute('href')).toBe('#check')
+    const cs = getComputedStyle(svg)
+    expect(cs.width).toBe('24px')
+    expect(cs.height).toBe('24px')
+    // fill: currentColor resolves to the inherited red.
+    expect(cs.fill).toBe('rgb(220, 38, 38)')
+    // Meaningful icon (aria-label) is NOT aria-hidden.
+    expect(svg.getAttribute('aria-hidden')).toBe(null)
+    expect(svg.getAttribute('aria-label')).toBe('done')
+
+    document.body.removeChild(sprite)
+    unmount()
+  })
+})
+
+describe('<Layer> — web', () => {
+  it('renders a relative grid container; align → place-items', () => {
+    const { container, unmount } = mountInBrowser(
+      h(Layer, { align: 'center', padding: 'md' }, h('span', null, 'base')),
+    )
+    const root = container.firstElementChild as HTMLDivElement
+    expect(root.tagName).toBe('DIV')
+    const cs = getComputedStyle(root)
+    expect(cs.position).toBe('relative')
+    expect(cs.display).toBe('grid')
+    expect(cs.placeItems).toContain('center')
+    expect(cs.padding).toBe('12px')
+    unmount()
+  })
+
+  it('positioning context: an absolutely-positioned child anchors to the Layer', () => {
+    const { container, unmount } = mountInBrowser(
+      h(
+        Layer,
+        { style: { width: '200px', height: '200px' } },
+        h('div', { style: 'position:absolute; top:0; left:0; width:10px; height:10px' }, ''),
+      ),
+    )
+    const root = container.firstElementChild as HTMLDivElement
+    const child = root.firstElementChild as HTMLDivElement
+    const rootRect = root.getBoundingClientRect()
+    const childRect = child.getBoundingClientRect()
+    // Child's top-left anchors to the Layer's box (relative context works).
+    expect(Math.round(childRect.left)).toBe(Math.round(rootRect.left))
+    expect(Math.round(childRect.top)).toBe(Math.round(rootRect.top))
+    unmount()
+  })
+})
+
+describe('<Scroll> — web', () => {
+  it('vertical scroller: overflow-y auto, overflow-x hidden', () => {
+    const { container, unmount } = mountInBrowser(
+      h(Scroll, { style: { height: '50px' } }, h('div', { style: 'height:500px' }, 'tall')),
+    )
+    const root = container.firstElementChild as HTMLDivElement
+    const cs = getComputedStyle(root)
+    expect(cs.overflowY).toBe('auto')
+    expect(cs.overflowX).toBe('hidden')
+    // Tall child overflows → the container is actually scrollable.
+    expect(root.scrollHeight).toBeGreaterThan(root.clientHeight)
+    unmount()
+  })
+
+  it('axis="horizontal" flips the scrolled axis', () => {
+    const { container, unmount } = mountInBrowser(
+      h(Scroll, { axis: 'horizontal' }, h('span', null, 'a')),
+    )
+    const cs = getComputedStyle(container.firstElementChild as HTMLDivElement)
+    expect(cs.overflowX).toBe('auto')
+    expect(cs.overflowY).toBe('hidden')
+    unmount()
+  })
+})
+
+describe('<Spacer> — web', () => {
+  it('grows to fill free main-axis space inside an Inline', () => {
+    const { container, unmount } = mountInBrowser(
+      h(
+        Inline,
+        { style: { width: '300px' } },
+        h(Text, { 'data-testid': 'left' }, 'L'),
+        h(Spacer, null),
+        h(Text, { 'data-testid': 'right' }, 'R'),
+      ),
+    )
+    const row = container.firstElementChild as HTMLDivElement
+    const left = row.querySelector('[data-testid="left"]') as HTMLElement
+    const right = row.querySelector('[data-testid="right"]') as HTMLElement
+    const rowRect = row.getBoundingClientRect()
+    const leftRect = left.getBoundingClientRect()
+    const rightRect = right.getBoundingClientRect()
+    // The Spacer pushes the two ends apart: left hugs the start, right hugs the end.
+    expect(Math.round(leftRect.left)).toBeCloseTo(Math.round(rowRect.left), -1)
+    expect(Math.round(rightRect.right)).toBeCloseTo(Math.round(rowRect.right), -1)
+    // There's a real gap between them (the Spacer consumed it).
+    expect(rightRect.left - leftRect.right).toBeGreaterThan(100)
     unmount()
   })
 })

@@ -18,20 +18,19 @@
 // so the TSX source typechecks; the runtime impls in `src/web/` are
 // never invoked.
 //
-// ## Phase A scope (proof-of-concept)
+// ## Web runtime scope
 //
-// 6 primitives have real web implementations:
-//   - `<Stack>` / `<Inline>` (layout)
-//   - `<Text>` (content)
+// 13 primitives have real web implementations:
+//   - `<Stack>` / `<Inline>` / `<Layer>` / `<Scroll>` / `<Spacer>` (layout)
+//   - `<Text>` / `<Heading>` / `<Image>` / `<Icon>` (content)
 //   - `<Button>` / `<Press>` (interaction)
-//   - `<Field>` (input)
+//   - `<Field>` / `<Toggle>` (input)
 //
-// 10 more primitives have TYPE definitions but no web runtime yet
-// (`<Layer>` / `<Scroll>` / `<Spacer>` / `<Heading>` / `<Image>` /
-// `<Icon>` / `<Link>` / `<Toggle>` / `<Modal>`). They ship in
-// follow-up PRs as the canonical vocab grows from real-world demand.
-// Apps trying to render these on web today get a clear runtime
-// error pointing at the missing impl.
+// 2 more primitives have TYPE definitions but no web runtime yet
+// (`<Link>` (interaction), `<Modal>` (input)). They ship in follow-up
+// PRs as the canonical vocab grows from real-world demand. Apps trying
+// to render these on web today get a clear runtime error pointing at
+// the missing impl.
 //
 // ## Phase B scope (PMTC emit)
 //
@@ -65,7 +64,7 @@ export type { HeadingProps, IconProps, ImageProps, TextProps } from './types/con
 export type { ButtonProps, LinkProps, PressProps } from './types/interaction'
 export type { FieldProps, ModalProps, ToggleProps } from './types/input'
 
-// ===== Web runtime exports — 6 proof-of-concept primitives =====
+// ===== Web runtime exports — 13 implemented primitives =====
 //
 // On native targets these imports are intercepted by the PMTC
 // compiler before the JSX call site reaches runtime — these
@@ -73,7 +72,13 @@ export type { FieldProps, ModalProps, ToggleProps } from './types/input'
 
 export { Stack } from './web/Stack'
 export { Inline } from './web/Inline'
+export { Layer } from './web/Layer'
+export { Scroll } from './web/Scroll'
+export { Spacer } from './web/Spacer'
 export { Text } from './web/Text'
+export { Heading } from './web/Heading'
+export { Image } from './web/Image'
+export { Icon } from './web/Icon'
 export { Button } from './web/Button'
 export { Press } from './web/Press'
 export { Field } from './web/Field'
