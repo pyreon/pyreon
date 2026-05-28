@@ -35,12 +35,15 @@ export interface PressProps extends ChildrenProp, HtmlPassthroughProps {
 }
 
 /**
- * `<Link>` — router-aware navigation link. Pulls router context to
- * resolve the navigation target. On web emits as `<a>` with proper
- * href; on iOS/Android invokes the platform-native navigation API.
+ * `<Link>` — navigation link. Router-AGNOSTIC: the web runtime has no
+ * router dependency. The app wires client-side navigation once via
+ * `init({ navigate })`; internal links then intercept clicks for SPA
+ * navigation (and are a plain full-load `<a href>` otherwise). On
+ * iOS/Android, PMTC emits the platform-native navigation API.
  *
  * Per-platform mapping:
- * - Web: `<a href=...>` via `@pyreon/router` `RouterLink`
+ * - Web: `<a href=...>` + SPA-nav click interception when `init({ navigate })`
+ *   is configured (see `@pyreon/primitives` `init`)
  * - iOS: `NavigationLink(destination: ...)`
  * - Android: `Box(modifier=Modifier.clickable { navController.navigate(...) })`
  */
