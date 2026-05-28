@@ -1,0 +1,37 @@
+{
+  "name": "chat",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "zero dev",
+    "build": "zero build",
+    "preview": "zero preview",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/form": "workspace:*",
+    "@pyreon/head": "workspace:*",
+    "@pyreon/hooks": "workspace:*",
+    "@pyreon/query": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/router": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/runtime-server": "workspace:*",
+    "@pyreon/state-tree": "workspace:*",
+    "@pyreon/storage": "workspace:*",
+    "@pyreon/toast": "workspace:*",
+    "@pyreon/url-state": "workspace:*",
+    "@pyreon/virtual": "workspace:*",
+    "@pyreon/zero": "workspace:*"
+  },
+  "devDependencies": {
+    "@pyreon/typescript": "workspace:*",
+    "@pyreon/vite-plugin": "workspace:*",
+    "@pyreon/zero-cli": "workspace:*",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.3"
+  }
+}

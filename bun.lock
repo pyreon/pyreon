@@ -141,6 +141,34 @@
         "vite": "^8.0.0",
       },
     },
+    "examples/chat": {
+      "name": "chat",
+      "version": "0.0.1",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/form": "workspace:*",
+        "@pyreon/head": "workspace:*",
+        "@pyreon/hooks": "workspace:*",
+        "@pyreon/query": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/router": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/runtime-server": "workspace:*",
+        "@pyreon/state-tree": "workspace:*",
+        "@pyreon/storage": "workspace:*",
+        "@pyreon/toast": "workspace:*",
+        "@pyreon/url-state": "workspace:*",
+        "@pyreon/virtual": "workspace:*",
+        "@pyreon/zero": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/typescript": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "@pyreon/zero-cli": "workspace:*",
+        "typescript": "^6.0.2",
+        "vite": "^8.0.3",
+      },
+    },
     "examples/cpa-pw-app": {
       "name": "cpa-pw-app",
       "version": "0.0.11",
@@ -3265,6 +3293,8 @@
     "character-entities-legacy": ["character-entities-legacy@3.0.0", "", {}, "sha512-RpPp0asT/6ufRm//AJVwpViZbGM/MkjQFxJccQRHmISF/22NBtsHqAWmL+/pmkPWoIUJdWyeVleTl1wydHATVQ=="],
 
     "chardet": ["chardet@2.1.1", "", {}, "sha512-PsezH1rqdV9VvyNhxxOW32/d75r01NY7TQCmOqomRo15ZSOKbpTFVsfjghxo6JloQUCGnH4k1LGu0R4yCLlWQQ=="],
+
+    "chat": ["chat@workspace:examples/chat"],
 
     "check-error": ["check-error@2.1.3", "", {}, "sha512-PAJdDJusoxnwm1VwW07VWwUN1sl7smmC3OKggvndJFadxxDRyFJBX/ggnu/KE4kQAB7a3Dp8f/YXC1FlUprWmA=="],
 
