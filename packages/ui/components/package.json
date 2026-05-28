@@ -49,6 +49,8 @@
     "@pyreon/unistyle": "workspace:^"
   },
   "devDependencies": {
+    "@pyreon/perf-harness": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/typescript": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",

@@ -2,7 +2,7 @@ import { signal } from '@pyreon/reactivity'
 import { flush } from '@pyreon/test-utils/browser'
 import { query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
-import { _rsCollapse, mount } from '../index'
+import { _rsCollapse, hydrateRoot, mount } from '../index'
 
 // Layer 2 of the P0 rocketstyle-collapse slice, in real Chromium.
 // `_rsCollapse` deliberately does NOT import @pyreon/styler (layer
@@ -200,5 +200,109 @@ describe('_rsCollapse (real browser)', () => {
     await flush()
     expect((query(r1, 'button')).className).toBe('rsc-sd')
     expect((query(r2, 'button')).className).toBe('rsc-sd')
+  })
+
+  it('element-child: SSR markup → hydrateRoot(_rsCollapse) swaps in the baked subtree, no mismatch, reactive after hydrate', async () => {
+    // The SSR→hydrate seam for the ELEMENT-CHILD shape. The P0 design
+    // diverges the graphs: SSR keeps the real 5-layer mount; the CLIENT
+    // graph collapses to `_rsCollapse`, which returns a `_tpl` NativeItem
+    // → under hydrateRoot it hits hydrate.ts's `__isNative` branch and
+    // SWAPS the SSR subtree for the freshly-built collapsed node (same
+    // final DOM, no mismatch). Not collapse-specific — inherited from
+    // `_tpl` — but proven here for a BAKED CHILD SUBTREE specifically:
+    // the swapped-in node must carry the real nested `<span class="ico">`
+    // child AND stay reactive on a mode flip.
+    injectCss('.rsc-h-l{color:rgb(5,6,7)}.rsc-h-d{color:rgb(70,80,90)}')
+    // SSR-delivered markup: the class-bearing root + the baked child subtree
+    // (what the server's real mount would emit).
+    const ssrHtml = '<button data-x="1" class="rsc-h-l"><span class="ico">Save</span></button>'
+    const templateHtml = ssrHtml.replace(/ class="[^"]*"/, '') // resolver strips root class
+    const app = document.createElement('div')
+    app.innerHTML = ssrHtml
+    document.body.appendChild(app)
+    const ssrNodeBefore = app.querySelector('button') as HTMLElement
+    expect(ssrNodeBefore.querySelector('span.ico')?.textContent).toBe('Save')
+
+    const isDark = signal(false)
+    const errors: string[] = []
+    const origError = console.error
+    console.error = (...a: unknown[]) => errors.push(a.map(String).join(' '))
+    let unmount: (() => void) | undefined
+    try {
+      unmount = hydrateRoot(
+        app,
+        _rsCollapse(templateHtml, 'rsc-h-l', 'rsc-h-d', () => isDark()) as unknown as Parameters<
+          typeof hydrateRoot
+        >[1],
+      )
+      await flush()
+    } finally {
+      console.error = origError
+    }
+    // No hydration-mismatch reported — the __isNative swap is intentional.
+    expect(errors.filter((e) => /hydrat|mismatch/i.test(e))).toEqual([])
+    const btn = app.querySelector('button') as HTMLElement
+    // The swap happened: in-DOM node is the freshly-built collapsed clone.
+    expect(btn).not.toBe(ssrNodeBefore)
+    // The baked child subtree is present on the swapped-in node + class parity.
+    expect(btn.querySelector('span.ico')?.textContent).toBe('Save')
+    expect(btn.className).toBe('rsc-h-l')
+    // Reactivity SURVIVES hydration: a mode flip patches the root class in
+    // place (same node) and the baked child subtree is preserved.
+    isDark.set(true)
+    await flush()
+    expect(app.querySelector('button')).toBe(btn) // patched in place, no remount
+    expect(btn.className).toBe('rsc-h-d')
+    expect(btn.querySelector('span.ico')?.textContent).toBe('Save')
+    unmount?.()
+    app.remove()
+    await flush()
+  })
+
+  it('element-child: a baked subtree of ANY depth collapses to ONE _tpl cloneNode (perf signature: mountChild == 1)', async () => {
+    // The element-child perf contract: the WHOLE subtree (root + every
+    // nested child element + text) bakes into ONE `_tpl` template, so a
+    // mount fires exactly ONE `runtime.mountChild` regardless of subtree
+    // depth — vs the real 5-layer rocketstyle mount which fires one per
+    // wrapper layer PLUS one per child element. Counters fire under
+    // vitest's Vite DEV mode; a manual sink avoids a perf-harness dep
+    // (the runtime emits via the zero-coupling globalThis hook).
+    type Sink = ((name: string, n?: number) => void) | undefined
+    const g = globalThis as { __pyreon_count__?: Sink }
+    const prev = g.__pyreon_count__
+    const counts: Record<string, number> = {}
+    g.__pyreon_count__ = (name: string, n = 1) => {
+      counts[name] = (counts[name] ?? 0) + n
+    }
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    let dispose: (() => void) | undefined
+    try {
+      const isDark = signal(false)
+      // A deliberately DEEP subtree: root + text + <kbd> + a 2-level
+      // <span><b>…</b></span>. If the bake were per-element, mountChild
+      // would scale with depth; the contract is ONE.
+      dispose = mount(
+        _rsCollapse(
+          '<button>Press <kbd>Enter</kbd> <span class="w"><b>Hi</b></span></button>',
+          'rsc-sig-l',
+          'rsc-sig-d',
+          () => isDark(),
+        ) as unknown as Parameters<typeof mount>[0],
+        root,
+      )
+      await flush()
+    } finally {
+      g.__pyreon_count__ = prev
+    }
+    // Sanity: the deep subtree rendered whole.
+    expect(root.querySelector('kbd')?.textContent).toBe('Enter')
+    expect(root.querySelector('span.w > b')?.textContent).toBe('Hi')
+    // Perf signature: ONE cloneNode, ONE mountChild for the entire subtree.
+    expect(counts['runtime.tpl'] ?? 0).toBeGreaterThanOrEqual(1)
+    expect(counts['runtime.mountChild'] ?? 0).toBe(1)
+    dispose?.()
+    root.remove()
+    await flush()
   })
 })
