@@ -12,7 +12,7 @@ import {
   resolveSpace,
 } from './canonical-primitives'
 import { kotlinIdent, safeIdent } from './identifier-safety'
-import { isRedirectRoute, resolveRouteTarget } from './route-ir-helpers'
+import { isRedirectRoute, isWildcardRoute, resolveRouteTarget } from './route-ir-helpers'
 import type {
   AttrIR,
   ChildIR,
@@ -1737,9 +1737,16 @@ function emitKotlinRouteDispatch(
   const pad = ' '.repeat(indent)
   const innerPad = ' '.repeat(indent + 2)
   const lines: string[] = []
+  // Phase 3 — a bare `*` / `(.*)` route is the whole-route catch-all; its
+  // component becomes the `else ->` branch, not a `currentPath == "*"` case.
+  const wildcardRoute = routes.find(isWildcardRoute)
+  const wildcardComponent =
+    wildcardRoute !== undefined ? resolveRouteTarget(wildcardRoute, routes)?.component : undefined
   lines.push(`${pad}val currentPath = router.currentPath`)
   lines.push(`${pad}when {`)
   for (const route of routes) {
+    // Wildcard routes don't get a path branch — handled as the else-branch.
+    if (isWildcardRoute(route)) continue
     // Phase 3 — resolve redirects to the route carrying a component.
     // Dangling / cyclic redirects resolve to undefined → skip the branch
     // (the `else` fallback handles the path as no-match).
@@ -1777,8 +1784,14 @@ function emitKotlinRouteDispatch(
       )
     }
   }
-  // R1.2 fallback — symmetric to Swift's else { Text("...") }.
-  lines.push(`${innerPad}else -> Text(text = "Pyreon Router: no route for \${currentPath}")`)
+  // R1.2 fallback — symmetric to Swift's else-branch. Phase 3: a bare
+  // `*` / `(.*)` route supplies the fallback component (the canonical 404
+  // page); without one, the dev-visible 404 Text.
+  const fallback =
+    wildcardComponent !== undefined
+      ? `${emitKotlinExpr(wildcardComponent, indent + 4)}()`
+      : `Text(text = "Pyreon Router: no route for \${currentPath}")`
+  lines.push(`${innerPad}else -> ${fallback}`)
   lines.push(`${pad}}`)
   return lines.join('\n')
 }

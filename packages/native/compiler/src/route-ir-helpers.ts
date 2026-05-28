@@ -56,6 +56,18 @@ export function isRedirectRoute(route: RouteIR): boolean {
 }
 
 /**
+ * True when `route` is a bare whole-route catch-all wildcard (`*` or
+ * `(.*)`, mirroring @pyreon/router's `compileRoute` wildcard test). The
+ * emitters render its component as the dispatch ELSE-branch (the fallback
+ * for any unmatched path) rather than as a path-equality branch — a literal
+ * `path == "*"` would only ever match the literal string "*". This is the
+ * canonical 404-page route: `{ path: '*', component: NotFoundPage }`.
+ */
+export function isWildcardRoute(route: RouteIR): boolean {
+  return route.path === '*' || route.path === '(.*)'
+}
+
+/**
  * Resolved component for a route, or `undefined` when unresolvable
  * (dangling / cyclic redirect). Thin convenience over
  * {@link resolveRouteTarget} for callers that only need the component.
