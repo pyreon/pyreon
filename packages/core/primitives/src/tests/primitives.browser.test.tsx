@@ -5,10 +5,9 @@
 // CSS values. Catches regressions in token resolution + DOM shape
 // that happy-dom can't reliably detect.
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { RouterProvider, createRouter } from '@pyreon/router'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import {
   Button,
@@ -17,10 +16,12 @@ import {
   Icon,
   Image,
   Inline,
+  init,
   Layer,
   Link,
   Modal,
   Press,
+  resetPrimitivesConfig,
   Scroll,
   Spacer,
   Stack,
@@ -700,32 +701,47 @@ describe('<Modal> — web', () => {
 })
 
 describe('<Link> — web', () => {
-  it('internal link renders an <a> and click performs SPA navigation (no reload)', async () => {
-    const router = createRouter({
-      routes: [
-        { path: '/', component: () => h('div', null, 'home') },
-        { path: '/about', component: () => h('div', null, 'about') },
-      ],
-    })
+  afterEach(() => resetPrimitivesConfig())
+
+  it('internal link click is intercepted by init({ navigate }) — real left-click, no reload', async () => {
+    const navigated: string[] = []
+    init({ navigate: (to) => navigated.push(to) })
     const { container, unmount } = mountInBrowser(
-      h(RouterProvider, { router }, h(Link, { to: '/about', 'data-testid': 'go' }, 'About')),
+      h(Link, { to: '/about', 'data-testid': 'go' }, 'About'),
     )
     const a = container.querySelector('a') as HTMLAnchorElement
     expect(a.tagName).toBe('A')
-    expect(a.getAttribute('data-testid')).toBe('go')
+    expect(a.getAttribute('href')).toBe('/about')
 
-    // Drop a sentinel — a full reload would wipe it; SPA nav preserves it.
+    // Drop a sentinel — a full reload would wipe it; intercepted nav keeps it.
     ;(window as unknown as { __linkSentinel?: number }).__linkSentinel = 42
-    a.click()
+    a.click() // real browser left-click
     await flush()
-    // RouterLink intercepted the click and routed client-side.
-    expect(router.currentRoute().path).toBe('/about')
+    expect(navigated).toEqual(['/about'])
     expect((window as unknown as { __linkSentinel?: number }).__linkSentinel).toBe(42)
     delete (window as unknown as { __linkSentinel?: number }).__linkSentinel
     unmount()
   })
 
-  it('external link is a plain new-tab anchor (no router interception)', () => {
+  it('without init, the internal link is a plain navigable <a href>', () => {
+    // NOTE: don't click here — with no configured navigate the anchor is a
+    // real link, and a left-click would actually navigate the test iframe
+    // (correct behavior, but it tears down the runner). The not-intercepted /
+    // not-preventDefault contract is covered by the happy-dom unit tests; in
+    // the browser we assert the rendered href is a real navigable URL
+    // (right-click / open-in-new-tab / SEO / no-JS all work).
+    const { container, unmount } = mountInBrowser(h(Link, { to: '/about' }, 'About'))
+    const a = container.querySelector('a') as HTMLAnchorElement
+    expect(a.getAttribute('href')).toBe('/about')
+    expect(a.getAttribute('target')).toBe(null)
+    unmount()
+  })
+
+  it('external link is a plain new-tab anchor (no onClick interception)', () => {
+    // Don't click a real target=_blank anchor in the browser runner (popup /
+    // network). Assert the anchor contract; the "external is never
+    // intercepted by navigate" behavior is covered by the happy-dom unit test.
+    init({ navigate: () => {} })
     const { container, unmount } = mountInBrowser(
       h(Link, { to: 'https://example.com', external: true }, 'Site'),
     )

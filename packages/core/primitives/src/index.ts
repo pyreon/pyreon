@@ -26,10 +26,11 @@
 //   - `<Button>` / `<Press>` / `<Link>` (interaction)
 //   - `<Field>` / `<Toggle>` / `<Modal>` (input)
 //
-// The web-runtime vocabulary is complete. `<Link>` is router-aware —
-// internal links route via `@pyreon/router`'s `RouterLink` (hence the
-// `@pyreon/router` dependency); external links are a plain
-// `<a target="_blank">`.
+// The web-runtime vocabulary is complete. `<Link>` is router-AGNOSTIC:
+// this package has NO router dependency. Internal links render a plain
+// `<a href>` and upgrade to SPA navigation only when the app wires a
+// handler via `init({ navigate })` (see `./config`); external links are
+// a plain `<a target="_blank">`.
 //
 // ## Phase B scope (PMTC emit)
 //
@@ -62,6 +63,14 @@ export type { InlineProps, LayerProps, ScrollProps, SpacerProps, StackProps } fr
 export type { HeadingProps, IconProps, ImageProps, TextProps } from './types/content'
 export type { ButtonProps, LinkProps, PressProps } from './types/interaction'
 export type { FieldProps, ModalProps, ToggleProps } from './types/input'
+
+// ===== Runtime config — one-time app-boot hook (rocketstyle-style) =====
+//
+// Router-agnostic navigation wiring for `<Link>`. Call `init({ navigate })`
+// once at app boot to upgrade internal links to SPA navigation.
+
+export { init, resetPrimitivesConfig } from './config'
+export type { PrimitivesInitOptions } from './config'
 
 // ===== Web runtime exports — all 15 canonical primitives =====
 //

@@ -13,11 +13,10 @@
 // 90% threshold by exercising the basic render path on every
 // primitive in happy-dom.
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { signal } from '@pyreon/reactivity'
-import { RouterProvider, createRouter } from '@pyreon/router'
 import {
   Button,
   Field,
@@ -25,39 +24,18 @@ import {
   Icon,
   Image,
   Inline,
+  init,
   Layer,
   Link,
   Modal,
   Press,
+  resetPrimitivesConfig,
   Scroll,
   Spacer,
   Stack,
   Text,
   Toggle,
 } from '../index'
-
-/** Mount a node inside a minimal RouterProvider (for `<Link>` internal). */
-function mountWithRouter(node: ReturnType<typeof h>): {
-  container: HTMLDivElement
-  unmount: () => void
-} {
-  const router = createRouter({
-    routes: [
-      { path: '/', component: () => h('div', null, 'home') },
-      { path: '/about', component: () => h('div', null, 'about') },
-    ],
-  })
-  const container = document.createElement('div')
-  document.body.appendChild(container)
-  const unmount = mount(h(RouterProvider, { router }, node), container)
-  return {
-    container,
-    unmount: () => {
-      unmount()
-      document.body.removeChild(container)
-    },
-  }
-}
 
 function mountTest(vnode: ReturnType<typeof h>): {
   container: HTMLDivElement
@@ -568,24 +546,22 @@ describe('<Press> happy-dom unit', () => {
 })
 
 describe('<Link> happy-dom unit', () => {
-  it('internal link renders an <a href> via RouterLink (inside a RouterProvider)', () => {
-    const { container, unmount } = mountWithRouter(h(Link, { to: '/about' }, 'About'))
+  // Each test owns the global navigation config; reset after every one.
+  afterEach(() => resetPrimitivesConfig())
+
+  it('internal link renders a real <a href={to}> (NOT hash-prefixed, NOT new-tab)', () => {
+    const { container, unmount } = mountTest(h(Link, { to: '/about' }, 'About'))
     const a = container.querySelector('a') as HTMLAnchorElement
     expect(a).not.toBe(null)
-    // Default router mode is hash, so the href is hash-prefixed.
-    expect(a.getAttribute('href')).toBe('#/about')
+    expect(a.getAttribute('href')).toBe('/about')
     expect(a.textContent).toBe('About')
-    // Internal link is NOT a new-tab external anchor.
     expect(a.getAttribute('target')).toBe(null)
     unmount()
   })
 
-  it('external link renders a plain <a target=_blank rel=noopener noreferrer> (no router needed)', () => {
-    const container = document.createElement('div')
-    document.body.appendChild(container)
-    const unmount = mount(
+  it('external link renders a plain <a target=_blank rel=noopener noreferrer>', () => {
+    const { container, unmount } = mountTest(
       h(Link, { to: 'https://example.com', external: true }, 'Site'),
-      container,
     )
     const a = container.querySelector('a') as HTMLAnchorElement
     expect(a.getAttribute('href')).toBe('https://example.com')
@@ -593,31 +569,113 @@ describe('<Link> happy-dom unit', () => {
     expect(a.getAttribute('rel')).toBe('noopener noreferrer')
     expect(a.textContent).toBe('Site')
     unmount()
-    document.body.removeChild(container)
   })
 
-  it('internal link forwards data-* passthrough + style onto the anchor', () => {
-    const { container, unmount } = mountWithRouter(
-      h(Link, { to: '/about', 'data-testid': 'nav-about', style: { color: 'red' } }, 'About'),
+  it('with init({ navigate }), a plain left-click is intercepted → navigate(to) + preventDefault', () => {
+    const calls: string[] = []
+    init({ navigate: (to) => calls.push(to) })
+    const { container, unmount } = mountTest(h(Link, { to: '/about' }, 'About'))
+    const a = container.querySelector('a') as HTMLAnchorElement
+    const evt = new MouseEvent('click', { button: 0, bubbles: true, cancelable: true })
+    a.dispatchEvent(evt)
+    expect(calls).toEqual(['/about'])
+    expect(evt.defaultPrevented).toBe(true)
+    unmount()
+  })
+
+  it('WITHOUT init, a left-click is NOT intercepted (plain full-load <a>)', () => {
+    const { container, unmount } = mountTest(h(Link, { to: '/about' }, 'About'))
+    const a = container.querySelector('a') as HTMLAnchorElement
+    const evt = new MouseEvent('click', { button: 0, bubbles: true, cancelable: true })
+    a.dispatchEvent(evt)
+    // No navigate configured → browser default nav, not prevented.
+    expect(evt.defaultPrevented).toBe(false)
+    unmount()
+  })
+
+  it('modifier-click (metaKey) is NOT intercepted even with init (open-in-new-tab affordance)', () => {
+    const calls: string[] = []
+    init({ navigate: (to) => calls.push(to) })
+    const { container, unmount } = mountTest(h(Link, { to: '/about' }, 'About'))
+    const a = container.querySelector('a') as HTMLAnchorElement
+    const evt = new MouseEvent('click', {
+      button: 0,
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+    a.dispatchEvent(evt)
+    expect(calls).toEqual([])
+    expect(evt.defaultPrevented).toBe(false)
+    unmount()
+  })
+
+  it('external link is never intercepted, even with init({ navigate })', () => {
+    const calls: string[] = []
+    init({ navigate: (to) => calls.push(to) })
+    const { container, unmount } = mountTest(
+      h(Link, { to: 'https://x.com', external: true }, 'X'),
     )
     const a = container.querySelector('a') as HTMLAnchorElement
-    expect(a.getAttribute('data-testid')).toBe('nav-about')
-    expect(a.style.color).toBe('red')
+    const evt = new MouseEvent('click', { button: 0, bubbles: true, cancelable: true })
+    a.dispatchEvent(evt)
+    // External anchors carry no onClick handler at all.
+    expect(calls).toEqual([])
+    expect(evt.defaultPrevented).toBe(false)
     unmount()
   })
 
-  it('external link forwards data-* passthrough onto the anchor', () => {
-    const container = document.createElement('div')
-    document.body.appendChild(container)
-    const unmount = mount(
+  it('forwards data-* passthrough + style onto the anchor (internal + external)', () => {
+    const internal = mountTest(
+      h(Link, { to: '/about', 'data-testid': 'nav-about', style: { color: 'red' } }, 'About'),
+    )
+    const ai = internal.container.querySelector('a') as HTMLAnchorElement
+    expect(ai.getAttribute('data-testid')).toBe('nav-about')
+    expect(ai.style.color).toBe('red')
+    internal.unmount()
+
+    const external = mountTest(
       h(Link, { to: 'https://x.com', external: true, 'data-testid': 'ext' }, 'X'),
-      container,
     )
     expect(
-      (container.querySelector('a') as HTMLAnchorElement).getAttribute('data-testid'),
+      (external.container.querySelector('a') as HTMLAnchorElement).getAttribute('data-testid'),
     ).toBe('ext')
+    external.unmount()
+  })
+})
+
+describe('init() config', () => {
+  afterEach(() => resetPrimitivesConfig())
+
+  it('merges across calls (later call overrides only the keys it sets)', () => {
+    const a: string[] = []
+    const b: string[] = []
+    init({ navigate: (to) => a.push(to) })
+    init({}) // no navigate key → preserves the previous handler
+    const { container, unmount } = mountTest(h(Link, { to: '/x' }, 'X'))
+    ;(container.querySelector('a') as HTMLAnchorElement).dispatchEvent(
+      new MouseEvent('click', { button: 0, bubbles: true, cancelable: true }),
+    )
+    expect(a).toEqual(['/x'])
+    expect(b).toEqual([])
+    init({ navigate: (to) => b.push(to) }) // overrides navigate
+    ;(container.querySelector('a') as HTMLAnchorElement).dispatchEvent(
+      new MouseEvent('click', { button: 0, bubbles: true, cancelable: true }),
+    )
+    expect(b).toEqual(['/x'])
     unmount()
-    document.body.removeChild(container)
+  })
+
+  it('resetPrimitivesConfig() clears the configured navigate', () => {
+    const calls: string[] = []
+    init({ navigate: (to) => calls.push(to) })
+    resetPrimitivesConfig()
+    const { container, unmount } = mountTest(h(Link, { to: '/y' }, 'Y'))
+    const evt = new MouseEvent('click', { button: 0, bubbles: true, cancelable: true })
+    ;(container.querySelector('a') as HTMLAnchorElement).dispatchEvent(evt)
+    expect(calls).toEqual([])
+    expect(evt.defaultPrevented).toBe(false)
+    unmount()
   })
 })
 
