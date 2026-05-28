@@ -16,6 +16,7 @@
     "test:watch": "vitest",
     "lint": "oxlint .",
     "lint:browser-smoke": "bun scripts/check-browser-smoke.ts",
+    "lint:pyreon": "bun packages/tools/cli/src/index.ts doctor --only lint --ci",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "typecheck": "bun run --filter='*' typecheck",
