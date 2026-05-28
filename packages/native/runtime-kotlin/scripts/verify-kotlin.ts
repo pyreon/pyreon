@@ -43,8 +43,16 @@ import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PACKAGE_ROOT = resolve(HERE, '..')
-const SOURCE_FILE = resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonStorage.kt')
-const TEST_FILE = resolve(PACKAGE_ROOT, 'src/test/kotlin/com/pyreon/runtime/PyreonStorageTest.kt')
+
+// Which runtime service to verify. Each service is `<Name>.kt` +
+// `<Name>Test.kt`; `--service=<Name>` selects it (default PyreonStorage,
+// back-compat). Each service compiles into its OWN JAR and runs its OWN
+// `main()`, so multiple services with their own smoke entry points don't
+// collide. The workspace `test` script invokes this once per service.
+const SERVICE =
+  process.argv.find((a) => a.startsWith('--service='))?.split('=')[1] ?? 'PyreonStorage'
+const SOURCE_FILE = resolve(PACKAGE_ROOT, `src/main/kotlin/com/pyreon/runtime/${SERVICE}.kt`)
+const TEST_FILE = resolve(PACKAGE_ROOT, `src/test/kotlin/com/pyreon/runtime/${SERVICE}Test.kt`)
 
 // CLI: `bun verify-kotlin.ts` runs the full path; `bun verify-kotlin.ts
 // --typecheck-only` skips the JAR bundling + smoke run (used by the
@@ -226,8 +234,8 @@ try {
 
   console.log(
     typecheckOnly
-      ? '[verify-kotlin] ✓ PyreonStorage.kt typechecks against stubs'
-      : '[verify-kotlin] ✓ PyreonStorage.kt + test smoke typecheck against stubs',
+      ? `[verify-kotlin] ✓ ${SERVICE}.kt typechecks against stubs`
+      : `[verify-kotlin] ✓ ${SERVICE}.kt + test smoke typecheck against stubs`,
   )
 
   // Typecheck-only mode stops here — no JAR was built, no smoke to run.
@@ -255,7 +263,7 @@ try {
   } else {
     const smokeResult = spawnSync(
       'java',
-      ['-jar', jarPath, 'com.pyreon.runtime.PyreonStorageTestKt'],
+      ['-jar', jarPath, `com.pyreon.runtime.${SERVICE}TestKt`],
       { encoding: 'utf8' },
     )
     if (smokeResult.status !== 0) {

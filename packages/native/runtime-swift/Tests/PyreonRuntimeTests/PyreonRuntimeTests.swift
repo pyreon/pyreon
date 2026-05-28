@@ -224,4 +224,127 @@ final class PyreonRuntimeTests: XCTestCase {
         )
         XCTAssertEqual(storage.wrappedValue, [])
     }
+
+    // MARK: - PyreonFetch (useFetch result container)
+
+    /// A fresh container is empty: no data, no error, not pending.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonFetchInitialState() throws {
+        let fetch = PyreonFetch<Int>()
+        XCTAssertNil(fetch.data)
+        XCTAssertNil(fetch.error)
+        XCTAssertFalse(fetch.isPending)
+    }
+
+    /// `run` with a succeeding fetcher lands the value in `data`, clears
+    /// `error`, and ends not-pending.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonFetchRunSuccess() throws {
+        let fetch = PyreonFetch<Int>()
+        fetch.load { 42 }
+        XCTAssertEqual(fetch.data, 42)
+        XCTAssertNil(fetch.error)
+        XCTAssertFalse(fetch.isPending)
+    }
+
+    /// `run` with a throwing fetcher lands the failure in `error`, leaves
+    /// `data` nil, and ends not-pending.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonFetchRunFailure() throws {
+        struct FetchError: Error, Equatable {}
+        let fetch = PyreonFetch<Int>()
+        fetch.load { throw FetchError() }
+        XCTAssertNil(fetch.data)
+        XCTAssertTrue(fetch.error is FetchError)
+        XCTAssertFalse(fetch.isPending)
+    }
+
+    /// `refetch` re-invokes the last fetcher — a counter-backed fetcher
+    /// observably advances on each call.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonFetchRefetchReRuns() throws {
+        var calls = 0
+        let fetch = PyreonFetch<Int>()
+        fetch.load {
+            calls += 1
+            return calls
+        }
+        XCTAssertEqual(fetch.data, 1)
+        fetch.refetch()
+        XCTAssertEqual(fetch.data, 2)
+        XCTAssertEqual(calls, 2)
+    }
+
+    /// `refetch` before any `run` is a safe no-op (no crash, state stays
+    /// empty).
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonFetchRefetchBeforeRunIsNoOp() throws {
+        let fetch = PyreonFetch<Int>()
+        fetch.refetch()
+        XCTAssertNil(fetch.data)
+        XCTAssertNil(fetch.error)
+        XCTAssertFalse(fetch.isPending)
+    }
+
+    /// A successful `run` after a failed one clears the prior error.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonFetchSuccessClearsPriorError() throws {
+        struct FetchError: Error {}
+        let fetch = PyreonFetch<Int>()
+        fetch.load { throw FetchError() }
+        XCTAssertNotNil(fetch.error)
+        fetch.load { 7 }
+        XCTAssertEqual(fetch.data, 7)
+        XCTAssertNil(fetch.error)
+    }
+
+    // MARK: - PyreonFetch async-harness transitions (begin/resolve/reject)
+
+    /// `begin()` enters the in-flight state and clears a prior error.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonFetchBeginEntersPending() throws {
+        struct FetchError: Error {}
+        let fetch = PyreonFetch<Int>()
+        fetch.reject(FetchError())
+        XCTAssertNotNil(fetch.error)
+        fetch.begin()
+        XCTAssertTrue(fetch.isPending)
+        XCTAssertNil(fetch.error)
+    }
+
+    /// The async success path `begin()` → `resolve(v)` lands the value.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonFetchResolveLandsValue() throws {
+        let fetch = PyreonFetch<Int>()
+        fetch.begin()
+        fetch.resolve(99)
+        XCTAssertEqual(fetch.data, 99)
+        XCTAssertNil(fetch.error)
+        XCTAssertFalse(fetch.isPending)
+    }
+
+    /// The async failure path `begin()` → `reject(e)` records the error
+    /// and ends pending.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonFetchRejectRecordsError() throws {
+        struct FetchError: Error {}
+        let fetch = PyreonFetch<Int>()
+        fetch.begin()
+        fetch.reject(FetchError())
+        XCTAssertTrue(fetch.error is FetchError)
+        XCTAssertFalse(fetch.isPending)
+    }
+
+    /// `reject` leaves prior `data` in place (stale-while-error) — a
+    /// refetch failure doesn't blank the last good value.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonFetchRejectKeepsStaleData() throws {
+        struct FetchError: Error {}
+        let fetch = PyreonFetch<Int>()
+        fetch.resolve(5)
+        fetch.begin()
+        fetch.reject(FetchError())
+        XCTAssertEqual(fetch.data, 5)
+        XCTAssertNotNil(fetch.error)
+    }
 }
