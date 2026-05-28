@@ -299,9 +299,18 @@ describe('proposal #1 — collapse-tail bail-reason census (measurement, not a b
         `      every other non-literal attr is on* (handlers compose via _rsCollapseDynH),`,
         `      static children — dynamic-prop sequence #765-#767 + handler-combined follow-up)`,
         `  ── element-child STATIC-ADDRESSABLE: ${elementChildStaticAddressable} (${pct(elementChildStaticAddressable)} of all sites)`,
-        `     (element-child bails where EVERY element child is recursively static`,
+        `     (element-child sites where EVERY element child is recursively static`,
         `      — DOM tag, literal props, no handlers, static text/element subtree.`,
-        `      The go/no-go surface for element-child collapse PR 2. Measurement-only.)`,
+        `      SHIPPED — the scanner expands these into the resolve set and the`,
+        `      compiler emits the UNCHANGED __rsCollapse with the baked subtree.)`,
+        `  ══ TOTAL ADDRESSED (collapsed end-to-end): ${
+          myCollapsible + partialAddressable + dynamicTernaryAddressable + elementChildStaticAddressable
+        } (${pct(
+          myCollapsible + partialAddressable + dynamicTernaryAddressable + elementChildStaticAddressable,
+        )} of all sites)`,
+        `     (full + on*-handler partial + dynamic-prop + element-child — every`,
+        `      collapse path shipped today. The remaining bail buckets are out of`,
+        `      scope: multi-axis dynamic, expression-child, spread, boolean-attr.)`,
         '',
       ].join('\n'),
     )
@@ -368,5 +377,26 @@ describe('proposal #1 — collapse-tail bail-reason census (measurement, not a b
     // ever legitimately has zero such sites this would need revisiting,
     // but the measured count at PR time is > 0.
     expect(elementChildStaticAddressable).toBeGreaterThan(0)
+
+    // ── Element-child collapse SHIPPED — reclassification (PR 3) ─────────────
+    // Element-child is no longer measurement-only: the scanner expands every
+    // static-addressable element-child site into the resolve set and the
+    // compiler emits the collapse. The trustworthiness invariant above
+    // (`+ elementChildStaticAddressable`) already proves the scanner emits
+    // exactly that many extra resolutions; here we lock that the ADDRESSED
+    // coverage headline genuinely includes the element-child contribution
+    // (it strictly exceeds the full-collapse-only count by ≥1 element-child
+    // site). Reverting the element-child scan/emit drops the element-child
+    // term out of the scanner truth-set → the trustworthiness invariant
+    // fails first; this assertion documents the coverage intent.
+    const totalAddressed =
+      myCollapsible + partialAddressable + dynamicTernaryAddressable + elementChildStaticAddressable
+    expect(totalAddressed).toBeGreaterThan(myCollapsible)
+    expect(totalAddressed - myCollapsible).toBeGreaterThanOrEqual(elementChildStaticAddressable)
+    // Addressed coverage is the dominant share of the corpus (full +
+    // partial + dynamic + element-child). Range-locked (not exact) so
+    // benign corpus churn doesn't flake; a structural collapse-path
+    // regression (a whole path stops collapsing) trips it.
+    expect(totalAddressed / candidates).toBeGreaterThan(0.8)
   })
 })
