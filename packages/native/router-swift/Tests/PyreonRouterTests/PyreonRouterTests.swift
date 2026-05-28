@@ -128,4 +128,62 @@ final class PyreonRouterTests: XCTestCase {
         let params = useParams(router: nil)
         XCTAssertEqual(params, [:])
     }
+
+    // MARK: - matchPath (route pattern matching)
+
+    /// A literal pattern matches only its exact path; params are empty.
+    func testMatchPathLiteral() throws {
+        XCTAssertEqual(PyreonRouter.matchPath("/about", "/about"), [:])
+        XCTAssertNil(PyreonRouter.matchPath("/about", "/contact"))
+    }
+
+    /// `:name` captures a single segment.
+    func testMatchPathSingleParam() throws {
+        XCTAssertEqual(PyreonRouter.matchPath("/users/123", "/users/:id"), ["id": "123"])
+        XCTAssertEqual(
+            PyreonRouter.matchPath("/posts/abc/edit", "/posts/:slug/edit"),
+            ["slug": "abc"]
+        )
+    }
+
+    /// Wrong literal segment or wrong length → no match.
+    func testMatchPathMismatch() throws {
+        XCTAssertNil(PyreonRouter.matchPath("/users/123", "/posts/:id"))
+        // Longer path must not match a shorter non-splat pattern.
+        XCTAssertNil(PyreonRouter.matchPath("/users/123/extra", "/users/:id"))
+        // Shorter path must not match a longer pattern.
+        XCTAssertNil(PyreonRouter.matchPath("/users", "/users/:id"))
+    }
+
+    /// `:name*` (splat) captures the remaining tail joined by "/".
+    func testMatchPathSplatCapturesTail() throws {
+        XCTAssertEqual(
+            PyreonRouter.matchPath("/blog/2026/may/post", "/blog/:rest*"),
+            ["rest": "2026/may/post"]
+        )
+        // Single trailing segment still matches the splat.
+        XCTAssertEqual(PyreonRouter.matchPath("/files/readme", "/files/:path*"), ["path": "readme"])
+    }
+
+    /// Splat is one-or-more: the splat position must have a segment.
+    func testMatchPathSplatRequiresOneSegment() throws {
+        XCTAssertNil(PyreonRouter.matchPath("/blog", "/blog/:rest*"))
+    }
+
+    /// Splat composes with leading literal + param segments.
+    func testMatchPathSplatAfterParam() throws {
+        XCTAssertEqual(
+            PyreonRouter.matchPath("/u/42/files/a/b", "/u/:id/files/:rest*"),
+            ["id": "42", "rest": "a/b"]
+        )
+    }
+
+    /// Leading / trailing slashes are tolerated (empty segments filtered).
+    func testMatchPathSlashTolerance() throws {
+        XCTAssertEqual(PyreonRouter.matchPath("/about/", "/about"), [:])
+        XCTAssertEqual(PyreonRouter.matchPath("/about", "/about/"), [:])
+        XCTAssertEqual(PyreonRouter.matchPath("/users/7/", "/users/:id"), ["id": "7"])
+        // Root matches root.
+        XCTAssertEqual(PyreonRouter.matchPath("/", "/"), [:])
+    }
 }
