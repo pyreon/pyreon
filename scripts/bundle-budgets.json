@@ -29,7 +29,7 @@
   "@pyreon/meta": 1536,
   "@pyreon/permissions": 1024,
   "@pyreon/preact-compat": 1280,
-  "@pyreon/primitives": 2560,
+  "@pyreon/primitives": 3584,
   "@pyreon/query": 3840,
   "@pyreon/react-compat": 3584,
   "@pyreon/reactivity": 7936,
