@@ -1,6 +1,6 @@
 # Multi-Platform Pyreon
 
-> **Status:** PMTC (Pyreon Multi-Target Compiler) is **experimental**. Compile-time contract is 100% (TypeScript → typecheck-clean SwiftUI + Compose). The canonical multi-platform primitive vocabulary is in Phase A of a 5-phase rollout.
+> **Status:** PMTC (Pyreon Multi-Target Compiler) is **experimental**. The full **15-primitive canonical vocabulary** now spans all three targets: every primitive has a real web DOM runtime, every primitive emits typecheck-clean SwiftUI (iOS), and the Jetpack Compose (Android) emit is completing via the P2.2 series (layout + content + Modal). Validation today is **compile-time** (`swiftc -parse` / `kotlinc` against Compose stubs); an **opt-in** real-toolchain build gate (the `native-device` workflow) additionally compiles the full example apps on real Xcode/Gradle. End-to-end Simulator/Emulator **launch-and-render** is the next milestone.
 
 ## The pitch
 
@@ -146,7 +146,7 @@ When the canonical vocabulary doesn't reach (Apple Pencil gestures, AR scenes, A
 |-----------|-----|-----|---------|
 | `<Button onPress>` (styled CTA) | `<button>` | `Button` | `Button` |
 | `<Press onPress>` (un-styled wrapper) | `<div onClick role=button>` | `Button { }` no chrome | `Box(clickable)` |
-| `<Link to>` (router-aware) | `<a>` via @pyreon/router | `NavigationLink` | `Box(clickable + navigate)` |
+| `<Link to external?>` (router-agnostic) | `<a href>` + SPA-nav when `init({ navigate })` is wired | `NavigationLink` | `Box(clickable + navigate)` |
 
 ### Input
 
@@ -209,21 +209,35 @@ Existing PMTC source using SwiftUI-flavored names (`<VStack>`, `<HStack>`, `<Tex
 
 The 5-phase implementation roadmap:
 
+Foundation rollout (A–E):
+
 | Phase | Scope | Status |
 |-------|-------|--------|
-| **A** | Architectural foundation: canonical primitives package + 6-primitive web runtime | In progress |
-| **B** | PMTC compiler emit for iOS + Android (extends `canonical-primitives.ts` table) | Pending |
-| **C** | `@pyreon/native-router-{swift,kotlin}` runtime adapters | Pending |
-| **D** | Web target for PMTC + `examples/native-todomvc-web/` consuming the shared source | Pending |
-| **E** | TodoMVC migration to canonical vocab — closes the cross-platform contract | Pending |
+| **A** | Architectural foundation: canonical primitives package + web runtimes | ✅ Done — **all 15** primitives have web DOM runtimes |
+| **B** | PMTC compiler emit for iOS + Android (extends `canonical-primitives.ts` table) | ✅ iOS (Swift) **15/15**; Android (Compose) emit completing via the P2.2 series |
+| **C** | `@pyreon/native-router-{swift,kotlin}` runtime adapters + routes emit (path + component) | ✅ Done |
+| **D** | Web target for PMTC + `examples/native-todomvc-web/` consuming the shared source | ✅ Done |
+| **E** | TodoMVC migration to canonical vocab — closes the cross-platform contract | ✅ Done |
 
-After Phase E: ONE `TodoApp.tsx` source, THREE example apps (web, iOS, Android), all typecheck-clean, all running.
+ONE `TodoApp.tsx` source → THREE example apps (web, iOS, Android), all typecheck-clean.
+
+### Beyond the foundation — toward production-grade
+
+The vocabulary is multiplatform; the road to shipping real production apps continues:
+
+| Step | Scope | Status |
+|------|-------|--------|
+| Real-device CI | Compile the full apps on real Xcode/Gradle (`native-device` workflow), then boot Simulator/Emulator + assert render | 🟡 build gate landed (opt-in); launch-and-render next |
+| Router parity | loaders / guards / nested routes / redirects / typed `useParams<T>` on native | ⏳ planned |
+| Data + forms | `useFetch` (URLSession / ktor), `<Form>`/`useForm` on native | ⏳ planned (per-service native ports) |
+| Lifecycle | `<Suspense>` / `<ErrorBoundary>` / `<Transition>` on native | ⏳ planned |
+| DX | `pyreon create-multiplatform` scaffold, asset pipeline | ⏳ planned |
 
 ## Verifiable today (compile contract)
 
 - **Web**: `@pyreon/runtime-dom` renders any Pyreon JSX. Full ecosystem available.
-- **iOS**: `pyreon-native build --target=ios --source=./src --out=./generated` produces typecheck-clean Swift (verified via `swiftc -typecheck` in CI). End-to-end Simulator build awaits Apple-hardware CI.
-- **Android**: `pyreon-native build --target=android --source=./src --out=./generated` produces typecheck-clean Kotlin (verified via `kotlinc + Compose stubs` in CI). End-to-end emulator build awaits Android-SDK CI.
+- **iOS**: `pyreon-native build --target=ios --source=./src --out=./generated` produces typecheck-clean Swift (verified via `swiftc -parse` in the `native-validate` CI). The **opt-in** `native-device` workflow additionally runs `xcodegen` + `xcodebuild` to compile the full example app on a real Xcode/Simulator SDK. End-to-end Simulator launch-and-render is the next step.
+- **Android**: `pyreon-native build --target=android --source=./src --out=./generated` produces typecheck-clean Kotlin (verified via `kotlinc + Compose stubs`). The same opt-in `native-device` workflow runs `gradle assembleDebug` against the real Android toolchain. End-to-end emulator launch-and-render is the next step.
 
 The runtime packages exist:
 
@@ -234,6 +248,7 @@ The runtime packages exist:
 
 - Compiler source: `packages/native/compiler/src/` — `emit-swift.ts` / `emit-kotlin.ts` per-target emit; `canonical-primitives.ts` shared name maps + token resolution
 - Native runtime packages: `packages/native/runtime-swift/`, `packages/native/runtime-kotlin/`
-- Web runtime: `packages/core/primitives/src/web/` — 6 proof-of-concept primitives
-- Example apps: `examples/native-todomvc-ios/`, `examples/native-todomvc-android/` (web example coming Phase D)
+- Web runtime: `packages/core/primitives/src/web/` — all 15 canonical primitives
+- Example apps: `examples/native-todomvc-{ios,android,web}/` + `examples/native-router-demo-{ios,web}/`
+- Real-device build gate: `.github/workflows/native-device.yml` (opt-in via the `native-device` label / dispatch)
 - CLAUDE.md "PMTC Multi-Target Architecture" section — agent-context summary of the layered model + roadmap
