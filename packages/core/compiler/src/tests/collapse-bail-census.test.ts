@@ -91,6 +91,16 @@ interface SiteClass {
    * by the dynamic-prop collapse PR sequence (PRs #765-#767 plus the
    * handler-combined follow-up). */
   dynamicTernaryAddressable: boolean
+  /** dynamic-prop only: true iff ≥2 dynamic attrs are ternary-of-two-literals
+   * AND every other non-literal attr is a ternary or `on*` handler AND
+   * children are static text — the BOUNDED multi-axis subset (k ternary
+   * dims → 2^k pre-renderable combinations). Measures the ONLY remaining
+   * *tractable* dynamic frontier: the shipped dynamic-collapse handles
+   * k=1 (`dynamicTernaryAddressable`); k≥2 is bounded-but-deferred (the
+   * resolver pre-renders 2^k variants, the runtime indexes a 2^k class
+   * table). NOT shipped — this is the go/no-go number. Distinct from the
+   * genuinely-impossible dynamic bails (`state={fn()}` — non-enumerable). */
+  multiAxisTernaryAddressable?: boolean
   /** element-child only: true iff EVERY element child is recursively
    * static (DOM tag, literal props, no handlers, static text/element
    * children all the way down) — i.e. `collectStaticChildren` succeeds.
@@ -196,7 +206,16 @@ function classifySite(node: any): SiteClass {
     // claim. Handlers are NO LONGER excluded — they compose orthogonally.
     const dynamicTernaryAddressable =
       ternaryCount === 1 && everyDynamicIsTernary && staticChildrenOnly
-    return { bucket: 'dynamic-prop', partialAddressable, dynamicTernaryAddressable }
+    // Bounded multi-axis: ≥2 ternary dims, every other dynamic a ternary or
+    // handler, static children → 2^ternaryCount pre-renderable combinations.
+    const multiAxisTernaryAddressable =
+      ternaryCount >= 2 && everyDynamicIsTernary && staticChildrenOnly
+    return {
+      bucket: 'dynamic-prop',
+      partialAddressable,
+      dynamicTernaryAddressable,
+      multiAxisTernaryAddressable,
+    }
   }
   // No spread / boolean / dynamic attr. Bail can now only come from children.
   for (const c of kids) {
@@ -239,6 +258,7 @@ describe('proposal #1 — collapse-tail bail-reason census (measurement, not a b
     let candidates = 0
     let partialAddressable = 0
     let dynamicTernaryAddressable = 0
+    let multiAxisTernaryAddressable = 0
     let elementChildStaticAddressable = 0
     let myCollapsible = 0
     let scannerCollapsible = 0
@@ -264,6 +284,7 @@ describe('proposal #1 — collapse-tail bail-reason census (measurement, not a b
             if (c.bucket === 'collapsible') myCollapsible++
             if (c.partialAddressable) partialAddressable++
             if (c.dynamicTernaryAddressable) dynamicTernaryAddressable++
+            if (c.multiAxisTernaryAddressable) multiAxisTernaryAddressable++
             if (c.elementChildStaticAddressable) elementChildStaticAddressable++
           }
         }
@@ -303,14 +324,29 @@ describe('proposal #1 — collapse-tail bail-reason census (measurement, not a b
         `      — DOM tag, literal props, no handlers, static text/element subtree.`,
         `      SHIPPED — the scanner expands these into the resolve set and the`,
         `      compiler emits the UNCHANGED __rsCollapse with the baked subtree.)`,
+        `  ── multi-axis-ternary FRONTIER     : ${multiAxisTernaryAddressable} (${pct(multiAxisTernaryAddressable)} of all sites)`,
+        `     (dynamic-prop bails with ≥2 ternary-of-two-literals dims, every other`,
+        `      dynamic a ternary/handler, static children — the BOUNDED 2^k subset.`,
+        `      NOT shipped: the ONLY remaining *tractable* frontier. go/no-go number.)`,
         `  ══ TOTAL ADDRESSED (collapsed end-to-end): ${
           myCollapsible + partialAddressable + dynamicTernaryAddressable + elementChildStaticAddressable
         } (${pct(
           myCollapsible + partialAddressable + dynamicTernaryAddressable + elementChildStaticAddressable,
         )} of all sites)`,
         `     (full + on*-handler partial + dynamic-prop + element-child — every`,
-        `      collapse path shipped today. The remaining bail buckets are out of`,
-        `      scope: multi-axis dynamic, expression-child, spread, boolean-attr.)`,
+        `      collapse path shipped today. The remaining bail buckets are OUT OF`,
+        `      SCOPE for structural reasons (not laziness):`,
+        `        • element-child non-static — component children carry their OWN`,
+        `          setup/reactivity/state; baking them would freeze that. IMPOSSIBLE.`,
+        `        • dynamic-prop non-enumerable — \`state={fn()}\` has no finite value`,
+        `          set to pre-render. IMPOSSIBLE.`,
+        `        • multi-axis-ternary — bounded (2^k) but DEFERRED: complexity vs the`,
+        `          measured surface above; revisit only if that number grows.`,
+        `        • expression-child \`{expr}\` — dynamic child, can't bake. IMPOSSIBLE.`,
+        `        • spread \`{...x}\` — unknown prop set, can't resolve a class. IMPOSSIBLE.`,
+        `        • boolean-attr — a valueless attr is ambiguous between a static HTML`,
+        `          bool (\`disabled\`) and a rocketstyle dimension shorthand (\`primary\`);`,
+        `          the compile-time detector can't tell without component introspection.)`,
         '',
       ].join('\n'),
     )
@@ -362,6 +398,24 @@ describe('proposal #1 — collapse-tail bail-reason census (measurement, not a b
     // matching sites in the corpus); just lock that the counter is
     // wired and consistent with the bucket.
     expect(dynamicTernaryAddressable).toBeLessThanOrEqual(tally['dynamic-prop'])
+
+    // ── Multi-axis-ternary frontier (the structural-ceiling go/no-go) ────────
+    // The ONLY remaining *bounded-tractable* collapse case: ≥2 ternary
+    // dimension props → 2^k pre-renderable combinations (shipped dynamic
+    // collapse handles k=1; k≥2 is bounded but deferred for complexity).
+    // Measured 0 in the real corpus — NO site uses ≥2 ternary dims — so
+    // building dynamic-multi-axis collapse would address zero real sites.
+    // That measurement IS the deliverable: it confirms 86% is the practical
+    // ceiling and every other un-addressed bail is structurally IMPOSSIBLE
+    // (component children own their reactivity; `state={fn()}` is non-
+    // enumerable; `{expr}` children + `{...spread}` are unresolvable;
+    // boolean-attr is dimension-shorthand-ambiguous at compile time) — see
+    // the logged report's "OUT OF SCOPE" rationale. Mutually exclusive with
+    // dynamicTernaryAddressable (k===1 vs k≥2), and ≤ the dynamic-prop bucket.
+    expect(multiAxisTernaryAddressable).toBeLessThanOrEqual(tally['dynamic-prop'])
+    expect(dynamicTernaryAddressable + multiAxisTernaryAddressable).toBeLessThanOrEqual(
+      tally['dynamic-prop'],
+    )
 
     // ── Element-child static-addressable (PR 1 measurement) ─────────────────
     // The static-addressable subset is BY DEFINITION ≤ the element-child
