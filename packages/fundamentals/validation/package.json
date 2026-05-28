@@ -56,7 +56,7 @@
     "lint": "oxlint ."
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.8.9",
+    "@happy-dom/global-registrator": "^20.9.0",
     "@pyreon/core": "workspace:^",
     "@pyreon/form": "workspace:^",
     "@pyreon/manifest": "workspace:*",
@@ -64,8 +64,8 @@
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
     "arktype": "^2.2.0",
-    "valibot": "^1.2.0",
-    "zod": "^4.3.6"
+    "valibot": "^1.4.1",
+    "zod": "~4.3.6"
   },
   "peerDependenciesMeta": {
     "zod": {

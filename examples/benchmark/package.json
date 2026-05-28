@@ -16,22 +16,22 @@
     "@pyreon/core": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
-    "preact": "^10.29.0",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "solid-js": "^1.9.11",
-    "svelte": "^5.0.0",
-    "vue": "^3.5.30"
+    "preact": "^10.29.2",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "solid-js": "^1.9.13",
+    "svelte": "^5.55.10",
+    "vue": "^3.5.35"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.8.9",
+    "@happy-dom/global-registrator": "^20.9.0",
     "@pyreon/vite-plugin": "workspace:*",
-    "@sveltejs/vite-plugin-svelte": "^5.0.0",
-    "@types/node": "^22.10.0",
-    "@types/react": "^19.2.14",
+    "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "@types/node": "^25.9.1",
+    "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
-    "playwright": "^1.49.0",
-    "typescript": "^6.0.2",
-    "vite": "^8.0.0"
+    "playwright": "^1.60.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.14"
   }
 }

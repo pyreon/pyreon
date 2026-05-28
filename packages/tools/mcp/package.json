@@ -47,7 +47,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@pyreon/compiler": "workspace:^",
-    "zod": "^4.3.6"
+    "zod": "~4.3.6"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",

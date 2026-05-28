@@ -43,10 +43,10 @@
   "dependencies": {
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
-    "@tanstack/table-core": "^8.0.0"
+    "@tanstack/table-core": "^8.21.3"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.8.9",
+    "@happy-dom/global-registrator": "^20.9.0",
     "@pyreon/core": "workspace:^",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/reactivity": "workspace:^",

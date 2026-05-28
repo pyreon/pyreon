@@ -38,9 +38,9 @@
     "lint": "oxlint ."
   },
   "dependencies": {
-    "@atlaskit/pragmatic-drag-and-drop": "^1.7.10",
-    "@atlaskit/pragmatic-drag-and-drop-auto-scroll": "^2.0.0",
-    "@atlaskit/pragmatic-drag-and-drop-hitbox": "^1.0.0",
+    "@atlaskit/pragmatic-drag-and-drop": "^1.8.1",
+    "@atlaskit/pragmatic-drag-and-drop-auto-scroll": "^2.1.5",
+    "@atlaskit/pragmatic-drag-and-drop-hitbox": "^1.1.0",
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^"
   },
@@ -48,6 +48,6 @@
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/typescript": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^4.1.4"
+    "@vitest/browser-playwright": "^4.1.7"
   }
 }
