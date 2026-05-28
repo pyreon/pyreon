@@ -118,25 +118,56 @@ public class PyreonRouter(initialPath: List<String> = emptyList()) {
          *   matchPath("/users/123", "/users/:id")     → mapOf("id" to "123")
          *   matchPath("/posts/abc/edit", "/posts/:slug/edit") → mapOf("slug" to "abc")
          *   matchPath("/users/123", "/posts/:id")     → null
+         *   matchPath("/blog/2026/may", "/blog/:rest*") → mapOf("rest" to "2026/may")
+         *   matchPath("/about/", "/about")            → emptyMap() (trailing slash ignored)
          *
-         * Phase 0 semantics: exact segment count, named param capture,
-         * literal segments compared as-is. No wildcards / catch-alls.
+         * Semantics (mirrors @pyreon/router's `match.ts` AND the Swift
+         * runtime's matchPath):
+         *   - empty segments filtered → leading/trailing slashes tolerated
+         *   - `:name` captures one segment
+         *   - `:name*` (splat / catch-all) captures the remaining tail joined
+         *     by "/"; must be the last pattern segment; matches one-or-more
+         *     trailing segments (web parity: pathLen >= segCount)
+         *   - `:name?` (optional) — a TRAILING optional segment may be omitted
+         *     by the path (`/users/:id?` matches both `/users` and `/users/7`)
+         *   - non-splat / non-optional patterns require an exact segment count
          */
         public fun matchPath(path: String, pattern: String): Map<String, String>? {
-            val pathParts = path.split("/")
-            val patternParts = pattern.split("/")
-            if (pathParts.size != patternParts.size) return null
+            // Filter empty segments → leading/trailing slashes ignored, same
+            // as the web router's `.split('/').filter(Boolean)`.
+            val pathParts = path.split("/").filter { it.isNotEmpty() }
+            val patternParts = pattern.split("/").filter { it.isNotEmpty() }
             val params = mutableMapOf<String, String>()
-            for (i in pathParts.indices) {
-                val pathSeg = pathParts[i]
+            for (i in patternParts.indices) {
                 val patternSeg = patternParts[i]
+                // Splat / catch-all `:name*` — captures the remaining tail.
+                if (patternSeg.startsWith(":") && patternSeg.endsWith("*")) {
+                    val name = patternSeg.substring(1, patternSeg.length - 1)
+                    // One-or-more: the splat position must have a segment.
+                    if (i >= pathParts.size) return null
+                    params[name] = pathParts.subList(i, pathParts.size).joinToString("/")
+                    return params
+                }
+                val isOptional = patternSeg.startsWith(":") && patternSeg.endsWith("?")
+                // Path exhausted at this index — OK only if optional (and so
+                // is every remaining segment, hitting this same branch).
+                if (i >= pathParts.size) {
+                    if (isOptional) continue
+                    return null
+                }
+                val pathSeg = pathParts[i]
                 if (patternSeg.startsWith(":")) {
-                    val name = patternSeg.substring(1)
+                    val name =
+                        if (isOptional) patternSeg.substring(1, patternSeg.length - 1)
+                        else patternSeg.substring(1)
                     params[name] = pathSeg
                 } else if (pathSeg != patternSeg) {
                     return null
                 }
             }
+            // The path may be SHORTER than the pattern only when the missing
+            // tail was all optional; it must never be LONGER.
+            if (pathParts.size > patternParts.size) return null
             return params
         }
     }

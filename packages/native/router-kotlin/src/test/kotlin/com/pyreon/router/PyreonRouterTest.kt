@@ -96,5 +96,66 @@ fun main() {
         expectEq(router.params.value["id"], "123", "params reads back")
     }
 
-    println("[verify-kotlin] ✓ PyreonRouter smoke ${9} test(s) passed")
+    // matchPath — route pattern matching (mirrors Swift runtime + web).
+
+    runTest("matchPath literal match / mismatch") {
+        expectEq(PyreonRouter.matchPath("/about", "/about"), emptyMap(), "literal match")
+        expectEq(PyreonRouter.matchPath("/about", "/contact"), null, "literal mismatch")
+    }
+
+    runTest("matchPath captures single :param") {
+        expectEq(PyreonRouter.matchPath("/users/123", "/users/:id"), mapOf("id" to "123"), "id param")
+        expectEq(
+            PyreonRouter.matchPath("/posts/abc/edit", "/posts/:slug/edit"),
+            mapOf("slug" to "abc"),
+            "slug param",
+        )
+    }
+
+    runTest("matchPath rejects wrong literal / length") {
+        expectEq(PyreonRouter.matchPath("/users/123", "/posts/:id"), null, "wrong literal")
+        expectEq(PyreonRouter.matchPath("/users/123/extra", "/users/:id"), null, "too long")
+        expectEq(PyreonRouter.matchPath("/users", "/users/:id"), null, "too short")
+    }
+
+    runTest("matchPath splat captures the tail") {
+        expectEq(
+            PyreonRouter.matchPath("/blog/2026/may/post", "/blog/:rest*"),
+            mapOf("rest" to "2026/may/post"),
+            "splat tail",
+        )
+        expectEq(
+            PyreonRouter.matchPath("/files/readme", "/files/:path*"),
+            mapOf("path" to "readme"),
+            "splat single segment",
+        )
+    }
+
+    runTest("matchPath splat requires one segment") {
+        expectEq(PyreonRouter.matchPath("/blog", "/blog/:rest*"), null, "splat one-or-more")
+    }
+
+    runTest("matchPath splat composes after a :param") {
+        expectEq(
+            PyreonRouter.matchPath("/u/42/files/a/b", "/u/:id/files/:rest*"),
+            mapOf("id" to "42", "rest" to "a/b"),
+            "param + splat",
+        )
+    }
+
+    runTest("matchPath optional :name? present or omitted") {
+        expectEq(PyreonRouter.matchPath("/users/7", "/users/:id?"), mapOf("id" to "7"), "optional present")
+        expectEq(PyreonRouter.matchPath("/users", "/users/:id?"), emptyMap(), "optional omitted")
+        expectEq(PyreonRouter.matchPath("/users", "/users/:id?/edit"), null, "required after optional missing")
+        expectEq(PyreonRouter.matchPath("/users/7/extra", "/users/:id?"), null, "longer than full pattern")
+    }
+
+    runTest("matchPath tolerates leading/trailing slashes") {
+        expectEq(PyreonRouter.matchPath("/about/", "/about"), emptyMap(), "trailing slash")
+        expectEq(PyreonRouter.matchPath("/about", "/about/"), emptyMap(), "pattern trailing slash")
+        expectEq(PyreonRouter.matchPath("/users/7/", "/users/:id"), mapOf("id" to "7"), "param trailing slash")
+        expectEq(PyreonRouter.matchPath("/", "/"), emptyMap(), "root")
+    }
+
+    println("[verify-kotlin] ✓ PyreonRouter smoke ${17} test(s) passed")
 }

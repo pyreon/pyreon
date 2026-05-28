@@ -96,24 +96,56 @@ public final class PyreonRouter {
     ///   matchPath("/users/123", "/users/:id")     → ["id": "123"]
     ///   matchPath("/posts/abc/edit", "/posts/:slug/edit") → ["slug": "abc"]
     ///   matchPath("/users/123", "/posts/:id")     → nil
+    ///   matchPath("/blog/2026/may", "/blog/:rest*") → ["rest": "2026/may"]
+    ///   matchPath("/about/", "/about")            → [:]  (trailing slash ignored)
     ///
-    /// Phase 0 semantics:
-    ///   - exact segment count (no wildcard / catch-all)
-    ///   - param names captured by trimming the leading ":"
-    ///   - empty path segments treated as literals
+    /// Semantics (mirrors `@pyreon/router`'s `match.ts`):
+    ///   - empty segments are filtered, so leading / trailing slashes are
+    ///     tolerated (`/about/` matches `/about`; `/` matches `/`)
+    ///   - `:name` captures one segment
+    ///   - `:name*` (splat / catch-all) captures the remaining path tail
+    ///     joined by "/"; it must be the last pattern segment and matches
+    ///     one-or-more trailing segments (web parity: `pathLen >= segCount`)
+    ///   - `:name?` (optional) — a TRAILING optional segment may be omitted
+    ///     by the path (`/users/:id?` matches both `/users` and `/users/7`)
+    ///   - non-splat / non-optional patterns require an exact segment count
     public static func matchPath(_ path: String, _ pattern: String) -> [String: String]? {
-        let pathParts = path.split(separator: "/", omittingEmptySubsequences: false)
-        let patternParts = pattern.split(separator: "/", omittingEmptySubsequences: false)
-        guard pathParts.count == patternParts.count else { return nil }
+        // Filter empty subsequences → leading/trailing slashes ignored,
+        // matching the web router's `.split('/').filter(Boolean)`.
+        let pathParts = path.split(separator: "/").map(String.init)
+        let patternParts = pattern.split(separator: "/").map(String.init)
         var params: [String: String] = [:]
-        for (pathSeg, patternSeg) in zip(pathParts, patternParts) {
+        for (i, patternSeg) in patternParts.enumerated() {
+            // Splat / catch-all `:name*` — captures the remaining tail.
+            if patternSeg.hasPrefix(":") && patternSeg.hasSuffix("*") {
+                let name = String(patternSeg.dropFirst().dropLast())
+                // One-or-more: the splat position must have a segment.
+                guard i < pathParts.count else { return nil }
+                params[name] = pathParts[i...].joined(separator: "/")
+                return params
+            }
+            let isOptional = patternSeg.hasPrefix(":") && patternSeg.hasSuffix("?")
+            // Path exhausted at this index — OK only if the segment is
+            // optional (and, by extension, every remaining one is too, since
+            // they all hit this same exhausted branch).
+            guard i < pathParts.count else {
+                if isOptional { continue }
+                return nil
+            }
+            let pathSeg = pathParts[i]
             if patternSeg.hasPrefix(":") {
-                let name = String(patternSeg.dropFirst())
-                params[name] = String(pathSeg)
+                let name = isOptional
+                    ? String(patternSeg.dropFirst().dropLast())
+                    : String(patternSeg.dropFirst())
+                params[name] = pathSeg
             } else if pathSeg != patternSeg {
                 return nil
             }
         }
+        // No splat consumed the tail. The path may be SHORTER than the
+        // pattern only when the missing tail was all optional (handled by the
+        // exhausted-branch `continue` above); it must never be LONGER.
+        guard pathParts.count <= patternParts.count else { return nil }
         return params
     }
 }
