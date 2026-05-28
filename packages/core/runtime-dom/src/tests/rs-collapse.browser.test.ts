@@ -110,6 +110,81 @@ describe('_rsCollapse (real browser)', () => {
     expect(childDisposed).toBe(true)
   })
 
+  it('element-child: a baked static element subtree renders + survives mode-flip (no remount)', async () => {
+    // Element-child collapse reuses _rsCollapse UNCHANGED — the only delta
+    // is that `html` is a baked element SUBTREE (resolver SSR-rendered the
+    // real component WITH its static child), and there is NO `bind`
+    // callback (the children are static, baked into the clone). This is the
+    // runtime proof that the baked subtree (a) renders as real nested
+    // elements and (b) is preserved verbatim across a reactive class flip.
+    injectCss('.rsc-el{color:rgb(11,11,11)}.rsc-eld{color:rgb(22,22,22)}')
+    const isDark = signal(false)
+    const root = mountInto(
+      _rsCollapse(
+        '<button data-x="1"><span class="ico">Save</span></button>',
+        'rsc-el',
+        'rsc-eld',
+        () => isDark(),
+      ),
+    )
+    await flush()
+    const btn = query(root, 'button')
+    const span = query(root, 'span.ico')
+    // The nested element was baked as a REAL element (not flattened to text).
+    expect(span.tagName).toBe('SPAN')
+    expect(span.className).toBe('ico')
+    expect(span.textContent).toBe('Save')
+    expect(btn.getAttribute('data-x')).toBe('1')
+    expect(btn.className).toBe('rsc-el')
+
+    // Mode flip: root class swaps IN PLACE; the baked child subtree is
+    // preserved (same span node identity ⇒ reactive, not a remount).
+    isDark.set(true)
+    await flush()
+    expect(query(root, 'button')).toBe(btn) // root node identity preserved
+    expect(query(root, 'span.ico')).toBe(span) // child node identity preserved
+    expect(btn.className).toBe('rsc-eld')
+    expect(span.textContent).toBe('Save')
+    expect(getComputedStyle(btn).color).toBe('rgb(22, 22, 22)')
+
+    isDark.set(false)
+    await flush()
+    expect(query(root, 'button').className).toBe('rsc-el')
+    expect(query(root, 'span.ico').textContent).toBe('Save')
+  })
+
+  it('element-child: a RECURSIVE multi-level baked subtree renders whole', async () => {
+    // Mirrors the real-corpus mixed shape (text + nested element siblings,
+    // e.g. Paragraph "Press <kbd>Enter</kbd> now") + a 2-level nest. Proves
+    // the cloned template carries the full subtree depth, in order.
+    injectCss('.rsc-rc{color:rgb(33,33,33)}.rsc-rcd{color:rgb(44,44,44)}')
+    const isDark = signal(false)
+    const root = mountInto(
+      _rsCollapse(
+        '<button>Press <kbd>Enter</kbd> now <span class="w"><b>Hi</b></span></button>',
+        'rsc-rc',
+        'rsc-rcd',
+        () => isDark(),
+      ),
+    )
+    await flush()
+    const btn = query(root, 'button')
+    expect(query(root, 'kbd').textContent).toBe('Enter')
+    // 2-level nest: <span class="w"><b>Hi</b></span>
+    expect(query(root, 'span.w > b').textContent).toBe('Hi')
+    // text siblings + order preserved (text before <kbd>, text after).
+    expect(btn.textContent).toContain('Press')
+    const kbdIdx = (btn.innerHTML).indexOf('<kbd')
+    expect(btn.innerHTML.slice(0, kbdIdx)).toContain('Press')
+    expect(btn.innerHTML.indexOf('now')).toBeGreaterThan(kbdIdx)
+    // mode flip preserves the whole subtree on the same root node.
+    isDark.set(true)
+    await flush()
+    expect(query(root, 'button')).toBe(btn)
+    expect(query(root, 'span.w > b').textContent).toBe('Hi')
+    expect(btn.className).toBe('rsc-rcd')
+  })
+
   it('two instances of the same html share ONE parsed template, with independent reactivity', async () => {
     injectCss('.rsc-s{color:rgb(7,7,7)}.rsc-sd{color:rgb(8,8,8)}')
     const isDark = signal(false)

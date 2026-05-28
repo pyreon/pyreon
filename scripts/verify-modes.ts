@@ -342,6 +342,65 @@ function assertProbeCollapsed(distDir: string): void {
   }
 }
 
+/**
+ * Assert the `rs-collapse-elem-probe` route chunk actually ELEMENT-CHILD-
+ * collapsed in a REAL production `vite build` (element-child collapse PR 3).
+ *
+ * Element-child collapse reuses the EXISTING `_rsCollapse` runtime helper —
+ * unlike partial (`_rsCollapseH`) / dynamic (`_rsCollapseDyn`) it adds NO
+ * new helper. The resolver SSR-renders the REAL Button WITH its
+ * `<span class="elemico">ElemSave</span>` child and bakes the full subtree
+ * into the `_rsCollapse` template literal. So the collapse-EXCLUSIVE,
+ * minification-stable fingerprints are:
+ *   (A) the USER CHILD ELEMENT baked AS AN ELEMENT — `<span … elemico …>`
+ *       with its `ElemSave` text. If `buildChildVNodes` ever regressed to
+ *       flattening the child to a string, the `<span class="elemico">`
+ *       wrapper would vanish from the chunk (only the bare text would
+ *       remain) — so this fingerprint catches a flatten-bug, not just
+ *       collapse-off.
+ *   (B) the dual-emit live-mode accessor — `=== "dark"` / ``=== `dark` ``
+ *       (the 4th `_rsCollapse` arg; emitted ONLY by the collapse path, and
+ *       only into this route chunk — rocketstyle's own mode logic lives in
+ *       a shared vendor chunk, never the route chunk).
+ * Bisect: collapse OFF → 5-layer Button mount, no `=== "dark"` in the route
+ *   chunk → (B) fails. Flatten-bug → no `<span … elemico>` baked → (A) fails.
+ */
+function assertElemProbeCollapsed(distDir: string): void {
+  const assetsDir = join(distDir, 'assets')
+  if (!existsSync(assetsDir)) throw new Error(`expected ${assetsDir} to exist`)
+  const probe = readdirSync(assetsDir).find(
+    (f) => f.startsWith('rs-collapse-elem-probe') && f.endsWith('.js'),
+  )
+  if (!probe) {
+    throw new Error(
+      `expected an \`rs-collapse-elem-probe-*.js\` route chunk under ${assetsDir} ` +
+        `(the fs-router lazy chunk for the element-child collapsible probe route). ` +
+        `Got: ${readdirSync(assetsDir)
+          .filter((f) => f.endsWith('.js'))
+          .join(', ')}`,
+    )
+  }
+  const src = readFileSync(join(assetsDir, probe), 'utf-8')
+  // (A) the user's nested <span class="elemico"> baked AS AN ELEMENT, with
+  // its text. `<span` + the `elemico` class in one tag proves the element
+  // structure survived `buildChildVNodes` (a flatten-bug drops the wrapper).
+  const bakedChildElement = /<span[^>]*elemico/.test(src) && src.includes('ElemSave')
+  // (B) collapse-exclusive dual-emit mode accessor.
+  const modeAccessor = /===\s*[`"']dark[`"']/.test(src)
+  if (!bakedChildElement || !modeAccessor) {
+    const preview = src.length > 800 ? `${src.slice(0, 800)}…` : src
+    throw new Error(
+      `expected probe chunk ${probe} to be ELEMENT-CHILD-COLLAPSED ` +
+        `(bakedChildElement=${bakedChildElement}, modeAccessor=${modeAccessor}). ` +
+        `An element-child-collapsed route bakes the REAL child subtree ` +
+        `(\`<span class="elemico">ElemSave</span>\`) into the \`_rsCollapse\` ` +
+        `template + emits a \`() => …() === "dark"\` accessor. Missing (A) means ` +
+        `the child was flattened/dropped by buildChildVNodes; missing (B) means ` +
+        `collapse didn't fire (5-layer mount kept). Got:\n${preview}`,
+    )
+  }
+}
+
 interface ChunkGraphSpec {
   /**
    * For each entry: assert one chunk file under `dist/assets/` whose
@@ -633,6 +692,12 @@ const MATRIX: Cell[] = [
       // fails ONLY this assertion while `assertProbeCollapsed` keeps
       // passing.
       assertDynProbeCollapsed(dist)
+      // Element-child collapse PR 3 — the SAME cell also exercises the
+      // element-child probe (`rs-collapse-elem-probe.tsx`). Its fingerprints
+      // (baked `<span class="elemico">ElemSave` + the `=== "dark"` accessor)
+      // are collapse-emit-EXCLUSIVE and independent of the static/dynamic
+      // probes, so reverting the element-child emit fails ONLY this assertion.
+      assertElemProbeCollapsed(dist)
       // P0 cross-package real-app gate — verifies the REAL
       // @pyreon/ui-components Button (not the dedicated probe) ALSO
       // collapses when consumed in the ui-showcase ButtonDemo route.

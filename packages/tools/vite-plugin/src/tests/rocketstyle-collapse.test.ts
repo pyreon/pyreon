@@ -97,6 +97,77 @@ describe('createCollapseResolver — real @pyreon/ui-components Button via Vite 
     for (const cls of r.darkClass.split(/\s+/)) expect(joined).toContain(cls)
   }, 60_000)
 
+  it('bakes a static-element-child subtree into the template via childTree (buildChildVNodes)', async () => {
+    // Element-child collapse: the resolver rebuilds the REAL child VNodes
+    // from `childTree` via `h()` and SSR-renders them INTO the baked
+    // template (no new runtime helper — the cloned `_tpl` already carries
+    // the children). `childrenText` is the cache discriminator only.
+    const r = await resolver.resolve({
+      component: { name: 'Button', source: '@pyreon/ui-components' },
+      props: { state: 'primary', size: 'medium' },
+      childrenText: 'span|class=ico>Save',
+      childTree: [{ tag: 'span', props: { class: 'ico' }, children: ['Save'] }],
+      config: DEFAULT_COLLAPSE_CONFIG,
+    })
+    expect(r).not.toBeNull()
+    if (!r) return
+    // The child <span> was REBUILT and BAKED — not flattened to text, not
+    // dropped. This is the only proof that `buildChildVNodes` actually runs.
+    expect(r.templateHtml).toContain('<span')
+    expect(r.templateHtml).toContain('class="ico"')
+    expect(r.templateHtml).toContain('Save')
+    // The span sits INSIDE the stripped-root <button> (subtree baked whole).
+    expect(r.templateHtml.startsWith('<button')).toBe(true)
+    expect(/^<button[^>]*\sclass=/.test(r.templateHtml)).toBe(false)
+    expect(r.lightClass.length).toBeGreaterThan(0)
+    expect(r.darkClass.length).toBeGreaterThan(0)
+  }, 60_000)
+
+  it('bakes a MIXED text+element child subtree (Paragraph-shape: "Press <kbd>Enter</kbd>")', async () => {
+    // The real-corpus element-child shape: a text node + an element
+    // sibling. `buildChildVNodes` must emit BOTH (string passthrough +
+    // h(kbd, …)) in order, and the SSR render must preserve the order +
+    // the surrounding whitespace baked by the compiler's cleanJsxText.
+    const r = await resolver.resolve({
+      component: { name: 'Button', source: '@pyreon/ui-components' },
+      props: { state: 'primary', size: 'medium' },
+      childrenText: 'Press |kbd>Enter| now',
+      childTree: ['Press ', { tag: 'kbd', props: {}, children: ['Enter'] }, ' now'],
+      config: DEFAULT_COLLAPSE_CONFIG,
+    })
+    expect(r).not.toBeNull()
+    if (!r) return
+    expect(r.templateHtml).toContain('<kbd')
+    expect(r.templateHtml).toContain('Enter')
+    // Text siblings + their order survive (the element sits between them).
+    const kbdIdx = r.templateHtml.indexOf('<kbd')
+    expect(r.templateHtml.slice(0, kbdIdx)).toContain('Press')
+    expect(r.templateHtml.indexOf('now')).toBeGreaterThan(kbdIdx)
+  }, 60_000)
+
+  it('distinct childTree ⇒ distinct baked template (no cross-subtree cache collision)', async () => {
+    const base = {
+      component: { name: 'Button', source: '@pyreon/ui-components' } as const,
+      props: { state: 'primary', size: 'medium' },
+      config: DEFAULT_COLLAPSE_CONFIG,
+    }
+    const a = await resolver.resolve({
+      ...base,
+      childrenText: 'span>A',
+      childTree: [{ tag: 'span', props: {}, children: ['A'] }],
+    })
+    const b = await resolver.resolve({
+      ...base,
+      childrenText: 'span>B',
+      childTree: [{ tag: 'span', props: {}, children: ['B'] }],
+    })
+    expect(a).not.toBeNull()
+    expect(b).not.toBeNull()
+    expect(a?.templateHtml).toContain('>A<')
+    expect(b?.templateHtml).toContain('>B<')
+    expect(a?.templateHtml).not.toBe(b?.templateHtml)
+  }, 60_000)
+
   it('is deterministic — same input ⇒ identical result (cached, no drift)', async () => {
     const input = {
       component: { name: 'Button', source: '@pyreon/ui-components' },
