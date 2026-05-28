@@ -140,6 +140,65 @@ describe('Phase B — <Inline> emit (sugar over Stack with direction="row")', ()
   })
 })
 
+describe('Phase P2.1 — <Layer> emit (z-stack overlay)', () => {
+  it('Swift: <Layer> → ZStack { ... }', () => {
+    const out = tx(`<Layer><Text>base</Text><Text>top</Text></Layer>`, 'swift')
+    expect(out).toMatch(/ZStack \{[\s\S]+Text\("base"\)[\s\S]+Text\("top"\)/)
+  })
+
+  it('Swift: <Layer align="center"> → ZStack(alignment: .center)', () => {
+    const out = tx(`<Layer align="center"><Text>x</Text></Layer>`, 'swift')
+    expect(out).toContain('ZStack(alignment: .center)')
+  })
+
+  it('Swift: <Layer align="start"> → ZStack(alignment: .topLeading)', () => {
+    const out = tx(`<Layer align="start"><Text>x</Text></Layer>`, 'swift')
+    expect(out).toContain('ZStack(alignment: .topLeading)')
+  })
+
+  it('Swift: <Layer align="end"> → ZStack(alignment: .bottomTrailing)', () => {
+    const out = tx(`<Layer align="end"><Text>x</Text></Layer>`, 'swift')
+    expect(out).toContain('ZStack(alignment: .bottomTrailing)')
+  })
+
+  it('Swift: <Layer padding={4} background="surface" radius="md"> → modifier chain', () => {
+    const out = tx(`<Layer padding={4} background="surface" radius="md"><Text>x</Text></Layer>`, 'swift')
+    expect(out).toContain('.padding(16)')
+    expect(out).toMatch(/\.background\(Color\(red: 1, green: 1, blue: 1\)\)/)
+    expect(out).toContain('.cornerRadius(8)')
+  })
+})
+
+describe('Phase P2.1 — <Scroll> emit (scrollable container)', () => {
+  it('Swift: <Scroll> → ScrollView { ... } (vertical default, bare)', () => {
+    const out = tx(`<Scroll><Text>row</Text></Scroll>`, 'swift')
+    expect(out).toMatch(/ScrollView \{[\s\S]+Text\("row"\)/)
+    expect(out).not.toContain('ScrollView(')
+  })
+
+  it('Swift: <Scroll axis="horizontal"> → ScrollView(.horizontal)', () => {
+    const out = tx(`<Scroll axis="horizontal"><Text>row</Text></Scroll>`, 'swift')
+    expect(out).toContain('ScrollView(.horizontal)')
+  })
+
+  it('Swift: <Scroll padding={2}> → trailing .padding(8)', () => {
+    const out = tx(`<Scroll padding={2}><Text>x</Text></Scroll>`, 'swift')
+    expect(out).toContain('.padding(8)')
+  })
+})
+
+describe('Phase P2.1 — <Spacer> emit (flexible gap)', () => {
+  it('Swift: <Spacer /> → Spacer()', () => {
+    const out = tx(`<Inline><Text>L</Text><Spacer /><Text>R</Text></Inline>`, 'swift')
+    expect(out).toContain('Spacer()')
+  })
+
+  it('Swift: <Spacer data-testid="gap" /> → Spacer().accessibilityIdentifier("gap")', () => {
+    const out = tx(`<Spacer data-testid="gap" />`, 'swift')
+    expect(out).toContain('Spacer().accessibilityIdentifier("gap")')
+  })
+})
+
 describe('Phase B — <Press> emit (un-styled clickable wrapper)', () => {
   it('Swift: <Press onPress={fn}> → Button { ... } action: { fn() }.buttonStyle(.plain)', () => {
     const out = tx(`<Press onPress={fn}><Text>tap</Text></Press>`, 'swift')

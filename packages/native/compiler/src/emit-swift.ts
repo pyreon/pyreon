@@ -952,6 +952,9 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // `onPress` → `action:`; tokens → resolved CGFloats).
   if (tag === 'Stack') return emitSwiftStack(e, indent, /*defaultDirection*/ 'column')
   if (tag === 'Inline') return emitSwiftStack(e, indent, /*defaultDirection*/ 'row')
+  if (tag === 'Layer') return emitSwiftLayer(e, indent)
+  if (tag === 'Scroll') return emitSwiftScroll(e, indent)
+  if (tag === 'Spacer') return emitSwiftSpacer(e)
   if (tag === 'Press') return emitSwiftPress(e, indent)
   if (tag === 'Field') return emitSwiftField(e, indent)
   if (tag === 'Toggle') return emitSwiftToggle(e, indent)
@@ -1355,6 +1358,81 @@ function emitSwiftStack(
     .map((c) => pad + emitSwiftChild(c, indent + 2))
     .join('\n')
   return `${viewName}${initSignature} {\n${contentLines}\n${' '.repeat(indent)}}${modifiers}`
+}
+
+/**
+ * Map a canonical 1-D `align` to SwiftUI's 2-D `Alignment` enum for
+ * `ZStack(alignment:)`. The web `<Layer>` maps `align` to grid
+ * `place-items` (both axes), so `start` → top-leading corner, `center`
+ * → center, `end` → bottom-trailing; `stretch` has no ZStack analog
+ * (children size themselves) → center.
+ */
+const ZSTACK_ALIGNMENT: Record<string, string> = {
+  start: '.topLeading',
+  center: '.center',
+  end: '.bottomTrailing',
+  stretch: '.center',
+}
+
+/**
+ * Emit `<Layer>` as SwiftUI `ZStack` — children stack on the z-axis
+ * (later children render in front), matching the web overlay contract.
+ * `align` → `ZStack(alignment:)`; padding/background/radius/data-testid
+ * chain via `emitSwiftLayoutModifiers`.
+ */
+function emitSwiftLayer(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const align = readStaticAttr(e, 'align')
+  const initSignature =
+    typeof align === 'string'
+      ? `(alignment: ${ZSTACK_ALIGNMENT[align] ?? '.center'})`
+      : ''
+  const modifiers = emitSwiftLayoutModifiers(e)
+  const pad = ' '.repeat(indent + 2)
+  if (e.children.length === 0) {
+    return `ZStack${initSignature} {}${modifiers}`
+  }
+  const contentLines = e.children
+    .map((c) => pad + emitSwiftChild(c, indent + 2))
+    .join('\n')
+  return `ZStack${initSignature} {\n${contentLines}\n${' '.repeat(indent)}}${modifiers}`
+}
+
+/**
+ * Emit `<Scroll>` as SwiftUI `ScrollView`. `axis="horizontal"` →
+ * `ScrollView(.horizontal)`; vertical is the SwiftUI default (emitted
+ * bare). Children render inside; padding/background/radius/data-testid
+ * chain via `emitSwiftLayoutModifiers`.
+ */
+function emitSwiftScroll(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const axis = readStaticAttr(e, 'axis')
+  const initSignature = axis === 'horizontal' ? '(.horizontal)' : ''
+  const modifiers = emitSwiftLayoutModifiers(e)
+  const pad = ' '.repeat(indent + 2)
+  if (e.children.length === 0) {
+    return `ScrollView${initSignature} {}${modifiers}`
+  }
+  const contentLines = e.children
+    .map((c) => pad + emitSwiftChild(c, indent + 2))
+    .join('\n')
+  return `ScrollView${initSignature} {\n${contentLines}\n${' '.repeat(indent)}}${modifiers}`
+}
+
+/**
+ * Emit `<Spacer />` as SwiftUI `Spacer()` — the flexible-gap primitive
+ * that pushes siblings apart inside a VStack/HStack. Self-closing (no
+ * children, no layout props in v1). A `data-testid` still chains via
+ * `emitSwiftLayoutModifiers` for XCUITest reachability.
+ */
+function emitSwiftSpacer(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+): string {
+  return `Spacer()${emitSwiftLayoutModifiers(e)}`
 }
 
 /**
