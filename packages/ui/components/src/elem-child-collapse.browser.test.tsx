@@ -1,5 +1,4 @@
 import { h, type VNodeChild } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
 import { _rsCollapse, mount } from '@pyreon/runtime-dom'
 import { PyreonUI } from '@pyreon/ui-core'
 import { theme } from '@pyreon/ui-theme'
