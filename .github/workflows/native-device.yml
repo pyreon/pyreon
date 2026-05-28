@@ -1,0 +1,153 @@
+name: Native Device Build
+
+# Real-toolchain BUILD gate for the emitted native apps — the step BEYOND
+# `native-validate.yml` (which does `swiftc -parse` / `kotlinc` typecheck on
+# the emitted fragments). This compiles the FULL example apps — PMTC-emitted
+# code + the host shell + the real SwiftUI / Jetpack Compose dependencies —
+# on actual Xcode (iOS Simulator SDK) and Gradle/Android toolchains. It is
+# the prerequisite for the launch-and-render UI smoke (follow-up: a 2.2
+# XCUITest / instrumented test that boots a Simulator/Emulator and asserts
+# the home route renders via the `data-testid → accessibilityIdentifier /
+# testTag` the compiler already emits).
+#
+# ## Why this is OPT-IN ONLY (label / dispatch), never automatic
+#
+# `native-validate.yml` deliberately runs on free Linux runners and notes:
+# "no Apple-hardware runners — `swiftc -parse` is the meaningful CI signal;
+# xcodegen verified locally per PR." This workflow is the OTHER half — the
+# real Xcode build — which REQUIRES a macOS runner (billable on private
+# repos) and is slower. So it never runs on a normal PR: it fires ONLY on
+#   - `workflow_dispatch` — a maintainer runs it manually, OR
+#   - a PR carrying the `native-device` label, OR
+#   - the nightly schedule (drift check against main).
+# This keeps the macOS-runner cost an explicit, opted-into decision while
+# still making the gate available whenever it's wanted.
+#
+# ## Status
+#
+# Advisory — NOT in branch-protection's required checks. The jobs were
+# authored against the documented xcodegen/xcodebuild + Gradle pipelines but
+# are validated by CI itself (the device toolchains aren't available in the
+# dev sandbox), so expect to iterate the runner/destination/SDK details on
+# the first real runs. Promote to required once green across a few runs.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled, synchronize]
+  schedule:
+    # 47 past 05 UTC — offset from native-validate.yml's 05:23 so the two
+    # native workflows don't queue against each other.
+    - cron: '47 5 * * *'
+
+concurrency:
+  group: native-device-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ios-build:
+    # Opt-in gate: skip on every PR that isn't explicitly labelled.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'native-device')
+    name: iOS — xcodebuild (Simulator SDK)
+    runs-on: macos-15
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install workspace deps (bootstraps @pyreon/native-cli used by the preBuildScript)
+        run: bun install --frozen-lockfile
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Emit Swift (PMTC .tsx → generated/*.swift)
+        # Run the compile loop up front so `generated/` exists before
+        # xcodegen/xcodebuild (the project.yml preBuildScript re-runs it,
+        # but populating it here gives a clearer failure if PMTC itself
+        # breaks vs the Xcode build).
+        working-directory: examples/native-todomvc-ios
+        run: bash scripts/build.sh
+
+      - name: Generate Xcode project
+        working-directory: examples/native-todomvc-ios
+        run: xcodegen generate
+
+      - name: Build app for the iOS Simulator
+        # Build only (no Simulator boot / UI test yet — that's the 2.2
+        # follow-up). `CODE_SIGNING_ALLOWED=NO` because a Simulator build
+        # needs no provisioning profile. `generic/platform=iOS Simulator`
+        # avoids pinning a specific device/runtime name.
+        working-directory: examples/native-todomvc-ios
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project PyreonTodoMVC.xcodeproj \
+            -scheme PyreonTodoMVC \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO
+
+  android-build:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'native-device')
+    name: Android — gradlew assembleDebug
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+
+      - name: Setup JDK
+        uses: actions/setup-java@8df1039502a15bceb9433410b1a100fbe190c53b # v5.0.0
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Android SDK
+        # First-party action for the SDK + build-tools + platform.
+        # Tag-pinned (matches native-validate.yml's setup-swift@v2
+        # convention for community/first-party native actions); pin to a
+        # SHA in a follow-up once the workflow is green.
+        uses: android-actions/setup-android@v3
+
+      - name: Install Gradle via SDKMAN
+        # The android example pins AGP 8.7.0 (needs Gradle 8.9+) but ships
+        # no `gradlew` wrapper, so install Gradle directly. SDKMAN is the
+        # repo's documented JVM-tool install path (see native-validate.yml's
+        # kotlinc step). `set -u` is dropped because sdkman-init.sh
+        # references unset internals.
+        run: |
+          set -eo pipefail
+          curl -s https://get.sdkman.io | bash > /dev/null
+          source "$HOME/.sdkman/bin/sdkman-init.sh"
+          sdk install gradle 8.10.2
+          echo "$HOME/.sdkman/candidates/gradle/current/bin" >> "$GITHUB_PATH"
+
+      - name: Verify gradle availability
+        run: gradle --version
+
+      - name: Install workspace deps (bootstraps @pyreon/native-cli)
+        run: bun install --frozen-lockfile
+
+      - name: Emit Kotlin (PMTC .tsx → generated/*.kt)
+        working-directory: examples/native-todomvc-android
+        run: bash scripts/build.sh
+
+      - name: Build debug APK
+        working-directory: examples/native-todomvc-android
+        run: gradle assembleDebug --no-daemon --stacktrace
