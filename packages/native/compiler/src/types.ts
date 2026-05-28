@@ -117,6 +117,22 @@ export type DeclIR =
    * `useParams()` follows the same shape.
    */
   | { kind: 'router-hook'; name: string; hook: 'navigate' | 'params' }
+  /**
+   * Phase 4 — data fetch via `useFetch<T>('/url')` from `@pyreon/query`
+   * (the native subset). Emits a `PyreonFetch<T>` reactive container plus
+   * a mount-time async harness that drives its `begin/resolve/reject`
+   * state machine:
+   *   Swift   →  @State private var x = PyreonFetch<T>()
+   *              + `.task { begin(); resolve(await URLSession…decode) }`
+   *                modifier on the View body
+   *   Kotlin  →  val x = remember { PyreonFetch<T>() }
+   *              + `LaunchedEffect(Unit) { begin(); resolve(…) }`
+   *
+   * `type` is the decoded result type `T` (from the generic arg);
+   * `url` is the literal request path. Non-literal URLs fall through to
+   * undeclared (the parser bails), same conservative rule as `useStorage`.
+   */
+  | { kind: 'fetch'; name: string; type: TypeIR; url: string }
 
 /**
  * Phase C5 — one route entry parsed from `createRouter({ routes: [...] })`.
