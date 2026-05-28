@@ -32,7 +32,7 @@ export default function PostPage() {
   // useRoute() returns an accessor — call it to read the resolved route.
   const route = useRoute()
   const slug = route().params.slug
-  const post = postBySlug(slug)
+  const post = slug ? postBySlug(slug) : undefined
 
   if (!post) {
     return (

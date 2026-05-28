@@ -20,7 +20,7 @@ export default function Item() {
   const route = useRoute()
   const { t } = useI18n()
   const can = usePermissions()
-  const id = () => route().params.id
+  const id = () => route().params.id ?? ''
 
   const query = useQuery(() => ({
     queryKey: ['item', id()],

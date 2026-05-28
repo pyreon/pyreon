@@ -1,16 +1,15 @@
 {
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "jsx": "preserve",
-    "jsxImportSource": "@pyreon/core",
-    "strict": true,
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "isolatedModules": true,
     "noEmit": true,
-    "types": ["bun", "vite/client"]
+    "exactOptionalPropertyTypes": false,
+    "types": [
+      "bun",
+      "vite/client"
+    ]
   },
-  "include": ["src", "env.d.ts"]
+  "include": [
+    "src",
+    "env.d.ts"
+  ]
 }

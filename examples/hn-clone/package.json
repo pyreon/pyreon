@@ -9,7 +9,9 @@
     "preview": "zero preview",
     "doctor": "zero doctor",
     "doctor:fix": "zero doctor --fix",
-    "doctor:ci": "zero doctor --ci"
+    "doctor:ci": "zero doctor --ci",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@pyreon/charts": "workspace:*",
