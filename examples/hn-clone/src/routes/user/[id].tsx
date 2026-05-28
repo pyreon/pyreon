@@ -5,7 +5,7 @@ import { fetchUser } from '../../lib/api'
 
 export default function UserPage() {
   const route = useRoute()
-  const id = () => route().params.id
+  const id = () => route().params.id ?? ''
 
   const query = useQuery(() => ({
     queryKey: ['user', id()],

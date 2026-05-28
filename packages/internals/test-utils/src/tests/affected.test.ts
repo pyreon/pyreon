@@ -161,12 +161,11 @@ describe('filterByCategory', () => {
     expect(filterByCategory(full, WS, 'zero', ROOT)).toEqual(new Set())
   })
 
-  it('NEVER includes examples — they live outside packages/*', () => {
-    // Even for the most generous category match, an example workspace's
-    // `dir` is `<root>/examples/<name>`, not `<root>/packages/<cat>/<name>` —
-    // structurally cannot pass the prefix test. Locks the design intent:
-    // shard cells cover packages/*; example apps are covered by verify-
-    // modes + e2e, not the typecheck/test shard.
+  it('PACKAGE categories never include examples — they live outside packages/*', () => {
+    // An example workspace's `dir` is `<root>/examples/<name>`, not
+    // `<root>/packages/<cat>/<name>` — structurally cannot pass a PACKAGE
+    // category's prefix test. The `examples` pseudo-category (below) is the
+    // one place example apps ARE selected.
     const result = new Set<string>()
     for (const cat of ['core', 'fundamentals', 'ui-system', 'tools', 'zero', 'internals', 'native', 'ui']) {
       for (const name of filterByCategory(full, WS, cat, ROOT)) {
@@ -174,6 +173,19 @@ describe('filterByCategory', () => {
       }
     }
     expect(result.has('app-showcase')).toBe(false)
+  })
+
+  it('the `examples` pseudo-category selects ONLY example apps (under examples/)', () => {
+    // The dedicated shard cell for the `typecheck (examples)` CI job:
+    // `--category=examples` maps to the top-level `examples/` dir, so an
+    // affected example app is selected while every packages/* workspace is
+    // excluded. This is what closes the "example type regression invisible
+    // to CI" gap (CI typechecks packages/<cat>/* but never examples/* before).
+    expect([...filterByCategory(full, WS, 'examples', ROOT)]).toEqual(['app-showcase'])
+    // Excludes packages/* workspaces even though they're in the affected set.
+    const examplesOnly = filterByCategory(full, WS, 'examples', ROOT)
+    expect(examplesOnly.has('@pyreon/core')).toBe(false)
+    expect(examplesOnly.has('@pyreon/styler')).toBe(false)
   })
 
   it('safely ignores names that are not in the workspace set', () => {
