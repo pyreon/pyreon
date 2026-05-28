@@ -1427,6 +1427,87 @@ describe('Phase 3 — per-route redirects (compile-time alias)', () => {
   })
 })
 
+describe('Phase 3 — bare `*` / `(.*)` whole-route wildcard (404 catch-all)', () => {
+  // `{ path: '*', component: NotFoundPage }` renders for ANY unmatched path.
+  // The native emit puts its component in the dispatch ELSE-branch (not a
+  // `path == "*"` equality branch, which would only match the literal "*").
+
+  it('Swift: `*` route renders as the else-branch fallback (replaces the 404 Text)', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/', component: HomePage },
+          { path: '*', component: AboutPage },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    expect(out).toContain('if path == "/" {')
+    // Wildcard component is the else-branch, NOT a path-equality branch.
+    expect(out).toContain('else {')
+    expect(out).toContain('AboutPage()')
+    expect(out).not.toContain('path == "*"')
+    // The dev-visible 404 Text is replaced by the wildcard component.
+    expect(out).not.toContain('Pyreon Router: no route for')
+  })
+
+  it('Kotlin: `*` route renders as the `else ->` fallback', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/', component: HomePage },
+          { path: '*', component: AboutPage },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'kotlin',
+    )
+    expect(out).toContain('currentPath == "/" -> HomePage()')
+    expect(out).toContain('else -> AboutPage()')
+    expect(out).not.toContain('currentPath == "*"')
+    expect(out).not.toContain('Pyreon Router: no route for')
+  })
+
+  it('Swift: the `(.*)` form is also recognised as a whole-route wildcard', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/', component: HomePage },
+          { path: '(.*)', component: AboutPage },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    expect(out).toContain('else {')
+    expect(out).toContain('AboutPage()')
+    expect(out).not.toContain('path == "(.*)"')
+  })
+
+  it('Swift: a wildcard-only router emits the fallback bare (no lone `else`)', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [{ path: '*', component: AboutPage }],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    // No path branch was emitted → bare fallback, no `else {` (syntax error).
+    expect(out).toContain('AboutPage()')
+    expect(out).not.toContain('else {')
+    expect(out).not.toContain('path == "*"')
+  })
+})
+
 describe('Phase B — composition smoke', () => {
   it('Swift: Stack > Inline > Text + Button renders correctly', () => {
     const out = tx(

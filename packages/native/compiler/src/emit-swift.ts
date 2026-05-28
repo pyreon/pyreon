@@ -17,7 +17,7 @@ import {
 } from './canonical-primitives'
 import { buildInferenceCtx, inferType } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
-import { isRedirectRoute, resolveRouteTarget } from './route-ir-helpers'
+import { isRedirectRoute, isWildcardRoute, resolveRouteTarget } from './route-ir-helpers'
 import type {
   AttrIR,
   ChildIR,
@@ -1957,7 +1957,11 @@ function pickHomeRoute(
 ): import('./types').RouteIR | undefined {
   const literalRoot = routes.find((r) => r.path === '/')
   if (literalRoot !== undefined) return literalRoot
-  const firstNonPattern = routes.find((r) => !r.path.includes(':'))
+  // A bare `*` / `(.*)` wildcard is a catch-all, not a launchable home —
+  // exclude it so it never becomes the NavigationStack initial body.
+  const firstNonPattern = routes.find(
+    (r) => !r.path.includes(':') && !isWildcardRoute(r),
+  )
   if (firstNonPattern !== undefined) return firstNonPattern
   return undefined
 }
@@ -1974,12 +1978,19 @@ function emitSwiftNavigationDestination(
   const pad = ' '.repeat(indent)
   const innerPad = ' '.repeat(indent + 2)
   const branches: string[] = []
+  // Phase 3 — a bare `*` / `(.*)` route is the whole-route catch-all; its
+  // component becomes the ELSE-branch fallback (below), not a path branch.
+  const wildcardRoute = routes.find(isWildcardRoute)
+  const wildcardComponent =
+    wildcardRoute !== undefined ? resolveRouteTarget(wildcardRoute, routes)?.component : undefined
   // Phase 3 — track whether we've emitted any branch yet (instead of a
   // fixed `i === 0`), because redirect routes that resolve to nothing
   // (dangling / cyclic / param-involved) are SKIPPED, so the first
   // *emitted* branch may not be `routes[0]`.
   let firstBranch = true
   for (const route of routes) {
+    // Wildcard routes don't get a path branch — handled as the else-branch.
+    if (isWildcardRoute(route)) continue
     // Resolve redirects to the route that actually carries a component.
     const target = resolveRouteTarget(route, routes)
     if (target === undefined || target.component === undefined) continue
@@ -2032,16 +2043,19 @@ function emitSwiftNavigationDestination(
   // (post-PMTC) — future Phase C5.5 ships an opt-in fallback prop.
   //
   // When NO branch was emitted (every route skipped — all dangling /
-  // cyclic redirects), emit the fallback Text BARE (no `else`), since a
-  // lone `else` is a syntax error.
+  // cyclic redirects, or only a wildcard route), emit the fallback BARE
+  // (no `else`), since a lone `else` is a syntax error.
+  //
+  // Phase 3 — a bare `*` / `(.*)` route supplies the fallback component
+  // (the canonical 404 page); without one, the dev-visible 404 Text.
+  const fallback =
+    wildcardComponent !== undefined
+      ? `${emitSwiftExpr(wildcardComponent, indent + 2)}()`
+      : `Text("Pyreon Router: no route for \\(path)")`
   if (firstBranch) {
-    branches.push(`${pad}Text("Pyreon Router: no route for \\(path)")`)
+    branches.push(`${pad}${fallback}`)
   } else {
-    branches.push(
-      `${pad}else {`,
-      `${innerPad}Text("Pyreon Router: no route for \\(path)")`,
-      `${pad}}`,
-    )
+    branches.push(`${pad}else {`, `${innerPad}${fallback}`, `${pad}}`)
   }
   const body = branches.join('\n')
   const modifierIndent = ' '.repeat(indent - 2)
