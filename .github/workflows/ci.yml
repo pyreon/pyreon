@@ -7,23 +7,39 @@ on:
     branches: [main]
   merge_group:
 
-# Cancel superseded PR runs (next push to the same PR cancels in-flight
-# checks) but NEVER cancel `push: main` runs — those are the safety-net
-# gates (`Coverage (Full)`, `Benchmark`, every required check on main)
-# and must always run to completion. Pre-fix, `cancel-in-progress: true`
-# on a per-ref group cancelled main-push runs every time a PR landed
-# (PRs land faster than CI completes), so `Coverage (Full)` + `Benchmark`
-# never produced results on main — verified empirically across the last
-# 20+ main pushes (all cancelled).
+# Cancellation policy — burst-safe WITHOUT per-commit pileup.
 #
-# - PR: per-ref group, cancellable. Same behaviour as before.
-# - push: per-run-id group → unique per push, cancellation never fires.
-# - merge_group: per-ref group, cancellable, but GitHub assigns a unique
-#   ref per merge attempt, so cancellation never fires in practice
-#   either.
+# Requirement: the safety-net gates that ONLY run on main (`Coverage (Full)`,
+# `Benchmark` — gated `event_name == 'push' || 'merge_group'`, so they never
+# run on PRs) must always run to completion for main HEAD; a newer commit must
+# never cancel a run that is mid-flight.
+#
+# Two earlier designs each got half of it:
+#   1. `cancel-in-progress: true` on a per-ref group — cancelled the RUNNING
+#      main-push run every time a newer commit landed (merges land faster than
+#      the 15-min coverage job), so the gates never completed (20+ pushes, all
+#      cancelled).
+#   2. per-`run_id` group (cancellation "never fires") — fixed (1) but gave
+#      EVERY commit its own uncancellable full run, so a burst of N merges
+#      produced N heavy main-CI runs that saturated the runner pool (observed:
+#      7 stacked `CI [push] main` runs draining serially).
+#
+# Correct policy = protect the RUNNING run, COALESCE pending to the latest.
+# A SHARED per-ref group + `cancel-in-progress: false` makes GitHub:
+#   - never cancel the in-progress run  → Coverage/Benchmark always complete;
+#   - cancel a *stale pending* run when a newer one queues (documented
+#     concurrency behaviour) → a burst of N merges collapses to ~2 full runs:
+#     the in-flight one + the latest HEAD. No pileup, no starvation.
+# main HEAD is always covered (the coalesced-to-latest pending run); skipping
+# coverage for the intermediate commits in a burst is correct — HEAD subsumes
+# them, and the pre-merge gates already validated each PR.
+#
+# - push:main    → group `ci-refs/heads/main`, cancel:false → running protected, pending coalesced to latest HEAD.
+# - merge_group  → unique queue ref per attempt, cancel:false → each merge-queue run completes (the queue requires it).
+# - pull_request → per-PR ref, cancel:true → newest commit on the PR wins (unchanged).
 concurrency:
-  group: ci-${{ github.ref }}-${{ github.event_name == 'push' && github.run_id || '' }}
-  cancel-in-progress: ${{ github.event_name != 'push' }}
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
