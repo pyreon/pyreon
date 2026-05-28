@@ -541,15 +541,19 @@ export function detectStaticElementChild(node: N): StaticChildNode | null {
 
 /**
  * Process a parent element's children into a `StaticChild[]` list, or
- * `null` if ANY child is non-static. Text segments are kept verbatim
- * (whitespace-trimmed, empties dropped); element children recurse via
- * `detectStaticElementChild`.
+ * `null` if ANY child is non-static. Text segments are normalized via
+ * the SAME `cleanJsxText` the compiler applies to its own JSX text emit
+ * — inline spaces preserved (`"Press "` keeps its trailing space before
+ * a sibling `<kbd>`), newline-adjacent / whitespace-only lines dropped.
+ * This keeps the tree FAITHFUL so a later pass (PR 2) reconstructing via
+ * `h()` renders byte-identically to a real mount. Element children
+ * recurse via `detectStaticElementChild`.
  */
 export function collectStaticChildren(parent: N): StaticChild[] | null {
   const out: StaticChild[] = []
   for (const c of jsxChildren(parent)) {
     if (c.type === 'JSXText') {
-      const t = ((c.value ?? '') as string).trim()
+      const t = cleanJsxText((c.value ?? '') as string)
       if (t) out.push(t)
       continue
     }

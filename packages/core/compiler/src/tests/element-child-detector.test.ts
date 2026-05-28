@@ -73,13 +73,35 @@ describe('detectStaticElementChild — positive (recursively-static)', () => {
     })
   })
 
-  it('accepts mixed text + element children, dropping whitespace-only text', () => {
+  it('accepts mixed text + element children, preserving inline whitespace (cleanJsxText)', () => {
+    // Single-line text has no newline → preserved verbatim, so the space
+    // before <b> survives (faithful for PR 2 reconstruction — would
+    // otherwise render "Savenow" instead of "Save now").
     const node = firstJsxElement('<span>Save <b>now</b></span>')
     const result = detectStaticElementChild(node)
     expect(result).toEqual({
       tag: 'span',
       props: {},
-      children: ['Save', { tag: 'b', props: {}, children: ['now'] }],
+      children: ['Save ', { tag: 'b', props: {}, children: ['now'] }],
+    })
+  })
+
+  it('drops newline-only whitespace between elements (JSX semantics)', () => {
+    // Multiline indentation between elements is whitespace-only-with-newline
+    // → cleanJsxText drops it, matching how JSX itself renders (no stray
+    // whitespace nodes). Real corpus shape (Stack/Progress demos).
+    const node = firstJsxElement(`<span>
+      <b>a</b>
+      <i>b</i>
+    </span>`)
+    const result = detectStaticElementChild(node)
+    expect(result).toEqual({
+      tag: 'span',
+      props: {},
+      children: [
+        { tag: 'b', props: {}, children: ['a'] },
+        { tag: 'i', props: {}, children: ['b'] },
+      ],
     })
   })
 
@@ -89,6 +111,34 @@ describe('detectStaticElementChild — positive (recursively-static)', () => {
       tag: 'hr',
       props: { class: 'rule' },
       children: [],
+    })
+  })
+
+  it('accepts a static SVG icon subtree (the prime element-child use case)', () => {
+    const node = firstJsxElement(
+      '<svg viewBox="0 0 16 16" width="16"><path d="M1 1h14v14H1z" fill="currentColor" /></svg>',
+    )
+    expect(detectStaticElementChild(node)).toEqual({
+      tag: 'svg',
+      props: { viewBox: '0 0 16 16', width: '16' },
+      children: [
+        { tag: 'path', props: { d: 'M1 1h14v14H1z', fill: 'currentColor' }, children: [] },
+      ],
+    })
+  })
+
+  it('accepts deeply-nested static subtrees (3 levels)', () => {
+    const node = firstJsxElement('<div class="a"><span class="b"><em class="c">x</em></span></div>')
+    expect(detectStaticElementChild(node)).toEqual({
+      tag: 'div',
+      props: { class: 'a' },
+      children: [
+        {
+          tag: 'span',
+          props: { class: 'b' },
+          children: [{ tag: 'em', props: { class: 'c' }, children: ['x'] }],
+        },
+      ],
     })
   })
 })
@@ -134,13 +184,34 @@ describe('detectStaticElementChild — negative (hard bail)', () => {
       detectStaticElementChild(firstJsxElement('<span><Inner /></span>')),
     ).toBeNull()
   })
+
+  it('bails on a style object-literal prop (not a string literal)', () => {
+    // `style={{ color: 'red' }}` is a JSXExpressionContainer wrapping an
+    // object — NOT a string literal — so it bails. (The real corpus uses
+    // string `style="…"` on static children, which IS accepted.)
+    expect(
+      detectStaticElementChild(firstJsxElement("<span style={{ color: 'red' }}>x</span>")),
+    ).toBeNull()
+  })
+
+  it('bails on a fragment child', () => {
+    expect(
+      detectStaticElementChild(firstJsxElement('<span><>x</></span>')),
+    ).toBeNull()
+  })
+
+  it('bails on a JSX-comment child (empty expression container)', () => {
+    expect(
+      detectStaticElementChild(firstJsxElement('<span>{/* c */}x</span>')),
+    ).toBeNull()
+  })
 })
 
 describe('collectStaticChildren — parent children list', () => {
   it('collects a parent element-child list', () => {
     const node = firstJsxElement('<button class="b">Save <span>now</span></button>')
     expect(collectStaticChildren(node)).toEqual([
-      'Save',
+      'Save ',
       { tag: 'span', props: {}, children: ['now'] },
     ])
   })
