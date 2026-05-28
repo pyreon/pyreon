@@ -29,13 +29,13 @@
     "@pyreon/url-state": "workspace:*",
     "@pyreon/validation": "workspace:*",
     "@pyreon/zero": "workspace:*",
-    "zod": "^4.3.6"
+    "zod": "~4.3.6"
   },
   "devDependencies": {
     "@pyreon/typescript": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/zero-cli": "workspace:*",
-    "typescript": "^6.0.2",
-    "vite": "^8.0.3"
+    "typescript": "^6.0.3",
+    "vite": "^8.0.14"
   }
 }

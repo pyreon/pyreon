@@ -26,6 +26,6 @@
   },
   "devDependencies": {
     "@pyreon/vitest-config": "workspace:*",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.7"
   }
 }

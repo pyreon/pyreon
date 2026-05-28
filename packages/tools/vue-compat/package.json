@@ -58,10 +58,10 @@
     "@pyreon/runtime-dom": "workspace:^"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.8.9",
+    "@happy-dom/global-registrator": "^20.9.0",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^4.1.4",
-    "happy-dom": "^20.8.3"
+    "@vitest/browser-playwright": "^4.1.7",
+    "happy-dom": "^20.9.0"
   }
 }

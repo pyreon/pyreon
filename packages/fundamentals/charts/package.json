@@ -58,8 +58,8 @@
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^4.1.4",
-    "echarts": "^6.0.0"
+    "@vitest/browser-playwright": "^4.1.7",
+    "echarts": "^6.1.0"
   },
   "peerDependencies": {
     "echarts": ">=5.6.0"

@@ -42,29 +42,29 @@
     "lint": "oxlint ."
   },
   "dependencies": {
-    "@codemirror/autocomplete": "^6.20.1",
+    "@codemirror/autocomplete": "^6.20.2",
     "@codemirror/commands": "^6.10.3",
-    "@codemirror/language": "^6.12.2",
-    "@codemirror/lint": "^6.9.5",
+    "@codemirror/language": "^6.12.3",
+    "@codemirror/lint": "^6.9.6",
     "@codemirror/merge": "^6.12.1",
-    "@codemirror/search": "^6.6.0",
+    "@codemirror/search": "^6.7.0",
     "@codemirror/state": "^6.6.0",
-    "@codemirror/view": "6.40.0",
+    "@codemirror/view": "^6.43.0",
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
     "codemirror": "^6.0.2"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.8.9",
+    "@happy-dom/global-registrator": "^20.9.0",
     "@pyreon/core": "workspace:^",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^4.1.4",
-    "@vitus-labs/tools-lint": "^2.4.0"
+    "@vitest/browser-playwright": "^4.1.7",
+    "@vitus-labs/tools-lint": "^2.5.0"
   },
   "optionalDependencies": {
     "@codemirror/lang-cpp": "^6.0.2",

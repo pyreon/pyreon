@@ -41,16 +41,16 @@
     "lint": "oxlint ."
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.8.9",
+    "@happy-dom/global-registrator": "^20.9.0",
     "@pyreon/core": "workspace:^",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "@types/pdfmake": "^0.3.2",
-    "@vitus-labs/tools-lint": "^2.4.0",
-    "docx": "^9.6.0",
+    "@types/pdfmake": "^0.3.3",
+    "@vitus-labs/tools-lint": "^2.5.0",
+    "docx": "^9.7.1",
     "exceljs": "^4.4.0",
-    "pdfmake": "^0.3.7",
+    "pdfmake": "^0.3.9",
     "pptxgenjs": "^4.0.1"
   },
   "optionalDependencies": {

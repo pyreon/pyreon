@@ -28,15 +28,15 @@
     "@pyreon/validation": "workspace:^",
     "@pyreon/vue-compat": "workspace:^",
     "@pyreon/zero": "workspace:^",
-    "@tanstack/query-core": "^5.90.0",
-    "zod": "^4.0.0"
+    "@tanstack/query-core": "^5.100.14",
+    "zod": "~4.3.6"
   },
   "devDependencies": {
     "@pyreon/lint": "workspace:^",
     "@pyreon/mcp": "workspace:^",
     "@pyreon/vite-plugin": "workspace:^",
     "@pyreon/zero-cli": "workspace:^",
-    "typescript": "^6.0.2",
-    "vite": "^8.0.3"
+    "typescript": "^6.0.3",
+    "vite": "^8.0.14"
   }
 }

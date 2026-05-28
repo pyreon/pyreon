@@ -43,7 +43,7 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/typescript": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitus-labs/tools-rolldown": "^2.4.0"
+    "@vitus-labs/tools-rolldown": "^2.5.0"
   },
   "engines": {
     "node": ">= 22"

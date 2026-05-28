@@ -51,16 +51,16 @@
     "@pyreon/validation": "workspace:*",
     "@pyreon/virtual": "workspace:*",
     "@pyreon/zero": "workspace:*",
-    "@tanstack/query-core": "^5.90.0",
-    "@tanstack/table-core": "^8.21.0",
-    "@tanstack/virtual-core": "^3.13.0",
-    "zod": "^4.3.6"
+    "@tanstack/query-core": "^5.100.14",
+    "@tanstack/table-core": "^8.21.3",
+    "@tanstack/virtual-core": "^3.16.0",
+    "zod": "~4.3.6"
   },
   "devDependencies": {
     "@pyreon/mcp": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/zero-cli": "workspace:*",
-    "typescript": "^6.0.2",
-    "vite": "^8.0.3"
+    "typescript": "^6.0.3",
+    "vite": "^8.0.14"
   }
 }
