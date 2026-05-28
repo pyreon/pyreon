@@ -1,15 +1,15 @@
 import { expect, test } from '@playwright/test'
 
 /**
- * Functional smoke for the 7 demos added to fundamentals-playground in
+ * Functional smoke for the 8 demos added to fundamentals-playground in
  * the coverage-extension PR (dnd, flow, hooks, rx, toast, url-state,
- * validate). The existing `playground.spec.ts` nav-sweep covers
+ * validate, feature). The existing `playground.spec.ts` nav-sweep covers
  * mount + zero-error for every route in TAB_PATHS; these specs assert
  * that each demo's **primary interactive flow** actually works
  * end-to-end (not just that the route renders).
  *
- * The dashboard `feature` package isn't demoed yet (needs a real API
- * surface to be meaningful) — tracked as a follow-up.
+ * With `feature` covered (CRUD against an in-memory mock fetcher), all
+ * 23 `@pyreon/fundamentals/*` packages now have a live FP demo.
  */
 
 test.describe('Rx demo — pipe + filter + aggregations', () => {
@@ -153,5 +153,74 @@ test.describe('Flow demo — reactive graph + add/fit', () => {
     await page.locator('[data-testid=flow-fit]').click()
     // After fit, zoom is some percentage — assert format only.
     await expect(page.locator('[data-testid=flow-zoom]')).toContainText('%')
+  })
+})
+
+test.describe('Feature demo — schema-driven CRUD over a mock fetcher', () => {
+  // The in-memory mock fetcher carries 250-450ms simulated latency per
+  // request, so each assertion waits on the post-mutation list state
+  // rather than a fixed timeout. `defineFeature` invalidates the list
+  // query on every successful create/update/delete.
+  test('useList renders the 3 seeded tasks', async ({ page }) => {
+    await page.goto('/feature')
+    await expect(page.locator('[data-testid^=feature-task-]')).toHaveCount(3, {
+      timeout: 5000,
+    })
+  })
+
+  test('schema fields are introspected from the Zod schema', async ({ page }) => {
+    await page.goto('/feature')
+    const fields = page.locator('[data-testid=feature-fields]')
+    await expect(fields).toContainText('title')
+    await expect(fields).toContainText('done')
+  })
+
+  test('useCreate adds a task (list grows 3 → 4)', async ({ page }) => {
+    await page.goto('/feature')
+    await expect(page.locator('[data-testid^=feature-task-]')).toHaveCount(3, {
+      timeout: 5000,
+    })
+    await page.locator('[data-testid=feature-new-title]').fill('Write the report')
+    await page.locator('[data-testid=feature-add]').click()
+    await expect(page.locator('[data-testid^=feature-task-]')).toHaveCount(4, {
+      timeout: 5000,
+    })
+    await expect(page.locator('[data-testid=feature-list]')).toContainText(
+      'Write the report',
+    )
+  })
+
+  test('useDelete removes a task (list shrinks 3 → 2)', async ({ page }) => {
+    await page.goto('/feature')
+    await expect(page.locator('[data-testid^=feature-task-]')).toHaveCount(3, {
+      timeout: 5000,
+    })
+    // Seeded task ids are '1' / '2' / '3'.
+    await page.locator('[data-testid=feature-delete-1]').click()
+    await expect(page.locator('[data-testid^=feature-task-]')).toHaveCount(2, {
+      timeout: 5000,
+    })
+  })
+
+  test('useUpdate toggles a task done state via PUT', async ({ page }) => {
+    await page.goto('/feature')
+    const checkbox = page.locator(
+      '[data-testid=feature-task-2] input[type=checkbox]',
+    )
+    await expect(checkbox).not.toBeChecked({ timeout: 5000 })
+    await checkbox.click()
+    await expect(checkbox).toBeChecked({ timeout: 5000 })
+  })
+
+  test('useSearch filters by title reactively', async ({ page }) => {
+    await page.goto('/feature')
+    await expect(page.locator('[data-testid^=feature-task-]')).toHaveCount(3, {
+      timeout: 5000,
+    })
+    await page.locator('[data-testid=feature-search]').fill('manifest')
+    // Seeded task '1' is "Read the manifest".
+    await expect(
+      page.locator('[data-testid=feature-search-results]'),
+    ).toContainText('Read the manifest', { timeout: 5000 })
   })
 })

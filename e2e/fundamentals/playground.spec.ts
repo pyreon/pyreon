@@ -37,6 +37,7 @@ const TAB_PATHS = [
   '/rx',
   '/toast',
   '/dnd',
+  '/feature',
 ] as const
 
 test.describe('Playground', () => {
