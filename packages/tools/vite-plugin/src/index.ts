@@ -974,6 +974,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
                 component: { name: s.importedName, source: s.source },
                 props: s.props,
                 childrenText: s.childrenText,
+                ...(s.childTree ? { childTree: s.childTree } : {}),
                 config: {
                   provider: collapseProvider,
                   theme: collapseTheme,

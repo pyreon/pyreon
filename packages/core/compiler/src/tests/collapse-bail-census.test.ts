@@ -313,12 +313,19 @@ describe('proposal #1 — collapse-tail bail-reason census (measurement, not a b
     //
     // Per PR 3 (#767) the scanner emits TWO `CollapsibleSite` entries per
     // dynamic-prop site (one per literal value — the resolver pre-renders
-    // both); the compiler emit still produces ONE collapsed call site. So
-    // the per-site classifier count + 2× the dynamic-addressable count
-    // equals the scanner's per-resolution count. If they diverge, either
-    // the classifier and scanner disagree on which dynamic sites are
-    // addressable, OR the scanner's expansion drifted from this formula.
-    expect(myCollapsible + 2 * dynamicTernaryAddressable).toBe(scannerCollapsible)
+    // both); the compiler emit still produces ONE collapsed call site.
+    //
+    // Per element-child PR 2 the scanner emits ONE `CollapsibleSite` entry
+    // per recursively-static element-child site (the resolver SSR-renders
+    // the real component WITH its child subtree once — no per-value fan-out,
+    // unlike dynamic). So the per-site classifier collapsible count
+    // + 2× the dynamic-addressable count + 1× the element-child
+    // static-addressable count equals the scanner's per-resolution count.
+    // If they diverge, either the classifier and scanner disagree on which
+    // sites are addressable, OR a scanner expansion drifted from this formula.
+    expect(myCollapsible + 2 * dynamicTernaryAddressable + elementChildStaticAddressable).toBe(
+      scannerCollapsible,
+    )
 
     // ── Lock the headline finding (ratchet record) ──────────────────────────
     // The corpus is real and large; these are the measured facts as of this

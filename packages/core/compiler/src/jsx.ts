@@ -333,8 +333,14 @@ export interface CollapsibleSite {
   importedName: string
   /** Literal string-valued props (the only shape the slice collapses). */
   props: Record<string, string>
-  /** Static text children (trimmed; empty ⇒ none). */
+  /** Static text children (trimmed; empty ⇒ none). For element-child
+   * sites this is the `serializeStaticChildren` key-string (carries C0
+   * structure markers) — the resolver renders `childTree`, NOT this. */
   childrenText: string
+  /** Element-child sites only: the recursively-static child subtree the
+   * resolver rebuilds via `h()` to bake the full HTML. Absent for
+   * full / dynamic sites (they use `childrenText` as a plain string). */
+  childTree?: StaticChild[]
   /** `rocketstyleCollapseKey(componentName, props, childrenText)`. */
   key: string
 }
@@ -430,6 +436,25 @@ export function scanCollapsibleSites(
                 props: expandedProps,
                 childrenText: dyn.childrenText,
                 key: rocketstyleCollapseKey(tag, expandedProps, dyn.childrenText),
+              })
+            }
+          } else {
+            // Element-child fallthrough (PR 2): literal root props +
+            // recursively-static element children. The resolver renders
+            // the real `childTree` via `h()` and bakes the full subtree
+            // HTML; the emit is the unchanged `__rsCollapse`. Key uses
+            // the serialized child subtree so distinct subtrees resolve
+            // to distinct templates.
+            const elem = detectElementChildCollapsibleShape(node, tag)
+            if (elem) {
+              out.push({
+                componentName: tag,
+                source: imp.source,
+                importedName: imp.imported,
+                props: elem.props,
+                childrenText: elem.childrenKey,
+                childTree: elem.childTree,
+                key: rocketstyleCollapseKey(tag, elem.props, elem.childrenKey),
               })
             }
           }
@@ -591,6 +616,48 @@ export function serializeStaticChildren(children: StaticChild[]): string {
     }
   }
   return parts.join('\u0005')
+}
+
+/**
+ * Element-child collapse detector (PR 2). The EXACT `detectCollapsibleShape`
+ * root-prop bail catalogue (every attr a string literal — no spread,
+ * boolean, `{expr}`, or handler) with ONE relaxation: element children
+ * are allowed WHEN the whole child list is recursively static
+ * (`collectStaticChildren` succeeds). Returns `null` for the text-only
+ * case (no element child) so the FULL-collapse path stays byte-unchanged
+ * and the two detectors never both claim a site.
+ *
+ * The `childrenKey` is `serializeStaticChildren(childTree)` — fed to
+ * `rocketstyleCollapseKey` as the `childrenText` arg so the collapse key
+ * incorporates the subtree (distinct subtrees → distinct keys, never
+ * colliding with a text-only full-collapse key whose `childrenText` is
+ * plain text without the C0 structure markers). The resolver renders the
+ * real `childTree` via `h()` and bakes the full subtree HTML; the emit
+ * is the UNCHANGED `__rsCollapse(...)` (no new runtime helper — the
+ * baked template already contains the children).
+ */
+export function detectElementChildCollapsibleShape(
+  node: N,
+  _tag: string,
+): { props: Record<string, string>; childTree: StaticChild[]; childrenKey: string } | null {
+  const props: Record<string, string> = {}
+  for (const attr of jsxAttrs(node)) {
+    if (attr.type !== 'JSXAttribute') return null // spread → bail
+    const nm = attr.name?.type === 'JSXIdentifier' ? attr.name.name : null
+    if (!nm) return null
+    const v = attr.value
+    if (!v) return null // boolean attr → bail
+    const isStr =
+      v.type === 'StringLiteral' || (v.type === 'Literal' && typeof v.value === 'string')
+    if (!isStr) return null // `{expr}` / handler / dynamic → bail
+    props[nm] = String(v.value)
+  }
+  const childTree = collectStaticChildren(node)
+  if (childTree === null) return null // any non-static child → bail
+  // Must contain ≥1 element child — a text-only list is the FULL-collapse
+  // shape; defer to `detectCollapsibleShape` so that path stays unchanged.
+  if (!childTree.some((c) => typeof c !== 'string')) return null
+  return { props, childTree, childrenKey: serializeStaticChildren(childTree) }
 }
 
 /** A residual event handler peeled off a partially-collapsible site. */
@@ -995,7 +1062,12 @@ export function transformJSX_JS(
     //   1. on*-handler-only partial (literal dim props + handlers)
     //   2. dynamic-prop partial (ternary-of-two-literals on ≤1 dim prop,
     //      no handlers — handler-combined dynamic is a future PR's scope)
-    if (!shape) return tryPartialCollapse(node, tag) || tryDynamicCollapse(node, tag)
+    if (!shape)
+      return (
+        tryPartialCollapse(node, tag) ||
+        tryDynamicCollapse(node, tag) ||
+        tryElementChildCollapse(node, tag)
+      )
     const { props, childrenText } = shape
     const key = rocketstyleCollapseKey(tag, props, childrenText)
     const site = cfg.sites.get(key)
@@ -1186,6 +1258,43 @@ export function transformJSX_JS(
         collapseRuleKeys.add(site.ruleKey)
         collapseRules.push({ ruleKey: site.ruleKey, rules: site.rules })
       }
+    }
+    return true
+  }
+
+  /**
+   * Element-child collapse (PR 2). The fallback `tryRocketstyleCollapse`
+   * reaches LAST (after full / partial / dynamic all bail). Literal root
+   * props + recursively-static element children. Because the resolver
+   * SSR-renders the REAL component WITH its child subtree and bakes the
+   * full output HTML, the emit is the UNCHANGED `__rsCollapse(...)` — no
+   * new runtime helper (the cloned template already contains the
+   * children). The key uses `serializeStaticChildren` so the lookup
+   * matches the scan's element-child entry. Conservative: an unresolved
+   * key (resolver bailed) keeps the normal mount.
+   */
+  function tryElementChildCollapse(node: N, tag: string): boolean {
+    const cfg = options.collapseRocketstyle
+    if (!cfg) return false
+    const elem = detectElementChildCollapsibleShape(node, tag)
+    if (!elem) return false
+    const key = rocketstyleCollapseKey(tag, elem.props, elem.childrenKey)
+    const site = cfg.sites.get(key)
+    if (!site) return false // not resolved → keep normal mount
+    const call =
+      `__rsCollapse(${JSON.stringify(site.templateHtml)}, ` +
+      `${JSON.stringify(site.lightClass)}, ${JSON.stringify(site.darkClass)}, ` +
+      `() => __pyrMode() === "dark")`
+    const start = node.start as number
+    const end = node.end as number
+    const parent = findParent(node)
+    const needsBraces =
+      parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
+    replacements.push({ start, end, text: needsBraces ? `{${call}}` : call })
+    needsCollapse = true
+    if (!collapseRuleKeys.has(site.ruleKey)) {
+      collapseRuleKeys.add(site.ruleKey)
+      collapseRules.push({ ruleKey: site.ruleKey, rules: site.rules })
     }
     return true
   }
