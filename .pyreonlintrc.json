@@ -9,6 +9,7 @@
           "packages/core/runtime-dom/",
           "packages/core/compiler/",
           "-compat/",
+          "packages/tools/devtools/",
           "packages/internals/perf-harness/",
           "packages/internals/test-utils/",
           "__tests__/",
@@ -81,6 +82,8 @@
           "packages/tools/mcp/",
           "packages/tools/storybook/",
           "packages/tools/typescript/",
+          "packages/native/cli/",
+          "packages/core/runtime-dom/src/hydration-debug.ts",
           "-compat/",
           "scripts/",
           "examples/"

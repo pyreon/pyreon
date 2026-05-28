@@ -39,10 +39,10 @@ export const Press = (props: PressProps): VNode => {
   // Long-press polyfill — 500ms pointer-down without release.
   // Browsers don't have a native long-press event, so we synthesize
   // via pointerdown + setTimeout, cancel on pointerup/pointerleave.
-  let longPressTimer: number | undefined
+  let longPressTimer: ReturnType<typeof setTimeout> | undefined
   const onPointerDown = props.onLongPress
     ? () => {
-        longPressTimer = window.setTimeout(() => {
+        longPressTimer = setTimeout(() => {
           if (!props.disabled) props.onLongPress?.()
           longPressTimer = undefined
         }, 500)
