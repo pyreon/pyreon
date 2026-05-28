@@ -359,6 +359,20 @@ describe('Phase P2.1 — <Modal> emit (.sheet(isPresented:))', () => {
     const out = txWithTodoProps(`<Modal open={props.todo.done}><Text>x</Text></Modal>`, 'swift')
     expect(out).not.toContain('.sheet(isPresented:')
   })
+
+  it('Kotlin: <Modal open={signal} onClose={fn}> → if (signal) { Dialog(onDismissRequest = {...}) { ... } }', () => {
+    const out = tx(`<Modal open={done} onClose={fn}><Text>body</Text></Modal>`, 'kotlin')
+    expect(out).toMatch(/if \(done\) \{[\s\S]+Dialog\(onDismissRequest = \{ fn\(\) \}\) \{[\s\S]+Text\(text = "body"\)/)
+  })
+
+  it('Kotlin: <Modal open={props.open} onClose={onToggle}> → if (open) { Dialog(onDismissRequest = { onToggle() }) }', () => {
+    const out = txWithTodoProps(
+      `<Modal open={props.todo.done} onClose={props.onToggle}><Text>x</Text></Modal>`,
+      'kotlin',
+    )
+    expect(out).toMatch(/if \(todo\.done\) \{/)
+    expect(out).toContain('Dialog(onDismissRequest = { onToggle() })')
+  })
 })
 
 describe('Phase B — <Press> emit (un-styled clickable wrapper)', () => {
@@ -1377,6 +1391,23 @@ describe.skipIf(skipKotlincCondition)(
       if (!result.ok) {
         throw new Error(
           `P2.2 content kotlinc validation FAILED:\n${result.error}\n\n--- emit ---\n${out}\n--- end ---`,
+        )
+      }
+      expect(result.ok).toBe(true)
+    })
+
+    it('P2.2 <Modal> → if (open) { Dialog(onDismissRequest) { ... } } typechecks', () => {
+      const out = tx(
+        `<Modal open={done} onClose={fn}>
+          <Text>Dialog body</Text>
+          <Button onPress={fn}>Close</Button>
+        </Modal>`,
+        'kotlin',
+      )
+      const result = validateKotlin(out)
+      if (!result.ok) {
+        throw new Error(
+          `P2.2 Modal kotlinc validation FAILED:\n${result.error}\n\n--- emit ---\n${out}\n--- end ---`,
         )
       }
       expect(result.ok).toBe(true)
