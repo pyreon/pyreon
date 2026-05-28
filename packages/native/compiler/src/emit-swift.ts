@@ -955,6 +955,9 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Layer') return emitSwiftLayer(e, indent)
   if (tag === 'Scroll') return emitSwiftScroll(e, indent)
   if (tag === 'Spacer') return emitSwiftSpacer(e)
+  if (tag === 'Heading') return emitSwiftHeading(e, indent)
+  if (tag === 'Icon') return emitSwiftIcon(e, indent)
+  if (tag === 'Image') return emitSwiftImage(e, indent)
   if (tag === 'Press') return emitSwiftPress(e, indent)
   if (tag === 'Field') return emitSwiftField(e, indent)
   if (tag === 'Toggle') return emitSwiftToggle(e, indent)
@@ -1433,6 +1436,118 @@ function emitSwiftSpacer(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
 ): string {
   return `Spacer()${emitSwiftLayoutModifiers(e)}`
+}
+
+/**
+ * Map a canonical `<Heading level>` to the SwiftUI font role. Mirrors
+ * the web typographic scale (32/24/20/18/16/14px) onto SwiftUI's
+ * semantic font roles so iOS uses native Dynamic Type sizing.
+ */
+const HEADING_FONT: Record<1 | 2 | 3 | 4 | 5 | 6, string> = {
+  1: '.largeTitle',
+  2: '.title',
+  3: '.title2',
+  4: '.title3',
+  5: '.headline',
+  6: '.subheadline',
+}
+
+/**
+ * Emit `<Heading level={N}>text</Heading>` as SwiftUI
+ * `Text("text").font(.largeTitle | .title | …).bold()`. Reuses
+ * `emitSwiftText` to build the `Text(...)` content (static text OR
+ * interpolated `\(expr)`), then chains the level font + bold weight +
+ * optional `.foregroundColor` + layout modifiers.
+ */
+function emitSwiftHeading(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const levelRaw = readStaticAttr(e, 'level')
+  const level = (typeof levelRaw === 'number' ? levelRaw : 1) as 1 | 2 | 3 | 4 | 5 | 6
+  let result = `${emitSwiftText(e, indent)}.font(${HEADING_FONT[level] ?? '.largeTitle'}).bold()`
+  const color = readStaticAttr(e, 'color')
+  if (typeof color === 'string') {
+    result += `.foregroundColor(${resolveColor(color, 'swift')})`
+  }
+  return result + emitSwiftLayoutModifiers(e)
+}
+
+/**
+ * Map a canonical `<Icon size>` to a SwiftUI SF-Symbol image scale.
+ */
+const ICON_SCALE: Record<string, string> = {
+  sm: '.small',
+  md: '.medium',
+  lg: '.large',
+}
+
+/**
+ * Emit `<Icon name="..." />` as SwiftUI `Image(systemName: "...")` —
+ * the SF Symbols family. `size` → `.imageScale(.small|.medium|.large)`;
+ * `color` → `.foregroundColor`. The `name` must be a string literal
+ * (SF Symbol id). Falls through to generic emit when `name` is missing
+ * or non-literal.
+ */
+function emitSwiftIcon(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const name = readStaticAttr(e, 'name')
+  if (typeof name !== 'string') {
+    return emitSwiftGeneric(e, indent)
+  }
+  let result = `Image(systemName: ${JSON.stringify(name)})`
+  const size = readStaticAttr(e, 'size')
+  if (typeof size === 'string') {
+    result += `.imageScale(${ICON_SCALE[size] ?? '.medium'})`
+  }
+  const color = readStaticAttr(e, 'color')
+  if (typeof color === 'string') {
+    result += `.foregroundColor(${resolveColor(color, 'swift')})`
+  }
+  return result + emitSwiftLayoutModifiers(e)
+}
+
+/**
+ * Emit `<Image src alt fit? width? height?>` as SwiftUI
+ * `AsyncImage(url: URL(string: "<src>"))` — the cross-platform remote-
+ * image shape (works for local paths served over the dev server too).
+ *
+ * - `alt` (required) → `.accessibilityLabel("<alt>")` (VoiceOver).
+ * - `width`/`height` → `.frame(width:height:)` (numbers are points;
+ *   string values like "50%" are web-only and skipped on native).
+ *
+ * `fit` (object-fit on web) is NOT mapped in v1: faithfully applying it
+ * needs AsyncImage's content-closure form (`.resizable().aspectRatio(
+ * contentMode:)`), which is a larger emit shape — deferred to a future
+ * arc. The type-level prop is still accepted (silent no-op on Swift),
+ * mirroring how `justify` is handled on `<Stack>`.
+ *
+ * `src` must be a string literal; falls through to generic emit otherwise.
+ */
+function emitSwiftImage(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const src = readStaticAttr(e, 'src')
+  if (typeof src !== 'string') {
+    return emitSwiftGeneric(e, indent)
+  }
+  let result = `AsyncImage(url: URL(string: ${JSON.stringify(src)}))`
+  const width = readStaticAttr(e, 'width')
+  const height = readStaticAttr(e, 'height')
+  const frameArgs: string[] = []
+  if (typeof width === 'number') frameArgs.push(`width: ${width}`)
+  if (typeof height === 'number') frameArgs.push(`height: ${height}`)
+  if (frameArgs.length > 0) {
+    result += `.frame(${frameArgs.join(', ')})`
+  }
+  const alt = readStaticAttr(e, 'alt')
+  if (typeof alt === 'string') {
+    result += `.accessibilityLabel(${JSON.stringify(alt)})`
+  }
+  return result + emitSwiftLayoutModifiers(e)
 }
 
 /**

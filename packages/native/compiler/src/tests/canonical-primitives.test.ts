@@ -199,6 +199,54 @@ describe('Phase P2.1 — <Spacer> emit (flexible gap)', () => {
   })
 })
 
+describe('Phase P2.1 — <Heading> emit (semantic heading)', () => {
+  it('Swift: <Heading>Title</Heading> → Text("Title").font(.largeTitle).bold() (default level 1)', () => {
+    const out = tx(`<Heading>Title</Heading>`, 'swift')
+    expect(out).toContain('Text("Title").font(.largeTitle).bold()')
+  })
+
+  it('Swift: level maps to the SwiftUI font role', () => {
+    expect(tx(`<Heading level={2}>x</Heading>`, 'swift')).toContain('.font(.title).bold()')
+    expect(tx(`<Heading level={3}>x</Heading>`, 'swift')).toContain('.font(.title2).bold()')
+    expect(tx(`<Heading level={6}>x</Heading>`, 'swift')).toContain('.font(.subheadline).bold()')
+  })
+
+  it('Swift: <Heading color="primary"> → trailing .foregroundColor', () => {
+    const out = tx(`<Heading color="primary">x</Heading>`, 'swift')
+    expect(out).toMatch(/\.foregroundColor\(Color\(red: [\d.]+, green: [\d.]+, blue: [\d.]+\)\)/)
+  })
+})
+
+describe('Phase P2.1 — <Icon> emit (SF Symbols)', () => {
+  it('Swift: <Icon name="star" /> → Image(systemName: "star")', () => {
+    const out = tx(`<Icon name="star" />`, 'swift')
+    expect(out).toContain('Image(systemName: "star")')
+  })
+
+  it('Swift: size maps to .imageScale', () => {
+    expect(tx(`<Icon name="x" size="sm" />`, 'swift')).toContain('.imageScale(.small)')
+    expect(tx(`<Icon name="x" size="lg" />`, 'swift')).toContain('.imageScale(.large)')
+  })
+
+  it('Swift: <Icon name="x" color="danger" /> → trailing .foregroundColor', () => {
+    const out = tx(`<Icon name="x" color="danger" />`, 'swift')
+    expect(out).toMatch(/\.foregroundColor\(Color\(red: [\d.]+, green: [\d.]+, blue: [\d.]+\)\)/)
+  })
+})
+
+describe('Phase P2.1 — <Image> emit (AsyncImage)', () => {
+  it('Swift: <Image src="/a.png" alt="a" /> → AsyncImage(url:) + accessibilityLabel', () => {
+    const out = tx(`<Image src="/a.png" alt="a photo" />`, 'swift')
+    expect(out).toContain('AsyncImage(url: URL(string: "/a.png"))')
+    expect(out).toContain('.accessibilityLabel("a photo")')
+  })
+
+  it('Swift: numeric width/height → .frame(width:height:)', () => {
+    const out = tx(`<Image src="/a.png" alt="" width={64} height={48} />`, 'swift')
+    expect(out).toContain('.frame(width: 64, height: 48)')
+  })
+})
+
 describe('Phase B — <Press> emit (un-styled clickable wrapper)', () => {
   it('Swift: <Press onPress={fn}> → Button { ... } action: { fn() }.buttonStyle(.plain)', () => {
     const out = tx(`<Press onPress={fn}><Text>tap</Text></Press>`, 'swift')
