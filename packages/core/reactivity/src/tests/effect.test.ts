@@ -224,7 +224,7 @@ describe('renderEffect', () => {
       s()
     })
     dispose()
-    dispose() // should not throw
+    expect(() => dispose()).not.toThrow() // calling dispose twice is a safe no-op
   })
 
   test('tracks dynamic dependencies', () => {
@@ -308,8 +308,8 @@ describe('onCleanup', () => {
   })
 
   test('no-ops outside effect', () => {
-    // Should not throw
-    onCleanup(() => {})
+    // Should not throw — onCleanup outside an effect is a silent no-op
+    expect(() => onCleanup(() => {})).not.toThrow()
   })
 
   test('cleanup ordering: onCleanup runs before return cleanup', () => {
