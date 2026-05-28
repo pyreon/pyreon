@@ -415,4 +415,50 @@ final class PyreonRuntimeTests: XCTestCase {
         XCTAssertTrue(form.touched.isEmpty)
         XCTAssertFalse(form.isSubmitting)
     }
+
+    // MARK: - PyreonPermissions (usePermissions reactive set)
+
+    /// An exact grant matches; an ungranted key is denied; `cannot` inverts.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonPermissionsExactMatch() throws {
+        let perms = PyreonPermissions(["posts.edit"])
+        XCTAssertTrue(perms.can("posts.edit"))
+        XCTAssertFalse(perms.can("posts.delete"))
+        XCTAssertTrue(perms.cannot("posts.delete"))
+    }
+
+    /// A `"posts.*"` wildcard matches any `posts.<X>` but is segment-scoped.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonPermissionsWildcard() throws {
+        let perms = PyreonPermissions(["posts.*"])
+        XCTAssertTrue(perms.can("posts.edit"))
+        XCTAssertTrue(perms.can("posts.delete"))
+        XCTAssertFalse(perms.can("users.edit"))
+        XCTAssertFalse(perms.can("postsX")) // segment-prefix, not substring
+    }
+
+    /// `all` requires every key; `any` requires at least one.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonPermissionsAllAny() throws {
+        let perms = PyreonPermissions(["a", "b"])
+        XCTAssertTrue(perms.all("a", "b"))
+        XCTAssertFalse(perms.all("a", "c"))
+        XCTAssertTrue(perms.any("a", "c"))
+        XCTAssertFalse(perms.any("c", "d"))
+    }
+
+    /// `grant` / `revoke` / `set` mutate the granted set reactively.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonPermissionsMutation() throws {
+        let perms = PyreonPermissions()
+        XCTAssertFalse(perms.can("admin"))
+        perms.grant("admin")
+        XCTAssertTrue(perms.can("admin"))
+        perms.revoke("admin")
+        XCTAssertFalse(perms.can("admin"))
+        perms.set(["x", "y"])
+        XCTAssertTrue(perms.can("x"))
+        XCTAssertTrue(perms.can("y"))
+        XCTAssertFalse(perms.can("admin"))
+    }
 }
