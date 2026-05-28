@@ -328,7 +328,30 @@ object Modifier {
   // it from androidx.compose.ui.platform; same call shape.
   @Suppress("UNUSED_PARAMETER")
   fun testTag(tag: String): Modifier = this
+  // --- Phase P2.2: <Scroll> + <Spacer> modifiers. Real Compose ships
+  // verticalScroll/horizontalScroll from androidx.compose.foundation and
+  // weight as a Row/Column-scope extension; the stub exposes them as
+  // Modifier members (scope not enforced — type-check surface only).
+  @Suppress("UNUSED_PARAMETER")
+  fun verticalScroll(state: ScrollState): Modifier = this
+  @Suppress("UNUSED_PARAMETER")
+  fun horizontalScroll(state: ScrollState): Modifier = this
+  @Suppress("UNUSED_PARAMETER")
+  fun weight(weight: Float): Modifier = this
 }
+
+// ScrollState + rememberScrollState — <Scroll> emit's scroll position
+// holder. Real Compose: androidx.compose.foundation.ScrollState /
+// rememberScrollState(). Type-check-only stub.
+class ScrollState
+@Composable
+fun rememberScrollState(): ScrollState = ScrollState()
+
+// Spacer — <Spacer> emit's flexible-gap composable. Real Compose ships
+// it from androidx.compose.foundation.layout.
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun Spacer(modifier: Modifier = Modifier) {}
 
 // Arrangement — gap / placement on the main axis. The Phase B emit
 // uses Arrangement.spacedBy for canonical gap={N} prop, plus
@@ -367,6 +390,7 @@ object Alignment {
   // 2D alignment instances — Box's contentAlignment.
   val TopStart: Alignment = this
   val Center: Alignment = this
+  val BottomEnd: Alignment = this
 }
 
 // Color — Compose color value. Real Compose Color accepts a packed

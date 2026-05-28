@@ -167,6 +167,29 @@ describe('Phase P2.1 — <Layer> emit (z-stack overlay)', () => {
     expect(out).toMatch(/\.background\(Color\(red: 1, green: 1, blue: 1\)\)/)
     expect(out).toContain('.cornerRadius(8)')
   })
+
+  it('Kotlin: <Layer> → Box { ... }', () => {
+    const out = tx(`<Layer><Text>base</Text><Text>top</Text></Layer>`, 'kotlin')
+    expect(out).toMatch(/Box \{[\s\S]+Text\(text = "base"\)[\s\S]+Text\(text = "top"\)/)
+  })
+
+  it('Kotlin: align maps to Box contentAlignment (2-D)', () => {
+    expect(tx(`<Layer align="center"><Text>x</Text></Layer>`, 'kotlin')).toContain(
+      'contentAlignment = Alignment.Center',
+    )
+    expect(tx(`<Layer align="start"><Text>x</Text></Layer>`, 'kotlin')).toContain(
+      'contentAlignment = Alignment.TopStart',
+    )
+    expect(tx(`<Layer align="end"><Text>x</Text></Layer>`, 'kotlin')).toContain(
+      'contentAlignment = Alignment.BottomEnd',
+    )
+  })
+
+  it('Kotlin: <Layer padding={4} background="surface" radius="md"> → modifier chain', () => {
+    const out = tx(`<Layer padding={4} background="surface" radius="md"><Text>x</Text></Layer>`, 'kotlin')
+    expect(out).toContain('Modifier.padding(16.dp)')
+    expect(out).toContain('.clip(RoundedCornerShape(8.dp))')
+  })
 })
 
 describe('Phase P2.1 — <Scroll> emit (scrollable container)', () => {
@@ -185,6 +208,21 @@ describe('Phase P2.1 — <Scroll> emit (scrollable container)', () => {
     const out = tx(`<Scroll padding={2}><Text>x</Text></Scroll>`, 'swift')
     expect(out).toContain('.padding(8)')
   })
+
+  it('Kotlin: <Scroll> → Column(Modifier.verticalScroll(rememberScrollState()))', () => {
+    const out = tx(`<Scroll><Text>row</Text></Scroll>`, 'kotlin')
+    expect(out).toContain('Column(modifier = Modifier.verticalScroll(rememberScrollState()))')
+  })
+
+  it('Kotlin: <Scroll axis="horizontal"> → Row(Modifier.horizontalScroll(rememberScrollState()))', () => {
+    const out = tx(`<Scroll axis="horizontal"><Text>row</Text></Scroll>`, 'kotlin')
+    expect(out).toContain('Row(modifier = Modifier.horizontalScroll(rememberScrollState()))')
+  })
+
+  it('Kotlin: <Scroll padding={2}> → scroll modifier + .padding(8.dp)', () => {
+    const out = tx(`<Scroll padding={2}><Text>x</Text></Scroll>`, 'kotlin')
+    expect(out).toContain('Modifier.verticalScroll(rememberScrollState()).padding(8.dp)')
+  })
 })
 
 describe('Phase P2.1 — <Spacer> emit (flexible gap)', () => {
@@ -196,6 +234,16 @@ describe('Phase P2.1 — <Spacer> emit (flexible gap)', () => {
   it('Swift: <Spacer data-testid="gap" /> → Spacer().accessibilityIdentifier("gap")', () => {
     const out = tx(`<Spacer data-testid="gap" />`, 'swift')
     expect(out).toContain('Spacer().accessibilityIdentifier("gap")')
+  })
+
+  it('Kotlin: <Spacer /> → Spacer(modifier = Modifier.weight(1f))', () => {
+    const out = tx(`<Inline><Text>L</Text><Spacer /><Text>R</Text></Inline>`, 'kotlin')
+    expect(out).toContain('Spacer(modifier = Modifier.weight(1f))')
+  })
+
+  it('Kotlin: <Spacer data-testid="gap" /> → weight + .testTag("gap")', () => {
+    const out = tx(`<Spacer data-testid="gap" />`, 'kotlin')
+    expect(out).toContain('Spacer(modifier = Modifier.weight(1f).testTag("gap"))')
   })
 })
 
@@ -1236,6 +1284,37 @@ describe.skipIf(skipKotlincCondition)(
       if (!result.ok) {
         throw new Error(
           `Phase B kotlinc validation FAILED:\n${result.error}\n\n--- emit ---\n${out}\n--- end ---`,
+        )
+      }
+      expect(result.ok).toBe(true)
+    })
+
+    it('P2.2 layout primitives (Layer/Scroll/Spacer + align + scroll axis + modifiers) typecheck', () => {
+      // Exercises the Phase P2.2 Kotlin emit (Box / verticalScroll /
+      // horizontalScroll / rememberScrollState / Spacer.weight) against
+      // the extended stubs. kotlinc accepting this proves the new emit is
+      // well-typed AND the new stubs cover every referenced symbol.
+      const out = tx(
+        `<Scroll padding={2}>
+          <Layer align="center" background="primary" radius="md">
+            <Text>z-base</Text>
+            <Text>z-top</Text>
+          </Layer>
+          <Layer align="start"><Text>tl</Text></Layer>
+          <Layer align="end"><Text>br</Text></Layer>
+          <Inline gap={2}>
+            <Text>L</Text>
+            <Spacer data-testid="gap" />
+            <Text>R</Text>
+          </Inline>
+          <Scroll axis="horizontal"><Text>hscroll</Text></Scroll>
+        </Scroll>`,
+        'kotlin',
+      )
+      const result = validateKotlin(out)
+      if (!result.ok) {
+        throw new Error(
+          `P2.2 layout kotlinc validation FAILED:\n${result.error}\n\n--- emit ---\n${out}\n--- end ---`,
         )
       }
       expect(result.ok).toBe(true)
