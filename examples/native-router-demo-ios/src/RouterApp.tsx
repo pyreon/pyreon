@@ -55,7 +55,13 @@ function UserPage(props: { params: { id: string } }) {
 }
 
 export function RouterApp() {
+  // `mode: 'history'` is web-only (HTML5 pushState + path-based URLs).
+  // PMTC's parser only reads `routes` from createRouter's options
+  // object; `mode` silently flows through on web AND is ignored on
+  // native — so this same source compiles cleanly to SwiftUI/Compose
+  // (which use their own navigation stack abstractions).
   const router = createRouter({
+    mode: 'history',
     routes: [
       { path: '/', component: HomePage },
       { path: '/about', component: AboutPage },

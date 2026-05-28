@@ -1258,6 +1258,25 @@ const ERROR_PATTERNS: ErrorPattern[] = [
         "const a = useSortable({\n  items: colA, by: c => c.id, onReorder: setColA,\n  groupId: 'kanban',\n  onCrossListDrop: item => setColA(colA().filter(c => c.id !== item.id)),\n})\nconst b = useSortable({\n  items: colB, by: c => c.id, onReorder: setColB,\n  groupId: 'kanban',\n  onCrossListReceive: (item, i) => {\n    const next = [...colB.peek()]\n    next.splice(i, 0, item)\n    setColB(next)\n  },\n})",
     }),
   },
+  {
+    // R1 — `useRouter()` / `useNavigate()` / `useParams()` /
+    // `useRoute()` / `onBeforeRouteLeave()` / `onBeforeRouteUpdate()`
+    // / `useBlocker()` / `useSearchParams()` / etc. all share this
+    // "[Pyreon] No router installed" throw shape. The most common
+    // cause: the hook is called from a component mounted OUTSIDE
+    // a `<RouterProvider router={createRouter({...})}>`. Common
+    // forms: forgotten provider at app root, mounted a test fixture
+    // without the provider, or split a component into a module
+    // that's reused outside the routed tree.
+    pattern: /\[Pyreon\] No router installed/,
+    diagnose: () => ({
+      cause:
+        'A router hook (useRouter / useNavigate / useParams / useRoute / onBeforeRouteLeave / etc.) was called from a component that is not mounted inside a <RouterProvider>. The router context is provided per-tree, so descendants without a provider get the explicit "no router installed" throw rather than silently no-op.',
+      fix: "Wrap the app root in <RouterProvider router={createRouter({...})}>. For tests, render the unit under <RouterProvider router={...}> with a stub router. For shared components that may render in both routed AND non-routed contexts, accept the navigate callback as a prop instead of calling useNavigate() directly.",
+      fixCode: `const router = createRouter({ routes })
+mount(() => <RouterProvider router={router}><App /></RouterProvider>, root)`,
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */
