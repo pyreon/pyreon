@@ -966,6 +966,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
 
   if (tag === 'For') return emitSwiftFor(e, indent)
   if (tag === 'Show') return emitSwiftShow(e, indent)
+  if (tag === 'Transition') return emitSwiftTransition(e, indent)
   if (tag === 'Text') return emitSwiftText(e, indent)
   if (tag === 'Button') return emitSwiftButton(e, indent)
   if (tag === 'TextField') return emitSwiftTextField(e, indent)
@@ -1267,6 +1268,35 @@ function emitSwiftShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   const pad = ' '.repeat(indent + 2)
   const body = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
   return `if ${cond} {\n${body}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * Phase 5 — `<Transition show={cond}>children</Transition>` → an animated
+ * show-gate. SwiftUI has no CSS-class transition system, so the web-only
+ * `enter`/`enterFrom`/`leave`/… class props are ignored; the native
+ * translation animates the children's insertion/removal with the platform
+ * animation system. v1 uses a `.transition(.opacity)` fade driven by an
+ * `.animation(.default, value:)` on a stable `ZStack` container (the
+ * conditional itself can't carry the value-driver — it isn't stable across
+ * the flip). Mirrors the Compose `AnimatedVisibility` shape.
+ */
+function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const show = e.attrs.find((a) => a.kind === 'attr' && a.name === 'show') as
+    | Extract<AttrIR, { kind: 'attr' }>
+    | undefined
+  const cond = show ? emitSwiftSignalRead(show.value) : 'true'
+  const inner = ' '.repeat(indent + 6)
+  const body = e.children.map((c) => inner + emitSwiftChild(c, indent + 6)).join('\n')
+  const p = ' '.repeat(indent)
+  return (
+    `ZStack {\n` +
+    `${p}  if ${cond} {\n` +
+    `${p}    Group {\n${body}\n${p}    }\n` +
+    `${p}      .transition(.opacity)\n` +
+    `${p}  }\n` +
+    `${p}}\n` +
+    `${p}.animation(.default, value: ${cond})`
+  )
 }
 
 // ============================================================================

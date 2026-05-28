@@ -855,6 +855,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   const tag = e.tag
   if (tag === 'For') return emitKotlinFor(e, indent)
   if (tag === 'Show') return emitKotlinShow(e, indent)
+  if (tag === 'Transition') return emitKotlinTransition(e, indent)
   if (tag === 'Text') return emitKotlinText(e, indent)
   if (tag === 'Button') return emitKotlinButton(e, indent)
   if (tag === 'TextField') return emitKotlinTextField(e, indent)
@@ -1065,6 +1066,23 @@ function emitKotlinShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   const pad = ' '.repeat(indent + 2)
   const body = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   return `if (${cond}) {\n${body}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * Phase 5 — `<Transition show={cond}>children</Transition>` → Compose's
+ * built-in `AnimatedVisibility(visible = cond) { … }` (default fade+expand
+ * enter / fade+shrink exit). The web-only `enter`/`leave` CSS-class props
+ * are ignored — Compose drives animation through its own system, not CSS
+ * classes. Mirror of the SwiftUI `.transition`-on-a-show-gate shape.
+ */
+function emitKotlinTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const show = e.attrs.find((a) => a.kind === 'attr' && a.name === 'show') as
+    | Extract<AttrIR, { kind: 'attr' }>
+    | undefined
+  const cond = show ? emitKotlinSignalRead(show.value) : 'true'
+  const pad = ' '.repeat(indent + 2)
+  const body = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+  return `AnimatedVisibility(visible = ${cond}) {\n${body}\n${' '.repeat(indent)}}`
 }
 
 /**
