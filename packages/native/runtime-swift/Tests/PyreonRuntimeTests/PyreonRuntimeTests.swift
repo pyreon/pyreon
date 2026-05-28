@@ -347,4 +347,72 @@ final class PyreonRuntimeTests: XCTestCase {
         XCTAssertEqual(fetch.data, 5)
         XCTAssertNotNil(fetch.error)
     }
+
+    // MARK: - PyreonForm (useForm state container)
+
+    /// Initial values seed `values`; a fresh form is error-free + valid.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonFormInitialValues() throws {
+        let form = PyreonForm(initialValues: ["email": "a@b.com"])
+        XCTAssertEqual(form.values["email"], "a@b.com")
+        XCTAssertTrue(form.errors.isEmpty)
+        XCTAssertFalse(form.isSubmitting)
+        XCTAssertTrue(form.isValid)
+    }
+
+    /// `setValue` updates a field.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonFormSetValue() throws {
+        let form = PyreonForm()
+        form.setValue("name", "Ada")
+        XCTAssertEqual(form.values["name"], "Ada")
+    }
+
+    /// `setError(name, msg)` sets, `setError(name, nil)` clears; `isValid`
+    /// tracks.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonFormSetAndClearError() throws {
+        let form = PyreonForm()
+        form.setError("email", "required")
+        XCTAssertEqual(form.errors["email"], "required")
+        XCTAssertFalse(form.isValid)
+        form.setError("email", nil)
+        XCTAssertNil(form.errors["email"])
+        XCTAssertTrue(form.isValid)
+    }
+
+    /// `setTouched` flips a field's touched flag.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonFormSetTouched() throws {
+        let form = PyreonForm()
+        XCTAssertNil(form.touched["email"])
+        form.setTouched("email")
+        XCTAssertEqual(form.touched["email"], true)
+    }
+
+    /// `beginSubmit` / `endSubmit` toggle `isSubmitting`.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonFormSubmitFlag() throws {
+        let form = PyreonForm()
+        form.beginSubmit()
+        XCTAssertTrue(form.isSubmitting)
+        form.endSubmit()
+        XCTAssertFalse(form.isSubmitting)
+    }
+
+    /// `reset` restores initial values and clears errors / touched /
+    /// submitting.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonFormReset() throws {
+        let form = PyreonForm(initialValues: ["email": "a@b.com"])
+        form.setValue("email", "changed")
+        form.setError("email", "bad")
+        form.setTouched("email")
+        form.beginSubmit()
+        form.reset()
+        XCTAssertEqual(form.values["email"], "a@b.com")
+        XCTAssertTrue(form.errors.isEmpty)
+        XCTAssertTrue(form.touched.isEmpty)
+        XCTAssertFalse(form.isSubmitting)
+    }
 }
