@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { RouterProvider, createRouter } from '@pyreon/router'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import {
   Button,
@@ -17,6 +18,7 @@ import {
   Image,
   Inline,
   Layer,
+  Link,
   Modal,
   Press,
   Scroll,
@@ -693,6 +695,44 @@ describe('<Modal> — web', () => {
     expect(dlg.contains(document.activeElement)).toBe(true)
     open.set(false)
     await flush()
+    unmount()
+  })
+})
+
+describe('<Link> — web', () => {
+  it('internal link renders an <a> and click performs SPA navigation (no reload)', async () => {
+    const router = createRouter({
+      routes: [
+        { path: '/', component: () => h('div', null, 'home') },
+        { path: '/about', component: () => h('div', null, 'about') },
+      ],
+    })
+    const { container, unmount } = mountInBrowser(
+      h(RouterProvider, { router }, h(Link, { to: '/about', 'data-testid': 'go' }, 'About')),
+    )
+    const a = container.querySelector('a') as HTMLAnchorElement
+    expect(a.tagName).toBe('A')
+    expect(a.getAttribute('data-testid')).toBe('go')
+
+    // Drop a sentinel — a full reload would wipe it; SPA nav preserves it.
+    ;(window as unknown as { __linkSentinel?: number }).__linkSentinel = 42
+    a.click()
+    await flush()
+    // RouterLink intercepted the click and routed client-side.
+    expect(router.currentRoute().path).toBe('/about')
+    expect((window as unknown as { __linkSentinel?: number }).__linkSentinel).toBe(42)
+    delete (window as unknown as { __linkSentinel?: number }).__linkSentinel
+    unmount()
+  })
+
+  it('external link is a plain new-tab anchor (no router interception)', () => {
+    const { container, unmount } = mountInBrowser(
+      h(Link, { to: 'https://example.com', external: true }, 'Site'),
+    )
+    const a = container.querySelector('a') as HTMLAnchorElement
+    expect(a.href).toContain('https://example.com')
+    expect(a.target).toBe('_blank')
+    expect(a.rel).toBe('noopener noreferrer')
     unmount()
   })
 })

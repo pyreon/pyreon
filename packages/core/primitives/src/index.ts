@@ -20,16 +20,16 @@
 //
 // ## Web runtime scope
 //
-// 14 primitives have real web implementations:
+// ALL 15 canonical primitives have real web implementations:
 //   - `<Stack>` / `<Inline>` / `<Layer>` / `<Scroll>` / `<Spacer>` (layout)
 //   - `<Text>` / `<Heading>` / `<Image>` / `<Icon>` (content)
-//   - `<Button>` / `<Press>` (interaction)
+//   - `<Button>` / `<Press>` / `<Link>` (interaction)
 //   - `<Field>` / `<Toggle>` / `<Modal>` (input)
 //
-// 1 more primitive has a TYPE definition but no web runtime yet
-// (`<Link>` (interaction)). It ships in a follow-up PR as the canonical
-// vocab grows from real-world demand. Apps trying to render it on web
-// today get a clear runtime error pointing at the missing impl.
+// The web-runtime vocabulary is complete. `<Link>` is router-aware —
+// internal links route via `@pyreon/router`'s `RouterLink` (hence the
+// `@pyreon/router` dependency); external links are a plain
+// `<a target="_blank">`.
 //
 // ## Phase B scope (PMTC emit)
 //
@@ -63,7 +63,7 @@ export type { HeadingProps, IconProps, ImageProps, TextProps } from './types/con
 export type { ButtonProps, LinkProps, PressProps } from './types/interaction'
 export type { FieldProps, ModalProps, ToggleProps } from './types/input'
 
-// ===== Web runtime exports — 14 implemented primitives =====
+// ===== Web runtime exports — all 15 canonical primitives =====
 //
 // On native targets these imports are intercepted by the PMTC
 // compiler before the JSX call site reaches runtime — these
@@ -80,6 +80,7 @@ export { Image } from './web/Image'
 export { Icon } from './web/Icon'
 export { Button } from './web/Button'
 export { Press } from './web/Press'
+export { Link } from './web/Link'
 export { Field } from './web/Field'
 export { Toggle } from './web/Toggle'
 export { Modal } from './web/Modal'
