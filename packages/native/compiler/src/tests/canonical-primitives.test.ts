@@ -1577,6 +1577,88 @@ describe('Phase 4.1 — useFetch emit (PyreonFetch container + async harness)', 
   })
 })
 
+describe('Phase 3 — per-route boolean guards (beforeEnter)', () => {
+  // `{ path, component, beforeEnter: () => <boolExpr> }` wraps the matched
+  // component in an inline conditional checked at navigation time. On
+  // failure: the catch-all (wildcard) component if present, else a denial.
+
+  it('Swift: a guarded route wraps its component in `if <guard> { … } else { … }`', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/', component: HomePage },
+          { path: '/admin', component: AboutPage, beforeEnter: () => isAuthed() },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    expect(out).toContain('else if path == "/admin" {')
+    expect(out).toContain('if isAuthed {')
+    expect(out).toContain('AboutPage()')
+    expect(out).toContain('} else {')
+    // No wildcard route → guard-fail renders the denial placeholder.
+    expect(out).toContain('Pyreon Router: access denied')
+  })
+
+  it('Kotlin: a guarded route emits `-> if (<guard>) Component() else <fallback>`', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/', component: HomePage },
+          { path: '/admin', component: AboutPage, beforeEnter: () => isAuthed() },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'kotlin',
+    )
+    expect(out).toContain('currentPath == "/admin" -> if (isAuthed) AboutPage() else')
+    expect(out).toContain('Pyreon Router: access denied')
+    // Unguarded sibling stays a plain branch (no `if (` wrap).
+    expect(out).toContain('currentPath == "/" -> HomePage()')
+  })
+
+  it('Swift: guard-fail falls back to the wildcard component when present', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/admin', component: AboutPage, beforeEnter: () => isAuthed() },
+          { path: '*', component: SettingsPage },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    // Guard-fail renders the wildcard catch-all, not the denial Text.
+    expect(out).toContain('if isAuthed {')
+    expect(out).toContain('AboutPage()')
+    expect(out).toContain('SettingsPage()')
+    expect(out).not.toContain('access denied')
+  })
+
+  it('an unguarded route emits no conditional wrap', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [{ path: '/', component: HomePage }],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    expect(out).toContain('if path == "/" {')
+    expect(out).not.toContain('access denied')
+    // Body is a bare HomePage() — no inner guard conditional.
+    expect(out).not.toContain('if isAuthed')
+  })
+})
+
 describe('Phase B — composition smoke', () => {
   it('Swift: Stack > Inline > Text + Button renders correctly', () => {
     const out = tx(

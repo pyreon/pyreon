@@ -2037,6 +2037,24 @@ function emitSwiftNavigationDestination(
   const wildcardRoute = routes.find(isWildcardRoute)
   const wildcardComponent =
     wildcardRoute !== undefined ? resolveRouteTarget(wildcardRoute, routes)?.component : undefined
+  // Phase 3 — wrap a guarded route's render in `if <guard> { … } else { … }`.
+  // The dispatch runs at navigation time, so the guard is checked before the
+  // route renders. On failure: the catch-all (wildcard component) if present,
+  // else a denial Text — never leaks the guarded view.
+  const denyFallback =
+    wildcardComponent !== undefined
+      ? `${emitSwiftExpr(wildcardComponent, indent + 4)}()`
+      : `Text("Pyreon Router: access denied to \\(path)")`
+  const wrapGuard = (r: import('./types').RouteIR, renderLine: string): string[] => {
+    if (r.guard === undefined) return [`${innerPad}${renderLine}`]
+    return [
+      `${innerPad}if ${emitSwiftExpr(r.guard, indent + 2)} {`,
+      `${innerPad}  ${renderLine}`,
+      `${innerPad}} else {`,
+      `${innerPad}  ${denyFallback}`,
+      `${innerPad}}`,
+    ]
+  }
   // Phase 3 — track whether we've emitted any branch yet (instead of a
   // fixed `i === 0`), because redirect routes that resolve to nothing
   // (dangling / cyclic / param-involved) are SKIPPED, so the first
@@ -2071,7 +2089,7 @@ function emitSwiftNavigationDestination(
       const keyword = firstBranch ? 'if' : 'else if'
       branches.push(
         `${pad}${keyword} let params = PyreonRouter.matchPath(path, ${JSON.stringify(route.path)}) {`,
-        `${innerPad}${componentExpr}(params: params)`,
+        ...wrapGuard(route, `${componentExpr}(params: params)`),
         `${pad}}`,
       )
     } else {
@@ -2079,7 +2097,7 @@ function emitSwiftNavigationDestination(
       const keyword = firstBranch ? 'if' : 'else if'
       branches.push(
         `${pad}${keyword} path == ${JSON.stringify(route.path)} {`,
-        `${innerPad}${componentExpr}()`,
+        ...wrapGuard(route, `${componentExpr}()`),
         `${pad}}`,
       )
     }

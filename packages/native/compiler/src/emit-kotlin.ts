@@ -1804,6 +1804,18 @@ function emitKotlinRouteDispatch(
   const wildcardRoute = routes.find(isWildcardRoute)
   const wildcardComponent =
     wildcardRoute !== undefined ? resolveRouteTarget(wildcardRoute, routes)?.component : undefined
+  // Phase 3 — guard-fail fallback (catch-all component if present, else a
+  // denial Text) + a helper that wraps a guarded route's render in an
+  // `if (<guard>) … else …` expression. Checked at navigation time, so the
+  // guarded view never renders for a failing guard.
+  const denyFallback =
+    wildcardComponent !== undefined
+      ? `${emitKotlinExpr(wildcardComponent, indent + 4)}()`
+      : `Text(text = "Pyreon Router: access denied to \${currentPath}")`
+  const guardWrap = (r: import('./types').RouteIR, renderCall: string): string =>
+    r.guard === undefined
+      ? renderCall
+      : `if (${emitKotlinExpr(r.guard, indent + 4)}) ${renderCall} else ${denyFallback}`
   lines.push(`${pad}val currentPath = router.currentPath`)
   lines.push(`${pad}when {`)
   for (const route of routes) {
@@ -1837,12 +1849,12 @@ function emitKotlinRouteDispatch(
       lines.push(
         `${innerPad}  val params = PyreonRouter.matchPath(currentPath, ${JSON.stringify(route.path)}) ?: emptyMap()`,
       )
-      lines.push(`${innerPad}  ${componentExpr}(params = params)`)
+      lines.push(`${innerPad}  ${guardWrap(route, `${componentExpr}(params = params)`)}`)
       lines.push(`${innerPad}}`)
     } else {
       // Literal route — direct == comparison.
       lines.push(
-        `${innerPad}currentPath == ${JSON.stringify(route.path)} -> ${componentExpr}()`,
+        `${innerPad}currentPath == ${JSON.stringify(route.path)} -> ${guardWrap(route, `${componentExpr}()`)}`,
       )
     }
   }
