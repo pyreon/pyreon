@@ -422,6 +422,25 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'useParams') {
     return { kind: 'router-hook', name, hook: 'params' }
   }
+  // Phase 4 — `useFetch<T>('/url')`. The decoded result type comes from
+  // the generic arg; the request path MUST be a string literal so it can
+  // be baked into the emitted harness. Non-literal URLs (template strings,
+  // identifiers) bail to undeclared — same conservative rule as useStorage.
+  if (calleeName === 'useFetch') {
+    const type = parseGenericTypeArg(init, ctx)
+    const urlArg = init.arguments?.[0]
+    if (
+      !urlArg ||
+      (urlArg.type !== 'Literal' && urlArg.type !== 'StringLiteral') ||
+      typeof urlArg.value !== 'string'
+    ) {
+      ctx.warnings.push(
+        `Declaration ${name}: useFetch url argument must be a string literal; got ${urlArg?.type ?? 'nothing'}.`,
+      )
+      return null
+    }
+    return { kind: 'fetch', name, type, url: urlArg.value }
+  }
   return null
 }
 

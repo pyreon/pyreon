@@ -321,6 +321,23 @@ function emitSwiftComponent(c: ComponentIR): string {
   }
   lines.push(`  var body: some View {`)
   lines.push(`    ${emitSwiftExpr(c.returnExpr, 4)}`)
+  // Phase 4: append a mount-time `.task { }` per useFetch decl. SwiftUI
+  // runs `.task` when the view appears (the natural async-on-mount hook);
+  // it drives the PyreonFetch state machine via begin → resolve|reject,
+  // awaiting URLSession + decoding into the typed result.
+  for (const d of c.decls) {
+    if (d.kind !== 'fetch') continue
+    const name = swiftIdent(d.name)
+    lines.push(`      .task {`)
+    lines.push(`        ${name}.begin()`)
+    lines.push(`        do {`)
+    lines.push(
+      `          let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${JSON.stringify(d.url)})!)`,
+    )
+    lines.push(`          ${name}.resolve(try JSONDecoder().decode(${swiftType(d.type)}.self, from: bytes))`)
+    lines.push(`        } catch { ${name}.reject(error) }`)
+    lines.push(`      }`)
+  }
   lines.push(`  }`)
   lines.push(`}`)
   _activePropsParamName = undefined
@@ -406,6 +423,13 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
     const returnType =
       d.hook === 'navigate' ? '(String) -> Void' : '[String: String]'
     return `private var ${swiftIdent(d.name)}: ${returnType} { ${fn}(router: pyreonRouter) }`
+  }
+  // Phase 4: `const x = useFetch<T>('/url')` → an @State PyreonFetch<T>
+  // container. The mount-time async harness (`.task { ... }`) that drives
+  // it is appended to the View body by emitSwiftComponent — it reads
+  // `data`/`isPending`/`error` as @Observable properties directly.
+  if (d.kind === 'fetch') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonFetch<${swiftType(d.type)}>()`
   }
   // computed — infer the return type from the expression body so we
   // can emit a typed computed property. Falls back to `Any` for cases

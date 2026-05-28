@@ -41,6 +41,15 @@ let _signalEnumTypes: Map<string, string> = new Map()
 let _activeEnumType: string | undefined
 /** G1: every signal name in scope — see emit-swift.ts for the rationale. */
 let _signalNames: Set<string> = new Set()
+/**
+ * Phase 4: every `useFetch` decl name in scope. Member reads of a fetch
+ * decl's reactive fields (`x.data` / `x.error` / `x.isPending`) emit with
+ * a trailing `.value` because the Kotlin PyreonFetch exposes them as
+ * Compose `MutableState` (the Swift side exposes plain @Observable
+ * properties, so it needs no rewrite — the platforms diverge here exactly
+ * like PyreonRouter's `params`).
+ */
+let _fetchNames: Set<string> = new Set()
 /** G2: every function decl name (Parser-A). Mirrors emit-swift's set. */
 let _functionNames: Set<string> = new Set()
 /**
@@ -178,6 +187,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _signalEnumTypes = new Map()
   _signalNames = new Set()
   _functionNames = new Set()
+  _fetchNames = new Set()
   // C5.3: reset router-routes map (mirrors Swift emit's same state).
   _routerRoutes = new Map()
   // Phase 2 follow-up — track function-typed props so handler emit
@@ -211,6 +221,8 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'router-hook' && d.hook === 'navigate') {
       _functionNames.add(d.name)
     }
+    // Phase 4: track useFetch decls so member reads append `.value`.
+    if (d.kind === 'fetch') _fetchNames.add(d.name)
   }
   const ctx: KotlinCtx = { synthesizedDataClasses: [], componentName: c.name }
   // First pass: walk decls, synthesizing data classes for anonymous object
@@ -238,11 +250,29 @@ function emitKotlinComponent(c: ComponentIR): string {
   for (const declText of declTexts) {
     lines.push(`  ${declText}`)
   }
+  // Phase 4: a `LaunchedEffect(Unit)` per useFetch decl runs the fetch on
+  // first composition (Compose's async-on-mount hook), driving the
+  // PyreonFetch state machine begin → resolve|reject. The suspendable HTTP
+  // runs off the main thread; decode goes through kotlinx-serialization.
+  for (const d of c.decls) {
+    if (d.kind !== 'fetch') continue
+    const name = kotlinIdent(d.name)
+    lines.push(`  LaunchedEffect(Unit) {`)
+    lines.push(`    ${name}.begin()`)
+    lines.push(`    try {`)
+    lines.push(
+      `      val body = withContext(Dispatchers.IO) { java.net.URL(${JSON.stringify(d.url)}).readText() }`,
+    )
+    lines.push(`      ${name}.resolve(Json.decodeFromString<${kotlinType(d.type, ctx)}>(body))`)
+    lines.push(`    } catch (e: Throwable) { ${name}.reject(e) }`)
+    lines.push(`  }`)
+  }
   lines.push(`  ${emitKotlinExpr(c.returnExpr, 2)}`)
   lines.push(`}`)
   _activePropsParamName = undefined
   _signalNames = new Set()
   _functionNames = new Set()
+  _fetchNames = new Set()
   _routerRoutes = new Map()
   return lines.join('\n')
 }
@@ -335,6 +365,11 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // by the host via `NavHost { composable("/path") { ... } }`.
   if (d.kind === 'router') {
     return `val ${kotlinIdent(d.name)} = remember { PyreonRouter() }`
+  }
+  // Phase 4: `const x = useFetch<T>('/url')` → a remembered PyreonFetch<T>.
+  // The LaunchedEffect harness that runs it is emitted by emitKotlinComponent.
+  if (d.kind === 'fetch') {
+    return `val ${kotlinIdent(d.name)} = remember { PyreonFetch<${kotlinType(d.type, ctx)}>() }`
   }
   // C4: router hook — `const navigate = useNavigate()` → as-is.
   // Compose's `useNavigate()` is a `@Composable` function that reads
@@ -668,6 +703,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.object.name === _activePropsParamName
       ) {
         return kotlinIdent(e.property)
+      }
+      // Phase 4: a useFetch decl's reactive fields are Compose MutableState
+      // — `x.data` / `x.error` / `x.isPending` read through `.value`.
+      if (
+        e.object.kind === 'identifier' &&
+        _fetchNames.has(e.object.name) &&
+        (e.property === 'data' || e.property === 'error' || e.property === 'isPending')
+      ) {
+        return `${kotlinIdent(e.object.name)}.${e.property}.value`
       }
       return `${emitKotlinExpr(e.object, indent)}.${kotlinIdent(e.property)}`
     }

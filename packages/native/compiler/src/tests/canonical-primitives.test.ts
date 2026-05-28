@@ -1508,6 +1508,75 @@ describe('Phase 3 — bare `*` / `(.*)` whole-route wildcard (404 catch-all)', (
   })
 })
 
+describe('Phase 4.1 — useFetch emit (PyreonFetch container + async harness)', () => {
+  // `const x = useFetch<T>('/url')` → a PyreonFetch<T> container + a
+  // mount-time async harness (.task{} / LaunchedEffect) driving the
+  // begin/resolve/reject state machine. Field reads (`x.data`,
+  // `x.isPending`) are @Observable properties on Swift, MutableState
+  // (`.value`) on Kotlin.
+  const FETCH_SRC = `
+    type User = { name: string }
+    export function Profile() {
+      const user = useFetch<User>('/api/user')
+      return <Text>{user.data}</Text>
+    }
+  `
+
+  it('Swift: emits @State PyreonFetch<T> + a .task harness via begin/resolve/reject', () => {
+    const out = transform(FETCH_SRC, { target: 'swift' }).code
+    expect(out).toContain('@State private var user = PyreonFetch<User>()')
+    expect(out).toContain('.task {')
+    expect(out).toContain('user.begin()')
+    expect(out).toContain('URLSession.shared.data(from: URL(string: "/api/user")!)')
+    expect(out).toContain('user.resolve(try JSONDecoder().decode(User.self, from: bytes))')
+    expect(out).toContain('catch { user.reject(error) }')
+    // Swift field access is a plain @Observable property read.
+    expect(out).toContain('user.data')
+    expect(out).not.toContain('user.data.value')
+  })
+
+  it('Kotlin: emits remember { PyreonFetch<T>() } + a LaunchedEffect harness', () => {
+    const out = transform(FETCH_SRC, { target: 'kotlin' }).code
+    expect(out).toContain('val user = remember { PyreonFetch<User>() }')
+    expect(out).toContain('LaunchedEffect(Unit) {')
+    expect(out).toContain('user.begin()')
+    expect(out).toContain('java.net.URL("/api/user").readText()')
+    expect(out).toContain('user.resolve(Json.decodeFromString<User>(body))')
+    expect(out).toContain('user.reject(e)')
+    // Kotlin field access reads through Compose MutableState `.value`.
+    expect(out).toContain('user.data.value')
+  })
+
+  it('Kotlin: every reactive field read appends .value (data / isPending / error)', () => {
+    const out = transform(
+      `
+      type User = { name: string }
+      export function Profile() {
+        const user = useFetch<User>('/api/user')
+        return <Show when={() => user.isPending}><Text>{user.error}</Text></Show>
+      }
+      `,
+      { target: 'kotlin' },
+    ).code
+    expect(out).toContain('user.isPending.value')
+    expect(out).toContain('user.error.value')
+  })
+
+  it('non-literal useFetch url bails (no PyreonFetch emit)', () => {
+    const out = transform(
+      `
+      export function Profile(props: { path: string }) {
+        const user = useFetch('/x' + props.path)
+        return <Text>hi</Text>
+      }
+      `,
+      { target: 'swift' },
+    ).code
+    // Concatenated URL isn't a literal → the decl falls through, no container.
+    expect(out).not.toContain('PyreonFetch')
+  })
+})
+
 describe('Phase B — composition smoke', () => {
   it('Swift: Stack > Inline > Text + Button renders correctly', () => {
     const out = tx(
