@@ -202,7 +202,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        category: [core, fundamentals, internals, native, tools, ui, ui-system, zero]
+        # `examples` is a pseudo-category (affected.ts maps it to the
+        # top-level examples/ dir) — it closes the gap where example type
+        # regressions were invisible to CI (CI typechecked packages/<cat>/*
+        # but never examples/* before). Examples read @pyreon/* via the
+        # bun→src condition, so no lib/bootstrap is needed here either.
+        category: [core, fundamentals, internals, native, tools, ui, ui-system, zero, examples]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -223,8 +228,16 @@ jobs:
           # spans every category; per-cell we need only this slice.
           # The script's closure is still computed against the full dep
           # graph (a @pyreon/core change still expands to every
-          # dependent), but the final emit drops anything outside
-          # packages/${cat}/.
+          # dependent), but the final emit drops anything outside the
+          # cell's category.
+          #
+          # The `examples` pseudo-category maps to the top-level examples/
+          # dir; every other category maps to packages/<cat>/.
+          if [ "${{ matrix.category }}" = "examples" ]; then
+            CATEGORY_GLOB="./examples/*"
+          else
+            CATEGORY_GLOB="./packages/${{ matrix.category }}/*"
+          fi
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             git fetch origin "${{ github.base_ref }}" --depth=1 || true
             FILTER=$(bun run scripts/affected.ts \
@@ -237,13 +250,13 @@ jobs:
             # slice — otherwise every cell would run every package and
             # we'd lose the shard entirely.
             if [ "$FILTER" = "--filter=*" ]; then
-              FILTER="--filter=./packages/${{ matrix.category }}/*"
+              FILTER="--filter=$CATEGORY_GLOB"
             fi
           else
             # push:main + merge_group always run the full slice for
             # this category — the gate that protects main never
             # trusts the narrowing.
-            FILTER="--filter=./packages/${{ matrix.category }}/*"
+            FILTER="--filter=$CATEGORY_GLOB"
           fi
           if [ -z "$FILTER" ]; then
             echo "No affected packages in this category — skipping."
@@ -253,11 +266,9 @@ jobs:
           set -f
           # --sequential caps simultaneous memory at the largest
           # single tsc invocation (~775 MB for app-showcase, ~583 MB
-          # for fundamentals-playground). Examples are NOT in any
-          # `packages/*` cell, so per-category memory is much lower —
-          # but `--sequential` still pays off here as defense-in-depth
-          # against future heavy tsc invocations creeping into a
-          # category.
+          # for fundamentals-playground — the heaviest are the example
+          # apps, now covered by the `examples` cell). --sequential keeps
+          # per-cell peak memory at one tsc at a time.
           bun run $FILTER --sequential typecheck
 
   typecheck:

@@ -216,10 +216,13 @@ export function transitiveDependents(
 // category. Cells whose category has no affected packages get an empty
 // result and skip gracefully.
 //
-// Note: `examples/` and `docs/` workspaces never belong to a category —
-// they fall outside `packages/`. The shard cells deliberately don't
-// cover examples (most have no `test` script) or docs; the existing
-// full-suite jobs / verify-modes / docs-sync cover those.
+// Note: `docs/` workspaces never belong to a category — they fall outside
+// `packages/` and outside the `examples` pseudo-category, so the shard
+// cells don't cover docs (docs-sync covers it). Example apps DO have a
+// dedicated `examples` pseudo-category (see below) — the `typecheck
+// (examples)` shard cell narrows to it so example type regressions are
+// caught in CI (they read `@pyreon/*` via the bun→src condition, no lib
+// needed). Their `test`/`e2e` coverage still lives in verify-modes + e2e.
 
 export function filterByCategory(
   names: Set<string>,
@@ -227,7 +230,13 @@ export function filterByCategory(
   category: string,
   root: string = ROOT,
 ): Set<string> {
-  const prefix = join(root, 'packages', category) + '/'
+  // `examples` is a PSEUDO-category mapping to the top-level `examples/`
+  // dir — example apps live outside `packages/<category>/`. Every other
+  // category maps to `packages/<category>/`.
+  const prefix =
+    category === 'examples'
+      ? join(root, 'examples') + '/'
+      : join(root, 'packages', category) + '/'
   const byName = new Map<string, Workspace>()
   for (const ws of workspaces) byName.set(ws.name, ws)
 
