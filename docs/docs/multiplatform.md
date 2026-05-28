@@ -228,10 +228,80 @@ The vocabulary is multiplatform; the road to shipping real production apps conti
 | Step | Scope | Status |
 |------|-------|--------|
 | Real-device CI | Compile the full apps on real Xcode/Gradle (`native-device` workflow), then boot Simulator/Emulator + assert render | 🟡 build gate landed (opt-in); launch-and-render next |
-| Router parity | loaders / guards / nested routes / redirects / typed `useParams<T>` on native | ⏳ planned |
-| Data + forms | `useFetch` (URLSession / ktor), `<Form>`/`useForm` on native | ⏳ planned (per-service native ports) |
+| Router matching | **redirects**, `:param*` splat, `:param?` optional, `*`/`(.*)` whole-route **wildcard 404**, leading/trailing-slash tolerance | ✅ landed (see [Native routing](#native-routing)) |
+| Router parity (advanced) | per-route **guards** (`beforeEnter`), loaders, nested routes, typed `useParams<T>` | 🟡 guards landing; loaders / nested / typed planned |
+| Data + forms | `useFetch` (runtime + emit), `useForm`, `usePermissions` as per-service native runtime ports | 🟡 useFetch runtime landed; emit + form/permissions runtimes landing |
 | Lifecycle | `<Suspense>` / `<ErrorBoundary>` / `<Transition>` on native | ⏳ planned |
 | DX | `pyreon create-multiplatform` scaffold, asset pipeline | ⏳ planned |
+
+## Native routing
+
+`createRouter({ routes })` compiles to native dispatch — SwiftUI
+`NavigationStack` + `.navigationDestination(for:)` on iOS, a Compose
+`when (router.currentPath)` block on Android. One route table, both targets.
+
+```tsx
+const router = createRouter({
+  routes: [
+    { path: '/',            component: Home },
+    { path: '/users/:id',   component: User },          // path param
+    { path: '/files/:rest*', component: Files },         // splat / catch-all
+    { path: '/old',         redirect: '/users/1' },      // redirect (alias)
+    { path: '/admin',       component: Admin, beforeEnter: () => isAuthed() }, // guard
+    { path: '*',            component: NotFound },        // wildcard 404
+  ],
+})
+return <RouterProvider router={router}><RouterView /></RouterProvider>
+```
+
+**Path matching** (mirrors `@pyreon/router`'s `match.ts`, verified by the
+native router runtime's own `swift test` / kotlinc smoke):
+
+| Pattern | Matches | Captures |
+|---------|---------|----------|
+| `/users/:id` | `/users/42` | `id = "42"` |
+| `/blog/:rest*` (splat) | `/blog/a/b/c` (one-or-more tail) | `rest = "a/b/c"` |
+| `/users/:id?` (optional) | `/users` **and** `/users/42` | `id` absent or set |
+| `*` / `(.*)` (wildcard) | any unmatched path | — (renders the 404 component) |
+
+Leading/trailing slashes are tolerated (`/about/` matches `/about`).
+
+**Redirects** are compile-time aliases: `{ path: '/old', redirect: '/new' }`
+makes the `/old` dispatch branch render `/new`'s component directly (no
+runtime push). Chains (`/a → /b → /c`) resolve transitively; cyclic /
+dangling redirects are dropped to the no-match fallback.
+
+**Wildcard 404**: a `*` / `(.*)` route's component becomes the dispatch
+**else-branch** — the canonical not-found page for any unmatched path.
+
+**Guards** (`beforeEnter: () => <boolExpr>`) wrap the matched component in
+an inline conditional checked at navigation time; on failure the branch
+renders the wildcard catch-all (if present) or a denial placeholder.
+
+> Status: path matching, redirects, and the wildcard 404 are **landed**;
+> guards are **landing**; loaders, nested routes, and typed `useParams<T>`
+> are planned (see the roadmap table above).
+
+## Native data & services
+
+Data hooks compile to native via per-service **runtime ports** behind the
+shared TS API (the `PyreonStorage` pattern — each service has a Swift +
+Kotlin runtime the emitted code drives):
+
+- **`useFetch<T>('/url')`** → a `PyreonFetch<T>` reactive container
+  (`{ data, error, isPending, refetch }`). The compiler emits a mount-time
+  `.task { }` (SwiftUI) / `LaunchedEffect` (Compose) that runs the request
+  through the container's `begin → resolve | reject` state machine and
+  decodes into `T`. Field reads (`x.data`, `x.isPending`) are `@Observable`
+  properties on iOS, Compose `MutableState` on Android.
+- **`useForm` / `usePermissions`** — `PyreonForm` (per-field
+  values/errors/touched + submit state) and `PyreonPermissions` (RBAC
+  `can`/`cannot`/`all`/`any` with `"x.*"` wildcards) ship as the same kind
+  of reactive runtime port; their compiler emit is the next increment.
+
+> Status: the `useFetch` runtime is **landed** and its compiler emit is
+> **landing**; the form / permissions runtimes are **landing**. Validation
+> and the remaining services are planned.
 
 ## Verifiable today (compile contract)
 
