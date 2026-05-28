@@ -373,6 +373,15 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 				if (pathname.startsWith("/@") || pathname.startsWith("/__"))
 					return next();
 				if (/\.\w+$/.test(pathname)) return next();
+				// W24 from chat audit — skip `/api/*` paths so user plugins that
+				// register their own dev API middleware (via `configureServer`)
+				// aren't shadowed by this 404 handler when their middleware is
+				// registered AFTER Zero's (the typical plugin order). The dev
+				// API-route dispatcher at line ~277 already handles fs-router
+				// `src/routes/api/*` paths; anything else under `/api/*` falls
+				// through to user middleware OR to Vite's terminal 404 — both
+				// of which are correct outcomes.
+				if (pathname.startsWith("/api/")) return next();
 
 				handle404(
 					server,
