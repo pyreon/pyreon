@@ -17,6 +17,7 @@ import {
   Image,
   Inline,
   Layer,
+  Modal,
   Press,
   Scroll,
   Spacer,
@@ -615,6 +616,83 @@ describe('<Spacer> — web', () => {
     expect(Math.round(rightRect.right)).toBeCloseTo(Math.round(rowRect.right), -1)
     // There's a real gap between them (the Spacer consumed it).
     expect(rightRect.left - leftRect.right).toBeGreaterThan(100)
+    unmount()
+  })
+})
+
+describe('<Modal> — web', () => {
+  it('signal-driven open enters native modal mode (top-layer); close exits', async () => {
+    const open = signal(false)
+    const { container, unmount } = mountInBrowser(
+      h(
+        Modal,
+        { open, onClose: () => open.set(false) },
+        h('button', { 'data-testid': 'inside' }, 'OK'),
+      ),
+    )
+    const dlg = container.querySelector('dialog') as HTMLDialogElement
+    expect(dlg.open).toBe(false)
+
+    // Open: showModal() puts it in the top layer + the ::backdrop appears.
+    open.set(true)
+    await flush()
+    expect(dlg.open).toBe(true)
+    // matches(':modal') is true ONLY for showModal() (not the `open` attr).
+    expect(dlg.matches(':modal')).toBe(true)
+
+    // Close via the signal.
+    open.set(false)
+    await flush()
+    expect(dlg.open).toBe(false)
+    unmount()
+  })
+
+  it('Escape routes through onClose (preventDefault keeps the signal authoritative)', async () => {
+    const open = signal(true)
+    let closes = 0
+    const { container, unmount } = mountInBrowser(
+      h(
+        Modal,
+        {
+          open,
+          onClose: () => {
+            closes++
+            open.set(false)
+          },
+        },
+        h('p', null, 'body'),
+      ),
+    )
+    const dlg = container.querySelector('dialog') as HTMLDialogElement
+    await flush()
+    expect(dlg.open).toBe(true)
+
+    // Real cancel event (what the browser fires on Escape).
+    dlg.dispatchEvent(new Event('cancel', { cancelable: true }))
+    await flush()
+    expect(closes).toBe(1)
+    // onClose flipped the signal → effect closed it.
+    expect(dlg.open).toBe(false)
+    unmount()
+  })
+
+  it('focus moves into the dialog on open (native focus trap)', async () => {
+    const open = signal(false)
+    const { container, unmount } = mountInBrowser(
+      h(
+        Modal,
+        { open, onClose: () => open.set(false) },
+        h('button', { 'data-testid': 'first' }, 'First'),
+      ),
+    )
+    const dlg = container.querySelector('dialog') as HTMLDialogElement
+    open.set(true)
+    await flush()
+    // showModal() moves focus to the first focusable descendant (or the
+    // dialog itself); either way the active element is within the dialog.
+    expect(dlg.contains(document.activeElement)).toBe(true)
+    open.set(false)
+    await flush()
     unmount()
   })
 })
