@@ -825,6 +825,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Heading') return emitKotlinHeading(e, indent)
   if (tag === 'Icon') return emitKotlinIcon(e, indent)
   if (tag === 'Image') return emitKotlinImage(e, indent)
+  if (tag === 'Modal') return emitKotlinModal(e, indent)
   if (tag === 'Press') return emitKotlinPress(e, indent)
   if (tag === 'Field') return emitKotlinField(e, indent)
   if (tag === 'Toggle') return emitKotlinToggle(e, indent)
@@ -1380,6 +1381,52 @@ function emitKotlinSpacer(
   const layoutMod = emitKotlinLayoutModifier(e)
   const modifier = `Modifier.weight(1f)${layoutMod === '' ? '' : layoutMod.replace(/^Modifier/, '')}`
   return `Spacer(modifier = ${modifier})`
+}
+
+/**
+ * Emit `<Modal open={...} onClose={...}>content</Modal>` as a Compose
+ * `Dialog`, conditionally composed behind an `if (open)` guard.
+ *
+ * Unlike SwiftUI's `.sheet(isPresented:)` (a modifier with two-way
+ * binding), Compose shows a dialog by COMPOSING it conditionally and
+ * relies on `onDismissRequest` to change the state that gates it — so
+ * there is no signal-vs-expr split here: `open` becomes the `if`
+ * condition (via `emitKotlinSignalRead`, same as `<Show when>`), and
+ * `onClose` becomes `onDismissRequest` (the consumer flips `open`).
+ * `Dialog` provides the scrim + back-press dismissal natively.
+ *
+ * `open` missing → generic fallthrough.
+ */
+function emitKotlinModal(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const openAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> =>
+      a.kind === 'attr' && a.name === 'open',
+  )
+  if (!openAttr) {
+    return emitKotlinGeneric(e, indent)
+  }
+  const cond = emitKotlinSignalRead(openAttr.value)
+  const onClose = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'close',
+  )
+  const onDismiss = onClose ? emitKotlinAction(onClose.handler, indent + 2) : '{}'
+  const dialogPad = ' '.repeat(indent + 2)
+  if (e.children.length === 0) {
+    return `if (${cond}) {\n${dialogPad}Dialog(onDismissRequest = ${onDismiss}) {}\n${' '.repeat(indent)}}`
+  }
+  const contentPad = ' '.repeat(indent + 4)
+  const contentLines = e.children.map((c) => contentPad + emitKotlinChild(c, indent + 4)).join('\n')
+  return (
+    `if (${cond}) {\n` +
+    `${dialogPad}Dialog(onDismissRequest = ${onDismiss}) {\n` +
+    `${contentLines}\n` +
+    `${dialogPad}}\n` +
+    `${' '.repeat(indent)}}`
+  )
 }
 
 /**

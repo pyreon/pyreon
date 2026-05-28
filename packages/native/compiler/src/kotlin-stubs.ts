@@ -404,6 +404,14 @@ fun Icon(
 @Suppress("UNUSED_PARAMETER")
 fun AsyncImage(model: Any?, contentDescription: String?, modifier: Modifier = Modifier) {}
 
+// Dialog — <Modal> emit's overlay composable (conditionally composed
+// behind an if (open) guard). Real Compose: androidx.compose.ui.window.Dialog.
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun Dialog(onDismissRequest: () -> Unit, content: @Composable () -> Unit) {
+  content()
+}
+
 // Arrangement — gap / placement on the main axis. The Phase B emit
 // uses Arrangement.spacedBy for canonical gap={N} prop, plus
 // Top/Start/End/Bottom as the canonical-axis defaults.
