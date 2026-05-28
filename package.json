@@ -71,6 +71,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.29.0",
+    "@pyreon/playwright-config": "workspace:*",
     "@babel/plugin-transform-react-jsx": "^7.28.6",
     "@changesets/changelog-github": "^0.6.0",
     "@changesets/cli": "^2.31.0",

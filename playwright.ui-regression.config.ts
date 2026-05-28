@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test'
+import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config'
 
 /**
  * Playwright config — `ui-showcase` real-app regression gate.
@@ -21,31 +21,9 @@ import { defineConfig } from '@playwright/test'
  *   (playground + ssr-showcase via the main config), then
  *   `bun run test:e2e:ui-regression` (this config) as a separate step.
  */
-export default defineConfig({
-  testDir: './e2e',
-  timeout: 30_000,
-  // CI: retry flaky specs (overlayfs / timing / HMR-ws / resource-
-  // contention races) so a single flake self-heals within its job; a
-  // real bug fails all attempts. Local stays 0 for honest, fast feedback.
-  retries: process.env.CI ? 2 : 0,
-  use: {
-    headless: true,
-    browserName: 'chromium',
-  },
+export default definePlaywrightConfig({
   projects: [
-    {
-      name: 'ui-showcase',
-      testMatch: /ui-showcase-regression\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5174' },
-    },
+    { name: 'ui-showcase', testMatch: /ui-showcase-regression\.spec\.ts$/, port: 5174 },
   ],
-  webServer: [
-    {
-      command:
-        'bun run --filter=@pyreon/example-ui-showcase dev -- --port 5174 --strictPort',
-      port: 5174,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
-    },
-  ],
+  webServer: [viteDevServer('@pyreon/example-ui-showcase', 5174)],
 })

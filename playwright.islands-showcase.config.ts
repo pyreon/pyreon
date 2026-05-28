@@ -1,4 +1,5 @@
-import { defineConfig, devices } from '@playwright/test'
+import { devices } from '@playwright/test'
+import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config'
 
 /**
  * Playwright config — islands-showcase (`@pyreon/islands-showcase`).
@@ -34,41 +35,20 @@ import { defineConfig, devices } from '@playwright/test'
  *   (this config) as a separate step alongside `test:e2e` and the other
  *   per-app specs.
  */
-export default defineConfig({
-  testDir: './e2e',
-  timeout: 30_000,
-  // CI: retry flaky specs (overlayfs / timing / HMR-ws / resource-
-  // contention races) so a single flake self-heals within its job; a
-  // real bug fails all attempts. Local stays 0 for honest, fast feedback.
-  retries: process.env.CI ? 2 : 0,
-  use: {
-    headless: true,
-    browserName: 'chromium',
-  },
+export default definePlaywrightConfig({
   projects: [
     {
       name: 'islands-showcase',
       testMatch: /\/islands-showcase\.spec\.ts$/,
-      use: {
-        baseURL: 'http://localhost:5182',
-        viewport: { width: 1280, height: 720 },
-      },
+      port: 5182,
+      use: { viewport: { width: 1280, height: 720 } },
     },
     {
       name: 'islands-showcase-mobile',
       testMatch: /\/islands-showcase-mobile\.spec\.ts$/,
-      use: {
-        ...devices['iPhone 12'],
-        baseURL: 'http://localhost:5182',
-      },
-    },
-  ],
-  webServer: [
-    {
-      command: 'bun run --filter=@pyreon/islands-showcase dev -- --port 5182 --strictPort',
       port: 5182,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
+      use: { ...devices['iPhone 12'] },
     },
   ],
+  webServer: [viteDevServer('@pyreon/islands-showcase', 5182)],
 })

@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test'
+import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config'
 
 /**
  * Playwright config — compat layers
@@ -38,83 +38,19 @@ import { defineConfig } from '@playwright/test'
  *   (this config) as a separate step alongside the existing
  *   `test:e2e` and `test:e2e:ui-regression` steps.
  */
-export default defineConfig({
-  testDir: './e2e',
-  timeout: 30_000,
-  // CI: retry flaky specs (overlayfs / timing / HMR-ws / resource-
-  // contention races) so a single flake self-heals within its job; a
-  // real bug fails all attempts. Local stays 0 for honest, fast feedback.
-  retries: process.env.CI ? 2 : 0,
-  use: {
-    headless: true,
-    browserName: 'chromium',
-  },
+export default definePlaywrightConfig({
   projects: [
-    {
-      // testMatch anchored on the directory separator because
-      // `react-compat.spec.ts` is a suffix of `preact-compat.spec.ts` —
-      // a bare `react-compat\.spec\.ts$` regex would pick up both.
-      name: 'react-compat',
-      testMatch: /\/react-compat\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5177' },
-    },
-    {
-      name: 'preact-compat',
-      testMatch: /\/preact-compat\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5178' },
-    },
-    {
-      name: 'vue-compat',
-      testMatch: /\/vue-compat\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5179' },
-    },
-    {
-      name: 'solid-compat',
-      testMatch: /\/solid-compat\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5180' },
-    },
-    {
-      name: 'svelte-compat',
-      testMatch: /\/svelte-compat\.spec\.ts$/,
-      // 5182: port 5181 is taken by the app-showcase e2e config.
-      use: { baseURL: 'http://localhost:5182' },
-    },
+    { name: 'react-compat', testMatch: /\/react-compat\.spec\.ts$/, port: 5177 },
+    { name: 'preact-compat', testMatch: /\/preact-compat\.spec\.ts$/, port: 5178 },
+    { name: 'vue-compat', testMatch: /\/vue-compat\.spec\.ts$/, port: 5179 },
+    { name: 'solid-compat', testMatch: /\/solid-compat\.spec\.ts$/, port: 5180 },
+    { name: 'svelte-compat', testMatch: /\/svelte-compat\.spec\.ts$/, port: 5182 },
   ],
   webServer: [
-    {
-      command:
-        'bun run --filter=@pyreon/example-react-compat dev -- --port 5177 --strictPort',
-      port: 5177,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
-    },
-    {
-      command:
-        'bun run --filter=@pyreon/example-preact-compat dev -- --port 5178 --strictPort',
-      port: 5178,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
-    },
-    {
-      command:
-        'bun run --filter=@pyreon/example-vue-compat dev -- --port 5179 --strictPort',
-      port: 5179,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
-    },
-    {
-      command:
-        'bun run --filter=@pyreon/example-solid-compat dev -- --port 5180 --strictPort',
-      port: 5180,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
-    },
-    {
-      command:
-        'bun run --filter=@pyreon/example-svelte-compat dev -- --port 5182 --strictPort',
-      port: 5182,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
-    },
+    viteDevServer('@pyreon/example-react-compat', 5177),
+    viteDevServer('@pyreon/example-preact-compat', 5178),
+    viteDevServer('@pyreon/example-vue-compat', 5179),
+    viteDevServer('@pyreon/example-solid-compat', 5180),
+    viteDevServer('@pyreon/example-svelte-compat', 5182),
   ],
 })

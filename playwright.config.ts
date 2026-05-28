@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test'
+import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config'
 
 /**
  * Playwright e2e config — runs framework-primitive e2e tests against real
@@ -78,71 +78,27 @@ import { defineConfig } from '@playwright/test'
  * (or a cached process from a prior run). Strict-port forces a fast
  * failure that's easier to diagnose.
  */
-export default defineConfig({
-  testDir: './e2e',
-  timeout: 30_000,
-  // CI: retry flaky specs (overlayfs / timing / HMR-ws / resource-
-  // contention races) so a single flake self-heals within its job; a
-  // real bug fails all attempts. Local stays 0 for honest, fast feedback.
-  retries: process.env.CI ? 2 : 0,
-  use: {
-    headless: true,
-    browserName: 'chromium',
-  },
+// Shared defaults (testDir, retries, use, reuseExistingServer, webServer
+// timeout) live in `@pyreon/playwright-config`; this config states only the
+// projects + their dev servers. ui-showcase has its own
+// `playwright.ui-regression.config.ts` (own webServer) to avoid boot-time
+// resource contention — Playwright's `webServer` array boots ALL listed
+// servers regardless of `--project`.
+export default definePlaywrightConfig({
   projects: [
-    // ── ACTIVE PROJECTS ────────────────────────────────────────────────
-    // Wired into CI via the `E2E` job in `.github/workflows/ci.yml`.
-    // playground project — narrowed to the spec files that have current
-    // selectors/assertions matching the playground example. `app.spec.ts`
-    // and `bench-compare.spec.ts` are temporarily excluded (test/example
-    // drift in app.spec.ts; bench-compare needs cross-framework apps
-    // pre-built which CI doesn't do yet). Re-enable each by adding back
-    // to this regex and verifying locally.
+    // playground — narrowed to the spec files with current selectors.
+    // `app`/`bench-compare` drift is tracked separately.
     {
       name: 'playground',
       testMatch: /e2e\/(reactivity|mount|bench|app|primitives)\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5173' },
+      port: 5173,
     },
-
-    {
-      name: 'ssr-showcase',
-      testMatch: /ssr-showcase\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5175' },
-    },
-
-    // ui-showcase project lives in `playwright.ui-regression.config.ts`
-    // (own config + own webServer to avoid boot-time resource contention).
-
-    {
-      name: 'fundamentals',
-      testMatch: /e2e\/fundamentals\/.*\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5176' },
-    },
+    { name: 'ssr-showcase', testMatch: /ssr-showcase\.spec\.ts$/, port: 5175 },
+    { name: 'fundamentals', testMatch: /e2e\/fundamentals\/.*\.spec\.ts$/, port: 5176 },
   ],
   webServer: [
-    {
-      command:
-        'bun run --filter=@pyreon/playground dev -- --port 5173 --strictPort',
-      port: 5173,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
-    },
-    {
-      command:
-        'bun run --filter=@pyreon/ssr-showcase dev -- --port 5175 --strictPort',
-      port: 5175,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
-    },
-
-    {
-      command:
-        'bun run --filter=@pyreon/fundamentals-playground dev -- --port 5176 --strictPort',
-      port: 5176,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
-    },
-
-    // ui-showcase webServer lives in `playwright.ui-regression.config.ts`.
+    viteDevServer('@pyreon/playground', 5173),
+    viteDevServer('@pyreon/ssr-showcase', 5175),
+    viteDevServer('@pyreon/fundamentals-playground', 5176),
   ],
 })

@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test'
+import { definePlaywrightConfig } from '@pyreon/playwright-config'
 
 /**
  * Playwright config — SSG i18n `prefix`-strategy real-Chromium gate
@@ -38,35 +38,19 @@ import { defineConfig } from '@playwright/test'
  * CI: `.github/workflows/ci.yml`'s `E2E` job runs this as a separate
  * step after the existing ssg-i18n step.
  */
-export default defineConfig({
-  testDir: './e2e',
+export default definePlaywrightConfig({
   timeout: 60_000,
-  // CI: retry flaky specs (overlayfs / timing / HMR-ws / resource-
-  // contention races) so a single flake self-heals within its job; a
-  // real bug fails all attempts. Local stays 0 for honest, fast feedback.
-  retries: process.env.CI ? 2 : 0,
-  use: {
-    headless: true,
-    browserName: 'chromium',
-  },
   projects: [
-    {
-      name: 'ssg-i18n-prefix',
-      testMatch: /ssg-i18n-prefix\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5200' },
-    },
+    { name: 'ssg-i18n-prefix', testMatch: /ssg-i18n-prefix\.spec\.ts$/, port: 5200 },
   ],
   webServer: [
     {
-      // `&&` chain: build the prefix-strategy dist, then serve via the
-      // directory-rewriting static server. Build exits; serve stays
-      // alive. Playwright considers the server "up" once the port
-      // responds.
+      // Build the `prefix`-strategy i18n dist, then serve via the
+      // directory-rewriting static server (see ssg-i18n for the rationale).
       command:
         'bun run --filter=@pyreon/ssr-showcase build:i18n-prefix && bun scripts/serve-ssg.ts examples/ssr-showcase/dist 5200',
       port: 5200,
       timeout: 180_000,
-      reuseExistingServer: !process.env.CI,
     },
   ],
 })

@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test'
+import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config'
 
 /**
  * Playwright config — native-todomvc-web (`@pyreon/example-native-todomvc-web`).
@@ -30,30 +30,14 @@ import { defineConfig } from '@playwright/test'
  * collisions with other configs (5181 app-showcase, 5182 islands,
  * 5198 ssg-subpath, 5199-5200 ssg-i18n variants).
  */
-export default defineConfig({
-  testDir: './e2e',
-  timeout: 30_000,
-  retries: process.env.CI ? 2 : 0,
-  use: {
-    headless: true,
-    browserName: 'chromium',
-  },
+export default definePlaywrightConfig({
   projects: [
     {
       name: 'native-todomvc-web',
       testMatch: /\/native-todomvc-web\.spec\.ts$/,
-      use: {
-        baseURL: 'http://localhost:5202',
-        viewport: { width: 1280, height: 720 },
-      },
-    },
-  ],
-  webServer: [
-    {
-      command: 'bun run --filter=@pyreon/example-native-todomvc-web dev -- --port 5202 --strictPort',
       port: 5202,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
+      use: { viewport: { width: 1280, height: 720 } },
     },
   ],
+  webServer: [viteDevServer('@pyreon/example-native-todomvc-web', 5202)],
 })

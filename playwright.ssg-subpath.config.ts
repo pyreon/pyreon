@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test'
+import { definePlaywrightConfig } from '@pyreon/playwright-config'
 
 /**
  * Playwright config — SSG subpath / base-path real-Chromium gate (PR E).
@@ -32,34 +32,19 @@ import { defineConfig } from '@playwright/test'
  * CI: `.github/workflows/ci.yml`'s `E2E` job runs this as a separate
  * step after the existing test:e2e steps.
  */
-export default defineConfig({
-  testDir: './e2e',
+export default definePlaywrightConfig({
   timeout: 60_000,
-  // CI: retry flaky specs (overlayfs / timing / HMR-ws / resource-
-  // contention races) so a single flake self-heals within its job; a
-  // real bug fails all attempts. Local stays 0 for honest, fast feedback.
-  retries: process.env.CI ? 2 : 0,
-  use: {
-    headless: true,
-    browserName: 'chromium',
-  },
   projects: [
-    {
-      name: 'ssg-subpath',
-      testMatch: /ssg-subpath\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5198' },
-    },
+    { name: 'ssg-subpath', testMatch: /ssg-subpath\.spec\.ts$/, port: 5198 },
   ],
   webServer: [
     {
-      // `&&` chain: build the subpath dist first, then preview it on a
-      // fixed port. The preview command stays alive; the build exits.
-      // Playwright considers the server "up" once the port responds.
+      // `&&` chain: build the subpath dist, then `vite preview` it (preview
+      // stays alive; build exits).
       command:
         'bun run --filter=@pyreon/ssr-showcase build:subpath && bun run --filter=@pyreon/ssr-showcase preview:subpath -- --port 5198 --strictPort',
       port: 5198,
       timeout: 180_000,
-      reuseExistingServer: !process.env.CI,
     },
   ],
 })
