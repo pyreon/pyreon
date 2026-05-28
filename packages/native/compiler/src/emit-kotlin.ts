@@ -12,6 +12,7 @@ import {
   resolveSpace,
 } from './canonical-primitives'
 import { kotlinIdent, safeIdent } from './identifier-safety'
+import { isRedirectRoute, resolveRouteTarget } from './route-ir-helpers'
 import type {
   AttrIR,
   ChildIR,
@@ -1739,7 +1740,21 @@ function emitKotlinRouteDispatch(
   lines.push(`${pad}val currentPath = router.currentPath`)
   lines.push(`${pad}when {`)
   for (const route of routes) {
-    const componentExpr = emitKotlinExpr(route.component, indent + 4)
+    // Phase 3 — resolve redirects to the route carrying a component.
+    // Dangling / cyclic redirects resolve to undefined → skip the branch
+    // (the `else` fallback handles the path as no-match).
+    const target = resolveRouteTarget(route, routes)
+    if (target === undefined || target.component === undefined) continue
+    if (isRedirectRoute(route)) {
+      // Compile-time alias: `currentPath == "/old" -> TargetComponent()`.
+      // v1 supports literal source AND literal target only.
+      if (route.path.includes(':') || target.path.includes(':')) continue
+      lines.push(
+        `${innerPad}currentPath == ${JSON.stringify(route.path)} -> ${emitKotlinExpr(target.component, indent + 4)}()`,
+      )
+      continue
+    }
+    const componentExpr = emitKotlinExpr(target.component, indent + 4)
     const isPattern = route.path.includes(':')
     if (isPattern) {
       // Param-bearing route: matchPath returns Map<String, String> or null.
