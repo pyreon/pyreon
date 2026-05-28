@@ -1,4 +1,4 @@
-// Real-Chromium browser smoke tests for the 6 proof-of-concept primitives.
+// Real-Chromium browser smoke tests for the implemented web primitives.
 //
 // Validates that each primitive renders the expected DOM shape AND
 // the token-resolved inline styles materialize as real computed
@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
-import { Button, Field, Inline, Press, Stack, Text, Toggle } from '../index'
+import { Button, Field, Inline, Layer, Press, Scroll, Spacer, Stack, Text, Toggle } from '../index'
 
 describe('<Stack> — web', () => {
   it('renders a flex column div with token-resolved gap + padding', () => {
@@ -440,6 +440,91 @@ describe('<Field> — web', () => {
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
     await flush()
     expect(submitted).toBe(1)
+    unmount()
+  })
+})
+
+describe('<Layer> — web', () => {
+  it('renders a relative grid container; align → place-items', () => {
+    const { container, unmount } = mountInBrowser(
+      h(Layer, { align: 'center', padding: 'md' }, h('span', null, 'base')),
+    )
+    const root = container.firstElementChild as HTMLDivElement
+    expect(root.tagName).toBe('DIV')
+    const cs = getComputedStyle(root)
+    expect(cs.position).toBe('relative')
+    expect(cs.display).toBe('grid')
+    expect(cs.placeItems).toContain('center')
+    expect(cs.padding).toBe('12px')
+    unmount()
+  })
+
+  it('positioning context: an absolutely-positioned child anchors to the Layer', () => {
+    const { container, unmount } = mountInBrowser(
+      h(
+        Layer,
+        { style: { width: '200px', height: '200px' } },
+        h('div', { style: 'position:absolute; top:0; left:0; width:10px; height:10px' }, ''),
+      ),
+    )
+    const root = container.firstElementChild as HTMLDivElement
+    const child = root.firstElementChild as HTMLDivElement
+    const rootRect = root.getBoundingClientRect()
+    const childRect = child.getBoundingClientRect()
+    // Child's top-left anchors to the Layer's box (relative context works).
+    expect(Math.round(childRect.left)).toBe(Math.round(rootRect.left))
+    expect(Math.round(childRect.top)).toBe(Math.round(rootRect.top))
+    unmount()
+  })
+})
+
+describe('<Scroll> — web', () => {
+  it('vertical scroller: overflow-y auto, overflow-x hidden', () => {
+    const { container, unmount } = mountInBrowser(
+      h(Scroll, { style: { height: '50px' } }, h('div', { style: 'height:500px' }, 'tall')),
+    )
+    const root = container.firstElementChild as HTMLDivElement
+    const cs = getComputedStyle(root)
+    expect(cs.overflowY).toBe('auto')
+    expect(cs.overflowX).toBe('hidden')
+    // Tall child overflows → the container is actually scrollable.
+    expect(root.scrollHeight).toBeGreaterThan(root.clientHeight)
+    unmount()
+  })
+
+  it('axis="horizontal" flips the scrolled axis', () => {
+    const { container, unmount } = mountInBrowser(
+      h(Scroll, { axis: 'horizontal' }, h('span', null, 'a')),
+    )
+    const cs = getComputedStyle(container.firstElementChild as HTMLDivElement)
+    expect(cs.overflowX).toBe('auto')
+    expect(cs.overflowY).toBe('hidden')
+    unmount()
+  })
+})
+
+describe('<Spacer> — web', () => {
+  it('grows to fill free main-axis space inside an Inline', () => {
+    const { container, unmount } = mountInBrowser(
+      h(
+        Inline,
+        { style: { width: '300px' } },
+        h(Text, { 'data-testid': 'left' }, 'L'),
+        h(Spacer, null),
+        h(Text, { 'data-testid': 'right' }, 'R'),
+      ),
+    )
+    const row = container.firstElementChild as HTMLDivElement
+    const left = row.querySelector('[data-testid="left"]') as HTMLElement
+    const right = row.querySelector('[data-testid="right"]') as HTMLElement
+    const rowRect = row.getBoundingClientRect()
+    const leftRect = left.getBoundingClientRect()
+    const rightRect = right.getBoundingClientRect()
+    // The Spacer pushes the two ends apart: left hugs the start, right hugs the end.
+    expect(Math.round(leftRect.left)).toBeCloseTo(Math.round(rowRect.left), -1)
+    expect(Math.round(rightRect.right)).toBeCloseTo(Math.round(rowRect.right), -1)
+    // There's a real gap between them (the Spacer consumed it).
+    expect(rightRect.left - leftRect.right).toBeGreaterThan(100)
     unmount()
   })
 })

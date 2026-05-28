@@ -1,4 +1,4 @@
-// Happy-DOM unit tests for the 6 web primitives.
+// Happy-DOM unit tests for the implemented web primitives.
 //
 // Browser-specific assertions (real getComputedStyle, real event
 // sequencing) live in `primitives.browser.test.tsx`; THIS file covers
@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { signal } from '@pyreon/reactivity'
-import { Button, Field, Inline, Press, Stack, Text, Toggle } from '../index'
+import { Button, Field, Inline, Layer, Press, Scroll, Spacer, Stack, Text, Toggle } from '../index'
 
 function mountTest(vnode: ReturnType<typeof h>): {
   container: HTMLDivElement
@@ -603,6 +603,135 @@ describe('<Toggle> happy-dom unit', () => {
   })
 })
 
+describe('<Layer> happy-dom unit', () => {
+  it('renders a <div> with position:relative + display:grid', () => {
+    const { container, unmount } = mountTest(h(Layer, null, h('span', null, 'a')))
+    const root = container.firstElementChild as HTMLDivElement
+    expect(root.tagName).toBe('DIV')
+    expect(root.style.position).toBe('relative')
+    expect(root.style.display).toBe('grid')
+    unmount()
+  })
+
+  it('align maps directly to grid place-items (native grid keyword)', () => {
+    const { container, unmount } = mountTest(
+      h(Layer, { align: 'center' }, h('span', null, 'a')),
+    )
+    expect((container.firstElementChild as HTMLDivElement).style.placeItems).toBe('center')
+    unmount()
+  })
+
+  it('no align prop → no place-items emitted', () => {
+    const { container, unmount } = mountTest(h(Layer, null, h('span', null, 'a')))
+    expect((container.firstElementChild as HTMLDivElement).style.placeItems).toBe('')
+    unmount()
+  })
+
+  it('BaseLayoutProps (padding/background/radius) apply', () => {
+    const { container, unmount } = mountTest(
+      h(Layer, { padding: 'md', background: 'surface', radius: 'lg' }, h('span', null, 'a')),
+    )
+    const s = (container.firstElementChild as HTMLDivElement).style
+    expect(s.padding).toBe('12px')
+    expect(s.borderRadius).toBe('16px')
+    expect(s.backgroundColor).toMatch(/rgb\(255,\s*255,\s*255\)|#ffffff/i)
+    unmount()
+  })
+
+  it('children pass through into the grid container', () => {
+    const { container, unmount } = mountTest(
+      h(Layer, null, h('span', null, 'base'), h('span', null, 'overlay')),
+    )
+    const root = container.firstElementChild as HTMLDivElement
+    expect(root.children.length).toBe(2)
+    expect(root.children[0]!.textContent).toBe('base')
+    expect(root.children[1]!.textContent).toBe('overlay')
+    unmount()
+  })
+})
+
+describe('<Scroll> happy-dom unit', () => {
+  it('vertical by default → overflow-y:auto, overflow-x:hidden', () => {
+    const { container, unmount } = mountTest(h(Scroll, null, h('span', null, 'a')))
+    const s = (container.firstElementChild as HTMLDivElement).style
+    expect(s.overflowY).toBe('auto')
+    expect(s.overflowX).toBe('hidden')
+    unmount()
+  })
+
+  it('axis="horizontal" → overflow-x:auto, overflow-y:hidden', () => {
+    const { container, unmount } = mountTest(
+      h(Scroll, { axis: 'horizontal' }, h('span', null, 'a')),
+    )
+    const s = (container.firstElementChild as HTMLDivElement).style
+    expect(s.overflowX).toBe('auto')
+    expect(s.overflowY).toBe('hidden')
+    unmount()
+  })
+
+  it('BaseLayoutProps (padding/margin) apply', () => {
+    const { container, unmount } = mountTest(
+      h(Scroll, { padding: 2, marginY: 3 }, h('span', null, 'a')),
+    )
+    const s = (container.firstElementChild as HTMLDivElement).style
+    expect(s.padding).toBe('8px')
+    expect(s.marginTop).toBe('12px')
+    expect(s.marginBottom).toBe('12px')
+    unmount()
+  })
+
+  it('children render into the scroll container', () => {
+    const { container, unmount } = mountTest(
+      h(Scroll, null, h('span', null, 'a'), h('span', null, 'b')),
+    )
+    const root = container.firstElementChild as HTMLDivElement
+    expect(root.children.length).toBe(2)
+    unmount()
+  })
+
+  it('full BaseLayoutProps surface (per-axis padding/margin + uniform margin)', () => {
+    const { container, unmount } = mountTest(
+      h(
+        Scroll,
+        { paddingX: 2, paddingY: 3, margin: 1, marginX: 4 },
+        h('span', null, 'a'),
+      ),
+    )
+    const s = (container.firstElementChild as HTMLDivElement).style
+    expect(s.paddingLeft).toBe('8px')
+    expect(s.paddingRight).toBe('8px')
+    expect(s.paddingTop).toBe('12px')
+    expect(s.paddingBottom).toBe('12px')
+    // Uniform `margin` is applied first, then `marginX` overrides L/R —
+    // the browser collapses both into the `4px 16px` shorthand (top/bottom
+    // 4px, left/right 16px). Exercises both helper branches.
+    expect(s.marginLeft).toBe('16px')
+    expect(s.marginRight).toBe('16px')
+    expect(s.marginTop).toBe('4px')
+    expect(s.marginBottom).toBe('4px')
+    unmount()
+  })
+})
+
+describe('<Spacer> happy-dom unit', () => {
+  it('renders a <div> with flex: 1 1 auto', () => {
+    const { container, unmount } = mountTest(h(Spacer, null))
+    const root = container.firstElementChild as HTMLDivElement
+    expect(root.tagName).toBe('DIV')
+    // happy-dom expands the `flex` shorthand into longhands.
+    expect(root.style.flexGrow).toBe('1')
+    expect(root.style.flexShrink).toBe('1')
+    expect(root.style.flexBasis).toBe('auto')
+    unmount()
+  })
+
+  it('renders no children (self-closing)', () => {
+    const { container, unmount } = mountTest(h(Spacer, null))
+    expect((container.firstElementChild as HTMLDivElement).children.length).toBe(0)
+    unmount()
+  })
+})
+
 describe('HTML pass-through attrs (data-* / aria-* / id / class / style)', () => {
   // Phase D follow-up — surfaced by #951's native-todomvc-web e2e gate:
   // primitives were dropping consumer's `data-testid`, `aria-*`, `id`,
@@ -699,6 +828,37 @@ describe('HTML pass-through attrs (data-* / aria-* / id / class / style)', () =>
     expect(input.tagName).toBe('INPUT')
     expect(input.getAttribute('data-testid')).toBe('my-field')
     expect(input.getAttribute('aria-describedby')).toBe('hint')
+    unmount()
+  })
+
+  it('<Layer data-testid> reaches the rendered DOM', () => {
+    const { container, unmount } = mountTest(
+      h(Layer, { 'data-testid': 'my-layer', children: 'hi' }),
+    )
+    expect((container.firstElementChild as HTMLElement).getAttribute('data-testid')).toBe(
+      'my-layer',
+    )
+    unmount()
+  })
+
+  it('<Scroll data-testid> reaches the rendered DOM', () => {
+    const { container, unmount } = mountTest(
+      h(Scroll, { 'data-testid': 'my-scroll', children: 'hi' }),
+    )
+    expect((container.firstElementChild as HTMLElement).getAttribute('data-testid')).toBe(
+      'my-scroll',
+    )
+    unmount()
+  })
+
+  it('<Spacer data-testid + style override> forward', () => {
+    const { container, unmount } = mountTest(
+      h(Spacer, { 'data-testid': 'my-spacer', style: { 'flex-grow': '0' } }),
+    )
+    const root = container.firstElementChild as HTMLElement
+    expect(root.getAttribute('data-testid')).toBe('my-spacer')
+    // Consumer override wins on conflict.
+    expect(root.style.flexGrow).toBe('0')
     unmount()
   })
 
