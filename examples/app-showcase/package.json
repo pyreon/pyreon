@@ -46,7 +46,7 @@
     "@pyreon/validation": "workspace:*",
     "@pyreon/virtual": "workspace:*",
     "@pyreon/zero": "workspace:*",
-    "zod": "~4.3.6"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@pyreon/compiler": "workspace:*",
