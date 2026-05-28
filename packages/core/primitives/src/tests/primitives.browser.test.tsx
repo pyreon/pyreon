@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { RouterProvider, createRouter } from '@pyreon/router'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import {
   Button,
@@ -17,6 +18,8 @@ import {
   Image,
   Inline,
   Layer,
+  Link,
+  Modal,
   Press,
   Scroll,
   Spacer,
@@ -615,6 +618,121 @@ describe('<Spacer> — web', () => {
     expect(Math.round(rightRect.right)).toBeCloseTo(Math.round(rowRect.right), -1)
     // There's a real gap between them (the Spacer consumed it).
     expect(rightRect.left - leftRect.right).toBeGreaterThan(100)
+    unmount()
+  })
+})
+
+describe('<Modal> — web', () => {
+  it('signal-driven open enters native modal mode (top-layer); close exits', async () => {
+    const open = signal(false)
+    const { container, unmount } = mountInBrowser(
+      h(
+        Modal,
+        { open, onClose: () => open.set(false) },
+        h('button', { 'data-testid': 'inside' }, 'OK'),
+      ),
+    )
+    const dlg = container.querySelector('dialog') as HTMLDialogElement
+    expect(dlg.open).toBe(false)
+
+    // Open: showModal() puts it in the top layer + the ::backdrop appears.
+    open.set(true)
+    await flush()
+    expect(dlg.open).toBe(true)
+    // matches(':modal') is true ONLY for showModal() (not the `open` attr).
+    expect(dlg.matches(':modal')).toBe(true)
+
+    // Close via the signal.
+    open.set(false)
+    await flush()
+    expect(dlg.open).toBe(false)
+    unmount()
+  })
+
+  it('Escape routes through onClose (preventDefault keeps the signal authoritative)', async () => {
+    const open = signal(true)
+    let closes = 0
+    const { container, unmount } = mountInBrowser(
+      h(
+        Modal,
+        {
+          open,
+          onClose: () => {
+            closes++
+            open.set(false)
+          },
+        },
+        h('p', null, 'body'),
+      ),
+    )
+    const dlg = container.querySelector('dialog') as HTMLDialogElement
+    await flush()
+    expect(dlg.open).toBe(true)
+
+    // Real cancel event (what the browser fires on Escape).
+    dlg.dispatchEvent(new Event('cancel', { cancelable: true }))
+    await flush()
+    expect(closes).toBe(1)
+    // onClose flipped the signal → effect closed it.
+    expect(dlg.open).toBe(false)
+    unmount()
+  })
+
+  it('focus moves into the dialog on open (native focus trap)', async () => {
+    const open = signal(false)
+    const { container, unmount } = mountInBrowser(
+      h(
+        Modal,
+        { open, onClose: () => open.set(false) },
+        h('button', { 'data-testid': 'first' }, 'First'),
+      ),
+    )
+    const dlg = container.querySelector('dialog') as HTMLDialogElement
+    open.set(true)
+    await flush()
+    // showModal() moves focus to the first focusable descendant (or the
+    // dialog itself); either way the active element is within the dialog.
+    expect(dlg.contains(document.activeElement)).toBe(true)
+    open.set(false)
+    await flush()
+    unmount()
+  })
+})
+
+describe('<Link> — web', () => {
+  it('internal link renders an <a> and click performs SPA navigation (no reload)', async () => {
+    const router = createRouter({
+      routes: [
+        { path: '/', component: () => h('div', null, 'home') },
+        { path: '/about', component: () => h('div', null, 'about') },
+      ],
+    })
+    const { container, unmount } = mountInBrowser(
+      h(RouterProvider, { router }, h(Link, { to: '/about', 'data-testid': 'go' }, 'About')),
+    )
+    const a = container.querySelector('a') as HTMLAnchorElement
+    expect(a.tagName).toBe('A')
+    expect(a.getAttribute('data-testid')).toBe('go')
+
+    // Drop a sentinel — a full reload would wipe it; SPA nav preserves it.
+    ;(window as unknown as { __linkSentinel?: number }).__linkSentinel = 42
+    a.click()
+    await flush()
+    // RouterLink intercepted the click and routed client-side.
+    expect(router.currentRoute().path).toBe('/about')
+    expect((window as unknown as { __linkSentinel?: number }).__linkSentinel).toBe(42)
+    delete (window as unknown as { __linkSentinel?: number }).__linkSentinel
+    unmount()
+  })
+
+  it('external link is a plain new-tab anchor (no router interception)', () => {
+    const { container, unmount } = mountInBrowser(
+      h(Link, { to: 'https://example.com', external: true }, 'Site'),
+    )
+    const a = container.querySelector('a') as HTMLAnchorElement
+    expect(a.href).toContain('https://example.com')
+    expect(a.target).toBe('_blank')
+    expect(a.rel).toBe('noopener noreferrer')
     unmount()
   })
 })

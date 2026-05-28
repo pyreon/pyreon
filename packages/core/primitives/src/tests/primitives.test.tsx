@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { signal } from '@pyreon/reactivity'
+import { RouterProvider, createRouter } from '@pyreon/router'
 import {
   Button,
   Field,
@@ -25,6 +26,8 @@ import {
   Image,
   Inline,
   Layer,
+  Link,
+  Modal,
   Press,
   Scroll,
   Spacer,
@@ -32,6 +35,29 @@ import {
   Text,
   Toggle,
 } from '../index'
+
+/** Mount a node inside a minimal RouterProvider (for `<Link>` internal). */
+function mountWithRouter(node: ReturnType<typeof h>): {
+  container: HTMLDivElement
+  unmount: () => void
+} {
+  const router = createRouter({
+    routes: [
+      { path: '/', component: () => h('div', null, 'home') },
+      { path: '/about', component: () => h('div', null, 'about') },
+    ],
+  })
+  const container = document.createElement('div')
+  document.body.appendChild(container)
+  const unmount = mount(h(RouterProvider, { router }, node), container)
+  return {
+    container,
+    unmount: () => {
+      unmount()
+      document.body.removeChild(container)
+    },
+  }
+}
 
 function mountTest(vnode: ReturnType<typeof h>): {
   container: HTMLDivElement
@@ -541,6 +567,60 @@ describe('<Press> happy-dom unit', () => {
   })
 })
 
+describe('<Link> happy-dom unit', () => {
+  it('internal link renders an <a href> via RouterLink (inside a RouterProvider)', () => {
+    const { container, unmount } = mountWithRouter(h(Link, { to: '/about' }, 'About'))
+    const a = container.querySelector('a') as HTMLAnchorElement
+    expect(a).not.toBe(null)
+    // Default router mode is hash, so the href is hash-prefixed.
+    expect(a.getAttribute('href')).toBe('#/about')
+    expect(a.textContent).toBe('About')
+    // Internal link is NOT a new-tab external anchor.
+    expect(a.getAttribute('target')).toBe(null)
+    unmount()
+  })
+
+  it('external link renders a plain <a target=_blank rel=noopener noreferrer> (no router needed)', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const unmount = mount(
+      h(Link, { to: 'https://example.com', external: true }, 'Site'),
+      container,
+    )
+    const a = container.querySelector('a') as HTMLAnchorElement
+    expect(a.getAttribute('href')).toBe('https://example.com')
+    expect(a.getAttribute('target')).toBe('_blank')
+    expect(a.getAttribute('rel')).toBe('noopener noreferrer')
+    expect(a.textContent).toBe('Site')
+    unmount()
+    document.body.removeChild(container)
+  })
+
+  it('internal link forwards data-* passthrough + style onto the anchor', () => {
+    const { container, unmount } = mountWithRouter(
+      h(Link, { to: '/about', 'data-testid': 'nav-about', style: { color: 'red' } }, 'About'),
+    )
+    const a = container.querySelector('a') as HTMLAnchorElement
+    expect(a.getAttribute('data-testid')).toBe('nav-about')
+    expect(a.style.color).toBe('red')
+    unmount()
+  })
+
+  it('external link forwards data-* passthrough onto the anchor', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const unmount = mount(
+      h(Link, { to: 'https://x.com', external: true, 'data-testid': 'ext' }, 'X'),
+      container,
+    )
+    expect(
+      (container.querySelector('a') as HTMLAnchorElement).getAttribute('data-testid'),
+    ).toBe('ext')
+    unmount()
+    document.body.removeChild(container)
+  })
+})
+
 describe('<Field> happy-dom unit', () => {
   it('renders an <input type=text> by default', () => {
     const v = signal('')
@@ -878,6 +958,91 @@ describe('<Spacer> happy-dom unit', () => {
   })
 })
 
+describe('<Modal> happy-dom unit', () => {
+  it('renders a <dialog> element with the children inside', () => {
+    const { container, unmount } = mountTest(
+      h(Modal, { open: signal(false), onClose: () => {} }, h('p', null, 'body')),
+    )
+    const dlg = container.firstElementChild as HTMLDialogElement
+    expect(dlg.tagName).toBe('DIALOG')
+    expect(dlg.querySelector('p')?.textContent).toBe('body')
+    unmount()
+  })
+
+  it('open=true → dialog is open; flipping the signal false → closed', () => {
+    const open = signal(true)
+    const { container, unmount } = mountTest(
+      h(Modal, { open, onClose: () => open.set(false) }, h('p', null, 'x')),
+    )
+    const dlg = container.firstElementChild as HTMLDialogElement
+    expect(dlg.open).toBe(true)
+    open.set(false)
+    expect(dlg.open).toBe(false)
+    unmount()
+  })
+
+  it('accepts a plain boolean `open` (value form of ValueOrSignal)', () => {
+    const { container, unmount } = mountTest(
+      h(Modal, { open: true, onClose: () => {} }, h('p', null, 'x')),
+    )
+    expect((container.firstElementChild as HTMLDialogElement).open).toBe(true)
+    unmount()
+  })
+
+  it('opening reactively (false → true) shows the dialog', () => {
+    const open = signal(false)
+    const { container, unmount } = mountTest(
+      h(Modal, { open, onClose: () => open.set(false) }, h('p', null, 'x')),
+    )
+    const dlg = container.firstElementChild as HTMLDialogElement
+    expect(dlg.open).toBe(false)
+    open.set(true)
+    expect(dlg.open).toBe(true)
+    unmount()
+  })
+
+  it('Escape (cancel event) calls onClose + preventDefault (signal stays source of truth)', () => {
+    const open = signal(true)
+    let closeCount = 0
+    const { container, unmount } = mountTest(
+      h(Modal, { open, onClose: () => closeCount++ }, h('p', null, 'x')),
+    )
+    const dlg = container.firstElementChild as HTMLDialogElement
+    const evt = new Event('cancel', { cancelable: true })
+    dlg.dispatchEvent(evt)
+    expect(closeCount).toBe(1)
+    expect(evt.defaultPrevented).toBe(true)
+    unmount()
+  })
+
+  it('backdrop click (outside the dialog box) calls onClose', () => {
+    const open = signal(true)
+    let closeCount = 0
+    const { container, unmount } = mountTest(
+      h(Modal, { open, onClose: () => closeCount++ }, h('p', null, 'x')),
+    )
+    const dlg = container.firstElementChild as HTMLDialogElement
+    // getBoundingClientRect is 0×0 in happy-dom, so any positive coord
+    // is "outside" → backdrop.
+    dlg.dispatchEvent(new MouseEvent('click', { clientX: 9999, clientY: 9999, bubbles: true }))
+    expect(closeCount).toBe(1)
+    unmount()
+  })
+
+  it('content click (inside the dialog box) does NOT call onClose', () => {
+    const open = signal(true)
+    let closeCount = 0
+    const { container, unmount } = mountTest(
+      h(Modal, { open, onClose: () => closeCount++ }, h('p', null, 'x')),
+    )
+    const dlg = container.firstElementChild as HTMLDialogElement
+    // Coord (0,0) is within the 0×0 rect (left/top/right/bottom all 0).
+    dlg.dispatchEvent(new MouseEvent('click', { clientX: 0, clientY: 0, bubbles: true }))
+    expect(closeCount).toBe(0)
+    unmount()
+  })
+})
+
 describe('HTML pass-through attrs (data-* / aria-* / id / class / style)', () => {
   // Phase D follow-up — surfaced by #951's native-todomvc-web e2e gate:
   // primitives were dropping consumer's `data-testid`, `aria-*`, `id`,
@@ -1005,6 +1170,23 @@ describe('HTML pass-through attrs (data-* / aria-* / id / class / style)', () =>
     expect((container.firstElementChild as SVGElement).getAttribute('data-testid')).toBe(
       'my-icon',
     )
+    unmount()
+  })
+
+  it('<Modal data-testid + aria-label> reach the rendered <dialog>', () => {
+    const { container, unmount } = mountTest(
+      h(Modal, {
+        'data-testid': 'my-modal',
+        'aria-label': 'Settings',
+        open: signal(false),
+        onClose: () => {},
+        children: h('p', null, 'x'),
+      }),
+    )
+    const dlg = container.firstElementChild as HTMLElement
+    expect(dlg.tagName).toBe('DIALOG')
+    expect(dlg.getAttribute('data-testid')).toBe('my-modal')
+    expect(dlg.getAttribute('aria-label')).toBe('Settings')
     unmount()
   })
 
