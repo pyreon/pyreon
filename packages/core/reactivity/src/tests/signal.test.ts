@@ -80,9 +80,17 @@ describe('signal', () => {
 
   test('subscribe disposer is safe to call multiple times', () => {
     const s = signal(0)
-    const unsub = s.subscribe(() => {})
+    let runs = 0
+    const unsub = s.subscribe(() => {
+      runs++
+    })
     unsub()
-    unsub() // should not throw
+    expect(() => unsub()).not.toThrow() // double-unsub is safe
+    // The disposer actually removed the subscriber — a double call must not
+    // corrupt the subscriber set back into a live subscription.
+    const before = runs
+    s.set(1)
+    expect(runs).toBe(before)
   })
 
   test('label getter returns name from options', () => {

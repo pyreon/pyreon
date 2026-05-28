@@ -63,8 +63,8 @@ describe('effectScope', () => {
   test('add is ignored after scope is stopped', () => {
     const scope = effectScope()
     scope.stop()
-    // Should not throw — add is silently ignored
-    scope.add({ dispose() {} })
+    // Should not throw — add is silently ignored on a stopped scope
+    expect(() => scope.add({ dispose() {} })).not.toThrow()
   })
 
   test('runInScope temporarily re-activates the scope', () => {
@@ -133,7 +133,7 @@ describe('effectScope', () => {
   test('notifyEffectRan does nothing when no update hooks', async () => {
     const scope = effectScope()
     // Should not throw — early return when _updateHooks is empty
-    scope.notifyEffectRan()
+    expect(() => scope.notifyEffectRan()).not.toThrow()
     await new Promise((r) => setTimeout(r, 10))
   })
 

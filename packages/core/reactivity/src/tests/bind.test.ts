@@ -43,7 +43,7 @@ describe('_bind (static-dep binding)', () => {
     })
 
     dispose()
-    dispose() // should not throw
+    expect(() => dispose()).not.toThrow() // calling dispose twice is a safe no-op
   })
 
   test('does not re-run after dispose even with multiple deps', () => {
