@@ -263,6 +263,22 @@ describe('Phase P2.1 — <Heading> emit (semantic heading)', () => {
     const out = tx(`<Heading color="primary">x</Heading>`, 'swift')
     expect(out).toMatch(/\.foregroundColor\(Color\(red: [\d.]+, green: [\d.]+, blue: [\d.]+\)\)/)
   })
+
+  it('Kotlin: <Heading>Title</Heading> → Text(style = MaterialTheme.typography.headlineLarge) (default level 1)', () => {
+    const out = tx(`<Heading>Title</Heading>`, 'kotlin')
+    expect(out).toContain('Text(text = "Title", style = MaterialTheme.typography.headlineLarge)')
+  })
+
+  it('Kotlin: level maps to the Material3 typography role', () => {
+    expect(tx(`<Heading level={2}>x</Heading>`, 'kotlin')).toContain('MaterialTheme.typography.headlineMedium')
+    expect(tx(`<Heading level={3}>x</Heading>`, 'kotlin')).toContain('MaterialTheme.typography.headlineSmall')
+    expect(tx(`<Heading level={6}>x</Heading>`, 'kotlin')).toContain('MaterialTheme.typography.titleSmall')
+  })
+
+  it('Kotlin: <Heading color="primary"> → color = arg', () => {
+    const out = tx(`<Heading color="primary">x</Heading>`, 'kotlin')
+    expect(out).toMatch(/color = Color\(0xFF[0-9A-F]{6}\)/)
+  })
 })
 
 describe('Phase P2.1 — <Icon> emit (SF Symbols)', () => {
@@ -280,6 +296,17 @@ describe('Phase P2.1 — <Icon> emit (SF Symbols)', () => {
     const out = tx(`<Icon name="x" color="danger" />`, 'swift')
     expect(out).toMatch(/\.foregroundColor\(Color\(red: [\d.]+, green: [\d.]+, blue: [\d.]+\)\)/)
   })
+
+  it('Kotlin: <Icon name="star" /> → Icon(imageVector = pyreonIcon("star"), contentDescription = "star")', () => {
+    const out = tx(`<Icon name="star" />`, 'kotlin')
+    expect(out).toContain('Icon(imageVector = pyreonIcon("star"), contentDescription = "star")')
+  })
+
+  it('Kotlin: size → Modifier.size; color → tint', () => {
+    expect(tx(`<Icon name="x" size="sm" />`, 'kotlin')).toContain('modifier = Modifier.size(16.dp)')
+    expect(tx(`<Icon name="x" size="lg" />`, 'kotlin')).toContain('modifier = Modifier.size(24.dp)')
+    expect(tx(`<Icon name="x" color="danger" />`, 'kotlin')).toMatch(/tint = Color\(0xFF[0-9A-F]{6}\)/)
+  })
 })
 
 describe('Phase P2.1 — <Image> emit (AsyncImage)', () => {
@@ -292,6 +319,16 @@ describe('Phase P2.1 — <Image> emit (AsyncImage)', () => {
   it('Swift: numeric width/height → .frame(width:height:)', () => {
     const out = tx(`<Image src="/a.png" alt="" width={64} height={48} />`, 'swift')
     expect(out).toContain('.frame(width: 64, height: 48)')
+  })
+
+  it('Kotlin: <Image src="/a.png" alt="a" /> → AsyncImage(model=, contentDescription=)', () => {
+    const out = tx(`<Image src="/a.png" alt="a photo" />`, 'kotlin')
+    expect(out).toContain('AsyncImage(model = "/a.png", contentDescription = "a photo")')
+  })
+
+  it('Kotlin: numeric width/height → Modifier.width/height(dp)', () => {
+    const out = tx(`<Image src="/a.png" alt="" width={64} height={48} />`, 'kotlin')
+    expect(out).toContain('modifier = Modifier.width(64.dp).height(48.dp)')
   })
 })
 
@@ -1315,6 +1352,31 @@ describe.skipIf(skipKotlincCondition)(
       if (!result.ok) {
         throw new Error(
           `P2.2 layout kotlinc validation FAILED:\n${result.error}\n\n--- emit ---\n${out}\n--- end ---`,
+        )
+      }
+      expect(result.ok).toBe(true)
+    })
+
+    it('P2.2 content primitives (Heading/Icon/Image + level/size/color/dims) typecheck', () => {
+      // Exercises the Phase P2.2 Kotlin content emit (MaterialTheme.typography,
+      // pyreonIcon → Icon, AsyncImage, Modifier.size/width/height) against the
+      // extended stubs.
+      const out = tx(
+        `<Stack>
+          <Heading>Default</Heading>
+          <Heading level={2} color="primary">Section</Heading>
+          <Heading level={6}>Small</Heading>
+          <Icon name="star" />
+          <Icon name="check" size="lg" color="danger" />
+          <Image src="/hero.png" alt="hero" width={64} height={48} />
+          <Image src="https://x/y.png" alt="" />
+        </Stack>`,
+        'kotlin',
+      )
+      const result = validateKotlin(out)
+      if (!result.ok) {
+        throw new Error(
+          `P2.2 content kotlinc validation FAILED:\n${result.error}\n\n--- emit ---\n${out}\n--- end ---`,
         )
       }
       expect(result.ok).toBe(true)
