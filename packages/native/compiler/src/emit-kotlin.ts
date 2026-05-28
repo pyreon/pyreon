@@ -819,6 +819,9 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // (token resolution, name maps) so iOS + Android stay in lockstep.
   if (tag === 'Stack') return emitKotlinStack(e, indent, /*defaultDirection*/ 'column')
   if (tag === 'Inline') return emitKotlinStack(e, indent, /*defaultDirection*/ 'row')
+  if (tag === 'Layer') return emitKotlinLayer(e, indent)
+  if (tag === 'Scroll') return emitKotlinScroll(e, indent)
+  if (tag === 'Spacer') return emitKotlinSpacer(e)
   if (tag === 'Press') return emitKotlinPress(e, indent)
   if (tag === 'Field') return emitKotlinField(e, indent)
   if (tag === 'Toggle') return emitKotlinToggle(e, indent)
@@ -1175,6 +1178,86 @@ function emitKotlinStack(
   }
   const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   return `${composable}${initSignature} {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * Map a canonical 1-D `align` to a Compose `Box` 2-D `contentAlignment`.
+ * Mirrors the Swift `ZStack(alignment:)` mapping — the web `<Layer>`
+ * maps `align` to grid `place-items` (both axes), so start → top-start,
+ * center → center, end → bottom-end; `stretch` → center (no Box analog).
+ */
+const BOX_ALIGNMENT: Record<string, string> = {
+  start: 'Alignment.TopStart',
+  center: 'Alignment.Center',
+  end: 'Alignment.BottomEnd',
+  stretch: 'Alignment.Center',
+}
+
+/**
+ * Emit `<Layer>` as Compose `Box` — children stack on the z-axis
+ * (overlay), matching the web contract + the Swift `ZStack` emit.
+ * `align` → `contentAlignment`; padding/background/radius/data-testid
+ * via `emitKotlinLayoutModifier`.
+ */
+function emitKotlinLayer(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const initArgs: string[] = []
+  const align = readStaticAttrKotlin(e, 'align')
+  if (typeof align === 'string') {
+    initArgs.push(`contentAlignment = ${BOX_ALIGNMENT[align] ?? 'Alignment.Center'}`)
+  }
+  const modifier = emitKotlinLayoutModifier(e)
+  if (modifier !== '') initArgs.push(`modifier = ${modifier}`)
+  const initSignature = initArgs.length > 0 ? `(${initArgs.join(', ')})` : ''
+  const pad = ' '.repeat(indent + 2)
+  if (e.children.length === 0) {
+    return `Box${initSignature} {}`
+  }
+  const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+  return `Box${initSignature} {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * Emit `<Scroll>` as a Compose `Column`/`Row` with a scroll modifier.
+ * `axis="horizontal"` → `Row(Modifier.horizontalScroll(rememberScrollState()))`;
+ * vertical (default) → `Column(Modifier.verticalScroll(rememberScrollState()))`.
+ * The scroll modifier leads the chain; padding/background/radius from
+ * `emitKotlinLayoutModifier` append after it (its `Modifier` prefix is
+ * stripped so the chain stays single-rooted).
+ */
+function emitKotlinScroll(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const horizontal = readStaticAttrKotlin(e, 'axis') === 'horizontal'
+  const composable = horizontal ? 'Row' : 'Column'
+  const scrollMod = horizontal
+    ? '.horizontalScroll(rememberScrollState())'
+    : '.verticalScroll(rememberScrollState())'
+  const layoutMod = emitKotlinLayoutModifier(e)
+  const modifier = `Modifier${scrollMod}${layoutMod === '' ? '' : layoutMod.replace(/^Modifier/, '')}`
+  const pad = ' '.repeat(indent + 2)
+  if (e.children.length === 0) {
+    return `${composable}(modifier = ${modifier}) {}`
+  }
+  const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+  return `${composable}(modifier = ${modifier}) {\n${contentLines}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * Emit `<Spacer />` as Compose `Spacer(Modifier.weight(1f))` — the
+ * flexible-gap primitive that pushes siblings apart in a Row/Column.
+ * Self-closing; a `data-testid` chains via `emitKotlinLayoutModifier`
+ * (its `Modifier` prefix stripped onto the weight chain).
+ */
+function emitKotlinSpacer(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+): string {
+  const layoutMod = emitKotlinLayoutModifier(e)
+  const modifier = `Modifier.weight(1f)${layoutMod === '' ? '' : layoutMod.replace(/^Modifier/, '')}`
+  return `Spacer(modifier = ${modifier})`
 }
 
 /**
