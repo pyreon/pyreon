@@ -22,4 +22,5 @@ export const tabs = [
   { id: 'rx', path: '/rx', label: 'Rx' },
   { id: 'toast', path: '/toast', label: 'Toast' },
   { id: 'dnd', path: '/dnd', label: 'DnD' },
+  { id: 'feature', path: '/feature', label: 'Feature' },
 ] as const
