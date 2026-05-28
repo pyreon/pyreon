@@ -132,17 +132,35 @@ export type DeclIR =
  * expression — bare identifier (`HomePage`), property access
  * (`pages.Home`), or even a call. Phase 0 supports identifier and
  * member shapes; other shapes fall back to literal emit (the verbatim
- * source string).
+ * source string). It is OPTIONAL because a redirect-only route
+ * (`{ path: '/', redirect: '/home' }`) carries no component of its own.
+ *
+ * `redirect` (Phase 3) is a static per-route redirect target — a literal
+ * path string. The native emit treats it as a COMPILE-TIME ALIAS: the
+ * dispatch branch for `path` renders the redirect target's component
+ * directly (no router-runtime push, fully verifiable via swiftc/kotlinc).
+ * Only literal `redirect: '<path>'` is captured here; function redirects
+ * and runtime `throw redirect()` are a later arc. Chains
+ * (`/a → /b → /c`) resolve transitively with a cycle guard; redirect
+ * source AND target must both be literal (non-`:param`) paths in v1.
  *
  * Deferred to future arcs: loader, guards, meta, middleware, children
- * (nested layouts), name. Phase C5 ships the route-resolution
- * minimum — the rest extends when a real app needs it.
+ * (nested layouts), name. The rest extends when a real app needs it.
  */
 export interface RouteIR {
   /** Literal path pattern, e.g. `/` or `/users/:id`. */
   path: string
-  /** Component to render for this route. */
-  component: ExprIR
+  /**
+   * Component to render for this route. Optional — a redirect-only route
+   * has no component (its `redirect` target supplies one).
+   */
+  component?: ExprIR
+  /**
+   * Phase 3 — static per-route redirect target (a literal path string,
+   * e.g. `{ path: '/', redirect: '/home' }`). Compile-time alias to the
+   * target route's component; see the interface doc for resolution rules.
+   */
+  redirect?: string
 }
 
 /**

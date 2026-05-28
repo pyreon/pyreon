@@ -17,6 +17,7 @@ import {
 } from './canonical-primitives'
 import { buildInferenceCtx, inferType } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
+import { isRedirectRoute, resolveRouteTarget } from './route-ir-helpers'
 import type {
   AttrIR,
   ChildIR,
@@ -1902,10 +1903,19 @@ function emitSwiftRouterProvider(
   if (routes !== undefined && routes.length > 0) {
     const homeRoute = pickHomeRoute(routes)
     if (homeRoute !== undefined) {
-      // Param-bearing home routes don't make sense (need params at launch
-      // with no source); pickHomeRoute prefers literal paths so this is
-      // typically `HomePage()` — bare call, no args.
-      _activeHomeRouteSwift = `${emitSwiftExpr(homeRoute.component, indent + 2)}()`
+      // Phase 3 — the home route may itself be a redirect
+      // (`{ path: '/', redirect: '/home' }`); resolve through the chain to
+      // the route that carries a component so launch renders the target.
+      // pickHomeRoute prefers literal paths and the resolved target must be
+      // literal too, so this is typically `HomePage()` — bare call, no args.
+      const homeTarget = resolveRouteTarget(homeRoute, routes)
+      if (
+        homeTarget !== undefined &&
+        homeTarget.component !== undefined &&
+        !homeTarget.path.includes(':')
+      ) {
+        _activeHomeRouteSwift = `${emitSwiftExpr(homeTarget.component, indent + 2)}()`
+      }
     }
   }
 
@@ -1964,15 +1974,36 @@ function emitSwiftNavigationDestination(
   const pad = ' '.repeat(indent)
   const innerPad = ' '.repeat(indent + 2)
   const branches: string[] = []
-  for (let i = 0; i < routes.length; i++) {
-    const route = routes[i]!
-    const isFirst = i === 0
-    const componentExpr = emitSwiftExpr(route.component, indent + 2)
+  // Phase 3 — track whether we've emitted any branch yet (instead of a
+  // fixed `i === 0`), because redirect routes that resolve to nothing
+  // (dangling / cyclic / param-involved) are SKIPPED, so the first
+  // *emitted* branch may not be `routes[0]`.
+  let firstBranch = true
+  for (const route of routes) {
+    // Resolve redirects to the route that actually carries a component.
+    const target = resolveRouteTarget(route, routes)
+    if (target === undefined || target.component === undefined) continue
+    const redirected = isRedirectRoute(route)
+    if (redirected) {
+      // Compile-time alias: `/old` renders the target's component directly.
+      // v1 supports literal source AND literal target only — a param in
+      // either has no value source at the alias site. Skip otherwise.
+      if (route.path.includes(':') || target.path.includes(':')) continue
+      const keyword = firstBranch ? 'if' : 'else if'
+      branches.push(
+        `${pad}${keyword} path == ${JSON.stringify(route.path)} {`,
+        `${innerPad}${emitSwiftExpr(target.component, indent + 2)}()`,
+        `${pad}}`,
+      )
+      firstBranch = false
+      continue
+    }
+    const componentExpr = emitSwiftExpr(target.component, indent + 2)
     const isPattern = route.path.includes(':')
     if (isPattern) {
       // Param-bearing route — runtime matchPath helper returns the
       // params dict OR nil. The component receives `params: [String: String]`.
-      const keyword = isFirst ? 'if' : 'else if'
+      const keyword = firstBranch ? 'if' : 'else if'
       branches.push(
         `${pad}${keyword} let params = PyreonRouter.matchPath(path, ${JSON.stringify(route.path)}) {`,
         `${innerPad}${componentExpr}(params: params)`,
@@ -1980,13 +2011,14 @@ function emitSwiftNavigationDestination(
       )
     } else {
       // Literal route — direct path comparison.
-      const keyword = isFirst ? 'if' : 'else if'
+      const keyword = firstBranch ? 'if' : 'else if'
       branches.push(
         `${pad}${keyword} path == ${JSON.stringify(route.path)} {`,
         `${innerPad}${componentExpr}()`,
         `${pad}}`,
       )
     }
+    firstBranch = false
   }
   // C5.4 — no-match fallback. SwiftUI's `.navigationDestination(for:)`
   // closure returns `some View`; without an `else` branch on the
@@ -1998,11 +2030,19 @@ function emitSwiftNavigationDestination(
   //
   // Apps that want a richer 404 page can override at the host level
   // (post-PMTC) — future Phase C5.5 ships an opt-in fallback prop.
-  branches.push(
-    `${pad}else {`,
-    `${innerPad}Text("Pyreon Router: no route for \\(path)")`,
-    `${pad}}`,
-  )
+  //
+  // When NO branch was emitted (every route skipped — all dangling /
+  // cyclic redirects), emit the fallback Text BARE (no `else`), since a
+  // lone `else` is a syntax error.
+  if (firstBranch) {
+    branches.push(`${pad}Text("Pyreon Router: no route for \\(path)")`)
+  } else {
+    branches.push(
+      `${pad}else {`,
+      `${innerPad}Text("Pyreon Router: no route for \\(path)")`,
+      `${pad}}`,
+    )
+  }
   const body = branches.join('\n')
   const modifierIndent = ' '.repeat(indent - 2)
   return `\n${modifierIndent}.navigationDestination(for: String.self) { path in\n${body}\n${modifierIndent}}`

@@ -823,8 +823,8 @@ describe('Phase C5.1 — route extraction from createRouter({routes:[…]})', ()
     `)
     const routerDecl = result.components[0]?.decls.find((d) => d.kind === 'router')
     expect(routerDecl?.routes).toHaveLength(2)
-    expect(routerDecl?.routes?.[0]?.component.kind).toBe('member')
-    expect(routerDecl?.routes?.[1]?.component.kind).toBe('member')
+    expect(routerDecl?.routes?.[0]?.component?.kind).toBe('member')
+    expect(routerDecl?.routes?.[1]?.component?.kind).toBe('member')
   })
 
   it('ignores unrecognised RouteRecord fields (name, meta, loader, etc.)', async () => {
@@ -1199,6 +1199,180 @@ describe('Phase R1.2 — Kotlin emit: when-dispatch on router.currentPath', () =
     expect(out).toContain('currentPath == "/" -> HomePage()')
     expect(out).toContain('currentPath == "/about" -> AboutPage()')
     expect(out).toContain('currentPath == "/settings" -> SettingsPage()')
+  })
+})
+
+describe('Phase 3 — per-route redirects (compile-time alias)', () => {
+  // A redirect-only route { path: '/old', redirect: '/new' } carries no
+  // component; the native emit aliases the source path's dispatch branch
+  // to the target route's component. No router-runtime push — fully
+  // verifiable via swiftc/kotlinc. Chains resolve transitively; cyclic /
+  // dangling redirects are dropped (degrade to the no-match fallback).
+
+  it('Swift: redirect source branch renders the target component', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/', component: HomePage },
+          { path: '/old', redirect: '/about' },
+          { path: '/about', component: AboutPage },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    // The /old branch aliases to AboutPage (the /about target), as a
+    // literal bare call — no redirect runtime, no params.
+    expect(out).toContain('else if path == "/old" {')
+    expect(out).toContain('else if path == "/about" {')
+    // Both /old and /about render AboutPage().
+    expect(out.match(/AboutPage\(\)/g)?.length ?? 0).toBeGreaterThanOrEqual(2)
+  })
+
+  it('Kotlin: redirect source branch renders the target component', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/', component: HomePage },
+          { path: '/old', redirect: '/about' },
+          { path: '/about', component: AboutPage },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'kotlin',
+    )
+    expect(out).toContain('currentPath == "/old" -> AboutPage()')
+    expect(out).toContain('currentPath == "/about" -> AboutPage()')
+  })
+
+  it('Swift: a `/` redirect resolves the launch home route to the target', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/', redirect: '/home' },
+          { path: '/home', component: HomePage },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    // Launch body renders the resolved target (not EmptyView, not blank).
+    expect(out).toContain('HomePage()')
+    // navigationDestination aliases / → HomePage and keeps /home.
+    expect(out).toContain('if path == "/" {')
+    expect(out).toContain('else if path == "/home" {')
+  })
+
+  it('Swift: redirect chains (/a → /b → /c) resolve transitively', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/a', redirect: '/b' },
+          { path: '/b', redirect: '/c' },
+          { path: '/c', component: SettingsPage },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    // /a and /b both alias to SettingsPage (the chain terminus).
+    expect(out).toContain('if path == "/a" {')
+    expect(out).toContain('else if path == "/b" {')
+    expect(out).toContain('else if path == "/c" {')
+    expect(out.match(/SettingsPage\(\)/g)?.length ?? 0).toBeGreaterThanOrEqual(3)
+  })
+
+  it('Kotlin: redirect chains resolve transitively', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/a', redirect: '/b' },
+          { path: '/b', redirect: '/c' },
+          { path: '/c', component: SettingsPage },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'kotlin',
+    )
+    expect(out).toContain('currentPath == "/a" -> SettingsPage()')
+    expect(out).toContain('currentPath == "/b" -> SettingsPage()')
+    expect(out).toContain('currentPath == "/c" -> SettingsPage()')
+  })
+
+  it('Swift: a skipped leading redirect leaves the next branch as `if` (not `else if`)', () => {
+    // Regression for the firstBranch refactor: when the FIRST route is a
+    // dangling redirect (skipped), the next emitted branch must still open
+    // the if/else-if chain with `if`, else the Swift is a syntax error.
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/dangling', redirect: '/nowhere' },
+          { path: '/', component: HomePage },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    expect(out).toContain('if path == "/" {')
+    expect(out).not.toContain('else if path == "/" {')
+    // The dangling redirect produced no branch.
+    expect(out).not.toContain('path == "/dangling"')
+  })
+
+  it('Swift: cyclic redirects are dropped — no branch, no crash, fallback persists', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/a', redirect: '/b' },
+          { path: '/b', redirect: '/a' },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'swift',
+    )
+    // Both cyclic routes skipped — neither emits a branch.
+    expect(out).not.toContain('path == "/a"')
+    expect(out).not.toContain('path == "/b"')
+    // The closure still returns a View (bare fallback, no lone `else`).
+    expect(out).toContain('Text("Pyreon Router: no route for')
+    expect(out).not.toContain('else {')
+  })
+
+  it('Kotlin: dangling + cyclic redirects are dropped from the when-dispatch', () => {
+    const out = txRouter(
+      `
+      const router = createRouter({
+        routes: [
+          { path: '/', component: HomePage },
+          { path: '/dangling', redirect: '/nowhere' },
+          { path: '/a', redirect: '/b' },
+          { path: '/b', redirect: '/a' },
+        ],
+      })
+      return <RouterProvider router={router}><RouterView /></RouterProvider>
+      `,
+      'kotlin',
+    )
+    // Valid literal route survives; unresolvable redirects do not.
+    expect(out).toContain('currentPath == "/" -> HomePage()')
+    expect(out).not.toContain('currentPath == "/dangling"')
+    expect(out).not.toContain('currentPath == "/a"')
+    expect(out).not.toContain('currentPath == "/b"')
+    expect(out).toContain('else -> Text(text = "Pyreon Router: no route for ${currentPath}")')
   })
 })
 

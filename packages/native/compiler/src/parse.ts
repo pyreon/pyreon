@@ -468,6 +468,7 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
     if (!elProps) return null
     let path: string | undefined
     let component: ExprIR | undefined
+    let redirect: string | undefined
     for (const p of elProps) {
       if (p?.type !== 'Property') continue
       const key = p.key?.name as string | undefined
@@ -481,12 +482,30 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
         }
       } else if (key === 'component') {
         component = parseExpr(p.value, ctx)
+      } else if (key === 'redirect') {
+        // Phase 3 — only a literal redirect target is captured. Function
+        // redirects / `throw redirect()` are a later arc; they leave
+        // `redirect` undefined here so the route still needs a component.
+        const v = p.value
+        if (
+          (v?.type === 'Literal' || v?.type === 'StringLiteral') &&
+          typeof v.value === 'string'
+        ) {
+          redirect = v.value
+        }
       }
       // Other RouteRecord fields (name, meta, loader, etc.) are
-      // intentionally ignored — Phase C5 ships path + component only.
+      // intentionally ignored — the rest extends when a real app needs it.
     }
-    if (path === undefined || component === undefined) return null
-    out.push({ path, component })
+    // A route must have a path AND either a component or a literal
+    // redirect target. Bail (whole router unresolved) otherwise.
+    if (path === undefined || (component === undefined && redirect === undefined)) {
+      return null
+    }
+    const route: RouteIR = { path }
+    if (component !== undefined) route.component = component
+    if (redirect !== undefined) route.redirect = redirect
+    out.push(route)
   }
   return out
 }
