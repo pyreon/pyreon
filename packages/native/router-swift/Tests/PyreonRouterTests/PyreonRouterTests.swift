@@ -178,6 +178,18 @@ final class PyreonRouterTests: XCTestCase {
         )
     }
 
+    /// `:name?` (trailing optional) may be present or omitted by the path.
+    func testMatchPathOptionalSegment() throws {
+        // Present → captured.
+        XCTAssertEqual(PyreonRouter.matchPath("/users/7", "/users/:id?"), ["id": "7"])
+        // Omitted → matches with the optional param absent.
+        XCTAssertEqual(PyreonRouter.matchPath("/users", "/users/:id?"), [:])
+        // A REQUIRED segment after the optional must still be present.
+        XCTAssertNil(PyreonRouter.matchPath("/users", "/users/:id?/edit"))
+        // Path longer than the full pattern never matches.
+        XCTAssertNil(PyreonRouter.matchPath("/users/7/extra", "/users/:id?"))
+    }
+
     /// Leading / trailing slashes are tolerated (empty segments filtered).
     func testMatchPathSlashTolerance() throws {
         XCTAssertEqual(PyreonRouter.matchPath("/about/", "/about"), [:])

@@ -143,6 +143,13 @@ fun main() {
         )
     }
 
+    runTest("matchPath optional :name? present or omitted") {
+        expectEq(PyreonRouter.matchPath("/users/7", "/users/:id?"), mapOf("id" to "7"), "optional present")
+        expectEq(PyreonRouter.matchPath("/users", "/users/:id?"), emptyMap(), "optional omitted")
+        expectEq(PyreonRouter.matchPath("/users", "/users/:id?/edit"), null, "required after optional missing")
+        expectEq(PyreonRouter.matchPath("/users/7/extra", "/users/:id?"), null, "longer than full pattern")
+    }
+
     runTest("matchPath tolerates leading/trailing slashes") {
         expectEq(PyreonRouter.matchPath("/about/", "/about"), emptyMap(), "trailing slash")
         expectEq(PyreonRouter.matchPath("/about", "/about/"), emptyMap(), "pattern trailing slash")
@@ -150,5 +157,5 @@ fun main() {
         expectEq(PyreonRouter.matchPath("/", "/"), emptyMap(), "root")
     }
 
-    println("[verify-kotlin] ✓ PyreonRouter smoke ${16} test(s) passed")
+    println("[verify-kotlin] ✓ PyreonRouter smoke ${17} test(s) passed")
 }

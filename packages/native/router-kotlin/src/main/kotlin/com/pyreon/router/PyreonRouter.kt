@@ -128,7 +128,9 @@ public class PyreonRouter(initialPath: List<String> = emptyList()) {
          *   - `:name*` (splat / catch-all) captures the remaining tail joined
          *     by "/"; must be the last pattern segment; matches one-or-more
          *     trailing segments (web parity: pathLen >= segCount)
-         *   - non-splat patterns require an exact segment count
+         *   - `:name?` (optional) — a TRAILING optional segment may be omitted
+         *     by the path (`/users/:id?` matches both `/users` and `/users/7`)
+         *   - non-splat / non-optional patterns require an exact segment count
          */
         public fun matchPath(path: String, pattern: String): Map<String, String>? {
             // Filter empty segments → leading/trailing slashes ignored, same
@@ -146,16 +148,26 @@ public class PyreonRouter(initialPath: List<String> = emptyList()) {
                     params[name] = pathParts.subList(i, pathParts.size).joinToString("/")
                     return params
                 }
-                if (i >= pathParts.size) return null
+                val isOptional = patternSeg.startsWith(":") && patternSeg.endsWith("?")
+                // Path exhausted at this index — OK only if optional (and so
+                // is every remaining segment, hitting this same branch).
+                if (i >= pathParts.size) {
+                    if (isOptional) continue
+                    return null
+                }
                 val pathSeg = pathParts[i]
                 if (patternSeg.startsWith(":")) {
-                    params[patternSeg.substring(1)] = pathSeg
+                    val name =
+                        if (isOptional) patternSeg.substring(1, patternSeg.length - 1)
+                        else patternSeg.substring(1)
+                    params[name] = pathSeg
                 } else if (pathSeg != patternSeg) {
                     return null
                 }
             }
-            // No splat consumed the tail — require an exact segment count.
-            if (pathParts.size != patternParts.size) return null
+            // The path may be SHORTER than the pattern only when the missing
+            // tail was all optional; it must never be LONGER.
+            if (pathParts.size > patternParts.size) return null
             return params
         }
     }

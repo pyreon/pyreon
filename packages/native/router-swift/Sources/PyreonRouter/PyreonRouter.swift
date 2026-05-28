@@ -106,7 +106,9 @@ public final class PyreonRouter {
     ///   - `:name*` (splat / catch-all) captures the remaining path tail
     ///     joined by "/"; it must be the last pattern segment and matches
     ///     one-or-more trailing segments (web parity: `pathLen >= segCount`)
-    ///   - non-splat patterns require an exact segment count
+    ///   - `:name?` (optional) — a TRAILING optional segment may be omitted
+    ///     by the path (`/users/:id?` matches both `/users` and `/users/7`)
+    ///   - non-splat / non-optional patterns require an exact segment count
     public static func matchPath(_ path: String, _ pattern: String) -> [String: String]? {
         // Filter empty subsequences → leading/trailing slashes ignored,
         // matching the web router's `.split('/').filter(Boolean)`.
@@ -122,17 +124,28 @@ public final class PyreonRouter {
                 params[name] = pathParts[i...].joined(separator: "/")
                 return params
             }
-            guard i < pathParts.count else { return nil }
+            let isOptional = patternSeg.hasPrefix(":") && patternSeg.hasSuffix("?")
+            // Path exhausted at this index — OK only if the segment is
+            // optional (and, by extension, every remaining one is too, since
+            // they all hit this same exhausted branch).
+            guard i < pathParts.count else {
+                if isOptional { continue }
+                return nil
+            }
             let pathSeg = pathParts[i]
             if patternSeg.hasPrefix(":") {
-                params[String(patternSeg.dropFirst())] = pathSeg
+                let name = isOptional
+                    ? String(patternSeg.dropFirst().dropLast())
+                    : String(patternSeg.dropFirst())
+                params[name] = pathSeg
             } else if pathSeg != patternSeg {
                 return nil
             }
         }
-        // No splat consumed the tail — require an exact segment count so a
-        // longer path (`/users/1/extra`) doesn't match `/users/:id`.
-        guard pathParts.count == patternParts.count else { return nil }
+        // No splat consumed the tail. The path may be SHORTER than the
+        // pattern only when the missing tail was all optional (handled by the
+        // exhausted-branch `continue` above); it must never be LONGER.
+        guard pathParts.count <= patternParts.count else { return nil }
         return params
     }
 }
