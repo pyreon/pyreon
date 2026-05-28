@@ -60,6 +60,44 @@ fun testFetchSuccessClearsPriorError() {
     check(f.error.value == null) { "error cleared on success" }
 }
 
+// Async-harness transitions (begin/resolve/reject) — what the emitted
+// LaunchedEffect drives directly.
+
+fun testFetchBeginEntersPending() {
+    val f = PyreonFetch<Int>()
+    f.reject(RuntimeException("prior"))
+    check(f.error.value != null) { "error set before begin" }
+    f.begin()
+    check(f.isPending.value) { "begin → isPending true" }
+    check(f.error.value == null) { "begin clears prior error" }
+}
+
+fun testFetchResolveLandsValue() {
+    val f = PyreonFetch<Int>()
+    f.begin()
+    f.resolve(99)
+    check(f.data.value == 99) { "resolve → data 99" }
+    check(f.error.value == null) { "resolve → error null" }
+    check(!f.isPending.value) { "resolve → not pending" }
+}
+
+fun testFetchRejectRecordsError() {
+    val f = PyreonFetch<Int>()
+    f.begin()
+    f.reject(RuntimeException("boom"))
+    check(f.error.value != null) { "reject → error set" }
+    check(!f.isPending.value) { "reject → not pending" }
+}
+
+fun testFetchRejectKeepsStaleData() {
+    val f = PyreonFetch<Int>()
+    f.resolve(5)
+    f.begin()
+    f.reject(RuntimeException("boom"))
+    check(f.data.value == 5) { "reject keeps prior data (stale-while-error)" }
+    check(f.error.value != null) { "reject → error set" }
+}
+
 fun main() {
     testFetchInitialState()
     testFetchLoadSuccess()
@@ -67,5 +105,9 @@ fun main() {
     testFetchRefetchReRuns()
     testFetchRefetchBeforeLoadIsNoOp()
     testFetchSuccessClearsPriorError()
+    testFetchBeginEntersPending()
+    testFetchResolveLandsValue()
+    testFetchRejectRecordsError()
+    testFetchRejectKeepsStaleData()
     println("[PyreonFetchTest] all smoke tests passed")
 }

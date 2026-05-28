@@ -77,20 +77,55 @@ public class PyreonFetch<T> {
         reload()
     }
 
-    /** Re-run the last fetcher. No-op if [load] was never called. */
+    /**
+     * Re-run the last [load] fetcher. No-op if [load] was never called
+     * (the async-harness path re-runs by re-triggering its `LaunchedEffect`,
+     * not through here).
+     */
     public fun refetch() {
         reload()
     }
 
-    private fun reload() {
-        val fetcher = lastFetcher ?: return
+    // Async-harness transitions — the compiler-emitted `LaunchedEffect`
+    // that does the suspendable network call drives the state machine
+    // through these three explicit steps, because a single synchronous
+    // `load(fetcher)` can't model "await, THEN resolve OR reject":
+    //
+    //     LaunchedEffect(Unit) {
+    //         x.begin()
+    //         try   { x.resolve(fetchAndDecode()) }
+    //         catch (e: Throwable) { x.reject(e) }
+    //     }
+
+    /** Enter the in-flight state: `isPending` true, prior `error` cleared. */
+    public fun begin() {
         isPending.value = true
         error.value = null
-        try {
-            data.value = fetcher()
-        } catch (e: Throwable) {
-            error.value = e
-        }
+    }
+
+    /** Complete with a value: set `data`, clear `error`, end pending. */
+    public fun resolve(value: T) {
+        data.value = value
+        error.value = null
         isPending.value = false
+    }
+
+    /**
+     * Complete with a failure: set `error`, end pending. Leaves any prior
+     * `data` in place (stale-while-error), matching the web contract.
+     */
+    public fun reject(failure: Throwable) {
+        error.value = failure
+        isPending.value = false
+    }
+
+    private fun reload() {
+        val fetcher = lastFetcher ?: return
+        begin()
+        try {
+            resolve(fetcher())
+        } catch (e: Throwable) {
+            reject(e)
+        }
     }
 }

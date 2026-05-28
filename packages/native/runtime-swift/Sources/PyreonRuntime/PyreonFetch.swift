@@ -61,34 +61,64 @@ public final class PyreonFetch<T> {
 
     public init() {}
 
-    /// Run `fetcher`, transitioning `isPending` → (`data` | `error`).
-    /// Retains the fetcher so `refetch()` re-runs the same request.
-    ///
-    /// The fetcher is synchronous here by design — the caller / emitted
-    /// harness performs the `await`ed network call and passes a closure
-    /// that returns the already-resolved value (or throws). The container
-    /// only owns the state machine. (Named `load`, not `run`, for parity
-    /// with the Kotlin port — Kotlin's stdlib `run` scope function would
-    /// shadow a member named `run`.)
+    // MARK: - Async-harness transitions
+    //
+    // The async path — the compiler-emitted `.task { }` that awaits the
+    // real network call — drives the state machine through these three
+    // explicit transitions, because a single synchronous `load(fetcher)`
+    // can't model "await, THEN resolve OR reject":
+    //
+    //     .task {
+    //         x.begin()
+    //         do    { x.resolve(try await fetchAndDecode()) }
+    //         catch { x.reject($0) }
+    //     }
+
+    /// Enter the in-flight state: `isPending` true, prior `error` cleared.
+    public func begin() {
+        isPending = true
+        error = nil
+    }
+
+    /// Complete with a value: set `data`, clear `error`, end pending.
+    public func resolve(_ value: T) {
+        data = value
+        error = nil
+        isPending = false
+    }
+
+    /// Complete with a failure: set `error`, end pending. Leaves any prior
+    /// `data` in place (stale-while-error), matching the web contract.
+    public func reject(_ failure: Error) {
+        error = failure
+        isPending = false
+    }
+
+    /// Run a SYNCHRONOUS `fetcher`, driving `begin` → (`resolve` | `reject`).
+    /// Retains the fetcher so `refetch()` re-runs the same request. The
+    /// async path uses `begin`/`resolve`/`reject` directly (above); `load`
+    /// is the convenience for synchronous / test fetchers. (Named `load`,
+    /// not `run`, for parity with the Kotlin port — Kotlin's stdlib `run`
+    /// scope function would shadow a member named `run`.)
     public func load(_ fetcher: @escaping () throws -> T) {
         lastFetcher = fetcher
         reload()
     }
 
-    /// Re-run the last fetcher. No-op if `run` was never called.
+    /// Re-run the last `load` fetcher. No-op if `load` was never called
+    /// (the async-harness path re-runs by re-triggering its `.task`, not
+    /// through here).
     public func refetch() {
         reload()
     }
 
     private func reload() {
         guard let fetcher = lastFetcher else { return }
-        isPending = true
-        error = nil
+        begin()
         do {
-            data = try fetcher()
+            resolve(try fetcher())
         } catch let caught {
-            error = caught
+            reject(caught)
         }
-        isPending = false
     }
 }
