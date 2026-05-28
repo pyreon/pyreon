@@ -958,6 +958,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Heading') return emitSwiftHeading(e, indent)
   if (tag === 'Icon') return emitSwiftIcon(e, indent)
   if (tag === 'Image') return emitSwiftImage(e, indent)
+  if (tag === 'Modal') return emitSwiftModal(e, indent)
   if (tag === 'Press') return emitSwiftPress(e, indent)
   if (tag === 'Field') return emitSwiftField(e, indent)
   if (tag === 'Toggle') return emitSwiftToggle(e, indent)
@@ -1548,6 +1549,76 @@ function emitSwiftImage(
     result += `.accessibilityLabel(${JSON.stringify(alt)})`
   }
   return result + emitSwiftLayoutModifiers(e)
+}
+
+/**
+ * Emit `<Modal open={...} onClose={...}>content</Modal>` as a SwiftUI
+ * `.sheet(isPresented:)` modifier attached to an `EmptyView()` host
+ * (the standalone-element analog of the declarative web `<Modal>`).
+ *
+ * Two shapes, mirroring `<Toggle>`:
+ *
+ * 1. `open={signal}` — bare signal identifier in scope. Emits the
+ *    two-way binding projection `$signal`. SwiftUI flips it to `false`
+ *    on dismiss, so the user-supplied `onClose` is REDUNDANT (dropped) —
+ *    same idiom-split rationale as Toggle's signal shape.
+ * 2. `open={expr}` — any other expression (e.g. `props.open`). Emits a
+ *    custom `Binding(get: { expr }, set: { if !$0 { onClose() } })` so
+ *    dismissal routes through the consumer's `onClose`. Requires
+ *    `onClose`; falls through to generic emit without it.
+ *
+ * iOS `.sheet` provides the focus trap + backdrop + dismissal natively,
+ * matching the web `<dialog>`-modal contract.
+ */
+function emitSwiftModal(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const openAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> =>
+      a.kind === 'attr' && a.name === 'open',
+  )
+  if (!openAttr) {
+    return emitSwiftGeneric(e, indent)
+  }
+
+  const pad = ' '.repeat(indent + 2)
+  const contentLines = e.children
+    .map((c) => pad + emitSwiftChild(c, indent + 2))
+    .join('\n')
+  const content =
+    e.children.length === 0
+      ? ' '
+      : `\n${contentLines}\n${' '.repeat(indent)}`
+
+  // Shape 1 — signal binding projection.
+  if (
+    openAttr.value.kind === 'identifier' &&
+    _signalNames.has(openAttr.value.name)
+  ) {
+    const sig = swiftIdent(openAttr.value.name)
+    return `EmptyView().sheet(isPresented: $${sig}) {${content}}${emitSwiftLayoutModifiers(e)}`
+  }
+
+  // Shape 2 — custom Binding; needs onClose for the dismiss write.
+  const onClose = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'close',
+  )
+  if (!onClose) {
+    return emitSwiftGeneric(e, indent)
+  }
+  const openExpr = emitSwiftExpr(openAttr.value, indent)
+  const closeClosure = emitSwiftAction(onClose.handler, indent + 4)
+  const closeBody = closeClosure.replace(/^\{\s*/, '').replace(/\s*\}$/, '')
+  const inner = ' '.repeat(indent + 4)
+  const bindPad = ' '.repeat(indent + 2)
+  const binding =
+    `Binding(\n` +
+    `${inner}get: { ${openExpr} },\n` +
+    `${inner}set: { if !$0 { ${closeBody} } }\n` +
+    `${bindPad})`
+  return `EmptyView().sheet(isPresented: ${binding}) {${content}}${emitSwiftLayoutModifiers(e)}`
 }
 
 /**

@@ -247,6 +247,35 @@ describe('Phase P2.1 — <Image> emit (AsyncImage)', () => {
   })
 })
 
+describe('Phase P2.1 — <Modal> emit (.sheet(isPresented:))', () => {
+  it('Swift: <Modal open={signal}> → EmptyView().sheet(isPresented: $signal) { ... }', () => {
+    const out = tx(`<Modal open={done}><Text>body</Text></Modal>`, 'swift')
+    expect(out).toMatch(/EmptyView\(\)\.sheet\(isPresented: \$done\) \{[\s\S]+Text\("body"\)/)
+  })
+
+  it('Swift: signal shape drops the redundant onClose (binding writes back)', () => {
+    const out = tx(`<Modal open={done} onClose={fn}><Text>x</Text></Modal>`, 'swift')
+    expect(out).toContain('sheet(isPresented: $done)')
+    // No custom Binding for the signal shape.
+    expect(out).not.toContain('Binding(')
+  })
+
+  it('Swift: <Modal open={props.open} onClose={onToggle}> → custom Binding routing dismiss through onClose', () => {
+    const out = txWithTodoProps(
+      `<Modal open={props.todo.done} onClose={props.onToggle}><Text>x</Text></Modal>`,
+      'swift',
+    )
+    expect(out).toContain('EmptyView().sheet(isPresented: Binding(')
+    expect(out).toMatch(/get: \{ todo\.done \}/)
+    expect(out).toMatch(/set: \{ if !\$0 \{ onToggle\(\) \} \}/)
+  })
+
+  it('Swift: non-signal open WITHOUT onClose → falls through (cant write dismiss)', () => {
+    const out = txWithTodoProps(`<Modal open={props.todo.done}><Text>x</Text></Modal>`, 'swift')
+    expect(out).not.toContain('.sheet(isPresented:')
+  })
+})
+
 describe('Phase B — <Press> emit (un-styled clickable wrapper)', () => {
   it('Swift: <Press onPress={fn}> → Button { ... } action: { fn() }.buttonStyle(.plain)', () => {
     const out = tx(`<Press onPress={fn}><Text>tap</Text></Press>`, 'swift')
