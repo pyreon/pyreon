@@ -22,11 +22,7 @@
  */
 
 import { type Computed, type Signal, computed, watch } from '@pyreon/reactivity'
-import type {
-  StandardSchemaIssue,
-  StandardSchemaResult,
-  StandardSchemaV1,
-} from './types'
+import type { StandardSchemaIssue, StandardSchemaResult, StandardSchemaV1 } from './types'
 
 /**
  * Source the validator reads. Accepts a `Signal<T>` directly OR a
@@ -135,6 +131,10 @@ export function parseReactiveAsync<S extends StandardSchemaV1<unknown, unknown>>
   schema: S,
   source: ReactiveSource<unknown>,
 ): Computed<Promise<ParseResult<unknown>>> {
+  // Intentional async computed: `read(source)` runs synchronously before the
+  // first await, so dependency tracking IS preserved; staleness is the
+  // caller's responsibility (see docstring + parseReactive for the sync form).
+  // pyreon-lint-disable-next-line pyreon/no-async-effect
   return computed<Promise<ParseResult<unknown>>>(async () => {
     const value = read(source)
     const result = schema['~standard'].validate(value)

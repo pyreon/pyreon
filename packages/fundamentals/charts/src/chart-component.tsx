@@ -72,8 +72,11 @@ export function Chart<TOption extends EChartsOption = EChartsOption>(
     const err = chart.error()
     if (err && err !== lastLoggedError) {
       lastLoggedError = err
-      // eslint-disable-next-line no-console
-      console.error('[@pyreon/charts] Chart failed to render:', err)
+      // Intentional production error log (see comment above) — deployment-time
+      // render failures must reach ops via browser devtools, so this is
+      // deliberately NOT dev-gated.
+      // pyreon-lint-disable-next-line pyreon/dev-guard-warnings
+      console.error('[@pyreon/charts] Chart failed to render:', err) // eslint-disable-line no-console
     }
   })
 
@@ -92,9 +95,7 @@ export function Chart<TOption extends EChartsOption = EChartsOption>(
           // CSS-in-style so consumers don't need our stylesheet to see the error.
           // Standard error-callout look.
         >
-          <pre
-            style="margin:0;padding:12px;background:#fff5f5;border:1px solid #ff6b6b;border-radius:4px;color:#c92a2a;font-family:ui-monospace,monospace;font-size:12px;white-space:pre-wrap;overflow:auto;max-height:100%"
-          >
+          <pre style="margin:0;padding:12px;background:#fff5f5;border:1px solid #ff6b6b;border-radius:4px;color:#c92a2a;font-family:ui-monospace,monospace;font-size:12px;white-space:pre-wrap;overflow:auto;max-height:100%">
             {message}
           </pre>
         </div>

@@ -94,6 +94,11 @@ let _initRefCount = 0
 let _disposeShared: (() => void) | null = null
 
 function _setupShared(): () => void {
+  // SSR guard: only ever called from `onMount` (browser-only), but make the
+  // browser-only contract explicit so `localStorage` / `document` /
+  // `window.matchMedia` below can never run server-side. Returns a no-op
+  // disposer on the server.
+  if (typeof window === 'undefined') return () => {}
   // Read persisted preference
   try {
     const stored = localStorage.getItem(STORAGE_KEY) as Theme | null
