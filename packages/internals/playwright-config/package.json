@@ -1,0 +1,25 @@
+{
+  "name": "@pyreon/playwright-config",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Internal Playwright config helpers — single canonical definePlaywrightConfig / viteDevServer for every root-level playwright.*.config.ts",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
+  }
+}

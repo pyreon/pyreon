@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test'
+import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config'
 
 /**
  * Playwright config — app-showcase (`@pyreon/example-app-showcase`).
@@ -33,30 +33,9 @@ import { defineConfig } from '@playwright/test'
  *   (this config) as a separate step alongside `test:e2e`,
  *   `test:e2e:ui-regression`, and `test:e2e:compat`.
  */
-export default defineConfig({
-  testDir: './e2e',
-  timeout: 30_000,
-  // CI: retry flaky specs (overlayfs / timing / HMR-ws / resource-
-  // contention races) so a single flake self-heals within its job; a
-  // real bug fails all attempts. Local stays 0 for honest, fast feedback.
-  retries: process.env.CI ? 2 : 0,
-  use: {
-    headless: true,
-    browserName: 'chromium',
-  },
+export default definePlaywrightConfig({
   projects: [
-    {
-      name: 'app-showcase',
-      testMatch: /\/app-showcase-(flow|dnd|charts)\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5181' },
-    },
+    { name: 'app-showcase', testMatch: /\/app-showcase-(flow|dnd|charts)\.spec\.ts$/, port: 5181 },
   ],
-  webServer: [
-    {
-      command: 'bun run --filter=@pyreon/example-app-showcase dev -- --port 5181 --strictPort',
-      port: 5181,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
-    },
-  ],
+  webServer: [viteDevServer('@pyreon/example-app-showcase', 5181)],
 })

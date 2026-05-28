@@ -1,0 +1,14 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // Source files use explicit `.ts` extensions in relative imports
+    // because the package is consumed from root-level `playwright.*.config.ts`
+    // files, which Playwright's config loader resolves through Node's strict
+    // ESM resolver (which requires explicit extensions). The Bundler
+    // moduleResolution + this flag let the same files typecheck.
+    "allowImportingTsExtensions": true,
+    "types": ["node"]
+  },
+  "include": ["src"]
+}

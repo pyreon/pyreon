@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test'
+import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config'
 
 /**
  * Playwright config — create-pyreon-app fixtures.
@@ -43,96 +43,23 @@ import { defineConfig } from '@playwright/test'
  *   (this config) as a separate step alongside the existing
  *   `test:e2e` / `test:e2e:ui-regression` / `test:e2e:compat` steps.
  */
-export default defineConfig({
-  testDir: './e2e',
-  timeout: 30_000,
-  // CI: retry flaky specs (overlayfs / timing / HMR-ws / resource-
-  // contention races) so a single flake self-heals within its job; a
-  // real bug fails all attempts. Local stays 0 for honest, fast feedback.
-  retries: process.env.CI ? 2 : 0,
-  use: {
-    headless: true,
-    browserName: 'chromium',
-  },
+export default definePlaywrightConfig({
   projects: [
-    {
-      name: 'cpa-app',
-      testMatch: /\/cpa-app\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5191' },
-    },
-    {
-      name: 'cpa-blog',
-      testMatch: /\/cpa-blog\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5192' },
-    },
-    {
-      name: 'cpa-dash',
-      testMatch: /\/cpa-dash\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5193' },
-    },
-    {
-      name: 'cpa-app-react-compat',
-      testMatch: /\/cpa-app-react-compat\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5194' },
-    },
-    {
-      name: 'cpa-app-vue-compat',
-      testMatch: /\/cpa-app-vue-compat\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5195' },
-    },
-    {
-      name: 'cpa-app-solid-compat',
-      testMatch: /\/cpa-app-solid-compat\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5196' },
-    },
-    {
-      name: 'cpa-app-preact-compat',
-      testMatch: /\/cpa-app-preact-compat\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5197' },
-    },
+    { name: 'cpa-app', testMatch: /\/cpa-app\.spec\.ts$/, port: 5191 },
+    { name: 'cpa-blog', testMatch: /\/cpa-blog\.spec\.ts$/, port: 5192 },
+    { name: 'cpa-dash', testMatch: /\/cpa-dash\.spec\.ts$/, port: 5193 },
+    { name: 'cpa-app-react-compat', testMatch: /\/cpa-app-react-compat\.spec\.ts$/, port: 5194 },
+    { name: 'cpa-app-vue-compat', testMatch: /\/cpa-app-vue-compat\.spec\.ts$/, port: 5195 },
+    { name: 'cpa-app-solid-compat', testMatch: /\/cpa-app-solid-compat\.spec\.ts$/, port: 5196 },
+    { name: 'cpa-app-preact-compat', testMatch: /\/cpa-app-preact-compat\.spec\.ts$/, port: 5197 },
   ],
   webServer: [
-    {
-      command: 'bun run --filter=cpa-pw-app dev -- --port 5191',
-      port: 5191,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
-    },
-    {
-      command: 'bun run --filter=cpa-pw-blog dev -- --port 5192',
-      port: 5192,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
-    },
-    {
-      command: 'bun run --filter=cpa-pw-dash dev -- --port 5193',
-      port: 5193,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
-    },
-    {
-      command: 'bun run --filter=cpa-pw-app-react dev -- --port 5194',
-      port: 5194,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
-    },
-    {
-      command: 'bun run --filter=cpa-pw-app-vue dev -- --port 5195',
-      port: 5195,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
-    },
-    {
-      command: 'bun run --filter=cpa-pw-app-solid dev -- --port 5196',
-      port: 5196,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
-    },
-    {
-      command: 'bun run --filter=cpa-pw-app-preact dev -- --port 5197',
-      port: 5197,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
-    },
+    viteDevServer('cpa-pw-app', 5191, { strictPort: false }),
+    viteDevServer('cpa-pw-blog', 5192, { strictPort: false }),
+    viteDevServer('cpa-pw-dash', 5193, { strictPort: false }),
+    viteDevServer('cpa-pw-app-react', 5194, { strictPort: false }),
+    viteDevServer('cpa-pw-app-vue', 5195, { strictPort: false }),
+    viteDevServer('cpa-pw-app-solid', 5196, { strictPort: false }),
+    viteDevServer('cpa-pw-app-preact', 5197, { strictPort: false }),
   ],
 })

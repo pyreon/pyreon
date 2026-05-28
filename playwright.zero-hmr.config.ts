@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test'
+import { definePlaywrightConfig } from '@pyreon/playwright-config'
 
 /**
  * Playwright config — Zero component-HMR real-Chromium gate.
@@ -28,68 +28,28 @@ import { defineConfig } from '@playwright/test'
  * CI: `.github/workflows/ci.yml`'s `E2E` job runs this as a separate
  * step (`bun run test:e2e:zero-hmr`).
  */
-export default defineConfig({
-  testDir: './e2e',
+export default definePlaywrightConfig({
   timeout: 60_000,
-  // CI: retry flaky specs (overlayfs / timing / HMR-ws / resource-
-  // contention races) so a single flake self-heals within its job; a
-  // real bug fails all attempts. Local stays 0 for honest, fast feedback.
-  retries: process.env.CI ? 2 : 0,
+  // The spec mutates a committed source file (and restores it) — must not
+  // run in parallel with anything sharing that file.
   workers: 1,
-  use: {
-    headless: true,
-    browserName: 'chromium',
-  },
   projects: [
-    {
-      name: 'zero-hmr',
-      testMatch: /zero-hmr\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5201' },
-    },
+    { name: 'zero-hmr', testMatch: /zero-hmr\.spec\.ts$/, port: 5201 },
   ],
   webServer: [
     {
-      // The zero-hmr gate edits a route file mid-test via a programmatic
-      // in-place writeFileSync and asserts the DOM hot-updates in place.
-      // It was a CI-ONLY failure no local run reproduced. The OS file
-      // WATCHER — not the framework HMR pipeline — was the cause, and NO
-      // watcher configuration works on the GHA Linux runner:
-      //
-      //  • GHA Linux dev FS is overlayfs, where inotify does NOT reliably
-      //    deliver `change` events for a programmatic write.
-      //  • Bun's watcher layer is independently unreliable for it.
-      //  • Vite 8 `server.watch.usePolling` is blind in this setup under
-      //    BOTH Bun and Node (proven locally — never delivers either).
-      //  • macOS fsevents happens to deliver it → the only reason any
-      //    local run passed; CI is the sole repro environment.
-      //
-      // FIX (see examples/ssr-showcase/vite.config.ts:hmrTestTrigger):
-      // remove the OS-watcher dependency. The dev-only test plugin
-      // exposes /__pyreon_hmr_touch__; the spec POSTs to it after writing
-      // the file, and it calls `server.watcher.emit('change', f)` — the
-      // exact entrypoint a real fs event uses — driving Vite's full,
-      // genuine HMR pipeline deterministically. OS / runtime / fs no
-      // longer matter for the trigger.
-      //
-      // Still run vite via NODE (not `bun run … dev`): Node is the
-      // proven-good runtime locally and avoids any Bun-specific chokidar
-      // `.emit` quirk — belt-and-braces now that the trigger is
-      // watcher-independent. `node_modules/.bin/vite` is hoisted to the
-      // workspace root by Bun's installer (verified in CI's post-`bun
-      // install` layout); the example's vite.config.ts + workspace
-      // `bun`-condition resolution work identically under Node (SSR
-      // pipeline + zero plugin chain exercised end-to-end in the
-      // confirming experiment). `cwd` points Vite at the example.
+      // Run vite via NODE (not `bun run … dev`): the only proven-reliable
+      // runtime for the HMR trigger on the GHA Linux runner (overlayfs +
+      // Bun watcher quirks make `bun … dev` flaky). `node_modules/.bin/vite`
+      // is hoisted to the workspace root by Bun's installer; `cwd` points
+      // it at the example. See examples/ssr-showcase/vite.config.ts:
+      // hmrTestTrigger — the dev-only plugin (gated on PYREON_HMR_TEST)
+      // exposes /__pyreon_hmr_touch__ so the spec drives Vite's real HMR
+      // pipeline deterministically, bypassing the flaky OS watcher.
       command: 'node ../../node_modules/.bin/vite --port 5201 --strictPort',
       cwd: 'examples/ssr-showcase',
       port: 5201,
       timeout: 180_000,
-      reuseExistingServer: !process.env.CI,
-      // Scoped to THIS gate's dev server only — the example's
-      // vite.config.ts reads it to mount the dev-only
-      // `pyreon:hmr-test-trigger` plugin (the spec POSTs to its
-      // /__pyreon_hmr_touch__ endpoint to drive Vite's real HMR pipeline
-      // deterministically, bypassing the flaky OS watcher entirely).
       env: { PYREON_HMR_TEST: '1' },
     },
   ],

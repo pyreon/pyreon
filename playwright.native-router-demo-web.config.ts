@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test'
+import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config'
 
 /**
  * Playwright config — native-router-demo-web (R1.4).
@@ -22,31 +22,14 @@ import { defineConfig } from '@playwright/test'
  *
  * Port 5203 — sits next to native-todomvc-web (5202).
  */
-export default defineConfig({
-  testDir: './e2e',
-  timeout: 30_000,
-  retries: process.env.CI ? 2 : 0,
-  use: {
-    headless: true,
-    browserName: 'chromium',
-  },
+export default definePlaywrightConfig({
   projects: [
     {
       name: 'native-router-demo-web',
       testMatch: /\/native-router-demo-web\.spec\.ts$/,
-      use: {
-        baseURL: 'http://localhost:5203',
-        viewport: { width: 1280, height: 720 },
-      },
-    },
-  ],
-  webServer: [
-    {
-      command:
-        'bun run --filter=@pyreon/example-native-router-demo-web dev -- --port 5203 --strictPort',
       port: 5203,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
+      use: { viewport: { width: 1280, height: 720 } },
     },
   ],
+  webServer: [viteDevServer('@pyreon/example-native-router-demo-web', 5203)],
 })

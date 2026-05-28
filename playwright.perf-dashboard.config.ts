@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test'
+import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config'
 
 /**
  * Playwright config — perf-dashboard (`@pyreon/example-perf-dashboard`).
@@ -19,31 +19,10 @@ import { defineConfig } from '@playwright/test'
  *     counter (or a `useFormState` regression that re-introduces the
  *     eager scan) fails CI loudly.
  */
-export default defineConfig({
-  testDir: './e2e',
+export default definePlaywrightConfig({
   timeout: 60_000,
-  // CI: retry flaky specs (overlayfs / timing / HMR-ws / resource-
-  // contention races) so a single flake self-heals within its job; a
-  // real bug fails all attempts. Local stays 0 for honest, fast feedback.
-  retries: process.env.CI ? 2 : 0,
-  use: {
-    headless: true,
-    browserName: 'chromium',
-  },
   projects: [
-    {
-      name: 'perf-dashboard',
-      testMatch: /\/perf-dashboard-.*\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5183' },
-    },
+    { name: 'perf-dashboard', testMatch: /\/perf-dashboard-.*\.spec\.ts$/, port: 5183 },
   ],
-  webServer: [
-    {
-      command:
-        'bun run --filter=@pyreon/example-perf-dashboard dev -- --port 5183 --strictPort',
-      port: 5183,
-      timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
-    },
-  ],
+  webServer: [viteDevServer('@pyreon/example-perf-dashboard', 5183)],
 })

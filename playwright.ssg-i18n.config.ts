@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test'
+import { definePlaywrightConfig } from '@pyreon/playwright-config'
 
 /**
  * Playwright config — SSG i18n route duplication real-Chromium gate
@@ -51,35 +51,20 @@ import { defineConfig } from '@playwright/test'
  * CI: `.github/workflows/ci.yml`'s `E2E` job runs this as a
  * separate step after the existing test:e2e:ssg-subpath step.
  */
-export default defineConfig({
-  testDir: './e2e',
+export default definePlaywrightConfig({
   timeout: 60_000,
-  // CI: retry flaky specs (overlayfs / timing / HMR-ws / resource-
-  // contention races) so a single flake self-heals within its job; a
-  // real bug fails all attempts. Local stays 0 for honest, fast feedback.
-  retries: process.env.CI ? 2 : 0,
-  use: {
-    headless: true,
-    browserName: 'chromium',
-  },
   projects: [
-    {
-      name: 'ssg-i18n',
-      testMatch: /ssg-i18n\.spec\.ts$/,
-      use: { baseURL: 'http://localhost:5199' },
-    },
+    { name: 'ssg-i18n', testMatch: /ssg-i18n\.spec\.ts$/, port: 5199 },
   ],
   webServer: [
     {
-      // `&&` chain: build the i18n dist first, then serve it via the
-      // directory-rewriting static server. Build exits; serve stays
-      // alive. Playwright considers the server "up" once the port
-      // responds.
+      // Build the i18n dist, then serve via the directory-rewriting static
+      // server (NOT `vite preview` — its SPA fallback would serve
+      // dist/index.html for /cs/posts instead of the prerendered file).
       command:
         'bun run --filter=@pyreon/ssr-showcase build:i18n && bun scripts/serve-ssg.ts examples/ssr-showcase/dist 5199',
       port: 5199,
       timeout: 180_000,
-      reuseExistingServer: !process.env.CI,
     },
   ],
 })
