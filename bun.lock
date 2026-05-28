@@ -381,6 +381,7 @@
         "@pyreon/core": "workspace:*",
         "@pyreon/dnd": "workspace:*",
         "@pyreon/document": "workspace:*",
+        "@pyreon/feature": "workspace:*",
         "@pyreon/flow": "workspace:*",
         "@pyreon/form": "workspace:*",
         "@pyreon/head": "workspace:*",
