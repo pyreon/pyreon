@@ -441,7 +441,56 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     }
     return { kind: 'fetch', name, type, url: urlArg.value }
   }
+  // Phase 4.2 — `useForm({ initialValues })` from @pyreon/form. The config
+  // arg is optional; when present we capture the string-keyed literal
+  // `initialValues` to seed the native PyreonForm container. `onSubmit` /
+  // `validators` are web-only function logic — ignored on native (submission
+  // flows through the container's begin/endSubmit API). Always succeeds
+  // (no bail): a bare `useForm()` or an unrecognised config shape yields an
+  // empty `initialValues`, and the emit produces a default-constructed form.
+  if (calleeName === 'useForm') {
+    return { kind: 'form', name, initialValues: tryExtractFormInitialValues(init.arguments?.[0]) }
+  }
   return null
+}
+
+/**
+ * Phase 4.2 — pull the literal `initialValues` map out of a
+ * `useForm({ initialValues: { email: 'a@b.com' } })` config. Returns the
+ * string-keyed string-literal pairs; everything else (missing config,
+ * non-object `initialValues`, non-string entries) is silently dropped so
+ * the caller always gets a (possibly empty) array — `useForm` never bails.
+ */
+function tryExtractFormInitialValues(
+  arg: AnyNode | undefined,
+): { key: string; value: string }[] {
+  if (!arg || arg.type !== 'ObjectExpression') return []
+  const props = arg.properties as AnyNode[] | undefined
+  if (!props) return []
+  const ivProp = props.find(
+    (p) =>
+      p?.type === 'Property' &&
+      p?.key?.type === 'Identifier' &&
+      p?.key?.name === 'initialValues',
+  )
+  if (!ivProp || ivProp.value?.type !== 'ObjectExpression') return []
+  const out: { key: string; value: string }[] = []
+  for (const p of (ivProp.value.properties as AnyNode[] | undefined) ?? []) {
+    if (p?.type !== 'Property') continue
+    // Object keys are Identifiers (`email:`) or string literals (`'email':`).
+    const key =
+      (p.key?.type === 'Identifier' ? (p.key.name as string) : undefined) ??
+      (typeof p.key?.value === 'string' ? (p.key.value as string) : undefined)
+    const v = p.value
+    if (
+      key !== undefined &&
+      (v?.type === 'Literal' || v?.type === 'StringLiteral') &&
+      typeof v.value === 'string'
+    ) {
+      out.push({ key, value: v.value })
+    }
+  }
+  return out
 }
 
 /**
