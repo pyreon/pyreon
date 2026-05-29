@@ -198,4 +198,40 @@ final class PyreonRouterTests: XCTestCase {
         // Root matches root.
         XCTAssertEqual(PyreonRouter.matchPath("/", "/"), [:])
     }
+
+    // MARK: - loaderData / useLoaderData (Phase 3 loaders runtime contract)
+
+    private struct LoadedUser: Equatable {
+        let name: String
+    }
+
+    /// `setLoaderData` stores by path; `useLoaderData` reads the current
+    /// route's entry, typed via the generic cast.
+    func testUseLoaderDataReadsCurrentRoute() throws {
+        let router = PyreonRouter(initialPath: ["/users/7"])
+        router.setLoaderData("/users/7", LoadedUser(name: "Ada"))
+        let user: LoadedUser? = useLoaderData(router: router)
+        XCTAssertEqual(user, LoadedUser(name: "Ada"))
+    }
+
+    /// No data for the current path → nil (defensive default).
+    func testUseLoaderDataMissingReturnsNil() throws {
+        let router = PyreonRouter(initialPath: ["/users/7"])
+        let user: LoadedUser? = useLoaderData(router: router)
+        XCTAssertNil(user)
+    }
+
+    /// A type mismatch casts to nil rather than crashing.
+    func testUseLoaderDataTypeMismatchReturnsNil() throws {
+        let router = PyreonRouter(initialPath: ["/x"])
+        router.setLoaderData("/x", "a string, not a LoadedUser")
+        let user: LoadedUser? = useLoaderData(router: router)
+        XCTAssertNil(user)
+    }
+
+    /// A nil router → nil (no provider / hand-rolled call site).
+    func testUseLoaderDataNilRouterReturnsNil() throws {
+        let user: LoadedUser? = useLoaderData(router: nil)
+        XCTAssertNil(user)
+    }
 }

@@ -45,6 +45,14 @@ public final class PyreonRouter {
     /// no-op behaviour.
     public var params: [String: String] = [:]
 
+    /// Phase 3 (loaders) — per-route loaded data, keyed by full path. A
+    /// route's loader stores its result here on navigation; `useLoaderData()`
+    /// reads the current path's entry. Type-erased (`Any`) because loader
+    /// payloads are per-route; `useLoaderData<T>()` casts to the expected type.
+    /// Empty until a loader harness populates it (the harness emit is a
+    /// follow-up — this is the runtime contract it targets).
+    public var loaderData: [String: Any] = [:]
+
     /// Construct with an initial path stack. Most apps pass `[]`
     /// (NavigationStack starts at its root view) or `["/"]` for an
     /// explicit root segment.
@@ -75,6 +83,14 @@ public final class PyreonRouter {
     public func back() {
         guard !self.path.isEmpty else { return }
         self.path.removeLast()
+    }
+
+    /// Store a route's loaded data under its path. Called by the loader
+    /// harness the compiler emits; idempotent overwrite. Mutating `loaderData`
+    /// triggers SwiftUI observation so views reading `useLoaderData()`
+    /// re-render when the data arrives.
+    public func setLoaderData(_ path: String, _ value: Any) {
+        loaderData[path] = value
     }
 
     /// Clear the entire path stack — navigates back to the root view.
