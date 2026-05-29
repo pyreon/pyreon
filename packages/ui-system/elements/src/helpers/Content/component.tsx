@@ -13,6 +13,7 @@ import { h, splitProps } from '@pyreon/core'
 import type { ComponentFn, VNodeChildAtom } from '@pyreon/core'
 import { render } from '@pyreon/ui-core'
 import { IS_DEVELOPMENT } from '../../utils'
+import { internElementBundle } from '../internElementBundle'
 import { isPyreonComponent } from '../isPyreonComponent'
 import Styled from './styled'
 import type { Props } from './types'
@@ -54,7 +55,15 @@ const Component = (props: Partial<Props>) => {
       }
     : {}
 
-  const stylingProps = {
+  // Route the bundle through `internElementBundle` so identical primitive
+  // tuples share one object identity and the styler's `elClassCache` HITS —
+  // exactly what the Element fast path + Wrapper's 4 paths already do. Without
+  // it, every Content slot (the compound before/after-content path) allocated
+  // a fresh `$element` per mount → guaranteed `elClassCache` miss → full
+  // `styler.resolve` per slot per mount. `internElementBundle` bails (returns
+  // the input unchanged) when any value is a function/object — so the
+  // `extraStyles` (CSSResult/callback) case keeps today's behavior exactly.
+  const stylingProps = internElementBundle({
     contentType: own.contentType,
     parentDirection: own.parentDirection,
     direction: own.direction,
@@ -63,7 +72,7 @@ const Component = (props: Partial<Props>) => {
     equalCols: own.equalCols,
     gap: own.gap,
     extraStyles: own.extendCss,
-  }
+  })
 
   return (
     <Styled as={own.tag} $contentType={own.contentType} $element={stylingProps} {...debugProps} {...rest}>
