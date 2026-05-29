@@ -566,7 +566,12 @@ function searchCandidates(
     if (!f) continue
     const params = matchFlattened(f, pathParts, pathLen)
     if (params) {
-      return { params, matched: f.matchedChain }
+      // Carry the pre-merged `f.meta` (computed ONCE at flatten time, byte-for-
+      // byte equal to `mergeMeta(f.matchedChain)`) so the dynamic-route paths in
+      // resolveRoute reuse it instead of re-running `mergeMeta` (a fresh alloc +
+      // a per-record Object.assign loop) on every navigation — matching what the
+      // static/wildcard fast paths already do.
+      return { params, matched: f.matchedChain, meta: f.meta }
     }
   }
   return null
@@ -577,6 +582,8 @@ function searchCandidates(
 interface MatchResult {
   params: Record<string, string>
   matched: RouteRecord[]
+  /** Pre-merged route meta from the matched FlattenedRoute (cached, not re-merged) */
+  meta: RouteMeta
 }
 
 /**
@@ -629,7 +636,7 @@ export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRo
           query,
           hash,
           matched: match.matched,
-          meta: mergeMeta(match.matched),
+          meta: match.meta,
           search: runValidateSearch(match.matched, query),
         }
       }
@@ -645,7 +652,7 @@ export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRo
       query,
       hash,
       matched: dynMatch.matched,
-      meta: mergeMeta(dynMatch.matched),
+      meta: dynMatch.meta,
       search: runValidateSearch(dynMatch.matched, query),
     }
   }
