@@ -1975,6 +1975,17 @@
         "vite": "^8.0.14",
       },
     },
+    "packages/zero/create-multiplatform": {
+      "name": "@pyreon/create-multiplatform",
+      "version": "0.0.0",
+      "bin": {
+        "create-multiplatform": "./bin/create-multiplatform.js",
+      },
+      "devDependencies": {
+        "@pyreon/native-compiler": "workspace:*",
+        "@pyreon/vitest-config": "workspace:*",
+      },
+    },
     "packages/zero/create-zero": {
       "name": "@pyreon/create-zero",
       "version": "0.25.1",
@@ -2691,6 +2702,8 @@
     "@pyreon/coolgrid": ["@pyreon/coolgrid@workspace:packages/ui-system/coolgrid"],
 
     "@pyreon/core": ["@pyreon/core@workspace:packages/core/core"],
+
+    "@pyreon/create-multiplatform": ["@pyreon/create-multiplatform@workspace:packages/zero/create-multiplatform"],
 
     "@pyreon/create-zero": ["@pyreon/create-zero@workspace:packages/zero/create-zero"],
 
