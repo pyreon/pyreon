@@ -454,6 +454,13 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   if (d.kind === 'network-status') {
     return `val ${kotlinIdent(d.name)} = remember { PyreonNetworkStatus() }`
   }
+  // Phase 3: `const { id } = useParams()` → one `val` per field, each reading
+  // the active router's params map (useParams() reads LocalPyreonRouter).
+  if (d.kind === 'params-destructure') {
+    return d.params
+      .map((p) => `val ${kotlinIdent(p.local)} = useParams()[${JSON.stringify(p.key)}] ?: ""`)
+      .join('\n  ')
+  }
   // C4: router hook — `const navigate = useNavigate()` → as-is.
   // Compose's `useNavigate()` is a `@Composable` function that reads
   // `LocalPyreonRouter.current` directly via CompositionLocal — no

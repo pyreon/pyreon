@@ -335,6 +335,9 @@ function emitSwiftComponent(c: ComponentIR): string {
       _usesRouter = true
       if (d.hook === 'navigate') _functionNames.add(d.name)
     }
+    // Phase 3: `const { id } = useParams()` reads via useParams(router:),
+    // so the View needs the @Environment(\.pyreonRouter) injection.
+    if (d.kind === 'params-destructure') _usesRouter = true
   }
   const lines: string[] = []
   // `swiftIdent` backtick-escapes Swift-reserved keywords. Pyreon
@@ -506,6 +509,20 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
   // `net.isOnline` read is a plain @Observable property (no rewrite on Swift).
   if (d.kind === 'network-status') {
     return `@State private var ${swiftIdent(d.name)} = PyreonNetworkStatus()`
+  }
+  // Phase 3: `const { id } = useParams()` → one COMPUTED property per field,
+  // each reading the active router's params map. MUST be computed (not stored
+  // `let`): the initializer references `pyreonRouter` (@Environment), which
+  // isn't readable at stored-property-init time — same constraint the
+  // useNavigate/useParams router-hook emit documents above. Multi-field
+  // destructures emit one line each (caller indents the first; rest self-indent).
+  if (d.kind === 'params-destructure') {
+    return d.params
+      .map(
+        (p) =>
+          `private var ${swiftIdent(p.local)}: String { useParams(router: pyreonRouter)[${JSON.stringify(p.key)}] ?? "" }`,
+      )
+      .join('\n  ')
   }
   // computed — infer the return type from the expression body so we
   // can emit a typed computed property. Falls back to `Any` for cases
