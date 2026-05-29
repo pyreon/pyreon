@@ -527,7 +527,17 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
       p?.key?.name === 'routes',
   )
   if (!routesProp) return null
-  const arr = routesProp.value
+  return parseRouteArray(routesProp.value, ctx)
+}
+
+/**
+ * Parse a literal array of route-config objects into RouteIR[]. Shared by
+ * the top-level `routes:` extraction and the nested `children:` recursion
+ * (Phase 3 nested routes). Conservative: any non-literal / wrong-shape
+ * element bails the WHOLE array to null (the compiler never emits a partial
+ * route table) — same discipline as the original tryExtractRoutes.
+ */
+function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | null {
   if (!arr || arr.type !== 'ArrayExpression') return null
   const out: RouteIR[] = []
   for (const el of (arr.elements as AnyNode[] | undefined) ?? []) {
@@ -538,6 +548,7 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
     let component: ExprIR | undefined
     let redirect: string | undefined
     let guard: ExprIR | undefined
+    let children: RouteIR[] | undefined
     for (const p of elProps) {
       if (p?.type !== 'Property') continue
       const key = p.key?.name as string | undefined
@@ -571,19 +582,29 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
         if (v?.type === 'ArrowFunctionExpression' && v.body && v.body.type !== 'BlockStatement') {
           guard = parseExpr(v.body, ctx)
         }
+      } else if (key === 'children') {
+        // Phase 3 nested routes — recurse into the child array. A non-literal
+        // / wrong-shape children array yields null → treated as no children
+        // (the parent still needs its own component to render something).
+        const parsed = parseRouteArray(p.value, ctx)
+        if (parsed !== null && parsed.length > 0) children = parsed
       }
       // Other RouteRecord fields (name, meta, loader, etc.) are
       // intentionally ignored — the rest extends when a real app needs it.
     }
-    // A route must have a path AND either a component or a literal
-    // redirect target. Bail (whole router unresolved) otherwise.
-    if (path === undefined || (component === undefined && redirect === undefined)) {
+    // A route must render SOMETHING: its own component, a redirect target,
+    // OR child routes (a pure layout grouping with no index component).
+    if (
+      path === undefined ||
+      (component === undefined && redirect === undefined && children === undefined)
+    ) {
       return null
     }
     const route: RouteIR = { path }
     if (component !== undefined) route.component = component
     if (redirect !== undefined) route.redirect = redirect
     if (guard !== undefined) route.guard = guard
+    if (children !== undefined) route.children = children
     out.push(route)
   }
   return out

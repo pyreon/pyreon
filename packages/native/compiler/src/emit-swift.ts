@@ -17,7 +17,14 @@ import {
 } from './canonical-primitives'
 import { buildInferenceCtx, inferType } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
-import { isRedirectRoute, isWildcardRoute, resolveRouteTarget } from './route-ir-helpers'
+import {
+  type FlatRouteEntry,
+  flattenRouteTree,
+  hasNestedRoutes,
+  isRedirectRoute,
+  isWildcardRoute,
+  resolveRouteTarget,
+} from './route-ir-helpers'
 import type {
   AttrIR,
   ChildIR,
@@ -130,6 +137,40 @@ let _routerRoutes: Map<string, import('./types').RouteIR[]> = new Map()
  */
 let _activeHomeRouteSwift: string | null = null
 
+/**
+ * Phase 3 (nested routes) — names of components used as LAYOUT parents
+ * (they appear in some route's `layoutChain`). A layout component is emitted
+ * as a generic `struct X<Content: View>: View` with a `@ViewBuilder content`
+ * slot, and its internal `<RouterView />` becomes `content()`. Computed once
+ * per `emitSwift` call (pre-pass over all components' router decls), read by
+ * `emitSwiftComponent`.
+ */
+let _layoutComponentNames: Set<string> = new Set()
+/** True while emitting a layout component's body, so its `<RouterView />`
+ * emits `content()` (the child slot) instead of the scaffold `RouterView()`. */
+let _emittingLayoutComponentSwift = false
+
+/**
+ * Pre-pass: collect every component name that appears as a LAYOUT parent in
+ * any router-decl's nested route tree. A layout is an ExprIR identifier in a
+ * flattened entry's `layoutChain`.
+ */
+function collectLayoutComponentNames(components: ComponentIR[]): Set<string> {
+  const names = new Set<string>()
+  for (const c of components) {
+    for (const d of c.decls) {
+      if (d.kind !== 'router' || d.routes === undefined) continue
+      if (!hasNestedRoutes(d.routes)) continue
+      for (const entry of flattenRouteTree(d.routes)) {
+        for (const layout of entry.layoutChain) {
+          if (layout.kind === 'identifier') names.add(layout.name)
+        }
+      }
+    }
+  }
+  return names
+}
+
 export function emitSwift(
   components: ComponentIR[],
   enums: EnumIR[] = [],
@@ -148,6 +189,8 @@ export function emitSwift(
   // Build the user-component name set so emitSwiftGeneric can include
   // event handlers as constructor args for user-defined components.
   _componentNames = new Set(components.map((c) => c.name))
+  // Phase 3 — pre-pass: which components are layout parents (nested routes)?
+  _layoutComponentNames = collectLayoutComponentNames(components)
   const parts: string[] = []
   for (const e of enums) parts.push(emitSwiftEnum(e))
   for (const s of structs) parts.push(emitSwiftStruct(s))
@@ -156,6 +199,7 @@ export function emitSwift(
   _enumNames = new Set()
   _structFieldsToName = new Map()
   _componentNames = new Set()
+  _layoutComponentNames = new Set()
   return parts.join('\n\n')
 }
 
@@ -298,12 +342,23 @@ function emitSwiftComponent(c: ComponentIR): string {
   // convention) and accepts `class` as a prop name (React/HTML attr);
   // both crash swiftc as bare identifiers. Backticks let Swift treat
   // the colliding name as a normal identifier (`struct \`guard\`: View`).
-  lines.push(`struct ${swiftIdent(c.name)}: View {`)
+  // Phase 3 (nested routes) — a LAYOUT component (a route parent) is emitted
+  // as a generic struct with a `@ViewBuilder content` slot; its internal
+  // `<RouterView />` becomes `content()` so the matched child fills it.
+  const isLayout = _layoutComponentNames.has(c.name)
+  if (isLayout) {
+    lines.push(`struct ${swiftIdent(c.name)}<Content: View>: View {`)
+  } else {
+    lines.push(`struct ${swiftIdent(c.name)}: View {`)
+  }
   // Props become `let X: T` stored properties on the SwiftUI View struct.
   // SwiftUI canonical pattern — parent code constructs `Card(title: ...)`,
   // props are immutable per instance.
   for (const p of c.props) {
     lines.push(`  let ${swiftIdent(p.name)}: ${swiftType(p.type)}`)
+  }
+  if (isLayout) {
+    lines.push(`  @ViewBuilder var content: () -> Content`)
   }
   // C4: when the component uses router hooks (useNavigate/useParams),
   // inject the SwiftUI Environment property so the hook call sites can
@@ -320,7 +375,10 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(`  ${emitSwiftDecl(d, inferCtx)}`)
   }
   lines.push(`  var body: some View {`)
+  // While emitting a layout's body, its `<RouterView />` emits `content()`.
+  _emittingLayoutComponentSwift = isLayout
   lines.push(`    ${emitSwiftExpr(c.returnExpr, 4)}`)
+  _emittingLayoutComponentSwift = false
   // Phase 4: append a mount-time `.task { }` per useFetch decl. SwiftUI
   // runs `.task` when the view appears (the natural async-on-mount hook);
   // it drives the PyreonFetch state machine via begin → resolve|reject,
@@ -2029,7 +2087,7 @@ function emitSwiftRouterProvider(
         homeTarget.component !== undefined &&
         !homeTarget.path.includes(':')
       ) {
-        _activeHomeRouteSwift = `${emitSwiftExpr(homeTarget.component, indent + 2)}()`
+        _activeHomeRouteSwift = emitSwiftLayoutAwareInvocation(homeTarget.component, indent + 2)
       }
     }
   }
@@ -2090,6 +2148,12 @@ function emitSwiftNavigationDestination(
   routes: import('./types').RouteIR[],
   indent: number,
 ): string {
+  // Phase 3 (nested routes) — when the table nests, dispatch on FULL paths
+  // and wrap each leaf in its layout chain via content-closures. Flat tables
+  // keep the original (unchanged) dispatch below — zero regression.
+  if (hasNestedRoutes(routes)) {
+    return emitSwiftNestedNavigationDestination(routes, indent)
+  }
   const pad = ' '.repeat(indent)
   const innerPad = ' '.repeat(indent + 2)
   const branches: string[] = []
@@ -2196,6 +2260,118 @@ function emitSwiftNavigationDestination(
 }
 
 /**
+ * Phase 3 (nested routes) — dispatch over a FLATTENED tree. Each leaf renders
+ * `Outer { Inner { Leaf() } }` (the layout chain wrapping the leaf via the
+ * content-closure each layout was emitted with). Literal full paths use
+ * `path == "..."`; the rare top-level `:param` entry keeps the matchPath shape.
+ * The catch-all wildcard (top-level) supplies the else-fallback, mirroring the
+ * flat dispatch.
+ */
+/**
+ * Invoke a component, supplying an EMPTY content slot when it's a layout
+ * (layouts are emitted with a required `@ViewBuilder content` arg, so a bare
+ * `Layout()` won't compile). A layout rendered as its own index / home shows
+ * its chrome with an empty child slot.
+ */
+function emitSwiftLayoutAwareInvocation(component: ExprIR, indent: number): string {
+  const expr = emitSwiftExpr(component, indent)
+  if (component.kind === 'identifier' && _layoutComponentNames.has(component.name)) {
+    return `${expr} { EmptyView() }`
+  }
+  return `${expr}()`
+}
+
+function emitSwiftNestedNavigationDestination(
+  routes: import('./types').RouteIR[],
+  indent: number,
+): string {
+  const pad = ' '.repeat(indent)
+  const innerPad = ' '.repeat(indent + 2)
+  const entries: FlatRouteEntry[] = flattenRouteTree(routes)
+  const wildcardRoute = routes.find(isWildcardRoute)
+  const wildcardComponent =
+    wildcardRoute !== undefined ? resolveRouteTarget(wildcardRoute, routes)?.component : undefined
+  // Wrap a leaf call in its layout chain: [Outer, Inner] + "Leaf()" →
+  // "Outer { Inner { Leaf() } }".
+  const wrap = (chain: ExprIR[], leafCall: string): string => {
+    let acc = leafCall
+    for (let i = chain.length - 1; i >= 0; i--) {
+      acc = `${emitSwiftExpr(chain[i]!, indent + 2)} { ${acc} }`
+    }
+    return acc
+  }
+  const denyFallback =
+    wildcardComponent !== undefined
+      ? `${emitSwiftExpr(wildcardComponent, indent + 4)}()`
+      : `Text("Pyreon Router: access denied to \\(path)")`
+  const branches: string[] = []
+  let firstBranch = true
+  for (const entry of entries) {
+    const keyword = firstBranch ? 'if' : 'else if'
+    const isLeafLayout =
+      entry.component.kind === 'identifier' && _layoutComponentNames.has(entry.component.name)
+    if (entry.isPattern) {
+      // A param-bearing leaf passes the matched params; a param-bearing layout
+      // index (rare; flatten bails nested params) falls back to an empty slot.
+      const leafCall = isLeafLayout
+        ? emitSwiftLayoutAwareInvocation(entry.component, indent + 2)
+        : `${emitSwiftExpr(entry.component, indent + 2)}(params: params)`
+      const render = wrap(entry.layoutChain, leafCall)
+      branches.push(
+        `${pad}${keyword} let params = PyreonRouter.matchPath(path, ${JSON.stringify(entry.path)}) {`,
+        ...wrapGuardLines(entry.guard, render, denyFallback, indent),
+        `${pad}}`,
+      )
+    } else {
+      const render = wrap(
+        entry.layoutChain,
+        emitSwiftLayoutAwareInvocation(entry.component, indent + 2),
+      )
+      branches.push(
+        `${pad}${keyword} path == ${JSON.stringify(entry.path)} {`,
+        ...wrapGuardLines(entry.guard, render, denyFallback, indent),
+        `${pad}}`,
+      )
+    }
+    firstBranch = false
+  }
+  const fallback =
+    wildcardComponent !== undefined
+      ? `${emitSwiftExpr(wildcardComponent, indent + 2)}()`
+      : `Text("Pyreon Router: no route for \\(path)")`
+  if (firstBranch) {
+    branches.push(`${pad}${fallback}`)
+  } else {
+    branches.push(`${pad}else {`, `${innerPad}${fallback}`, `${pad}}`)
+  }
+  const body = branches.join('\n')
+  const modifierIndent = ' '.repeat(indent - 2)
+  return `\n${modifierIndent}.navigationDestination(for: String.self) { path in\n${body}\n${modifierIndent}}`
+}
+
+/**
+ * Shared guard-wrap for a nested dispatch branch's render line: wraps in
+ * `if <guard> { render } else { <denyFallback> }` when a guard is present,
+ * else emits the render line bare. Mirrors the flat dispatch's `wrapGuard`.
+ */
+function wrapGuardLines(
+  guard: ExprIR | undefined,
+  renderLine: string,
+  denyFallback: string,
+  indent: number,
+): string[] {
+  const innerPad = ' '.repeat(indent + 2)
+  if (guard === undefined) return [`${innerPad}${renderLine}`]
+  return [
+    `${innerPad}if ${emitSwiftExpr(guard, indent + 2)} {`,
+    `${innerPad}  ${renderLine}`,
+    `${innerPad}} else {`,
+    `${innerPad}  ${denyFallback}`,
+    `${innerPad}}`,
+  ]
+}
+
+/**
  * Emit `<RouterView />` as the runtime-swift `RouterView()`.
  *
  * R1.1 — when emitted INSIDE a `<RouterProvider router={r}>` whose
@@ -2213,6 +2389,11 @@ function emitSwiftRouterView(
   _e: Extract<ExprIR, { kind: 'jsx-element' }>,
   _indent: number,
 ): string {
+  // Phase 3 — inside a layout component's body, `<RouterView />` is the
+  // child slot: it renders the `@ViewBuilder content` closure.
+  if (_emittingLayoutComponentSwift) {
+    return `content()`
+  }
   if (_activeHomeRouteSwift !== null) {
     return _activeHomeRouteSwift
   }
