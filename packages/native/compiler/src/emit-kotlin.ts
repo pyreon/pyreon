@@ -12,7 +12,14 @@ import {
   resolveSpace,
 } from './canonical-primitives'
 import { kotlinIdent, safeIdent } from './identifier-safety'
-import { isRedirectRoute, isWildcardRoute, resolveRouteTarget } from './route-ir-helpers'
+import {
+  type FlatRouteEntry,
+  flattenRouteTree,
+  hasNestedRoutes,
+  isRedirectRoute,
+  isWildcardRoute,
+  resolveRouteTarget,
+} from './route-ir-helpers'
 import type {
   AttrIR,
   ChildIR,
@@ -79,6 +86,34 @@ let _functionNames: Set<string> = new Set()
  */
 let _routerRoutes: Map<string, import('./types').RouteIR[]> = new Map()
 
+/**
+ * Phase 3 (nested routes) — names of components used as LAYOUT parents. A
+ * layout @Composable gains a `content: @Composable () -> Unit` param and its
+ * `<RouterView />` becomes `content()`. Computed once per `emitKotlin` call.
+ */
+let _layoutComponentNames: Set<string> = new Set()
+/** True while emitting a layout component's body, so its `<RouterView />`
+ * emits `content()` (the child slot) instead of the scaffold `RouterView()`. */
+let _emittingLayoutComponentKotlin = false
+
+/** Pre-pass: collect every layout-parent component name across all router
+ * decls' nested route trees (mirror of emit-swift's collectLayoutComponentNames). */
+function collectLayoutComponentNamesKotlin(components: ComponentIR[]): Set<string> {
+  const names = new Set<string>()
+  for (const c of components) {
+    for (const d of c.decls) {
+      if (d.kind !== 'router' || d.routes === undefined) continue
+      if (!hasNestedRoutes(d.routes)) continue
+      for (const entry of flattenRouteTree(d.routes)) {
+        for (const layout of entry.layoutChain) {
+          if (layout.kind === 'identifier') names.add(layout.name)
+        }
+      }
+    }
+  }
+  return names
+}
+
 export function emitKotlin(
   components: ComponentIR[],
   enums: EnumIR[] = [],
@@ -94,6 +129,8 @@ export function emitKotlin(
   }
   // Build the user-component name set — mirror of emit-swift's logic.
   _componentNames = new Set(components.map((c) => c.name))
+  // Phase 3 — pre-pass: which components are layout parents (nested routes)?
+  _layoutComponentNames = collectLayoutComponentNamesKotlin(components)
   const parts: string[] = []
   // TS-method compat preamble (Phase 2 follow-up). Kotlin's String has
   // `.length` but Collection<T> uses `.size` — so `array.length` (valid
@@ -114,6 +151,7 @@ export function emitKotlin(
   _enumNames = new Set()
   _structFieldsToName = new Map()
   _componentNames = new Set()
+  _layoutComponentNames = new Set()
   return parts.join('\n\n')
 }
 
@@ -262,9 +300,15 @@ function emitKotlinComponent(c: ComponentIR): string {
   // commonly accepts `class` as a prop name (React/HTML attr leakage)
   // or names functions colliding with `fun` / `val` / etc. — Kotlin
   // accepts ``\`class\`: String`` etc. as a normal identifier.
-  const propsList = c.props
-    .map((p) => `${kotlinIdent(p.name)}: ${kotlinType(p.type, ctx, p.name)}`)
-    .join(', ')
+  const propsParts = c.props.map(
+    (p) => `${kotlinIdent(p.name)}: ${kotlinType(p.type, ctx, p.name)}`,
+  )
+  // Phase 3 (nested routes) — a LAYOUT component gains a trailing
+  // `content: @Composable () -> Unit` slot; its `<RouterView />` becomes
+  // `content()` so the matched child fills it.
+  const isLayout = _layoutComponentNames.has(c.name)
+  if (isLayout) propsParts.push('content: @Composable () -> Unit')
+  const propsList = propsParts.join(', ')
   lines.push(`@Composable`)
   lines.push(`fun ${kotlinIdent(c.name)}(${propsList}) {`)
   for (const declText of declTexts) {
@@ -287,7 +331,10 @@ function emitKotlinComponent(c: ComponentIR): string {
     lines.push(`    } catch (e: Throwable) { ${name}.reject(e) }`)
     lines.push(`  }`)
   }
+  // While emitting a layout's body, its `<RouterView />` emits `content()`.
+  _emittingLayoutComponentKotlin = isLayout
   lines.push(`  ${emitKotlinExpr(c.returnExpr, 2)}`)
+  _emittingLayoutComponentKotlin = false
   lines.push(`}`)
   _activePropsParamName = undefined
   _signalNames = new Set()
@@ -1872,6 +1919,12 @@ function emitKotlinRouteDispatch(
   routes: import('./types').RouteIR[],
   indent: number,
 ): string {
+  // Phase 3 (nested routes) — dispatch on FULL paths, wrapping each leaf in
+  // its layout chain via content lambdas. Flat tables keep the unchanged
+  // dispatch below — zero regression.
+  if (hasNestedRoutes(routes)) {
+    return emitKotlinNestedRouteDispatch(routes, indent)
+  }
   const pad = ' '.repeat(indent)
   const innerPad = ' '.repeat(indent + 2)
   const lines: string[] = []
@@ -1947,12 +2000,101 @@ function emitKotlinRouteDispatch(
 }
 
 /**
+ * Invoke a component, supplying an EMPTY content lambda when it's a layout
+ * (layouts take a required `content: @Composable () -> Unit`, so bare
+ * `Layout()` won't compile). A layout rendered as its own index shows its
+ * chrome with an empty child slot.
+ */
+function emitKotlinLayoutAwareInvocation(component: ExprIR, indent: number): string {
+  const expr = emitKotlinExpr(component, indent)
+  if (component.kind === 'identifier' && _layoutComponentNames.has(component.name)) {
+    return `${expr} {}`
+  }
+  return `${expr}()`
+}
+
+/**
+ * Phase 3 (nested routes) — dispatch over a FLATTENED tree. Each leaf renders
+ * `Outer { Inner { Leaf() } }` (the layout chain wrapping the leaf via the
+ * `content` lambda each layout was emitted with). Mirror of
+ * emitSwiftNestedNavigationDestination.
+ */
+function emitKotlinNestedRouteDispatch(
+  routes: import('./types').RouteIR[],
+  indent: number,
+): string {
+  const pad = ' '.repeat(indent)
+  const innerPad = ' '.repeat(indent + 2)
+  const entries: FlatRouteEntry[] = flattenRouteTree(routes)
+  const wildcardRoute = routes.find(isWildcardRoute)
+  const wildcardComponent =
+    wildcardRoute !== undefined ? resolveRouteTarget(wildcardRoute, routes)?.component : undefined
+  const denyFallback =
+    wildcardComponent !== undefined
+      ? `${emitKotlinExpr(wildcardComponent, indent + 4)}()`
+      : `Text(text = "Pyreon Router: access denied to \${currentPath}")`
+  // Wrap a leaf call in its layout chain: [Outer, Inner] + "Leaf()" →
+  // "Outer { Inner { Leaf() } }".
+  const wrap = (chain: ExprIR[], leafCall: string): string => {
+    let acc = leafCall
+    for (let i = chain.length - 1; i >= 0; i--) {
+      acc = `${emitKotlinExpr(chain[i]!, indent + 4)} { ${acc} }`
+    }
+    return acc
+  }
+  const guardWrap = (guard: ExprIR | undefined, renderCall: string): string =>
+    guard === undefined
+      ? renderCall
+      : `if (${emitKotlinExpr(guard, indent + 4)}) ${renderCall} else ${denyFallback}`
+  const lines: string[] = []
+  lines.push(`${pad}val currentPath = router.currentPath`)
+  lines.push(`${pad}when {`)
+  for (const entry of entries) {
+    const isLeafLayout =
+      entry.component.kind === 'identifier' && _layoutComponentNames.has(entry.component.name)
+    if (entry.isPattern) {
+      const leafCall = isLeafLayout
+        ? emitKotlinLayoutAwareInvocation(entry.component, indent + 4)
+        : `${emitKotlinExpr(entry.component, indent + 4)}(params = params)`
+      lines.push(
+        `${innerPad}PyreonRouter.matchPath(currentPath, ${JSON.stringify(entry.path)}) != null -> {`,
+      )
+      lines.push(
+        `${innerPad}  val params = PyreonRouter.matchPath(currentPath, ${JSON.stringify(entry.path)}) ?: emptyMap()`,
+      )
+      lines.push(`${innerPad}  ${guardWrap(entry.guard, wrap(entry.layoutChain, leafCall))}`)
+      lines.push(`${innerPad}}`)
+    } else {
+      const render = wrap(
+        entry.layoutChain,
+        emitKotlinLayoutAwareInvocation(entry.component, indent + 4),
+      )
+      lines.push(
+        `${innerPad}currentPath == ${JSON.stringify(entry.path)} -> ${guardWrap(entry.guard, render)}`,
+      )
+    }
+  }
+  const fallback =
+    wildcardComponent !== undefined
+      ? `${emitKotlinExpr(wildcardComponent, indent + 4)}()`
+      : `Text(text = "Pyreon Router: no route for \${currentPath}")`
+  lines.push(`${innerPad}else -> ${fallback}`)
+  lines.push(`${pad}}`)
+  return lines.join('\n')
+}
+
+/**
  * Emit `<RouterView />` as the runtime-kotlin `RouterView()`.
  */
 function emitKotlinRouterView(
   _e: Extract<ExprIR, { kind: 'jsx-element' }>,
   _indent: number,
 ): string {
+  // Phase 3 — inside a layout component's body, `<RouterView />` is the child
+  // slot: it invokes the `content` composable lambda.
+  if (_emittingLayoutComponentKotlin) {
+    return `content()`
+  }
   return `RouterView()`
 }
 
