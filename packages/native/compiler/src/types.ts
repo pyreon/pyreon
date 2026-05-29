@@ -191,6 +191,22 @@ export interface RouteIR {
    * (they leave `guard` undefined → the route emits unguarded).
    */
   guard?: ExprIR
+  /**
+   * Phase 3 (nested routes) — child routes of a layout route. When present,
+   * this route is a LAYOUT: its `component` renders a `<RouterView />` slot
+   * that the matched child fills. The native emit flattens the tree into
+   * full-path leaf branches and wraps each leaf in its ancestor layout chain
+   * via a content-closure (`Layout { Child() }` on Swift / `Layout { Child() }`
+   * on Compose) — see `flattenRouteTree`. Child `path`s are relative segments
+   * joined onto the parent (`/app` + `dashboard` → `/app/dashboard`); a child
+   * whose path already starts with `/` is treated as already-absolute
+   * (mirrors `@pyreon/router`'s fs-router nested-absolute-path handling).
+   *
+   * v1 supports literal (non-`:param`) 2-level nesting; deeper trees flatten
+   * recursively but param-bearing nested paths conservatively bail (no value
+   * source at the alias site), same discipline as redirects.
+   */
+  children?: RouteIR[]
 }
 
 /**
