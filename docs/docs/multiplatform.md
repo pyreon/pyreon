@@ -229,10 +229,18 @@ The vocabulary is multiplatform; the road to shipping real production apps conti
 |------|-------|--------|
 | Real-device CI | Compile the full apps on real Xcode/Gradle (`native-device` workflow), then boot Simulator/Emulator + assert render | 🟡 build gate landed (opt-in); launch-and-render next |
 | Router matching | **redirects**, `:param*` splat, `:param?` optional, `*`/`(.*)` whole-route **wildcard 404**, leading/trailing-slash tolerance | ✅ landed (see [Native routing](#native-routing)) |
-| Router parity (advanced) | per-route **guards** (`beforeEnter`), loaders, nested routes, typed `useParams<T>` | 🟡 guards landing; loaders / nested / typed planned |
-| Data + forms | `useFetch` (runtime + emit), `useForm`, `usePermissions` as per-service native runtime ports | 🟡 useFetch runtime landed; emit + form/permissions runtimes landing |
-| Lifecycle | `<Suspense>` / `<ErrorBoundary>` / `<Transition>` on native | ⏳ planned |
+| Router parity (advanced) | per-route **guards** (`beforeEnter`), **nested routes** (layout-wrapping), `useParams` **destructuring**, loader-data runtime (`useLoaderData`) | ✅ guards, nested routes, `useParams` destructure, and the `loaderData`/`useLoaderData` runtime landed; loader **auto-emit** (blocked — see note) + typed `useParams<T>` planned |
+| Data + forms | `useFetch` / `useForm` / `usePermissions` / `useOnline` as per-service native runtime ports (runtime + emit) | ✅ all four runtimes + their compiler emit landed; validation + the remaining services planned |
+| Lifecycle | `<Transition>` + `<TransitionGroup>` (landed); `<Suspense>` / `<ErrorBoundary>` / `<KeepAlive>` | 🟡 transitions landed; the rest need a native primitive (SwiftUI/Compose have no error-boundary / suspend) — planned |
 | DX | `pyreon create-multiplatform` scaffold, asset pipeline | ⏳ planned |
+
+> **Loader auto-emit is intentionally deferred, not forgotten.** The
+> `loaderData` / `useLoaderData` *runtime* contract is landed, but the
+> compiler can't auto-emit a route's `loader` body: unlike `useFetch<T>` it
+> carries no decode-type generic, and real loaders are arbitrary async
+> (`async ({ params }) => fetchUser(params.id)`) — neither compiles to a
+> typed native fetch. Apps populate `loaderData` from native code today;
+> auto-emit awaits a typed-loader design.
 
 ## Native routing
 
@@ -248,10 +256,23 @@ const router = createRouter({
     { path: '/files/:rest*', component: Files },         // splat / catch-all
     { path: '/old',         redirect: '/users/1' },      // redirect (alias)
     { path: '/admin',       component: Admin, beforeEnter: () => isAuthed() }, // guard
+    { path: '/app',         component: AppLayout, children: [   // nested layout
+      { path: 'dashboard',  component: Dashboard },
+      { path: 'settings',   component: Settings },
+    ] },
     { path: '*',            component: NotFound },        // wildcard 404
   ],
 })
 return <RouterProvider router={router}><RouterView /></RouterProvider>
+```
+
+Inside a route component, read path params via destructuring:
+
+```tsx
+function User() {
+  const { id } = useParams<{ id: string }>()   // → id reads the active route's param
+  return <Text>{id}</Text>
+}
 ```
 
 **Path matching** (mirrors `@pyreon/router`'s `match.ts`, verified by the
@@ -278,9 +299,31 @@ dangling redirects are dropped to the no-match fallback.
 an inline conditional checked at navigation time; on failure the branch
 renders the wildcard catch-all (if present) or a denial placeholder.
 
-> Status: path matching, redirects, and the wildcard 404 are **landed**;
-> guards are **landing**; loaders, nested routes, and typed `useParams<T>`
-> are planned (see the roadmap table above).
+**Nested routes** (`children: [...]`) compile to a flattened full-path
+dispatch where each leaf is wrapped in its layout chain via a **content
+slot**: a layout component (a route parent) is emitted with a
+`@ViewBuilder content` closure (SwiftUI) / `content: @Composable () -> Unit`
+(Compose), and its `<RouterView />` becomes that slot. So `/app/dashboard`
+renders `AppLayout { Dashboard() }`; the layout's own `/app` index renders
+`AppLayout { EmptyView() }`. Three-plus levels nest outermost-first
+(`AppLayout { TeamLayout { Members() } }`). Flat route tables keep the
+original dispatch unchanged.
+
+**`useParams()` destructuring** — `const { id } = useParams()` (and
+`{ id: userId }` aliasing) binds each field to the active router's param
+map: a computed `private var id: String { useParams(router:)["id"] ?? "" }`
+on SwiftUI (computed, not stored — it reads `@Environment`), `val id =
+useParams()["id"] ?: ""` on Compose.
+
+**Loader data** — `PyreonRouter` exposes a `loaderData` store +
+`useLoaderData<T>()`; a route's loaded data is keyed by path and read
+back, typed, by the current route. The runtime contract is landed; see the
+loader-auto-emit note in the roadmap for why the compiler doesn't yet
+populate it automatically.
+
+> Status: path matching, redirects, wildcard 404, **guards**, **nested
+> routes**, **`useParams` destructuring**, and the **loader-data runtime**
+> are all **landed**. Loader auto-emit and typed `useParams<T>` are planned.
 
 ## Native data & services
 
@@ -294,14 +337,23 @@ Kotlin runtime the emitted code drives):
   through the container's `begin → resolve | reject` state machine and
   decodes into `T`. Field reads (`x.data`, `x.isPending`) are `@Observable`
   properties on iOS, Compose `MutableState` on Android.
-- **`useForm` / `usePermissions`** — `PyreonForm` (per-field
-  values/errors/touched + submit state) and `PyreonPermissions` (RBAC
-  `can`/`cannot`/`all`/`any` with `"x.*"` wildcards) ship as the same kind
-  of reactive runtime port; their compiler emit is the next increment.
+- **`useForm`** → a `PyreonForm` container (per-field values / errors /
+  touched + submit state). `const form = useForm({ initialValues })` emits
+  `@State PyreonForm(initialValues:[...])` (SwiftUI) / `remember {
+  PyreonForm(mapOf(...)) }` (Compose); MutableState field reads append
+  `.value` on Compose (except the derived `isValid` getter).
+- **`usePermissions`** → a `PyreonPermissions` container (RBAC
+  `can`/`cannot`/`all`/`any` with `"x.*"` wildcards). `const can =
+  usePermissions([...])` seeds the grant set; reads are method calls (no
+  `.value` rewrite).
+- **`useOnline`** → a `PyreonNetworkStatus` container with a reactive
+  `isOnline` flag (real `NWPathMonitor` on iOS; the Compose side takes the
+  app's connectivity callback). `net.isOnline` reads plainly on SwiftUI,
+  `.value` on Compose.
 
-> Status: the `useFetch` runtime is **landed** and its compiler emit is
-> **landing**; the form / permissions runtimes are **landing**. Validation
-> and the remaining services are planned.
+> Status: `useFetch`, `useForm`, `usePermissions`, and `useOnline` are all
+> **landed** end-to-end (runtime port + compiler emit). Validation and the
+> remaining services are planned.
 
 ## Verifiable today (compile contract)
 
@@ -309,10 +361,11 @@ Kotlin runtime the emitted code drives):
 - **iOS**: `pyreon-native build --target=ios --source=./src --out=./generated` produces typecheck-clean Swift (verified via `swiftc -parse` in the `native-validate` CI). The **opt-in** `native-device` workflow additionally runs `xcodegen` + `xcodebuild` to compile the full example app on a real Xcode/Simulator SDK. End-to-end Simulator launch-and-render is the next step.
 - **Android**: `pyreon-native build --target=android --source=./src --out=./generated` produces typecheck-clean Kotlin (verified via `kotlinc + Compose stubs`). The same opt-in `native-device` workflow runs `gradle assembleDebug` against the real Android toolchain. End-to-end emulator launch-and-render is the next step.
 
-The runtime packages exist:
+The runtime packages exist, with one reactive container per data/service hook:
 
-- `@pyreon/native-runtime-swift` — `@PyreonAppStorage` Codable property wrapper + `PyreonStorage` helpers
-- `@pyreon/native-runtime-kotlin` — `rememberPyreonStorage` Composable + pluggable `PyreonStorageBackend`
+- `@pyreon/native-runtime-swift` — `@PyreonAppStorage` + `PyreonStorage`, `PyreonFetch<T>`, `PyreonForm`, `PyreonPermissions`, `PyreonNetworkStatus` (`@Observable` containers)
+- `@pyreon/native-runtime-kotlin` — `rememberPyreonStorage` + the same `PyreonFetch` / `PyreonForm` / `PyreonPermissions` / `PyreonNetworkStatus` containers (Compose `MutableState`)
+- `@pyreon/native-router-{swift,kotlin}` — `PyreonRouter` (path stack, `matchPath`, `params`, `loaderData`) + `useNavigate` / `useParams` / `useLoaderData` hooks
 
 ## Reference
 
