@@ -86,6 +86,23 @@ export function createFlow<TData = Record<string, unknown>>(
   const selectedNodes = computed(() => [...selectedNodeIds()])
   const selectedEdges = computed(() => [...selectedEdgeIds()])
 
+  // Identity lookup maps — O(1) node/edge access by id. Rebuilt ONCE per
+  // nodes()/edges() change instead of an O(N) `.find()` per accessor call.
+  // The per-node/per-edge reactive accessors in flow-component.tsx read these
+  // maps, so a drag frame (which writes the whole nodes() array, notifying
+  // every node + edge style/class/path thunk) stays O(N) total — one map
+  // rebuild + N O(1) gets — instead of O(N²) (N thunks × O(N) find each).
+  const nodeMap = computed(() => {
+    const m = new Map<string, FlowNode<TData>>()
+    for (const n of nodes()) m.set(n.id, n)
+    return m
+  })
+  const edgeMap = computed(() => {
+    const m = new Map<string, FlowEdge>()
+    for (const e of edges()) m.set(e.id ?? '', e)
+    return m
+  })
+
   // ── Animation frame tracking ─────────────────────────────────────────────
   // Prevents frame leaks when layout()/animateViewport() are called multiple
   // times or when the instance is disposed mid-animation.
@@ -1074,6 +1091,8 @@ export function createFlow<TData = Record<string, unknown>>(
     containerSize,
     selectedNodes,
     selectedEdges,
+    nodeMap,
+    edgeMap,
     getNode,
     addNode,
     removeNode,

@@ -227,15 +227,19 @@ function EdgeLayer(props: {
           // prop-derived var scan bails on `NodeFlags.Let`).
           // oxlint-disable prefer-const
           let liveEdge: () => FlowEdge = () => {
-            const all = instance.edges()
-            return all.find((e) => e.id === edgeId) ?? initialEdge
+            // O(1) map lookup — see flow.ts `edgeMap`. Reading the computed
+            // tracks reactively (recomputes once per `edges()` change), so
+            // this stays O(1) per call instead of an O(E) `.find()`.
+            return instance.edgeMap().get(edgeId) ?? initialEdge
           }
 
           let geometry: () => EdgeGeometry | null = () => {
             const e = liveEdge()
-            const all = instance.nodes()
-            const sourceNode = all.find((n) => n.id === e.source)
-            const targetNode = all.find((n) => n.id === e.target)
+            // O(1) source/target lookup via `nodeMap` — was 2× O(N) `.find()`
+            // per edge per `nodes()` write (drag frame), i.e. O(E×N) total.
+            const nm = instance.nodeMap()
+            const sourceNode = nm.get(e.source)
+            const targetNode = nm.get(e.target)
             if (!sourceNode || !targetNode) return null
             return computeEdgeGeometry(e, sourceNode, targetNode)
           }
@@ -384,8 +388,11 @@ function NodeLayer(props: {
         // updateNode call that removes the node and the For loop
         // catching up.
         const node = (): FlowNode => {
-          const all = instance.nodes()
-          return all.find((n) => n.id === id) ?? initialNode
+          // O(1) map lookup — see flow.ts `nodeMap`. Reading the computed
+          // tracks reactively (recomputes once per `nodes()` change), so the
+          // per-node class/style thunks that call this stay O(1) per frame
+          // instead of an O(N) `.find()` each → O(N²) per drag frame removed.
+          return instance.nodeMap().get(id) ?? initialNode
         }
 
         const isSelected = (): boolean => instance.selectedNodes().includes(id)
