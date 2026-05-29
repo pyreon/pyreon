@@ -165,6 +165,20 @@ export type DeclIR =
    * on Kotlin (same field-read rewrite as useForm's MutableState fields).
    */
   | { kind: 'network-status'; name: string }
+  /**
+   * Phase 3 — destructured router params via `const { id } = useParams()` (or
+   * `const { id: userId } = useParams<{ id: string }>()`). The web-idiomatic
+   * destructure shape; emits one local binding per field, each reading the
+   * active router's params map:
+   *   Swift  → private var id: String { useParams(router: pyreonRouter)["id"] ?? "" }
+   *   Kotlin → val id = useParams()["id"] ?: ""
+   *
+   * `params[]` carries `{ key, local }` pairs — `key` is the param name read
+   * from the map, `local` is the bound identifier (they differ only under
+   * `{ id: userId }` aliasing). Closes the documented-but-unimplemented gap
+   * where `const { id } = useParams()` referenced an undeclared `id`.
+   */
+  | { kind: 'params-destructure'; params: { key: string; local: string }[] }
 
 /**
  * Phase C5 — one route entry parsed from `createRouter({ routes: [...] })`.

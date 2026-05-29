@@ -304,8 +304,27 @@ function parseProps(
 
 /** Try to extract a signal / computed / function declaration from a `const x = …`. */
 function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
-  const name = node.id?.name as string | undefined
   const init = node.init as AnyNode | undefined
+  // `const { id } = useParams()` / `const { id: userId } = useParams<{...}>()`
+  // — destructured router params. The ObjectPattern id has no `.name`, so this
+  // must run BEFORE the name-based bail below (otherwise the decl is silently
+  // dropped and the destructured locals reference undeclared identifiers).
+  if (
+    node.id?.type === 'ObjectPattern' &&
+    init?.type === 'CallExpression' &&
+    (init.callee?.name as string | undefined) === 'useParams'
+  ) {
+    const params: { key: string; local: string }[] = []
+    for (const prop of (node.id.properties as AnyNode[] | undefined) ?? []) {
+      if (prop?.type !== 'Property') continue
+      const key = prop.key?.type === 'Identifier' ? (prop.key.name as string) : undefined
+      const local =
+        prop.value?.type === 'Identifier' ? (prop.value.name as string) : key
+      if (key !== undefined && local !== undefined) params.push({ key, local })
+    }
+    return params.length > 0 ? { kind: 'params-destructure', params } : null
+  }
+  const name = node.id?.name as string | undefined
   if (!name || !init) return null
 
   // Arrow-function declaration — `const fn = (params) => { ... }` —
