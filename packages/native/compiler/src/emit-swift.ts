@@ -980,6 +980,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'For') return emitSwiftFor(e, indent)
   if (tag === 'Show') return emitSwiftShow(e, indent)
   if (tag === 'Transition') return emitSwiftTransition(e, indent)
+  if (tag === 'TransitionGroup') return emitSwiftTransitionGroup(e, indent)
   if (tag === 'Text') return emitSwiftText(e, indent)
   if (tag === 'Button') return emitSwiftButton(e, indent)
   if (tag === 'TextField') return emitSwiftTextField(e, indent)
@@ -1310,6 +1311,53 @@ function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
     `${p}}\n` +
     `${p}.animation(.default, value: ${cond})`
   )
+}
+
+/**
+ * Phase 5.3 — `<TransitionGroup>{children}</TransitionGroup>` → an animated
+ * list container. TransitionGroup's web contract is "animate the enter/leave
+ * of a KEYED list" — its child is typically a `<For each={items}>`. SwiftUI
+ * animates `ForEach` insert/remove with the default transition when the
+ * container carries an `.animation(.default, value:)` keyed on the list.
+ *
+ * We render the children inside a `VStack` and drive the animation off the
+ * For child's `each` signal (the list whose mutation triggers the
+ * enter/leave). When no For child is present there is nothing whose change
+ * could animate, so the container renders plain — honest no-op rather than a
+ * value-less `.animation` that SwiftUI deprecates. Mirror of the Compose
+ * `Modifier.animateContentSize()` shape (which needs no explicit driver).
+ */
+function emitSwiftTransitionGroup(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const p = ' '.repeat(indent)
+  const inner = ' '.repeat(indent + 2)
+  const body = e.children.map((c) => inner + emitSwiftChild(c, indent + 2)).join('\n')
+  const container = `VStack {\n${body}\n${p}}`
+  const driver = findForEachDriverSwift(e)
+  return driver !== undefined
+    ? `${container}\n${p}.animation(.default, value: ${driver})`
+    : container
+}
+
+/**
+ * Find the `each` list signal of a direct `<For>` child, emitted as a Swift
+ * read — the value that drives a `<TransitionGroup>`'s list animation.
+ * Returns undefined when no For child is present (static content — nothing
+ * to animate).
+ */
+function findForEachDriverSwift(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+): string | undefined {
+  for (const c of e.children) {
+    if (c.kind !== 'expr' || c.expr.kind !== 'jsx-element' || c.expr.tag !== 'For') continue
+    const each = c.expr.attrs.find((a) => a.kind === 'attr' && a.name === 'each') as
+      | Extract<AttrIR, { kind: 'attr' }>
+      | undefined
+    if (each) return emitSwiftSignalRead(each.value)
+  }
+  return undefined
 }
 
 // ============================================================================

@@ -891,6 +891,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'For') return emitKotlinFor(e, indent)
   if (tag === 'Show') return emitKotlinShow(e, indent)
   if (tag === 'Transition') return emitKotlinTransition(e, indent)
+  if (tag === 'TransitionGroup') return emitKotlinTransitionGroup(e, indent)
   if (tag === 'Text') return emitKotlinText(e, indent)
   if (tag === 'Button') return emitKotlinButton(e, indent)
   if (tag === 'TextField') return emitKotlinTextField(e, indent)
@@ -1118,6 +1119,25 @@ function emitKotlinTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
   const pad = ' '.repeat(indent + 2)
   const body = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   return `AnimatedVisibility(visible = ${cond}) {\n${body}\n${' '.repeat(indent)}}`
+}
+
+/**
+ * Phase 5.3 — `<TransitionGroup>{children}</TransitionGroup>` → a `Column`
+ * carrying `Modifier.animateContentSize()`, Compose's built-in "animate this
+ * container when its content changes" primitive. TransitionGroup's web
+ * contract is "animate the enter/leave of a keyed list" (its child is
+ * typically a `<For each={items}>`); `animateContentSize()` animates the
+ * column's layout as items add/remove — the Compose-idiomatic analog of the
+ * SwiftUI `.animation(.default, value:)`-on-a-VStack shape. Needs no explicit
+ * driver value (unlike SwiftUI), so it works for any child content.
+ */
+function emitKotlinTransitionGroup(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const pad = ' '.repeat(indent + 2)
+  const body = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+  return `Column(modifier = Modifier.animateContentSize()) {\n${body}\n${' '.repeat(indent)}}`
 }
 
 /**
