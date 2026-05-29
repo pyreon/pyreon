@@ -54,6 +54,7 @@ export function useFileDrop(options: UseFileDropOptions): UseFileDropResult {
   const isOver = signal(false)
   const isDraggingFiles = signal(false)
   let cleanup: (() => void) | undefined
+  let disposed = false
 
   function matchesAccept(file: File, accept: string[]): boolean {
     return accept.some((pattern) => {
@@ -68,6 +69,9 @@ export function useFileDrop(options: UseFileDropOptions): UseFileDropResult {
   }
 
   function setup() {
+    // Unmounted before this deferred setup ran — don't register a drop target
+    // that onCleanup (already fired with `cleanup` undefined) can never remove.
+    if (disposed) return
     if (cleanup) cleanup()
 
     const el = options.element()
@@ -126,6 +130,7 @@ export function useFileDrop(options: UseFileDropOptions): UseFileDropResult {
   queueMicrotask(setup)
 
   onCleanup(() => {
+    disposed = true
     if (cleanup) cleanup()
   })
 

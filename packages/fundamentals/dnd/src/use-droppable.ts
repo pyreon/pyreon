@@ -27,8 +27,12 @@ export function useDroppable<T extends DragData = DragData>(
 
   const isOver = signal(false)
   let cleanup: (() => void) | undefined
+  let disposed = false
 
   function setup() {
+    // Unmounted before this deferred setup ran — don't register a target that
+    // onCleanup (already fired with `cleanup` undefined) can never tear down.
+    if (disposed) return
     if (cleanup) cleanup()
 
     const el = options.element()
@@ -62,6 +66,7 @@ export function useDroppable<T extends DragData = DragData>(
   queueMicrotask(setup)
 
   onCleanup(() => {
+    disposed = true
     if (cleanup) cleanup()
   })
 
