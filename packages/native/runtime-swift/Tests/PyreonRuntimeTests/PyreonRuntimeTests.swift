@@ -461,4 +461,31 @@ final class PyreonRuntimeTests: XCTestCase {
         XCTAssertTrue(perms.can("y"))
         XCTAssertFalse(perms.can("admin"))
     }
+
+    // MARK: - PyreonNetworkStatus (useOnline reactive connectivity flag)
+
+    /// Defaults to online; an explicit initial value is honored.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonNetworkStatusInitialValue() throws {
+        XCTAssertTrue(PyreonNetworkStatus().isOnline)
+        XCTAssertFalse(PyreonNetworkStatus(isOnline: false).isOnline)
+    }
+
+    /// `update(_:)` flips the reactive flag both ways.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonNetworkStatusUpdateFlips() throws {
+        let net = PyreonNetworkStatus(isOnline: true)
+        net.update(false)
+        XCTAssertFalse(net.isOnline)
+        net.update(true)
+        XCTAssertTrue(net.isOnline)
+    }
+
+    /// `stop()` before `start()` is a safe no-op (releases nothing).
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonNetworkStatusStopBeforeStartIsNoop() throws {
+        let net = PyreonNetworkStatus()
+        net.stop() // must not crash
+        XCTAssertTrue(net.isOnline)
+    }
 }
