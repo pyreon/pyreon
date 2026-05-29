@@ -54,7 +54,7 @@
     "@tanstack/query-core": "^5.100.14",
     "@tanstack/table-core": "^8.21.3",
     "@tanstack/virtual-core": "^3.16.0",
-    "zod": "~4.3.6"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@pyreon/mcp": "workspace:*",

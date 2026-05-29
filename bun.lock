@@ -106,7 +106,7 @@
         "@pyreon/validation": "workspace:*",
         "@pyreon/virtual": "workspace:*",
         "@pyreon/zero": "workspace:*",
-        "zod": "~4.3.6",
+        "zod": "^4.4.3",
       },
       "devDependencies": {
         "@pyreon/compiler": "workspace:*",
@@ -188,7 +188,7 @@
         "@pyreon/validation": "workspace:^",
         "@pyreon/zero": "workspace:^",
         "@tanstack/query-core": "^5.100.14",
-        "zod": "~4.3.6",
+        "zod": "^4.4.3",
       },
       "devDependencies": {
         "@pyreon/lint": "workspace:^",
@@ -218,7 +218,7 @@
         "@pyreon/validation": "workspace:^",
         "@pyreon/zero": "workspace:^",
         "@tanstack/query-core": "^5.100.14",
-        "zod": "~4.3.6",
+        "zod": "^4.4.3",
       },
       "devDependencies": {
         "@pyreon/lint": "workspace:^",
@@ -248,7 +248,7 @@
         "@pyreon/validation": "workspace:^",
         "@pyreon/zero": "workspace:^",
         "@tanstack/query-core": "^5.100.14",
-        "zod": "~4.3.6",
+        "zod": "^4.4.3",
       },
       "devDependencies": {
         "@pyreon/lint": "workspace:^",
@@ -278,7 +278,7 @@
         "@pyreon/validation": "workspace:^",
         "@pyreon/zero": "workspace:^",
         "@tanstack/query-core": "^5.100.14",
-        "zod": "~4.3.6",
+        "zod": "^4.4.3",
       },
       "devDependencies": {
         "@pyreon/lint": "workspace:^",
@@ -308,7 +308,7 @@
         "@pyreon/vue-compat": "workspace:^",
         "@pyreon/zero": "workspace:^",
         "@tanstack/query-core": "^5.100.14",
-        "zod": "~4.3.6",
+        "zod": "^4.4.3",
       },
       "devDependencies": {
         "@pyreon/lint": "workspace:^",
@@ -365,7 +365,7 @@
         "@pyreon/zero": "workspace:^",
         "@tanstack/query-core": "^5.100.14",
         "@tanstack/table-core": "^8.21.3",
-        "zod": "~4.3.6",
+        "zod": "^4.4.3",
       },
       "devDependencies": {
         "@pyreon/lint": "workspace:^",
@@ -437,7 +437,7 @@
         "@tanstack/query-core": "^5.100.14",
         "@tanstack/table-core": "^8.21.3",
         "@tanstack/virtual-core": "^3.16.0",
-        "zod": "~4.3.6",
+        "zod": "^4.4.3",
       },
       "devDependencies": {
         "@pyreon/vite-plugin": "workspace:*",
@@ -489,7 +489,7 @@
         "@tanstack/query-core": "^5.100.14",
         "@tanstack/table-core": "^8.21.3",
         "@tanstack/virtual-core": "^3.16.0",
-        "zod": "~4.3.6",
+        "zod": "^4.4.3",
       },
       "devDependencies": {
         "@pyreon/mcp": "workspace:*",
@@ -538,7 +538,7 @@
         "@pyreon/url-state": "workspace:*",
         "@pyreon/validation": "workspace:*",
         "@pyreon/zero": "workspace:*",
-        "zod": "~4.3.6",
+        "zod": "^4.4.3",
       },
       "devDependencies": {
         "@pyreon/typescript": "workspace:*",
@@ -1108,7 +1108,7 @@
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/vitest-config": "workspace:*",
-        "zod": "~4.3.6",
+        "zod": "^4.4.3",
       },
     },
     "packages/fundamentals/flow": {
@@ -1271,7 +1271,7 @@
         "arktype": "^2.2.0",
         "bun-types": "^1.3.14",
         "valibot": "^1.4.1",
-        "zod": "~4.3.6",
+        "zod": "^4.4.3",
       },
     },
     "packages/fundamentals/storage": {
@@ -1305,7 +1305,7 @@
         "arktype": "^2.2.0",
         "bun-types": "^1.3.14",
         "valibot": "^1.4.1",
-        "zod": "~4.3.6",
+        "zod": "^4.4.3",
       },
     },
     "packages/fundamentals/table": {
@@ -1371,7 +1371,7 @@
         "@vitus-labs/tools-lint": "^2.5.0",
         "arktype": "^2.2.0",
         "valibot": "^1.4.1",
-        "zod": "~4.3.6",
+        "zod": "^4.4.3",
       },
     },
     "packages/fundamentals/validation": {
@@ -1390,7 +1390,7 @@
         "@pyreon/vitest-config": "workspace:*",
         "arktype": "^2.2.0",
         "valibot": "^1.4.1",
-        "zod": "~4.3.6",
+        "zod": "^4.4.3",
       },
       "peerDependencies": {
         "arktype": "*",
@@ -1578,7 +1578,7 @@
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.29.0",
         "@pyreon/compiler": "workspace:^",
-        "zod": "~4.3.6",
+        "zod": "^4.4.3",
       },
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
@@ -2063,6 +2063,7 @@
   },
   "overrides": {
     "@codemirror/view": "6.43.0",
+    "zod": "4.4.3",
   },
   "packages": {
     "@adobe/css-tools": ["@adobe/css-tools@4.4.4", "", {}, "sha512-Elp+iwUx5rN5+Y8xLt5/GRoG20WGoDCQ/1Fb+1LiGtvwbDavuSk0jhD/eZdckHAuzcDzccnkv+rEjyWfRx18gg=="],
@@ -4411,7 +4412,7 @@
 
     "zip-stream": ["zip-stream@4.1.1", "", { "dependencies": { "archiver-utils": "^3.0.4", "compress-commons": "^4.1.2", "readable-stream": "^3.6.0" } }, "sha512-9qv4rlDiopXg4E69k+vMHjNN63YFMe9sZMrdlvKnCjlCRWeCBswPPMPUfx+ipsAWq1LXHe70RcbaHdJJpS6hyQ=="],
 
-    "zod": ["zod@4.3.6", "", {}, "sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg=="],
+    "zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
 
     "zod-to-json-schema": ["zod-to-json-schema@3.25.2", "", { "peerDependencies": { "zod": "^3.25.28 || ^4" } }, "sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA=="],
 

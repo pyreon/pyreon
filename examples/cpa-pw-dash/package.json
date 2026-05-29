@@ -33,7 +33,7 @@
     "@pyreon/zero": "workspace:^",
     "@tanstack/query-core": "^5.100.14",
     "@tanstack/table-core": "^8.21.3",
-    "zod": "~4.3.6"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@pyreon/lint": "workspace:^",
