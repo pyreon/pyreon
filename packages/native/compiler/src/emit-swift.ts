@@ -431,6 +431,19 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
   if (d.kind === 'fetch') {
     return `@State private var ${swiftIdent(d.name)} = PyreonFetch<${swiftType(d.type)}>()`
   }
+  // Phase 4.2: `const form = useForm({ initialValues })` → an @State
+  // PyreonForm container seeded with the literal string defaults. Unlike
+  // useFetch there is NO mount-time harness — a form is pure reactive state;
+  // its fields (`values`/`errors`/`isSubmitting`/`isValid`) are read as
+  // @Observable properties directly.
+  if (d.kind === 'form') {
+    const seed = d.initialValues.length
+      ? `initialValues: [${d.initialValues
+          .map((p) => `${JSON.stringify(p.key)}: ${JSON.stringify(p.value)}`)
+          .join(', ')}]`
+      : ''
+    return `@State private var ${swiftIdent(d.name)} = PyreonForm(${seed})`
+  }
   // computed — infer the return type from the expression body so we
   // can emit a typed computed property. Falls back to `Any` for cases
   // the inference can't resolve (the emit still produces compilable

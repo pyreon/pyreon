@@ -133,6 +133,27 @@ export type DeclIR =
    * undeclared (the parser bails), same conservative rule as `useStorage`.
    */
   | { kind: 'fetch'; name: string; type: TypeIR; url: string }
+  /**
+   * Phase 4.2 — form state via `useForm({ initialValues })` from
+   * `@pyreon/form` (the native subset). Emits a `PyreonForm` reactive
+   * container:
+   *   Swift  → @State private var form = PyreonForm(initialValues: ["email": "a@b.com"])
+   *   Kotlin → val form = remember { PyreonForm(mapOf("email" to "a@b.com")) }
+   *
+   * `initialValues` carries the literal string-keyed defaults captured from
+   * the `{ initialValues: { email: 'a@b.com' } }` config. Only string-valued
+   * entries survive — the native `PyreonForm` surface is `[String: String]`,
+   * so non-string defaults are dropped (the field still exists at runtime,
+   * just unseeded). `onSubmit` / `validators` are web-only function logic and
+   * are intentionally ignored on native — submission flows through the
+   * container's `beginSubmit` / `endSubmit` API.
+   *
+   * Field reads (`form.values`, `form.errors`, `form.touched`,
+   * `form.isSubmitting`) map to the container's @Observable properties on
+   * Swift / Compose `MutableState` `.value` reads on Kotlin. `form.isValid`
+   * is a derived `Bool` getter — a plain read on both targets (no `.value`).
+   */
+  | { kind: 'form'; name: string; initialValues: { key: string; value: string }[] }
 
 /**
  * Phase C5 — one route entry parsed from `createRouter({ routes: [...] })`.

@@ -50,6 +50,15 @@ let _signalNames: Set<string> = new Set()
  * like PyreonRouter's `params`).
  */
 let _fetchNames: Set<string> = new Set()
+/**
+ * Phase 4.2: every `useForm` decl name in scope. Member reads of a form
+ * decl's reactive fields (`form.values` / `errors` / `touched` /
+ * `isSubmitting`) emit with a trailing `.value` (Compose `MutableState`).
+ * `form.isValid` is EXCLUDED — it's a derived `Boolean` getter on the
+ * Kotlin PyreonForm, not a MutableState, so it reads plainly. Swift exposes
+ * all of them as @Observable properties, so it needs no rewrite.
+ */
+let _formNames: Set<string> = new Set()
 /** G2: every function decl name (Parser-A). Mirrors emit-swift's set. */
 let _functionNames: Set<string> = new Set()
 /**
@@ -188,6 +197,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _signalNames = new Set()
   _functionNames = new Set()
   _fetchNames = new Set()
+  _formNames = new Set()
   // C5.3: reset router-routes map (mirrors Swift emit's same state).
   _routerRoutes = new Map()
   // Phase 2 follow-up — track function-typed props so handler emit
@@ -223,6 +233,8 @@ function emitKotlinComponent(c: ComponentIR): string {
     }
     // Phase 4: track useFetch decls so member reads append `.value`.
     if (d.kind === 'fetch') _fetchNames.add(d.name)
+    // Phase 4.2: track useForm decls so reactive-field reads append `.value`.
+    if (d.kind === 'form') _formNames.add(d.name)
   }
   const ctx: KotlinCtx = { synthesizedDataClasses: [], componentName: c.name }
   // First pass: walk decls, synthesizing data classes for anonymous object
@@ -273,6 +285,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _signalNames = new Set()
   _functionNames = new Set()
   _fetchNames = new Set()
+  _formNames = new Set()
   _routerRoutes = new Map()
   return lines.join('\n')
 }
@@ -370,6 +383,16 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // The LaunchedEffect harness that runs it is emitted by emitKotlinComponent.
   if (d.kind === 'fetch') {
     return `val ${kotlinIdent(d.name)} = remember { PyreonFetch<${kotlinType(d.type, ctx)}>() }`
+  }
+  // Phase 4.2: `const form = useForm({ initialValues })` → a remembered
+  // PyreonForm seeded with the literal defaults. No harness (pure state).
+  if (d.kind === 'form') {
+    const seed = d.initialValues.length
+      ? `mapOf(${d.initialValues
+          .map((p) => `${JSON.stringify(p.key)} to ${JSON.stringify(p.value)}`)
+          .join(', ')})`
+      : ''
+    return `val ${kotlinIdent(d.name)} = remember { PyreonForm(${seed}) }`
   }
   // C4: router hook — `const navigate = useNavigate()` → as-is.
   // Compose's `useNavigate()` is a `@Composable` function that reads
@@ -710,6 +733,18 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.object.kind === 'identifier' &&
         _fetchNames.has(e.object.name) &&
         (e.property === 'data' || e.property === 'error' || e.property === 'isPending')
+      ) {
+        return `${kotlinIdent(e.object.name)}.${e.property}.value`
+      }
+      // Phase 4.2: a useForm decl's MutableState fields read through `.value`.
+      // `isValid` is a derived Boolean getter (not MutableState) → plain read.
+      if (
+        e.object.kind === 'identifier' &&
+        _formNames.has(e.object.name) &&
+        (e.property === 'values' ||
+          e.property === 'errors' ||
+          e.property === 'touched' ||
+          e.property === 'isSubmitting')
       ) {
         return `${kotlinIdent(e.object.name)}.${e.property}.value`
       }
